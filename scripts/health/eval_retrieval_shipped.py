@@ -63,6 +63,24 @@ GOLD_SET = _HERE / "fixtures" / "week1-gold" / "gold-set-v3.json"
 # reads as a finding rather than as a bug.
 EXPECTED_FIELD = "expected_note_paths"
 
+# Filing-v2 2b (2026-09-03): the project space moved from the memory root's
+# desk/projects/ to the vault-root Projects/ (and desk/labelling into
+# Projects/agentm/labelling/). The gold set is frozen evidence and keeps its
+# pinned paths; the move is corrected here at score time, the same way the
+# archive moves are corrected in eval_v6_retrieval. Paths on both sides are
+# vault-root-relative, so this is a prefix swap.
+_MERGE_REMAPS = (
+    ("Agent/desk/labelling/", "Projects/agentm/labelling/"),
+    ("Agent/desk/projects/", "Projects/"),
+)
+
+
+def _remap_merged(path: str) -> str:
+    for old, new in _MERGE_REMAPS:
+        if path.startswith(old):
+            return new + path[len(old):]
+    return path
+
 # `negative` entries are questions the corpus is not supposed to answer. They are
 # scored separately: counting them in R@5 would reward a ranker for finding
 # nothing, and hiding them would lose the only check on false confidence.
@@ -354,7 +372,7 @@ def score(binary: str, entries: list, k: int) -> dict:
     all_scores = []
     for e in entries:
         question = e["question"]
-        expected = [p for p in (e.get(EXPECTED_FIELD) or []) if p]
+        expected = [_remap_merged(p) for p in (e.get(EXPECTED_FIELD) or []) if p]
         rows = _search_rows(binary, question, k)
         got = [path for path, _score in rows]
         all_scores.extend(s for _path, s in rows if s is not None)

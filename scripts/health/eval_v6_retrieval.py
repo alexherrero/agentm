@@ -85,10 +85,27 @@ _ARCHIVED_PATH_CORRECTIONS = {
 }
 
 
+# Filing-v2 2b (2026-09-03): the project space moved from the memory root's
+# desk/projects/ to the vault-root Projects/, a sibling of the memory root.
+# Same non-mutation policy: v0 keeps its pinned paths; the move is corrected
+# here, after the archive corrections, and recall keys such notes
+# vault-root-relative — which is exactly what these become.
+_MERGED_PREFIX = "desk/projects/"
+_MERGED_REAL_PREFIX = "../Projects/"
+
+
 def _resolve_expected_path(raw: str) -> str:
     if raw.startswith(_PLACEHOLDER_PREFIX):
         raw = _PLACEHOLDER_REAL_PREFIX + raw[len(_PLACEHOLDER_PREFIX):]
-    return _ARCHIVED_PATH_CORRECTIONS.get(raw, raw)
+    raw = _ARCHIVED_PATH_CORRECTIONS.get(raw, raw)
+    if raw.startswith(_MERGED_PREFIX):
+        raw = _MERGED_REAL_PREFIX + raw[len(_MERGED_PREFIX):]
+    return raw
+
+
+def _expected_exists(vault: Path, rel: str) -> bool:
+    """Every key is memory-root-relative — a root-space one climbs out via `..`."""
+    return (vault / rel).exists()
 
 
 def score_at_k(expected: list[str], ranked: list[str], k: int = 5) -> dict:
@@ -211,7 +228,7 @@ def run_eval(
     all_expected_paths: set[str] = set()
     for q in queries:
         all_expected_paths.update(_resolve_expected_path(p) for p in q["expected_notes"])
-    missing_expected_paths = sorted(p for p in all_expected_paths if not (vault / p).exists())
+    missing_expected_paths = sorted(p for p in all_expected_paths if not _expected_exists(vault, p))
 
     old_p_at_5 = old_r_at_5 = 0.0
     new_p_at_5 = new_r_at_5 = 0.0

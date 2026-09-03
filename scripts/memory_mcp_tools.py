@@ -112,6 +112,19 @@ def _replace_frontmatter(content: str, new_fm: dict) -> str:
     return f"---\n{fm_yaml}---{body_after}"
 
 
+def _project_group_segment(vault: Path, project: str) -> str:
+    """`projects` when the vault-root space holds the project (or exists and
+    nothing older holds it), `desk/projects` when desk does, else legacy."""
+    root = vault.parent / "Projects"
+    if (root / project).is_dir():
+        return "projects"
+    if (vault / "desk/projects" / project).is_dir():
+        return "desk/projects"
+    if root.is_dir():
+        return "projects"
+    return "desk/projects" if (vault / "desk/projects").is_dir() else "personal-projects"
+
+
 def _idem_tag(key: str) -> str:
     """Return a valid kebab-case tag encoding an idempotency key."""
     h = hashlib.sha256(key.encode()).hexdigest()[:16]
@@ -277,13 +290,13 @@ def register_tools(mcp) -> None:
         if idempotency_key:
             actual_tags.append(_idem_tag(idempotency_key))
 
-        # Resolve group: memory by default; projects/<project> if given.
+        # Resolve group: memory by default; the project's own space if given.
+        # Filing-v2 2b: a project living in the vault-root Projects/ (a sibling
+        # of the memory root) takes the `projects/<slug>` group save.py maps
+        # there; one still on desk keeps its desk group.
         group = "memory"
         if project:
-            projects_seg = (
-                "desk/projects" if (vault / "desk/projects").is_dir() else "personal-projects"
-            )
-            group = f"{projects_seg}/{project}"
+            group = f"{_project_group_segment(vault, project)}/{project}"
 
         dedup_info: dict = {}
         written = _save.save_entry(

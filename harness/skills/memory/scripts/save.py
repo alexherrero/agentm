@@ -44,6 +44,31 @@ _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
 # reality. Backward-compatible: 1- and 2-segment groups still match.)
 _GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
 
+# Filing-v2 2b: the project space is the vault-root `Projects/`, a SIBLING of
+# the memory root save.py is handed. A group value must stay lowercase kebab,
+# so a root-space note carries `group: projects/<slug>/…` — the historical
+# form — and this first segment maps onto the directory. Discovered, never
+# conjured: the sibling is used only when it exists; a flat scratch vault
+# keeps the space inside its own tree.
+_ROOT_SPACE_GROUP = "projects"
+_ROOT_SPACE_DIRNAME = "Projects"
+
+
+def root_space_dir(vault: Path) -> Path:
+    """Where `projects/…` groups land: the vault-root sibling when present,
+    else `<vault>/Projects` (flat layout)."""
+    sibling = vault.parent / _ROOT_SPACE_DIRNAME
+    return sibling if sibling.is_dir() else vault / _ROOT_SPACE_DIRNAME
+
+
+def group_target_dir(vault: Path, group: str) -> Path:
+    """The directory a group value addresses, on either generation."""
+    first, _, rest = group.partition("/")
+    if first == _ROOT_SPACE_GROUP:
+        base = root_space_dir(vault)
+        return base / rest if rest else base
+    return vault / group
+
 # Locked frontmatter field order — the schema source of truth shared with
 # `vault_lint.py` (V4 #33 DC-2: the lint reuses this so the two can't drift).
 # `_build_frontmatter` below emits fields in this exact order; a test pins them.
@@ -367,7 +392,7 @@ def save_entry(
     if always_load:
         target = vault / "memory" / "_always-load" / f"{slug}.md"
     else:
-        target = vault / group / kind / f"{slug}.md"
+        target = group_target_dir(vault, group) / kind / f"{slug}.md"
 
     if target.exists():
         raise FileExistsError(

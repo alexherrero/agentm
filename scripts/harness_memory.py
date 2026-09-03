@@ -340,7 +340,9 @@ _PLUGIN_SPACES_KEY = "plugins.obsidian-vault.spaces"
 
 _DEFAULT_SPACES = {
     "memory": "memory",
-    "projects": "desk/projects",
+    # Filing-v2 2b: the project space is the vault-root Projects/, a sibling of
+    # the memory root this table is joined onto — hence the `..`.
+    "projects": "../Projects",
     # Filing-v2 part 2a: diagnostics is first-class under the memory root, and
     # the daily digests live inside it — records in the area they serve.
     "briefs": "diagnostics/digests",
@@ -591,6 +593,23 @@ _VAULT_PROJECTS_REL_LEGACY = "personal-projects"
 _VAULT_ROOT_PROJECTS_REL = "Projects"
 
 
+def _project_group_segment(vault: Path, project: str) -> str:
+    """The group segment a writer stamps for `project`, from where it lives:
+    `projects` (the vault-root space, which save.py maps onto Projects/) when
+    that space holds it or exists with nothing older holding it;
+    `desk/projects` when desk holds it; else the legacy name."""
+    root = Path(vault).parent / _VAULT_ROOT_PROJECTS_REL
+    if (root / project).is_dir():
+        return "projects"
+    if (Path(vault) / _VAULT_PROJECTS_REL_NEW / project).is_dir():
+        return _VAULT_PROJECTS_REL_NEW
+    if root.is_dir():
+        return "projects"
+    if (Path(vault) / _VAULT_PROJECTS_REL_NEW).is_dir():
+        return _VAULT_PROJECTS_REL_NEW
+    return _VAULT_PROJECTS_REL_LEGACY
+
+
 def _root_projects_candidates(backend: "StorageBackend") -> list:
     """(backend, locator-parts) pairs where the root `Projects/` space may sit,
     derived from the BACKEND's own root — never from global config — so a
@@ -748,8 +767,18 @@ def resolve_project(context: Optional[dict] = None) -> dict:
             "layout": "legacy",
         }
 
-    # Project not yet present — return new locator so writes target the
-    # post-rename layout. Callers that need to mkdir do so explicitly.
+    # Project not yet present — a new project is created in the root space
+    # when that space exists (filing-v2 2b), else on the memory-root layout.
+    # Callers that need to mkdir do so explicitly.
+    for root_backend, parts in _root_projects_candidates(backend):
+        if root_backend.exists(root_backend.resolve(*parts)):
+            return {
+                "slug": slug,
+                "project_locator": root_backend.resolve(*parts, slug),
+                "backend": root_backend,
+                "project_root": project_root,
+                "layout": "root",
+            }
     return {
         "slug": slug,
         "project_locator": new_loc,
@@ -1561,14 +1590,9 @@ def _invoke_toolkit_save(
     save_py = tk / "save.py"
     if not save_py.is_file():
         return 127
-    # Resolve which projects-dir segment to use (post-V4 #26 "desk/projects" preferred;
-    # falls back to legacy "personal-projects" if rename not yet run). Inlined
-    # here because _vault_projects_dir now takes a StorageBackend (V5-6).
-    projects_segment = (
-        _VAULT_PROJECTS_REL_NEW
-        if (vault / _VAULT_PROJECTS_REL_NEW).is_dir()
-        else _VAULT_PROJECTS_REL_LEGACY
-    )
+    # The group follows the project's home (filing-v2 2b): `projects` for the
+    # vault-root space, desk/projects for a project still there, else legacy.
+    projects_segment = _project_group_segment(vault, project)
     group = f"{projects_segment}/{project}"
     cmd = [
         sys.executable,
@@ -1629,11 +1653,7 @@ def offer_save(
     if should_prompt(confidence, mode=mode):
         # Preview + prompt
         thr = confidence_threshold()
-        projects_segment = (
-            _VAULT_PROJECTS_REL_NEW
-            if (v / _VAULT_PROJECTS_REL_NEW).is_dir()
-            else _VAULT_PROJECTS_REL_LEGACY
-        )
+        projects_segment = _project_group_segment(v, project)
         preview_lines = [
             f"--- offer-save preview ({phase} → {projects_segment}/{project}) ---",
             f"kind: {kind}",

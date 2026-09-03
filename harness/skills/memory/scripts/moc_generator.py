@@ -57,6 +57,19 @@ def _vault_rel_path(path: Path, vault: Path) -> Path:
         return path.relative_to(vault.parent)
 
 
+def _project_home(vault: Path, project: str) -> Path:
+    """The project's tree on whichever generation holds it: the vault-root
+    sibling first, else desk/projects (also the create target on a flat vault)."""
+    root = vault.parent / _ROOT_PROJECTS_DIRNAME / project
+    return root if root.is_dir() else vault / "desk/projects" / project
+
+
+def _project_group(vault: Path, project: str) -> str:
+    """The group value matching _project_home: `projects` for the root space
+    (save.py maps it onto Projects/), `desk/projects` otherwise."""
+    return "projects" if (vault.parent / _ROOT_PROJECTS_DIRNAME / project).is_dir() else "desk/projects"
+
+
 def _project_space_notes(vault: Path):
     """Yield (space_root, note) across every project space this vault has."""
     for root in (vault / "desk/projects", vault.parent / _ROOT_PROJECTS_DIRNAME):
@@ -249,7 +262,7 @@ def _render_arc_links(project: str, arc: str, entries: list[tuple[str, str, dict
     return "\n".join(lines) + "\n"
 
 
-def _new_arc_index_frontmatter(project: str, arc: str, today: str) -> str:
+def _new_arc_index_frontmatter(vault: Path, project: str, arc: str, today: str) -> str:
     return (
         "---\n"
         "kind: arc-index\n"
@@ -258,7 +271,7 @@ def _new_arc_index_frontmatter(project: str, arc: str, today: str) -> str:
         f"updated: {today}\n"
         "tags: []\n"
         f"arc: {arc}\n"
-        f"group: desk/projects/{project}/arcs\n"
+        f"group: {_project_group(vault, project)}/{project}/arcs\n"
         f"slug: {arc}\n"
         "always_load: false\n"
         "---\n\n"
@@ -289,7 +302,7 @@ def generate_arc_indexes(vault_path: Path | str, *, today: str) -> list[str]:
     written: list[str] = []
     for (project, arc), entries in sorted(groups.items()):
         other = sorted(arcs_to_projects[arc] - {project})
-        target = vault / "desk/projects" / project / "arcs" / f"{arc}.md"
+        target = _project_home(vault, project) / "arcs" / f"{arc}.md"
         target.parent.mkdir(parents=True, exist_ok=True)
         generated = _render_arc_links(project, arc, entries, other)
         if target.is_file():
@@ -298,7 +311,7 @@ def generate_arc_indexes(vault_path: Path | str, *, today: str) -> list[str]:
             header = existing[:idx] if idx != -1 else existing.rstrip("\n") + "\n\n"
             new_text = header + generated
         else:
-            new_text = _new_arc_index_frontmatter(project, arc, today) + generated
+            new_text = _new_arc_index_frontmatter(vault, project, arc, today) + generated
         target.write_text(new_text, encoding="utf-8")
         written.append(f"{project}/{arc}")
     return written

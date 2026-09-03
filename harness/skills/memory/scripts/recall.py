@@ -274,6 +274,43 @@ def _stem(token: str) -> str:
 # for future per-group recall; v0.1.0 hardwires personal/.
 _ALWAYS_LOAD_REL = Path("memory") / "_always-load"
 
+# Filing-v2 2b: the project space is the vault-root `Projects/`, a SIBLING of
+# the memory root recall is handed. Its notes are corpus: the walk reaches
+# them through a backend rooted one level up, their keys are vault-root-
+# relative ("Projects/<slug>/…"), and reads route through whichever backend
+# owns the path.
+_ROOT_PROJECTS_DIRNAME = "Projects"
+
+
+def _vault_rel(path: Path, vault: Path) -> str:
+    """Entry key, always memory-root-relative: a root-space note keys as
+    `../Projects/<slug>/…` — joinable onto the vault like every other key,
+    and the same form `space("projects")` names."""
+    try:
+        return path.relative_to(vault).as_posix()
+    except ValueError:
+        return os.path.relpath(path, vault).replace(os.sep, "/")
+
+
+def _under_root_projects(path: Path, vault: Path) -> bool:
+    """Whether `path` sits in the vault-root Projects/ sibling."""
+    try:
+        Path(path).resolve().relative_to((vault.parent / _ROOT_PROJECTS_DIRNAME).resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _read_entry(path: Path, vault: Path, backend) -> str:
+    """Read an entry through the seam backend that owns it."""
+    try:
+        parts = path.relative_to(vault).parts
+    except ValueError:
+        from storage_device_local import DeviceLocalBackend  # noqa: E402 (lazy)
+        sib = DeviceLocalBackend(root=vault.parent)
+        return sib.read(sib.resolve(*path.relative_to(vault.parent).parts))
+    return backend.read(backend.resolve(*parts))
+
 # Directories excluded from recall walks unconditionally. _dream-staging/
 # is always excluded (L1/F4 fix: dream.py already excludes it from its own
 # source walk, but recall.py had no matching entry -- a bulk-review batch's
@@ -843,7 +880,7 @@ def _collect_always_load_paths(vault: Path) -> set[str]:
     out: set[str] = set()
     for md_path in always_load_dir.glob("*.md"):
         # Vault-relative POSIX path (consistent with save.py's path convention).
-        rel = md_path.relative_to(vault).as_posix()
+        rel = _vault_rel(md_path, vault)
         out.add(rel)
     return out
 
@@ -893,15 +930,15 @@ def _iter_entry_paths(
     from storage_device_local import DeviceLocalBackend  # noqa: E402 (lazy)
     backend = DeviceLocalBackend(root=vault)
 
-    def _walk(locator) -> None:
+    def _walk(be, root, locator) -> None:
         try:
-            children = backend.list(locator)
+            children = be.list(locator)
         except Exception:
             return
         for child in children:
             name = child.name
             try:
-                info = backend.info(child)
+                info = be.info(child)
             except FileNotFoundError:
                 continue
             if info.is_dir:
@@ -913,11 +950,17 @@ def _iter_entry_paths(
                     continue
                 if name.startswith("."):
                     continue
-                _walk(child)
+                _walk(be, root, child)
             elif name.endswith(".md"):
-                out.append(vault.joinpath(*child.parts))
+                out.append(root.joinpath(*child.parts))
 
-    _walk(backend.resolve())
+    _walk(backend, vault, backend.resolve())
+    # Filing-v2 2b: the vault-root Projects/ sibling is corpus too — walked
+    # from a backend rooted one level up, starting at the space, under the
+    # same exclusions. Discovered, never conjured: absent means nothing.
+    if (vault.parent / _ROOT_PROJECTS_DIRNAME).is_dir():
+        sib_backend = DeviceLocalBackend(root=vault.parent)
+        _walk(sib_backend, vault.parent, sib_backend.resolve(_ROOT_PROJECTS_DIRNAME))
     return out
 
 
@@ -960,7 +1003,7 @@ def _grep_search(
         # a non-UTF-8 editor or a cross-platform sync corrupted the encoding).
         # Skip the entry rather than crash the whole walk.
         try:
-            content = backend.read(backend.resolve(*md_path.relative_to(vault).parts))
+            content = _read_entry(md_path, vault, backend)
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)
@@ -976,7 +1019,7 @@ def _grep_search(
         searchable = (slug + " " + tags + " " + body[:500]).lower()
         score = sum(1 for t in query_tokens if t in searchable)
         if score > 0:
-            rel = md_path.relative_to(vault).as_posix()
+            rel = _vault_rel(md_path, vault)
             results[rel] = score
     return results
 
@@ -1058,7 +1101,7 @@ def _bm25_search(
         if status is not None:
             status["walked"] = walked + 1
         try:
-            content = backend.read(backend.resolve(*md_path.relative_to(vault).parts))
+            content = _read_entry(md_path, vault, backend)
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)
@@ -1089,7 +1132,7 @@ def _bm25_search(
 
         if not doc_has_any_query_term:
             continue  # only score candidates that share at least one stemmed term
-        rel = md_path.relative_to(vault).as_posix()
+        rel = _vault_rel(md_path, vault)
         doc_chunk_counts[rel] = chunk_counts_list
         doc_chunk_lengths[rel] = chunk_lengths_list
         # avgdl scope matches the pre-chunking implementation: computed over
@@ -1182,14 +1225,14 @@ def _metadata_filter_only(
         if deadline is not None and time.monotonic() >= deadline:
             break
         try:
-            content = backend.read(backend.resolve(*md_path.relative_to(vault).parts))
+            content = _read_entry(md_path, vault, backend)
         except (OSError, UnicodeDecodeError):
             continue
         fm, _ = _parse_frontmatter(content)
         if fm.get("status") == "superseded":
             continue
         if _entry_matches_filter(fm, criteria):
-            out.append(md_path.relative_to(vault).as_posix())
+            out.append(_vault_rel(md_path, vault))
     return out
 
 
@@ -1244,6 +1287,9 @@ _PROJECTS_GROUP_PREFIX = "desk/projects/"
 # vault-root-relative group; notes moved from desk/projects keep the group
 # they were stamped with (moves never rewrite frontmatter). Both derive.
 _ROOT_PROJECTS_GROUP_PREFIX = "Projects/"
+# …and the lowercase form a root-space note is STAMPED with (group values
+# are kebab; save.py maps `projects/<slug>` onto the Projects/ directory).
+_ROOT_PROJECTS_GROUP_STAMP = "projects/"
 
 
 def _derive_project(group_value: str) -> str | None:
@@ -1257,7 +1303,7 @@ def _derive_project(group_value: str) -> str | None:
     """
     if not group_value:
         return None
-    for prefix in (_PROJECTS_GROUP_PREFIX, _ROOT_PROJECTS_GROUP_PREFIX):
+    for prefix in (_PROJECTS_GROUP_PREFIX, _ROOT_PROJECTS_GROUP_PREFIX, _ROOT_PROJECTS_GROUP_STAMP):
         if group_value.startswith(prefix):
             slug = group_value[len(prefix):].split("/", 1)[0]
             return slug or None
@@ -2136,12 +2182,18 @@ def _daemon_search(
         try:
             rel = abs_path.relative_to(vault).as_posix()
         except ValueError:
-            # Outside the memory root — one of the operator's own folders.
-            if scope != "vault":
-                _drop("out_of_scope")
-                continue
-            rel = os.path.relpath(abs_path, vault).replace(os.sep, "/")
-            external = True
+            if _under_root_projects(abs_path, vault):
+                # Filing-v2 2b: the project space is the vault-root sibling —
+                # the agent's own corpus, admitted in every scope and keyed
+                # memory-root-relative like the grep arm keys it.
+                rel = os.path.relpath(abs_path, vault).replace(os.sep, "/")
+            else:
+                # Outside the memory root — one of the operator's own folders.
+                if scope != "vault":
+                    _drop("out_of_scope")
+                    continue
+                rel = os.path.relpath(abs_path, vault).replace(os.sep, "/")
+                external = True
         if rel in dedup_paths or rel in seen:
             _drop("deduped")
             continue

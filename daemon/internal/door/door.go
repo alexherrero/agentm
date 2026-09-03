@@ -80,7 +80,11 @@ type Roots struct {
 	Tasks string
 }
 
-// DefaultRoots is the layout as it stands.
+// DefaultRoots is the memory-root layout as it stands. Since the filing-v2
+// projects merge the project trees live at the vault-root `Projects/`, which
+// the vault-level Authority judges (authority.go, ProjectRoots{Projects:
+// "Projects"}); this memory-root door keeps the `desk/projects` rung only for
+// a vault that has not moved yet — on a moved vault no path matches it.
 func DefaultRoots() Roots {
 	return Roots{Projects: "desk/projects", Tasks: "desk/tasks"}
 }

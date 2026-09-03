@@ -42,6 +42,16 @@ func TestDefaultEmbedScopeIncludesDiagnostics(t *testing.T) {
 	t.Fatalf("diagnostics missing from default embed scope: %v", defaultEmbedScope("Agent"))
 }
 
+// Captures into the projects space land at the vault-root `Projects/` — the
+// default is unprefixed because the space is a sibling of the memory root, not
+// under it (filing-v2 2b, after the move).
+func TestDefaultSpacesProjectsIsTheVaultRootSibling(t *testing.T) {
+	got := defaultSpaces("Agent")["projects"]
+	if got != "Projects" {
+		t.Fatalf("projects space = %q, want %q", got, "Projects")
+	}
+}
+
 // The vault-root `Projects/` space is IN the default scope, unprefixed (filing-v2
 // 2b): it is a sibling of the memory root, not under it, and the project trees
 // were dense-retrievable under `desk` before the merge.
