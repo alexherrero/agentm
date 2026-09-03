@@ -24,6 +24,9 @@ Populations (memory-root-relative) and what the router does with each:
                             `opinion:`; expired supplements stay, archived
   external/                 memories route provenance-tagged
                             (`source: external-fetch`); records are held
+  memory/crystallized/<opinion>/  supplements the archive phase already moved
+                            home: kept, except an expired one under
+                            `--purge-scope all-expired`, which the purge takes
   _vault-archive/, strays   held — listed with a reason, never moved blind
 
 Invariants (design § Migrations): basenames preserved so name-resolved
@@ -83,6 +86,9 @@ INDEX_NAME = "_index.md"
 PHASES = ("route", "archive", "purge")
 PHASE_OF_POPULATION = {"inbox": "route", "legacy": "route", "dated": "route", "external": "route",
                        "archive": "archive", "opinions": "archive"}
+# The purge prunes what it empties; a lane the purge empties goes too (reflect
+# recreates a lane on the next supplement).
+PURGE_PRUNES = ("inbox", "legacy", "archive", "supplements")
 
 CONFIDENCE = {"LOW": "low", "MEDIUM": "medium", "HIGH": "high"}
 REPORT_COLUMNS = ("path", "population", "disposition", "dest", "field_before", "value_before",
@@ -186,6 +192,15 @@ def walk_population(vault: Path, rules):
         yield "archive", p
     for p in notes(vault / OPINIONS):
         yield "opinions", p
+    # Supplements the archive phase already moved home: the lanes are the
+    # subdirectories of crystallized/ (a crystallized memory is a flat file).
+    # Walked so the purge can reach an expired supplement under `all-expired`
+    # after the move; anything else there is kept, untouched.
+    crystallized = vault / CRYSTALLIZED
+    if crystallized.is_dir():
+        for lane in sorted(d for d in crystallized.iterdir() if d.is_dir()):
+            for p in notes(lane):
+                yield "supplements", p
     for p in notes(vault / EXTERNAL):
         yield "external", p
     for p in notes(vault / VAULT_ARCHIVE):
@@ -239,6 +254,12 @@ def decide(row: Row, rules, *, purge_scope: str, targets: set) -> None:
         return
     if row.population in ("vault-archive", "stray"):
         row.disposition, row.reason = "hold", f"{row.population}: not in the routing map — operator decides"
+        return
+    if row.population == "supplements":
+        if status == "expired" and purge_scope == "all-expired":
+            row.disposition, row.reason = "purge", "expired supplement, already in its lane (manifested)"
+        else:
+            row.disposition, row.reason = "keep", "supplement already home in its lane"
         return
 
     # The expired cohort. `inbox` is the design's literal cohort; `mined` adds
@@ -538,7 +559,7 @@ def apply_phase(rows: list, vault: Path, *, phase: str, confirm_count) -> tuple:
             if r.path.exists():
                 r.path.unlink()
             purged += 1
-        _drop_emptied(rows, vault, vault_root, populations=("inbox", "legacy", "archive"))
+        dropped = _drop_emptied(rows, vault, vault_root, populations=PURGE_PRUNES)
         return moved, purged, dropped, edited
     pops = tuple(p for p, ph in PHASE_OF_POPULATION.items() if ph == phase)
     for r in rows:
@@ -562,6 +583,12 @@ def _population_bases(rows: list, vault: Path, populations) -> list:
     for pop in populations:
         if pop in fixed:
             bases.append(vault / fixed[pop])
+        elif pop == "supplements":
+            # Each lane on its own — never the class directory, whose index
+            # and flat memories are not a dissolving population.
+            for r in rows:
+                if r.population == "supplements" and r.path.parent not in bases:
+                    bases.append(r.path.parent)
         elif pop == "legacy":
             for r in rows:
                 if r.population == "legacy":
