@@ -236,6 +236,24 @@ class DispositionsFollowTheDesign(unittest.TestCase):
             self.assertEqual(rows["memory/_opinions/good/op-live.md"].disposition, "route")
             self.assertEqual(rows["memory/preferences/legacy-exp.md"].disposition, "purge")
 
+    def test_supplements_already_home_are_kept_unless_all_expired(self):
+        """After the archive phase the lanes sit under crystallized/; the walk
+        reaches them so a later `all-expired` purge can take an expired
+        supplement, and touches nothing else there."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = _build(Path(td))
+            lane = vault / "memory" / "crystallized" / "done"
+            _note(lane / "home-exp.md", "kind: opinion-supplement\nstatus: expired\nopinion: done\nslug: home-exp\n", "old")
+            _note(lane / "home-live.md", "kind: opinion-supplement\nstatus: proposed\nopinion: done\nslug: home-live\n", "live")
+            _note(vault / "memory" / "crystallized" / "distilled.md", "type: workflow\nstatus: active\nslug: distilled\n", "a lesson")
+            rows = _rows(vault)
+            self.assertEqual(rows["memory/crystallized/done/home-exp.md"].disposition, "keep")
+            self.assertEqual(rows["memory/crystallized/done/home-live.md"].disposition, "keep")
+            self.assertNotIn("memory/crystallized/distilled.md", rows)  # a flat memory is not a population
+            rows = _rows(vault, purge_scope="all-expired")
+            self.assertEqual(rows["memory/crystallized/done/home-exp.md"].disposition, "purge")
+            self.assertEqual(rows["memory/crystallized/done/home-live.md"].disposition, "keep")
+
     def test_twins_are_marked_and_basename_clashes_renamed(self):
         with tempfile.TemporaryDirectory() as td:
             vault = _build(Path(td))
@@ -293,24 +311,31 @@ class ApplyPhases(unittest.TestCase):
             self.assertFalse((vault / "memory/_opinions").exists())
             self.assertTrue((vault / "memory/_archive/preferences/arch-exp.md").is_file())  # purge cohort waits
 
-            # the purge: refused without the count, refused with the wrong count
+            # the purge: refused without the count, refused with the wrong count —
+            # under `all-expired` the moved supplement makes the cohort five
             r = _run(vault, "--apply", "--phase", "purge", report=report)
             self.assertNotEqual(r.returncode, 0)
             self.assertIn("purge refused", r.stderr)
             r = _run(vault, "--apply", "--phase", "purge", "--confirm-count", "3", report=report)
             self.assertNotEqual(r.returncode, 0)
             self.assertTrue((vault / "memory/_inbox/exp-retired.md").is_file())
-            r = _run(vault, "--apply", "--phase", "purge", "--confirm-count", "4", report=report)
+            r = _run(vault, "--apply", "--phase", "purge", "--purge-scope", "all-expired", "--confirm-count", "4", report=report)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("holds 5", r.stderr)
+            self.assertTrue((vault / "memory/crystallized/good/op-exp.md").is_file())
+            r = _run(vault, "--apply", "--phase", "purge", "--purge-scope", "all-expired", "--confirm-count", "5", report=report)
             self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
             for rel in ("memory/_inbox/exp-retired.md", "memory/_inbox/exp-plain.md",
-                        "memory/preferences/legacy-exp.md", "memory/_archive/preferences/arch-exp.md"):
+                        "memory/preferences/legacy-exp.md", "memory/_archive/preferences/arch-exp.md",
+                        "memory/crystallized/good/op-exp.md"):
                 self.assertFalse((vault / rel).exists(), rel)
+            self.assertTrue((vault / "memory/crystallized/good/op-live.md").is_file())  # the lane keeps its live supplement
             self.assertFalse((vault / "memory/_inbox").exists())
             self.assertFalse((vault / "memory/_archive").exists())      # its index went with it
             self.assertFalse((vault / "memory/preferences").exists())
             manifests = sorted(report.glob("*-purge/purge-manifest.csv"))
             self.assertEqual(len(manifests), 1)
-            self.assertEqual(manifests[0].read_text(encoding="utf-8").count("\n"), 5)  # header + 4
+            self.assertEqual(manifests[0].read_text(encoding="utf-8").count("\n"), 6)  # header + 5
 
             # a second dry run finds nothing left to route or purge
             r = _run(vault, report=report)
