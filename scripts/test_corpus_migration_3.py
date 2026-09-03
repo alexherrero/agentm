@@ -270,6 +270,34 @@ class DispositionsFollowTheDesign(unittest.TestCase):
             self.assertIn("basename-clash", two.flags)
 
 
+class ALaterPassSettlesAgainstWhatIsAlreadyHome(unittest.TestCase):
+    """The daemon keeps capturing between passes. A re-capture of a memory an
+    earlier pass filed (same basename, same body) is filed as its twin,
+    superseded by the note already home; a namesake with a different body is
+    a basename clash. Neither is an overwrite, and neither aborts the pass."""
+
+    def test_twin_and_namesake_of_a_filed_note(self):
+        with tempfile.TemporaryDirectory() as td:
+            vault = _build(Path(td))
+            home = vault / "memory" / "semantic"
+            _note(home / "pref-active.md", "type: preference\nstatus: active\nslug: pref-active\nlifecycle: active\n", "a real preference")
+            _note(home / "conv.md", "type: convention\nstatus: active\nslug: conv\n", "a DIFFERENT convention")
+            rows = _rows(vault)
+            twin = rows["memory/_inbox/pref-active.md"]
+            self.assertEqual((twin.disposition, twin.dest, twin.lifecycle, twin.superseded_by),
+                             ("route", "memory/semantic/pref-active~dup.md", "superseded", "memory/semantic/pref-active.md"))
+            self.assertIn("exact-twin", twin.flags)
+            namesake = rows["memory/2026/04/conv.md"]
+            self.assertEqual(namesake.dest, "memory/semantic/conv~dup.md")
+            self.assertIn("basename-clash", namesake.flags)
+            r = _run(vault, "--apply", "--phase", "route", report=Path(td) / "report")
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertTrue((home / "pref-active~dup.md").is_file())
+            self.assertEqual((home / "pref-active.md").read_text(encoding="utf-8").count("a real preference"), 1)
+            self.assertTrue((home / "conv~dup.md").is_file())
+            self.assertIn("a DIFFERENT convention", (home / "conv.md").read_text(encoding="utf-8"))
+
+
 class ApplyPhases(unittest.TestCase):
     def test_route_then_archive_then_purge(self):
         with tempfile.TemporaryDirectory() as td:
