@@ -254,10 +254,16 @@ def promote_idea(
             f"`ls {vault}/_idea-incubator/`)"
         )
 
-    project_dir = vault / "memory" / "projects" / slug
+    # Filing-v2 2b: the project space is the vault-root Projects/ (a sibling
+    # of the memory root); a flat vault keeps it inside. (The previous target,
+    # memory/projects/, was a pre-four-space path nothing read.)
+    space = vault.parent / "Projects"
+    if not space.is_dir():
+        space = vault / "Projects" if (vault / "Projects").is_dir() else vault / "desk/projects"
+    project_dir = space / slug
     if project_dir.exists():
         raise FileExistsError(
-            f"desk/projects/{slug}/ already exists at {project_dir}; "
+            f"{slug}/ already exists in the project space at {project_dir}; "
             f"pick a different slug or remove the existing dir first"
         )
 

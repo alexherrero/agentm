@@ -137,9 +137,9 @@ elif [[ -d "$VAULT_PATH/personal-projects" ]]; then
     PROJECT_DIR="$VAULT_PATH/personal-projects/$SLUG"
     PROJECTS_SEGMENT="personal-projects"
 else
-    # Empty vault — assume the current layout.
-    PROJECT_DIR="$VAULT_PATH/desk/projects/$SLUG"
-    PROJECTS_SEGMENT="desk/projects"
+    # Empty vault — assume the current layout: the vault-root Projects/.
+    PROJECT_DIR="$VAULT_PATH/../Projects/$SLUG"
+    PROJECTS_SEGMENT="../Projects"
 fi
 HARNESS_DIR="$PROJECT_DIR/_harness"
 MARKER="$HARNESS_DIR/.migrated-from-pre-v4.1"

@@ -106,8 +106,11 @@ func TestTheDefaultSpacesFollowTheMemoryRoot(t *testing.T) {
 	if got := cfg.Spaces["memory"]; got != "Agent/memory" {
 		t.Errorf("memory space = %q, want Agent/memory", got)
 	}
-	if got := cfg.Spaces["projects"]; got != "Agent/desk/projects" {
-		t.Errorf("projects space = %q, want Agent/desk/projects", got)
+	// The projects space is the one exception to "follow the memory root":
+	// since filing-v2 2b it is the vault-root `Projects/`, a sibling of the
+	// memory root, so the derivation names it unprefixed.
+	if got := cfg.Spaces["projects"]; got != "Projects" {
+		t.Errorf("projects space = %q, want Projects", got)
 	}
 }
 

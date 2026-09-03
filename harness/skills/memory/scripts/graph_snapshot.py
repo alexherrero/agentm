@@ -155,7 +155,7 @@ def _extract_meta_from_file(file_path: Path) -> dict:
     # The slug is the first segment AFTER the projects space, on either
     # generation. (The previous fixed index returned the literal "projects"
     # for `desk/projects/<slug>` — the same miss recall.py fixed earlier.)
-    for prefix in ("desk/projects/", "Projects/"):
+    for prefix in ("desk/projects/", "Projects/", "projects/"):
         if group_value and group_value.startswith(prefix):
             slug = group_value[len(prefix):].split("/", 1)[0]
             meta["project"] = slug or None

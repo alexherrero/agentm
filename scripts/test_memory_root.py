@@ -144,7 +144,9 @@ class TestSpaces(MemoryRootBase):
         """The names the stage-2 migration settled on, pinned by hand."""
         self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
         self.assertEqual(hm.space("memory"), "memory")
-        self.assertEqual(hm.space("projects"), "desk/projects")
+        # filing-v2 2b: the project space is the vault-root sibling of the
+        # memory root, expressed in this memory-root-relative table as `..`.
+        self.assertEqual(hm.space("projects"), "../Projects")
         self.assertEqual(hm.space("briefs"), "diagnostics/digests")
         self.assertEqual(hm.space("scratch"), "desk/scratch")
 
@@ -154,17 +156,20 @@ class TestSpaces(MemoryRootBase):
             "plugins.obsidian-vault.spaces": {"memory": "elsewhere"},
         })
         self.assertEqual(hm.space("memory"), "elsewhere")
-        # Untouched spaces keep their defaults rather than disappearing.
-        self.assertEqual(hm.space("projects"), "desk/projects")
+        # Untouched spaces keep their defaults rather than disappearing. The
+        # projects default is the vault-root sibling since filing-v2 2b.
+        self.assertEqual(hm.space("projects"), "../Projects")
 
     def test_a_nested_space_path_is_honoured(self):
         self.write_config(**{
             "plugins.obsidian-vault.memory_root": "Agent",
             "plugins.obsidian-vault.spaces": {"desk/projects": "desk/projects"},
         })
-        self.assertEqual(hm.space("projects"), "desk/projects")
+        # The default for `projects` is the vault-root sibling of the memory
+        # root (filing-v2 2b) — joined under the memory root, it climbs out.
+        self.assertEqual(hm.space("projects"), "../Projects")
         self.assertEqual(hm.space_dir("projects"),
-                         Path(str(self.vault) + "/Agent/desk/projects"))
+                         Path(str(self.vault) + "/Agent/../Projects"))
 
     def test_space_dir_joins_under_the_memory_root_not_the_vault_root(self):
         """The 2026-08-10 split in one assertion."""

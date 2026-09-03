@@ -394,10 +394,9 @@ func defaultSpaces(memoryRoot string) map[string]string {
 	}
 	return map[string]string{
 		"memory": under("memory"),
-		// Filing-v2 2b: captures keep landing on the memory-root layout until
-		// the tree moves to the vault-root `Projects/` (task 3 flips this to the
-		// unprefixed sibling); readers already resolve both generations.
-		"projects": under("desk/projects"),
+		// Filing-v2 2b: the project space is the vault-root `Projects/`, a
+		// SIBLING of the memory root — named unprefixed, like the embed scope.
+		"projects": "Projects",
 		// Diagnostics is first-class under the memory root as of filing-v2
 		// part 2a: scorecards, digests, and dated audits — records living in
 		// the area they serve, not in a desk drawer.

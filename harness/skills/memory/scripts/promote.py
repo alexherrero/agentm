@@ -30,6 +30,22 @@ from pathlib import Path
 TASKS_ROOT = "desk/tasks"
 PROJECTS_ROOT = "desk/projects"
 
+# Filing-v2 2b: the project space is the vault-root `Projects/`, a SIBLING of
+# the memory root this module writes under. A new project lands there when
+# that space exists (discovered, never conjured); a flat scratch vault keeps
+# the memory-root layout. The write path is memory-root-relative (the write
+# seam joins it onto the vault path); the link is vault-root-relative, which
+# is what Obsidian resolves.
+ROOT_PROJECTS_DIRNAME = "Projects"
+
+
+def project_dir_for(vault_path, project: str) -> tuple:
+    """(memory-root-relative write path, wikilink target) for a new project."""
+    vault_path = Path(vault_path)
+    if (vault_path.parent / ROOT_PROJECTS_DIRNAME).is_dir():
+        return f"../{ROOT_PROJECTS_DIRNAME}/{project}", f"{ROOT_PROJECTS_DIRNAME}/{project}"
+    return f"{PROJECTS_ROOT}/{project}", f"{PROJECTS_ROOT}/{project}"
+
 # What a promoted task leaves behind in its workbench, so somebody opening the
 # old directory learns where the work went rather than finding a dead end.
 PROMOTED_MARKER = "promoted-to.md"
@@ -94,9 +110,10 @@ def promote(vault_path, promotion: Promotion, *, write=None, exists=None) -> Pro
             f"here to promote"
         )
 
-    res = PromotionResult(project_dir=promotion.project_dir)
+    project_dir, project_link = project_dir_for(vault_path, promotion.project)
+    res = PromotionResult(project_dir=project_dir)
     for name, body in sorted(promotion.documents.items()):
-        rel = f"{promotion.project_dir}/{name}"
+        rel = f"{project_dir}/{name}"
         if present(rel):
             raise ValueError(
                 f"{rel} already exists. A promotion authors fresh; replacing a "
@@ -111,13 +128,13 @@ def promote(vault_path, promotion: Promotion, *, write=None, exists=None) -> Pro
     # somebody opening it later learns where the work went.
     marker = f"{promotion.task_dir}/{PROMOTED_MARKER}"
     if not present(marker):
-        writer(vault_path / marker, _marker_body(promotion))
+        writer(vault_path / marker, _marker_body(promotion, project_link))
         res.written.append(marker)
     res.preserved = promotion.task_dir
     return res
 
 
-def _marker_body(promotion: Promotion) -> str:
+def _marker_body(promotion: Promotion, project_link: str) -> str:
     return "\n".join([
         "---",
         "type: reference",
@@ -125,7 +142,7 @@ def _marker_body(promotion: Promotion) -> str:
         f"title: {promotion.task} became a project",
         "---",
         "",
-        f"This workbench matured into [[{promotion.project_dir}]].",
+        f"This workbench matured into [[{project_link}]].",
         "",
         "It is kept as the execution log — the false starts and the notes to "
         "self are the record of how the thinking went, and the project's root "

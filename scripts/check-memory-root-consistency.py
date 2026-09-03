@@ -46,6 +46,8 @@ _VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
 _MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
 _SPACES_KEY = "daemon.spaces"
 _PY_SPACES_KEY = "plugins.obsidian-vault.spaces"
+# The one space that lives BESIDE memory_root by design (filing-v2 2b).
+_ROOT_PROJECTS_SIBLING = "Projects"
 
 
 def _norm(rel: str) -> str:
@@ -93,6 +95,20 @@ def check(config_path: Path) -> int:
         space = _norm(raw)
         if not memory_root:
             # Memory root is the vault root — every space is beneath it.
+            continue
+        if name == "projects" and space == _ROOT_PROJECTS_SIBLING:
+            # Filing-v2 2b: the project space is the vault-root Projects/, a
+            # SIBLING of memory_root by design — the one space allowed outside
+            # it. Agreement still has to hold: the Python side must name the
+            # same sibling (its memory-root-relative form is ../Projects), or
+            # leave the key to its default, which is that form.
+            py_raw = py_spaces.get(name)
+            if py_raw is None or _norm(str(py_raw)) == "../" + _ROOT_PROJECTS_SIBLING:
+                continue
+            failures.append(
+                f'  {_SPACES_KEY}["{name}"] = "{space}" (the vault-root sibling) but '
+                f'{_PY_SPACES_KEY}["{name}"] = "{py_raw}" — the two halves disagree'
+            )
             continue
         if not (space == memory_root or space.startswith(memory_root + "/")):
             failures.append(
