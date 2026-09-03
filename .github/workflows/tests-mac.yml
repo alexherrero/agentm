@@ -44,7 +44,11 @@ jobs:
         # fastmcp lets verify-mcp-surface.py + the auto-discovered
         # test_memory_mcp_tools.py actually run instead of gracefully
         # skipping — R1.6, this was previously never installed anywhere.
-        run: python3 -m pip install --break-system-packages pyyaml fastmcp
+        # --ignore-installed: the macos runner image ships a system PyYAML with
+        # no RECORD file, and pip's attempt to uninstall it before upgrading
+        # dies with `uninstall-no-record-file` (seen 2026-09-03, both runs of
+        # PR #528). Installing alongside is the documented pip answer.
+        run: python3 -m pip install --break-system-packages --ignore-installed pyyaml fastmcp
       - name: Run smoke-install (bash) + post-install integrity
         run: bash scripts/smoke-install-bash.sh
       - name: Validate adapter frontmatter / TOML / JSON (cross-platform)
