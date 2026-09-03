@@ -118,8 +118,10 @@ def _build(tmp: Path) -> Path:
     (v / "_vault-archive" / "history" / "old.md").write_text("> [!WARNING] history\n", encoding="utf-8")
     # stray root file — held
     _note(m / "trusted-sources.md", "kind: dir-index\nstatus: active\nslug: trusted\n", "config-ish")
-    # Icon artefacts survive the walk untouched
-    (m / "_inbox" / "Icon\r").write_bytes(b"")
+    # A Drive `Icon` artefact (the live name carries a trailing carriage
+    # return, which Windows cannot spell — the walker skips the prefix) survives
+    # the walk untouched and goes with its directory when that dissolves.
+    (m / "_inbox" / "Icon").write_bytes(b"")
     return v
 
 
