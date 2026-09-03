@@ -802,10 +802,13 @@ def project_json_configs(repo: Path, *, mem_root: Optional[Path] = None) -> list
         return found
     # Filing-v2 2b: the vault-root `Projects/` sibling is the newest generation;
     # probe it first, then the memory-root layout the constant names.
-    for vault_cfg in (
-        Path(mem_root).parent / "Projects" / slug / "_harness" / "project.json",
-        Path(mem_root).joinpath(*projects_rel.split("/"), slug, "_harness", "project.json"),
-    ):
+    import harness_memory as _hm_rs  # noqa: PLC0415 — the one root-space predicate
+    candidates = []
+    root_space = _hm_rs._root_projects_dir(Path(mem_root))
+    if root_space is not None:
+        candidates.append(root_space / slug / "_harness" / "project.json")
+    candidates.append(Path(mem_root).joinpath(*projects_rel.split("/"), slug, "_harness", "project.json"))
+    for vault_cfg in candidates:
         if vault_cfg.is_file():
             found.append((vault_cfg, "vault"))
             break

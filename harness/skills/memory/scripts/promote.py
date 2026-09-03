@@ -39,11 +39,34 @@ PROJECTS_ROOT = "desk/projects"
 ROOT_PROJECTS_DIRNAME = "Projects"
 
 
+def _root_projects_dir(vault):
+    """The vault-root `Projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
+    parent and none at the memory root itself: the sibling
+    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    sibling, whatever directory named `Projects` sits beside it (its parent
+    is the operator's home or a sync folder, where one is common and is not
+    the vault's). None when no root space exists."""
+    vault = Path(vault)
+    flat = vault / "Projects"
+    if flat.is_dir():
+        return flat
+    parent = vault.parent
+    if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        sibling = parent / "Projects"
+        if sibling.is_dir():
+            return sibling
+    return None
+
+
 def project_dir_for(vault_path, project: str) -> tuple:
     """(memory-root-relative write path, wikilink target) for a new project."""
     vault_path = Path(vault_path)
-    if (vault_path.parent / ROOT_PROJECTS_DIRNAME).is_dir():
-        return f"../{ROOT_PROJECTS_DIRNAME}/{project}", f"{ROOT_PROJECTS_DIRNAME}/{project}"
+    root = _root_projects_dir(vault_path)
+    if root is not None:
+        rel = ROOT_PROJECTS_DIRNAME if root == vault_path / ROOT_PROJECTS_DIRNAME else f"../{ROOT_PROJECTS_DIRNAME}"
+        return f"{rel}/{project}", f"{ROOT_PROJECTS_DIRNAME}/{project}"
     return f"{PROJECTS_ROOT}/{project}", f"{PROJECTS_ROOT}/{project}"
 
 # What a promoted task leaves behind in its workbench, so somebody opening the

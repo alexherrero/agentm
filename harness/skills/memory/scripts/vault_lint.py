@@ -213,10 +213,33 @@ def parse_frontmatter(text: str) -> tuple[Optional[dict], list, str]:
 _ROOT_PROJECTS_DIRNAME = "Projects"
 
 
+def _root_projects_dir(vault):
+    """The vault-root `Projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
+    parent and none at the memory root itself: the sibling
+    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    sibling, whatever directory named `Projects` sits beside it (its parent
+    is the operator's home or a sync folder, where one is common and is not
+    the vault's). None when no root space exists."""
+    vault = Path(vault)
+    flat = vault / "Projects"
+    if flat.is_dir():
+        return flat
+    parent = vault.parent
+    if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        sibling = parent / "Projects"
+        if sibling.is_dir():
+            return sibling
+    return None
+
+
 def _scope_roots(vault: Path, roots) -> list:
     out = [vault / r for r in roots]
     if "desk/projects" in roots:
-        out.append(vault.parent / _ROOT_PROJECTS_DIRNAME)
+        root_space = _root_projects_dir(vault)
+        if root_space is not None and root_space not in out:
+            out.append(root_space)
     return [r for r in out if r.is_dir()]
 
 
