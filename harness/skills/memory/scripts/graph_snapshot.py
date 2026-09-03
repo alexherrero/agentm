@@ -92,17 +92,27 @@ def _root_projects_dir(vault):
     `<vault-root>/Projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
-    the vault's). None when no root space exists."""
+    the vault's). None when no root space exists. Both rungs match the
+    directory's exact case."""
     vault = Path(vault)
     flat = vault / "Projects"
-    if flat.is_dir():
+    if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
         sibling = parent / "Projects"
-        if sibling.is_dir():
+        if _is_dir_exact(sibling):
             return sibling
     return None
+
+
+def _is_dir_exact(path):
+    """`path` is a directory whose name matches exactly — on a case-insensitive
+    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    try:
+        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
+    except OSError:
+        return False
 
 
 def _vault_projects_dir(vault: Path) -> Path:
@@ -240,7 +250,7 @@ def _walk_vault_paths(vault: Path) -> list[str]:
     # Filing-v2 2b: the vault-root `Projects/` generation is a SIBLING of the
     # memory root; during the merge window both spaces may hold projects.
     for projects in (_vault_projects_dir(vault), _root_projects_dir(vault)):
-        if projects is not None and projects.is_dir() and projects not in walk_roots:
+        if projects is not None and _is_dir_exact(projects) and projects not in walk_roots:
             walk_roots.append(projects)
     incubator = vault / "_idea-incubator"
     if incubator.is_dir():

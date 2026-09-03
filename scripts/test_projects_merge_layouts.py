@@ -488,9 +488,28 @@ class RootSpaceHelperCopiesAgree(unittest.TestCase):
         for rel in self.FILES:
             text = (_HERE.parent / rel).read_text(encoding="utf-8")
             m = re.search(r"^def _root_projects_dir\(vault\):\n(?:    .*\n|\n)*?    return None\n", text, re.M)
+            m2 = re.search(r"^def _is_dir_exact\(path\):\n(?:    .*\n|\n)*?        return False\n", text, re.M)
             self.assertIsNotNone(m, rel)
-            bodies[rel] = m.group(0)
+            self.assertIsNotNone(m2, rel)
+            bodies[rel] = m.group(0) + m2.group(0)
         self.assertEqual(len(set(bodies.values())), 1, sorted(bodies))
+
+    def test_the_flat_rung_matches_the_directorys_exact_case(self):
+        """A V4-era `projects/` rung is not the flat root space, whatever the
+        filesystem's case rules say."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td) / "vault"
+            (vault / ".obsidian").mkdir(parents=True)
+            (vault / "projects" / "legacy" / "_harness").mkdir(parents=True)
+            self.assertIsNone(hm._root_projects_dir(vault))
+            with mock.patch("backend_selection.select_backend", return_value=VaultBackend(root=vault)):
+                res = hm.resolve_project({"cwd": _project_root(Path(td), "legacy")})
+            self.assertNotEqual(res["layout"], "root")
+            self.assertNotEqual(res["project_locator"].key.split("/")[0], "Projects")
+            self.assertNotEqual(hm._project_group_segment(vault, "legacy"), "projects")
+            for roots in (arc_registry._walk_roots(vault), frontmatter_validator._scope_roots(vault, ("desk/projects",)),
+                          vault_lint._scope_roots(vault, ["desk/projects"])):
+                self.assertNotIn(vault / "Projects", roots)
 
 if __name__ == "__main__":
     unittest.main()

@@ -601,17 +601,27 @@ def _root_projects_dir(vault):
     `<vault-root>/Projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
-    the vault's). None when no root space exists."""
+    the vault's). None when no root space exists. Both rungs match the
+    directory's exact case."""
     vault = Path(vault)
     flat = vault / "Projects"
-    if flat.is_dir():
+    if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
         sibling = parent / "Projects"
-        if sibling.is_dir():
+        if _is_dir_exact(sibling):
             return sibling
     return None
+
+
+def _is_dir_exact(path):
+    """`path` is a directory whose name matches exactly — on a case-insensitive
+    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    try:
+        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
+    except OSError:
+        return False
 
 
 def _project_group_segment(vault: Path, project: str) -> str:
@@ -646,16 +656,24 @@ def _root_projects_candidates(backend: "StorageBackend") -> list:
     into the operator's own tree. Never raises; a probe that cannot be built
     is simply absent.
     """
-    out = [(backend, (_VAULT_ROOT_PROJECTS_REL,))]
+    out = []
+    try:
+        broot = Path(getattr(backend, "root"))
+    except Exception:
+        return out
+    # The flat rung, only when the directory exists with exactly that name —
+    # a case-insensitive filesystem would otherwise answer for the V4-era
+    # `projects/` rung and resolve every legacy project as root-space.
+    if _is_dir_exact(broot / _VAULT_ROOT_PROJECTS_REL):
+        out.append((backend, (_VAULT_ROOT_PROJECTS_REL,)))
     try:
         if not bool(backend.capabilities.sync):
             return out
-        broot = Path(getattr(backend, "root"))
     except Exception:
         return out
     if (broot / ".obsidian").is_dir() or not (broot.parent / ".obsidian").is_dir():
         return out
-    if not (broot.parent / _VAULT_ROOT_PROJECTS_REL).is_dir():
+    if not _is_dir_exact(broot.parent / _VAULT_ROOT_PROJECTS_REL):
         return out
     try:
         try:

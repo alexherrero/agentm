@@ -83,17 +83,27 @@ def _root_projects_dir(vault):
     `<vault-root>/Projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
-    the vault's). None when no root space exists."""
+    the vault's). None when no root space exists. Both rungs match the
+    directory's exact case."""
     vault = Path(vault)
     flat = vault / "Projects"
-    if flat.is_dir():
+    if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
         sibling = parent / "Projects"
-        if sibling.is_dir():
+        if _is_dir_exact(sibling):
             return sibling
     return None
+
+
+def _is_dir_exact(path):
+    """`path` is a directory whose name matches exactly — on a case-insensitive
+    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    try:
+        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
+    except OSError:
+        return False
 
 
 def _walk_roots(vault: Path) -> list:
@@ -101,7 +111,7 @@ def _walk_roots(vault: Path) -> list:
     root_space = _root_projects_dir(vault)
     if root_space is not None and root_space not in roots:
         roots.append(root_space)
-    return [r for r in roots if r.is_dir()]
+    return [r for r in roots if _is_dir_exact(r)]
 
 
 def _vault_rel(path: Path, vault: Path) -> str:
