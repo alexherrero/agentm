@@ -38,6 +38,7 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | [Tune auto-orchestration](Tune-Auto-Orchestration) | Toggles and thresholds behind the briefing and idle chain. |
 | [Audit the vault](Audit-The-Vault) | Run the read-only vault lint, apply fixes. |
 | [Read the nightly scorecards](Read-The-Nightly-Scorecards) | Find the corpus-health and dreaming cards and read them in the order that makes them mean something. |
+| [Review flagged memories](Review-Flagged-Memories) | Work through the needs-review page's duplicates, contradictions, unfiled captures, and low-confidence notes. |
 | [Find missing note links](Find-Missing-Note-Links) | Discover and add the missing note links. |
 | [Tune the archive](Tune-The-Archive) | Understand the tidying stage's floors and caps, and where to change them. |
 | [Archive a finished project](Archive-A-Finished-Project) | Retire a finished project's vault directory without losing anything load-bearing. |

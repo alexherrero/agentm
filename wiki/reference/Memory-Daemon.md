@@ -326,9 +326,11 @@ queued for a later re-filing pass rather than corrected on the spot.
 vocabularies to the block
 (`daemon/internal/rules/storage-rules.default.md:258-287`). You declare
 each one; the daemon validates it exactly like `memory_types` and
-`record_kinds` above — a malformed value halts filing, by name. None of the
-three has a runtime reader yet: this table is what the contract *names*, not
-what the daemon *does* with it.
+`record_kinds` above — a malformed value halts filing, by name. At the time
+these were added, none had a runtime reader: the table below was what the
+contract *named*, not what anything *did* with it. Filing v2's write path
+(2026-09-04) gave two of the three a reader — `lifecycle` and `sources`,
+detailed below — leaving `facets` the only one still purely declarative.
 
 | Key | Field | Values | Holds |
 |---|---|---|---|
@@ -372,9 +374,18 @@ an `idea`, alongside `preference` and `convention`.
 
 In every one of those cases it falls through to `daemon.shard`. The
 `renderNote` function stamps `lifecycle: active` on every note
-`capture.go` writes now, `filing_confidence: high` when the caller named
-the type, and `filing_confidence: low` when the contract's default type
-was used. The `status: unfiled` default predates this change.
+`capture.go` writes — a hardcoded literal; the Python writer below reads
+the contract's `default_lifecycle` instead — `filing_confidence: high` when the caller
+named the type, and `filing_confidence: low` when the contract's default
+type was used. The `status: unfiled` default predates this change. Filing
+v2's write path (task 5) adds a fourth stamp beside these three: `trust`,
+from the caller's `source` tag through the contract's `sources` map.
+`trustTier` (`capture.go`) reads `contract.Sources[source]` directly
+rather than through the `SourceTier` method below, and treats any
+URL-shaped source as `untrusted` even when the contract names nothing for
+it; a source that is neither recognized nor URL-shaped earns no stamp at
+all. Every write through this path asks [the volume
+gate](#the-volume-gate) first, below.
 
 Validation sits beside the existing checks in `validate()`
 (`daemon/internal/rules/rules.go:387-429`): kebab-case and no duplicates for
@@ -382,13 +393,85 @@ each list, `default_lifecycle` checked against `lifecycle`'s own values, and
 `sources` checked against a closed, deliberately two-value tier set
 (`SourceTiers`, `rules.go:140`) — a finer trust ladder would be precision a
 write-time check cannot honestly deliver. `Rules` exposes the read side as
-`IsLifecycle`, `SourceTier`, `IsFacet` (`rules.go:471`, `:483`, `:489`), with
-no caller yet; `StorageRules` mirrors it in Python as `lifecycles()`,
-`default_lifecycle()`, `sources()`, `facets()`
-(`harness/skills/memory/scripts/storage_rules.py:117`, `:122`, `:126`,
-`:131`). All four keys are optional-when-absent, so a pre-v2 rules file keeps
-parsing while the migration runs — the "absence falls through" rule this
-section already names.
+`IsLifecycle`, `SourceTier`, `IsFacet` (`rules.go:471`, `:483`, `:489`) —
+still with no caller of their own; the trust stamp above reads the
+`Sources` map directly instead. `StorageRules` mirrors the same read side
+in Python as `lifecycles()`, `default_lifecycle()`, `sources()`,
+`facets()` (`harness/skills/memory/scripts/storage_rules.py:117`, `:122`,
+`:126`, `:131`), and two of those four now have real callers: `save_entry`
+(`save.py`) reads `default_lifecycle()` to default a memory-type write's
+`lifecycle`, and both `save_entry`'s own trust stamp and
+`filing_engine.transport()` read `sources()`. `lifecycles()` and
+`facets()` stay uncalled on both sides. All four keys are
+optional-when-absent, so a pre-v2 rules file keeps parsing while the
+migration runs — the "absence falls through" rule this section already
+names.
+
+### The volume gate
+
+A fourth threshold joined the block alongside the pre-existing
+`thresholds.low_confidence`: `thresholds.daily_write_cap`, the cap filing
+v2's write path (task 4) puts on how many memories the *unreviewed* front
+doors may add in one day — the capture front door and reflect's mined
+candidates, plus the daemon's own native capture path. The default is 200
+when the contract names none, grounded in the live corpus on 2026-09-04:
+the busiest day on record wrote 110, the 30-day median was 12, so 200 sits
+above every real day and well below what an earlier over-capture flood
+did. `0` disables the gate; `AGENTM_DAILY_WRITE_CAP` overrides it for a
+test or an emergency.
+
+`Capturer.Do` (`daemon/internal/capture/capture.go`) checks the gate before
+class routing, counting the index's own `CapturedSince`
+(`daemon/internal/index/index.go`) — memory-space documents captured at or
+after the start of today — against `dailyWriteCap`. Past the cap it
+refuses with a message naming the count, the cap, and the file to edit,
+and counts the refusal on an in-process `capped` counter
+(`Capturer.RefusedByVolume`) that is not yet on `agentmd status` or the
+health surface, unlike its sibling `RefusedCaptures`. On the Python side,
+`filing_engine.apply()` — the write step behind `capture.py` and
+`reflect.py`'s routing — calls `volume_gate.check()` first, which walks
+the class directories counting each note's `captured` (else `created`)
+date against the same cap. A note that reinforces one already home never
+reaches the gate in either language, so retrying a settled capture is
+always safe.
+
+**The gate does not cover every writer.** `save_entry()` itself carries no
+gate call — a direct `/memory save` (`memory_append`), an ingest write, or
+anything else that calls `save_entry()` without going through
+`filing_engine.apply()` first lands regardless of the day's count. The
+gate is scoped to where the design found the actual failure mode:
+unreviewed, automated volume, not a deliberate save.
+
+The corpus scorecard's writes-per-day reading (see [Read the nightly
+scorecards](Read-The-Nightly-Scorecards)) is the Python-side count,
+reported daily with a week-over-week trend.
+
+## Enrichment
+
+`agentmd enrich` rewrites a note the writer filed unsure about into one
+it's judged: a title, tags, aliases, a confidence number, and — since
+filing v2's write path — a categorical twin of that number every other
+writer already shares. `FilingConfidenceFor`
+(`daemon/internal/enrich/render.go`) stamps `filing_confidence: high` at
+or above the same 0.6 floor `StatusFor` uses to decide `active` vs
+`unfiled`, `low` below it — two bands on purpose, since the floor is the
+one judgment this pass makes about its own number and a third band would
+be a threshold nobody measured. The needs-review reading (see [Review
+flagged memories](Review-Flagged-Memories)) selects on this field without
+knowing what floor produced it.
+
+`CarryProvenance` (`daemon/internal/enrich/carry.go`) copies every
+capture-record and review-mark field the rewritten note doesn't already
+set — `source`, `lifecycle`, `captured`, `via`, `source_url`,
+`source_fetched`, `surface`, `instructions`, `review_flags`, `related`,
+`trust` — from the note as it stood before enrichment. `filing_confidence`
+is deliberately excluded from that list: the pass re-judges it, which is
+how an unfiled capture actually clears the needs-review reading rather
+than carrying its old low stamp forward unread. A note with no `lifecycle`
+of its own starts `active` — an enriched note is an auto-filed note
+either way, the same default a fresh write gets. `main.go`'s `cmdEnrich`
+is the one caller, threading the pre-rewrite note's text through
+`CarryProvenance` before the write applies.
 
 ## The derived indexes
 
@@ -747,4 +830,6 @@ There is no bearer token, on purpose. It would gate other processes running as t
 - [AgentM Rescope — Storage Topology](agentm-rescope-topology) — the daemon's design.
 - [AgentM Rescope — The Memory Engine](agentm-rescope-memory) — layout, frontmatter, capture doctrine.
 - [AgentM Hybrid Retrieval](agentm-hybrid-retrieval) — the recall ladder that added the embedder child, the search modes, and their measurements.
+- [Vault write protocol](Vault-Write-Protocol) — the caller-facing shape of the same write-time stamps and gate refusal.
+- [Review flagged memories](Review-Flagged-Memories) — working the needs-review page this page's enrichment stamps feed.
 - [CI gates](CI-Gates) — `check-daemon` runs the battery below.

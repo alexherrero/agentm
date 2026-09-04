@@ -22,6 +22,23 @@ Implementation occurs in `scripts/vault_lock.py`. This script provides `atomic_w
 - **Replace-style shared files** additionally pass a **content-hash CAS** (`expected_hash`). The write re-reads and re-hashes the file inside the lock. The write aborts with `ConcurrentModificationError` if the content changed under it. Callers then re-read and retry.
 - **Repo-local state** (`.harness/` in a checkout, the promotion cursor) takes the atomic writer for the `fsync` but **no mutex**. It is partitioned by construction. It is never in the synced vault.
 
+## Write-time stamps and the volume gate
+
+A write that names a memory type carries four stamps — a record kind never carries them. `save_entry()` fills these in when you omit them:
+
+| Stamp | Default | Set explicitly by |
+|---|---|---|
+| `lifecycle` | the contract's `default_lifecycle` (`active` unless `standards/storage-rules.md` names another) | `save --always-load`, which stamps `pinned` instead |
+| `source` | `conversation` | `capture.py` (`operator-direct`, or `external-fetch` with a `source_url`), `save.py`'s CLI entry (`operator-direct`), `ingest.py` (`external-fetch`) |
+| `filing_confidence` | `high` | `low` for a contract-default type, a demoted MEDIUM-confidence mined candidate, or a `memory_capture` file |
+| `trust` | mapped from `source` through the contract's `sources` map | never set directly |
+
+`trust` is the newest of the four (filing v2's write path, task 5). It's a property of the transport, never of how plausible the content reads: `operator-direct` and `conversation` read `trusted`; `external-fetch` and `email` read `untrusted`.
+
+A write routed through `filing_engine.apply()` — the step behind `capture.py` and `reflect.py`'s mined candidates — asks the volume gate first: the contract's `thresholds.daily_write_cap` (200 by default, `0` disables it) against how many memories the corpus already holds for today. Past the cap the write fails with a message naming the count, the cap, and the file to raise it in. A repeat that would only reinforce a note already home never reaches the gate. A direct `save_entry()` call — `/memory save`, an ingest write — bypasses the gate entirely: the cap targets unreviewed, automated volume.
+
+See [Memory daemon reference](Memory-Daemon) for the contract's own vocabulary (which of these keys the daemon and the Python writer each actually read) and the daemon's matching gate on its own capture path.
+
 ## Operator habits that keep it safe
 
 1. **Pin the vault "Available offline."** You mark the vault root *Available offline* in Google Drive / Finder. This ensures its files are always materialized. A *dataless* read (Drive streaming a file on demand) can stall an agent. In the worst case, it causes an `EDEADLK` hang. This is R4 rule 5 and the real `claude-code#40783` bite. Pinning removes the stall.
@@ -36,4 +53,5 @@ The `conflict-merger-session-start` hook sweeps the vault on session boot. It **
 
 - [Memory-storage seam — The vault-write protocol](memory-storage-seam) — You find the full rationale, the five R4 rules, and the re-audit triggers here.
 - [Run without a vault](Run-Without-A-Vault) — You use the repo-local state mode here. It is partitioned. It needs no mutex.
+- [Review flagged memories](Review-Flagged-Memories) — working the low-confidence and flagged notes these stamps produce.
 - [CI gates](CI-Gates) · [How-to](How-To) · [Reference](Reference) · [Home](Home)

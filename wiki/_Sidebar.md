@@ -23,6 +23,7 @@
 - [Capture from your phone](Capture-From-Your-Phone)
 - [Archive a finished project](Archive-A-Finished-Project)
 - [Tune the archive](Tune-The-Archive)
+- [Review flagged memories](Review-Flagged-Memories)
 ### 📖 [Reference](Reference)
 - [Installer CLI](Installer-CLI)
 - [Supported configurations](Supported-Configurations)

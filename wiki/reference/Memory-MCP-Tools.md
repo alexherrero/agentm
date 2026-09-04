@@ -95,6 +95,10 @@ There is no `project` or destination parameter. `memory_capture` never chooses i
 
 The filing engine runs a corpus check during capture. A `deduplicated: true` result means the check matched an existing, live, not-yet-reviewed candidate and reinforced it instead of filing a new one. The engine refuses the match — and files a fresh candidate instead, under its `~dup` mark if a different note already uses the target slug — when your capture carries a `source_url` or `instructions` value the matched candidate lacks, so a link resend's ingest-sweep trigger is never silently lost to a plain-text duplicate.
 
+Since filing v2's write path (task 4), a capture can also fail because the vault already wrote its cap for the day: `{success: false, error: "capture refused: N memories already written today ... daily cap is 200 ..."}`, naming the count, the cap, and the file that raises it. A lock timeout resolves with a retry; a cap refusal doesn't — an exact repeat still reinforces a twin already home even with the gate shut, but a genuinely new capture waits for tomorrow, or for an edit to `thresholds.daily_write_cap`.
+
+Every capture also carries a `trust` tier you never set directly: a call with no `source_url` stamps `operator-direct`, a call with one stamps `external-fetch`, and the contract's `sources` map turns the first into `trusted` and the second into `untrusted`. The tier depends only on the transport tag `capture.py` uses, never the surface you called from — an agent calling `memory_capture` mid-conversation stamps `operator-direct`, same as a human typing at the CLI.
+
 ---
 
 ## `memory_forget`

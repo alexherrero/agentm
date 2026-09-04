@@ -24,6 +24,7 @@
 - [Archive a finished project](Archive-A-Finished-Project)
 - [Tune the archive](Tune-The-Archive)
 - [Read the nightly scorecards](Read-The-Nightly-Scorecards)
+- [Review flagged memories](Review-Flagged-Memories)
 ### 📖 [Reference](Reference)
 ### 🏛️ [Architecture](Architecture)
 ### 🧩 [Designs](Designs)
