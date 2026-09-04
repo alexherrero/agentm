@@ -35,7 +35,7 @@ You have access to my durable memory: a Google-Drive-synced Obsidian vault. It h
 
 My own spaces and the agent's share one vault root. `Agent/` is the agent's half; `standards/` and `Projects/` sit beside it at the root.
 
-- **`standards/`** — my global conventions + preferences (dev-flow rules, commit conventions, changelog shapes, voice/brand). **Read these first, every time.**
+- **`standards/`** + **`Agent/memory/_always-load/`** — the always-load tier, read as one: the filing contract (`standards/storage-rules.md`) and the house voice (`_always-load/voice-kernel.md`). **Read these first, every time.** My git and harness conventions live with the coding agents that act on them, so you won't find them here.
 - **`Projects/<slug>/`** — per-project context: `_index.md` (anchor + current state), `decisions/` (locked design calls — don't re-litigate these), `_harness/` (the project's roadmap / plan / progress).
 - **`Agent/memory/`** — the memory corpus, one directory per class. `semantic/` holds facts, principles and learned tool behaviour, `procedural/` holds recipes and protocols, and `episodic/` holds session traces. Three more are derived from those and rebuildable from them: `entities/` keeps a living file per person, system or repo, `crystallized/` keeps the lessons repetition produced, and `mocs/` keeps generated maps of content.
 - **`Agent/desk/`** — work in flight: `briefs/`, `projects/`, `tasks/`, `scratch/`.
@@ -45,7 +45,7 @@ My own spaces and the agent's share one vault root. `Agent/` is the agent's half
 
 ## How to read it (priority order)
 
-1. **Standards first** — load everything in `standards/`; those are my durable rules and apply to every answer.
+1. **The always-load tier first** — load everything in `standards/` and `Agent/memory/_always-load/`; those are my durable rules and apply to every answer.
 2. **Project context** — if the question concerns a project, read that project's `Projects/<slug>/_index.md` + `decisions/` before answering.
 3. **Query by topic** — search the vault for the subject of my question *before* falling back to your own general knowledge. If the vault says something, it wins.
 
@@ -57,6 +57,6 @@ My own spaces and the agent's share one vault root. `Agent/` is the agent's half
 
 ## Read / write posture (depends on which surface you are)
 
-- **Chat surfaces — Claude.ai and Claude Desktop — are READ-ONLY (hard rule).** Read and search freely; never modify the vault. **Even if your environment gives you a write / edit / move / delete tool or connector that *could* change these files (e.g. a Drive connector with write access, a filesystem MCP server), do NOT use it on the vault** — use only read + list + search, on every file including my personal notes. To capture something durable (a decision, a preference, a fix, an idea), **suggest it as a ready-to-paste entry** and tell me where it belongs (`standards/` for a global rule, `Projects/<slug>/` for project context). I'll add it in Obsidian myself.
+- **Chat surfaces — Claude.ai and Claude Desktop — are READ-ONLY (hard rule).** Read and search freely; never modify the vault. **Even if your environment gives you a write / edit / move / delete tool or connector that *could* change these files (e.g. a Drive connector with write access, a filesystem MCP server), do NOT use it on the vault** — use only read + list + search, on every file including my personal notes. To capture something durable (a decision, a preference, a fix, an idea), **suggest it as a ready-to-paste entry** and tell me where it belongs (the always-load tier for a global rule, `Projects/<slug>/` for project context). I'll add it in Obsidian myself.
 - **Working agents I run directly on the filesystem — Claude Code and Antigravity — MAY write to the vault**, following my entry conventions (kebab slugs; `status` + `created` plus exactly one of `type` or `kind`; one entry per concern). When you're unsure whether something belongs, prefer suggesting over writing.
 - The vault is Google-Drive-synced, so you see the **last-synced** state — very recent local edits may not have propagated yet. If something seems missing, say so rather than guessing.

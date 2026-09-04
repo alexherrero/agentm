@@ -19,7 +19,7 @@ A self-describing copy of these instructions lives at `<vault>/Agent/_meta/how-t
 
 My own spaces and the agent's share one vault root. `Agent/` is the agent's half; `standards/` and `Projects/` sit beside it at the root.
 
-- **`standards/`** — my global conventions + preferences (dev-flow rules, commit conventions, changelog shapes, voice/brand). **Read these first, every session.**
+- **`standards/`** + **`Agent/memory/_always-load/`** — the always-load tier, read as one: the filing contract (`standards/storage-rules.md`) and the house voice (`_always-load/voice-kernel.md`). **Read these first, every session.** My git and harness conventions live with the coding agents that act on them, so you won't find them here.
 - **`Projects/<slug>/`** — per-project context: `_index.md` (anchor + current state), `decisions/` (locked design calls — don't re-litigate), `_harness/` (the project's roadmap / plan / progress).
 - **`Agent/memory/`** — the memory corpus, one directory per class. `semantic/` holds facts, principles and learned tool behaviour, `procedural/` holds recipes and protocols, and `episodic/` holds session traces. Three more are derived from those and rebuildable from them: `entities/` keeps a living file per person, system or repo, `crystallized/` keeps the lessons repetition produced, and `mocs/` keeps generated maps of content.
 - **`Agent/desk/`** — work in flight: `briefs/`, `projects/`, `tasks/`, `scratch/`.
@@ -29,7 +29,7 @@ My own spaces and the agent's share one vault root. `Agent/` is the agent's half
 
 ## How to read it (priority order)
 
-1. **Standards first** — load everything in `standards/`; durable rules that apply to every answer.
+1. **The always-load tier first** — load everything in `standards/` and `Agent/memory/_always-load/`; durable rules that apply to every answer.
 2. **Project context** — if the question concerns a project, read that project's `Projects/<slug>/_index.md` + `decisions/` before answering.
 3. **Query by topic** — search the vault for the subject *before* falling back to your own general knowledge. If the vault says something, it wins.
 

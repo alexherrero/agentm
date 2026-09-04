@@ -33,6 +33,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Re-paste is still the operator's to do: the Claude.ai custom instructions and
   the Gemini Gem hold their own copies, and the Gemini CLI rule refreshes only
   when `install.sh` runs.
+- **The house voice is always-loaded again.** `voice-kernel.md` had drifted out
+  of the always-load tier into `memory/semantic/`, where nothing injects it, so
+  the operator's voice reached a session only when a search happened to match
+  it. It moves back to `memory/_always-load/` — the directory the filing design
+  kept as "the universal-rules directory loaded every session", the target
+  `save --always-load` writes, and the first place crickets' prose pass probes —
+  and gains `priority: high` so it is budgeted before bulkier standards. The
+  payload's folder map now describes that tier as the two directories it
+  actually spans, `standards/` and `Agent/memory/_always-load/`, and says
+  plainly that the git and harness conventions stay with the coding agents that
+  act on them rather than living in the vault.
 
 ## [9.12.0] - 2026-09-03
 
