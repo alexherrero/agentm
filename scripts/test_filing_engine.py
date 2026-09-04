@@ -79,8 +79,8 @@ def _vault(td: Path) -> Path:
     for cls in fe.CLASS_DIRS:
         _note(m / cls / "_index.md", f"kind: dir-index\nstatus: active\nslug: {cls}-index\n", f"# {cls}")
     # a filed tool stub, a filed directive, a filed fact, a filed lane supplement
-    _note(m / "procedural" / "workflow-bash.md", "type: workflow\nstatus: active\nslug: workflow-bash\nlifecycle: active\n",
-          "The `Bash` tool was invoked 12 times during this session. If this represents a repeatable workflow, capture it.")
+    _note(m / "semantic" / "daemon-port.md", "type: reference\nstatus: active\nslug: daemon-port\nlifecycle: active\ntitle: the daemon port is 8901\n",
+          "The daemon port is 8901.")
     _note(m / "semantic" / "never-force-push-main.md", "type: preference\nstatus: active\nslug: never-force-push-main\nlifecycle: active\n",
           "User stated: never force-push to main — rewrite only your own unshared branches.")
     _note(m / "semantic" / "vault-root.md", "type: reference\nstatus: active\nslug: vault-root\nlifecycle: active\ntitle: the vault root is /srv/vault\n",
@@ -93,9 +93,11 @@ def _vault(td: Path) -> Path:
 
 
 class TheKeyExtractor(unittest.TestCase):
-    def test_reads_the_three_shapes_and_nothing_else(self):
-        self.assertEqual(fe.extract_key("Workflow: Bash used 12x", "The `Bash` tool was invoked 12 times during this session."),
-                         ("tool:bash", "invocations", "12"))
+    def test_reads_the_two_shapes_and_nothing_else(self):
+        # The tool-invocation stub was a third shape until the miner stopped
+        # emitting it (miner-provenance, ruling 2); a parser for a purged shape
+        # is dead code, so it went with the stubs.
+        self.assertIsNone(fe.extract_key("Workflow: Bash used 12x", "The `Bash` tool was invoked 12 times during this session."))
         # the title is read first, so the shorter phrasing is the subject
         self.assertEqual(fe.extract_key("never force-push to main", "User stated: never force-push to main — rewrite only your own branches."),
                          ("directive:force-push main", "polarity", "never"))
@@ -134,18 +136,16 @@ class TheFourOperations(unittest.TestCase):
         self.assertEqual(d.flags, [])
 
     def test_an_exact_twin_is_a_noop_pointing_at_the_note_already_home(self):
-        d = self._decide("Workflow: Bash used 12x",
-                         "The `Bash` tool was invoked 12 times during this session. If this represents a repeatable workflow, capture it.",
-                         type_hint="workflow")
-        self.assertEqual((d.op, d.related, d.dest_rel), ("noop", "memory/procedural/workflow-bash.md", "memory/procedural/workflow-bash.md"))
+        d = self._decide("the daemon port is 8901", "The daemon port is 8901.", type_hint="reference")
+        self.assertEqual((d.op, d.related, d.dest_rel), ("noop", "memory/semantic/daemon-port.md", "memory/semantic/daemon-port.md"))
         self.assertIn("exact-twin", d.flags)
 
     def test_a_key_match_with_a_different_value_supersedes(self):
-        d = self._decide("Workflow: Bash used 40x", "The `Bash` tool was invoked 40 times during this session. Capture it.",
-                         type_hint="workflow", slug="workflow-bash-2")
-        self.assertEqual((d.op, d.related), ("supersede", "memory/procedural/workflow-bash.md"))
+        d = self._decide("the daemon port is 8902", "The daemon port is 8902 since the embedder moved.",
+                         type_hint="reference", slug="daemon-port-2")
+        self.assertEqual((d.op, d.related), ("supersede", "memory/semantic/daemon-port.md"))
         self.assertIn("contradiction", d.flags)
-        self.assertEqual(d.dest_rel, "memory/procedural/workflow-bash-2.md")
+        self.assertEqual(d.dest_rel, "memory/semantic/daemon-port-2.md")
 
     def test_a_planted_contradiction_on_a_directive_supersedes(self):
         d = self._decide("always force-push to main", "User stated: always force-push to main when the branch is yours.",
@@ -219,24 +219,24 @@ class Applying(unittest.TestCase):
         self.assertFalse((self.vault / "memory" / "preference").exists())
 
     def test_supersede_marks_the_old_note_and_deletes_nothing(self):
-        d = fe.decide(self.vault, title="Workflow: Bash used 40x", body="The `Bash` tool was invoked 40 times during this session.",
-                      slug="workflow-bash-2", type_hint="workflow", rules=self.rules, corpus=self.corpus)
-        written = fe.apply(self.vault, d, body="The `Bash` tool was invoked 40 times during this session.")
+        d = fe.decide(self.vault, title="the daemon port is 8902", body="The daemon port is 8902.",
+                      slug="daemon-port-2", type_hint="reference", rules=self.rules, corpus=self.corpus)
+        written = fe.apply(self.vault, d, body="The daemon port is 8902.")
         self.assertTrue(written.is_file())
-        old = (self.vault / "memory" / "procedural" / "workflow-bash.md").read_text(encoding="utf-8")
+        old = (self.vault / "memory" / "semantic" / "daemon-port.md").read_text(encoding="utf-8")
         self.assertIn("lifecycle: superseded\n", old)
-        self.assertIn("superseded_by: memory/procedural/workflow-bash-2.md\n", old)
-        self.assertIn("supersedes: memory/procedural/workflow-bash.md", written.read_text(encoding="utf-8"))
+        self.assertIn("superseded_by: memory/semantic/daemon-port-2.md\n", old)
+        self.assertIn("supersedes: memory/semantic/daemon-port.md", written.read_text(encoding="utf-8"))
 
     def test_noop_reinforces_and_writes_nothing(self):
-        before = sorted(p.name for p in (self.vault / "memory" / "procedural").glob("*.md"))
-        d = fe.decide(self.vault, title="Workflow: Bash used 12x",
-                      body="The `Bash` tool was invoked 12 times during this session. If this represents a repeatable workflow, capture it.",
-                      slug="workflow-bash-3", type_hint="workflow", rules=self.rules, corpus=self.corpus)
+        before = sorted(p.name for p in (self.vault / "memory" / "semantic").glob("*.md"))
+        d = fe.decide(self.vault, title="the daemon port is 8901",
+                      body="The daemon port is 8901.",
+                      slug="workflow-bash-3", type_hint="reference", rules=self.rules, corpus=self.corpus)
         fe.apply(self.vault, d, body="ignored")
-        after = sorted(p.name for p in (self.vault / "memory" / "procedural").glob("*.md"))
+        after = sorted(p.name for p in (self.vault / "memory" / "semantic").glob("*.md"))
         self.assertEqual(before, after)
-        self.assertIn("occurrences: 2", (self.vault / "memory" / "procedural" / "workflow-bash.md").read_text(encoding="utf-8"))
+        self.assertIn("occurrences: 2", (self.vault / "memory" / "semantic" / "daemon-port.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

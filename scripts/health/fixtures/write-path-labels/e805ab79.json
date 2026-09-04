@@ -1,0 +1,312 @@
+{
+ "session": "e805ab79",
+ "labelled": "2026-09-04",
+ "sheet": "Projects/agentm/_harness/labels/write-path-eval-e805ab79-20260904.md",
+ "labels": [
+  "right",
+  "wrong-type",
+  "wrong-op",
+  "wrong-flag",
+  "should-not-file",
+  "unsure"
+ ],
+ "rows": [
+  {
+   "row": 1,
+   "title": "I need a obsidian link to the worksheet since I can't edit here in claude deskto",
+   "category": "preferences",
+   "confidence": "HIGH",
+   "occurrences": 1,
+   "slug": "i-need-a-obsidian-link-to",
+   "text": "User stated: I need a obsidian link to the worksheet since I can't edit here in claude desktop",
+   "label": "right",
+   "source": {
+    "role": "user",
+    "index": 6838,
+    "text": "I need a obsidian link to the worksheet since I can't edit here in claude desktop"
+   }
+  },
+  {
+   "row": 2,
+   "title": "I need to think about and what my options are to correct if it's gong off the ra",
+   "category": "preferences",
+   "confidence": "HIGH",
+   "occurrences": 1,
+   "slug": "i-need-to-think-about-and",
+   "text": "User stated: explain in plain english what's going on here, what I need to think about and what my options are to correct if it's gong off the rails",
+   "label": "should-not-file",
+   "source": {
+    "role": "user",
+    "index": 20038,
+    "text": "explain in plain english what's going on here, what I need to think about and what my options are to correct if it's gong off the rails"
+   }
+  },
+  {
+   "row": 3,
+   "title": "I need you to pre-judge things, tell me why, and then I can tell you if i agree,",
+   "category": "preferences",
+   "confidence": "HIGH",
+   "occurrences": 1,
+   "slug": "i-need-you-to-pre-judge",
+   "text": "User stated: ...hadn't realized that a june plan asn't returned, so you were right and I was wrong. I need you to pre-judge things, tell me why, and then I can tell you if i agree, any other way and i'll miss things and mis-judge, throwing off your judgement marks.",
+   "label": "right",
+   "source": {
+    "role": "user",
+    "index": 19471,
+    "text": "topping logic - see this is my issue, you actually caught things I didn't, when I marked that note sufficient, I hadn't realized that a june plan asn't returned, so you were right and I was wrong. I need you to pre-judge things, tell me why, and then I can tell you if i agree, any other way and i'll miss things and mis-judge, throwing off your judgement marks."
+   }
+  },
+  {
+   "row": 4,
+   "title": "I want you to review all of what was just found, then work with me on a plan to",
+   "category": "preferences",
+   "confidence": "HIGH",
+   "occurrences": 1,
+   "slug": "i-want-you-to-review-all",
+   "text": "User stated: Turnign on fable - I want you to review all of what was just found, then work with me on a plan to significantly improve our testing methodology and testing harness so i can trust the test...",
+   "label": "right",
+   "source": {
+    "role": "user",
+    "index": 14910,
+    "text": "Turnign on fable - I want you to review all of what was just found, then work with me on a plan to significantly improve our testing methodology and testing harness so i can trust the test reuslts, and we can stop spinning our wheels on our recall testing and come to a final \"good\" place and i can consider it dont."
+   }
+  },
+  {
+   "row": 5,
+   "title": "Workflow: Bash used 2592x",
+   "category": "workflow",
+   "confidence": "MEDIUM",
+   "occurrences": 2592,
+   "slug": "workflow-bash",
+   "text": "The `Bash` tool was invoked 2592 times during this session. If this represents a repeatable workflow, capture the sequence + when to use it.",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "note": "the per-tool tally; a stub, never emitted since ruling 2"
+   }
+  },
+  {
+   "row": 6,
+   "title": "Workflow: Write used 628x",
+   "category": "workflow",
+   "confidence": "MEDIUM",
+   "occurrences": 628,
+   "slug": "workflow-write",
+   "text": "The `Write` tool was invoked 628 times during this session. If this represents a repeatable workflow, capture the sequence + when to use it.",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "note": "the per-tool tally; a stub, never emitted since ruling 2"
+   }
+  },
+  {
+   "row": 7,
+   "title": "Workflow: Edit used 60x",
+   "category": "workflow",
+   "confidence": "MEDIUM",
+   "occurrences": 60,
+   "slug": "workflow-edit",
+   "text": "The `Edit` tool was invoked 60 times during this session. If this represents a repeatable workflow, capture the sequence + when to use it.",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "note": "the per-tool tally; a stub, never emitted since ruling 2"
+   }
+  },
+  {
+   "row": 8,
+   "title": "Workflow: AskUserQuestion used 17x",
+   "category": "workflow",
+   "confidence": "MEDIUM",
+   "occurrences": 17,
+   "slug": "workflow-askuserquestion",
+   "text": "The `AskUserQuestion` tool was invoked 17 times during this session. If this represents a repeatable workflow, capture the sequence + when to use it.",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "note": "the per-tool tally; a stub, never emitted since ruling 2"
+   }
+  },
+  {
+   "row": 9,
+   "title": "Workflow: SendUserFile used 11x",
+   "category": "workflow",
+   "confidence": "MEDIUM",
+   "occurrences": 11,
+   "slug": "workflow-senduserfile",
+   "text": "The `SendUserFile` tool was invoked 11 times during this session. If this represents a repeatable workflow, capture the sequence + when to use it.",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "note": "the per-tool tally; a stub, never emitted since ruling 2"
+   }
+  },
+  {
+   "row": 10,
+   "title": "Workflow: Agent used 8x",
+   "category": "workflow",
+   "confidence": "MEDIUM",
+   "occurrences": 8,
+   "slug": "workflow-agent",
+   "text": "The `Agent` tool was invoked 8 times during this session. If this represents a repeatable workflow, capture the sequence + when to use it.",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "note": "the per-tool tally; a stub, never emitted since ruling 2"
+   }
+  },
+  {
+   "row": 11,
+   "title": "Workflow: ToolSearch used 5x",
+   "category": "workflow",
+   "confidence": "MEDIUM",
+   "occurrences": 5,
+   "slug": "workflow-toolsearch",
+   "text": "The `ToolSearch` tool was invoked 5 times during this session. If this represents a repeatable workflow, capture the sequence + when to use it.",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "note": "the per-tool tally; a stub, never emitted since ruling 2"
+   }
+  },
+  {
+   "row": 12,
+   "title": "Workflow: mcp__ccd_session__spawn_task used 3x",
+   "category": "workflow",
+   "confidence": "MEDIUM",
+   "occurrences": 3,
+   "slug": "workflow-mcp-ccd-session-spawn-task",
+   "text": "The `mcp__ccd_session__spawn_task` tool was invoked 3 times during this session. If this represents a repeatable workflow, capture the sequence + when to use it.",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "note": "the per-tool tally; a stub, never emitted since ruling 2"
+   }
+  },
+  {
+   "row": 13,
+   "title": "Fix: ...gone, and the note doesn't record enough to get them back",
+   "category": "fix",
+   "confidence": "LOW",
+   "occurrences": 1,
+   "slug": "gone-and-the-note-doesn-t",
+   "text": "Fix observed: ...gone, and the note doesn't record enough to get them back. I tried the obvious workaround — trim the partial word instead of reconstructing it, which fabricates nothing. It improves ~3,000 notes but **over-trims**: it dropped `preface` in `...preface...",
+   "label": "should-not-file",
+   "source": {
+    "role": "assistant",
+    "text": null,
+    "note": "a fragment of an assistant status report; the fragments are in test_reflect_fix_and_durability.py"
+   }
+  },
+  {
+   "row": 14,
+   "title": "never judged by a model",
+   "category": "preferences",
+   "confidence": "LOW",
+   "occurrences": 1,
+   "slug": "never-judged-by-a-model",
+   "text": "User stated: ...dead-lettering, surfaced in the digest. * Staleness is computed from input hashes, never judged by a model. * Shell-script test stubs do not run on Windows. Part 4's did, and three batch...",
+   "label": "right",
+   "source": {
+    "role": "user",
+    "index": 6,
+    "text": null,
+    "note": "a 7,684-char handoff prompt the agent authored and the operator pasted (origin human); not stored — see test_reflect_handoff_marker.py for its shape"
+   }
+  },
+  {
+   "row": 15,
+   "title": "never settled",
+   "category": "preferences",
+   "confidence": "LOW",
+   "occurrences": 1,
+   "slug": "never-settled",
+   "text": "User stated: ...genuinely unrecoverable, ambiguous, scope-drifting, or needs a decision the design never settled. Recoverable actions — push, PR, merge on green — proceed announced. Suggested order:...",
+   "label": "should-not-file",
+   "source": {
+    "role": "user",
+    "index": 6,
+    "text": null,
+    "note": "a 7,684-char handoff prompt the agent authored and the operator pasted (origin human); not stored — see test_reflect_handoff_marker.py for its shape"
+   }
+  },
+  {
+   "row": 16,
+   "title": "never tested there at all",
+   "category": "preferences",
+   "confidence": "LOW",
+   "occurrences": 1,
+   "slug": "never-tested-there-at-all",
+   "text": "User stated: ...4's did, and three batch tests failed on `windows-latest` — the batch logic was never tested there at all. The fix is `daemon/internal/enrich/stub_test.go`: a real Go program compiled once...",
+   "label": "wrong-type",
+   "source": {
+    "role": "user",
+    "index": 6,
+    "text": null,
+    "note": "a 7,684-char handoff prompt the agent authored and the operator pasted (origin human); not stored — see test_reflect_handoff_marker.py for its shape"
+   }
+  },
+  {
+   "row": 17,
+   "title": "Never weaken an assertion",
+   "category": "preferences",
+   "confidence": "LOW",
+   "occurrences": 1,
+   "slug": "never-weaken-an-assertion",
+   "text": "User stated: ...the single highest-value habit in this arc; do not skip it. 6. Tests are sacred. Never weaken an assertion, never `@skip` a real failure. If a test is wrong, surface it and stop. 7. Commit...",
+   "label": "unsure",
+   "source": {
+    "role": "user",
+    "index": 6,
+    "text": null,
+    "note": "a 7,684-char handoff prompt the agent authored and the operator pasted (origin human); not stored — see test_reflect_handoff_marker.py for its shape"
+   }
+  },
+  {
+   "row": 18,
+   "title": "never whether",
+   "category": "preferences",
+   "confidence": "LOW",
+   "occurrences": 1,
+   "slug": "never-whether",
+   "text": "User stated: ...the repo. The standing rules for this arc 1. The design is final. Refine how, never whether. If a task list is wrong, fix the task list. If the design is wrong, stop and say...",
+   "label": "right",
+   "source": {
+    "role": "user",
+    "index": 6,
+    "text": null,
+    "note": "a 7,684-char handoff prompt the agent authored and the operator pasted (origin human); not stored — see test_reflect_handoff_marker.py for its shape"
+   }
+  },
+  {
+   "row": 19,
+   "title": "Fix: ...once `repair_excerpts` learned to skip retired notes. The",
+   "category": "fix",
+   "confidence": "LOW",
+   "occurrences": 1,
+   "slug": "once-repair-excerpts-learned-to-skip",
+   "text": "Fix observed: ...once `repair_excerpts` learned to skip retired notes. The 4 non-converging notes resolved by being retired, so a hypothesis I'd recorded as open went away rather than turning out right. **3 — Tasks 1 and 5: the cleanup did most of what the slop detector was for.**...",
+   "label": "right",
+   "source": {
+    "role": "assistant",
+    "text": null,
+    "note": "a fragment of an assistant status report; the fragments are in test_reflect_fix_and_durability.py"
+   }
+  },
+  {
+   "row": 20,
+   "title": "Fix: ...three defects, all fixed going forward, none cleaned up r",
+   "category": "fix",
+   "confidence": "LOW",
+   "occurrences": 1,
+   "slug": "three-defects-all-fixed-going-forward",
+   "text": "Fix observed: ...three defects, all fixed going forward, none cleaned up retroactively:** | defect | fixed by | cleans up? | |---|---|---| | excerpts cut mid-word | mine, merged | partially — 19 notes |...",
+   "label": "unsure",
+   "source": {
+    "role": "assistant",
+    "text": null,
+    "note": "a fragment of an assistant status report; the fragments are in test_reflect_fix_and_durability.py"
+   }
+  }
+ ]
+}

@@ -125,14 +125,15 @@ class TestMiningEndToEnd(unittest.TestCase):
         out = self._mine([_user(DIRECTIVE)], self.tmp)
         self.assertEqual(len(out["memory_candidates"]), 1)
 
-    def test_tool_frequency_mining_is_untouched(self):
-        # Workflow candidates come off ASSISTANT records and must not be caught
-        # by a filter aimed at the user side.
+    def test_tool_frequency_is_tallied_but_never_a_candidate(self):
+        # The tally comes off ASSISTANT records and is reported as
+        # instrumentation; since miner-provenance ruling 2 it is not a memory
+        # candidate (a count is not a procedure).
         recs = [{"type": "assistant", "message": {"role": "assistant", "content": [
             {"type": "tool_use", "name": "Bash"}]}} for _ in range(6)]
         out = self._mine(recs, self.tmp)
-        self.assertTrue(any(c.category == "workflow" for c in out["memory_candidates"]),
-                        "workflow mining broke")
+        self.assertEqual(out["tool_counts"], {"Bash": 6})
+        self.assertEqual([c for c in out["memory_candidates"] if c.category == "workflow"], [])
 
 
 if __name__ == "__main__":

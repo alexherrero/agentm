@@ -99,7 +99,6 @@ class FilingDecision:
 
 # ── the structural key ───────────────────────────────────────────────────────
 
-_TOOL_STUB = re.compile(r"The `([A-Za-z_][\w-]*)` tool was invoked (\d+) times", re.I)
 _DIRECTIVE = re.compile(r"\b(always|never|don't|do not|must not|must|should not|should)\b\s+(.{4,80})", re.I)
 _FACT = re.compile(r"^(?:the |my |our )?([a-z][\w' -]{2,60}?)\s+(is|are|lives at|sits at|defaults? to|equals?)\s+(.{2,120})$", re.I)
 # A fact yields a key only when its object is a *value* — a path, a URL, a
@@ -121,10 +120,6 @@ def extract_key(title: str, body: str) -> "tuple | None":
     read deterministically; None otherwise. Subjects and attributes are
     normalized so two phrasings of one fact meet; the object is the value the
     contradiction test compares."""
-    text = f"{title}\n{body}"
-    m = _TOOL_STUB.search(text)
-    if m:
-        return (f"tool:{m.group(1).casefold()}", "invocations", m.group(2))
     first = next((l.strip() for l in body.splitlines() if l.strip()), "") or title.strip()
     # A slug standing in for a title has no spaces and no clause to read.
     probes = tuple(p for p in ((title.strip() if " " in title.strip() else ""), first) if p)

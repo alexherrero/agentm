@@ -104,13 +104,16 @@ class TestBareAlwaysNeverDemotion(unittest.TestCase):
                 f"bare always/never candidate {c.slug!r} must not auto-save at HIGH",
             )
 
-    def test_other_preference_patterns_stay_high(self) -> None:
+    def test_other_preference_patterns_still_reach_high(self) -> None:
+        # Unlike the bare always/never pattern, the explicit preference
+        # pattern can still reach HIGH — when the sentence says it is meant to
+        # last (miner-provenance ruling 4: a durability cue gates HIGH).
         transcript = self.root / "sess.jsonl"
-        _write_transcript(transcript, "I prefer tabs over spaces for indentation")
+        _write_transcript(transcript, "From now on I prefer tabs over spaces for indentation")
         result = reflect.mine_transcript(transcript)
         prefs = [c for c in result["memory_candidates"] if c.category == "preferences"]
         self.assertTrue(prefs, "expected the explicit preference pattern to fire")
-        self.assertTrue(any(c.confidence == "HIGH" for c in prefs))
+        self.assertTrue(any(c.confidence == "HIGH" for c in prefs), [(c.title, c.confidence) for c in prefs])
 
 
 if __name__ == "__main__":
