@@ -26,6 +26,61 @@ if str(_SKILL_SCRIPTS) not in sys.path:
 import save  # noqa: E402
 
 
+class EntryTargetPathTests(unittest.TestCase):
+    """`entry_target_path()` must answer with the path `save_entry()` really
+    writes — not with a second copy of the formula. Each case therefore writes
+    a note and compares against the path the writer itself returned. The bug
+    this pins: `ingest.py` re-derived `vault/group/kind/slug.md`, filing v2
+    started routing a memory type to its class, and the stale copy went on
+    probing `memory/reference/` while every write landed in `memory/semantic/`.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+        (self.vault / "memory").mkdir()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _assert_predicts(self, kind: str, slug: str, **kwargs) -> Path:
+        predicted = save.entry_target_path(self.vault, kind, slug, **kwargs)
+        written = save.save_entry(self.vault, kind, slug, "body text", **kwargs)
+        self.assertEqual(predicted, written)
+        return written
+
+    def test_predicts_a_memory_type_at_its_class_not_a_type_named_folder(self) -> None:
+        written = self._assert_predicts("reference", "a-reference-note")
+        self.assertEqual(written.parent.name, "semantic")
+
+    def test_predicts_a_second_memory_type_routing_to_a_different_class(self) -> None:
+        # Two types landing in the same class would let a hardcoded segment
+        # pass this suite by accident; `workflow` routes to `procedural/`.
+        written = self._assert_predicts("workflow", "a-workflow-note")
+        self.assertEqual(written.parent.name, "procedural")
+
+    def test_predicts_a_record_kind_at_its_own_folder(self) -> None:
+        # A record kind keeps the pre-filing-v2 shape, so this is the case a
+        # stale copy of the old formula still gets right.
+        written = self._assert_predicts("brief", "a-brief-note")
+        self.assertEqual(written.parent.name, "brief")
+
+    def test_predicts_a_retired_value_at_its_replacement(self) -> None:
+        # `domain-reference` is retired to `reference`; the prediction has to
+        # migrate exactly as the writer does, or the ingest path (which still
+        # names the live value) drifts the moment anyone passes the old one.
+        written = self._assert_predicts("domain-reference", "a-retired-note")
+        self.assertEqual(written.parent.name, "semantic")
+
+    def test_predicts_the_always_load_holding_pen(self) -> None:
+        written = self._assert_predicts("reference", "a-pinned-note", always_load=True)
+        self.assertEqual(written.parent.name, "_always-load")
+
+    def test_refuses_a_value_the_contract_does_not_carry(self) -> None:
+        with self.assertRaises(ValueError):
+            save.entry_target_path(self.vault, "not-a-real-vocabulary-value", "x")
+
+
 class FrontmatterFieldOrderTests(unittest.TestCase):
     def test_source_fields_positioned_after_slug_before_fingerprint(self) -> None:
         order = save.FRONTMATTER_FIELD_ORDER

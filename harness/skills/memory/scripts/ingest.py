@@ -45,7 +45,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from chunking import chunk_text  # noqa: E402
-from save import save_entry  # noqa: E402
+from save import entry_target_path, save_entry  # noqa: E402
 
 _USER_AGENT = "agentm-ingest/1.0"
 _FETCH_TIMEOUT_SEC = 15
@@ -297,11 +297,15 @@ def ingest(
     # FileExistsError left the document note and every chunk written
     # before it permanently orphaned on disk while reporting
     # success=False -- the caller had no way to know memory was actually
-    # written. save_entry()'s target formula is vault/group/kind/slug.md
-    # with always_load always False here, so this mirrors it exactly.
+    # written. The destination comes from `save_entry`'s own formula rather
+    # than a copy of it: this check used to re-derive `vault/group/kind/slug.md`
+    # and went dead the moment filing v2 started routing a memory type to its
+    # class (`reference` -> `memory/semantic/`, not `memory/reference/`), so it
+    # spent that whole time probing a directory nothing writes to.
     vault = Path(vault_path)
     all_slugs = [doc_slug, *chunk_slugs]
-    existing = [s for s in all_slugs if (vault / group / _INGEST_KIND / f"{s}.md").exists()]
+    existing = [s for s in all_slugs
+                if entry_target_path(vault, _INGEST_KIND, s, group=group).exists()]
     if existing:
         return IngestResult(
             success=False,
