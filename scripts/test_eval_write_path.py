@@ -84,6 +84,17 @@ class TheScorer(unittest.TestCase):
         with self.assertRaises(ValueError):
             ev.score(self._sheet(["right", "meh"]))
 
+    def test_a_label_with_a_note_and_the_operators_synonyms_score(self):
+        # What an actual labelling produced: notes after a dash, `do-not-file`
+        # for should-not-file, and "not sure" for a doubt.
+        r = ev.score(self._sheet(["right", "wrong-type - not a preference, just a fact",
+                                  "do-not-file", "not sure - this doesn't look like my own writing",
+                                  "not sure", "do-not-record"]))
+        self.assertEqual((r["n"], r["right"]), (6, 1))
+        self.assertEqual(r["by_label"]["should-not-file"], 2)
+        self.assertEqual(r["by_label"]["wrong-type"], 1)
+        self.assertEqual(r["by_label"]["unsure"], 2)
+
     def test_wilson_is_bounded(self):
         self.assertEqual(ev.wilson(0, 0), (0.0, 0.0))
         lo, hi = ev.wilson(10, 10)

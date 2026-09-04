@@ -21,6 +21,7 @@ Usage:
 
 Labels (one per row, on its `label:` line):
     right             the type, class, operation and flags are what you would have done
+    unsure            you cannot tell (counted as not right, reported apart)
     wrong-type        it is a memory, but not of that type
     wrong-op          the update relationship is wrong (should have superseded / should not have / wrong twin)
     wrong-flag        a duplicate or update flag is missing or spurious
@@ -47,8 +48,14 @@ for p in (_SKILL, _HERE):
 import filing_engine as fe  # noqa: E402
 import reflect  # noqa: E402
 
-LABELS = ("right", "wrong-type", "wrong-op", "wrong-flag", "should-not-file")
-_LABEL_RE = re.compile(r"^label:\s*(\S*)\s*$", re.M)
+LABELS = ("right", "wrong-type", "wrong-op", "wrong-flag", "should-not-file", "unsure")
+# The operator labels in their own words and adds a note after a dash; the
+# scorer reads the first token and the synonyms an actual labelling produced.
+# `unsure` counts as not-right and is reported apart, so a doubt is never
+# scored as agreement or silently dropped.
+_SYNONYMS = {"do-not-file": "should-not-file", "do-not-record": "should-not-file",
+             "not-sure": "unsure", "not": "unsure", "wrong-operation": "wrong-op"}
+_LABEL_RE = re.compile(r"^label:[ \t]*([A-Za-z-]*)(?:[ \t]+sure)?(?:[ \t]*[-—:].*)?[ \t]*$", re.M)
 _ROW_RE = re.compile(r"^### (\d+)\. ", re.M)
 
 
@@ -181,7 +188,8 @@ def score(worksheet: Path) -> dict:
     a zero: a half-filled worksheet must never score as a finished one."""
     text = worksheet.read_text(encoding="utf-8")
     rows = _ROW_RE.findall(text)
-    labels = _LABEL_RE.findall(text)
+    labels = [_SYNONYMS.get(l.lower(), l.lower()) for l in _LABEL_RE.findall(text)]
+    labels = ["unsure" if l == "not" else l for l in labels]
     if len(labels) != len(rows):
         raise ValueError(f"{len(rows)} rows but {len(labels)} label lines")
     missing = [i + 1 for i, l in enumerate(labels) if not l]
