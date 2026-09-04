@@ -562,7 +562,7 @@ class TestSchemaPin(unittest.TestCase):
                          "lifecycle", "source", "filing_confidence",
                          # the capture's own record and the engine's review marks
                          # (the write path, tasks 2-3): caller-optional too
-                         "via", "captured", "surface", "instructions", "review_flags", "related")
+                         "via", "captured", "surface", "instructions", "review_flags", "related", "trust")
         )
         self.assertEqual(tuple(keys), expected)
 
@@ -578,7 +578,7 @@ class TestSchemaPin(unittest.TestCase):
             if f not in ("heat_pin", "source_url", "source_fetched",
                          "supersedes", "occurrences", "lifecycle_tier", "derived_from", "arc",
                          "lifecycle", "source", "filing_confidence",
-                         "via", "captured", "surface", "instructions", "review_flags", "related")
+                         "via", "captured", "surface", "instructions", "review_flags", "related", "trust")
         )
         self.assertEqual(tuple(keys), expected)
         self.assertIn("fingerprint: abc123", fm)

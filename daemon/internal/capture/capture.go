@@ -147,6 +147,27 @@ func dailyWriteCap(contract *rules.Rules, contractErr error) int {
 	return int(v)
 }
 
+// trustTier is the write-time trust stamp (filing v2, task 5). A source that
+// names one of the contract's transports takes that transport's tier; a
+// source that is a URL — a page the sources pass mined — is external content
+// and untrusted whatever it says; anything else earns no stamp rather than a
+// guess.
+func trustTier(contract *rules.Rules, contractErr error, source string) string {
+	if source == "" {
+		return ""
+	}
+	if contractErr == nil && contract != nil {
+		if tier, ok := contract.Sources[source]; ok {
+			return tier
+		}
+	}
+	lower := strings.ToLower(source)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return "untrusted"
+	}
+	return ""
+}
+
 func dayStart(t time.Time) time.Time {
 	t = t.UTC()
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
@@ -286,6 +307,7 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		Status:           status,
 		Lifecycle:        "active",
 		FilingConfidence: filingConfidence,
+		Trust:            trustTier(contract, contractErr, strings.TrimSpace(req.Source)),
 		Captured:         captured,
 		Slug:             slug,
 		Title:            title,
@@ -402,12 +424,15 @@ type noteData struct {
 	// supersedes this one, and how far the writer trusted its own typing.
 	Lifecycle        string
 	FilingConfidence string
-	Captured         time.Time
-	Slug             string
-	Title            string
-	Tags             []string
-	Aliases          []string
-	Source           string
+	// Trust is how far to believe where the note came from — the contract's
+	// tier for a named transport, `untrusted` for anything fetched by URL.
+	Trust    string
+	Captured time.Time
+	Slug     string
+	Title    string
+	Tags     []string
+	Aliases  []string
+	Source   string
 	// SourceHash and SourceVersion complete the provenance: what the source
 	// contained when it was read, and the pass that read it. Cheap to write now
 	// and impossible to reconstruct later, which is what makes the source
@@ -460,6 +485,9 @@ func renderNote(d noteData) string {
 	}
 	if d.FilingConfidence != "" {
 		fmt.Fprintf(&b, "filing_confidence: %s\n", d.FilingConfidence)
+	}
+	if d.Trust != "" {
+		fmt.Fprintf(&b, "trust: %s\n", d.Trust)
 	}
 	// The probe marker. Written as a frontmatter field rather than expressed by
 	// where the note lives, because everything downstream that must not count a

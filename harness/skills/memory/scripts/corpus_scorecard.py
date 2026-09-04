@@ -632,6 +632,26 @@ def diagnostics_dir() -> Path:
     return DIAGNOSTICS_DIR
 
 
+def memory_root_from_daemon() -> str:
+    """Where the daemon says the memory root is: its vault plus the parent of
+    its `memory` space (`Agent/memory` → `<vault>/Agent`). The vault root and
+    the memory root are different directories, and `class_populations` and
+    everything beside it read `<memory-root>/memory/`; handing them the vault
+    root lands every walk somewhere plausible that holds nothing."""
+    try:
+        status = _agentmd(["status"]) or {}
+    except DaemonUnavailable:
+        return ""
+    vault = str(status.get("vault") or "")
+    space = str((status.get("spaces") or {}).get("memory") or "").strip("/")
+    if not vault:
+        return ""
+    if not space:
+        return vault
+    parent = Path(space).parent
+    return str(Path(vault) / parent) if str(parent) != "." else vault
+
+
 def vault_from_daemon() -> str:
     """Where the daemon says the vault is.
 
@@ -651,7 +671,7 @@ def main(argv: list = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     repo = Path(__file__).resolve().parents[4]
 
-    vault = os.environ.get("MEMORY_VAULT_PATH") or vault_from_daemon()
+    vault = os.environ.get("MEMORY_VAULT_PATH") or memory_root_from_daemon()
     if not vault:
         print("corpus-scorecard: no vault. Set $MEMORY_VAULT_PATH, or start the "
               "daemon so it can say which vault it is serving.", file=sys.stderr)

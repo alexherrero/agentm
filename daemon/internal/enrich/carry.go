@@ -12,7 +12,7 @@ import (
 // it, which is how an unfiled capture clears the needs-review reading.
 var carriedFields = []string{
 	"source", "lifecycle", "captured", "via", "source_url", "source_fetched",
-	"surface", "instructions", "review_flags", "related",
+	"surface", "instructions", "review_flags", "related", "trust",
 }
 
 // CarryProvenance copies, from the note as it stood before enrichment, every

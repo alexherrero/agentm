@@ -205,6 +205,11 @@ def capture(
         return CaptureResult(success=False, error=f"write failed: {e}")
     except LockTimeout as e:
         return CaptureResult(success=False, error=f"vault busy: {e}")
+    except ValueError as e:
+        # The writer refused a field that would have broken the note — a tag
+        # that is not kebab-case, a slug the rule does not admit. Nothing was
+        # written, and the caller hears why.
+        return CaptureResult(success=False, error=f"refused: {e}")
     except VolumeCapRefused as e:
         # The gate's own words, verbatim: the count, the cap, the edit that
         # raises it. A refused capture is an outcome the caller sees, never

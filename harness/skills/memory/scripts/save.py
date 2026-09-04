@@ -127,6 +127,9 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     # 3): the flags the needs-review reading selects on and the note they
     # point at. All optional.
     "via", "captured", "surface", "instructions", "review_flags", "related",
+    # How far to trust where the note came from (task 5): the contract's
+    # `sources` map, read once at write time so no reader needs the contract.
+    "trust",
 )
 # Required fields = every field except the optional ones.
 # `fingerprint` stays structurally optional in the frontmatter contract, but
@@ -154,7 +157,7 @@ _OPTIONAL_FIELDS = frozenset({
     "source_url", "source_fetched", "fingerprint", "occurrences", "supersedes",
     "lifecycle_tier", "derived_from", "heat_pin", "arc", "altitude",
     "lifecycle", "source", "filing_confidence",
-    "via", "captured", "surface", "instructions", "review_flags", "related",
+    "via", "captured", "surface", "instructions", "review_flags", "related", "trust",
 })
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
@@ -173,9 +176,21 @@ ALTITUDES = ("artifact", "canonical")
 DEFAULT_ALTITUDE = "artifact"
 
 
+def _trust_tier(source: str) -> "str | None":
+    """The tier the contract's `sources` map gives a transport, or None for
+    a transport the contract does not name. Trust is a property of the
+    transport, never of how plausible the content reads."""
+    try:
+        import storage_rules  # function-local, as every contract read in this module is
+        return storage_rules.rules().sources().get(source) or None
+    except Exception:
+        return None
+
+
 def _default_lifecycle() -> str:
     """The contract's `default_lifecycle`, or `active` when no contract answers."""
     try:
+        import storage_rules  # function-local, as every contract read in this module is
         return storage_rules.rules().default_lifecycle() or "active"
     except Exception:
         return "active"
@@ -306,6 +321,7 @@ def _build_frontmatter(
     filing_confidence: str | None = None,
     status: str = "active",
     extra: dict | None = None,
+    trust: str | None = None,
 ) -> str:
     """Build the locked-order YAML frontmatter for a memory entry.
 
@@ -378,6 +394,8 @@ def _build_frontmatter(
         lines.append(f"source: {source}")
     if filing_confidence:
         lines.append(f"filing_confidence: {filing_confidence}")
+    if trust:
+        lines.append(f"trust: {trust}")
     # A capture's own record fields (the surface it came through, the operator's
     # verbatim instructions, the capture stamp) — written last, values quoted
     # as JSON strings when they carry anything YAML would misread.
@@ -465,6 +483,9 @@ def save_entry(
             source = "conversation"
         if filing_confidence is None:
             filing_confidence = "high"
+        trust = _trust_tier(source)
+    else:
+        trust = None
     _validate_kebab(slug, "slug")
     _validate_group(group)
     tags = tags or []
@@ -553,6 +574,7 @@ def save_entry(
         filing_confidence=filing_confidence,
         status=status,
         extra=extra,
+        trust=trust,
     )
     # Ensure body ends with single trailing newline.
     body_stripped = body.rstrip("\n")
