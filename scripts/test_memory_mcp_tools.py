@@ -215,27 +215,33 @@ class TestMemoryCapture(unittest.IsolatedAsyncioTestCase):
         result = await client.call_tool("memory_capture", kw)
         return result.data
 
-    async def test_writes_to_inbox_never_permanent_memory(self):
+    async def test_files_at_class_as_unfiled_never_in_a_staging_dir(self):
+        # Filing v2, the write path: a capture lands in the class directory the
+        # contract routes its type to, marked `unfiled` at low confidence — the
+        # metadata is the inbox. No staging directory, no type-named folder.
         transport = FastMCPTransport(_srv.mcp)
         async with Client(transport) as client:
             res = await self._call_capture(client, content="a captured thought")
         self.assertTrue(res["success"])
-        self.assertIn("memory/_inbox/", res["id"])
+        self.assertTrue(res["id"].startswith("memory/"), res["id"])
+        self.assertNotIn("_inbox", res["id"])
         entry_path = self._vault / res["id"]
         self.assertTrue(entry_path.is_file())
-        # Never lands under personal/capture/ or personal/idea/ — those
-        # would be memory_append's territory, not this tool's.
+        content = entry_path.read_text()
+        self.assertIn("status: unfiled", content)
+        self.assertIn("filing_confidence: low", content)
+        self.assertIn("source: operator-direct", content)
+        self.assertFalse((self._vault / "memory" / "_inbox").exists())
         self.assertFalse((self._vault / "memory" / "capture").exists())
-        self.assertFalse((self._vault / "memory" / "idea").exists())
 
-    async def test_idea_kind_stages_to_inbox_too(self):
+    async def test_idea_kind_files_as_type_idea(self):
         transport = FastMCPTransport(_srv.mcp)
         async with Client(transport) as client:
             res = await self._call_capture(client, content="an idea", kind="idea")
         self.assertTrue(res["success"])
         content = (self._vault / res["id"]).read_text()
-        self.assertIn("kind: idea", content)
-        self.assertIn("status: inbox", content)
+        self.assertIn("type: idea", content)
+        self.assertIn("status: unfiled", content)
 
     async def test_link_carrying_candidate_marks_source_url(self):
         transport = FastMCPTransport(_srv.mcp)

@@ -464,7 +464,11 @@ def _build_promote_proposal(vault_path: Path, cluster_paths: list, loaded: dict,
     fm, body, _raw = loaded[hub]
     kind = fm.get("kind") or "idea"
     slug = fm.get("slug") or hub.stem
-    canonical_path = Path(vault_path) / "memory" / kind / f"{slug}.md"
+    # Filing-v2: a memory type files into the class the contract routes it to,
+    # exactly as `save_entry` now does (the same `_class_segment`), so promote
+    # and save land in one place.
+    import save  # noqa: E402  (same skill dir)
+    canonical_path = Path(vault_path) / "memory" / save._class_segment("type", kind) / f"{slug}.md"
     if canonical_path.exists():
         return None
 

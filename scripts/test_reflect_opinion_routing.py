@@ -100,7 +100,7 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         # in the general inbox instead.
         stats = self._route([_cand(**_STANDARD, confidence="LOW", slug="gate-low")])
         self.assertEqual(stats["opinion_supplements"], 1)
-        self.assertEqual(stats["inboxed"], 0)
+        self.assertEqual(stats["filed_low"], 0)
 
     def test_slug_collision_keeps_both(self):
         # Two DIFFERENT supplements that happen to slug alike. The bodies were

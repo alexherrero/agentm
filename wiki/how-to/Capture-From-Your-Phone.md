@@ -9,9 +9,9 @@ The phone path itself needs no new setup beyond the Capture project — that doo
 
 ## Steps
 
-1. **Send something from your phone.** Open the **Capture** project in the Claude app and send `capture this: <link>`, a bare thought, or `idea: <thought>`. You can add a trailing instruction like `tag:urgent` or `file-under:work` — these two are the only instructions this sweep executes automatically (see `dispatch_instruction()`, `harness/skills/memory/scripts/ingest_sweep.py:291-306`); anything else (e.g. "research this further, then file") is left for you to act on yourself, surfaced in the digest rather than executed.
+1. **Send something from your phone.** Open the **Capture** project in the Claude app and send `capture this: <link>`, a bare thought, or `idea: <thought>`. You can add a trailing instruction like `tag:urgent` or `file-under:work` — these two are the only instructions this sweep executes automatically (see `dispatch_instruction()`, `harness/skills/memory/scripts/ingest_sweep.py:424-441`); anything else (e.g. "research this further, then file") is left for you to act on yourself, surfaced in the digest rather than executed.
 
-2. **The candidate lands in your vault's `_inbox/`.** The Google Drive connector creates the file directly — your machine can be asleep; Drive delivers it when the machine wakes. Nothing else happens until the ingest sweep runs.
+2. **The candidate lands in your vault's `_inbox/`.** The Google Drive connector creates the file directly. Your machine can be asleep — the connector delivers the file when the machine wakes. The phone Capture project still writes candidates into `_inbox/`: this is the one door filing v2's write path didn't retire. Every other capture front door now files directly at its class directory with `status: unfiled`. The sweep below reads both populations as one combined set. Nothing happens until it runs.
 
 3. **Register the sweep (one-time).**
 
@@ -21,11 +21,11 @@ The phone path itself needs no new setup beyond the Capture project — that doo
 
    `.harness/jobs/` is gitignored, so this is a local, per-machine step. The manifest ships `dry_run: true` — watch a real cycle before flipping it, matching every other new job template in this repo. Until you register it (or flip `dry_run`), run the sweep yourself: `python3 harness/skills/memory/scripts/ingest_sweep.py`.
 
-4. **First cycle: fetch + stage.** Within an hour, the sweep fetches your link (or, for an Obsidian Web Clipper capture, skips the fetch — it already has the full content), and patches your original candidate note in place: `status: ingest_staged`, the fetched text appended under a `## Fetched content` heading. This candidate is not yet recall-visible — it's still sitting in `_inbox/`, exactly as invisible to recall as it was before the sweep touched it (`stage_candidate()`, `ingest_sweep.py:201-247`).
+4. **First cycle: fetch and stage.** Within an hour, the sweep fetches your link — or, for an Obsidian Web Clipper capture, skips the fetch, since it already has the full content. It patches your original candidate note in place, wherever that candidate already lives: `_inbox/` or its class directory. The patch sets `status: ingest_staged` and appends the fetched text under a `## Fetched content` heading. A staged candidate is excluded from recall by that status field — `recall.py` checks it, not the note's location (`stage_candidate()`, `ingest_sweep.py:270-347`).
 
-5. **Second cycle: promotion.** Once a staged candidate has survived one full sweep cycle (≈1 hour), the next run promotes it — `ingest.ingest()` (unchanged from `/memory ingest`, see [Ingest an article](Ingest-An-Article)) writes the real, permanent, indexed entries at `personal/domain-reference/`. Your original candidate flips to `status: ingested`. From here it surfaces in ordinary recall like anything else.
+5. **Second cycle: promotion.** A staged candidate that survives one full sweep cycle (≈1 hour) gets promoted on the next run. `ingest.ingest()` (unchanged from `/memory ingest`, see [Ingest an article](Ingest-An-Article)) writes the permanent, indexed entries to `memory/semantic/` — `kind: reference`, the class the filing contract routes it to. Your original candidate flips to `status: ingested` wherever it lives, and drops its `## Fetched content` section now that the real copy exists (`promote_candidate()`, `ingest_sweep.py:366-417`). From here it surfaces in ordinary recall like anything else.
 
-6. **A resend isn't fetched or promoted twice.** The Drive connector can create files but never update or delete them, so an uncertain send sometimes lands twice. The sweep checks sibling `_inbox/` candidates for a matching `source_url` before fetching (`_find_duplicate_by_source_url()`, `ingest_sweep.py:177-195`) — a resend is marked `status: ingest_duplicate` and pointed at the original, never re-fetched or promoted separately.
+6. **A resend isn't fetched or promoted twice.** The Drive connector can create files. It can't update or delete them, so an uncertain send sometimes lands twice. The sweep checks every candidate it can see — `_inbox/`'s legacy population and every class directory alike — for a matching `source_url` before fetching (`_find_duplicate_by_source_url()`, `ingest_sweep.py:247-267`). A resend is marked `status: ingest_duplicate` and pointed at the original: never re-fetched, never promoted separately.
 
 ## Why the delay
 
@@ -39,12 +39,19 @@ The first version of this design would have written the fetched content straight
 
 ## Troubleshooting
 
-- **Nothing seems to happen.** Check the candidate's own `status:` field in `_inbox/` — `inbox` means the sweep hasn't run yet (or the job isn't registered); `ingest_staged` means it's in its review window; `ingested` means it's done and should be recallable.
-- **A fetch failed.** The candidate stays at `status: inbox` with nothing recorded as lost — the sweep's digest surfaces the failure explicitly (`_render_digest()`, `ingest_sweep.py:499-524`). Fix the link or drop the candidate by hand; the sweep will retry it on the next cycle either way.
-- **An idea capture (`idea: <thought>`) doesn't show up in `Ideas.md`.** `Ideas.md` lives outside the vault, so folding an idea into it crosses the A3 permeable-write-boundary — which denies by default in this sweep's unattended context. Set `MEMORY_REVIEW_MODE=silent` for the job if you want ideas folded automatically, or fold the candidate yourself via `/memory inbox --bulk-review`.
+- **Nothing seems to happen.** Check the candidate's own `status` field:
+
+  - `unfiled`, or the legacy `inbox` for anything the phone connector wrote — the sweep hasn't run yet, or the job isn't registered.
+  - `ingest_staged` — the candidate is in its review window.
+  - `ingested` — done, and it should be recallable.
+
+  The candidate never moves house for any of this. Look for it at its class directory (`memory/semantic/` for a plain thought or a link), or in `_inbox/` for a phone capture.
+
+- **A fetch failed.** The candidate stays at its current status — `unfiled` or `inbox` — with nothing recorded as lost. The sweep's digest surfaces the failure explicitly (`_render_digest()`, `ingest_sweep.py:627-668`). Fix the link, or drop the candidate by hand; the sweep retries it on the next cycle either way.
+- **An idea capture (`idea: <thought>`) doesn't show up in `Ideas.md`.** `Ideas.md` lives outside the vault, so folding an idea into it crosses the A3 permeable-write-boundary — denied by default in this sweep's unattended context. Set `MEMORY_REVIEW_MODE=silent` for the job if you want ideas folded automatically, or add it to `Ideas.md` yourself. `/memory inbox --bulk-review` won't find it: filing v2's write path moved idea captures off `_inbox/` onto their class directory, and the bulk-review triage tool still only reads the retired one.
 
 ## See also
 
 - [Ingest an article](Ingest-An-Article) — the explicit, human-invoked door this sweep's promotion step reuses.
-- [Memory MCP tools reference](Memory-MCP-Tools) — `memory_capture`'s field-level detail, the tool that puts a candidate in `_inbox/` in the first place.
+- [Memory MCP tools reference](Memory-MCP-Tools) — `memory_capture`'s field-level detail, the capture contract this sweep's candidates share.
 - `wiki/designs/agentm-capture.md` — the full design, including the Trust Boundary section this page's "Why the delay" summarizes.

@@ -190,8 +190,9 @@ if [[ -f "$REFLECTED_MARKER" ]]; then
 fi
 
 # Invoke reflect.py with --summary + --route. The routing pass auto-saves
-# HIGH candidates to canonical paths + sends MEDIUM/LOW + ideas to _inbox/.
-# Route-mode defaults to "auto" (hook-safe; never prompts; MEDIUM → _inbox/)
+# every candidate to its class directory: HIGH at high confidence, MEDIUM/LOW
+# + ideas flagged `filing_confidence: low` (the metadata inbox, filing v2).
+# Route-mode defaults to "auto" (hook-safe; never prompts; MEDIUM → filed flagged)
 # unless operator sets MEMORY_REVIEW_MODE=silent (auto-save MEDIUM) or
 # MEMORY_REVIEW_MODE=interactive (which falls back to auto here since hooks
 # have no TTY).
@@ -229,9 +230,9 @@ try:
 except: print(0)' 2>/dev/null || echo 0)"
     INBOXED="$(printf '%s' "$ROUTE_LINE" | python3 -c 'import json,sys;
 try:
-    d=json.loads(sys.stdin.read()); print(d.get("inboxed",0)+d.get("ideas_inboxed",0))
+    d=json.loads(sys.stdin.read()); print(d.get("filed_low",0)+d.get("ideas_filed",0))
 except: print(0)' 2>/dev/null || echo 0)"
-    echo "[memory-reflect-stop] Mined ${MEM_COUNT} memory + ${IDEA_COUNT} idea candidates from $TRANSCRIPT; saved $SAVED, inboxed $INBOXED" >&2
+    echo "[memory-reflect-stop] Mined ${MEM_COUNT} memory + ${IDEA_COUNT} idea candidates from $TRANSCRIPT; saved $SAVED, filed flagged for review $INBOXED" >&2
 else
     echo "[memory-reflect-stop] Mined ${MEM_COUNT} memory + ${IDEA_COUNT} idea candidates from $TRANSCRIPT (routing skipped)" >&2
 fi

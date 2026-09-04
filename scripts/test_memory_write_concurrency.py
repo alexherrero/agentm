@@ -131,7 +131,7 @@ class TestEvolveRouting(_MemWriteTestBase):
 
     def test_evolve_in_place_no_tmp_remnant(self) -> None:
         self._seed()
-        old_rel = Path("memory") / "workflow" / "evolvable.md"
+        old_rel = Path("memory") / "procedural" / "evolvable.md"
         new_path, archive_path = evolve.evolve_entry(
             self.vault, old_rel, "updated body", "because reasons",
         )
@@ -143,7 +143,7 @@ class TestEvolveRouting(_MemWriteTestBase):
 
     def test_evolve_lf_preserved_no_crlf(self) -> None:
         self._seed("lf-evolve")
-        old_rel = Path("memory") / "workflow" / "lf-evolve.md"
+        old_rel = Path("memory") / "procedural" / "lf-evolve.md"
         new_path, archive_path = evolve.evolve_entry(
             self.vault, old_rel, "new\nmulti\nline", "reason",
         )
@@ -154,7 +154,7 @@ class TestEvolveRouting(_MemWriteTestBase):
         # The archive write + the new-entry write must happen under ONE lock
         # acquisition so no concurrent writer interleaves between them.
         self._seed("single-lock")
-        old_rel = Path("memory") / "workflow" / "single-lock.md"
+        old_rel = Path("memory") / "procedural" / "single-lock.md"
         _SpyMutex.events = []
         orig = evolve.vault_mutex
         evolve.vault_mutex = _SpyMutex
@@ -170,7 +170,7 @@ class TestEvolveRouting(_MemWriteTestBase):
 
     def test_evolve_rename_writes_new_and_unlinks_old(self) -> None:
         self._seed("rename-me")
-        old_rel = Path("memory") / "workflow" / "rename-me.md"
+        old_rel = Path("memory") / "procedural" / "rename-me.md"
         new_path, archive_path = evolve.evolve_entry(
             self.vault, old_rel, "renamed body", "reason", new_slug="renamed",
         )
@@ -210,7 +210,7 @@ class TestConcurrentSaves(_MemWriteTestBase):
 
         self.assertFalse(any(t.is_alive() for t in threads), "a writer hung (possible deadlock)")
         self.assertEqual(errors, [], f"concurrent saves raised: {errors}")
-        note_dir = self.vault / "memory" / "workflow"
+        note_dir = self.vault / "memory" / "procedural"
         landed = sorted(p.name for p in note_dir.glob("*.md"))
         self.assertEqual(landed, [f"slug-{i:02d}.md" for i in range(n_writers)])
         self.assertEqual(_tmp_remnants(self.vault), [], "a .tmp survived the concurrent run")

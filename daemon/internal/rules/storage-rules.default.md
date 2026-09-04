@@ -320,6 +320,12 @@ warrants: {}
 
 thresholds:
   low_confidence: 0.65
+  # The capture-volume gate (filing v2, the write path). Memories written per
+  # day, all writers together; the next write past it is refused with a named
+  # message. Grounded in the live corpus on 2026-09-04: the busiest day on
+  # record wrote 110, the 30-day median 12 — this sits above every real day
+  # and well below what the last flood did. 0 disables the gate.
+  daily_write_cap: 200
   enrichment_input_chars: 24000
   decay_full_days: 180
   decay_half_days: 365

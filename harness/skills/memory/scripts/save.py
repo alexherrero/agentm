@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import json
 import re
 import sys
 from datetime import date
@@ -38,6 +39,7 @@ from storage_device_local import DeviceLocalBackend  # noqa: E402
 
 # Validation regexes (must match the skill body's documented contracts).
 _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
+_SLUG_SEGMENT = re.compile(r"^[a-z0-9-]+(?:~dup[0-9]*)?$")
 # Group is a vault subdirectory path: one or more kebab segments joined by `/`.
 # (Widened V4 #33: the live vault uses deep groups like
 # `projects/<slug>/decisions` — the prior single-sub-segment regex was behind
@@ -116,6 +118,18 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "source_url", "source_fetched",
     "fingerprint", "occurrences", "always_load", "supersedes", "lifecycle_tier",
     "derived_from", "heat_pin",
+    # Filing-v2 (the write path): the aging axis, the provenance transport, and
+    # the write-time judgment's confidence — stamped by the filing engine on
+    # every auto-filed note; optional, so a hand-written entry stays complete.
+    "lifecycle", "source", "filing_confidence",
+    # A capture's own record (the write path, task 2): how it arrived and what
+    # the operator said at capture time; and the engine's review marks (task
+    # 3): the flags the needs-review reading selects on and the note they
+    # point at. All optional.
+    "via", "captured", "surface", "instructions", "review_flags", "related",
+    # How far to trust where the note came from (task 5): the contract's
+    # `sources` map, read once at write time so no reader needs the contract.
+    "trust",
 )
 # Required fields = every field except the optional ones.
 # `fingerprint` stays structurally optional in the frontmatter contract, but
@@ -142,6 +156,8 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
 _OPTIONAL_FIELDS = frozenset({
     "source_url", "source_fetched", "fingerprint", "occurrences", "supersedes",
     "lifecycle_tier", "derived_from", "heat_pin", "arc", "altitude",
+    "lifecycle", "source", "filing_confidence",
+    "via", "captured", "surface", "instructions", "review_flags", "related", "trust",
 })
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
@@ -158,6 +174,26 @@ def _today_iso() -> str:
 # `canonical` rather than assuming it.
 ALTITUDES = ("artifact", "canonical")
 DEFAULT_ALTITUDE = "artifact"
+
+
+def _trust_tier(source: str) -> "str | None":
+    """The tier the contract's `sources` map gives a transport, or None for
+    a transport the contract does not name. Trust is a property of the
+    transport, never of how plausible the content reads."""
+    try:
+        import storage_rules  # function-local, as every contract read in this module is
+        return storage_rules.rules().sources().get(source) or None
+    except Exception:
+        return None
+
+
+def _default_lifecycle() -> str:
+    """The contract's `default_lifecycle`, or `active` when no contract answers."""
+    try:
+        import storage_rules  # function-local, as every contract read in this module is
+        return storage_rules.rules().default_lifecycle() or "active"
+    except Exception:
+        return "active"
 
 
 def _resolve_vocabulary(value: str) -> tuple:
@@ -208,11 +244,34 @@ def _resolve_vocabulary(value: str) -> tuple:
     )
 
 
+def _class_segment(vocabulary_field: str, value: str) -> str:
+    """The directory segment a note files under. Filing-v2 part 3 populated the
+    six classes, so a memory type files into the class the contract routes it
+    to (`preference` → `semantic/`, `workflow` → `procedural/`) rather than a
+    type-named folder — the legacy layout the corpus migration dissolved and
+    that this writer had kept regrowing. A record kind keeps its own folder.
+    Without a contract to ask there is no class, and the type-named folder is
+    the honest fallback rather than a guessed class."""
+    if vocabulary_field != "type":
+        return value
+    try:
+        import storage_rules
+        class_dir = storage_rules.rules().routing().get(value)
+    except Exception:
+        class_dir = None
+    return class_dir.rsplit("/", 1)[-1] if class_dir else value
+
+
+# A slug is kebab-case, optionally carrying the `~dup` mark the filing engine
+# and the corpus migration settle a namesake with (`<slug>~dup`, `~dup2`, …):
+# two different notes that slug alike are two notes, and the mark is how the
+# second keeps its name without pretending to be the first.
 def _validate_kebab(value: str, arg_name: str) -> None:
-    """Raise ValueError if `value` is not kebab-case (^[a-z0-9-]+$)."""
-    if not _KEBAB_SEGMENT.match(value):
+    """Raise ValueError if `value` is not kebab-case (^[a-z0-9-]+(?:~dup[0-9]*)?$)."""
+    rule = _SLUG_SEGMENT if arg_name == "slug" else _KEBAB_SEGMENT
+    if not rule.match(value):
         raise ValueError(
-            f"{arg_name} {value!r}: must be kebab-case (^[a-z0-9-]+$)"
+            f"{arg_name} {value!r}: must be kebab-case ({rule.pattern})"
         )
 
 
@@ -234,6 +293,14 @@ def _validate_tags(tags: list[str]) -> None:
             )
 
 
+# A value written bare only when YAML reads it back as the same string: one
+# token of word characters, dots, slashes, colons and dashes (a timestamp, a
+# URL, a slug) that is not a YAML literal. Everything else is JSON-quoted, so
+# an operator's verbatim instruction survives the round trip untouched.
+_BARE_SCALAR = re.compile(r"^[A-Za-z0-9_./@:+-]+$")
+_YAML_SPECIAL = {"true", "false", "yes", "no", "on", "off", "null", "~"}
+
+
 def _build_frontmatter(
     *,
     kind: str,
@@ -249,6 +316,12 @@ def _build_frontmatter(
     fingerprint: str | None = None,
     lifecycle_tier: str | None = None,
     derived_from: list[str] | None = None,
+    lifecycle: str | None = None,
+    source: str | None = None,
+    filing_confidence: str | None = None,
+    status: str = "active",
+    extra: dict | None = None,
+    trust: str | None = None,
 ) -> str:
     """Build the locked-order YAML frontmatter for a memory entry.
 
@@ -286,7 +359,7 @@ def _build_frontmatter(
     lines = [
         "---",
         f"{vocabulary_field}: {kind}",
-        "status: active",
+        f"status: {status}",
         f"altitude: {altitude}",
         f"created: {today}",
         f"updated: {today}",
@@ -313,6 +386,32 @@ def _build_frontmatter(
         lines.append(f"lifecycle_tier: {lifecycle_tier}")
     if derived_from:
         lines.append("derived_from: [" + ", ".join(derived_from) + "]")
+    # Filing-v2 write-time stamps. `always_load` already spelled the lifecycle
+    # (`pinned`) above and wins; otherwise the engine's value is written.
+    if lifecycle and not always_load:
+        lines.append(f"lifecycle: {lifecycle}")
+    if source:
+        lines.append(f"source: {source}")
+    if filing_confidence:
+        lines.append(f"filing_confidence: {filing_confidence}")
+    if trust:
+        lines.append(f"trust: {trust}")
+    # A capture's own record fields (the surface it came through, the operator's
+    # verbatim instructions, the capture stamp) — written last, values quoted
+    # as JSON strings when they carry anything YAML would misread.
+    extra = extra or {}
+    ordered = [k for k in FRONTMATTER_FIELD_ORDER if k in extra] + [k for k in extra if k not in FRONTMATTER_FIELD_ORDER]
+    for key in ordered:
+        value = extra[key]
+        if value is None or value == "" or value == []:
+            continue
+        if isinstance(value, (list, tuple)):
+            text = "[" + ", ".join(str(v) for v in value) + "]"
+        else:
+            text = str(value)
+            if not _BARE_SCALAR.match(text) or text.lower() in _YAML_SPECIAL:
+                text = json.dumps(text)
+        lines.append(f"{key}: {text}")
     lines.append("---")
     return "\n".join(lines) + "\n"
 
@@ -333,6 +432,11 @@ def save_entry(
     lifecycle_tier: str | None = None,
     derived_from: list[str] | None = None,
     dedup_info: dict | None = None,
+    lifecycle: str | None = None,
+    source: str | None = None,
+    filing_confidence: str | None = None,
+    status: str = "active",
+    extra: dict | None = None,
 ) -> Path:
     """Write a memory entry to the vault. Returns the absolute path written —
     or, when the write-time dedup guard fires (auto-org part 3 task 2), the
@@ -366,6 +470,22 @@ def save_entry(
     # migrating to its replacement therefore also moves where NEW notes of that
     # value are written, which is the collapse working rather than a side effect.
     vocabulary_field, kind, vocabulary_note = _resolve_vocabulary(kind)
+    # The write-time stamps (filing v2, task 3) on every memory the writer
+    # files, whoever the caller is: a caller that named the type stands behind
+    # it (high confidence), the transport is a conversation unless the caller
+    # says otherwise (the CLI says operator-direct, the ingest says
+    # external-fetch), and the aging axis starts where the contract says. A
+    # record keeps its own shape; an always-load rule never ages.
+    if vocabulary_field == "type":
+        if lifecycle is None and not always_load:
+            lifecycle = _default_lifecycle()
+        if source is None:
+            source = "conversation"
+        if filing_confidence is None:
+            filing_confidence = "high"
+        trust = _trust_tier(source)
+    else:
+        trust = None
     _validate_kebab(slug, "slug")
     _validate_group(group)
     tags = tags or []
@@ -423,7 +543,7 @@ def save_entry(
     if always_load:
         target = vault / "memory" / "_always-load" / f"{slug}.md"
     else:
-        target = group_target_dir(vault, group) / kind / f"{slug}.md"
+        target = group_target_dir(vault, group) / _class_segment(vocabulary_field, kind) / f"{slug}.md"
 
     if target.exists():
         raise FileExistsError(
@@ -449,6 +569,12 @@ def save_entry(
         fingerprint=fingerprint,
         lifecycle_tier=lifecycle_tier,
         derived_from=derived_from,
+        lifecycle=lifecycle,
+        source=source,
+        filing_confidence=filing_confidence,
+        status=status,
+        extra=extra,
+        trust=trust,
     )
     # Ensure body ends with single trailing newline.
     body_stripped = body.rstrip("\n")
@@ -470,6 +596,12 @@ def save_entry(
     backend = DeviceLocalBackend(root=vault)
     locator = backend.resolve(*target.relative_to(vault).parts)
     with vault_mutex(vault):
+        # Re-checked under the lock: the guard above ran before the mutex, and
+        # two writers that both saw the name free would otherwise both write
+        # it, the second silently over the first. The loser gets the same
+        # FileExistsError and settles a new name.
+        if target.exists():
+            raise FileExistsError(f"entry already exists at {target}: a concurrent writer landed first")
         # The dedup guard's find+reinforce and the write share this one
         # critical section: two concurrent identical saves serialize here,
         # and the loser sees the winner (once indexed) rather than both
@@ -597,6 +729,7 @@ def main(argv: list[str] | None = None) -> int:
             supersedes=args.supersedes,
             fingerprint=args.fingerprint,
             lifecycle_tier=args.lifecycle_tier,
+            source="operator-direct",
         )
     except (FileNotFoundError, FileExistsError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)

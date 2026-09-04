@@ -211,11 +211,42 @@ def _class_reading(vault) -> Reading:
                             note=" · ".join(parts))
 
 
-def section_corpus(vault: "Path | None" = None) -> Section:
+def _needs_review_reading(vault) -> Reading:
+    """The metadata soft inbox, counted (filing v2, the write path): notes
+    filed at low confidence, captures still unfiled, probable duplicates
+    flagged beside their twin. The design named this line as the alarm that
+    replaces the pile the retired staging directory used to be."""
+    if vault is None or not (Path(vault) / "memory").is_dir():
+        return Reading.unavailable("needs review", "no memory/ under the vault",
+                                   source="memory/<class>/ walk")
+    import needs_review  # same skill dir
+    summary = needs_review.summary(vault)
+    parts = [f"{reason} {n}" for reason, n in summary["by_reason"].items() if n]
+    return Reading.measured("needs review", summary["total"], source="memory/<class>/ walk",
+                            note=(" · ".join(parts) or "nothing waiting") + f" · MOC {needs_review.MOC_REL}")
+
+
+def _writes_reading(vault, *, today=None) -> Reading:
+    """Writes per day with the week-over-week trend and the headroom under
+    the volume gate's cap (filing v2, task 4) — the alarm that replaces the
+    pile the retired staging directory used to be."""
+    if vault is None or not (Path(vault) / "memory").is_dir():
+        return Reading.unavailable("writes per day", "no memory/ under the vault",
+                                   source="memory/<class>/ walk by captured date")
+    import volume_gate  # same skill dir
+    t = volume_gate.trend(vault, today=today)
+    return Reading.measured("writes per day", t["today"],
+                            source="memory/<class>/ walk by captured date",
+                            note=volume_gate.describe(t))
+
+
+def section_corpus(vault: "Path | None" = None, *, today=None) -> Section:
     """How much memory there is, and how much of it is waiting."""
     s = Section("The corpus", blurb=(
         "How much there is, and how much of it is still waiting to be filed."))
     s.readings.append(_class_reading(vault))
+    s.readings.append(_needs_review_reading(vault))
+    s.readings.append(_writes_reading(vault, today=today))
     try:
         status = _agentmd(["status"])
     except DaemonUnavailable as exc:
@@ -556,7 +587,7 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sections = [
-        section_corpus(vault),
+        section_corpus(vault, today=now.date()),
         section_completeness(out_dir),
         section_meters(),
         _with_gate(section_retrieval(repo), out_dir),
@@ -601,6 +632,26 @@ def diagnostics_dir() -> Path:
     return DIAGNOSTICS_DIR
 
 
+def memory_root_from_daemon() -> str:
+    """Where the daemon says the memory root is: its vault plus the parent of
+    its `memory` space (`Agent/memory` → `<vault>/Agent`). The vault root and
+    the memory root are different directories, and `class_populations` and
+    everything beside it read `<memory-root>/memory/`; handing them the vault
+    root lands every walk somewhere plausible that holds nothing."""
+    try:
+        status = _agentmd(["status"]) or {}
+    except DaemonUnavailable:
+        return ""
+    vault = str(status.get("vault") or "")
+    space = str((status.get("spaces") or {}).get("memory") or "").strip("/")
+    if not vault:
+        return ""
+    if not space:
+        return vault
+    parent = Path(space).parent
+    return str(Path(vault) / parent) if str(parent) != "." else vault
+
+
 def vault_from_daemon() -> str:
     """Where the daemon says the vault is.
 
@@ -620,7 +671,7 @@ def main(argv: list = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     repo = Path(__file__).resolve().parents[4]
 
-    vault = os.environ.get("MEMORY_VAULT_PATH") or vault_from_daemon()
+    vault = os.environ.get("MEMORY_VAULT_PATH") or memory_root_from_daemon()
     if not vault:
         print("corpus-scorecard: no vault. Set $MEMORY_VAULT_PATH, or start the "
               "daemon so it can say which vault it is serving.", file=sys.stderr)

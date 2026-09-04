@@ -57,7 +57,12 @@ class StagingTests(unittest.TestCase):
         _new_candidate(self.vault, source_url="https://example.com/article")
         with mock.patch("ingest.fetch_url", return_value=self.fixture_text):
             ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
-        self.assertEqual(recall._iter_entry_paths(self.vault), [])
+        # The candidate is home at its class (filing v2), so the walk sees the
+        # file; recall's serving filter is what keeps a staged note out of an
+        # answer. The claim is checked where it is enforced: at match time.
+        self.assertEqual(len(recall._iter_entry_paths(self.vault)), 1)
+        self.assertEqual(recall._grep_search(self.vault, ["article", "worth", "remembering"]), {})
+        self.assertEqual(recall._bm25_search(self.vault, ["article", "worth", "remembering"]), {})
 
     def test_clip_skips_fetch(self) -> None:
         path = _new_candidate(
@@ -77,7 +82,7 @@ class StagingTests(unittest.TestCase):
             result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
         self.assertEqual(len(result.fetch_failures), 1)
         fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
-        self.assertEqual(fm["status"], "inbox", "a failed fetch must leave the candidate exactly as it was, never dropped")
+        self.assertEqual(fm["status"], "unfiled", "a failed fetch must leave the candidate exactly as it was, never dropped")
 
     def test_same_cycle_resend_is_not_fetched_or_promoted_twice(self) -> None:
         # The Drive connector's own documented create-only ceiling: an
@@ -124,7 +129,7 @@ class StagingTests(unittest.TestCase):
         self.assertEqual(result.fetched, [])
         self.assertEqual(result.staged_clips, [])
         fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
-        self.assertEqual(fm["status"], "inbox")
+        self.assertEqual(fm["status"], "unfiled")
 
 
 class PromotionTests(unittest.TestCase):
@@ -142,7 +147,9 @@ class PromotionTests(unittest.TestCase):
     def test_does_not_promote_within_the_same_cycle(self) -> None:
         result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp() + 60)
         self.assertEqual(result.promoted, [])
-        self.assertEqual(recall._iter_entry_paths(self.vault), [])
+        # Still the one staged candidate, still unserved — nothing promoted.
+        self.assertEqual(len(recall._iter_entry_paths(self.vault)), 1)
+        self.assertEqual(recall._bm25_search(self.vault, ["article", "worth", "remembering"]), {})
 
     def test_promotes_after_the_staging_window(self) -> None:
         result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp() + 3700)
@@ -156,7 +163,9 @@ class PromotionTests(unittest.TestCase):
         # retired value was a path segment — a proxy for the real claim. The
         # collapse moved those notes to `memory/reference/`, so the assertion now
         # makes the claim directly.
-        self.assertIn("memory/reference/", fm["derived_from"])
+        # filing-v2 (the write path): a memory type files into its class, so the
+        # reference notes the ingest produced now live under `memory/semantic/`.
+        self.assertIn("memory/semantic/", fm["derived_from"])
         self.assertNotIn("domain-reference", fm["derived_from"],
                          "the retired value is still in a path the sweep wrote")
         self.assertNotIn(ingest_sweep._FETCHED_CONTENT_START, body, "the fetched-content scratch section is dropped once promoted")
@@ -310,7 +319,7 @@ class IdeaFoldTests(unittest.TestCase):
         self.assertEqual(result.idea_folded, [])
         self.assertEqual(len(result.idea_fold_denied), 1)
         fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
-        self.assertEqual(fm["status"], "inbox")
+        self.assertEqual(fm["status"], "unfiled")
 
     def test_idea_fold_succeeds_when_boundary_is_opted_in(self) -> None:
         path = _new_candidate(self.vault, kind="idea", content="a real idea worth keeping")

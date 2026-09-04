@@ -73,6 +73,10 @@ func RenderNote(r Response, s Stamp) string {
 	writeScalar(&b, "altitude", r.Altitude)
 	writeScalar(&b, "status", StatusFor(r.Confidence))
 	fmt.Fprintf(&b, "confidence: %.2f\n", r.Confidence)
+	// The categorical twin of the number, in the vocabulary every writer
+	// shares (filing v2): the needs-review reading selects on it without
+	// knowing this pass's floor.
+	writeScalar(&b, "filing_confidence", FilingConfidenceFor(r.Confidence))
 	writeList(&b, "tags", r.Tags)
 	writeList(&b, "aliases", r.Aliases)
 	if r.Summary != "" {
@@ -112,6 +116,17 @@ func StatusFor(confidence float64) string {
 		return "active"
 	}
 	return "unfiled"
+}
+
+// FilingConfidenceFor is the write-time confidence stamp an enrichment earns —
+// `high` at or above the floor, `low` below it. Two values on purpose: the
+// floor is the one judgment this pass makes about its own number, and a third
+// band would be a threshold nobody measured.
+func FilingConfidenceFor(confidence float64) string {
+	if confidence >= ConfidenceFloor {
+		return "high"
+	}
+	return "low"
 }
 
 func writeScalar(b *strings.Builder, key, value string) {

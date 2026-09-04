@@ -70,6 +70,35 @@ except Exception:  # pragma: no cover — degrade gracefully if the ideas surfac
     append_idea_to_surface = None  # type: ignore[assignment]
 
 _INBOX_SUBDIR = ("memory", "_inbox")
+# The states a candidate waits in before anything has acted on it: `unfiled`
+# is what the write path stamps on a capture filed at its class directory
+# (filing v2); `inbox` is what the retired staging directory used.
+_UNREVIEWED = ("inbox", "unfiled")
+
+
+# Flat files under a class directory that are records rather than captures —
+# a map of content or a class's own index — never enter the walk.
+_RECORD_LIKE = frozenset({"moc", "dir-index"})
+
+
+def _is_idea(fm: dict) -> bool:
+    return fm.get("type") == "idea" or fm.get("kind") == "idea"
+
+
+def _tags(fm: dict) -> "list[str]":
+    raw = fm.get("tags")
+    if isinstance(raw, list):
+        return [str(t).strip() for t in raw]
+    if isinstance(raw, str):
+        return [t.strip().strip("'\"") for t in raw.strip().strip("[]").split(",") if t.strip()]
+    return []
+
+
+def _is_clip(fm: dict) -> bool:
+    """A Clipper capture. The contract's `source:` names the transport, so
+    the surface rides as a tag; the legacy `source: clipper` still counts
+    for a candidate written before the write path."""
+    return "clipper" in (fm.get("source"), fm.get("via")) or "clipper" in _tags(fm)
 # A retroactive /review found the original plain "## Fetched content"
 # markdown heading collides with real content: any candidate whose own
 # body already contains that exact string (an article ABOUT markdown
@@ -172,14 +201,39 @@ def _utcnow_iso(now: "float | None" = None) -> str:
 
 
 def _iter_inbox_candidates(vault: Path) -> "list[Path]":
-    """Direct children of `personal/_inbox/*.md` only — matches
-    `inbox_triage.py::_iter_inbox_files`'s own non-recursive glob, which is
-    exactly why staging in place (rather than a nested subdirectory) never
-    collides with that module's own scan."""
-    inbox_dir = Path(vault).joinpath(*_INBOX_SUBDIR)
-    if not inbox_dir.exists():
-        return []
-    return sorted(p for p in inbox_dir.glob("*.md") if p.is_file())
+    """Every candidate this sweep may act on. Since the write path files a
+    capture at its class directory (`status: unfiled`, filing v2) rather than
+    in a staging directory, the walk reads the flat notes one level under
+    `memory/<class>/` and keeps every unreviewed capture (`status: unfiled`)
+    plus the notes this sweep already staged — the same population the
+    staging directory used to hold, so the restamp and the act step still
+    reach a plain capture —
+    plus whatever a legacy `memory/_inbox/` still holds while it exists.
+    Non-recursive on purpose, matching `inbox_triage.py`'s own glob, so a
+    lane, an index, or a record folder's children never count."""
+    vault = Path(vault)
+    found: "list[Path]" = []
+    inbox_dir = vault.joinpath(*_INBOX_SUBDIR)
+    if inbox_dir.exists():
+        found += [p for p in inbox_dir.glob("*.md") if p.is_file()]
+    mem = vault / "memory"
+    if mem.is_dir():
+        for d in sorted(mem.iterdir()):
+            if not d.is_dir() or d.name.startswith("_") or d.name == "crystallized":
+                continue
+            for p in sorted(d.glob("*.md")):
+                if not p.is_file() or p.name == "_index.md":
+                    continue
+                try:
+                    fm, _ = _parse_frontmatter(p.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError):
+                    continue
+                status = str(fm.get("status", ""))
+                if status.startswith("ingest"):
+                    found.append(p)
+                elif status in _UNREVIEWED and not fm.get("kind") in _RECORD_LIKE:
+                    found.append(p)
+    return sorted(set(found))
 
 
 # -----------------------------------------------------------------------------
@@ -233,10 +287,9 @@ def stage_candidate(vault: Path, path: Path, *, now: "float | None" = None) -> "
     every vault writer behind a slow fetch)."""
     raw = path.read_text(encoding="utf-8")
     fm, body = _parse_frontmatter(raw)
-    if fm.get("status") != "inbox":
-        return False, "not eligible (status != inbox)"
+    if fm.get("status") not in _UNREVIEWED:
+        return False, "not eligible (status is not unfiled/inbox)"
 
-    source = fm.get("source")
     source_url = fm.get("source_url")
 
     if source_url:
@@ -244,14 +297,14 @@ def stage_candidate(vault: Path, path: Path, *, now: "float | None" = None) -> "
         if dup is not None:
             with vault_mutex(vault):
                 fresh_raw = path.read_text(encoding="utf-8")
-                if _parse_frontmatter(fresh_raw)[0].get("status") == "inbox":
+                if _parse_frontmatter(fresh_raw)[0].get("status") in _UNREVIEWED:
                     atomic_write(path, _patch_frontmatter(fresh_raw, {
                         "status": "ingest_duplicate",
                         "duplicate_of": dup.stem,
                     }))
             return False, f"duplicate of {dup.stem} (same source_url, resend not re-fetched)"
 
-    if source == "clipper":
+    if _is_clip(fm):
         if not body.strip():
             return False, "clip candidate has no inline content"
         raw_text = body
@@ -272,7 +325,7 @@ def stage_candidate(vault: Path, path: Path, *, now: "float | None" = None) -> "
 
     with vault_mutex(vault):
         fresh_raw = path.read_text(encoding="utf-8")
-        if _parse_frontmatter(fresh_raw)[0].get("status") != "inbox":
+        if _parse_frontmatter(fresh_raw)[0].get("status") not in _UNREVIEWED:
             # Something else (a concurrent sweep pass, an attended triage
             # session) already moved this candidate on -- don't clobber it.
             return False, "status changed concurrently, skipping"
@@ -451,7 +504,7 @@ def fold_idea_candidate(vault: Path, path: Path) -> "tuple[bool, str]":
         return False, "ideas_surface unavailable"
     raw = path.read_text(encoding="utf-8")
     fm, body = _parse_frontmatter(raw)
-    if fm.get("kind") != "idea" or fm.get("status") != "inbox":
+    if not _is_idea(fm) or fm.get("status") not in _UNREVIEWED:
         return False, "not an eligible idea candidate"
     title = fm.get("slug", path.stem).replace("-", " ")
     ideas_path = Path(vault).parent / "Ideas.md"
@@ -519,8 +572,8 @@ def run_ingest_sweep(
         fm, _body = _parse_frontmatter(raw)
         status = fm.get("status", "inbox")
 
-        if status == "inbox":
-            if fm.get("kind") == "idea":
+        if status in _UNREVIEWED:
+            if _is_idea(fm):
                 folded, detail = fold_idea_candidate(vault, path)
                 if folded:
                     result.idea_folded.append(str(path))
@@ -545,10 +598,10 @@ def run_ingest_sweep(
             if restamp_candidate(vault, path):
                 result.restamped.append(str(path))
 
-            if fm.get("source") == "clipper" or fm.get("source_url"):
+            if _is_clip(fm) or fm.get("source_url"):
                 staged, detail = stage_candidate(vault, path, now=now)
                 if staged:
-                    (result.staged_clips if fm.get("source") == "clipper" else result.fetched).append(str(path))
+                    (result.staged_clips if _is_clip(fm) else result.fetched).append(str(path))
                 elif detail.startswith("duplicate of "):
                     result.duplicates_skipped.append((str(path), detail))
                 elif "not eligible" not in detail and "outside this sweep's scope" not in detail:

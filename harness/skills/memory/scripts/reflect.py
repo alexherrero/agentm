@@ -81,7 +81,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 # practice the overwhelming majority of matches are mid-sentence discussion
 # ("was never touched", "it always crashes") or quoted document prose, not an
 # operator directive. Demoted candidates still route through the tri-modal
-# system (MEDIUM → _inbox/ in auto mode) rather than being dropped, so a real
+# system (MEDIUM → filed at class, flagged, in auto mode) rather than being dropped, so a real
 # "always X" / "never Y" directive still reaches the operator for triage.
 _BARE_ALWAYS_NEVER_RATIONALE = "explicit always/never directive"
 
@@ -619,11 +619,11 @@ def mine_transcript(transcript_path: Path) -> dict:
 #   HIGH   → auto-save via save.save_entry() at canonical path
 #   MEDIUM → interactive prompt (if --route-mode=interactive AND stdin is a TTY)
 #            OR auto-save (if --route-mode=silent)
-#            OR write to _inbox/ (if --route-mode=auto — the safe default)
-#   LOW    → write to _inbox/ for batch triage
+#            OR file at class, flagged (if --route-mode=auto — the safe default)
+#   LOW    → file at class with filing_confidence: low (the soft inbox)
 #
 # Routing modes (--route-mode flag OR MEMORY_REVIEW_MODE env var):
-#   - `auto` (default): hook-safe; never prompts; MEDIUM → _inbox/. Used by
+#   - `auto` (default): hook-safe; never prompts; MEDIUM → filed flagged. Used by
 #     Stop + idle hooks since hook contexts have no TTY.
 #   - `silent`: auto-approves MEDIUM (saves to canonical path); used when
 #     operator trusts the heuristic fully + wants zero prompts.
@@ -632,7 +632,7 @@ def mine_transcript(transcript_path: Path) -> dict:
 #
 # The HIGH path is unconditional auto-save — explicit user signals
 # (always X / never Y / prefer Z) are saved without prompting in all modes.
-# The LOW path is unconditional _inbox/ — single-instance inferences are
+# The LOW path always files flagged — single-instance inferences are
 # never important enough to interrupt the operator.
 
 ROUTE_MODE_AUTO = "auto"
@@ -675,7 +675,27 @@ def _utcnow_iso() -> str:
 # Returned in place of a Path when the candidate was already on disk, so nothing
 # was written. The caller has to tell three outcomes apart — wrote, already
 # there, failed — and a bare None could only ever carry two of them.
+from volume_gate import VolumeCapRefused  # noqa: E402  (same skill dir)
+
 ALREADY_CAPTURED = object()
+# The volume gate shut the door (task 4): not a write, not a failure of this
+# candidate — the day's cap is spent. Counted as `refused` so the transparency
+# line says a flood was stopped rather than that filing broke.
+VOLUME_REFUSED = object()
+
+
+def _candidate_type(candidate: Candidate) -> str:
+    """A candidate's contract type: reflect's category names are the legacy
+    type register in the plural, and the engine's deprecations map carries
+    the singular the rest of the way."""
+    cat = (candidate.category or "").strip().lower()
+    return _CATEGORY_TYPES.get(cat, cat.rstrip("s") if cat.endswith("s") else cat)
+
+
+_CATEGORY_TYPES = {
+    "preferences": "preference", "workflows": "workflow", "fixes": "fix",
+    "facts": "fact", "ideas": "idea", "idea": "idea",
+}
 
 _MINING_METADATA_HEADING = "\n\n## Mining metadata\n\n"
 _NUMBERED_SIBLING = re.compile(r"-(\d+)\.md$")
@@ -708,6 +728,47 @@ def _written_sessions(text: str) -> str:
         if line.startswith("sessions:"):
             return line[len("sessions:"):].strip()
     return ""
+
+
+def _file_candidate(
+    candidate: Candidate, vault: Path, *, source: str | None = None, corpus=None, search=None,
+    stderr=sys.stderr, type_hint: str | None = None,
+) -> "Path | object | None":
+    """File a candidate through the write-time filing engine (filing-v2, the
+    write path): type via the contract, class routing, the update relationship
+    to the corpus — add / update / supersede / noop — and the confidence and
+    provenance stamps. Returns the path written, `ALREADY_CAPTURED` for an exact
+    twin (the note already home was reinforced), or None on failure.
+
+    This replaced `_save_candidate_to_inbox` and `_save_candidate_canonical`:
+    nothing writes to a staging directory any more. A MEDIUM or LOW candidate
+    lands at its real destination carrying `filing_confidence`, which is the
+    soft inbox the needs-review MOC reads. `source` (L1, ledger ruling 8) is
+    a session tag, not a transport: a machine session's filings carry the
+    `machine-session` tag so a bulk review can still find them."""
+    try:
+        import filing_engine  # type: ignore  (same skill dir)
+    except ImportError as e:
+        print(f"[reflect.route] cannot import filing_engine: {e}", file=stderr)
+        return None
+    try:
+        decision = filing_engine.decide(
+            vault, title=candidate.title, body=candidate.body, slug=candidate.slug,
+            type_hint=type_hint or _candidate_type(candidate), confidence=candidate.confidence,
+            source=filing_engine.transport(source), corpus=corpus, search=search,
+        )
+        if decision.op == "noop":
+            filing_engine.apply(vault, decision, body=candidate.body)
+            return ALREADY_CAPTURED  # type: ignore[return-value]
+        tags = ["machine-session"] if source == "machine-session" else None
+        return filing_engine.apply(vault, decision, body=candidate.body, tags=tags,
+                                   title=candidate.title, corpus=corpus)
+    except VolumeCapRefused as e:
+        print(f"[reflect.route] {e}", file=stderr)
+        return VOLUME_REFUSED  # type: ignore[return-value]
+    except Exception as e:
+        print(f"[reflect.route] could not file {candidate.slug} ({candidate.category}): {e}", file=stderr)
+        return None
 
 
 def _existing_capture(
@@ -744,103 +805,6 @@ def _existing_capture(
             continue
         return p
     return None
-
-
-def _save_candidate_to_inbox(
-    candidate: Candidate, vault: Path, *, source: str | None = None, stderr=sys.stderr
-) -> "Path | object | None":
-    """Save a candidate to MemoryVault/personal/_inbox/<slug>.md.
-
-    Returns the saved path on success, None on failure (e.g. slug collision —
-    operator runs `/memory evolve` to resolve). Writes the candidate's body
-    with a header containing category + confidence + rationale + excerpts
-    (full instrumentation for later operator triage).
-
-    `source` (L1, ledger ruling 8): an optional origin tag, e.g.
-    "machine-session" — written into frontmatter so a bulk-review pass can
-    batch machine-originated captures separately from the operator's own.
-    Unset by default (an interactive operator session carries no tag).
-    """
-    try:
-        from save import save_entry  # type: ignore  # noqa
-    except ImportError as e:
-        print(f"[reflect.route] cannot import save module: {e}", file=stderr)
-        return None
-
-    # Compose inbox body: the candidate's body + appended instrumentation
-    # (rationale + excerpts + occurrences) so triage has full context.
-    excerpts_block = ""
-    if candidate.excerpts:
-        excerpts_lines = [f"> {e}" for e in candidate.excerpts]
-        excerpts_block = "\n\n## Supporting excerpts\n\n" + "\n".join(excerpts_lines)
-    inbox_body = (
-        f"{candidate.body}\n\n"
-        f"## Mining metadata\n\n"
-        f"- **Category**: `{candidate.category}`\n"
-        f"- **Confidence**: `{candidate.confidence}`\n"
-        f"- **Rationale**: {candidate.rationale}\n"
-        f"- **Occurrences**: {candidate.occurrences}\n"
-        f"{excerpts_block}"
-    )
-
-    # Inbox path: <vault>/personal/_inbox/<slug>.md. save_entry's
-    # standard target is <vault>/<group>/<kind>/<slug>.md, so we save with
-    # kind="_inbox" to route there. Actually _inbox/ is a flat dir like
-    # _always-load/, not a kind subdir. Use group=personal + kind=_inbox.
-    # save_entry validates kind as kebab-case ([a-z0-9-]+) — "_inbox" has
-    # underscore, fails validation. Bypass via direct file write.
-    inbox_dir = vault / "memory" / "_inbox"
-    inbox_dir.mkdir(parents=True, exist_ok=True)
-
-    # Already captured? Reflection runs again over the same transcript often —
-    # the Stop hook fires per turn, the idle hook re-mines any `.start` marker
-    # older than an hour, and a resumed session gets a fresh marker — and each
-    # of those passes re-derives every candidate the transcript ever produced.
-    # Without this check the collision handler below turned each repeat into
-    # `<slug>-1`, `-2`, `-3` with no ceiling: one operator sentence about
-    # squash-merges reached thirteen files, and the inbox reached 11,535 notes
-    # of which 7,907 were redundant copies.
-    duplicate = _existing_capture(inbox_dir, candidate.slug, candidate.body.strip())
-    if duplicate is not None:
-        return ALREADY_CAPTURED  # type: ignore[return-value]
-
-    target = inbox_dir / f"{candidate.slug}.md"
-    if target.exists():
-        # A different capture that happens to slug the same — keep both. This
-        # is the case the suffix was always for, and suppressing it would lose
-        # a real note, which is a worse failure than the duplication above.
-        n = 1
-        while target.exists():
-            target = inbox_dir / f"{candidate.slug}-{n}.md"
-            n += 1
-    # Write a minimal frontmatter + body. Inbox entries are triage targets,
-    # not full canonical entries — they don't need the full save.py frontmatter
-    # shape (kind/status/created/updated/tags/group/slug/always_load).
-    #
-    # `created` (added alongside `inbox_triage.py`, the bulk-review pass):
-    # the ONE field this minimal shape borrows from save.py's canonical
-    # convention, and the only durable per-entry timestamp an inbox entry
-    # carries — reflect.py never updates an inbox entry after this initial
-    # write, so it doubles as "when was this captured" for good. The
-    # pre-existing backlog has no such field at all (this is the first
-    # write of it); `inbox_triage.py`'s cutover-marker rule reads that
-    # absence as its own signal that an entry predates the mechanism.
-    source_line = f"source: {source}\n" if source else ""
-    fm = (
-        "---\n"
-        f"kind: {candidate.category}\n"
-        "status: inbox\n"
-        f"created: {_utcnow_iso()}\n"
-        f"slug: {target.stem}\n"
-        f"{source_line}"
-        f"mining_confidence: {candidate.confidence}\n"
-        f"mining_rationale: {json.dumps(candidate.rationale)}\n"
-        f"mining_occurrences: {candidate.occurrences}\n"
-        "---\n"
-    )
-    content = fm + "\n" + inbox_body + "\n"
-    target.write_bytes(content.encode("utf-8"))
-    return target
 
 
 def _classify_standard_shaped(candidate: Candidate) -> str | None:
@@ -962,38 +926,6 @@ def _save_candidate_to_opinions(
     return target
 
 
-def _save_candidate_canonical(
-    candidate: Candidate, vault: Path, *, stderr=sys.stderr
-) -> Path | None:
-    """Save a candidate to its canonical path via save.save_entry().
-
-    Returns saved path on success, None on collision / validation error.
-    """
-    try:
-        from save import save_entry  # type: ignore
-    except ImportError as e:
-        print(f"[reflect.route] cannot import save module: {e}", file=stderr)
-        return None
-
-    # save_entry signature requires kind + slug + body. Map category to kind
-    # using the same vocabulary save accepts (preferences / workflow / fix /
-    # idea — all are valid kebab-case names).
-    try:
-        return save_entry(
-            vault_path=vault,
-            kind=candidate.category,
-            slug=candidate.slug,
-            body=candidate.body,
-            group="memory",
-        )
-    except (FileExistsError, ValueError, FileNotFoundError) as e:
-        print(
-            f"[reflect.route] could not save {candidate.slug} ({candidate.category}): {e}",
-            file=stderr,
-        )
-        return None
-
-
 def _prompt_user_for_candidate(
     candidate: Candidate, *, stdin=sys.stdin, stdout=sys.stdout
 ) -> str:
@@ -1070,16 +1002,16 @@ def route_candidates(
             caller with no transcript path) simply omits the field on
             write — the recurrence gate then reads that entry as
             contributing zero sessions, never an error.
-        source: optional origin tag (e.g. "machine-session") written into
-            every inboxed entry's frontmatter (L1, ruling 8). HIGH/silent-
-            mode canonical saves are never tagged -- the tag exists so a
-            bulk-review pass can batch inbox floods by origin, and canonical
-            saves are never flood candidates.
-        max_inbox: optional cap on total inbox writes this call (LOW +
-            auto-mode-MEDIUM + interactive-fallback + ideas, combined --
-            whatever would otherwise land in `personal/_inbox/`). Candidates
-            that would exceed the cap are counted in `stats["capped"]`
-            instead of written. None (default) = no cap, unchanged behavior.
+        source: optional origin tag (e.g. "machine-session"). The contract's
+            `source:` field carries the transport (a mined candidate arrived
+            through a conversation, whoever was driving it), so a session tag
+            becomes a tag on every entry this call files — a bulk-review pass
+            can still batch a machine flood by origin (L1, ruling 8).
+        max_inbox: optional cap on low-confidence filings this call (LOW +
+            auto-mode-MEDIUM + interactive-fallback + ideas, combined — the
+            metadata soft inbox the needs-review MOC reads). Candidates that
+            would exceed the cap are counted in `stats["capped"]` instead of
+            written. None (default) = no cap.
 
     Returns stats dict:
         {
@@ -1087,29 +1019,48 @@ def route_candidates(
             "approved": N,         # interactive-mode-MEDIUM user-approved saves
             "rejected": N,         # interactive-mode-MEDIUM user-rejected
             "skipped": N,          # interactive-mode-MEDIUM user-skipped
-            "inboxed": N,          # LOW + auto-mode-MEDIUM + interactive-fallback
-            "ideas_inboxed": N,    # all idea candidates → _inbox/idea/<slug>.md
-            "capped": N,           # would-be inbox writes skipped past max_inbox
+            "filed_low": N,        # LOW + auto-mode-MEDIUM + interactive-fallback,
+                                   #   filed at class with filing_confidence
+            "ideas_filed": N,      # idea candidates filed as `type: idea`
+            "capped": N,           # low-confidence filings skipped past max_inbox
             "deduped": N,          # already on disk from an earlier pass over
                                    #   this transcript — skipped, not written
+            "refused": N,          # the volume gate shut the door (daily cap)
             "errors": N,           # save errors (e.g. slug collision)
         }
     """
     stats = {
         "auto_saved": 0, "approved": 0, "rejected": 0,
-        "skipped": 0, "inboxed": 0, "ideas_inboxed": 0, "capped": 0, "errors": 0,
-        "opinion_supplements": 0, "deduped": 0,
+        "skipped": 0, "filed_low": 0, "ideas_filed": 0, "capped": 0, "errors": 0,
+        "opinion_supplements": 0, "deduped": 0, "refused": 0,
     }
-    inbox_writes_so_far = 0
+    # One corpus index and one search per pass: every candidate is judged
+    # against the notes already home plus the ones this pass just filed.
+    try:
+        import filing_engine  # type: ignore
+        corpus = filing_engine.CorpusIndex(vault)
+        search = filing_engine.default_search(vault)
+    except Exception as e:  # the engine's own errors surface per candidate below
+        print(f"[reflect.route] filing engine unavailable up front: {e}", file=stderr)
+        corpus, search = None, None
+    low_filings_so_far = 0
 
-    def _inbox(c: Candidate) -> bool:
-        """Write to inbox unless max_inbox is set and already reached.
-        Returns True if written, False if capped (never raises)."""
-        nonlocal inbox_writes_so_far
-        if max_inbox is not None and inbox_writes_so_far >= max_inbox:
+    def _file(c: Candidate, *, type_hint: "str | None" = None) -> "Path | object | None":
+        return _file_candidate(c, vault, source=source, corpus=corpus, search=search, stderr=stderr,
+                               type_hint=type_hint)
+
+    def _file_capped(c: Candidate, *, type_hint: "str | None" = None) -> bool:
+        """File a MEDIUM/LOW candidate unless max_inbox (the per-session cap on
+        machine-sourced low-confidence filings, L1) is set and already reached.
+        Returns True if written, False if capped or deduped (never raises)."""
+        nonlocal low_filings_so_far
+        if max_inbox is not None and low_filings_so_far >= max_inbox:
             stats["capped"] += 1
             return False
-        saved = _save_candidate_to_inbox(c, vault, source=source, stderr=stderr)
+        saved = _file(c, type_hint=type_hint)
+        if saved is VOLUME_REFUSED:
+            stats["refused"] += 1
+            return False
         if saved is ALREADY_CAPTURED:
             # Not a write and not a failure. Counted rather than folded into
             # either, so a re-mine reads as a re-mine in the transparency line
@@ -1117,16 +1068,27 @@ def route_candidates(
             stats["deduped"] += 1
             return False
         if saved:
-            inbox_writes_so_far += 1
+            low_filings_so_far += 1
             return True
         stats["errors"] += 1
         return False
+
+    def _file_counted(c: Candidate, key: str) -> None:
+        saved = _file(c)
+        if saved is VOLUME_REFUSED:
+            stats["refused"] += 1
+        elif saved is ALREADY_CAPTURED:
+            stats["deduped"] += 1
+        elif saved:
+            stats[key] += 1
+        else:
+            stats["errors"] += 1
 
     # If interactive mode but stdin is not a TTY, fall back to auto (hook-safe).
     if mode == ROUTE_MODE_INTERACTIVE and not stdin.isatty():
         print(
             "[reflect.route] interactive mode requested but stdin is not a TTY; "
-            "falling back to auto-route (MEDIUM → _inbox/)",
+            "falling back to auto-route (MEDIUM → filed at low confidence)",
             file=stderr,
         )
         mode = ROUTE_MODE_AUTO
@@ -1152,47 +1114,38 @@ def route_candidates(
                 stats["errors"] += 1
             continue
         if c.confidence == "HIGH":
-            if _save_candidate_canonical(c, vault, stderr=stderr):
-                stats["auto_saved"] += 1
-            else:
-                stats["errors"] += 1
+            _file_counted(c, "auto_saved")
             continue
         if c.confidence == "MEDIUM":
             if mode == ROUTE_MODE_SILENT:
-                if _save_candidate_canonical(c, vault, stderr=stderr):
-                    stats["auto_saved"] += 1
-                else:
-                    stats["errors"] += 1
+                _file_counted(c, "auto_saved")
                 continue
             if mode == ROUTE_MODE_INTERACTIVE:
                 action = _prompt_user_for_candidate(c, stdin=stdin, stdout=stdout)
                 if action == "approve":
-                    if _save_candidate_canonical(c, vault, stderr=stderr):
-                        stats["approved"] += 1
-                    else:
-                        stats["errors"] += 1
+                    _file_counted(c, "approved")
                 elif action == "reject":
                     stats["rejected"] += 1
                 elif action == "skip":
                     stats["skipped"] += 1
-                else:  # inbox
-                    if _inbox(c):
-                        stats["inboxed"] += 1
+                else:  # file it, flagged for review
+                    if _file_capped(c):
+                        stats["filed_low"] += 1
                 continue
-            # Default route mode: MEDIUM → inbox
-            if _inbox(c):
-                stats["inboxed"] += 1
+            # Default route mode: MEDIUM → filed at its class, medium confidence
+            if _file_capped(c):
+                stats["filed_low"] += 1
             continue
-        # LOW → inbox unconditionally
-        if _inbox(c):
-            stats["inboxed"] += 1
+        # LOW → filed at its class, low confidence — the metadata soft inbox
+        if _file_capped(c):
+            stats["filed_low"] += 1
 
-    # Idea candidates always → _inbox/ (idea-ledger persistence is plan #7a
-    # part 4's scope; for v1 ideas go to inbox where the future ledger can
-    # pick them up).
+    # Idea candidates file as `type: idea` at low confidence. The ingest
+    # sweep's idea fold and the ledger read them from the class directory —
+    # the metadata marks them unreviewed, not a staging directory.
     for c in idea_candidates:
-        if _inbox(c):
-            stats["ideas_inboxed"] += 1
+        if _file_capped(c, type_hint="idea"):
+            stats["ideas_filed"] += 1
 
     return stats
 
@@ -1357,7 +1310,7 @@ def reflect_corpus(
         dry_run: if True, count + estimate but don't write entries or
             update state. Default True for safety.
         reset: if True, ignore the existing state file (re-process everything).
-        route_mode: route_candidates() mode; default 'auto' (MEDIUM → _inbox/).
+        route_mode: route_candidates() mode; default 'auto' (MEDIUM → filed flagged).
         stdout, stderr: streams for output.
 
     Returns summary dict:
@@ -1370,9 +1323,9 @@ def reflect_corpus(
             "processed_this_run": int,
             "candidates_estimated": int  (dry-run only),
             "candidates_written": int    (real-run only),
-            "memory_inboxed": int,
+            "memory_filed_low": int,
             "memory_auto_saved": int,
-            "ideas_inboxed": int,
+            "ideas_filed": int,
             "errors": int,
             "batches": int,
         }
@@ -1404,9 +1357,9 @@ def reflect_corpus(
         "processed_this_run": 0,
         "candidates_estimated": 0,
         "candidates_written": 0,
-        "memory_inboxed": 0,
+        "memory_filed_low": 0,
         "memory_auto_saved": 0,
-        "ideas_inboxed": 0,
+        "ideas_filed": 0,
         "errors": 0,
         "batches": 0,
     }
@@ -1471,11 +1424,11 @@ def reflect_corpus(
                 stderr=stderr,
             )
             summary["memory_auto_saved"] += stats["auto_saved"]
-            summary["memory_inboxed"] += stats["inboxed"]
-            summary["ideas_inboxed"] += stats["ideas_inboxed"]
+            summary["memory_filed_low"] += stats["filed_low"]
+            summary["ideas_filed"] += stats["ideas_filed"]
             summary["errors"] += stats["errors"]
             summary["candidates_written"] += (
-                stats["auto_saved"] + stats["inboxed"] + stats["ideas_inboxed"]
+                stats["auto_saved"] + stats["filed_low"] + stats["ideas_filed"]
             )
             state["sessions"][sid] = {
                 "processed_at": _utcnow_iso(),
@@ -1554,12 +1507,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--route", action="store_true",
         help="after mining, route candidates per tri-modal heuristic "
-             "(HIGH → auto-save; MEDIUM → see --route-mode; LOW → _inbox/). "
+             "(HIGH → auto-save; MEDIUM → see --route-mode; LOW → filed flagged low). "
              "Requires --vault-path or MEMORY_VAULT_PATH env var.",
     )
     parser.add_argument(
         "--route-mode", choices=list(_VALID_ROUTE_MODES), default=None,
-        help="MEDIUM-confidence routing: 'auto' (default; → _inbox/), "
+        help="MEDIUM-confidence routing: 'auto' (default; → filed flagged), "
              "'silent' (auto-save), or 'interactive' (prompt user via stdin; "
              "falls back to 'auto' if stdin isn't a TTY). "
              "Resolves from --route-mode flag → MEMORY_REVIEW_MODE env → 'auto'.",
@@ -1571,7 +1524,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--source", default=None,
-        help="L1/ruling 8: origin tag written into every inboxed entry's "
+        help="L1/ruling 8: origin tag written as a tag on every entry this run files — the "
              "frontmatter, e.g. 'machine-session'. Resolves from --source "
              "flag → AGENTM_SESSION_SOURCE env → unset (no tag).",
     )
@@ -1631,7 +1584,7 @@ def _parse_corpus_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--route-mode", choices=list(_VALID_ROUTE_MODES), default=None,
-        help="MEDIUM-confidence routing mode. Default 'auto' (→ _inbox/) — "
+        help="MEDIUM-confidence routing mode. Default 'auto' (→ filed flagged) — "
              "appropriate for historical-pass volume.",
     )
     return parser.parse_args(argv)

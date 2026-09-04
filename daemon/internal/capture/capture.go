@@ -31,6 +31,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/extract"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // Request is one capture.
@@ -101,6 +102,10 @@ type Capturer struct {
 	// this system can be broken, and a number on the status surface is what
 	// makes it a fact instead of a hunch.
 	refused atomic.Int64
+	// capped counts captures the volume gate turned away (filing v2, task 4).
+	// Its own number: a flood being stopped and a contract being broken are
+	// different facts, and the status surface should say which.
+	capped atomic.Int64
 
 	// enrich is the pass fired after the transaction commits, or nil when
 	// enrichment is not configured. Held as a pointer the capture path only ever
@@ -117,6 +122,56 @@ func (c *Capturer) SetEnrichPass(p *enrich.Pass) { c.enrich = p }
 
 // RefusedCaptures is how many captures the missing contract has cost since boot.
 func (c *Capturer) RefusedCaptures() int64 { return c.refused.Load() }
+
+// RefusedByVolume is how many captures the daily cap has turned away.
+func (c *Capturer) RefusedByVolume() int64 { return c.capped.Load() }
+
+// DefaultDailyWriteCap applies when the contract names no cap (an older
+// contract, or none at all). The same number the Python writers default to.
+const DefaultDailyWriteCap = 200
+
+// dailyWriteCap is the contract's `thresholds.daily_write_cap`: 0 disables the
+// gate, absence means the default. A halted contract still gates — a flood is
+// a flood whether or not the rules parse.
+func dailyWriteCap(contract *rules.Rules, contractErr error) int {
+	if contractErr != nil || contract == nil {
+		return DefaultDailyWriteCap
+	}
+	v, ok := contract.Thresholds["daily_write_cap"]
+	if !ok {
+		return DefaultDailyWriteCap
+	}
+	if v <= 0 {
+		return 0
+	}
+	return int(v)
+}
+
+// trustTier is the write-time trust stamp (filing v2, task 5). A source that
+// names one of the contract's transports takes that transport's tier; a
+// source that is a URL — a page the sources pass mined — is external content
+// and untrusted whatever it says; anything else earns no stamp rather than a
+// guess.
+func trustTier(contract *rules.Rules, contractErr error, source string) string {
+	if source == "" {
+		return ""
+	}
+	if contractErr == nil && contract != nil {
+		if tier, ok := contract.Sources[source]; ok {
+			return tier
+		}
+	}
+	lower := strings.ToLower(source)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return "untrusted"
+	}
+	return ""
+}
+
+func dayStart(t time.Time) time.Time {
+	t = t.UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
 
 func New(cfg *config.Config, idx *index.Index) *Capturer {
 	return &Capturer{cfg: cfg, idx: idx}
@@ -147,7 +202,12 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	// capture never needed.
 	contract, contractErr := c.cfg.Rules.Get()
 	noteType := strings.ToLower(strings.TrimSpace(req.Type))
+	// The write-time confidence stamp: a caller who named the type stands
+	// behind it; a defaulted or untyped note is the contract's guess and says
+	// so, which is what the needs-review reading selects on.
+	filingConfidence := "high"
 	if noteType == "" {
+		filingConfidence = "low"
 		if contractErr == nil {
 			noteType = contract.DefaultType
 			notes = append(notes, fmt.Sprintf(
@@ -187,8 +247,29 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	}
 
 	captured := time.Now().UTC()
+	// The volume gate (filing v2, task 4): the day's writes so far, counted from
+	// the index, against the contract's cap. Refused loudly, with the count,
+	// the cap and the edit that raises it — a flood is caught at this door
+	// rather than discovered in the corpus.
+	if cap := dailyWriteCap(contract, contractErr); cap > 0 {
+		if n, err := c.idx.CapturedSince(dayStart(captured), spaceDir+"/"); err == nil && n >= cap {
+			c.capped.Add(1)
+			return Result{}, fmt.Errorf("capture refused: %d memories already written today and "+
+				"the daily cap is %d — the volume gate (filing v2) stops a flood at the door; "+
+				"if today is real, raise `thresholds.daily_write_cap` in standards/storage-rules.md", n, cap)
+		}
+	}
+	// Class routing (filing v2, the write path). A note whose type the
+	// contract knows lands in the class the contract routes that type to —
+	// where the corpus migration put everything already home, and where the
+	// retrieval gate and the scorecard read. The date shard remains only for
+	// a note the contract cannot place (filing halted, the note untyped): it
+	// has to land somewhere, and a year/month folder is at least an honest
+	// "not yet filed" rather than a class it was never judged into.
 	dir := spaceDir
-	if c.cfg.Shard == "date" {
+	if class := classDir(contract, contractErr, noteType, spaceDir); class != "" {
+		dir = class
+	} else if c.cfg.Shard == "date" {
 		dir = filepath.ToSlash(filepath.Join(spaceDir,
 			captured.Format("2006"), captured.Format("01")))
 	}
@@ -221,19 +302,22 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	aliases := mergeAliases(req.Aliases, extract.Aliases(title, text))
 
 	body := renderNote(noteData{
-		Type:          noteType,
-		Altitude:      DefaultAltitude,
-		Status:        status,
-		Captured:      captured,
-		Slug:          slug,
-		Title:         title,
-		Tags:          req.Tags,
-		Aliases:       aliases,
-		Source:        strings.TrimSpace(req.Source),
-		SourceHash:    strings.TrimSpace(req.SourceHash),
-		SourceVersion: strings.TrimSpace(req.SourceVersion),
-		Probe:         req.Probe,
-		Text:          text,
+		Type:             noteType,
+		Altitude:         DefaultAltitude,
+		Status:           status,
+		Lifecycle:        "active",
+		FilingConfidence: filingConfidence,
+		Trust:            trustTier(contract, contractErr, strings.TrimSpace(req.Source)),
+		Captured:         captured,
+		Slug:             slug,
+		Title:            title,
+		Tags:             req.Tags,
+		Aliases:          aliases,
+		Source:           strings.TrimSpace(req.Source),
+		SourceHash:       strings.TrimSpace(req.SourceHash),
+		SourceVersion:    strings.TrimSpace(req.SourceVersion),
+		Probe:            req.Probe,
+		Text:             text,
 	})
 
 	abs := filepath.Join(c.cfg.VaultPath, filepath.FromSlash(rel))
@@ -335,6 +419,14 @@ type noteData struct {
 	Type     string
 	Altitude string
 	Status   string
+	// Lifecycle and FilingConfidence are the write-time stamps the filing
+	// contract added with the write path: `active` until a later note
+	// supersedes this one, and how far the writer trusted its own typing.
+	Lifecycle        string
+	FilingConfidence string
+	// Trust is how far to believe where the note came from — the contract's
+	// tier for a named transport, `untrusted` for anything fetched by URL.
+	Trust    string
 	Captured time.Time
 	Slug     string
 	Title    string
@@ -360,6 +452,9 @@ func renderNote(d noteData) string {
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "type: %s\n", d.Type)
 	fmt.Fprintf(&b, "status: %s\n", d.Status)
+	if d.Lifecycle != "" {
+		fmt.Fprintf(&b, "lifecycle: %s\n", d.Lifecycle)
+	}
 	// Written rather than left implied. `artifact` is what a note is until
 	// something judges otherwise, and a field that is present and default is a
 	// field a later pass can change in place — an absent one has to be
@@ -387,6 +482,12 @@ func renderNote(d noteData) string {
 	}
 	if d.Source != "" && d.SourceVersion != "" {
 		fmt.Fprintf(&b, "source_version: %s\n", yamlScalar(d.SourceVersion))
+	}
+	if d.FilingConfidence != "" {
+		fmt.Fprintf(&b, "filing_confidence: %s\n", d.FilingConfidence)
+	}
+	if d.Trust != "" {
+		fmt.Fprintf(&b, "trust: %s\n", d.Trust)
 	}
 	// The probe marker. Written as a frontmatter field rather than expressed by
 	// where the note lives, because everything downstream that must not count a
@@ -485,4 +586,23 @@ func mergeAliases(supplied, derived []string) []string {
 		out = out[:extract.MaxAliases]
 	}
 	return out
+}
+
+// classDir is the vault-relative directory the contract routes a memory type
+// to, or "" when there is nothing to route by: no contract, no type, or a
+// type the routing table does not name. A routing value is accepted either
+// relative to the vault ("memory/semantic") or to the space ("semantic").
+func classDir(contract *rules.Rules, contractErr error, noteType, spaceDir string) string {
+	if contractErr != nil || contract == nil || noteType == "" {
+		return ""
+	}
+	class := strings.Trim(filepath.ToSlash(strings.TrimSpace(contract.Routing[noteType])), "/")
+	if class == "" {
+		return ""
+	}
+	space := strings.Trim(filepath.ToSlash(spaceDir), "/")
+	if class == space || strings.HasPrefix(class, space+"/") {
+		return class
+	}
+	return filepath.ToSlash(filepath.Join(spaceDir, class))
 }

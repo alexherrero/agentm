@@ -45,7 +45,7 @@ def _cand(body, *, confidence="LOW", category="preferences", slug="a-slug",
 
 # A standard-shaped rule — the classifier diverts this to the opinion lane.
 _STANDARD_BODY = "Never commit without check-all.sh passing green first."
-# An ordinary observation — routes to _inbox/ on the normal ladder.
+# An ordinary observation — files at its class on the normal ladder.
 _ORDINARY_BODY = "User stated: the vault root sits outside the repo checkout."
 
 
@@ -63,7 +63,10 @@ class _Base(unittest.TestCase):
         )
 
     def _inbox_files(self):
-        d = self.root / "memory" / "_inbox"
+        # The ordinary lane files at the class the contract routes the
+        # candidate's type to (a preference: semantic); nothing stages.
+        self.assertFalse((self.root / "memory" / "_inbox").exists())
+        d = self.root / "memory" / "semantic"
         return sorted(p.name for p in d.glob("*.md")) if d.is_dir() else []
 
     def _lane_files(self, opinion="done"):
@@ -82,11 +85,11 @@ class TestInboxDedup(_Base):
 
     def test_repeat_is_counted_not_silently_dropped(self):
         # A skipped write must be visible in the stats. Reporting it as an
-        # ordinary `inboxed` would overstate what landed; reporting nothing at
+        # ordinary `filed_low` would overstate what landed; reporting nothing at
         # all would make a re-mine indistinguishable from a no-candidate run.
         self._route([_cand(_ORDINARY_BODY, slug="dupe")])
         stats = self._route([_cand(_ORDINARY_BODY, slug="dupe")])
-        self.assertEqual(stats["inboxed"], 0)
+        self.assertEqual(stats["filed_low"], 0)
         self.assertEqual(stats["deduped"], 1)
         self.assertEqual(stats["errors"], 0)
 
@@ -103,7 +106,7 @@ class TestInboxDedup(_Base):
         # real capture — a worse failure than the duplication being fixed.
         self._route([_cand("User stated: first thing.", slug="dupe")])
         self._route([_cand("User stated: second, different thing.", slug="dupe")])
-        self.assertEqual(self._inbox_files(), ["dupe-1.md", "dupe.md"])
+        self.assertEqual(self._inbox_files(), ["dupe.md", "dupe~dup.md"])
 
     def test_a_longer_transcript_does_not_write_a_second_copy(self):
         # The shape re-mining actually produces. A transcript grows, the same

@@ -127,7 +127,10 @@ func TestCaptureStaysUnderBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing test")
 	}
-	cp := newHarness(t)
+	// The budget is measured with the volume gate open: this test writes more
+	// notes in a second than the shipped daily cap allows, and stopping it at
+	// the cap would be the gate working, not a latency reading.
+	cp := newCappedHarness(t, 0)
 
 	// One warm-up capture, excluded. The first one pays for schema migration and
 	// page-cache misses that no later capture pays, and folding that into the

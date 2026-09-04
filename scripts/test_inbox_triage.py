@@ -315,7 +315,7 @@ class PromoteReusesCanonicalConventionTests(_InboxTriageTestBase):
         stats = it.review_inbox_triage(self.vault, digest.run_id, self.revert_log, stdin=stdin, stdout=io.StringIO())
         self.assertEqual(stats["confirmed"], 1)
 
-        canonical = self.vault / "memory" / "workflow" / "h.md"
+        canonical = self.vault / "memory" / "procedural" / "h.md"
         self.assertTrue(canonical.exists(), "promote must land at <vault>/<group>/<kind>/<slug>.md, save.py's own convention")
         fm, body = it._parse_frontmatter(canonical.read_text(encoding="utf-8"))
         # Same locked field order save._build_frontmatter emits.
@@ -332,7 +332,7 @@ class PromoteReusesCanonicalConventionTests(_InboxTriageTestBase):
         self.assertEqual(self._status(self._inbox_dir() / "h.md"), "promoted")
 
     def test_promote_skips_rather_than_overwrites_an_existing_canonical_collision(self) -> None:
-        collision = self.vault / "memory" / "fix" / "dup-slug.md"
+        collision = self.vault / "memory" / "procedural" / "dup-slug.md"
         collision.parent.mkdir(parents=True)
         collision.write_text("---\nkind: fix\nslug: dup-slug\n---\n\npre-existing canonical entry\n", encoding="utf-8")
 
@@ -434,7 +434,7 @@ class BacklogPromoteAndMergeAutoApplyTests(_InboxTriageTestBase):
         self.assertEqual(digest.proposals[0].stage, it.PROMOTE_STAGE)
         self.assertEqual(len(batch.items), 1, "a backlog-shaped promote candidate must auto-apply, no confirm call")
 
-        canonical = self.vault / "memory" / "workflow" / "h.md"
+        canonical = self.vault / "memory" / "procedural" / "h.md"
         self.assertTrue(canonical.exists(), "promote must have applied with zero operator action")
         self.assertEqual(self._status(self._inbox_dir() / "h.md"), "promoted")
 
@@ -508,7 +508,7 @@ class ReviewFlowTests(_InboxTriageTestBase):
         stats = it.review_inbox_triage(self.vault, digest.run_id, self.revert_log, stdin=stdin, stdout=io.StringIO())
         self.assertEqual(stats, {"total": 1, "confirmed": 1, "rejected": 0, "skipped": 0, "errors": 0})
 
-        canonical = self.vault / "memory" / "workflow" / "h.md"
+        canonical = self.vault / "memory" / "procedural" / "h.md"
         self.assertTrue(canonical.exists())
 
         state = json.loads((it.engine_state.engine_state_dir() / "dream-runs" / digest.run_id / "state.json").read_text(encoding="utf-8"))
@@ -596,7 +596,7 @@ class NoAutoApplyStillProposesOnlyTests(_InboxTriageTestBase):
             self.assertEqual(p.status, "pending", "--no-auto-apply must leave every proposal pending")
 
         # Nothing applied -- neither the promote nor the expire mutation.
-        self.assertFalse((self.vault / "memory" / "workflow" / "h.md").exists())
+        self.assertFalse((self.vault / "memory" / "procedural" / "h.md").exists())
         self.assertEqual(self._status(self._inbox_dir() / "h.md"), "inbox")
         self.assertEqual(self._status(self._inbox_dir() / "z.md"), "inbox")
 
@@ -645,7 +645,7 @@ class ManualCliPathsTests(_InboxTriageTestBase):
         self.assertEqual(rc, 0)
         confirm_result = json.loads(buf_confirm.getvalue())
         self.assertEqual(confirm_result["action"], "confirmed")
-        self.assertTrue((self.vault / "memory" / "workflow" / "h.md").exists())
+        self.assertTrue((self.vault / "memory" / "procedural" / "h.md").exists())
 
         # --reject the other proposal directly.
         reject_entry = next(p for p in payload if p["stage"] != it.PROMOTE_STAGE)

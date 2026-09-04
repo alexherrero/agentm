@@ -164,6 +164,10 @@ class DreamDigest:
     # applied yet to sample, so this stays `None` there (matches
     # `inbox_triage_run`'s own convention above).
     sampled_audit: Optional[dict] = None
+    # The needs-review reading (filing v2, the write path, task 3): populated
+    # by `run_dream_and_auto_apply`, which regenerates the MOC after the
+    # folded sub-runs have applied. None on a bare `run_dream()`.
+    needs_review: Optional[dict] = None
 
 
 # -----------------------------------------------------------------------------
@@ -1198,6 +1202,10 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) ->
             f"{t['proposals']} proposal(s), {t['auto_applied']} auto-applied, "
             f"{t['needs_your_eye']} needs-your-eye · full digest: {t['digest_path']}"
         )
+    if digest.needs_review is not None:
+        n = digest.needs_review
+        reasons = ", ".join(f"{k} {v}" for k, v in (n.get("by_reason") or {}).items()) or "nothing waiting"
+        lines.append(f"Needs review: {n['total']} note(s) — {reasons} · MOC {n['moc']}")
     if digest.sampled_audit is not None:
         a = digest.sampled_audit
         if a["sampled_count"] == 0:
@@ -1580,6 +1588,17 @@ def run_dream_and_auto_apply(
             }
         except Exception as e:  # pragma: no cover
             print(f"warning: folded inbox-triage sub-run failed: {e}", file=sys.stderr)
+
+    # Filing v2, the write path (task 3): the review queue is a reading over
+    # metadata now, and this cycle is the nightly pass the design names, so
+    # the needs-review MOC regenerates here — after the folded sub-runs have
+    # applied, best-effort like them.
+    try:
+        import needs_review  # function-local: keeps dream's import graph flat
+        moc_path = needs_review.write(vault_path)
+        digest.needs_review = dict(needs_review.summary(vault_path), moc=str(moc_path))
+    except Exception as e:  # pragma: no cover
+        print(f"warning: needs-review MOC regeneration failed: {e}", file=sys.stderr)
 
     # The sampled higher-tier audit (task 9): "links" = this cycle's
     # applied link_improvement mutations; "merges" = the folded inbox-

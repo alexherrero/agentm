@@ -32,7 +32,7 @@ These counts decide whether the SessionStart briefing reports a section. A signa
 
 | Key | Controls | Default |
 |---|---|---|
-| `inbox_threshold` | `_inbox/*.md` count at or above which the briefing flags it | `10` |
+| `inbox_threshold` | The `_inbox/*.md` count that triggers a briefing flag. Filing v2's write path retired `_inbox/` as a capture destination, so this still reads that directory and effectively sees nothing — it does not see the low-confidence filings (`filing_confidence: low`) that now live at their class directories instead | `10` |
 | `watchlist_high_threshold` | `_skill-watchlist/` HIGH + `pending-review` count to surface | `1` |
 | `incubator_pending_threshold` | `_idea-incubator/<slug>/` dirs pending research to surface | `1` |
 | `idea_ledger_stale_months` | months after which an Ideas-ledger entry is GC-eligible | `6` |
