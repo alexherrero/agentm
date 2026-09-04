@@ -7,8 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.13.0] - 2026-09-04
+
+Filing v2 part 4 — the write path ([#540](https://github.com/alexherrero/agentm/pull/540)), deployed live the same day. Filing is decided at write time now: every writer — the reflect hook's lanes, `capture.py` and the `memory_capture` tool, the daemon's Go capture — files a candidate at the class directory the contract routes its type to, carrying `lifecycle`, `source` and `filing_confidence`, and nothing writes to a staging directory any more. The metadata is the inbox; a generated needs-review page reads it; capture volume is gated on its own; external content is trust-tiered and smuggled instructions stay inert. The plan's labeled sample put twenty real decisions in front of the operator and moved the next work upstream, to the miner.
+
+### Added
+
+- **The filing decision engine** (`harness/skills/memory/scripts/filing_engine.py`).
+  Before anything lands it decides the type (through the contract's deprecations
+  map; a candidate with none takes the default type at low confidence), the
+  class the contract routes it to, the destination settled against the disk
+  (`~dup` for a namesake), and the update relationship to the corpus — add,
+  update, supersede, or noop. Deterministic keys lead: a tool-invocation stub, an
+  always/never directive bounded at its first clause, a "X is Y" fact whose
+  object is a value. A key match with a different value supersedes (the old note
+  gains `superseded_by` and `lifecycle: superseded`; nothing is deleted); the
+  same key and value with a different body is filed beside the existing note
+  and flagged; an exact twin is a noop that reinforces. Similarity — the
+  daemon's search, injected — is a secondary signal: a strong title overlap
+  flags a probable duplicate, filed, never merged. Measured on the live corpus,
+  73.6% of filed notes yield a structural key.
+- **The needs-review reading** (`needs_review.py`) and its page,
+  `memory/mocs/needs-review.md`: every note waiting for a judgment — filed at
+  low confidence, still `unfiled`, or carrying a review flag — one line per
+  note with a context phrase saying why it is there; settled notes drop out;
+  regeneration is byte-stable and an entry clears when the note is re-judged.
+  The dream cycle regenerates it and reports the count; the daily scorecard
+  carries a `needs review` line beside the class populations.
+- **The capture-volume gate** (`volume_gate.py`, and the daemon's capture): past
+  the contract's `thresholds.daily_write_cap` the next write is refused with a
+  named message — the count so far, the cap, the edit that raises it — which
+  `capture.py` and `memory_capture` relay verbatim and reflect counts as
+  `refused`. The default, 200, is grounded in the corpus (busiest day on record
+  110, 30-day median 12); 0 disables the gate; `AGENTM_DAILY_WRITE_CAP`
+  overrides it. The count is the corpus itself by capture date, so the gate
+  cannot drift and needs no ledger. The scorecard gains a `writes per day` line
+  with the week-over-week trend, the fortnight's peak and the headroom.
+- **The trust tier and the injection fixtures.** `trust:` is stamped from the
+  contract's `sources` map — the transport decides, never how plausible the
+  content reads — on the Python side and in the daemon's capture (a URL-valued
+  source is `untrusted`), and carried through enrichment.
+  `test_write_path_injection.py` pushes the same smuggled text — a bare
+  directive, a frontmatter-looking block, the act step's own grammar — through a
+  capture body, a mined candidate and a fetched page; each files inert, and only
+  the caller's explicit `instructions` argument ever carries authority.
+- **The labeled-sample eval** (`scripts/health/eval_write_path.py`): mines one
+  real session the way the hook does, decides every candidate read-only against
+  the live corpus, and writes a worksheet with provenance (transcript, memory
+  root, contract hash, index size) and an empty `label:` per decision; `score`
+  counts the labels with n and a Wilson interval and refuses a half-filled
+  sheet. No model judges anything, so a re-run reproduces the rows. On session
+  e805ab79 the operator's labels read 14/20 right (Wilson 95% 0.48–0.86), 6/12
+  outside the tool-invocation stubs; the finding is the miner's, not the
+  engine's (a pasted handoff mined as the operator's words, fix candidates that
+  are report fragments, tool stubs that record a count) — four rulings taken.
+
 ### Changed
 
+- **Every writer files at its class; `memory/_inbox/` has no writers left.**
+  reflect's lanes file HIGH candidates at high confidence and MEDIUM/LOW/ideas
+  flagged `filing_confidence: low` (route stats `filed_low` / `ideas_filed`);
+  the per-session cap stays; the `machine-session` origin rides as a tag because
+  `source:` is the contract's transport. `capture.py` / `memory_capture` land
+  `status: unfiled` at low confidence with the default type (or `type: idea`),
+  the caller's surface as `via:`, and `captured` / `surface` / verbatim
+  `instructions` as the capture's own fields; decide-then-write is retried when a
+  concurrent writer lands first, and `save_entry` re-checks its overwrite guard
+  under the mutex (a latent TOCTOU, fixed for every caller). The ingest sweep
+  walks the class directories for every unreviewed capture; recall stops serving
+  the staging states (`inbox`, `ingest_staged`, `ingest_duplicate`) at match
+  time and keeps serving `unfiled` — the daemon's own captures are that
+  population, and it rank-penalises them rather than hiding them.
+- **`save_entry` stamps every memory type** — `filing_confidence: high` for a
+  caller-named type, `source: conversation` unless the caller says otherwise
+  (the CLI `operator-direct`, the ingest `external-fetch`), `lifecycle` from the
+  contract's default, `trust` from its sources map; a record keeps its own
+  shape; an always-load rule stays `pinned`. The frontmatter contract admits
+  `via`, `captured`, `surface`, `instructions`, `review_flags`, `related` and
+  `trust`, in locked order, and the slug rule admits the `~dup` mark.
+- **The daemon's capture routes a typed note to the contract's class**
+  (`contract.Routing[type]`); the date shard remains only for a note the
+  contract cannot place. `renderNote` emits `lifecycle: active`,
+  `filing_confidence: high|low` and `trust`. The enrichment pass stamps
+  `filing_confidence` beside its number and **carries the capture's provenance
+  across its rewrite** (`source`, `lifecycle`, `captured`, `via`, `source_url`,
+  `surface`, `instructions`, the review marks, `trust`) — before this the
+  rewrite dropped them.
+- **The live contract gains `thresholds.daily_write_cap: 200`** (mirrored into
+  `standards/storage-rules.md` under plan authority; the packaged default
+  carries the same line and its grounding).
 - **The AgentMemory context payload catches up to the four-space vault and to
   filing v2** (`templates/agentmemory-context.md`, its Antigravity/Gemini mirror
   at `adapters/antigravity/rules/agentmemory-context.md`, and
@@ -44,6 +131,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actually spans, `standards/` and `Agent/memory/_always-load/`, and says
   plainly that the git and harness conventions stay with the coding agents that
   act on them rather than living in the vault.
+
+### Internal
+
+- The write-path eval's scorer reads labels the way an operator writes them —
+  a note after a dash, `do-not-file` / `do-not-record` for should-not-file,
+  "not sure" as `unsure` reported apart ([#543](https://github.com/alexherrero/agentm/pull/543)).
+- The memory write path's own comments stop describing the retired inbox
+  ([#541](https://github.com/alexherrero/agentm/pull/541)); the ingest pre-flight
+  asks `save_entry` where a note goes instead of guessing
+  ([#544](https://github.com/alexherrero/agentm/pull/544)).
+- Deploy: the live clone advanced, the daemon rebuilt and kickstarted, a route
+  pass over the 90 notes the pre-merge writers regrew (`memory/preference/`,
+  `memory/_inbox/`; vault commit 8e71be78), embed backfill, retrieval gate
+  clean (R@5 0.734 → 0.719, p = 1.0). Four follow-ups recorded: the two
+  meanings of `source:` on disk (the Go capture's provenance reference vs the
+  contract's transport), the Go enrichment floor not read from the contract,
+  Python recall serving `unfiled` at full weight, and the readers that still
+  name the retired directory.
 
 ## [9.12.0] - 2026-09-03
 

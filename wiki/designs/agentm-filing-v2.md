@@ -8,7 +8,7 @@ area: agentm/vault
 author: alexherrero
 contributors: []
 created: 2026-09-01
-updated: 2026-09-03
+updated: 2026-09-04
 last_major_revision: 2026-09-01
 prd:
 project:
@@ -283,6 +283,29 @@ day line on the scorecard replaces it as the alarm. External-source content
 is trust-tiered at write time and never treated as instructions; write-time
 screening is explicitly not relied on to catch fabricated facts, because
 the measured state of the art cannot.
+
+**Shipped (v9.13.0, 2026-09-04; PR #540).** The engine, the class filing on
+every writer, the needs-review page, the volume gate and the trust tier
+landed as designed, with four calls made in the building. The soft inbox is
+a *status read*, not a second exclusion: recall keeps serving `unfiled`
+notes — the daemon's own captures are that population, 650-odd of them, and
+it rank-penalises them rather than hiding them — and excludes only the
+staging states the ingest sweep leaves in place; an early draft excluded
+`unfiled` and the retrieval gate's canary fired (why not hide them: hiding
+the queue would silently shrink the searched corpus against the indexed
+one). The cap is grounded, not guessed: 200 sits above the busiest day on
+record (110) and well below the last flood; the contract carries it and
+zero disables it. The Go capture's `source:` stays a provenance reference
+while the contract's `source:` is the transport vocabulary — two meanings of
+one field, recorded as an open question rather than resolved by a rename
+inside a part that had not planned one (re-audit when the trust tier is read
+at retrieval time). And the labeled sample moved the next work upstream:
+the engine's operations were judged right wherever the input was sane; the
+miner had admitted a pasted handoff as the operator's speech, cut fix
+candidates into report fragments, and filed tool-invocation counts as
+procedures — four rulings taken (a marker the miner skips, stop the stubs
+and purge the 824, a cause-and-remedy requirement, a durability cue for
+HIGH), the next plan.
 
 #### The calendar
 
@@ -600,3 +623,4 @@ layer, which is not retired until parity fixtures pass.
 | 2026-09-02 | Part 2 reconciled to what shipped (v9.10.0, PRs #521/#522). Three amendments: (1) structural-moves **split 2a/2b** — the Projects merge needs the crickets development-lifecycle repoint in a paired release this repo cannot ship alone (why not ship it here: a one-repo move would strand every plan-resolution path; re-audit when 2b lands — fold this paragraph back to one part). (2) The engine state dir is a **git repository** (migration inits, runner commits on cadence) — why not plain files: the exit from the vault would silently trade away the history-durability those files had from the vault's repo; re-audit if the runner's commit cadence ever stalls (a dirty engine repo older than a week is the tell). (3) Diagnostics directories are **per-family** (`health/dreaming/digests`), not the drafted per-system trio — why: the writers emit by family, and the drafted names would have forced a router nothing needed; plus the Migrations section gains the **vault-wins collision doctrine** learned in the live apply (quiesce makes the vault copy the last production write; skip-on-collision stranded real state behind scratch leakage). | final |
 | 2026-09-03 | Part 2b (projects-merge) reconciled to what shipped (v9.11.0, PRs #528/#529; crickets development-lifecycle v3.37.0 first, the paired order as locked). Body: the structural-moves paragraph folds 2a/2b back to one shipped part. Two decisions recorded: (1) the vault-root `Projects/` space is reached through a **second seam backend instance** rooted at the vault root — why not a `..` Locator: Locators are root-confined by construction, and a relative escape would silently mis-root every later join onto the memory root (the storage-seam design carries the mechanism and its re-audit triggers) — the pre-tag review added the **Obsidian witness**: the sibling counts only when the memory root is nested inside a vault (`.obsidian/` at the parent, none at the memory root), because a flat vault's parent is the operator's home, where a `Projects/` is common, and the flat generation `<memory-root>/Projects` now reaches every walker and writer; (2) readers keep `desk/projects/` as a documented older probe rung — why not drop it: "discovered, never conjured" needs the rung for a vault that has not moved, and it costs one `is_dir`; re-audit when part 3 retires the last desk-era path, then drop the rung. Migrations gains the **embed backfill invariant** (a move re-keys the dense arm; `agentmd embed` closes the run) — learned in the 2b apply. Dependencies now names the moved research bundle. | final |
 | 2026-09-03 | Part 3 (corpus-migration) reconciled to what shipped (v9.12.0, PRs #533–#537; applied live the same day). Body: DD§3's map gains the shipped paragraph — the expired cohort was 2,638 across populations, not the inbox's 1,630 (why not purge the inbox alone: the same auto-miner retirements sat in the legacy dirs, `_archive` and 444 supplements, and leaving them as `lifecycle: archived` would have kept a rank-penalized junk corpus on disk against the design's own "maps it away"; re-audit if a future miner produces an expired cohort worth keeping); supplements kept their lane shape under `crystallized/<opinion>/` (why not flatten: the accumulate loop's nine consumers walk lanes, and one resolver moved them all); `external/primos` moved to `Projects/primos/` as a project tree (why not route: it held records, no memory); four record kinds registered (why not re-kind: 45 live records already meant those shapes). Migrations gains the resumable-pass and canonical-instrument invariants and the confirmed-count purge. Residual named for part 4: the Python capture path's pre-v2 vocabulary. | final |
+| 2026-09-04 | Part 4 (write-path) reconciled to what shipped (v9.13.0, PR #540; deployed live the same day). Body: DD§4 gains the shipped paragraph — the soft inbox is a status read that keeps `unfiled` served (why not exclude it: the daemon's own captures are that population and the canary fired when a draft did; re-audit if the enrichment queue ever drains to zero and `unfiled` stops meaning "the daemon's backlog"); the cap grounded in the corpus (200 over a busiest day of 110); the two meanings of `source:` recorded as an open question (why not rename in this part: no writer-side plan carried it; re-audit when the trust tier is read at retrieval time); and the labeled sample's finding that the next work is the miner's, with the operator's four rulings. | final |
