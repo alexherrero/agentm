@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The AgentMemory context payload catches up to the four-space vault and to
+  filing v2** (`templates/agentmemory-context.md`, its Antigravity/Gemini mirror
+  at `adapters/antigravity/rules/agentmemory-context.md`, and
+  `wiki/reference/AgentMemory-Context-Payload.md`). The folder map still
+  described the pre-migration tree, and five of its six entries no longer
+  resolved: `personal/_always-load/` (the surface of record is `standards/` at
+  the vault root, and the pen is legacy), `projects/<slug>/` (the root-level
+  `Projects/<slug>/`, a sibling of the memory root), `external/<slug>/` and
+  `_idea-incubator/<slug>/` (both gone), and `_inbox/` — retired by the write
+  path, which files every capture straight into its class directory. The map now
+  names the six classes under `Agent/memory/` and states the convention that
+  replaced staging: a capture is searchable the moment it lands, carrying
+  `status: unfiled` and `filing_confidence: low` until filing promotes it, which
+  ranks it lower rather than hiding it. The metadata is the inbox. Reading
+  entries correctly gains `status: unfiled`, and the `kind` + `status` +
+  `created` "core trio" becomes the two registers the rules actually define —
+  `status` + `created` plus exactly one of `type` or `kind`, never both.
+- **The self-describing twin exists again**, at
+  `<vault>/Agent/_meta/how-to-use-agentmemory.md`. Three files claimed it was
+  there; it was absent, and no installer step had ever written it. It is written
+  now, and the template's header says plainly that the copy is made by hand.
+  Re-paste is still the operator's to do: the Claude.ai custom instructions and
+  the Gemini Gem hold their own copies, and the Gemini CLI rule refreshes only
+  when `install.sh` runs.
+
 ## [9.12.0] - 2026-09-03
 
 Filing v2 part 3 — the corpus migration ([#533](https://github.com/alexherrero/agentm/pull/533),
