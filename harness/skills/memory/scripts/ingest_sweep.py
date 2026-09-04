@@ -7,21 +7,27 @@ Six duties, one hourly job (per the design's own "don't split into
 separate jobs" instruction):
 
   1. Fetch forwarded links/documents (`source_url` present, not a clip)
-     and stage the fetched text ON THE ORIGINATING `_inbox/` CANDIDATE
-     ITSELF (`status: ingest_staged` + the text appended under a
-     `## Fetched content` heading) -- no new file, no new directory. The
-     candidate is already recall-invisible (it's in `_inbox/`, and
-     `recall.py`'s existing exclusion already covers it) and was never
-     indexed anywhere, so staging needs zero new mechanism.
+     and stage the fetched text ON THE ORIGINATING CANDIDATE ITSELF
+     (`status: ingest_staged` + the text appended under a `## Fetched
+     content` heading) -- no new file, no new directory. The candidate
+     is patched wherever it already lives: since filing v2's write
+     path, that is the class directory the contract routed its type to,
+     or a legacy `memory/_inbox/` while one still exists. Staging still
+     needs no new mechanism, but what keeps a staged candidate out of
+     recall is now a status read rather than a path exclusion --
+     `recall.py` serves neither `inbox` nor `ingest_staged`, which is
+     what a candidate sitting in a class directory needs, since nothing
+     excludes the directory it sits in.
   2. Clip-skips-fetch: a `source: clipper` candidate already carries its
      full content inline -- same in-place staging patch, no network call.
   3. Promote: a candidate staged for at least one full sweep cycle, still
      `status: ingest_staged` (nothing rejected it), gets its stored text
      handed to `ingest.ingest()` -- UNCHANGED, part 2's own pre-flight/
      rollback-safe multi-file writer -- for a real, indexed,
-     `save_entry()`-backed write at `personal/domain-reference/`. This is
-     the asymmetric-trust boundary this plan exists to build: an
-     automated fetch only becomes durable, recall-visible memory after
+     `save_entry()`-backed write at `memory/semantic/`, the class the
+     filing contract routes `type: reference` to. This is the
+     asymmetric-trust boundary this plan exists to build: an automated
+     fetch only becomes durable memory a live status serves after
      surviving a real review window; an explicit, human-invoked
      `/memory ingest` call (part 2) is unaffected and stays direct.
   4. The act step: a candidate's `instructions` field, if present, is
@@ -42,8 +48,9 @@ separate jobs" instruction):
 See the plan's "Mechanism correction" section for why staging patches the
 candidate in place rather than writing a new nested-directory batch (the
 original design didn't survive contact with `save_entry`'s own group
-validator, which rejects any `_`-prefixed path segment -- the same reason
-`capture.py` bypasses `save_entry` for `_inbox` in the first place).
+validator, which rejects any `_`-prefixed path segment -- the same
+underscore that kept the retired `_inbox/` outside `save_entry`'s
+validated destinations, back when anything still wrote there).
 """
 from __future__ import annotations
 
@@ -207,8 +214,8 @@ def _iter_inbox_candidates(vault: Path) -> "list[Path]":
     `memory/<class>/` and keeps every unreviewed capture (`status: unfiled`)
     plus the notes this sweep already staged — the same population the
     staging directory used to hold, so the restamp and the act step still
-    reach a plain capture —
-    plus whatever a legacy `memory/_inbox/` still holds while it exists.
+    reach a plain capture — plus whatever a legacy `memory/_inbox/` still
+    holds while it exists.
     Non-recursive on purpose, matching `inbox_triage.py`'s own glob, so a
     lane, an index, or a record folder's children never count."""
     vault = Path(vault)
@@ -252,12 +259,14 @@ def _find_duplicate_by_source_url(vault: Path, source_url: str, exclude: Path) -
     in one pass, so a same-cycle resend pair (the design's own named risk
     — "the Drive connector can create files but never update or delete
     them... an uncertain capture sometimes lands twice") both flip out of
-    `status: inbox` before any separate triage invocation could ever see
-    both of them still untriaged (confirmed empirically, not assumed, at
-    /work time). Checks sibling `_inbox/*.md` candidates only (a bounded,
-    small set) for an exact `source_url` match already staged or
-    ingested — narrower than fuzzy near-duplicate text matching, but it's
-    exactly the shape of duplicate this sweep itself can introduce."""
+    the unreviewed statuses before any separate triage invocation could
+    ever see both of them still untriaged (confirmed empirically, not
+    assumed, at /work time). Checks every sibling candidate this sweep
+    can see -- since filing v2's write path, the flat notes under the
+    class directories plus a legacy `_inbox/` -- for an exact
+    `source_url` match already staged or ingested. Narrower than fuzzy
+    near-duplicate text matching, but it's exactly the shape of
+    duplicate this sweep itself can introduce."""
     for sibling in _iter_inbox_candidates(vault):
         if sibling == exclude:
             continue

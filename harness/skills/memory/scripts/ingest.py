@@ -9,10 +9,11 @@ the other -- this is the only capture path that produces more than one note
 per item.
 
 Write path: both the document note and every chunk note go through
-`save.py`'s `save_entry()` -- these are permanent-memory writes from the
-start (unlike capture part 1's `_inbox/`-only staging writer), each
-individually validated, indexed, and one-per-file atomic via `save_entry`'s
-own `vault_lock.vault_mutex`.
+`save.py`'s `save_entry()` -- these are permanent-memory writes at full
+confidence from the start (unlike the capture front door, which files an
+unfiled candidate at low filing confidence), each individually validated,
+indexed, and one-per-file atomic via `save_entry`'s own
+`vault_lock.vault_mutex`.
 
 Group: every note this command writes carries `group: memory` (the
 design's own "a few older notes use a different group: name... we treat
@@ -243,8 +244,9 @@ def ingest(
     """Ingest one URL or file: one full-document note (body = the extracted
     text, verbatim -- byte-for-byte reproducible modulo save_entry's own
     trailing-newline normalization) + N chunk notes (chunk body + a
-    reading-order nav footer + a backlink to the document), `kind:
-    domain-reference`, `group: memory`.
+    reading-order nav footer + a backlink to the document), `type:
+    reference`, `group: memory` — which the filing contract routes to
+    `memory/semantic/`.
 
     When `topic` is omitted, returns a suggestion WITHOUT writing anything
     (`needs_confirmation=True`) -- the design's "the agent suggests a
@@ -256,9 +258,9 @@ def ingest(
     -- `source` becomes an opaque identifier only (used for title-slug
     fallback and log/error messages). Used by the automated ingest sweep
     (capture part 3): it fetches once at staging time, stores the text on
-    the originating `_inbox/` candidate, and calls this function again at
-    promotion time (a later cycle) with the already-fetched text instead
-    of re-fetching. `source_url`/`source_fetched` should be passed
+    the originating candidate wherever it is filed, and calls this function
+    again at promotion time (a later cycle) with the already-fetched text
+    instead of re-fetching. `source_url`/`source_fetched` should be passed
     alongside `raw_content` to preserve the ORIGINAL fetch's provenance
     (the sweep's staging timestamp, not this call's own time) -- omitted,
     both fields are simply absent from the written frontmatter, same as
