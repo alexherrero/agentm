@@ -226,12 +226,27 @@ def _needs_review_reading(vault) -> Reading:
                             note=(" · ".join(parts) or "nothing waiting") + f" · MOC {needs_review.MOC_REL}")
 
 
-def section_corpus(vault: "Path | None" = None) -> Section:
+def _writes_reading(vault, *, today=None) -> Reading:
+    """Writes per day with the week-over-week trend and the headroom under
+    the volume gate's cap (filing v2, task 4) — the alarm that replaces the
+    pile the retired staging directory used to be."""
+    if vault is None or not (Path(vault) / "memory").is_dir():
+        return Reading.unavailable("writes per day", "no memory/ under the vault",
+                                   source="memory/<class>/ walk by captured date")
+    import volume_gate  # same skill dir
+    t = volume_gate.trend(vault, today=today)
+    return Reading.measured("writes per day", t["today"],
+                            source="memory/<class>/ walk by captured date",
+                            note=volume_gate.describe(t))
+
+
+def section_corpus(vault: "Path | None" = None, *, today=None) -> Section:
     """How much memory there is, and how much of it is waiting."""
     s = Section("The corpus", blurb=(
         "How much there is, and how much of it is still waiting to be filed."))
     s.readings.append(_class_reading(vault))
     s.readings.append(_needs_review_reading(vault))
+    s.readings.append(_writes_reading(vault, today=today))
     try:
         status = _agentmd(["status"])
     except DaemonUnavailable as exc:
@@ -572,7 +587,7 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sections = [
-        section_corpus(vault),
+        section_corpus(vault, today=now.date()),
         section_completeness(out_dir),
         section_meters(),
         _with_gate(section_retrieval(repo), out_dir),

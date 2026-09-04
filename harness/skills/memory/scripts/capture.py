@@ -50,6 +50,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from vault_lock import LockTimeout  # noqa: E402
+from volume_gate import VolumeCapRefused  # noqa: E402
 
 _KNOWN_KINDS = ("capture", "idea")
 
@@ -204,6 +205,11 @@ def capture(
         return CaptureResult(success=False, error=f"write failed: {e}")
     except LockTimeout as e:
         return CaptureResult(success=False, error=f"vault busy: {e}")
+    except VolumeCapRefused as e:
+        # The gate's own words, verbatim: the count, the cap, the edit that
+        # raises it. A refused capture is an outcome the caller sees, never
+        # a note that quietly did not appear.
+        return CaptureResult(success=False, error=str(e))
 
 
 def _kebab(slug: str) -> str:

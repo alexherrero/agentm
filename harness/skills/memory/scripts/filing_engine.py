@@ -421,6 +421,11 @@ def apply(vault: "Path | str", decision: FilingDecision, *, body: str, tags: "li
             pass
         return twin
     slug = Path(decision.dest_rel).stem
+    # The volume gate (task 4): a flood is refused here, at the one door every
+    # writer comes through, before anything lands. A noop never reaches this
+    # line, so reinforcing a note already home is never refused.
+    import volume_gate  # noqa: E402  (same skill dir)
+    volume_gate.check(vault)
     if status is None:
         status = "unfiled" if "no-type" in decision.flags else "active"
     # The flags a reviewer acts on ride on the note itself, with the note they

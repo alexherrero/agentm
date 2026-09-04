@@ -675,7 +675,13 @@ def _utcnow_iso() -> str:
 # Returned in place of a Path when the candidate was already on disk, so nothing
 # was written. The caller has to tell three outcomes apart — wrote, already
 # there, failed — and a bare None could only ever carry two of them.
+from volume_gate import VolumeCapRefused  # noqa: E402  (same skill dir)
+
 ALREADY_CAPTURED = object()
+# The volume gate shut the door (task 4): not a write, not a failure of this
+# candidate — the day's cap is spent. Counted as `refused` so the transparency
+# line says a flood was stopped rather than that filing broke.
+VOLUME_REFUSED = object()
 
 
 def _candidate_type(candidate: Candidate) -> str:
@@ -757,6 +763,9 @@ def _file_candidate(
         tags = ["machine-session"] if source == "machine-session" else None
         return filing_engine.apply(vault, decision, body=candidate.body, tags=tags,
                                    title=candidate.title, corpus=corpus)
+    except VolumeCapRefused as e:
+        print(f"[reflect.route] {e}", file=stderr)
+        return VOLUME_REFUSED  # type: ignore[return-value]
     except Exception as e:
         print(f"[reflect.route] could not file {candidate.slug} ({candidate.category}): {e}", file=stderr)
         return None
@@ -1016,13 +1025,14 @@ def route_candidates(
             "capped": N,           # low-confidence filings skipped past max_inbox
             "deduped": N,          # already on disk from an earlier pass over
                                    #   this transcript — skipped, not written
+            "refused": N,          # the volume gate shut the door (daily cap)
             "errors": N,           # save errors (e.g. slug collision)
         }
     """
     stats = {
         "auto_saved": 0, "approved": 0, "rejected": 0,
         "skipped": 0, "filed_low": 0, "ideas_filed": 0, "capped": 0, "errors": 0,
-        "opinion_supplements": 0, "deduped": 0,
+        "opinion_supplements": 0, "deduped": 0, "refused": 0,
     }
     # One corpus index and one search per pass: every candidate is judged
     # against the notes already home plus the ones this pass just filed.
@@ -1048,6 +1058,9 @@ def route_candidates(
             stats["capped"] += 1
             return False
         saved = _file(c, type_hint=type_hint)
+        if saved is VOLUME_REFUSED:
+            stats["refused"] += 1
+            return False
         if saved is ALREADY_CAPTURED:
             # Not a write and not a failure. Counted rather than folded into
             # either, so a re-mine reads as a re-mine in the transparency line
@@ -1062,7 +1075,9 @@ def route_candidates(
 
     def _file_counted(c: Candidate, key: str) -> None:
         saved = _file(c)
-        if saved is ALREADY_CAPTURED:
+        if saved is VOLUME_REFUSED:
+            stats["refused"] += 1
+        elif saved is ALREADY_CAPTURED:
             stats["deduped"] += 1
         elif saved:
             stats[key] += 1

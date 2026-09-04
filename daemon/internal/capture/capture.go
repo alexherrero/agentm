@@ -102,6 +102,10 @@ type Capturer struct {
 	// this system can be broken, and a number on the status surface is what
 	// makes it a fact instead of a hunch.
 	refused atomic.Int64
+	// capped counts captures the volume gate turned away (filing v2, task 4).
+	// Its own number: a flood being stopped and a contract being broken are
+	// different facts, and the status surface should say which.
+	capped atomic.Int64
 
 	// enrich is the pass fired after the transaction commits, or nil when
 	// enrichment is not configured. Held as a pointer the capture path only ever
@@ -118,6 +122,35 @@ func (c *Capturer) SetEnrichPass(p *enrich.Pass) { c.enrich = p }
 
 // RefusedCaptures is how many captures the missing contract has cost since boot.
 func (c *Capturer) RefusedCaptures() int64 { return c.refused.Load() }
+
+// RefusedByVolume is how many captures the daily cap has turned away.
+func (c *Capturer) RefusedByVolume() int64 { return c.capped.Load() }
+
+// DefaultDailyWriteCap applies when the contract names no cap (an older
+// contract, or none at all). The same number the Python writers default to.
+const DefaultDailyWriteCap = 200
+
+// dailyWriteCap is the contract's `thresholds.daily_write_cap`: 0 disables the
+// gate, absence means the default. A halted contract still gates — a flood is
+// a flood whether or not the rules parse.
+func dailyWriteCap(contract *rules.Rules, contractErr error) int {
+	if contractErr != nil || contract == nil {
+		return DefaultDailyWriteCap
+	}
+	v, ok := contract.Thresholds["daily_write_cap"]
+	if !ok {
+		return DefaultDailyWriteCap
+	}
+	if v <= 0 {
+		return 0
+	}
+	return int(v)
+}
+
+func dayStart(t time.Time) time.Time {
+	t = t.UTC()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
 
 func New(cfg *config.Config, idx *index.Index) *Capturer {
 	return &Capturer{cfg: cfg, idx: idx}
@@ -193,6 +226,18 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	}
 
 	captured := time.Now().UTC()
+	// The volume gate (filing v2, task 4): the day's writes so far, counted from
+	// the index, against the contract's cap. Refused loudly, with the count,
+	// the cap and the edit that raises it — a flood is caught at this door
+	// rather than discovered in the corpus.
+	if cap := dailyWriteCap(contract, contractErr); cap > 0 {
+		if n, err := c.idx.CapturedSince(dayStart(captured), spaceDir+"/"); err == nil && n >= cap {
+			c.capped.Add(1)
+			return Result{}, fmt.Errorf("capture refused: %d memories already written today and "+
+				"the daily cap is %d — the volume gate (filing v2) stops a flood at the door; "+
+				"if today is real, raise `thresholds.daily_write_cap` in standards/storage-rules.md", n, cap)
+		}
+	}
 	// Class routing (filing v2, the write path). A note whose type the
 	// contract knows lands in the class the contract routes that type to —
 	// where the corpus migration put everything already home, and where the

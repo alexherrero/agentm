@@ -718,6 +718,21 @@ func (x *Index) UnfiledSince(baseline time.Time) (QueueSince, error) {
 	return out, nil
 }
 
+// CapturedSince counts the documents under `prefix` captured at or after
+// `since` — the volume gate's reading of the day so far (filing v2, task 4).
+// The index rather than a counter, so a daemon restart forgets nothing and
+// what the Python writers filed counts too once the reconcile pass sees it.
+func (x *Index) CapturedSince(since time.Time, prefix string) (int, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	from := since.UTC().Format(capturedFormat)
+	var n int
+	err := x.db.QueryRow(
+		`SELECT count(*) FROM docmeta WHERE captured >= ? AND path LIKE ?`,
+		from, prefix+"%").Scan(&n)
+	return n, err
+}
+
 // Stats reports document counts and the filing queue as a query rather than a
 // folder — there is no inbox, so "how many are waiting" is a SELECT.
 func (x *Index) Stats() (Stats, error) {
