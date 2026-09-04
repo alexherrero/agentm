@@ -27,6 +27,18 @@ sys.path.insert(0, str(_REPO / "scripts" / "health"))
 sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
 
 import eval_retrieval_shipped as ev  # noqa: E402
+
+# The eval translates pinned gold paths through the live corpus migration's
+# reports (filing-v2 part 3). These tests stub the daemon with pre-migration
+# paths, so the translation table is pinned empty for the module — a stubbed
+# instrument must never consult the operator's live reports.
+def setUpModule():
+    ev._MIGRATION_TABLE = {}
+
+
+def tearDownModule():
+    ev._MIGRATION_TABLE = None
+
 import recall  # noqa: E402
 
 GATE = _REPO / "scripts" / "check-retrieval-regression.sh"

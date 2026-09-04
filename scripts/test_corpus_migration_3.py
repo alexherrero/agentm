@@ -298,6 +298,48 @@ class ALaterPassSettlesAgainstWhatIsAlreadyHome(unittest.TestCase):
             self.assertIn("a DIFFERENT convention", (home / "conv.md").read_text(encoding="utf-8"))
 
 
+class DestinationsAreSettledOnce(unittest.TestCase):
+    """Names are settled in one pass, winners first, against the rows and the
+    disk together — so a third note whose natural name is already `~dup`
+    cannot collide with a renamed clash loser, and a twin's `superseded_by`
+    is read from its winner's final name, never from a slot another note
+    took later (the pre-tag review's two confirmed cases)."""
+
+    def test_a_natural_dup_name_never_collides_with_a_renamed_loser(self):
+        with tempfile.TemporaryDirectory() as td:
+            vault = _build(Path(td))
+            m = vault / "memory"
+            _note(m / "_inbox" / "foo.md", "type: preference\nstatus: active\nslug: foo\ncreated: 2026-01-01\n", "body X")
+            _note(m / "idea" / "foo.md", "type: idea\nstatus: active\nslug: foo\ncreated: 2026-02-01\n", "body Y")
+            _note(m / "preferences" / "foo~dup.md", "type: preferences\nstatus: active\nslug: foo-dup\ncreated: 2026-03-01\n", "body Z")
+            rows = _rows(vault)
+            dests = [r.dest for r in rows.values() if r.disposition == "route"]
+            self.assertEqual(len(dests), len(set(dests)), sorted(dests))
+            self.assertEqual(rows["memory/_inbox/foo.md"].dest, "memory/semantic/foo.md")
+            self.assertEqual(rows["memory/idea/foo.md"].dest, "memory/semantic/foo~dup.md")
+            self.assertEqual(rows["memory/preferences/foo~dup.md"].dest, "memory/semantic/foo~dup2.md")
+            r = _run(vault, "--apply", "--phase", "route", report=Path(td) / "report")
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            for name in ("foo.md", "foo~dup.md", "foo~dup2.md"):
+                self.assertTrue((m / "semantic" / name).is_file(), name)
+
+    def test_a_twins_pointer_follows_its_winners_final_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            vault = _build(Path(td))
+            m = vault / "memory"
+            # B is A's exact twin (same body) and is older, so B wins; C is an older
+            # namesake of B with a different body, so B is renamed — A must follow it.
+            _note(m / "_inbox" / "bar.md", "type: preference\nstatus: active\nslug: bar\ncreated: 2026-05-01\n", "same body")
+            _note(m / "idea" / "bar.md", "type: idea\nstatus: active\nslug: bar\ncreated: 2026-04-01\n", "same body")
+            _note(m / "preferences" / "bar.md", "type: preferences\nstatus: active\nslug: bar\ncreated: 2026-03-01\n", "another body")
+            rows = _rows(vault)
+            a, b, c = rows["memory/_inbox/bar.md"], rows["memory/idea/bar.md"], rows["memory/preferences/bar.md"]
+            self.assertEqual(c.dest, "memory/semantic/bar.md")
+            self.assertEqual(b.dest, "memory/semantic/bar~dup.md")
+            self.assertEqual((a.lifecycle, a.superseded_by), ("superseded", b.dest))
+            self.assertNotEqual(a.superseded_by, c.dest)
+
+
 class ApplyPhases(unittest.TestCase):
     def test_route_then_archive_then_purge(self):
         with tempfile.TemporaryDirectory() as td:
