@@ -1386,7 +1386,7 @@ func cmdEnrich(args []string) error {
 		}
 		previous, _ := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
 		stamp := enrichStamp(cfg, time.Now())
-		next := enrich.RenderNote(r, stamp)
+		next := enrich.CarryProvenance(string(previous), enrich.RenderNote(r, stamp))
 		dest, err := applier.Apply(ctx, enrich.WriteRequest{
 			Rel: rel, Previous: string(previous), Next: next,
 			NewSlug: r.Slug, Trigger: enrich.TriggerBatch,

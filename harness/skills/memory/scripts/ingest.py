@@ -318,7 +318,7 @@ def ingest(
         doc_path = save_entry(
             vault_path, _INGEST_KIND, doc_slug, text,
             group=group, tags=tags, source_url=source_url, source_fetched=source_fetched,
-            dedup_info=dedup_info,
+            dedup_info=dedup_info, source="external-fetch",
         )
         if dedup_info.get("deduplicated"):
             # The document's content already exists in the vault -- the
@@ -348,7 +348,7 @@ def ingest(
             chunk_path = save_entry(
                 vault_path, _INGEST_KIND, chunk_slugs[i], body,
                 group=group, tags=tags, source_url=source_url, source_fetched=source_fetched,
-                dedup_info=dedup_info,
+                dedup_info=dedup_info, source="external-fetch",
             )
             if not dedup_info.get("deduplicated"):
                 written.append(chunk_path)

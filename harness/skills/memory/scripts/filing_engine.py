@@ -370,6 +370,12 @@ def decide(vault: "Path | str", *, title: str, body: str, slug: str, type_hint: 
 
 # ── applying ─────────────────────────────────────────────────────────────────
 
+# The decision flags that mean "a person or a later pass should look": a
+# probable duplicate filed beside its twin, and a same-key note whose body
+# differs from the one already home. Persisted as `review_flags`.
+REVIEW_FLAGS = ("near-duplicate", "update-candidate")
+
+
 def _stamp_superseded(vault: Path, rel: str, by_rel: str) -> None:
     """The existing note gains `superseded_by` and flips `lifecycle` —
     line-surgical, and nothing is deleted."""
@@ -417,6 +423,15 @@ def apply(vault: "Path | str", decision: FilingDecision, *, body: str, tags: "li
     slug = Path(decision.dest_rel).stem
     if status is None:
         status = "unfiled" if "no-type" in decision.flags else "active"
+    # The flags a reviewer acts on ride on the note itself, with the note they
+    # point at, so the needs-review reading is a walk over metadata rather
+    # than a replay of this decision.
+    marks = [f for f in decision.flags if f in REVIEW_FLAGS]
+    if marks:
+        extra = dict(extra or {})
+        extra.setdefault("review_flags", marks)
+        if decision.related:
+            extra.setdefault("related", decision.related)
     written = save.save_entry(vault, decision.type, slug, body, group="memory", tags=tags or [],
                               lifecycle="active", source=decision.source,
                               filing_confidence=decision.filing_confidence,

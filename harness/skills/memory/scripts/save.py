@@ -122,6 +122,11 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     # the write-time judgment's confidence — stamped by the filing engine on
     # every auto-filed note; optional, so a hand-written entry stays complete.
     "lifecycle", "source", "filing_confidence",
+    # A capture's own record (the write path, task 2): how it arrived and what
+    # the operator said at capture time; and the engine's review marks (task
+    # 3): the flags the needs-review reading selects on and the note they
+    # point at. All optional.
+    "via", "captured", "surface", "instructions", "review_flags", "related",
 )
 # Required fields = every field except the optional ones.
 # `fingerprint` stays structurally optional in the frontmatter contract, but
@@ -149,6 +154,7 @@ _OPTIONAL_FIELDS = frozenset({
     "source_url", "source_fetched", "fingerprint", "occurrences", "supersedes",
     "lifecycle_tier", "derived_from", "heat_pin", "arc", "altitude",
     "lifecycle", "source", "filing_confidence",
+    "via", "captured", "surface", "instructions", "review_flags", "related",
 })
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
@@ -165,6 +171,14 @@ def _today_iso() -> str:
 # `canonical` rather than assuming it.
 ALTITUDES = ("artifact", "canonical")
 DEFAULT_ALTITUDE = "artifact"
+
+
+def _default_lifecycle() -> str:
+    """The contract's `default_lifecycle`, or `active` when no contract answers."""
+    try:
+        return storage_rules.rules().default_lifecycle() or "active"
+    except Exception:
+        return "active"
 
 
 def _resolve_vocabulary(value: str) -> tuple:
@@ -367,12 +381,18 @@ def _build_frontmatter(
     # A capture's own record fields (the surface it came through, the operator's
     # verbatim instructions, the capture stamp) — written last, values quoted
     # as JSON strings when they carry anything YAML would misread.
-    for key, value in (extra or {}).items():
-        if value is None or value == "":
+    extra = extra or {}
+    ordered = [k for k in FRONTMATTER_FIELD_ORDER if k in extra] + [k for k in extra if k not in FRONTMATTER_FIELD_ORDER]
+    for key in ordered:
+        value = extra[key]
+        if value is None or value == "" or value == []:
             continue
-        text = str(value)
-        if not _BARE_SCALAR.match(text) or text.lower() in _YAML_SPECIAL:
-            text = json.dumps(text)
+        if isinstance(value, (list, tuple)):
+            text = "[" + ", ".join(str(v) for v in value) + "]"
+        else:
+            text = str(value)
+            if not _BARE_SCALAR.match(text) or text.lower() in _YAML_SPECIAL:
+                text = json.dumps(text)
         lines.append(f"{key}: {text}")
     lines.append("---")
     return "\n".join(lines) + "\n"
@@ -432,6 +452,19 @@ def save_entry(
     # migrating to its replacement therefore also moves where NEW notes of that
     # value are written, which is the collapse working rather than a side effect.
     vocabulary_field, kind, vocabulary_note = _resolve_vocabulary(kind)
+    # The write-time stamps (filing v2, task 3) on every memory the writer
+    # files, whoever the caller is: a caller that named the type stands behind
+    # it (high confidence), the transport is a conversation unless the caller
+    # says otherwise (the CLI says operator-direct, the ingest says
+    # external-fetch), and the aging axis starts where the contract says. A
+    # record keeps its own shape; an always-load rule never ages.
+    if vocabulary_field == "type":
+        if lifecycle is None and not always_load:
+            lifecycle = _default_lifecycle()
+        if source is None:
+            source = "conversation"
+        if filing_confidence is None:
+            filing_confidence = "high"
     _validate_kebab(slug, "slug")
     _validate_group(group)
     tags = tags or []
@@ -674,6 +707,7 @@ def main(argv: list[str] | None = None) -> int:
             supersedes=args.supersedes,
             fingerprint=args.fingerprint,
             lifecycle_tier=args.lifecycle_tier,
+            source="operator-direct",
         )
     except (FileNotFoundError, FileExistsError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)

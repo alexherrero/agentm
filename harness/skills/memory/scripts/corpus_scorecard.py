@@ -211,11 +211,27 @@ def _class_reading(vault) -> Reading:
                             note=" · ".join(parts))
 
 
+def _needs_review_reading(vault) -> Reading:
+    """The metadata soft inbox, counted (filing v2, the write path): notes
+    filed at low confidence, captures still unfiled, probable duplicates
+    flagged beside their twin. The design named this line as the alarm that
+    replaces the pile the retired staging directory used to be."""
+    if vault is None or not (Path(vault) / "memory").is_dir():
+        return Reading.unavailable("needs review", "no memory/ under the vault",
+                                   source="memory/<class>/ walk")
+    import needs_review  # same skill dir
+    summary = needs_review.summary(vault)
+    parts = [f"{reason} {n}" for reason, n in summary["by_reason"].items() if n]
+    return Reading.measured("needs review", summary["total"], source="memory/<class>/ walk",
+                            note=(" · ".join(parts) or "nothing waiting") + f" · MOC {needs_review.MOC_REL}")
+
+
 def section_corpus(vault: "Path | None" = None) -> Section:
     """How much memory there is, and how much of it is waiting."""
     s = Section("The corpus", blurb=(
         "How much there is, and how much of it is still waiting to be filed."))
     s.readings.append(_class_reading(vault))
+    s.readings.append(_needs_review_reading(vault))
     try:
         status = _agentmd(["status"])
     except DaemonUnavailable as exc:
