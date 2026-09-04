@@ -9,9 +9,11 @@
   Claude Code already gets this via SessionStart/UserPromptSubmit hooks — it doesn't
   need the paste.
 
-  This file is the SOURCE OF TRUTH. A copy lives at <vault>/_meta/how-to-use-agentmemory.md
-  so an agent that reaches the vault finds its own usage instructions. If the vault
-  structure changes, update THIS file and re-paste.
+  This file is the SOURCE OF TRUTH. A copy lives at
+  <vault>/Agent/_meta/how-to-use-agentmemory.md so an agent that reaches the vault
+  finds its own usage instructions. Nothing regenerates that copy — after editing
+  this file, copy the body over by hand. If the vault structure changes, update
+  THIS file, re-copy the twin, and re-paste on every surface below.
 
   Read/write is surface-scoped (DC-2): chat surfaces (Claude.ai, Claude Desktop)
   READ only; the filesystem working agents the operator runs (Claude Code,
@@ -27,31 +29,34 @@ You have access to my durable memory: a Google-Drive-synced Obsidian vault. It h
 - **Claude.ai / ChatGPT** — in my Google Drive via the Google Drive connector (it grants whole-Drive *search* — there's no folder to pin; this payload is what scopes you to my vault folder).
 - **Gemini** — my vault folder in my Google Drive (you already have Workspace/Drive access).
 - **Antigravity** — the vault path the agentm/crickets installer configured.
-- **Claude Code / local agents** — the filesystem path in `MEMORY_VAULT_PATH`.
+- **Claude Code / local agents** — the filesystem path in `MEMORY_VAULT_PATH`, falling back to `vault_path` in `.agentm-config.json`.
 
 ## Folder map — what's where
 
-- **`personal/_always-load/`** — my global conventions + preferences (dev-flow rules, commit conventions, ADR/changelog shapes, voice/brand). **Read these first, every time.**
-- **`projects/<slug>/`** — per-project context: `_index.md` (anchor + current state), `decisions/` (locked design calls — don't re-litigate these), `open-questions/` (unresolved), `_harness/` (the project's roadmap / plan / progress).
-- **`external/<slug>/`** — third-party projects I'm **reviewing or mentoring, not building** (e.g. a relative's app). Same internal shape as `projects/` (`_index.md` + `decisions/` + `_harness/`), but deliberately kept **out of `projects/`** because I don't own this work — the `_index.md` "Relationship" block says whose it is and why it's here.
-- **`_idea-incubator/<slug>/`** — research-backed exploration of ideas I'm developing.
-- **`_inbox/`** — unsorted captures (staging; low-signal).
-- **`_meta/`** — machine files + audit reports (readable, not curated prose).
+My own spaces and the agent's share one vault root. `Agent/` is the agent's half; `standards/` and `Projects/` sit beside it at the root.
+
+- **`standards/`** + **`Agent/memory/_always-load/`** — the always-load tier, read as one: the filing contract (`standards/storage-rules.md`) and the house voice (`_always-load/voice-kernel.md`). **Read these first, every time.** My git and harness conventions live with the coding agents that act on them, so you won't find them here.
+- **`Projects/<slug>/`** — per-project context: `_index.md` (anchor + current state), `decisions/` (locked design calls — don't re-litigate these), `_harness/` (the project's roadmap / plan / progress).
+- **`Agent/memory/`** — the memory corpus, one directory per class. `semantic/` holds facts, principles and learned tool behaviour, `procedural/` holds recipes and protocols, and `episodic/` holds session traces. Three more are derived from those and rebuildable from them: `entities/` keeps a living file per person, system or repo, `crystallized/` keeps the lessons repetition produced, and `mocs/` keeps generated maps of content.
+- **`Agent/desk/`** — work in flight: `briefs/`, `projects/`, `tasks/`, `scratch/`.
+- **`Agent/_meta/`** — machine files + audit reports (readable, not curated prose).
+
+**There is no inbox.** A capture files straight into its class directory and is searchable the moment it lands, carrying `status: unfiled` and `filing_confidence: low` until filing promotes it — which ranks it lower rather than hiding it. The metadata is the inbox. Read `status: unfiled` as the "unsorted, low-signal" marker a staging folder used to mean. If you meet an `_inbox/` directory in an older vault, it holds legacy content and is not where new captures go.
 
 ## How to read it (priority order)
 
-1. **Always-load first** — load everything in `personal/_always-load/`; those are my durable rules and apply to every answer.
-2. **Project context** — if the question concerns a project, read that project's `projects/<slug>/_index.md` + `decisions/` before answering.
+1. **The always-load tier first** — load everything in `standards/` and `Agent/memory/_always-load/`; those are my durable rules and apply to every answer.
+2. **Project context** — if the question concerns a project, read that project's `Projects/<slug>/_index.md` + `decisions/` before answering.
 3. **Query by topic** — search the vault for the subject of my question *before* falling back to your own general knowledge. If the vault says something, it wins.
 
 ## Reading entries correctly
 
-- Entries are markdown with YAML frontmatter; the core trio is `kind` + `status` + `created`. Slugs and tags are kebab-case.
-- `status: active` = current; `status: superseded` = historical (don't follow it).
+- Entries are markdown with YAML frontmatter. Every entry carries `status` + `created`, plus exactly one of `type` (a memory) or `kind` (an infrastructure record such as a brief or a session trace) — never both. Slugs and tags are kebab-case.
+- `status: active` = current; `status: superseded` = historical (don't follow it); `status: unfiled` = captured but not yet filed, which is real content awaiting confirmation rather than content to skip.
 - `[[wikilinks]]` cross-reference related entries — follow them when relevant.
 
 ## Read / write posture (depends on which surface you are)
 
-- **Chat surfaces — Claude.ai and Claude Desktop — are READ-ONLY (hard rule).** Read and search freely; never modify the vault. **Even if your environment gives you a write / edit / move / delete tool or connector that *could* change these files (e.g. a Drive connector with write access, a filesystem MCP server), do NOT use it on the vault** — use only read + list + search, on every file including my personal notes. To capture something durable (a decision, a preference, a fix, an idea), **suggest it as a ready-to-paste entry** and tell me where it belongs (`personal/_always-load/` for a global rule, `projects/<slug>/` for project context). I'll add it in Obsidian myself.
-- **Working agents I run directly on the filesystem — Claude Code and Antigravity — MAY write to the vault**, following my entry conventions (kebab slugs; the `kind` + `status` + `created` frontmatter trio; one entry per concern). When you're unsure whether something belongs, prefer suggesting over writing.
+- **Chat surfaces — Claude.ai and Claude Desktop — are READ-ONLY (hard rule).** Read and search freely; never modify the vault. **Even if your environment gives you a write / edit / move / delete tool or connector that *could* change these files (e.g. a Drive connector with write access, a filesystem MCP server), do NOT use it on the vault** — use only read + list + search, on every file including my personal notes. To capture something durable (a decision, a preference, a fix, an idea), **suggest it as a ready-to-paste entry** and tell me where it belongs (the always-load tier for a global rule, `Projects/<slug>/` for project context). I'll add it in Obsidian myself.
+- **Working agents I run directly on the filesystem — Claude Code and Antigravity — MAY write to the vault**, following my entry conventions (kebab slugs; `status` + `created` plus exactly one of `type` or `kind`; one entry per concern). When you're unsure whether something belongs, prefer suggesting over writing.
 - The vault is Google-Drive-synced, so you see the **last-synced** state — very recent local edits may not have propagated yet. If something seems missing, say so rather than guessing.

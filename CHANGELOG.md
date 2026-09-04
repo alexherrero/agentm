@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The AgentMemory context payload catches up to the four-space vault and to
+  filing v2** (`templates/agentmemory-context.md`, its Antigravity/Gemini mirror
+  at `adapters/antigravity/rules/agentmemory-context.md`, and
+  `wiki/reference/AgentMemory-Context-Payload.md`). The folder map still
+  described the pre-migration tree, and five of its six entries no longer
+  resolved: `personal/_always-load/` (the surface of record is `standards/` at
+  the vault root, and the pen is legacy), `projects/<slug>/` (the root-level
+  `Projects/<slug>/`, a sibling of the memory root), `external/<slug>/` and
+  `_idea-incubator/<slug>/` (both gone), and `_inbox/` — retired by the write
+  path, which files every capture straight into its class directory. The map now
+  names the six classes under `Agent/memory/` and states the convention that
+  replaced staging: a capture is searchable the moment it lands, carrying
+  `status: unfiled` and `filing_confidence: low` until filing promotes it, which
+  ranks it lower rather than hiding it. The metadata is the inbox. Reading
+  entries correctly gains `status: unfiled`, and the `kind` + `status` +
+  `created` "core trio" becomes the two registers the rules actually define —
+  `status` + `created` plus exactly one of `type` or `kind`, never both.
+- **The self-describing twin exists again**, at
+  `<vault>/Agent/_meta/how-to-use-agentmemory.md`. Three files claimed it was
+  there; it was absent, and no installer step had ever written it. It is written
+  now, and the template's header says plainly that the copy is made by hand.
+  Re-paste is still the operator's to do: the Claude.ai custom instructions and
+  the Gemini Gem hold their own copies, and the Gemini CLI rule refreshes only
+  when `install.sh` runs.
+- **The house voice is always-loaded again.** `voice-kernel.md` had drifted out
+  of the always-load tier into `memory/semantic/`, where nothing injects it, so
+  the operator's voice reached a session only when a search happened to match
+  it. It moves back to `memory/_always-load/` — the directory the filing design
+  kept as "the universal-rules directory loaded every session", the target
+  `save --always-load` writes, and the first place crickets' prose pass probes —
+  and gains `priority: high` so it is budgeted before bulkier standards. The
+  payload's folder map now describes that tier as the two directories it
+  actually spans, `standards/` and `Agent/memory/_always-load/`, and says
+  plainly that the git and harness conventions stay with the coding agents that
+  act on them rather than living in the vault.
+
 ## [9.12.0] - 2026-09-03
 
 Filing v2 part 3 — the corpus migration ([#533](https://github.com/alexherrero/agentm/pull/533),
