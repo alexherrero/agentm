@@ -181,6 +181,23 @@ class CorpusIndex:
         self.by_key: dict = {}
         self._load()
 
+    def add(self, rel: str) -> None:
+        """A note this process just filed joins the index, so the next candidate
+        in the same batch is judged against it too."""
+        p = self.vault / rel
+        try:
+            fm, body = _frontmatter(p.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            return
+        title = fm.get("title") or fm.get("slug") or p.stem
+        note = Note(rel=rel, title=title, slug=fm.get("slug", p.stem), type=fm.get("type", ""),
+                    status=fm.get("status", ""), lifecycle=fm.get("lifecycle", ""),
+                    fingerprint=compute_fingerprint(body), key=extract_key(title, body))
+        self.notes.append(note)
+        self.by_fingerprint.setdefault(note.fingerprint, note)
+        if note.key and note.lifecycle != "superseded":
+            self.by_key.setdefault(note.key[:2], []).append(note)
+
     def _load(self) -> None:
         mem = self.vault / "memory"
         for cls in CLASS_DIRS:
@@ -379,11 +396,14 @@ def _stamp_superseded(vault: Path, rel: str, by_rel: str) -> None:
 
 
 def apply(vault: "Path | str", decision: FilingDecision, *, body: str, tags: "list | None" = None,
-          title: "str | None" = None) -> "Path | None":
+          title: "str | None" = None, source_url: "str | None" = None, extra: "dict | None" = None,
+          status: "str | None" = None, corpus: "CorpusIndex | None" = None) -> "Path | None":
     """Perform the decision. `add`/`update`/`supersede` write the note at its
     destination through `save.save_entry` with the write-time stamps;
     `supersede` then marks the existing note; `noop` reinforces the twin and
-    writes nothing. Returns the path written (or reinforced)."""
+    writes nothing. A candidate the contract could not type lands `unfiled`
+    — the state the daemon's enrichment pass drains — unless the caller says
+    otherwise. Returns the path written (or reinforced)."""
     vault = Path(vault)
     import save  # noqa: E402  (same skill dir)
     if decision.op == "noop":
@@ -395,13 +415,42 @@ def apply(vault: "Path | str", decision: FilingDecision, *, body: str, tags: "li
             pass
         return twin
     slug = Path(decision.dest_rel).stem
+    if status is None:
+        status = "unfiled" if "no-type" in decision.flags else "active"
     written = save.save_entry(vault, decision.type, slug, body, group="memory", tags=tags or [],
                               lifecycle="active", source=decision.source,
                               filing_confidence=decision.filing_confidence,
-                              supersedes=decision.related if decision.op == "supersede" else None)
+                              supersedes=decision.related if decision.op == "supersede" else None,
+                              source_url=source_url, status=status, extra=extra)
     if decision.op == "supersede" and decision.related:
         _stamp_superseded(vault, decision.related, decision.dest_rel)
+    if corpus is not None:
+        try:
+            corpus.add(written.relative_to(vault).as_posix())
+        except Exception:
+            pass
     return written
+
+
+def transport(source: "str | None", rules=None) -> str:
+    """The contract's provenance vocabulary for a caller's source tag: a value
+    the contract names passes; anything else — a session tag, a surface
+    name, nothing — is `conversation`, the transport every mined and typed
+    candidate actually arrived through."""
+    try:
+        rules = rules or storage_rules.rules()
+        if source and source in rules.sources():
+            return source
+    except Exception:
+        pass
+    return "conversation"
+
+
+def default_search(vault: "Path | str"):
+    """The similarity shortlist a hook uses: the daemon's search when a binary
+    answers, else nothing (fewer flags, never a failure)."""
+    v = Path(vault)
+    return lambda q: daemon_search(v, q)
 
 
 # ── measurement + CLI ────────────────────────────────────────────────────────

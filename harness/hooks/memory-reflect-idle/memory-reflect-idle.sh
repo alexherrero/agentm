@@ -202,7 +202,7 @@ for marker in "${markers[@]:-}"; do
         fi
     fi
 
-    # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → _inbox/
+    # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → filed flagged low
     # via reflect.py's tri-modal routing). Requires MEMORY_VAULT_PATH; if
     # unset, --route fails non-zero + marker stays .start for next pass.
     if "$AGENTM_PY" "$REFLECT_PY" "$transcript" --summary --route 2>/dev/null; then

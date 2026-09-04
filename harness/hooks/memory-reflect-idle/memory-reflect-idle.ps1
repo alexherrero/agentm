@@ -94,7 +94,7 @@ foreach ($marker in $markers) {
         }
     }
 
-    # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → _inbox/).
+    # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → filed flagged low).
     & $Py $ReflectPy $transcript "--summary" "--route" 2>$null
     if ($LASTEXITCODE -eq 0) {
         $reflectedPath = $marker.FullName -replace '\.start$', '.reflected'

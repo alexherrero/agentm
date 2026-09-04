@@ -19,9 +19,8 @@ machinery owns them.
 
 One lookup surface remains:
 
-  - `find_inbox_duplicate` — capture's staging writes. A direct
-    frontmatter scan of `personal/_inbox/` (small by design — triage
-    drains it).
+  - (retired with filing v2's write path: capture's exact-twin check is the
+    filing engine's corpus index now, class directories included)
 
 Its sibling `find_vault_duplicate`, which guarded permanent-memory writes
 (`save_entry`), went with the vector index: it resolved a fingerprint
@@ -129,22 +128,6 @@ def _file_status(path: Path) -> str | None:
         return None
     m = _STATUS_LINE_RE.search(content[span[0]:span[1]])
     return m.group(1) if m else None
-
-
-def find_inbox_duplicate(vault_path: Path | str, fingerprint: str) -> Path | None:
-    """Absolute path of an inbox candidate whose fingerprint matches, or
-    None. A plain scan — the inbox is a small staging area by design."""
-    inbox = Path(vault_path) / "memory" / "_inbox"
-    if not inbox.is_dir():
-        return None
-    for md in sorted(inbox.glob("*.md")):
-        if live_content_fingerprint(md) == fingerprint and _file_status(md) == "inbox":
-            # status: inbox only — a triaged tombstone (expired / promoted /
-            # triage_rejected / ingest_staged...) is archived-in-place, and
-            # reinforcing it would drop the re-capture without it ever
-            # re-entering triage. The re-capture writes fresh instead.
-            return md
-    return None
 
 
 def reinforce(path: Path, *, today: str | None = None) -> int:

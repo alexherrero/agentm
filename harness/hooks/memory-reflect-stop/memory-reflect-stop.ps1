@@ -145,7 +145,7 @@ import json, sys
 try:
     d = json.loads(sys.stdin.read())
     print(d.get('auto_saved', 0) + d.get('approved', 0))
-    print(d.get('inboxed', 0) + d.get('ideas_inboxed', 0))
+    print(d.get('filed_low', 0) + d.get('ideas_filed', 0))
 except Exception:
     print(0)
     print(0)
@@ -153,7 +153,7 @@ except Exception:
     $RouteCounts = ($RouteLine | & $Py -c $RouteCountDriver 2>$null) -split "`n"
     $Saved = if ($RouteCounts.Length -ge 1) { $RouteCounts[0] } else { '0' }
     $Inboxed = if ($RouteCounts.Length -ge 2) { $RouteCounts[1] } else { '0' }
-    [Console]::Error.WriteLine("[memory-reflect-stop] Mined $MemCount memory + $IdeaCount idea candidates from $Transcript; saved $Saved, inboxed $Inboxed")
+    [Console]::Error.WriteLine("[memory-reflect-stop] Mined $MemCount memory + $IdeaCount idea candidates from $Transcript; saved $Saved, filed flagged for review $Inboxed")
 } else {
     [Console]::Error.WriteLine("[memory-reflect-stop] Mined $MemCount memory + $IdeaCount idea candidates from $Transcript (routing skipped)")
 }

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import json
 import re
 import sys
 from datetime import date
@@ -38,6 +39,7 @@ from storage_device_local import DeviceLocalBackend  # noqa: E402
 
 # Validation regexes (must match the skill body's documented contracts).
 _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
+_SLUG_SEGMENT = re.compile(r"^[a-z0-9-]+(?:~dup[0-9]*)?$")
 # Group is a vault subdirectory path: one or more kebab segments joined by `/`.
 # (Widened V4 #33: the live vault uses deep groups like
 # `projects/<slug>/decisions` — the prior single-sub-segment regex was behind
@@ -231,11 +233,16 @@ def _class_segment(vocabulary_field: str, value: str) -> str:
     return class_dir.rsplit("/", 1)[-1] if class_dir else value
 
 
+# A slug is kebab-case, optionally carrying the `~dup` mark the filing engine
+# and the corpus migration settle a namesake with (`<slug>~dup`, `~dup2`, …):
+# two different notes that slug alike are two notes, and the mark is how the
+# second keeps its name without pretending to be the first.
 def _validate_kebab(value: str, arg_name: str) -> None:
-    """Raise ValueError if `value` is not kebab-case (^[a-z0-9-]+$)."""
-    if not _KEBAB_SEGMENT.match(value):
+    """Raise ValueError if `value` is not kebab-case (^[a-z0-9-]+(?:~dup[0-9]*)?$)."""
+    rule = _SLUG_SEGMENT if arg_name == "slug" else _KEBAB_SEGMENT
+    if not rule.match(value):
         raise ValueError(
-            f"{arg_name} {value!r}: must be kebab-case (^[a-z0-9-]+$)"
+            f"{arg_name} {value!r}: must be kebab-case ({rule.pattern})"
         )
 
 
@@ -257,6 +264,14 @@ def _validate_tags(tags: list[str]) -> None:
             )
 
 
+# A value written bare only when YAML reads it back as the same string: one
+# token of word characters, dots, slashes, colons and dashes (a timestamp, a
+# URL, a slug) that is not a YAML literal. Everything else is JSON-quoted, so
+# an operator's verbatim instruction survives the round trip untouched.
+_BARE_SCALAR = re.compile(r"^[A-Za-z0-9_./@:+-]+$")
+_YAML_SPECIAL = {"true", "false", "yes", "no", "on", "off", "null", "~"}
+
+
 def _build_frontmatter(
     *,
     kind: str,
@@ -275,6 +290,8 @@ def _build_frontmatter(
     lifecycle: str | None = None,
     source: str | None = None,
     filing_confidence: str | None = None,
+    status: str = "active",
+    extra: dict | None = None,
 ) -> str:
     """Build the locked-order YAML frontmatter for a memory entry.
 
@@ -312,7 +329,7 @@ def _build_frontmatter(
     lines = [
         "---",
         f"{vocabulary_field}: {kind}",
-        "status: active",
+        f"status: {status}",
         f"altitude: {altitude}",
         f"created: {today}",
         f"updated: {today}",
@@ -347,6 +364,16 @@ def _build_frontmatter(
         lines.append(f"source: {source}")
     if filing_confidence:
         lines.append(f"filing_confidence: {filing_confidence}")
+    # A capture's own record fields (the surface it came through, the operator's
+    # verbatim instructions, the capture stamp) — written last, values quoted
+    # as JSON strings when they carry anything YAML would misread.
+    for key, value in (extra or {}).items():
+        if value is None or value == "":
+            continue
+        text = str(value)
+        if not _BARE_SCALAR.match(text) or text.lower() in _YAML_SPECIAL:
+            text = json.dumps(text)
+        lines.append(f"{key}: {text}")
     lines.append("---")
     return "\n".join(lines) + "\n"
 
@@ -370,6 +397,8 @@ def save_entry(
     lifecycle: str | None = None,
     source: str | None = None,
     filing_confidence: str | None = None,
+    status: str = "active",
+    extra: dict | None = None,
 ) -> Path:
     """Write a memory entry to the vault. Returns the absolute path written —
     or, when the write-time dedup guard fires (auto-org part 3 task 2), the
@@ -489,6 +518,8 @@ def save_entry(
         lifecycle=lifecycle,
         source=source,
         filing_confidence=filing_confidence,
+        status=status,
+        extra=extra,
     )
     # Ensure body ends with single trailing newline.
     body_stripped = body.rstrip("\n")
@@ -510,6 +541,12 @@ def save_entry(
     backend = DeviceLocalBackend(root=vault)
     locator = backend.resolve(*target.relative_to(vault).parts)
     with vault_mutex(vault):
+        # Re-checked under the lock: the guard above ran before the mutex, and
+        # two writers that both saw the name free would otherwise both write
+        # it, the second silently over the first. The loser gets the same
+        # FileExistsError and settles a new name.
+        if target.exists():
+            raise FileExistsError(f"entry already exists at {target}: a concurrent writer landed first")
         # The dedup guard's find+reinforce and the write share this one
         # critical section: two concurrent identical saves serialize here,
         # and the loser sees the winner (once indexed) rather than both

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Unit tests for harness/skills/memory/scripts/capture.py — the staging-only
-front door for personal/_inbox/ (capture-front-door plan task 2)."""
+"""Unit tests for harness/skills/memory/scripts/capture.py — the front door
+that files a capture at its class directory as an `unfiled` note (filing v2,
+the write path; originally the staging-only writer of capture-front-door
+plan task 2)."""
 from __future__ import annotations
 
 import concurrent.futures
@@ -34,15 +36,18 @@ class CaptureBasicsTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertTrue(result.path.is_file())
         content = result.path.read_text(encoding="utf-8")
-        self.assertIn("kind: capture", content)
-        self.assertIn("status: inbox", content)
+        self.assertIn("status: unfiled", content)
+        self.assertIn("filing_confidence: low", content)
+        self.assertIn("source: operator-direct", content)
+        self.assertIn("captured: 2026-07-18T12:00:00", content)
         self.assertIn("a thought worth keeping", content)
 
     def test_idea_kind_writes_note(self) -> None:
         result = cap.capture(self.vault, "an idea worth keeping", kind="idea", now=_NOW)
         self.assertTrue(result.success)
         content = result.path.read_text(encoding="utf-8")
-        self.assertIn("kind: idea", content)
+        self.assertIn("type: idea", content)
+        self.assertIn("status: unfiled", content)
 
     def test_unknown_kind_fails_explicitly(self) -> None:
         result = cap.capture(self.vault, "x", kind="bogus", now=_NOW)
@@ -60,10 +65,15 @@ class CaptureBasicsTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("does not exist", result.error)
 
-    def test_writes_to_inbox_not_permanent_memory(self) -> None:
+    def test_files_at_the_class_directory_never_a_staging_dir(self) -> None:
+        # The contract routes the default type to a class; the capture lands
+        # there marked unfiled, and no staging directory comes into being.
         result = cap.capture(self.vault, "x", now=_NOW)
         self.assertTrue(result.success)
-        self.assertIn("memory/_inbox", result.path.as_posix())
+        rel = result.path.relative_to(self.vault).as_posix()
+        self.assertTrue(rel.startswith("memory/") and rel.count("/") == 2, rel)
+        self.assertNotIn("_inbox", rel)
+        self.assertFalse((self.vault / "memory" / "_inbox").exists())
 
     def test_optional_fields_written_when_provided(self) -> None:
         result = cap.capture(
@@ -72,7 +82,7 @@ class CaptureBasicsTests(unittest.TestCase):
             now=_NOW,
         )
         content = result.path.read_text(encoding="utf-8")
-        self.assertIn("source: cli", content)
+        self.assertIn("via: cli", content)
         self.assertIn("surface: desktop", content)
         self.assertIn("tags: [a, b]", content)
         self.assertIn("source_url: https://example.com/article", content)
@@ -82,14 +92,15 @@ class CaptureBasicsTests(unittest.TestCase):
     def test_optional_fields_omitted_when_absent(self) -> None:
         result = cap.capture(self.vault, "x", now=_NOW)
         content = result.path.read_text(encoding="utf-8")
-        self.assertNotIn("source:", content)
+        self.assertIn("source: operator-direct", content)  # the transport is always stamped
+        self.assertNotIn("via:", content)
+        self.assertIn("tags: []", content)  # the writer's schema always carries the field
         self.assertNotIn("surface:", content)
-        self.assertNotIn("tags:", content)
         self.assertNotIn("source_url:", content)
         self.assertNotIn("instructions:", content)
 
     def test_write_failure_returns_explicit_error_not_silent(self) -> None:
-        with mock.patch("capture.atomic_write", side_effect=OSError("disk full")):
+        with mock.patch("filing_engine.apply", side_effect=OSError("disk full")):
             result = cap.capture(self.vault, "x", now=_NOW)
         self.assertFalse(result.success)
         self.assertIn("disk full", result.error)
@@ -109,7 +120,9 @@ class SlugCollisionTests(unittest.TestCase):
         self.assertTrue(r1.success)
         self.assertTrue(r2.success)
         self.assertNotEqual(r1.path, r2.path)
-        self.assertEqual(r2.slug, "my-slug-1")
+        # The filing engine settles a namesake the way the corpus migration
+        # did: the second note keeps its slug and takes the `~dup` mark.
+        self.assertEqual(r2.slug, "my-slug~dup")
         # Both files survive with their own distinct content.
         self.assertIn("first", r1.path.read_text(encoding="utf-8"))
         self.assertIn("second", r2.path.read_text(encoding="utf-8"))
@@ -118,7 +131,7 @@ class SlugCollisionTests(unittest.TestCase):
         r1 = cap.capture(self.vault, "a", slug="dup", now=_NOW)
         r2 = cap.capture(self.vault, "b", slug="dup", now=_NOW)
         r3 = cap.capture(self.vault, "c", slug="dup", now=_NOW)
-        self.assertEqual({r1.slug, r2.slug, r3.slug}, {"dup", "dup-1", "dup-2"})
+        self.assertEqual({r1.slug, r2.slug, r3.slug}, {"dup", "dup~dup", "dup~dup2"})
 
 
 class ConcurrencyTests(unittest.TestCase):

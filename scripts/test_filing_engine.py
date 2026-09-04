@@ -83,8 +83,8 @@ def _vault(td: Path) -> Path:
           "The `Bash` tool was invoked 12 times during this session. If this represents a repeatable workflow, capture it.")
     _note(m / "semantic" / "never-force-push-main.md", "type: preference\nstatus: active\nslug: never-force-push-main\nlifecycle: active\n",
           "User stated: never force-push to main — rewrite only your own unshared branches.")
-    _note(m / "semantic" / "vault-root.md", "type: reference\nstatus: active\nslug: vault-root\nlifecycle: active\ntitle: the vault root is /Users/alex/Vault\n",
-          "The vault root is /Users/alex/Vault, a plain folder synced by Drive.")
+    _note(m / "semantic" / "vault-root.md", "type: reference\nstatus: active\nslug: vault-root\nlifecycle: active\ntitle: the vault root is /srv/vault\n",
+          "The vault root is /srv/vault, a plain folder synced by Drive.")
     _note(m / "semantic" / "plain-fact.md", "type: reference\nstatus: active\nslug: plain-fact\ntitle: the daemon commits markdown on cadence\n",
           "The daemon commits whatever git reports dirty, on a cadence, nothing else.")
     _note(m / "crystallized" / "good" / "lane-entry.md", "kind: opinion-supplement\nstatus: proposed\nslug: lane-entry\n",
@@ -100,7 +100,7 @@ class TheKeyExtractor(unittest.TestCase):
         self.assertEqual(fe.extract_key("never force-push to main", "User stated: never force-push to main — rewrite only your own branches."),
                          ("directive:force-push main", "polarity", "never"))
         # a fact keys only on a value-like object; a prose object is a second fact
-        self.assertEqual(fe.extract_key("the vault root is /Users/alex/Vault", ""), ("fact:vault root", "value", "/users/alex/vault"))
+        self.assertEqual(fe.extract_key("the vault root is /srv/vault", ""), ("fact:vault root", "value", "/srv/vault"))
         self.assertIsNone(fe.extract_key("the vault root is synced by Drive every minute", ""))
         self.assertEqual(fe.extract_key("always force-push to main", "always force-push to main when the branch is yours")[2], "always")
         self.assertIsNone(fe.extract_key("A thought about nothing in particular", "Some prose that states no directive and no fact shape."))
@@ -153,8 +153,8 @@ class TheFourOperations(unittest.TestCase):
         self.assertEqual((d.op, d.related), ("supersede", "memory/semantic/never-force-push-main.md"))
 
     def test_a_key_match_with_the_same_value_is_an_update_candidate_filed_beside(self):
-        d = self._decide("the vault root is /Users/alex/Vault",
-                         "The vault root is /Users/alex/Vault; it also holds the Projects tree and the standards folder.",
+        d = self._decide("the vault root is /srv/vault",
+                         "The vault root is /srv/vault; it also holds the Projects tree and the standards folder.",
                          type_hint="reference", slug="vault-root-again")
         self.assertEqual((d.op, d.related, d.dest_rel), ("update", "memory/semantic/vault-root.md", "memory/semantic/vault-root-again.md"))
         self.assertIn("update-candidate", d.flags)

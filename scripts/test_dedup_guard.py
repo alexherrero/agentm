@@ -46,8 +46,8 @@ class TestCaptureInboxGuard(unittest.TestCase):
         self.assertTrue(r1.success and r2.success)
         self.assertTrue(r2.deduplicated)
         self.assertEqual(r2.path, r1.path)
-        inbox_files = list((self.vault / "memory" / "_inbox").glob("*.md"))
-        self.assertEqual(len(inbox_files), 1)
+        filed = [p for p in (self.vault / "memory").rglob("*.md") if p.name != "_index.md"]
+        self.assertEqual(len(filed), 1)
         self.assertIn("occurrences: 2", r1.path.read_text(encoding="utf-8"))
 
     def test_distinct_content_same_slug_still_suffixes(self):
@@ -55,7 +55,7 @@ class TestCaptureInboxGuard(unittest.TestCase):
         r2 = capture.capture(self.vault, "second, different idea", slug="idea")
         self.assertTrue(r1.success and r2.success)
         self.assertFalse(r2.deduplicated)
-        self.assertEqual({r1.slug, r2.slug}, {"idea", "idea-1"})
+        self.assertEqual({r1.slug, r2.slug}, {"idea", "idea~dup"})
 
     def test_capture_writes_fingerprint_frontmatter(self):
         r = capture.capture(self.vault, "some captured content", slug="cap")
@@ -86,15 +86,15 @@ class TestGuardStatusAndCurationFilters(unittest.TestCase):
         r1 = capture.capture(self.vault, "a thought worth keeping", slug="thought")
         # Triage archives in place: the candidate becomes a tombstone.
         r1.path.write_text(
-            r1.path.read_text(encoding="utf-8").replace("status: inbox", "status: expired", 1),
+            r1.path.read_text(encoding="utf-8").replace("status: unfiled", "status: expired", 1),
             encoding="utf-8",
         )
         r2 = capture.capture(self.vault, "a thought worth keeping")
         self.assertTrue(r2.success)
         self.assertFalse(r2.deduplicated)  # NOT swallowed into the tombstone
         self.assertNotEqual(r2.path, r1.path)
-        # The re-capture is a live inbox candidate again, eligible for triage.
-        self.assertIn("status: inbox", r2.path.read_text(encoding="utf-8"))
+        # The re-capture is a live unfiled candidate again, eligible for filing.
+        self.assertIn("status: unfiled", r2.path.read_text(encoding="utf-8"))
 
     def test_capture_with_new_source_url_refuses_reinforce(self):
         # A link resend deduping into a plain-text candidate would silently

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""capture.py — the staging-only front door for `personal/_inbox/`
+"""capture.py — the front door that files a capture at its class directory
 (`designs/friday/agentm-capture.md`, capture-front-door plan task 2).
 
 `memory_append` (save.py's `save_entry`) writes straight to permanent
@@ -7,7 +7,8 @@ memory and validates `kind` as kebab-case — `_inbox` fails that validation
 by construction (its leading underscore), which is the standing convention
 that keeps staged items structurally distinct from `save_entry`'s
 validated destinations. This module is the second front door: every write
-here lands in `personal/_inbox/`, never in permanent memory, and never
+here lands at the class directory the contract routes it to, marked `unfiled`
+at low filing confidence (filing v2, the write path) — the metadata is the inbox — and never
 goes through `save_entry`/`_validate_path_segment` at all.
 
 Write path: the resolve-then-write sequence runs under `vault_lock.
@@ -38,6 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -47,7 +49,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from vault_lock import LockTimeout, atomic_write, vault_mutex  # noqa: E402
+from vault_lock import LockTimeout  # noqa: E402
 
 _KNOWN_KINDS = ("capture", "idea")
 
@@ -114,10 +116,21 @@ def capture(
     now: "datetime | None" = None,
     lock_timeout: float = 10.0,
 ) -> CaptureResult:
-    """Write one candidate to `personal/_inbox/<slug>.md`. Never raises on a
-    write failure — returns a `CaptureResult` with `success=False` and the
-    error message instead, so a caller (the MCP tool, the CLI verb) always
-    has an explicit outcome to relay back to the operator.
+    """File one candidate at the class directory the contract routes its type
+    to, as an `unfiled` note at low filing confidence (filing v2, the write
+    path). A plain capture takes the contract's default type; `kind="idea"`
+    files as `type: idea`. The metadata is the inbox: `status: unfiled` is
+    what the enrichment pass and the ingest sweep drain, `filing_confidence:
+    low` is what the needs-review reading selects on. Nothing stages in a
+    directory any more. Never raises on a write failure — returns a
+    `CaptureResult` with `success=False` and the error message instead, so
+    a caller (the MCP tool, the CLI verb) always has an explicit outcome to
+    relay back to the operator.
+
+    `source` here is the caller's surface tag (`cli`, `mcp`, `clipper`, a
+    connector) and is written as `via:`; the contract's `source:` field
+    carries the transport — `external-fetch` for a link, `operator-direct`
+    otherwise.
 
     `instructions` is the security-boundary field (task 5's invariant):
     this function stores exactly the string it's given here, verbatim,
@@ -127,11 +140,14 @@ def capture(
     invariant at the call site, not here; this function's contract is
     simply "store what you were handed, nothing inferred."
 
-    `lock_timeout` passes through to `vault_mutex`'s `timeout=` (default
-    unchanged at 10s). Exposed so a high-contention caller — e.g. a test
-    running many concurrent writers through the same per-vault lock on a
-    slow CI runner — can widen the acquisition budget without touching
-    the lock's own default for every other caller.
+    An exact repeat reinforces the note already home (occurrences + updated
+    bump, no new file) unless the arrival carries act-relevant metadata the
+    twin lacks — a `source_url` (the ingest sweep's trigger) or an
+    `instructions` string — in which case it files fresh beside it. A twin
+    that is no longer live (a tombstone, a superseded note) is never a
+    reinforce target.
+
+    `lock_timeout` passes through to the vault mutex the writer takes.
     """
     if kind not in _KNOWN_KINDS:
         return CaptureResult(success=False, error=f"unknown kind {kind!r}; expected one of {_KNOWN_KINDS}")
@@ -144,81 +160,73 @@ def capture(
             return CaptureResult(success=False, error=f"vault path does not exist: {vault}")
 
         now = now or datetime.now(timezone.utc)
-        resolved_slug = slug or _slugify(content, now=now)
-        inbox_dir = vault / "memory" / "_inbox"
-        inbox_dir.mkdir(parents=True, exist_ok=True)
+        resolved_slug = _kebab(slug or _slugify(content, now=now))
+        import dedup_guard  # same skill dir
+        import filing_engine  # same skill dir
 
-        # resolve+write held under the vault's mutex (matching save_entry's
-        # convention) so two concurrent callers can never both resolve to
-        # the same free slug and have the second silently clobber the
-        # first's atomic_write — the check-then-write window is otherwise
-        # a TOCTOU race across transports (Drive connector, Clipper, this
-        # module, the future ingest sweep) writing the same second.
-        # Write-time dedup guard (auto-org part 3 task 2): an exact
-        # content-fingerprint match against a staged candidate means this
-        # capture reinforces it — occurrences + updated bump, no new file,
-        # no `_1` suffix. The scan runs INSIDE the mutex (with the write)
-        # so two concurrent identical captures can't both miss. Exact-only;
-        # near-duplicates still stage and the weekly pass owns them.
-        # Best-effort: a guard failure falls through to the normal write.
-        from fingerprint import compute_fingerprint  # same skill dir
-        content_fp = compute_fingerprint(content)
-
-        with vault_mutex(vault, timeout=lock_timeout):
+        title = content.strip().splitlines()[0].strip()[:120]
+        extra = {"captured": _iso(now), "via": source, "surface": surface, "instructions": instructions}
+        # Decide, then write; when a concurrent writer lands on the settled
+        # name between the two, decide again against the disk — the next
+        # pass sees the newcomer (a twin to reinforce, or a namesake to
+        # settle past with the `~dup` mark). The writer's own guard under
+        # its mutex is what makes the loser lose loudly instead of clobbering.
+        for _attempt in range(64):
+            decision = filing_engine.decide(
+                vault, title=title, body=content, slug=resolved_slug,
+                type_hint="idea" if kind == "idea" else None, confidence="LOW",
+                source="external-fetch" if source_url else "operator-direct",
+            )
+            if decision.op == "noop":
+                twin = vault / decision.dest_rel
+                arriving_adds_metadata = (
+                    (source_url and not dedup_guard.has_frontmatter_field(twin, "source_url"))
+                    or (instructions and not dedup_guard.has_frontmatter_field(twin, "instructions"))
+                )
+                if _reinforceable(twin) and not arriving_adds_metadata:
+                    dedup_guard.reinforce(twin, today=now.date().isoformat())
+                    return CaptureResult(success=True, path=twin, slug=twin.stem, deduplicated=True)
+                # Files fresh beside the twin: the engine's own settling, asked
+                # with a fingerprint that matches nothing so the occupied name
+                # yields the next `~dup` mark rather than the twin itself.
+                dest, _flags = filing_engine._settle_dest(vault, decision.class_dir, resolved_slug, "")
+                decision.op, decision.dest_rel, decision.related = "add", dest, None
             try:
-                import dedup_guard  # same skill dir
-                existing = dedup_guard.find_inbox_duplicate(vault, content_fp)
-                if existing is not None:
-                    # Refuse the reinforce when this capture carries
-                    # act-relevant metadata the matched candidate lacks —
-                    # a link resend's source_url (the ingest sweep's
-                    # trigger) or an instructions string deduping into a
-                    # plain candidate would be silently discarded
-                    # (review-caught). It writes fresh instead.
-                    arriving_adds_metadata = (
-                        (source_url and not dedup_guard.has_frontmatter_field(existing, "source_url"))
-                        or (instructions and not dedup_guard.has_frontmatter_field(existing, "instructions"))
-                    )
-                    if not arriving_adds_metadata:
-                        dedup_guard.reinforce(existing, today=now.date().isoformat())
-                        return CaptureResult(
-                            success=True, path=existing, slug=existing.stem, deduplicated=True
-                        )
-            except Exception as e:
-                print(f"warning: capture dedup guard failed open: {e}", file=sys.stderr)
-
-            target = _resolve_target(inbox_dir, resolved_slug)
-            final_slug = target.stem
-
-            fm_lines = [
-                "---",
-                f"kind: {kind}",
-                "status: inbox",
-                f"created: {_iso(now)}",
-                f"captured: {_iso(now)}",
-                f"slug: {final_slug}",
-                f"fingerprint: {content_fp}",
-            ]
-            if source:
-                fm_lines.append(f"source: {source}")
-            if surface:
-                fm_lines.append(f"surface: {surface}")
-            if tags:
-                fm_lines.append("tags: [" + ", ".join(tags) + "]")
-            if source_url:
-                fm_lines.append(f"source_url: {source_url}")
-            if instructions:
-                fm_lines.append(f"instructions: {json.dumps(instructions)}")
-            fm_lines.append("---")
-            fm = "\n".join(fm_lines) + "\n"
-
-            body = content.rstrip("\n") + "\n"
-            atomic_write(target, fm + "\n" + body)
-        return CaptureResult(success=True, path=target, slug=final_slug)
+                written = filing_engine.apply(
+                    vault, decision, body=content, tags=list(tags or []), title=title,
+                    source_url=source_url, status="unfiled", extra=extra,
+                )
+            except FileExistsError:
+                continue
+            return CaptureResult(success=True, path=written, slug=written.stem)
+        return CaptureResult(success=False, error="could not settle a free name: the vault is being written faster than this capture can decide")
     except OSError as e:
         return CaptureResult(success=False, error=f"write failed: {e}")
     except LockTimeout as e:
         return CaptureResult(success=False, error=f"vault busy: {e}")
+
+
+def _kebab(slug: str) -> str:
+    """The writer's slug contract is kebab-case; a timestamped default slug
+    (`capture-20260718T120000`) and a caller's free-form slug both fold to it."""
+    return re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-") or "capture"
+
+
+_DEAD_STATUSES = frozenset({"expired", "deleted", "superseded", "archived", "promoted", "ingest_duplicate"})
+
+
+def _reinforceable(twin: Path) -> bool:
+    """A live note only. A tombstone the triage or the ingest sweep left in
+    place, or a note a later one superseded, keeps its record and never
+    absorbs a fresh capture."""
+    import dedup_guard  # same skill dir
+    status = dedup_guard._file_status(twin)
+    if status in _DEAD_STATUSES:
+        return False
+    try:
+        return "lifecycle: superseded" not in twin.read_text(encoding="utf-8").split("\n---\n", 1)[0]
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -226,7 +234,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         prog="memory-capture",
         description=(
             "Capture a thought, link, or idea into MemoryVault's staging inbox "
-            "(personal/_inbox/). Canonical Python implementation behind "
+            "(filed at its class as `status: unfiled`). Canonical Python implementation behind "
             "/memory capture (see SKILL.md)."
         ),
     )

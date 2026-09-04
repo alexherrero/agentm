@@ -31,6 +31,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/extract"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // Request is one capture.
@@ -147,7 +148,12 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	// capture never needed.
 	contract, contractErr := c.cfg.Rules.Get()
 	noteType := strings.ToLower(strings.TrimSpace(req.Type))
+	// The write-time confidence stamp: a caller who named the type stands
+	// behind it; a defaulted or untyped note is the contract's guess and says
+	// so, which is what the needs-review reading selects on.
+	filingConfidence := "high"
 	if noteType == "" {
+		filingConfidence = "low"
 		if contractErr == nil {
 			noteType = contract.DefaultType
 			notes = append(notes, fmt.Sprintf(
@@ -187,8 +193,17 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	}
 
 	captured := time.Now().UTC()
+	// Class routing (filing v2, the write path). A note whose type the
+	// contract knows lands in the class the contract routes that type to —
+	// where the corpus migration put everything already home, and where the
+	// retrieval gate and the scorecard read. The date shard remains only for
+	// a note the contract cannot place (filing halted, the note untyped): it
+	// has to land somewhere, and a year/month folder is at least an honest
+	// "not yet filed" rather than a class it was never judged into.
 	dir := spaceDir
-	if c.cfg.Shard == "date" {
+	if class := classDir(contract, contractErr, noteType, spaceDir); class != "" {
+		dir = class
+	} else if c.cfg.Shard == "date" {
 		dir = filepath.ToSlash(filepath.Join(spaceDir,
 			captured.Format("2006"), captured.Format("01")))
 	}
@@ -221,19 +236,21 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	aliases := mergeAliases(req.Aliases, extract.Aliases(title, text))
 
 	body := renderNote(noteData{
-		Type:          noteType,
-		Altitude:      DefaultAltitude,
-		Status:        status,
-		Captured:      captured,
-		Slug:          slug,
-		Title:         title,
-		Tags:          req.Tags,
-		Aliases:       aliases,
-		Source:        strings.TrimSpace(req.Source),
-		SourceHash:    strings.TrimSpace(req.SourceHash),
-		SourceVersion: strings.TrimSpace(req.SourceVersion),
-		Probe:         req.Probe,
-		Text:          text,
+		Type:             noteType,
+		Altitude:         DefaultAltitude,
+		Status:           status,
+		Lifecycle:        "active",
+		FilingConfidence: filingConfidence,
+		Captured:         captured,
+		Slug:             slug,
+		Title:            title,
+		Tags:             req.Tags,
+		Aliases:          aliases,
+		Source:           strings.TrimSpace(req.Source),
+		SourceHash:       strings.TrimSpace(req.SourceHash),
+		SourceVersion:    strings.TrimSpace(req.SourceVersion),
+		Probe:            req.Probe,
+		Text:             text,
 	})
 
 	abs := filepath.Join(c.cfg.VaultPath, filepath.FromSlash(rel))
@@ -335,12 +352,17 @@ type noteData struct {
 	Type     string
 	Altitude string
 	Status   string
-	Captured time.Time
-	Slug     string
-	Title    string
-	Tags     []string
-	Aliases  []string
-	Source   string
+	// Lifecycle and FilingConfidence are the write-time stamps the filing
+	// contract added with the write path: `active` until a later note
+	// supersedes this one, and how far the writer trusted its own typing.
+	Lifecycle        string
+	FilingConfidence string
+	Captured         time.Time
+	Slug             string
+	Title            string
+	Tags             []string
+	Aliases          []string
+	Source           string
 	// SourceHash and SourceVersion complete the provenance: what the source
 	// contained when it was read, and the pass that read it. Cheap to write now
 	// and impossible to reconstruct later, which is what makes the source
@@ -360,6 +382,9 @@ func renderNote(d noteData) string {
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "type: %s\n", d.Type)
 	fmt.Fprintf(&b, "status: %s\n", d.Status)
+	if d.Lifecycle != "" {
+		fmt.Fprintf(&b, "lifecycle: %s\n", d.Lifecycle)
+	}
 	// Written rather than left implied. `artifact` is what a note is until
 	// something judges otherwise, and a field that is present and default is a
 	// field a later pass can change in place — an absent one has to be
@@ -387,6 +412,9 @@ func renderNote(d noteData) string {
 	}
 	if d.Source != "" && d.SourceVersion != "" {
 		fmt.Fprintf(&b, "source_version: %s\n", yamlScalar(d.SourceVersion))
+	}
+	if d.FilingConfidence != "" {
+		fmt.Fprintf(&b, "filing_confidence: %s\n", d.FilingConfidence)
 	}
 	// The probe marker. Written as a frontmatter field rather than expressed by
 	// where the note lives, because everything downstream that must not count a
@@ -485,4 +513,23 @@ func mergeAliases(supplied, derived []string) []string {
 		out = out[:extract.MaxAliases]
 	}
 	return out
+}
+
+// classDir is the vault-relative directory the contract routes a memory type
+// to, or "" when there is nothing to route by: no contract, no type, or a
+// type the routing table does not name. A routing value is accepted either
+// relative to the vault ("memory/semantic") or to the space ("semantic").
+func classDir(contract *rules.Rules, contractErr error, noteType, spaceDir string) string {
+	if contractErr != nil || contract == nil || noteType == "" {
+		return ""
+	}
+	class := strings.Trim(filepath.ToSlash(strings.TrimSpace(contract.Routing[noteType])), "/")
+	if class == "" {
+		return ""
+	}
+	space := strings.Trim(filepath.ToSlash(spaceDir), "/")
+	if class == space || strings.HasPrefix(class, space+"/") {
+		return class
+	}
+	return filepath.ToSlash(filepath.Join(spaceDir, class))
 }

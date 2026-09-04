@@ -263,6 +263,21 @@ _STEM_SUFFIXES = ("ing", "edly", "ed", "ies", "es", "ly", "s")
 _STEM_MIN_STEM_LEN = 3
 
 
+# Filing states recall never serves. `superseded` has a successor that
+# answers instead. The rest are the staging states: since filing v2 the
+# ingest sweep stages a link candidate in place at its class directory, so
+# what used to be a path exclusion — `_inbox/` — is a status read.
+#
+# `unfiled` is deliberately not here. It is the contract's default for any
+# unattended capture — the daemon's own captures included, hundreds of notes
+# the enrichment pass types later — and the daemon serves them with a rank
+# penalty rather than a wall. Excluding them here would silently shrink the
+# searched corpus against the indexed one (the retrieval gate's canary is one
+# such note, and it fired). A low-confidence capture is a ranking matter, not
+# a visibility one.
+_UNSERVED_STATUSES = frozenset({"superseded", "inbox", "ingest_staged", "ingest_duplicate"})
+
+
 def _stem(token: str) -> str:
     for suffix in _STEM_SUFFIXES:
         if token.endswith(suffix) and len(token) - len(suffix) >= _STEM_MIN_STEM_LEN:
@@ -763,7 +778,7 @@ def session_start(
         # Filter superseded entries (defense-in-depth; supersession normally
         # moves entries to _archive/, but a stale _always-load/ entry could
         # have been flagged superseded without being moved).
-        if fm.get("status") == "superseded":
+        if fm.get("status") in _UNSERVED_STATUSES:
             continue
         parsed_entries.append((md_path.stem, fm, body))
 
@@ -1042,7 +1057,7 @@ def _grep_search(
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)
-        if fm.get("status") == "superseded":
+        if fm.get("status") in _UNSERVED_STATUSES:
             continue
         if filter_criteria and not _entry_matches_filter(fm, filter_criteria):
             continue
@@ -1140,7 +1155,7 @@ def _bm25_search(
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)
-        if fm.get("status") == "superseded":
+        if fm.get("status") in _UNSERVED_STATUSES:
             continue
         if filter_criteria and not _entry_matches_filter(fm, filter_criteria):
             continue
@@ -1264,7 +1279,7 @@ def _metadata_filter_only(
         except (OSError, UnicodeDecodeError):
             continue
         fm, _ = _parse_frontmatter(content)
-        if fm.get("status") == "superseded":
+        if fm.get("status") in _UNSERVED_STATUSES:
             continue
         if _entry_matches_filter(fm, criteria):
             out.append(_vault_rel(md_path, vault))
@@ -2470,7 +2485,7 @@ def prompt_submit(
         # too. Harmless duplication for the in-process path, and the only such
         # check on the daemon path — a retired entry must not come back just
         # because a faster engine found it.
-        if fm.get("status") == "superseded":
+        if fm.get("status") in _UNSERVED_STATUSES:
             continue
         raw_blocks.append(_format_recall_result(result, body, fm))
         raw_slugs.append(result["slug"])
