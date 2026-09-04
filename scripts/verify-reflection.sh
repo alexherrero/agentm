@@ -88,13 +88,15 @@ echo "verify-reflection: scratch root = $ROOT"
 
 # ── fixture transcripts ─────────────────────────────────────────────────────
 # Still-HIGH pattern: "I prefer X" (_PREFERENCE_PATTERNS) — unlike the bare
-# always/never pattern, R0.3 did NOT demote this one. Using it (rather than
-# the plan's literal "always X" example) for the machine-source fixture keeps
-# the filter test meaningful: unfiltered, this text unambiguously classifies
-# HIGH, so its absence from the vault proves the filter, not a classification
-# side effect.
-OPERATOR_PREF="I prefer kebab-case slugs for every memory entry."
-MACHINE_BAIT="I prefer using recursive-descent for this parser."
+# always/never pattern, R0.3 did NOT demote this one. Since the miner-provenance
+# plan (ruling 4, 2026-09-04) HIGH also needs a durability cue — "from now on",
+# "in general", "by default" — so both fixtures carry one. Using this pattern
+# (rather than the plan's literal "always X" example) for the machine-source
+# fixture keeps the filter test meaningful: unfiltered, this text unambiguously
+# classifies HIGH, so its absence from the vault proves the filter, not a
+# classification side effect.
+OPERATOR_PREF="From now on I prefer kebab-case slugs for every memory entry."
+MACHINE_BAIT="From now on I prefer using recursive-descent for this parser."
 JUNK_LINES=(
   "the deploy job always crashes on a cold cache"
   "this code path was never touched after the rewrite"

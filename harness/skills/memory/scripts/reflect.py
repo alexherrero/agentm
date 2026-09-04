@@ -85,6 +85,15 @@ if str(_SCRIPTS_DIR) not in sys.path:
 # "always X" / "never Y" directive still reaches the operator for triage.
 _BARE_ALWAYS_NEVER_RATIONALE = "explicit always/never directive"
 
+# Ruling 4 (miner-provenance, 2026-09-04): a preference is HIGH only when the
+# sentence also says it is meant to last. "explain … what I need to think
+# about" is a request about this task; "from now on I want you to pre-judge
+# things" is a rule. Without a cue the candidate is MEDIUM, which the
+# single-occurrence demotion below files at low confidence for review.
+_DURABILITY_CUE = re.compile(
+    r"\b(?:always|never|from now on|going forward|in general|every time|whenever|by default|as a rule|"
+    r"in (?:the )?future|for all (?:future )?(?:sessions|commits|work))\b", re.IGNORECASE)
+
 _PREFERENCE_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:always|never)\s+\w+(?:\s+\w+){0,5}", re.IGNORECASE),
      _BARE_ALWAYS_NEVER_RATIONALE),
@@ -250,13 +259,28 @@ def _strip_envelopes(text: str) -> str:
     return text.strip()
 
 
+# The handoff marker (miner-provenance, ruling 1). A handoff prompt is text the
+# agent wrote in one session for the operator to paste into the next; the host
+# stamps the paste `origin.kind: human` because a person sent it, and the
+# labeled sample showed five "User stated: … never …" preferences mined from
+# one such paste. Every handoff carries this line, and a message carrying it is
+# not the operator speaking. A plain HTML comment on purpose: the envelope
+# strippers leave it alone, Obsidian does not render it, and a pasted section of
+# a longer pack still carries it when the renderer puts one under each prompt.
+HANDOFF_MARKER = "<!-- agentm:handoff — agent-authored; not the operator's own words -->"
+_HANDOFF_MARKER_KEY = "<!-- agentm:handoff"
+
+
 def _operator_text(msg: dict) -> str:
     """The part of a user message worth mining as operator intent, or "".
 
     Returns text rather than a bool so envelope stripping composes: a real
     sentence with an injected block appended is still a real sentence, and
-    throwing the whole message away would lose it.
+    throwing the whole message away would lose it. A message carrying the
+    handoff marker is nothing to mine, whoever the host says sent it.
     """
+    if _HANDOFF_MARKER_KEY in _extract_text(msg):
+        return ""
     origin = msg.get("origin")
     if isinstance(origin, dict) and origin.get("kind"):
         # The host said who spoke. Believe it, both ways — a long message
@@ -410,6 +434,53 @@ def load_messages(transcript_path: Path) -> list[dict]:
     return messages
 
 
+_CAUSE_CUE = re.compile(
+    r"\b(?:because|caused by|due to|root cause|failed because|broke when|broke because|"
+    r"the cause was|turned out to be|was that)\b", re.IGNORECASE)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def _sentences(text: str) -> list:
+    """Sentences with their start offsets, whitespace flattened per sentence."""
+    out = []
+    pos = 0
+    for part in _SENTENCE_END.split(text):
+        if part is None:
+            continue
+        start = text.find(part, pos)
+        if start < 0:
+            start = pos
+        pos = start + len(part)
+        s = re.sub(r"\s+", " ", part).strip()
+        if s:
+            out.append((start, s))
+    return out
+
+
+def _fix_pairs(text: str) -> list:
+    """(cause sentence, remedy sentence, rationale) for every remedy cue that
+    has a cause cue in the same sentence or within two sentences of it. A
+    table row, a heading, or a half-sentence carries no cause and yields
+    nothing — that was the whole finding."""
+    sents = _sentences(text)
+    out = []
+    seen = set()
+    for i, (_start, s) in enumerate(sents):
+        rationale = next((r for pat, r in _FIX_PATTERNS if pat.search(s)), None)
+        if rationale is None or s.startswith("|") or s.startswith("#"):
+            continue
+        window = [sents[j][1] for j in range(max(0, i - 2), min(len(sents), i + 3))]
+        cause = next((c for c in window if _CAUSE_CUE.search(c) and not c.startswith("|")), None)
+        if cause is None:
+            continue
+        key = (cause, s)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((cause, s, rationale))
+    return out
+
+
 def _scan_patterns(
     text: str,
     patterns: list[tuple[re.Pattern, str]],
@@ -482,16 +553,17 @@ def mine_transcript(transcript_path: Path) -> dict:
                     seen_memory[key].occurrences += 1
                     seen_memory[key].excerpts.append(excerpt)
                 else:
+                    durable = bool(_DURABILITY_CUE.search(excerpt))
                     seen_memory[key] = Candidate(
                         category="preferences",
                         confidence=(
-                            "MEDIUM" if rationale == _BARE_ALWAYS_NEVER_RATIONALE
-                            else "HIGH"
+                            "HIGH" if durable and rationale != _BARE_ALWAYS_NEVER_RATIONALE
+                            else "MEDIUM"
                         ),
                         slug=slug,
                         title=match.strip()[:80],
                         body=f"User stated: {excerpt}",
-                        rationale=rationale,
+                        rationale=rationale + ("" if durable else " (no durability cue)"),
                         excerpts=[excerpt],
                     )
 
@@ -535,24 +607,25 @@ def mine_transcript(transcript_path: Path) -> dict:
                     )
 
         # ── Fixes apply to both user + assistant messages (either side can
-        # report a fix).
-        for match, rationale, excerpt in _scan_patterns(
-            text, _FIX_PATTERNS, role=role
-        ):
-            slug = _slug_from_text(excerpt[:60])
+        # report a fix). Ruling 3 (miner-provenance): a fix is a cause
+        # sentence and a remedy sentence, verbatim; a remedy cue inside a
+        # status report with no cause near it is a fragment, not a fix.
+        for cause, remedy, rationale in _fix_pairs(text):
+            slug = _slug_from_text(remedy[:60])
             key = ("fix", slug)
+            body = f"{cause} {remedy}" if cause != remedy else remedy
             if key in seen_memory:
                 seen_memory[key].occurrences += 1
-                seen_memory[key].excerpts.append(excerpt)
+                seen_memory[key].excerpts.append(body)
             else:
                 seen_memory[key] = Candidate(
                     category="fix",
                     confidence="MEDIUM",
                     slug=slug,
-                    title=f"Fix: {excerpt[:60]}",
-                    body=f"Fix observed: {excerpt}",
+                    title=f"Fix: {remedy[:70]}",
+                    body=f"Fix observed: {body}",
                     rationale=rationale,
-                    excerpts=[excerpt],
+                    excerpts=[body],
                 )
 
         # ── Workflow: tally tool usages from assistant turns.
@@ -562,28 +635,11 @@ def mine_transcript(transcript_path: Path) -> dict:
     memory_candidates: list[Candidate] = list(seen_memory.values())
     idea_candidates: list[Candidate] = list(seen_ideas.values())
 
-    # Workflow candidates: any tool used >= threshold times.
-    for tool, count in sorted(tool_counts.items()):
-        if count >= _WORKFLOW_OCCURRENCE_THRESHOLD:
-            slug = _slug_from_text(f"workflow {tool}")
-            memory_candidates.append(Candidate(
-                category="workflow",
-                confidence="MEDIUM",
-                slug=slug,
-                title=f"Workflow: {tool} used {count}x",
-                body=(
-                    f"The `{tool}` tool was invoked {count} times during this "
-                    f"session. If this represents a repeatable workflow, capture "
-                    f"the sequence + when to use it."
-                ),
-                rationale=(
-                    f"tool_use frequency threshold "
-                    f"(N>={_WORKFLOW_OCCURRENCE_THRESHOLD}, observed {count})"
-                ),
-                excerpts=[],
-                occurrences=count,
-            ))
-
+    # Ruling 2 (miner-provenance, 2026-09-04): the per-tool tally is
+    # instrumentation, reported in the summary, never a memory candidate. The
+    # "Workflow: Bash used 2592x" stubs it used to emit recorded a count, not a
+    # procedure — 824 of them held 55% of the flat corpus and nothing ever
+    # captured the sequence the body asked for.
     # ── Tri-modal demotion: MEDIUM-initial candidates with <3 occurrences
     # get demoted to LOW (a single-instance inference files at low filing
     # confidence, per locked design call B2.iii — which used to mean the
@@ -612,6 +668,7 @@ def mine_transcript(transcript_path: Path) -> dict:
     return {
         "transcript_path": str(transcript_path),
         "messages_processed": len(messages),
+        "tool_counts": dict(sorted(tool_counts.items())),
         "memory_candidates": memory_candidates,
         "idea_candidates": idea_candidates,
     }

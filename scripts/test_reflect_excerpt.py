@@ -222,7 +222,12 @@ class CorpusShapeTests(unittest.TestCase):
         # this test counted its own documentation and reported five.
         uses = [ln.strip() for ln in src.splitlines()
                 if ln.strip().startswith("body=") and "excerpt" in ln]
-        self.assertEqual(len(uses), 4,
+        # Three since the miner-provenance plan: a fix body is no longer an
+        # excerpt at all — `_fix_pairs` hands over the cause sentence and the
+        # remedy sentence verbatim (ruling 3), so no window and no ragged edge
+        # can occur there. The preference, correction and idea bodies still
+        # come through the snapped excerpt.
+        self.assertEqual(len(uses), 3,
                          "the set of excerpt-to-body call sites changed:\n" +
                          "\n".join(uses))
 

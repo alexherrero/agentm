@@ -126,7 +126,7 @@ DRY_FLAG=()
 [ "$FAULT" = "dry-run" ] && DRY_FLAG=(--dry-run)
 
 # ── fixture literals (hand-written; every assertion below pins to these) ─────
-OPERATOR_PREF="I prefer kebab-case slugs for every memory entry."
+OPERATOR_PREF="From now on I prefer kebab-case slugs for every memory entry."
 PREF_NEEDLE="kebab-case slugs"
 SESSION_KEY="session-a/transcript"
 
