@@ -229,6 +229,25 @@ The map, with the operator's rulings applied:
 | legacy kind-dirs (~560: preferences, preference, 2026, fix, idea, insight, workflow, workflow-pattern, feedback) | deprecations-map mechanical migration into classes |
 | `external/primos` (38) | classes by nature, provenance-tagged |
 | `desk/projects` (~950) | `Projects/<slug>/` wholesale |
+
+Shipped as part 3 (v9.12.0, 2026-09-03), with the map reconciled to the
+census the migration itself took: the expired cohort was not the inbox's
+1,630 but **2,638** — the same auto-miner retirements sat in `preferences/`,
+`preference/`, `fix/` and `_archive` (whose 264 turned out to be all expired,
+so "archive into classes as archived" applied to nothing), and 444 of the
+470 opinion supplements carried the status too; the operator ruled the purge
+`all-expired`, and the engine offers all three scopes so the manifest carries
+every figure. Opinion supplements moved into `crystallized/<opinion>/` **as
+lanes** — the accumulate loop's shape, kind kept, served file beside the
+crystallized memories — not flattened. `external/primos` held 38 records and
+no memory: a project tree, moved whole to `Projects/primos/` rather than
+routed. Four record kinds the corpus already carried (`report`, `standard`,
+`analysis`, `progress-log`) were registered on the operator's ruling so the
+membership gate could flip to strict. The "all six classes populated"
+criterion does not hold for `episodic`, `entities` and `mocs` — derived
+classes nothing routes to — and was read as "every class that has a
+population". The Python capture path still writes the pre-v2 vocabulary
+into `_inbox/`; a route pass re-files it, and part 4 retires the writer.
 | `desk/scratch` (2,324) | out of the vault to a local non-synced folder |
 | empty dirs (`_watchlist`, `_skill-watchlist`, `domains`, `_always-load`) | deleted after any contents fold into standards |
 
@@ -406,6 +425,14 @@ gets replaced. A bulk move also re-keys every moved note for the dense arm,
 and the daemon re-walks the tree without backfilling those vectors, so a
 move's run order ends with `agentmd embed` (learned in the 2b apply: the
 retrieval gate read 0.734 → 0.438 until the backfill restored it exactly).
+Two more from the part-3 apply: a later pass over a corpus the daemon kept
+writing into settles a routed note against a file already home (identical
+body → filed superseded as `~dup`, different body → a basename clash) rather
+than refusing, so the migration stays resumable; and an instrument that pins
+paths — the retrieval gate's gold set — compares them in a canonical
+basename form once the corpus has moved, or its control fires on the move
+itself. The purge is operator-confirmed by exact count (`--confirm-count`),
+never defaulted.
 Rollback for every phase except the purge is `git revert` in the
 vault repository plus replaying the path repoints; the purge is
 non-rollbackable by design and bounded by its manifest. The Python dreaming
@@ -572,3 +599,4 @@ layer, which is not retired until parity fixtures pass.
 | 2026-09-01 | Initial draft created via `/design author`, drafted from the decided filing-v2 synthesis (six research lanes, vault census, and operator rulings — see `desk/projects/agentm/_harness/research-filing-v2/`); review pass ran the same session — all sections and quality attributes approved unrevised — and the operator approved as final. Translated to 6 parts via `/design translate` (operator-approved split): rules-and-authority, structural-moves, corpus-migration, write-path, calendar, lifecycle-dreaming — part files at the vault's `_harness/designs/agentm-filing-v2/parts/`. Sequenced into 6 draft plans via `/design sequence`: `PLAN-rules-and-authority.md` active (named-plan mode, beside the unrelated online-recall plan), five queued at `_harness/designs/agentm-filing-v2/queued-plans/`. | final |
 | 2026-09-02 | Part 2 reconciled to what shipped (v9.10.0, PRs #521/#522). Three amendments: (1) structural-moves **split 2a/2b** — the Projects merge needs the crickets development-lifecycle repoint in a paired release this repo cannot ship alone (why not ship it here: a one-repo move would strand every plan-resolution path; re-audit when 2b lands — fold this paragraph back to one part). (2) The engine state dir is a **git repository** (migration inits, runner commits on cadence) — why not plain files: the exit from the vault would silently trade away the history-durability those files had from the vault's repo; re-audit if the runner's commit cadence ever stalls (a dirty engine repo older than a week is the tell). (3) Diagnostics directories are **per-family** (`health/dreaming/digests`), not the drafted per-system trio — why: the writers emit by family, and the drafted names would have forced a router nothing needed; plus the Migrations section gains the **vault-wins collision doctrine** learned in the live apply (quiesce makes the vault copy the last production write; skip-on-collision stranded real state behind scratch leakage). | final |
 | 2026-09-03 | Part 2b (projects-merge) reconciled to what shipped (v9.11.0, PRs #528/#529; crickets development-lifecycle v3.37.0 first, the paired order as locked). Body: the structural-moves paragraph folds 2a/2b back to one shipped part. Two decisions recorded: (1) the vault-root `Projects/` space is reached through a **second seam backend instance** rooted at the vault root — why not a `..` Locator: Locators are root-confined by construction, and a relative escape would silently mis-root every later join onto the memory root (the storage-seam design carries the mechanism and its re-audit triggers) — the pre-tag review added the **Obsidian witness**: the sibling counts only when the memory root is nested inside a vault (`.obsidian/` at the parent, none at the memory root), because a flat vault's parent is the operator's home, where a `Projects/` is common, and the flat generation `<memory-root>/Projects` now reaches every walker and writer; (2) readers keep `desk/projects/` as a documented older probe rung — why not drop it: "discovered, never conjured" needs the rung for a vault that has not moved, and it costs one `is_dir`; re-audit when part 3 retires the last desk-era path, then drop the rung. Migrations gains the **embed backfill invariant** (a move re-keys the dense arm; `agentmd embed` closes the run) — learned in the 2b apply. Dependencies now names the moved research bundle. | final |
+| 2026-09-03 | Part 3 (corpus-migration) reconciled to what shipped (v9.12.0, PRs #533–#537; applied live the same day). Body: DD§3's map gains the shipped paragraph — the expired cohort was 2,638 across populations, not the inbox's 1,630 (why not purge the inbox alone: the same auto-miner retirements sat in the legacy dirs, `_archive` and 444 supplements, and leaving them as `lifecycle: archived` would have kept a rank-penalized junk corpus on disk against the design's own "maps it away"; re-audit if a future miner produces an expired cohort worth keeping); supplements kept their lane shape under `crystallized/<opinion>/` (why not flatten: the accumulate loop's nine consumers walk lanes, and one resolver moved them all); `external/primos` moved to `Projects/primos/` as a project tree (why not route: it held records, no memory); four record kinds registered (why not re-kind: 45 live records already meant those shapes). Migrations gains the resumable-pass and canonical-instrument invariants and the confirmed-count purge. Residual named for part 4: the Python capture path's pre-v2 vocabulary. | final |

@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.12.0] - 2026-09-03
+
+Filing v2 part 3 — the corpus migration ([#533](https://github.com/alexherrero/agentm/pull/533),
+[#534](https://github.com/alexherrero/agentm/pull/534), [#535](https://github.com/alexherrero/agentm/pull/535),
+[#536](https://github.com/alexherrero/agentm/pull/536), [#537](https://github.com/alexherrero/agentm/pull/537)).
+The six classes are populated and every staging and legacy directory is
+gone: the inbox, the type-named dirs, the month buckets, `_archive` and
+`_opinions` routed into `semantic/`, `procedural/` and `crystallized/`, and
+the expired auto-miner cohort — 2,638 notes across those populations — purged
+on the operator's confirmed count, manifested with titles and hashes. Applied
+live under a quiesced daemon in three phases plus two later passes; the
+vocabulary gate now runs strict.
+
+### Added
+
+- **The migration engine** (`scripts/migrate/corpus_migration_3.py`): one
+  disposition per note — purge, route, keep, drop-index, hold — over every
+  population the design maps; dry run by default with a full report
+  (dispositions, purge manifest, needs-review); `--apply --phase
+  route|archive|purge`, the purge refusing without `--confirm-count` equal to
+  the manifest; three purge scopes (`inbox` 1,630 · `mined` 2,194 ·
+  `all-expired` 2,638) so the operator's ruling needs no code; line-surgical
+  frontmatter edits with `lifecycle`, `source` and `filing_confidence`
+  stamps; exact twins filed superseded, basename clashes as `~dup`; a later
+  pass settles against files already home; dissolving directories pruned.
+- **The scorecard counts the classes** — a `class populations` reading in the
+  corpus section (flat memories per class, supplement lanes reported apart),
+  so the empty-shell failure that motivated the arc can never be invisible
+  again.
+- **Four record kinds registered** in the packaged contract on the
+  operator's ruling — `report`, `standard`, `analysis`, `progress-log` — the
+  shapes 45 live records already carried.
+
+### Changed
+
+- **The opinion lanes' home is `memory/crystallized/<opinion>/`.**
+  `opinion_supplement.lane_base()` is the one place the root is spelled
+  (the pre-migration `_opinions/` while it exists, the class once moved);
+  `reflect` writes through it; dream's general walk, `vault_lint`,
+  `frontmatter_validator` and the console exempt supplements by kind
+  wherever they sit; the daemon's meter sampler excludes the lanes
+  (`MeterExcludedNested`).
+- **The retrieval gate translates pinned paths through the migration's own
+  reports** — its gold set pins pre-migration paths and its canary moved
+  with the corpus, so an expectation is looked up, note by note, in the
+  disposition reports the engine wrote (later runs overriding earlier), and
+  the operator's whole-tree moves are exact prefix remaps beside 2b's. A
+  basename fold was tried first and rejected in the pre-tag review: it would
+  have called two notes that shared a name in different month buckets the
+  same note. Against the migrated corpus the gate reads 0.734 → 0.688 (one
+  question flipped to a hit, four to a miss, exact paired p = 0.375 — no
+  significant regression): two of the misses are the primos questions, whose
+  notes now sit in `Projects/` and carry the ranker's project-space penalty
+  that `external/` never did; the instrument is exact, and that is the
+  honest price of the move.
+- **`check-vocabulary-membership` runs `--strict`** in the battery: the
+  ratchet baseline drained to empty, and any unregistered `type:` or `kind:`
+  value now fails (0 offenders over 2,291 notes live).
+
+### Internal
+
+- Tests: `test_corpus_migration_3.py` (synthetic vault, hand-counted
+  expectations, zero-write checksum, the three applies, purge refusals,
+  later-pass settling), `test_eval_retrieval_shipped_canon.py`, scorecard
+  class tests, and crystallized-layout cases across the opinion-lane
+  consumers.
+- The migration's run reports land in `Agent/diagnostics/migrations/`
+  (indexed, so they rank in search beside the notes they name — a follow-up
+  may move dry-run reports to engine state).
+
 ## [9.11.0] - 2026-09-03
 
 Filing v2 part 2b — the projects merge ([#528](https://github.com/alexherrero/agentm/pull/528),

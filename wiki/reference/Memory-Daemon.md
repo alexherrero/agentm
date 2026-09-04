@@ -528,10 +528,19 @@ answer that cannot be misread.
 
 The population is the **filed live memory corpus**: the configured memory space,
 `status: active`, excluding `_inbox`, `_archive`, `scratch`, `_shelf` and
-`_opinions`. Two filters rather than one, because neither is sufficient alone.
-Status alone still admits hundreds of inbox notes carrying `active` from a mining
-pass that never reconciled them. Directory names alone still admit unfiled
-captures sitting in the memory space.
+`_opinions` (`MeterExcludedDirs`). Two filters rather than one, because neither
+is sufficient alone. Status alone still admits hundreds of inbox notes carrying
+`active` from a mining pass that never reconciled them. Directory names alone
+still admit unfiled captures sitting in the memory space.
+
+`MeterExcludedNested` adds a second cut, scoped to `crystallized`: the class's
+lane subdirectories (`crystallized/<opinion>/`) are out of the population while
+its own flat files stay in. Filing-v2 part 3 moved the `_opinions`
+mined-supplement lanes there, and the reasoning above about `_opinions` carries
+over unchanged — a lane entry is still `reflect.py`'s mined material awaiting
+promotion, not a filed memory, whatever directory holds it now. A flat
+`crystallized/*.md` file is a crystallized memory itself and stays in the
+population.
 
 This is narrower than the vector arm's scope, deliberately. `EmbedScope` covers
 `memory`, `desk` and `external` so that retrieval can reach the gold set's

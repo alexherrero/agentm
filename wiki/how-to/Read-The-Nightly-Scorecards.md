@@ -24,7 +24,16 @@ what ran, what it cost, and what it could not finish.
 1. **Read the corpus scorecard top to bottom, not by hunting for red.** The
    sections are ordered so each one gives the next its context: how much is in the
    corpus, whether enrichment kept what the sources said, whether the writing is
-   converging, and what the graph looks like. A diversity number means something
+   converging, and what the graph looks like. The first line is **class
+   populations** — flat memory counts per class directory (`semantic`,
+   `procedural`, `episodic`, `entities`, `crystallized`, `mocs`), the accumulate
+   loop's supplement lanes reported apart so a class holding only lanes doesn't
+   read as populated. It exists because the six class directories once sat built
+   and empty for months while the corpus lived in a staging area, with nothing
+   counting them — filing-v2 part 3 populated them, and this is the line that
+   keeps that failure from going invisible again. `episodic`, `entities`, and
+   `mocs` commonly read zero: they're derived classes nothing routes to directly
+   yet, not a sign anything is missing. A diversity number means something
    different over 500 notes than over 5.
 
 2. **Check what is *unavailable* before believing what is green.** Every reading
