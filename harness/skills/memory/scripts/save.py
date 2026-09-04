@@ -116,6 +116,10 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "source_url", "source_fetched",
     "fingerprint", "occurrences", "always_load", "supersedes", "lifecycle_tier",
     "derived_from", "heat_pin",
+    # Filing-v2 (the write path): the aging axis, the provenance transport, and
+    # the write-time judgment's confidence — stamped by the filing engine on
+    # every auto-filed note; optional, so a hand-written entry stays complete.
+    "lifecycle", "source", "filing_confidence",
 )
 # Required fields = every field except the optional ones.
 # `fingerprint` stays structurally optional in the frontmatter contract, but
@@ -142,6 +146,7 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
 _OPTIONAL_FIELDS = frozenset({
     "source_url", "source_fetched", "fingerprint", "occurrences", "supersedes",
     "lifecycle_tier", "derived_from", "heat_pin", "arc", "altitude",
+    "lifecycle", "source", "filing_confidence",
 })
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
@@ -208,6 +213,24 @@ def _resolve_vocabulary(value: str) -> tuple:
     )
 
 
+def _class_segment(vocabulary_field: str, value: str) -> str:
+    """The directory segment a note files under. Filing-v2 part 3 populated the
+    six classes, so a memory type files into the class the contract routes it
+    to (`preference` → `semantic/`, `workflow` → `procedural/`) rather than a
+    type-named folder — the legacy layout the corpus migration dissolved and
+    that this writer had kept regrowing. A record kind keeps its own folder.
+    Without a contract to ask there is no class, and the type-named folder is
+    the honest fallback rather than a guessed class."""
+    if vocabulary_field != "type":
+        return value
+    try:
+        import storage_rules
+        class_dir = storage_rules.rules().routing().get(value)
+    except Exception:
+        class_dir = None
+    return class_dir.rsplit("/", 1)[-1] if class_dir else value
+
+
 def _validate_kebab(value: str, arg_name: str) -> None:
     """Raise ValueError if `value` is not kebab-case (^[a-z0-9-]+$)."""
     if not _KEBAB_SEGMENT.match(value):
@@ -249,6 +272,9 @@ def _build_frontmatter(
     fingerprint: str | None = None,
     lifecycle_tier: str | None = None,
     derived_from: list[str] | None = None,
+    lifecycle: str | None = None,
+    source: str | None = None,
+    filing_confidence: str | None = None,
 ) -> str:
     """Build the locked-order YAML frontmatter for a memory entry.
 
@@ -313,6 +339,14 @@ def _build_frontmatter(
         lines.append(f"lifecycle_tier: {lifecycle_tier}")
     if derived_from:
         lines.append("derived_from: [" + ", ".join(derived_from) + "]")
+    # Filing-v2 write-time stamps. `always_load` already spelled the lifecycle
+    # (`pinned`) above and wins; otherwise the engine's value is written.
+    if lifecycle and not always_load:
+        lines.append(f"lifecycle: {lifecycle}")
+    if source:
+        lines.append(f"source: {source}")
+    if filing_confidence:
+        lines.append(f"filing_confidence: {filing_confidence}")
     lines.append("---")
     return "\n".join(lines) + "\n"
 
@@ -333,6 +367,9 @@ def save_entry(
     lifecycle_tier: str | None = None,
     derived_from: list[str] | None = None,
     dedup_info: dict | None = None,
+    lifecycle: str | None = None,
+    source: str | None = None,
+    filing_confidence: str | None = None,
 ) -> Path:
     """Write a memory entry to the vault. Returns the absolute path written —
     or, when the write-time dedup guard fires (auto-org part 3 task 2), the
@@ -423,7 +460,7 @@ def save_entry(
     if always_load:
         target = vault / "memory" / "_always-load" / f"{slug}.md"
     else:
-        target = group_target_dir(vault, group) / kind / f"{slug}.md"
+        target = group_target_dir(vault, group) / _class_segment(vocabulary_field, kind) / f"{slug}.md"
 
     if target.exists():
         raise FileExistsError(
@@ -449,6 +486,9 @@ def save_entry(
         fingerprint=fingerprint,
         lifecycle_tier=lifecycle_tier,
         derived_from=derived_from,
+        lifecycle=lifecycle,
+        source=source,
+        filing_confidence=filing_confidence,
     )
     # Ensure body ends with single trailing newline.
     body_stripped = body.rstrip("\n")

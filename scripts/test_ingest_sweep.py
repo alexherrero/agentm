@@ -156,7 +156,9 @@ class PromotionTests(unittest.TestCase):
         # retired value was a path segment — a proxy for the real claim. The
         # collapse moved those notes to `memory/reference/`, so the assertion now
         # makes the claim directly.
-        self.assertIn("memory/reference/", fm["derived_from"])
+        # filing-v2 (the write path): a memory type files into its class, so the
+        # reference notes the ingest produced now live under `memory/semantic/`.
+        self.assertIn("memory/semantic/", fm["derived_from"])
         self.assertNotIn("domain-reference", fm["derived_from"],
                          "the retired value is still in a path the sweep wrote")
         self.assertNotIn(ingest_sweep._FETCHED_CONTENT_START, body, "the fetched-content scratch section is dropped once promoted")

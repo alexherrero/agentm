@@ -79,7 +79,7 @@ assert_equals "embed: stub mode builds a 1024-d vector" "$EMB_DIM" "1024"
 
 # ── B. save: an entry lands in the vault ────────────────────────────────────
 SAVE_BODY="The deployment runbook lives at ops/deploy.md and requires the staging gate before prod."
-ENTRY="$V/memory/reference/deploy-runbook.md"
+ENTRY="$V/memory/semantic/deploy-runbook.md"
 SAVED_PATH=""
 if [ "${VERIFY_MEMORY_FAULT:-}" = "drop-save" ]; then
   :   # negative check: skip the save → downstream recall/lint must fail loudly
@@ -88,7 +88,7 @@ else
     --tags "ops,deploy" --body-file - 2>/dev/null)"
 fi
 assert_exists "save: entry written under the vault" "${SAVED_PATH:-$ENTRY}"
-assert_exists "save: entry under memory/reference/" "$ENTRY"
+assert_exists "save: entry under memory/semantic/ (the class the contract routes reference to)" "$ENTRY"
 
 # ── C. recall by content: the saved entry is surfaced (keyword path) ────────
 RECALL="$(mem recall.py query "deployment runbook staging gate" -k 5 2>/dev/null)"

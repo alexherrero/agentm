@@ -557,7 +557,9 @@ class TestSchemaPin(unittest.TestCase):
         expected = tuple(
             f for f in save.FRONTMATTER_FIELD_ORDER
             if f not in ("heat_pin", "source_url", "source_fetched",
-                         "fingerprint", "occurrences", "lifecycle_tier", "derived_from", "arc")
+                         "fingerprint", "occurrences", "lifecycle_tier", "derived_from", "arc",
+                         # filing-v2 write-time stamps: emitted only when a caller passes them
+                         "lifecycle", "source", "filing_confidence")
         )
         self.assertEqual(tuple(keys), expected)
 
@@ -571,7 +573,8 @@ class TestSchemaPin(unittest.TestCase):
         expected = tuple(
             f for f in save.FRONTMATTER_FIELD_ORDER
             if f not in ("heat_pin", "source_url", "source_fetched",
-                         "supersedes", "occurrences", "lifecycle_tier", "derived_from", "arc")
+                         "supersedes", "occurrences", "lifecycle_tier", "derived_from", "arc",
+                         "lifecycle", "source", "filing_confidence")
         )
         self.assertEqual(tuple(keys), expected)
         self.assertIn("fingerprint: abc123", fm)

@@ -123,7 +123,9 @@ class VocabularyRoutingTests(_Base):
         """The value is a path segment, so migrating it also moves where new
         notes of that value land — the collapse working, not a side effect."""
         path = save.save_entry(self.vault, "domain-reference", "a-fact", "Body.")
-        self.assertIn("/reference/", str(path).replace("\\", "/"))
+        # The migrated value decides the class the contract routes it to (filing-v2
+        # part 4): `domain-reference` → `reference` → `semantic/`.
+        self.assertIn("/semantic/", str(path).replace("\\", "/"))
         self.assertNotIn("domain-reference", str(path))
 
     def test_a_value_no_register_carries_is_refused(self) -> None:
