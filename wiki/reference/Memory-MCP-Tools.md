@@ -69,7 +69,16 @@ A second, independent mechanism can also set `deduplicated: true` — even when 
 
 ## `memory_capture`
 
-You can stage a candidate — a thought, a link, or an idea — for later triage. This is the second front door beside `memory_append`. It writes to `personal/_inbox/` only. It never writes to permanent memory. Use it for anything that has not been reviewed yet: a phone capture, a chat aside, a link worth remembering. Use `memory_append` instead when you already know the explicit, deliberate destination.
+You use `memory_capture` to record an unreviewed candidate — the second front door alongside `memory_append`, and unlike it, this tool never writes at full, reviewed confidence. Since filing v2's write path, it files the candidate at the class directory the filing contract routes its type to and marks it `status: unfiled` at low filing confidence: the metadata is the inbox. Use it for anything that hasn't been reviewed yet:
+
+- A thought or idea
+- A phone capture
+- A chat aside
+- A link worth remembering
+
+Use `memory_append` instead when you already know the explicit, deliberate destination.
+
+There is no `project` or destination parameter. `memory_capture` never chooses its own destination beyond the type it names or defaults to — the filing contract's routing table decides the class directory, and the triage/ingestion machinery still promotes a candidate to reviewed confidence later.
 
 | Param | Type | Default | Notes |
 |---|---|---|---|
@@ -80,13 +89,11 @@ You can stage a candidate — a thought, a link, or an idea — for later triage
 | `instructions` | `str \| null` | `null` | An operator-typed action to run after triage |
 | `source_url` | `str \| null` | `null` | The link this candidate is about, if any — marks it for the future ingest sweep |
 
-There is no `project` or destination parameter. `memory_capture` never chooses its own destination — only the triage/ingestion machinery promotes a candidate out of `_inbox/` later.
-
 `instructions` is a security boundary. The server stores only the string you pass in this call's own `instructions` argument, verbatim. It never parses or extracts an instruction out of `content`. A fetched article's body, or a pasted link's page text, is untrusted data — a phrase inside it that looks like an instruction is inert. This is a locked, adversarially-tested invariant of the capture design, not an incidental behavior.
 
 **Returns:** `{success: true, id, slug, deduplicated}` on success. `{success: false, error}` on failure. A capture is never silently dropped — the server always returns an explicit outcome, and a write failure surfaces as `error` rather than an exception or a partial result.
 
-`deduplicated: true` means the same write-time content-fingerprint check `memory_append` uses (see above) matched an existing, not-yet-triaged inbox candidate and reinforced it instead of staging a new one. The match is refused — and a fresh candidate stages normally — when your capture carries a `source_url` or `instructions` value the matched candidate lacks, so a link resend's ingest-sweep trigger is never silently dropped into a plain-text duplicate.
+The filing engine runs a corpus check during capture. A `deduplicated: true` result means the check matched an existing, live, not-yet-reviewed candidate and reinforced it instead of filing a new one. The engine refuses the match — and files a fresh candidate instead, under its `~dup` mark if a different note already uses the target slug — when your capture carries a `source_url` or `instructions` value the matched candidate lacks, so a link resend's ingest-sweep trigger is never silently lost to a plain-text duplicate.
 
 ---
 

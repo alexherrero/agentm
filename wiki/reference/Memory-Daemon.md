@@ -192,7 +192,7 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 |---|---|---|
 | `plugins.obsidian-vault.vault_path` | — | Required. `$MEMORY_VAULT_PATH` overrides it. |
 | `daemon.spaces` | derived from `memory_root`: `{"memory": "<root>/memory", "projects": "Projects", "diagnostics": "<root>/diagnostics"}` | Space name to vault-relative directory. `diagnostics` joined the defaults in filing-v2 part 2a. `projects` points at the vault-root sibling `Projects/` as of filing-v2 part 2b — unprefixed, since it sits beside `<root>` (previously `<root>/desk/projects`). |
-| `daemon.shard` | `date` | `date` writes `<space>/<YYYY>/<MM>/<slug>.md`; `flat` writes `<space>/<slug>.md`. |
+| `daemon.shard` | `date` | The fallback only — a typed note the filing contract's `routing` table names lands in that class directory regardless of this setting (see [Lifecycle, sources, and facets](#lifecycle-sources-and-facets)). `daemon.shard` governs only a note the contract can't place: `date` writes `<space>/<YYYY>/<MM>/<slug>.md`, `flat` writes `<space>/<slug>.md`. |
 | `daemon.phone_paths` | `[]` | Vault-relative prefixes whose changes are attributed to the phone. |
 | `daemon.reconcile_every` | `5m` | How often to re-walk the vault. |
 | `daemon.port` | `7821` | |
@@ -341,17 +341,40 @@ The `lifecycle` field is a different key from the pre-existing
 above — a different field for a different, already-wired purpose (decay
 exemption).
 
-`record_kinds` also gained three calendar values in the same design —
-`calendar-facet`, `day-index`, `calendar-review`
-(`storage-rules.default.md:210-212`) — and `routing` now sends `idea` to
-`memory/semantic`, previously `desk` (`storage-rules.default.md:175`).
-Capture never reads `routing`, so no file moves because of this change.
-`ClassFor` (`rules.go:569`) does read it, and only names a class for a
-`memory/`-prefixed destination (`rules.go:578`) — so `agentmd graph` now
-classifies every `type: idea` note as `semantic`, alongside preference and
-convention, instead of leaving it with no class at all. That reclassification
-is the only behavioral effect this task shipped; the write path and the
-idea-incubator's own read path ship later in the same arc.
+The same design added three calendar values to `record_kinds`
+(`storage-rules.default.md:210-212`):
+
+- `calendar-facet`
+- `day-index`
+- `calendar-review`
+
+The `routing` table now sends an `idea` to `memory/semantic`, previously
+`desk` (`storage-rules.default.md:175`). At the time this reclassification
+shipped, capture did not read `routing`, and no file moved because of it.
+The `ClassFor` function (`rules.go:569`) was the only reader of `routing`
+at that earlier time, and only for the `agentmd graph` command — every
+`type: idea` note classified as `semantic` for a `memory/`-prefixed
+destination (`rules.go:578`) instead of nothing at all.
+
+Filing v2's write path closed that gap. The `Capturer.Do` method
+(`daemon/internal/capture/capture.go`) now calls
+`classDir(contract, contractErr, noteType, spaceDir)` and does read
+`routing`. `classDir` is checked before falling back to `daemon.shard` —
+class routing takes priority over the shard setting. A typed note lands
+directly in the class `routing` names for its type: `memory/semantic` for
+an `idea`, alongside `preference` and `convention`.
+
+`classDir` returns empty in exactly three cases:
+
+- An untyped request
+- A type the routing table doesn't name
+- A halted contract
+
+In every one of those cases it falls through to `daemon.shard`. The
+`renderNote` function stamps `lifecycle: active` on every note
+`capture.go` writes now, `filing_confidence: high` when the caller named
+the type, and `filing_confidence: low` when the contract's default type
+was used. The `status: unfiled` default predates this change.
 
 Validation sits beside the existing checks in `validate()`
 (`daemon/internal/rules/rules.go:387-429`): kebab-case and no duplicates for
