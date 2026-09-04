@@ -4,6 +4,7 @@ capture part 2 (capture-article-ingestion plan)."""
 from __future__ import annotations
 
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -78,21 +79,37 @@ class IngestBasicsTests(unittest.TestCase):
         # /review found a version with no pre-flight check and no rollback
         # would still write the document note and any earlier chunks before
         # discovering the collision, orphaning them while reporting failure.
+        #
+        # The destination is taken from a real write rather than rebuilt here.
+        # This test used to assemble it as `memory/<_INGEST_KIND>/…`, which is
+        # the same formula the pre-flight had hardcoded: when filing v2 moved
+        # a memory type to its class, test and code went stale together, so
+        # the collision was staged somewhere nothing writes and every orphan
+        # assertion below passed vacuously.
         original = _MD_FIXTURE.read_text(encoding="utf-8")
         expected_chunks = len(ingest.chunk_text(original))
         self.assertGreater(expected_chunks, 1, "fixture must produce >1 chunk to exercise mid-sequence failure")
-        doc_slug = f"typography-{ingest._slugify(_MD_FIXTURE.read_text(encoding='utf-8').splitlines()[0])}"
-        colliding = self.vault / "memory" / ingest._INGEST_KIND / f"{doc_slug}-chunk-1.md"
+
+        probe_vault = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, probe_vault, True)
+        probe = ingest.ingest(probe_vault, str(_MD_FIXTURE), topic="typography")
+        self.assertTrue(probe.success, probe.error)
+        dest = self.vault / probe.document.parent.relative_to(probe_vault)
+        doc_name, chunk0_name = probe.document.name, probe.chunks[0].name
+
+        colliding = dest / probe.chunks[1].name
         colliding.parent.mkdir(parents=True, exist_ok=True)
         colliding.write_text("pre-existing unrelated content\n", encoding="utf-8")
 
         result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
 
         self.assertFalse(result.success)
-        doc_path = self.vault / "memory" / ingest._INGEST_KIND / f"{doc_slug}.md"
-        chunk0_path = self.vault / "memory" / ingest._INGEST_KIND / f"{doc_slug}-chunk-0.md"
-        self.assertFalse(doc_path.exists(), "document note must not be orphaned on a chunk collision")
-        self.assertFalse(chunk0_path.exists(), "earlier chunk notes must not be orphaned on a later collision")
+        # Refused by the pre-flight, before any write -- not by save_entry
+        # mid-sequence with the rollback cleaning up after it. Both leave no
+        # orphans, so the wording is what separates them.
+        self.assertIn("nothing written", result.error)
+        self.assertFalse((dest / doc_name).exists(), "document note must not be orphaned on a chunk collision")
+        self.assertFalse((dest / chunk0_name).exists(), "earlier chunk notes must not be orphaned on a later collision")
         # The pre-existing unrelated file must survive untouched.
         self.assertEqual(colliding.read_text(encoding="utf-8"), "pre-existing unrelated content\n")
 
@@ -245,6 +262,40 @@ class HtmlExtractionTests(unittest.TestCase):
         # close tag and must not trip the fragment-HTML sniff.
         plain = "Usage: python3 ingest.py <url-or-file> [--topic <slug>] [--vault-path <path>]"
         self.assertFalse(ingest._looks_like_html(plain))
+
+
+class PreflightCollisionTests(unittest.TestCase):
+    """The pre-flight exists so a slug collision refuses cleanly instead of
+    writing part of the note family and rolling it back. It regressed to a
+    no-op when filing v2 moved the destination out from under its hardcoded
+    path formula, and stayed that way because nothing here asked. These are
+    the tests that ask: both fail against the hardcoded version, which reaches
+    `save_entry`'s own single-path error by way of the rollback."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+        (self.vault / "memory").mkdir()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _semantic(self) -> Path:
+        return self.vault / "memory" / "semantic"
+
+    def test_repeat_ingest_refuses_naming_every_colliding_slug(self) -> None:
+        args = dict(topic="widgets", raw_content="A short body about widgets.")
+        first = ingest.ingest(self.vault, "src", **args)
+        self.assertTrue(first.success, first.error)
+        before = sorted(p.name for p in self._semantic().glob("*.md"))
+
+        second = ingest.ingest(self.vault, "src", **args)
+        self.assertFalse(second.success)
+        # The pre-flight's own message, not save_entry's: it reports the whole
+        # colliding set at once, which is the point of checking before writing.
+        self.assertIn("nothing written", second.error)
+        self.assertIn(first.document.stem, second.error)
+        self.assertEqual(sorted(p.name for p in self._semantic().glob("*.md")), before)
 
 
 if __name__ == "__main__":

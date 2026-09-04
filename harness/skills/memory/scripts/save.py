@@ -102,6 +102,47 @@ def group_target_dir(vault: Path, group: str) -> Path:
         return base / rest if rest else base
     return vault / group
 
+
+def _target_path(
+    vault: Path, group: str, vocabulary_field: str, value: str, slug: str,
+    *, always_load: bool,
+) -> Path:
+    """The one target-path formula. `save_entry()` calls this with the
+    vocabulary it has already resolved; `entry_target_path()` below resolves
+    first and then calls it, so a caller asking where a note WILL go and the
+    writer that puts it there can never answer differently."""
+    if always_load:
+        return vault / "memory" / "_always-load" / f"{slug}.md"
+    return group_target_dir(vault, group) / _class_segment(vocabulary_field, value) / f"{slug}.md"
+
+
+def entry_target_path(
+    vault_path: "Path | str",
+    kind: str,
+    slug: str,
+    *,
+    group: str = "memory",
+    always_load: bool = False,
+) -> Path:
+    """Where `save_entry()` would write this note, without writing it.
+
+    For a caller that has to know the destination up front — a pre-flight
+    collision check across a multi-note write, a dry run — and must not
+    re-derive the path itself. The formula moved once already: filing v2 put a
+    memory type at the class the routing table sends it to, so the old
+    `vault/group/<kind>/slug.md` shape now holds only for a record kind. A
+    pre-flight that had hardcoded the old shape went on checking a directory
+    nothing writes to, silently, for as long as its test suite did not ask.
+
+    `kind` resolves through the contract exactly as `save_entry` resolves it,
+    so a retired value answers for its replacement. Raises the same
+    `ValueError` for a value the contract does not carry at all.
+    """
+    vocabulary_field, value, _ = _resolve_vocabulary(kind)
+    return _target_path(
+        Path(vault_path), group, vocabulary_field, value, slug, always_load=always_load,
+    )
+
 # Locked frontmatter field order — the schema source of truth shared with
 # `vault_lint.py` (V4 #33 DC-2: the lint reuses this so the two can't drift).
 # `_build_frontmatter` below emits fields in this exact order; a test pins them.
@@ -540,10 +581,9 @@ def save_entry(
     # part 6's lifecycle loader is what retires the pen by loading
     # `lifecycle: pinned` entries from their classes. The stamp below is
     # what makes that retirement a pure frontmatter query, not a move.
-    if always_load:
-        target = vault / "memory" / "_always-load" / f"{slug}.md"
-    else:
-        target = group_target_dir(vault, group) / _class_segment(vocabulary_field, kind) / f"{slug}.md"
+    target = _target_path(
+        vault, group, vocabulary_field, kind, slug, always_load=always_load,
+    )
 
     if target.exists():
         raise FileExistsError(
