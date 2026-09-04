@@ -3,32 +3,33 @@
 (`designs/friday/agentm-capture.md`, capture-front-door plan task 2).
 
 `memory_append` (save.py's `save_entry`) writes straight to permanent
-memory and validates `kind` as kebab-case — `_inbox` fails that validation
-by construction (its leading underscore), which is the standing convention
-that keeps staged items structurally distinct from `save_entry`'s
-validated destinations. This module is the second front door: every write
-here lands at the class directory the contract routes it to, marked `unfiled`
-at low filing confidence (filing v2, the write path) — the metadata is the inbox — and never
-goes through `save_entry`/`_validate_path_segment` at all.
+memory at high confidence, standing behind the type its caller named.
+This module is the second front door, for captures arriving with nobody
+standing behind a type. It hands the note to `filing_engine.decide()` at
+LOW confidence, always — the contract picks the class, `kind="idea"` is
+the only hint a caller can offer — and `filing_engine.apply()` writes it
+there through that same `save_entry`, marked `status: unfiled` at
+`filing_confidence: low` (filing v2, the write path). The metadata is
+the inbox. Nothing here stages in a directory: the retired
+`memory/_inbox/` is read by the ingest sweep while a legacy one exists,
+but the only thing still writing to it is the phone Capture project's
+Drive connector, whose instructions live outside this repo.
 
-Write path: the resolve-then-write sequence runs under `vault_lock.
-vault_mutex` (matching `save_entry`'s convention), with the write itself
-via `vault_lock.atomic_write` (temp file in the same directory, fsync,
-atomic rename) — genuinely atomic per-file and, with the mutex held
-across resolution, collision-safe against a second concurrent caller
-too. `reflect.py`'s existing `_save_candidate_to_inbox` does a raw
-`write_bytes()` with neither guarantee. Multiple transports write into
-`_inbox/` concurrently (the Drive connector, the Obsidian Web Clipper,
-this module, and the future ingest sweep) and Data Integrity is a named
-Quality Attribute of the capture design, so this module defaults to the
-safer, genuinely-atomic-and-serialized primitive rather than matching
-reflection's current pattern. See the plan's own Constraints section for
-the full reasoning and the one-line-reversal note if the operator
-prefers matching `reflect.py` instead. (A retroactive /review before the
-release cut found the mutex was missing on first ship — two concurrent
-callers resolving the same free slug before either wrote would silently
-overwrite one candidate with the other, contradicting this contract;
-fixed before release, never shipped to a tagged version.)
+Write path: decide, then write, with no single lock held across both.
+`save_entry` takes `vault_lock.vault_mutex` for the write itself and
+refuses a target a concurrent writer reached first, raising
+`FileExistsError`. This module catches that and decides again against
+the disk, so the newcomer is seen — a twin to reinforce, or a namesake
+to settle past with the `~dup` mark — rather than clobbered. That
+refuse-and-retry guard is what makes the unlocked gap between the two
+steps safe. Multiple transports still write concurrently (the Drive
+connector, the Obsidian Web Clipper, this module, the ingest sweep) and
+Data Integrity is a named Quality Attribute of the capture design, so
+the loser of a race loses loudly rather than overwriting. (The earlier
+resolve-then-write-under-one-mutex version shipped without its mutex; a
+retroactive /review before the release cut found two concurrent callers
+resolving the same free slug would silently overwrite one candidate
+with the other. Fixed before release, never in a tagged version.)
 
 Every call returns a `CaptureResult` — success or failure is always
 explicit, never a silent drop (the design's own reliability contract:
@@ -62,7 +63,7 @@ class CaptureResult:
     slug: "str | None" = None
     error: "str | None" = None
     # True when the write-time dedup guard (auto-org part 3 task 2) matched
-    # an existing inbox candidate by exact content fingerprint and
+    # an existing candidate already home by exact content fingerprint and
     # reinforced it (occurrences + updated bump) instead of writing a new
     # file — `path`/`slug` then name the EXISTING candidate.
     deduplicated: bool = False
@@ -84,23 +85,6 @@ def _slugify(content: str, *, now: datetime) -> str:
     unique enough in practice that the collision path below is a rare
     resend/race, not the common case."""
     return f"capture-{now.strftime('%Y%m%dT%H%M%S')}"
-
-
-def _resolve_target(inbox_dir: Path, slug: str) -> Path:
-    """Resolve the write target, appending a numeric suffix on collision —
-    mirrors `reflect.py::_save_candidate_to_inbox`'s existing convention.
-    The Drive connector can create files but never update/delete them, so
-    a resend landing twice as near-duplicate candidates is an accepted,
-    designed-for case (inbox triage's dedup handles it later)."""
-    target = inbox_dir / f"{slug}.md"
-    if not target.exists():
-        return target
-    n = 1
-    while True:
-        candidate = inbox_dir / f"{slug}-{n}.md"
-        if not candidate.exists():
-            return candidate
-        n += 1
 
 
 def capture(
@@ -244,8 +228,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="memory-capture",
         description=(
-            "Capture a thought, link, or idea into MemoryVault's staging inbox "
-            "(filed at its class as `status: unfiled`). Canonical Python implementation behind "
+            "Capture a thought, link, or idea into MemoryVault, filed at the "
+            "class its type routes to as `status: unfiled`. Canonical Python "
+            "implementation behind "
             "/memory capture (see SKILL.md)."
         ),
     )

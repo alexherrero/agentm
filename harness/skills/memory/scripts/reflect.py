@@ -101,8 +101,8 @@ _PREFERENCE_PATTERNS: list[tuple[re.Pattern, str]] = [
 
 # MEDIUM-confidence: user corrected the agent — simple heuristic per part-doc
 # note. Detection is intentionally lossy — false positives are filtered by the
-# interactive review prompt (task 5); false negatives end up in _inbox/ or stay
-# uncaptured. Tune from real use per Tech Debt #7.
+# interactive review prompt (task 5); false negatives file as low-confidence
+# captures or stay uncaptured. Tune from real use per Tech Debt #7.
 _CORRECTION_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:no|nope|actually|wait)[\s,.]+[^.!?\n]{0,80}(?:wrong|incorrect|missing|broken|not right)\b",
                 re.IGNORECASE),
@@ -442,7 +442,8 @@ def mine_transcript(transcript_path: Path) -> dict:
     `occurrences` rather than emit duplicate candidates. Confidence is
     initially set per pattern type; candidates with `occurrences < 3` in
     MEDIUM-mode-initial buckets get demoted to LOW per the locked tri-modal
-    routing (single-instance inference → _inbox/).
+    routing (a single-instance inference files at low confidence, not as a
+    reviewed one).
 
     The function is deterministic for a given transcript — same input
     produces same output. No I/O beyond reading the transcript.
@@ -584,8 +585,11 @@ def mine_transcript(transcript_path: Path) -> dict:
             ))
 
     # ── Tri-modal demotion: MEDIUM-initial candidates with <3 occurrences
-    # get demoted to LOW (single-instance inference → _inbox/ per locked
-    # design call B2.iii). HIGH candidates stay HIGH regardless of count
+    # get demoted to LOW (a single-instance inference files at low filing
+    # confidence, per locked design call B2.iii — which used to mean the
+    # retired `_inbox/`, and since filing v2's write path means
+    # `filing_confidence: low` at the note's own class directory).
+    # HIGH candidates stay HIGH regardless of count
     # (explicit user signal trumps frequency).
     for c in memory_candidates:
         if c.confidence == "MEDIUM" and c.occurrences < _WORKFLOW_OCCURRENCE_THRESHOLD:
@@ -1171,8 +1175,9 @@ def route_candidates(
 #   - Atomic state-file writes via tempfile + rename so Ctrl-C mid-write
 #     can't leave a half-written state file. State writes happen after
 #     each session (not each batch) — finer-grained resume.
-#   - MEDIUM-confidence candidates route to _inbox/ by default (auto mode)
-#     since historical-pass volume makes interactive routing impractical.
+#   - MEDIUM-confidence candidates file at low confidence by default (auto
+#     mode) since historical-pass volume makes interactive routing
+#     impractical.
 #     Operator triages later via `/memory inbox --bulk-review`
 #     (`inbox_triage.py`, built 2026-07-11).
 
