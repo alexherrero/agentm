@@ -210,6 +210,13 @@ record_kinds:
   - calendar-facet
   - day-index
   - calendar-review
+  # Filing-v2 part 3 (2026-09-03): registered from the live corpus on the
+  # operator's ruling — record shapes the labelling worksheets and the primos
+  # review already carry (report ×9, standard ×2, analysis ×32, progress-log ×1).
+  - report
+  - standard
+  - analysis
+  - progress-log
 
 deprecations:
   preferences: preference
