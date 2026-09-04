@@ -72,6 +72,11 @@ EXPECTED_FIELD = "expected_note_paths"
 _MERGE_REMAPS = (
     ("Agent/desk/labelling/", "Projects/agentm/labelling/"),
     ("Agent/desk/projects/", "Projects/"),
+    # Filing-v2 part 3 (2026-09-03): the operator's whole-tree moves, which the
+    # migration's disposition reports do not record (they were not routes).
+    ("Agent/external/primos/", "Projects/primos/"),
+    ("Agent/_vault-archive/ag-design-history/", "Projects/agentm/_harness/archive/designs/ag-design-history/"),
+    ("Agent/memory/_inbox/20260711-digest-daily.md", "Agent/diagnostics/digests/20260711-digest-daily.md"),
 )
 
 
@@ -84,30 +89,84 @@ def _remap_merged(path: str) -> str:
 
 # Filing-v2 part 3 (2026-09-03): the corpus migration routed every memory out
 # of the inbox, the legacy type-named dirs, the 2026/ month buckets, _archive
-# and _opinions into the six class directories — by type, with basenames
-# preserved (the migration's own invariant, so name-resolved wikilinks
-# survive). The gold set keeps its pinned pre-migration paths; a pinned path
-# and a class path that share a basename are the same note, so both sides are
-# compared in a canonical form that folds the migrated populations and the
-# six classes onto `Agent/memory/<basename>`. Anything outside those
-# directories compares exactly, as before.
-_MIGRATED_POPULATIONS = ("_inbox", "_archive", "_opinions", "2026", "preferences", "preference",
-                         "idea", "fix", "workflow", "workflow-pattern", "insight", "feedback",
-                         "conventions", "domains")
-_CLASS_DIRS = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
-_MEMORY_PREFIX = "Agent/memory/"
+# and _opinions into the six class directories. The gold set keeps its pinned
+# pre-migration paths, so an expectation is translated through the migration's
+# own disposition reports — `<memory root>/diagnostics/migrations/
+# corpus-migration-3/<run>/dispositions.csv`, one row per note with the exact
+# destination it took, later runs overriding earlier ones. Exact, per note:
+# a basename fold would call two different notes that shared a name in
+# different month buckets the same note, and score a wrong hit as a right one
+# (the pre-tag review's finding). A path no report names compares as it is —
+# on a machine with no vault or no reports, the eval is the pre-migration one.
+_REPORTS_REL = Path("diagnostics") / "migrations" / "corpus-migration-3"
+_MIGRATION_TABLE: "dict | None" = None
 
 
-def _canon(path: str) -> str:
-    """The comparison form: `Agent/memory/<basename>` for a note in a migrated
-    population or a class directory; the path itself otherwise."""
-    if not path.startswith(_MEMORY_PREFIX):
+def _disposition_map(memory_root: "Path | None") -> dict:
+    """`{pre-migration memory-root-relative path: destination}` from every
+    run's dispositions.csv under the memory root, later runs overriding
+    earlier. Keys are spelled as the reports spell them (`memory/...`); the
+    vault-relative prefix the daemon adds (`Agent/`) is matched by suffix in
+    `_migrated`, so nothing here has to know how the vault is laid out."""
+    table: dict = {}
+    if memory_root is None:
+        return table
+    reports = Path(memory_root) / _REPORTS_REL
+    if not reports.is_dir():
+        return table
+    import csv
+    for run in sorted(p for p in reports.iterdir() if p.is_dir()):
+        f = run / "dispositions.csv"
+        if not f.is_file():
+            continue
+        try:
+            with f.open(encoding="utf-8", newline="") as fh:
+                for row in csv.DictReader(fh):
+                    if row.get("disposition") == "route" and row.get("dest"):
+                        table[row["path"]] = row["dest"]
+        except OSError:
+            continue
+    return table
+
+
+def _migration_table() -> dict:
+    """The reports of the memory root this process is pointed at. `$MEMORY_VAULT_PATH`
+    wins when set — the per-invocation override every hermetic harness uses, so
+    a test vault never reads the operator's live reports — else the configured
+    root. Cached for the process; a test isolates it by setting `_MIGRATION_TABLE`."""
+    global _MIGRATION_TABLE
+    if _MIGRATION_TABLE is None:
+        import os
+        env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+        root = Path(env) if env else None
+        if root is None:
+            try:
+                sys.path.insert(0, str(_REPO / "scripts"))
+                import harness_memory  # noqa: E402
+                root = harness_memory.memory_root()
+            except Exception:
+                root = None
+        _MIGRATION_TABLE = _disposition_map(root)
+    return _MIGRATION_TABLE
+
+
+def _migrated(path: str, table: "dict | None" = None) -> str:
+    """Where a pinned pre-migration path lives now, per the reports; the path
+    itself when no report moved it. A report key is memory-root-relative and
+    the eval's paths are vault-relative, so the key is matched as a suffix
+    on a path boundary and the prefix in front of it is kept."""
+    table = _migration_table() if table is None else table
+    if not table:
         return path
-    rest = path[len(_MEMORY_PREFIX):]
-    head, sep, _tail = rest.partition("/")
-    if sep and head in _MIGRATED_POPULATIONS + _CLASS_DIRS:
-        return _MEMORY_PREFIX + rest.rsplit("/", 1)[-1]
-    return path
+    key = path
+    while True:
+        if key in table:
+            return path[:len(path) - len(key)] + table[key]
+        cut = key.find("/")
+        if cut < 0:
+            return path
+        key = key[cut + 1:]
+
 
 # `negative` entries are questions the corpus is not supposed to answer. They are
 # scored separately: counting them in R@5 would reward a ranker for finding
@@ -301,7 +360,7 @@ def check_canary(binary: str) -> None:
     """
     got = [path for path, _ in _search_rows(binary, CANARY_QUERY, 3,
                                             mode="and")]
-    if not got or _canon(got[0]) != _canon(CANARY_PATH):
+    if not got or got[0] != _migrated(CANARY_PATH):
         raise Control(
             f"the canary query returned {got[:2] or 'nothing'} instead of "
             f"{CANARY_PATH} at rank 1 — the index is dead, detached, or serving "
@@ -400,9 +459,9 @@ def score(binary: str, entries: list, k: int) -> dict:
     all_scores = []
     for e in entries:
         question = e["question"]
-        expected = [_canon(_remap_merged(p)) for p in (e.get(EXPECTED_FIELD) or []) if p]
+        expected = [_migrated(_remap_merged(p)) for p in (e.get(EXPECTED_FIELD) or []) if p]
         rows = _search_rows(binary, question, k)
-        got = [_canon(path) for path, _score in rows]
+        got = [path for path, _score in rows]
         all_scores.extend(s for _path, s in rows if s is not None)
 
         if e.get("stratum") == NEGATIVE_STRATUM:

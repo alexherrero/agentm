@@ -88,7 +88,7 @@ PHASE_OF_POPULATION = {"inbox": "route", "legacy": "route", "dated": "route", "e
                        "archive": "archive", "opinions": "archive"}
 # The purge prunes what it empties; a lane the purge empties goes too (reflect
 # recreates a lane on the next supplement).
-PURGE_PRUNES = ("inbox", "legacy", "archive", "supplements")
+PURGE_PRUNES = ("inbox", "legacy", "dated", "archive", "supplements", "external")
 
 CONFIDENCE = {"LOW": "low", "MEDIUM": "medium", "HIGH": "high"}
 REPORT_COLUMNS = ("path", "population", "disposition", "dest", "field_before", "value_before",
@@ -102,7 +102,7 @@ class Row:
     __slots__ = ("path", "rel", "population", "disposition", "dest", "field_before",
                  "value_before", "type_after", "status_before", "status_after", "lifecycle",
                  "source", "filing_confidence", "superseded_by", "flags", "reason",
-                 "fingerprint", "sortkey", "kind_after", "lines", "fm_end")
+                 "fingerprint", "sortkey", "kind_after", "lines", "fm_end", "superseded_row", "needs_rename")
 
     def __init__(self, path: Path, rel: str, population: str):
         self.path, self.rel, self.population = path, rel, population
@@ -117,6 +117,8 @@ class Row:
         self.sortkey = ()
         self.lines: list = []
         self.fm_end = -1
+        self.superseded_row = None   # a twin's winner among the rows; its dest is read after renames
+        self.needs_rename = False    # a namesake of a file already home, or of another row
 
     def as_record(self) -> dict:
         return {
@@ -347,7 +349,11 @@ def _normalize_target(target: str) -> str:
 
 
 def dedupe(rows: list) -> None:
-    """Exact-twin marking and basename-clash resolution over the routed rows."""
+    """Exact-twin marking over the routed rows. A twin's winner is remembered
+    as a row, not a path, because destinations are still moving at this point
+    — `assign_destinations` settles every name and only then resolves the
+    pointer, so a winner renamed by a later clash never leaves its twins
+    pointing at whatever note took its old slot."""
     routed = [r for r in rows if r.disposition == "route"]
     by_fp = defaultdict(list)
     for r in routed:
@@ -359,28 +365,17 @@ def dedupe(rows: list) -> None:
         winner = group[0]
         for loser in group[1:]:
             loser.lifecycle = "superseded"
-            loser.superseded_by = winner.dest
+            loser.superseded_row = winner
             loser.flags.append("exact-twin")
-    by_dest = defaultdict(list)
-    for r in routed:
-        by_dest[r.dest].append(r)
-    for dest, group in by_dest.items():
-        if len(group) < 2:
-            continue
-        group.sort(key=lambda r: r.sortkey)
-        stem, ext = os.path.splitext(dest)
-        for n, loser in enumerate(group[1:], start=1):
-            loser.dest = f"{stem}~dup{'' if n == 1 else n}{ext}"
-            loser.flags.append("basename-clash")
 
 
 def settle_against_existing(rows: list, vault: Path) -> None:
     """A routed note whose destination already holds a file — a re-capture of
     a memory an earlier pass filed, or a genuine namesake — is never an
     overwrite. Identical body: the arriving note is the twin, filed superseded
-    by the note already home; different body: a basename clash, filed as
-    `<stem>~dup.md`. Either way it is flagged for review, and a later pass
-    over a corpus the daemon kept writing into stays resumable."""
+    by the note already home; different body: a basename clash. Either way it
+    is flagged for review and takes a `~dup` name in `assign_destinations`, so
+    a later pass over a corpus the daemon kept writing into stays resumable."""
     for r in rows:
         if r.disposition != "route":
             continue
@@ -397,11 +392,55 @@ def settle_against_existing(rows: list, vault: Path) -> None:
             r.flags.append("exact-twin")
         else:
             r.flags.append("basename-clash")
-        stem, ext = os.path.splitext(r.dest)
-        n = 1
-        while (vault / f"{stem}~dup{'' if n == 1 else n}{ext}").exists():
-            n += 1
-        r.dest = f"{stem}~dup{'' if n == 1 else n}{ext}"
+        r.needs_rename = True
+
+
+def assign_destinations(rows: list, vault: Path) -> None:
+    """Every routed row gets a destination no other row claims and no file
+    already occupies — the one place names are settled. Rows are visited
+    winners-first (the sort key: enriched, fingerprinted, older, then path),
+    so the older note keeps the basename and every namesake — a clash among
+    the rows, a namesake of a file already home, or a note whose natural name
+    happens to be `<stem>~dup.md` — takes the next free `~dup` name, checked
+    against both the rows settled so far and the disk. Then every twin's
+    `superseded_by` is read from its winner's final destination."""
+    taken: set = set()
+    for r in sorted((r for r in rows if r.disposition == "route"), key=lambda r: r.sortkey):
+        dest = r.dest
+        clash = r.needs_rename or dest in taken or _occupied(vault, dest, r)
+        if clash:
+            if "basename-clash" not in r.flags and "exact-twin" not in r.flags:
+                r.flags.append("basename-clash")
+            stem, ext = os.path.splitext(dest)
+            stem = _DUP_SUFFIX.sub("", stem)  # a note already named `~dup` counts up, not `~dup~dup`
+            n = 1
+            while True:
+                cand = f"{stem}~dup{'' if n == 1 else n}{ext}"
+                if cand not in taken and not _occupied(vault, cand, r):
+                    break
+                n += 1
+            dest = cand
+        r.dest = dest
+        taken.add(dest)
+    for r in rows:
+        # A twin settled against a note already home keeps that pointer — the
+        # note on disk is the earliest winner; a winner among the rows is next.
+        if r.superseded_row is not None and not r.superseded_by:
+            r.superseded_by = r.superseded_row.dest
+
+
+_DUP_SUFFIX = __import__("re").compile(r"~dup\d*$")
+
+
+def _occupied(vault: Path, rel: str, row: Row) -> bool:
+    """A file already sits at `rel`, and it is not this row's own source."""
+    p = vault / rel
+    if not p.exists():
+        return False
+    try:
+        return p.resolve() != row.path.resolve()
+    except OSError:
+        return True
 
 
 def existing_targets(vault: Path) -> set:
@@ -423,6 +462,7 @@ def plan(vault: Path, rules, *, purge_scope: str) -> list:
         rows.append(row)
     dedupe(rows)
     settle_against_existing(rows, vault)
+    assign_destinations(rows, vault)
     # A promotion target that is itself routed moves too: point at where it lands.
     lands = {r.rel: r.dest for r in rows if r.disposition == "route"}
     for r in rows:
