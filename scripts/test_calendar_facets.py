@@ -78,7 +78,9 @@ class TheFacetNotes(_Nested):
         r = cf.append(self.vault, "meetings", "Sync with the team about the release.", day=DAY, now=NOON, rules=self.rules)
         self.assertTrue(r.created)
         self.assertEqual(r.rel, "Calendar/2026/2026-09-04-meetings.md")
-        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-meetings.md"])
+        # The facet note and the generated day index, nothing else (task 2
+        # brought the index; the test's claim — no empty facet file, ever — stands).
+        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-meetings.md", "Calendar/2026/2026-09-04.md"])
         text = r.path.read_text(encoding="utf-8")
         for line in ("kind: calendar-facet", "status: active", "slug: 2026-09-04-meetings",
                      "day: 2026-09-04", "facet: meetings", "group: calendar", "tags: [calendar, meetings]"):
@@ -95,12 +97,12 @@ class TheFacetNotes(_Nested):
         after = second.path.read_text(encoding="utf-8")
         self.assertTrue(after.startswith(before), "the earlier text must be byte-identical")
         self.assertEqual(after[len(before):], "\n14:37 — Second meeting, spanning two lines.\n")
-        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-meetings.md"])
+        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-meetings.md", "Calendar/2026/2026-09-04.md"])
 
     def test_quick_capture_lands_in_todays_diary(self):
         r = cf.quick(self.vault, "Realised the purge count had drifted.", now=NOON, rules=self.rules)
         self.assertEqual(r.facet, "diary")
-        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-diary.md"])
+        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-diary.md", "Calendar/2026/2026-09-04.md"])
 
     def test_an_unregistered_facet_is_refused_with_the_registry_named(self):
         with self.assertRaises(cf.UnknownFacet) as cm:
