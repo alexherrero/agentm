@@ -20,7 +20,10 @@ lookback: 3d
 # lifecycle policy, copies, refile, promote, the calendar reviews, the MOCs
 # and the date glosses. Dropping `-apply` returns it to report-only — a
 # rollback that mutates nothing; the Python lanes it replaced are gone.
-command: "$HOME/.local/bin/agentmdream" run -every 168h -apply
+# One YAML scalar, quoted whole: a value that starts with a quote and keeps
+# going is a parse error, and one bad manifest stops every job the runner
+# has (it loads them all or none). The shell expands $HOME at run time.
+command: "$HOME/.local/bin/agentmdream run -every 168h -apply"
 
 # T3: the agent's own memory maintenance, no model calls in this scaffold.
 tier: T3

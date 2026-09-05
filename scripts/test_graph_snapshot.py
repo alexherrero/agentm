@@ -168,3 +168,36 @@ class TestGraphSnapshot(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNestedLayoutSiblingSpace(unittest.TestCase):
+    """Filing-v2 2b: the vault-root `Projects/` space is a sibling of a nested
+    memory root (`.obsidian/` at the vault root, none at the memory root).
+    The walk keys its notes relative to the vault root; the rebuild must
+    join them back the same way — joining onto the memory root crashed the
+    nightly cycle in the lint stage on the live vault (2026-09-05)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name) / "vault"
+        (self.root / ".obsidian").mkdir(parents=True)
+        self.vault = self.root / "Agent"
+        (self.vault / "memory" / "reference").mkdir(parents=True)
+        (self.root / "Projects" / "_global" / "style").mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_a_sibling_root_space_note_indexes_and_never_crashes_the_rebuild(self):
+        (self.vault / "memory" / "reference" / "note-a.md").write_text("---\nslug: note-a\n---\nhome\n", encoding="utf-8")
+        (self.root / "Projects" / "_global" / "style" / "howto.md").write_text(
+            "---\nslug: howto\n---\nsee [[note-a]] from the projects space\n", encoding="utf-8")
+        stats = graph_snapshot.rebuild(self.vault)
+        self.assertEqual(stats.files_touched, 2)
+        self.assertIn("Projects/_global/style/howto.md", stats.touched_paths)
+        self.assertEqual(graph_snapshot.incoming(self.vault, "memory/reference/note-a.md"), ["Projects/_global/style/howto.md"])
+        # A second rebuild is a no-op, and the targeted path resolves too.
+        self.assertEqual(graph_snapshot.rebuild(self.vault).files_touched, 0)
+        targeted = graph_snapshot.rebuild(self.vault, paths=["Projects/_global/style/howto.md"])
+        self.assertEqual(targeted.files_touched, 1)
+        self.assertEqual(targeted.nodes_removed, 0)
