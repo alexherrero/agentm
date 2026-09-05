@@ -16,11 +16,11 @@ lookback: 3d
 # The runner runs from `scripts/`; the binary reads the kernel config for the
 # vault, and $AGENTM_STATE_DIR (or ~/.local/state/agentm) for its state,
 # journal and lock. Report-only: no `-apply` until the parity gate.
-# The flip (task 6): after the overlap window's divergence reviews are
-# dispositioned in writing, add `-apply` here AND `--skip-ported` to
-# dream.yaml's command in the same change, so exactly one layer mutates each
-# lane. Rollback is the reverse edit: the Python layer is still there.
-command: "$HOME/.local/bin/agentmdream" run -every 168h
+# Applying since 2026-09-05 (filing v2 part 6): the binary owns the
+# lifecycle policy, copies, refile, promote, the calendar reviews, the MOCs
+# and the date glosses. Dropping `-apply` returns it to report-only — a
+# rollback that mutates nothing; the Python lanes it replaced are gone.
+command: "$HOME/.local/bin/agentmdream" run -every 168h -apply
 
 # T3: the agent's own memory maintenance, no model calls in this scaffold.
 tier: T3

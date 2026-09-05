@@ -193,8 +193,10 @@ DEFAULT_REVERT_TTL_DAYS = 14.0
 # `lint.run_lint()` never proposes a mutation for any of them, so this
 # stage joining `AUTO_APPLY_STAGES` can never auto-apply anything beyond
 # the one narrow repair kind its own proposals ever carry.
+# `suffix_backlog_drain` left this set with filing v2 part 6: the dreaming
+# binary's `copies` job owns that lane now.
 AUTO_APPLY_STAGES = frozenset(
-    {"compression", "tidying", "link_improvement", "suffix_backlog_drain", "lint"}
+    {"compression", "tidying", "link_improvement", "lint"}
 )
 
 # Standing batch bound for one auto-apply cycle (2026-07-11 cadence

@@ -432,11 +432,11 @@ class AutoApplyExpireTests(_DreamConfirmTestBase):
         # call, not just the stages with an item this run -- tidying joined
         # compression in that set (auto-organization part 1, task 3),
         # link_improvement joined both (auto-organization part 2, task 4),
-        # suffix_backlog_drain joined all three (auto-organization part 3,
+        # the suffix-backlog drain joined then left (filing v2 part 6),
         # task 6), and lint joined all four (task 7, wikilink_repair only).
         self.assertEqual(
             payload["stages"],
-            ["compression", "link_improvement", "lint", "suffix_backlog_drain", "tidying"],
+            ["compression", "link_improvement", "lint", "tidying"],
         )
         self.assertEqual(payload["batch_cap"], dc.DEFAULT_AUTO_APPLY_BATCH_CAP)
         self.assertEqual(len(payload["items"]), 1)
@@ -607,15 +607,15 @@ class StageAnomalyGeneralizationTests(_DreamConfirmTestBase):
 
     def test_different_stages_have_independent_histories(self) -> None:
         for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
-            dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 2)
+            dc.check_stage_anomaly(self.vault, "compression", 2)
         # "lint" has no history at all yet -- a cold start, never trips,
-        # regardless of what suffix_backlog_drain's own history says.
+        # regardless of what compression's own history says.
         lint_result = dc.check_stage_anomaly(self.vault, "lint", 50)
         self.assertFalse(lint_result.tripped)
         self.assertIsNone(lint_result.baseline)
 
-        # suffix_backlog_drain's own history is untouched by lint's check.
-        drain_result = dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 3)
+        # compression's own history is untouched by lint's check.
+        drain_result = dc.check_stage_anomaly(self.vault, "compression", 3)
         self.assertFalse(drain_result.tripped)
         self.assertAlmostEqual(drain_result.baseline, 2.0)
 
