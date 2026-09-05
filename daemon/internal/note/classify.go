@@ -65,6 +65,20 @@ const (
 	// whose score went negative, so a uniform multiplier reorders exactly the
 	// rows it should leave alone.
 	ClassArtifact = "artifact"
+	// ClassDormant, ClassArchived and ClassSuperseded are the lifecycle axis
+	// read as a demotion — `lifecycle: dormant | archived | superseded` in so
+	// many words (filing v2 part 6). The contract's fourth value, `pinned`,
+	// earns ClassDurable instead (see isDurable): it is not a penalty, it is
+	// the exemption. The fifth, `active`, is the default and carries nothing.
+	//
+	// `archived` is demoted here and *walled* in search: the contract says an
+	// archived memory leaves everyday search while staying on disk and
+	// answering an explicit archive query, and the wall is where that query
+	// is honoured — see index.wallArchived for why the wall is not this
+	// classifier's business.
+	ClassDormant    = "lifecycle-dormant"
+	ClassArchived   = "lifecycle-archived"
+	ClassSuperseded = "lifecycle-superseded"
 )
 
 // Weights are applied multiplicatively to the BM25 score.
@@ -99,6 +113,16 @@ var Weights = map[string]float64{
 	// can only lower a score, and a genuine boost would make a negative-IDF row
 	// rank higher for being penalized.
 	ClassArtifact: 0.30,
+	// The lifecycle axis, same 0.30 and the same finding: the sweep showed that
+	// strength is not the knob, so the design's "demotion curve parameters" are
+	// not a weight here. The knob is *which* states are penalized, and that
+	// list is the contract's (`lifecycle:` in storage-rules); the schedule that
+	// moves a note along the axis is the dreaming layer's, not the ranker's.
+	// `superseded` gets the same treatment status `superseded` already has —
+	// the successor answers, the predecessor is still findable.
+	ClassDormant:    0.30,
+	ClassArchived:   0.30,
+	ClassSuperseded: 0.30,
 }
 
 // Overfetch is how deep to look before re-ranking. A penalty can only promote a
@@ -208,9 +232,12 @@ func isAllDigits(s string) bool {
 //	staging   — a dream-staging proposal. It earns a class because each proposal
 //	            quotes the full text of the two notes it is about, so it is a
 //	            fragment counted twice.
+//	lifecycle-dormant / -archived / -superseded
+//	          — the contract's aging axis, `lifecycle:` read as a demotion.
+//	            `pinned` lands in `durable` (never ages); `active` is silent.
 //
 // `body` must already have leading whitespace trimmed.
-func classify(rel, head, body, status string) []string {
+func classify(rel, head, body, status, lifecycle string) []string {
 	var flags []string
 
 	if inDampenedSpace(rel) {
@@ -219,6 +246,17 @@ func classify(rel, head, body, status string) []string {
 
 	if isDurable(rel, head) {
 		flags = append(flags, ClassDurable)
+	}
+
+	// The lifecycle axis. Read from the parsed value rather than the head so
+	// the parser's one reading (quotes, case) is the reading everywhere.
+	switch lifecycle {
+	case "dormant":
+		flags = append(flags, ClassDormant)
+	case "archived":
+		flags = append(flags, ClassArchived)
+	case "superseded":
+		flags = append(flags, ClassSuperseded)
 	}
 
 	if m := altitudeRe.FindStringSubmatch(head); altitudeDampening.Load() && m != nil {
@@ -362,8 +400,10 @@ func Multiplier(flags []string) float64 {
 // the same failure recurs — the case where a decay curve is exactly wrong.
 var durableKinds = map[string]bool{"failure-incident": true}
 
-// isDurable reports whether a note is exempt from ageing, by any of the four
-// routes ported from `lifecycle.is_decay_exempt` and its caller.
+// isDurable reports whether a note is exempt from ageing, by any of the five
+// routes: the contract's own word for it, `lifecycle: pinned` (filing v2 part
+// 6 — "pinned never decays"), and the four ported from
+// `lifecycle.is_decay_exempt` and its caller.
 //
 // Two of them are proxies rather than direct statements, and deliberately so.
 // There is no `kind: decision` in this corpus — the operator's ADRs retired into
@@ -373,6 +413,11 @@ var durableKinds = map[string]bool{"failure-incident": true}
 // cold because nobody has needed it, and those are documents. A 2016 lesson is
 // not less true for being ten years old.
 func isDurable(rel, head string) bool {
+	if m := lifecycleRe.FindStringSubmatch(head); m != nil {
+		if strings.ToLower(strings.Trim(m[1], `'"`)) == "pinned" {
+			return true
+		}
+	}
 	if m := lifecycleTierRe.FindStringSubmatch(head); m != nil {
 		if strings.ToLower(strings.Trim(strings.TrimSpace(m[1]), `'"`)) == "durable" {
 			return true

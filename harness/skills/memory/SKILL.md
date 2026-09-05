@@ -1125,6 +1125,12 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/inbox_triage.py \
 - **Don't reach for `--no-auto-apply` as the normal mode.** Auto-apply is the default as of 2026-07-11's second ruling; `--no-auto-apply` is an explicit opt-out for someone who specifically wants to inspect proposals before they apply, not the standing posture.
 - **Don't run `--bulk-review` in batch / non-interactive contexts expecting to hand-pick dispositions.** It already auto-applies everything eligible; use `--confirm` / `--reject` with an explicit `--run-id` + index only when you want to intervene on one specific proposal.
 
+### Lifecycle in recall (filing v2 part 6)
+
+Every memory carries one aging axis, `lifecycle:` — `pinned`, `active`, `dormant`, `archived`, `superseded` — and recall reads it the same way in both engines. A dormant note ranks below its active twin: the daemon's standard 0.30 class multiplier, never a drop. An archived note has left everyday search — on disk, in the index, absent from results until you ask for the archive by name (`recall.py query --include-archive`, `agentmd search -include-archived`, or `include_archived: true` on the `memory_search` tool) — and then it is present and demoted, never restored to parity. A superseded note never competes with its successor. Pinned never decays and is never demoted; it is not a lift. The daemon reports what its wall hid as `archived_hidden` on every search outcome, so an absence is visible rather than inferred.
+
+`scripts/health/eval_lifecycle_separation.py` measures all of this against a scratch daemon — twin pairs with the same words, an exact sign test, a control with the axis removed — and is the instrument for deciding which states are penalized. Strength is not a knob: the daemon's own sweep found every weight at or below 0.6 ranks the same.
+
 ### The calendar — the daily register (filing v2 part 5)
 
 `Calendar/YYYY/` at the vault root is the agent-maintained daily register: one note per day per facet (`YYYY-MM-DD-<facet>.md`, kind `calendar-facet`) for the facets the contract registers — `meetings`, `correspondence`, `docs`, `diary` — created only on a day that had content for it, and a generated day index (`YYYY-MM-DD.md`, kind `day-index`) over the facet notes, the day's episodic traces and the digest. Facet membership is the selection rule; nothing scores importance. The register is discovered at the vault root through the Obsidian witness, never created by the code.
