@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.9.0](https://github.com/alexherrero/agentm/releases/tag/v9.9.0).** Filing v2 opens: the whole-vault convergence design goes final and its first part lands — the contract's v2 vocabularies (lifecycle · sources · facets), an enforced write-authority table with session grants, and the vocabulary ratchet that closes the census's missing gate. Beside it, the recall-verdict arc closes at its measured, trusted plateau.
+> **Latest release: [v9.15.0](https://github.com/alexherrero/agentm/releases/tag/v9.15.0).** Filing v2 part 5 — the calendar: a daily register of per-facet notes under the vault-root `Calendar/`, a generated day index, corrections that never rewrite a closed day, weekly and monthly reviews on the dreaming cadence, and a diary that earns its facets through a confirm-gated proposal. Parts 1–4 landed across v9.9.0–v9.14.0; part 6, lifecycle and the dreaming binary, is in build.

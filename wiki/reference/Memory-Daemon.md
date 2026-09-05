@@ -330,13 +330,17 @@ each one; the daemon validates it exactly like `memory_types` and
 these were added, none had a runtime reader: the table below was what the
 contract *named*, not what anything *did* with it. Filing v2's write path
 (2026-09-04) gave two of the three a reader — `lifecycle` and `sources`,
-detailed below — leaving `facets` the only one still purely declarative.
+detailed below. The calendar (filing v2 part 5, same date) gave `facets`
+a reader too, on the Python side: `calendar_facets.py`'s own `facets()`
+function reads the registry through `storage_rules.rules().facets()`
+before writing a facet note — see [AgentM Filing v2 § The
+calendar](agentm-filing-v2#the-calendar) for the register itself.
 
 | Key | Field | Values | Holds |
 |---|---|---|---|
 | `lifecycle` | `lifecycle` | `pinned`, `active`, `dormant`, `archived`, `superseded` | The aging axis a memory declares in frontmatter. `default_lifecycle` (`active`) becomes required the moment `lifecycle` names any value — the same rationale as the unconditionally-required `default_type`, on a narrower trigger. |
 | `sources` | `source` | `operator-direct`, `conversation` → trusted; `external-fetch`, `email` → untrusted | The provenance vocabulary, stamped in a memory's `source:` field. Trust is a property of the transport, never the content. |
-| `facets` | — | `meetings`, `correspondence`, `docs`, `diary` | The calendar's standing per-day registry. Declared; no writer reads it yet. |
+| `facets` | — | `meetings`, `correspondence`, `docs`, `diary` | The calendar's standing per-day registry. `calendar_facets.py` reads it (Python side); the Go daemon's own `IsFacet` (below) still has no caller. |
 
 The `lifecycle` field is a different key from the pre-existing
 `lifecycle_tier: durable` marker in [the rank penalty](#the-rank-penalty)
@@ -349,6 +353,11 @@ The same design added three calendar values to `record_kinds`
 - `calendar-facet`
 - `day-index`
 - `calendar-review`
+
+All three are in active use as of the calendar's own build (filing v2
+part 5, [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar)):
+`calendar_facets.py` writes `calendar-facet`, `calendar_index.py` writes
+`day-index`, and `calendar_rollups.py` writes `calendar-review`.
 
 The `routing` table now sends an `idea` to `memory/semantic`, previously
 `desk` (`storage-rules.default.md:175`). At the time this reclassification
@@ -398,11 +407,14 @@ still with no caller of their own; the trust stamp above reads the
 `Sources` map directly instead. `StorageRules` mirrors the same read side
 in Python as `lifecycles()`, `default_lifecycle()`, `sources()`,
 `facets()` (`harness/skills/memory/scripts/storage_rules.py:117`, `:122`,
-`:126`, `:131`), and two of those four now have real callers: `save_entry`
-(`save.py`) reads `default_lifecycle()` to default a memory-type write's
-`lifecycle`, and both `save_entry`'s own trust stamp and
-`filing_engine.transport()` read `sources()`. `lifecycles()` and
-`facets()` stay uncalled on both sides. All four keys are
+`:126`, `:131`), and three of those four now have real callers:
+`save_entry` (`save.py`) reads `default_lifecycle()` to default a
+memory-type write's `lifecycle`; both `save_entry`'s own trust stamp and
+`filing_engine.transport()` read `sources()`; and `calendar_facets.py`'s
+`facets()` function reads the registry before writing a facet note (the
+calendar, filing v2 part 5). `lifecycles()` stays uncalled on both sides,
+and `facets()` still has no caller on the Go side — `rules.go`'s
+`IsFacet` above is unchanged by this. All four keys are
 optional-when-absent, so a pre-v2 rules file keeps parsing while the
 migration runs — the "absence falls through" rule this section already
 names.
@@ -431,9 +443,14 @@ health surface, unlike its sibling `RefusedCaptures`. On the Python side,
 `filing_engine.apply()` — the write step behind `capture.py` and
 `reflect.py`'s routing — calls `volume_gate.check()` first, which walks
 the class directories counting each note's `captured` (else `created`)
-date against the same cap. A note that reinforces one already home never
-reaches the gate in either language, so retrying a settled capture is
-always safe.
+date against the same cap. `apply()` passes `check()` the day the
+arriving note's own `captured` stamp names when the caller set one, wall
+clock otherwise (`filing_engine._write_day()`) — a fix (filing v2, the
+calendar, 2026-09-04) for the gate and the writes-per-day reading
+disagreeing about which day a write belonged to at UTC midnight, the
+same gap that could let a flood in progress find the door open. A note
+that reinforces one already home never reaches the gate in either
+language, so retrying a settled capture is always safe.
 
 **The gate does not cover every writer.** `save_entry()` itself carries no
 gate call — a direct `/memory save` (`memory_append`), an ingest write, or

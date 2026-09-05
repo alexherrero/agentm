@@ -24,6 +24,7 @@
 - [Archive a finished project](Archive-A-Finished-Project)
 - [Tune the archive](Tune-The-Archive)
 - [Review flagged memories](Review-Flagged-Memories)
+- [Use the daily calendar](Use-The-Daily-Calendar)
 ### 📖 [Reference](Reference)
 - [Installer CLI](Installer-CLI)
 - [Supported configurations](Supported-Configurations)

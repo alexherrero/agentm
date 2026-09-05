@@ -25,6 +25,7 @@
 - [Tune the archive](Tune-The-Archive)
 - [Read the nightly scorecards](Read-The-Nightly-Scorecards)
 - [Review flagged memories](Review-Flagged-Memories)
+- [Use the daily calendar](Use-The-Daily-Calendar)
 ### 📖 [Reference](Reference)
 ### 🏛️ [Architecture](Architecture)
 ### 🧩 [Designs](Designs)

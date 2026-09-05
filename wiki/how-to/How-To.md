@@ -42,6 +42,7 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | [Find missing note links](Find-Missing-Note-Links) | Discover and add the missing note links. |
 | [Tune the archive](Tune-The-Archive) | Understand the tidying stage's floors and caps, and where to change them. |
 | [Archive a finished project](Archive-A-Finished-Project) | Retire a finished project's vault directory without losing anything load-bearing. |
+| [Use the daily calendar](Use-The-Daily-Calendar) | Record a diary line or facet entry for today, and correct one logged wrong on a closed day. |
 
 ## See also
 
