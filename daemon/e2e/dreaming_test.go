@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -33,7 +34,11 @@ func buildDreamer(t *testing.T) string {
 			dreamerErr = err
 			return
 		}
-		dreamerBin = filepath.Join(dir, "agentmdream")
+		name := "agentmdream"
+		if runtime.GOOS == "windows" {
+			name += ".exe" // exec needs the suffix there; go build writes exactly -o
+		}
+		dreamerBin = filepath.Join(dir, name)
 		cmd := exec.Command("go", "build", "-o", dreamerBin, "./cmd/agentmdream")
 		cmd.Dir = repoRoot(t)
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
