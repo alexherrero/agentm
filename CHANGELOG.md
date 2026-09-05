@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.14.0] - 2026-09-04
+
+The miner's provenance and value ([#546](https://github.com/alexherrero/agentm/pull/546)) — the four rulings the operator took on the write path's labeled sample, applied to the reflect miner and pinned by the rows that produced them. The engine had been judged right wherever its input was sane; what it was fed was the problem: a pasted handoff prompt mined as the operator's own words, tool-invocation counts filed as procedures, fix candidates cut into report fragments, an in-the-moment request filed as a standing preference. Applied live the same day, with the 830 existing stubs purged on the operator's confirmed count.
+
+### Added
+
+- **`scripts/migrate/purge_tool_stubs.py`** — retires the tool-invocation
+  stubs the retired auto-miner wrote ("The `Bash` tool was invoked 2592
+  times during this session …"). A dry run by default: a manifest of every
+  stub with its path, title and body hash, and a report of inbound
+  wikilinks; `--apply --confirm-count N` refuses any number but the
+  manifest's. A note that merely mentions a tool count inside a longer body
+  is not a stub.
+- **The labeled rows as a fixture** —
+  `scripts/health/fixtures/write-path-labels/e805ab79.json` holds the
+  twenty decisions the operator labeled, with the verbatim source of the four
+  short operator lines; `test_miner_labels.py` holds the miner to them, and
+  `test_reflect_handoff_marker.py`, `test_reflect_fix_and_durability.py` and
+  `test_purge_tool_stubs.py` pin each ruling.
+
+### Changed
+
+- **A handoff prompt is not the operator speaking.** Every handoff carries
+  `<!-- agentm:handoff — agent-authored; not the operator's own words -->`
+  (`reflect.HANDOFF_MARKER`), and `_operator_text` mines nothing from a
+  message carrying it, whatever the host stamps on the paste. The vault's
+  fifteen `PROMPT-*.md` handoffs carry it; the crickets handoff-pack renderer
+  emits it under every prompt ([crickets #236](https://github.com/alexherrero/crickets/pull/236)).
+  The human-origin override and the 4,000-character ceiling stand.
+- **The per-tool tally is instrumentation, never a candidate.**
+  `mine_transcript` reports `tool_counts` in its summary and emits no
+  "Workflow: … used Nx" candidate; the engine's `tool:` key rule went with it
+  (a parser for a purged shape is dead code). Engine key coverage on the live
+  corpus is now 33%, all directives, as the write-path plan predicted.
+- **A fix carries its cause and its remedy.** A remedy cue (`fixed by`,
+  `resolved by`, `workaround`, root-cause phrasing) is mined only with a cause
+  cue in the same sentence or within two of it, and the candidate's body is
+  those two sentences verbatim — never a 200-character window. A table row
+  or a half-sentence yields nothing.
+- **A HIGH preference needs a durability cue** — always, never, from now on,
+  going forward, in general, every time, whenever, by default, as a rule.
+  Without one the candidate is MEDIUM and the existing single-occurrence
+  demotion files it at low confidence for review. The bare always/never
+  pattern stays below HIGH as before. Test and verify fixtures that had
+  assumed a cue-less "I prefer X" was HIGH now carry the cue, so they keep
+  proving the filter rather than the classifier.
+
+### Internal
+
+- Applied live: the dry run manifested 830 stubs (the 824 first counted plus
+  six the pre-merge hook emitted before the afternoon deploy); the operator
+  ruled 830; the apply removed 830 of 830 under a quiesced daemon
+  (`Agent/diagnostics/migrations/tool-stub-purge/20260904T224932-apply`).
+  `memory/procedural/` 1,142 → 312; the needs-review page 659 → 337; the
+  retrieval gate 0.734 → 0.688, p = 0.375, no significant regression. Nine
+  stub-shaped notes whose bodies the enrichment pass had rewritten sit outside
+  the template and are recorded for a further count.
+- Re-mined after the rulings, the labeled session yields 9 candidates (was
+  20), all preferences at low confidence.
+
 ## [9.13.0] - 2026-09-04
 
 Filing v2 part 4 — the write path ([#540](https://github.com/alexherrero/agentm/pull/540)), deployed live the same day. Filing is decided at write time now: every writer — the reflect hook's lanes, `capture.py` and the `memory_capture` tool, the daemon's Go capture — files a candidate at the class directory the contract routes its type to, carrying `lifecycle`, `source` and `filing_confidence`, and nothing writes to a staging directory any more. The metadata is the inbox; a generated needs-review page reads it; capture volume is gated on its own; external content is trust-tiered and smuggled instructions stay inert. The plan's labeled sample put twenty real decisions in front of the operator and moved the next work upstream, to the miner.
