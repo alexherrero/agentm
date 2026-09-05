@@ -35,6 +35,8 @@ type Options struct {
 	RunID string
 	// LockWait is how long to wait for a live holder before refusing.
 	LockWait time.Duration
+	// Reclassify forces the sampled re-classification diff this pass.
+	Reclassify bool
 }
 
 // Report is the record of one invocation, printed by the command.
@@ -47,12 +49,19 @@ type Report struct {
 	Copies   CopiesPlan    `json:"copies"`
 	Refile   RefilePlan    `json:"refile"`
 	Promote  PromotePlan   `json:"promote"`
-	Applied  int           `json:"applied"`
-	Skipped  int           `json:"skipped"`
-	Outcome  string        `json:"outcome"`
-	Refused  string        `json:"refused,omitempty"`
-	Root     string        `json:"root,omitempty"`
-	seq      int
+	Calendar CalendarPlan  `json:"calendar"`
+	Mocs     MocsPlan      `json:"mocs"`
+	Dates    DatesPlan     `json:"dates"`
+	// The report-only checks: nothing below mutates a note.
+	Vocabulary VocabularyReport `json:"vocabulary"`
+	Trends     TrendReport      `json:"trends"`
+	Reclassify ReclassifyReport `json:"reclassify"`
+	Applied    int              `json:"applied"`
+	Skipped    int              `json:"skipped"`
+	Outcome    string           `json:"outcome"`
+	Refused    string           `json:"refused,omitempty"`
+	Root       string           `json:"root,omitempty"`
+	seq        int
 }
 
 // ErrRefused is returned (with a Report) when the pass could not take its
@@ -210,10 +219,48 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
+		intents = nil
+	}
+	// Batch 2 (task 5): the maintenance jobs — the register's reviews, the
+	// maps of content, the date glosses — then the report-only checks.
+	calendar, err := PlanCalendar(root, contract, now, DefaultRollupWeeks)
+	if err != nil {
+		return rep, err
+	}
+	rep.Calendar = calendar
+	intents = append(intents, calendar.Intents...)
+	mocs, err := PlanMocs(root, contract, now)
+	if err != nil {
+		return rep, err
+	}
+	rep.Mocs = mocs
+	intents = append(intents, mocs.Intents...)
+	dates, err := PlanDates(root, contract, now)
+	if err != nil {
+		return rep, err
+	}
+	rep.Dates = dates
+	intents = append(intents, dates.Intents...)
+	if opt.Apply {
+		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
 		rep.Outcome = OutcomeApplied
 	} else {
 		rep.Outcome = OutcomeReported
 	}
+	if rep.Vocabulary, err = VocabularyAudit(root, contract); err != nil {
+		return rep, err
+	}
+	if rep.Trends, err = Trends(root, contract, now, st.ClassPopulations); err != nil {
+		return rep, err
+	}
+	version := PassVersion(contract)
+	if rep.Reclassify, err = Reclassify(root, contract, version, st.LastPassVersion, ReclassifySample(contract), 0, opt.Reclassify); err != nil {
+		return rep, err
+	}
+	st.ClassPopulations = rep.Trends.Flat()
+	st.LastPassVersion = version
 	if err := journal.Append(Entry{Kind: KindRunDone, RunID: runID, TS: now, Outcome: rep.Outcome}); err != nil {
 		return rep, err
 	}
@@ -241,7 +288,7 @@ func applyAll(cfg *config.Config, journal *Journal, root, runID string, intents 
 			rep.Applied++
 			if in.Job == JobLifecycle {
 				from, to := transitionOf(in)
-				if err := AppendLifecycleJournal(cfg.EngineStateDir, in.Rel, from, to, in.Summary, runID, now); err != nil {
+				if err := EnsureLifecycleJournal(cfg.EngineStateDir, in.Rel, from, to, in.Summary, runID, now); err != nil {
 					return err
 				}
 			}

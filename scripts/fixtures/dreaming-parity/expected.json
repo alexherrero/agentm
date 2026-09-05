@@ -1,4 +1,12 @@
 {
+ "calendar": {
+  "month": {
+   "2026-08": "---\nkind: calendar-review\nstatus: active\naltitude: artifact\ncreated: 2026-08-31\nupdated: 2026-08-31\ntags: [calendar, review, month]\ngroup: calendar\nslug: 2026-08-review\nperiod: month\nmonth: 2026-08\nfrom: 2026-08-01\nto: 2026-08-31\ngenerated_by: calendar_rollups.py\n---\n\n# 2026-08\n\nGenerated from the month's day indexes and week reviews; the facet notes are the source.\n\n## Weeks\n\n- 2026-W31 — 0 of 2 days with entries\n- 2026-W32 — 0 of 7 days with entries\n- 2026-W33 — 0 of 7 days with entries\n- 2026-W34 — 0 of 7 days with entries\n- 2026-W35 — 2 of 7 days with entries\n- 2026-W36 — 0 of 1 days with entries\n\n## Days\n\n- [[2026-08-25]] — meetings (2), diary (1)\n- [[2026-08-27]] — docs (1)\n\n2 of 31 days with entries.\n"
+  },
+  "week": {
+   "2026-W35": "---\nkind: calendar-review\nstatus: active\naltitude: artifact\ncreated: 2026-08-30\nupdated: 2026-08-30\ntags: [calendar, review, week]\ngroup: calendar\nslug: 2026-W35-review\nperiod: week\nweek: 2026-W35\nfrom: 2026-08-24\nto: 2026-08-30\ngenerated_by: calendar_rollups.py\n---\n\n# Week 2026-W35 — 2026-08-24 to 2026-08-30\n\nGenerated from the week's day indexes; the facet notes are the source.\n\n## Days\n\n- [[2026-08-25]] — meetings (2), diary (1)\n- [[2026-08-27]] — docs (1)\n\nNothing recorded on Mon, Wed, Fri, Sat, Sun.\n\n## Corrections\n\n- [[2026-08-28-meetings-corrects-2026-08-25]] — corrects 2026-08-25 (meetings)\n\n2 of 7 days with entries.\n"
+  }
+ },
  "copies": [
   {
    "after": {

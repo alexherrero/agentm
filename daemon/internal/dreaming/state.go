@@ -17,6 +17,12 @@ type State struct {
 	LastRunID   string    `json:"last_run_id,omitempty"`
 	LastOutcome string    `json:"last_outcome,omitempty"`
 	Runs        int       `json:"runs"`
+	// ClassPopulations is the last pass's flat count per class, so the next
+	// pass can say what grew.
+	ClassPopulations map[string]int `json:"class_populations,omitempty"`
+	// LastPassVersion is the filing pass version the last pass judged under;
+	// a change triggers the sampled re-classification diff.
+	LastPassVersion string `json:"last_pass_version,omitempty"`
 }
 
 // Dir is the pass's own directory under the engine state dir.

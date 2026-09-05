@@ -91,6 +91,15 @@ def record(fixture: Path = FIXTURE) -> dict:
             )
             promote[target] = {"sources": sources, "slug": consolidate._consolidated_slug(target), "body": _render_body(digest)}
         out["promote"] = promote
+
+        # The calendar rollups (task 5's takeover): the review texts, byte for
+        # byte, for a closed week and the month it sits in — rendered from the
+        # register in the fixture, nothing written.
+        import calendar_rollups
+        out["calendar"] = {
+            "week": {"2026-W35": calendar_rollups.render_week(vault, 2026, 35)},
+            "month": {"2026-08": calendar_rollups.render_month(vault, 2026, 8)},
+        }
         return out
     finally:
         shutil.rmtree(work, ignore_errors=True)

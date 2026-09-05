@@ -53,6 +53,10 @@ type Entry struct {
 	After   string `json:"after,omitempty"`
 	Summary string `json:"summary,omitempty"`
 	Note    string `json:"note,omitempty"`
+	// Meta is the job's own facts about the intent — for a lifecycle move
+	// its from/to/reason — so a resume can write the governance line the
+	// crashed pass did not get to.
+	Meta map[string]string `json:"meta,omitempty"`
 	// Outcome summarizes a run on run-done.
 	Outcome string `json:"outcome,omitempty"`
 }
@@ -60,6 +64,9 @@ type Entry struct {
 // Journal is an append-only file.
 type Journal struct {
 	Path string
+	// EngineStateDir is where the governance journal lives, for the lines a
+	// resume owes.
+	EngineStateDir string
 }
 
 // JournalPath is `<engine state dir>/dreaming/journal.jsonl`.
@@ -73,7 +80,7 @@ func OpenJournal(engineStateDir string) (*Journal, error) {
 	if err := os.MkdirAll(Dir(engineStateDir), 0o755); err != nil {
 		return nil, err
 	}
-	return &Journal{Path: JournalPath(engineStateDir)}, nil
+	return &Journal{Path: JournalPath(engineStateDir), EngineStateDir: engineStateDir}, nil
 }
 
 // Append writes one line and fsyncs it. The write that follows an intent
@@ -185,6 +192,7 @@ type Intent struct {
 	Before  []byte
 	After   []byte
 	Summary string
+	Meta    map[string]string
 }
 
 // ErrConflict is an intent whose target no longer hashes as the intent
@@ -200,6 +208,14 @@ var ErrConflict = errors.New("target changed since the intent was journaled")
 // the one path it makes. Returns the outcome kind written to the journal.
 func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) {
 	settle := func(kind, note string) (string, error) {
+		if kind == KindApplied {
+			// The governance line the crashed pass may not have written.
+			// Idempotent: keyed by run, note and state, so a line it did
+			// write is not written twice.
+			if err := j.governance(e, now); err != nil {
+				return "", err
+			}
+		}
 		return kind, j.Append(Entry{Kind: kind, RunID: e.RunID, TS: now, ID: e.ID, Job: e.Job, Rel: e.Rel, To: e.To, Note: note})
 	}
 	after, err := base64.StdEncoding.DecodeString(e.After)
@@ -257,6 +273,15 @@ func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) 
 	}
 }
 
+// governance writes the lifecycle journal line an applied lifecycle intent
+// owes, once.
+func (j *Journal) governance(e Entry, now time.Time) error {
+	if e.Job != JobLifecycle || e.Meta == nil || j.EngineStateDir == "" {
+		return nil
+	}
+	return EnsureLifecycleJournal(j.EngineStateDir, e.Rel, e.Meta["from"], e.Meta["to"], e.Meta["reason"], e.RunID, now)
+}
+
 // Commit journals an intent, makes the write, and journals it applied —
 // or journals it skipped when the target changed between the plan and now.
 // The intent line is fsynced before the write begins; a crash in between is
@@ -266,7 +291,7 @@ func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Tim
 	if err := j.Append(Entry{
 		Kind: KindIntent, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To, Create: create,
 		BeforeHash: Hash(in.Before), AfterHash: Hash(in.After),
-		After: base64.StdEncoding.EncodeToString(in.After), Summary: in.Summary,
+		After: base64.StdEncoding.EncodeToString(in.After), Summary: in.Summary, Meta: in.Meta,
 	}); err != nil {
 		return "", err
 	}
