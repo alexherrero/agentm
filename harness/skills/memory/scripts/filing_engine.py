@@ -47,6 +47,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -396,6 +397,22 @@ def _stamp_superseded(vault: Path, rel: str, by_rel: str) -> None:
     p.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _write_day(extra: "dict | None") -> "date | None":
+    """The day the note about to be written will count under: its `captured`
+    stamp when the caller set one (a pinned clock, a capture stamped for the
+    moment it happened), else the wall clock. The gate and the writes-per-day
+    reading must agree on the day a write belongs to, or a capture stamped for
+    one day is counted against another and the flood it belongs to goes
+    uncounted."""
+    raw = (extra or {}).get("captured")
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw)[:10])
+    except ValueError:
+        return None
+
+
 def apply(vault: "Path | str", decision: FilingDecision, *, body: str, tags: "list | None" = None,
           title: "str | None" = None, source_url: "str | None" = None, extra: "dict | None" = None,
           status: "str | None" = None, corpus: "CorpusIndex | None" = None) -> "Path | None":
@@ -420,7 +437,7 @@ def apply(vault: "Path | str", decision: FilingDecision, *, body: str, tags: "li
     # writer comes through, before anything lands. A noop never reaches this
     # line, so reinforcing a note already home is never refused.
     import volume_gate  # noqa: E402  (same skill dir)
-    volume_gate.check(vault)
+    volume_gate.check(vault, today=_write_day(extra))
     if status is None:
         status = "unfiled" if "no-type" in decision.flags else "active"
     # The flags a reviewer acts on ride on the note itself, with the note they
