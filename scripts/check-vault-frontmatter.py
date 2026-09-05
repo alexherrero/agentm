@@ -177,6 +177,27 @@ def scan_block(rel: str, block: str, doc: dict) -> list[Finding]:
     """
     findings: list[Finding] = []
     lines = block.splitlines()
+    # The one semantic rule this gate carries (filing v2 part 6): a
+    # crystallized note is a derived-class note, and the contract says a
+    # derived-class note carries the provenance it was consolidated from.
+    # Distillation that discards its sources is measurably worse, so a
+    # `kind: crystallized` note with no `consolidated_from` list is a defect,
+    # not a style choice.
+    if str(doc.get("kind") or "").strip() == "crystallized":
+        provenance = doc.get("consolidated_from")
+        if not isinstance(provenance, list) or not [x for x in provenance if str(x).strip()]:
+            kind_line = None
+            for i, l in enumerate(lines):
+                m = _TOP_KEY_RE.match(l)
+                if m and m.group("key").strip() == "kind":
+                    kind_line = i + _FILE_LINE
+                    break
+            findings.append(Finding(
+                rel, "missing-provenance",
+                "`kind: crystallized` without a non-empty `consolidated_from:` list — a "
+                "derived-class note must name the sources it was consolidated from",
+                line=kind_line,
+            ))
 
     for index, line in enumerate(lines):
         match = _TOP_KEY_RE.match(line)
@@ -389,6 +410,22 @@ _FIXTURES: list[tuple[str, str, list[tuple[str, int | None]]]] = [
         "memory/no-frontmatter.md",
         "# Just a heading\n\nNo fence at all.\n",
         [],
+    ),
+    (
+        "memory/crystallized/consolidated-with-provenance.md",
+        "---\nkind: crystallized\nstatus: active\nconsolidated_from: [memory/episodic/a.md, memory/episodic/b.md, memory/episodic/c.md]\n---\n\n## Question\n\nWhat recurs?\n",
+        [],
+    ),
+    (
+        # `kind:` is file line 2 — the fence, then kind.
+        "memory/crystallized/consolidated-orphan.md",
+        "---\nkind: crystallized\nstatus: active\nlifecycle_tier: durable\n---\n\n## Question\n\nWho knows where this came from.\n",
+        [("missing-provenance", 2)],
+    ),
+    (
+        "memory/crystallized/consolidated-empty-list.md",
+        "---\nkind: crystallized\nconsolidated_from: []\n---\n\nAn empty list is no provenance.\n",
+        [("missing-provenance", 2)],
     ),
 ]
 

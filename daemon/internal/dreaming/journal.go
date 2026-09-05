@@ -42,7 +42,11 @@ type Entry struct {
 	ID  string `json:"id,omitempty"`
 	Job string `json:"job,omitempty"`
 	// Rel is the vault-relative path the intent mutates.
-	Rel        string `json:"rel,omitempty"`
+	Rel string `json:"rel,omitempty"`
+	// To is set on a move: the note leaves Rel and lands at To with After.
+	To string `json:"to,omitempty"`
+	// Create is set when Rel did not exist before: the intent makes a note.
+	Create     bool   `json:"create,omitempty"`
 	BeforeHash string `json:"before_hash,omitempty"`
 	AfterHash  string `json:"after_hash,omitempty"`
 	// After is the whole new content, base64 — small notes, exact replay.
@@ -171,10 +175,13 @@ func Hash(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Intent describes one mutation before it is made.
+// Intent describes one mutation before it is made: an edit of Rel in
+// place (Before → After), a move (Rel leaves, To lands with After — the
+// re-file), or a creation (Before nil: Rel did not exist — the promotion).
 type Intent struct {
 	Job     string
 	Rel     string
+	To      string
 	Before  []byte
 	After   []byte
 	Summary string
@@ -187,28 +194,66 @@ var ErrConflict = errors.New("target changed since the intent was journaled")
 // Resolve applies one journaled intent against the vault, idempotently:
 // the target that already hashes as `after` is recorded applied (found on
 // resume), the target that hashes as `before` is written now, anything else
-// is a conflict. Returns the outcome kind written to the journal.
+// is a conflict. A move resolves on both paths (the source gone and the
+// destination at `after` is applied; the source at `before` and no
+// destination is applied now; anything else is left alone), a creation on
+// the one path it makes. Returns the outcome kind written to the journal.
 func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) {
-	p := filepath.Join(vault, filepath.FromSlash(e.Rel))
-	cur, err := os.ReadFile(p)
+	settle := func(kind, note string) (string, error) {
+		return kind, j.Append(Entry{Kind: kind, RunID: e.RunID, TS: now, ID: e.ID, Job: e.Job, Rel: e.Rel, To: e.To, Note: note})
+	}
+	after, err := base64.StdEncoding.DecodeString(e.After)
 	if err != nil {
-		note := fmt.Sprintf("target unreadable on resume: %v", err)
-		return KindSkipped, j.Append(Entry{Kind: KindSkipped, RunID: e.RunID, TS: now, ID: e.ID, Job: e.Job, Rel: e.Rel, Note: note})
+		return settle(KindSkipped, "journaled content undecodable: "+err.Error())
+	}
+	src := filepath.Join(vault, filepath.FromSlash(e.Rel))
+	switch {
+	case e.To != "":
+		dst := filepath.Join(vault, filepath.FromSlash(e.To))
+		cur, srcErr := os.ReadFile(src)
+		got, dstErr := os.ReadFile(dst)
+		switch {
+		case srcErr != nil && dstErr == nil && Hash(got) == e.AfterHash:
+			return settle(KindApplied, "found applied on resume")
+		case srcErr == nil && dstErr != nil && Hash(cur) == e.BeforeHash:
+			if err := writeAtomic(dst, after); err != nil {
+				return "", err
+			}
+			if err := os.Remove(src); err != nil {
+				return "", err
+			}
+			return settle(KindApplied, "applied on resume")
+		default:
+			return settle(KindSkipped, ErrConflict.Error())
+		}
+	case e.Create:
+		got, err := os.ReadFile(src)
+		switch {
+		case err == nil && Hash(got) == e.AfterHash:
+			return settle(KindApplied, "found applied on resume")
+		case os.IsNotExist(err):
+			if err := writeAtomic(src, after); err != nil {
+				return "", err
+			}
+			return settle(KindApplied, "applied on resume")
+		default:
+			return settle(KindSkipped, ErrConflict.Error())
+		}
+	}
+	cur, err := os.ReadFile(src)
+	if err != nil {
+		return settle(KindSkipped, fmt.Sprintf("target unreadable on resume: %v", err))
 	}
 	switch Hash(cur) {
 	case e.AfterHash:
-		return KindApplied, j.Append(Entry{Kind: KindApplied, RunID: e.RunID, TS: now, ID: e.ID, Job: e.Job, Rel: e.Rel, Note: "found applied on resume"})
+		return settle(KindApplied, "found applied on resume")
 	case e.BeforeHash:
-		after, err := base64.StdEncoding.DecodeString(e.After)
-		if err != nil {
-			return KindSkipped, j.Append(Entry{Kind: KindSkipped, RunID: e.RunID, TS: now, ID: e.ID, Job: e.Job, Rel: e.Rel, Note: "journaled content undecodable: " + err.Error()})
-		}
-		if err := writeAtomic(p, after); err != nil {
+		if err := writeAtomic(src, after); err != nil {
 			return "", err
 		}
-		return KindApplied, j.Append(Entry{Kind: KindApplied, RunID: e.RunID, TS: now, ID: e.ID, Job: e.Job, Rel: e.Rel, Note: "applied on resume"})
+		return settle(KindApplied, "applied on resume")
 	default:
-		return KindSkipped, j.Append(Entry{Kind: KindSkipped, RunID: e.RunID, TS: now, ID: e.ID, Job: e.Job, Rel: e.Rel, Note: ErrConflict.Error()})
+		return settle(KindSkipped, ErrConflict.Error())
 	}
 }
 
@@ -217,28 +262,60 @@ func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) 
 // The intent line is fsynced before the write begins; a crash in between is
 // what Resolve exists for. Returns the outcome kind it journaled.
 func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Time) (string, error) {
+	create := in.Before == nil
 	if err := j.Append(Entry{
-		Kind: KindIntent, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel,
+		Kind: KindIntent, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To, Create: create,
 		BeforeHash: Hash(in.Before), AfterHash: Hash(in.After),
 		After: base64.StdEncoding.EncodeToString(in.After), Summary: in.Summary,
 	}); err != nil {
 		return "", err
 	}
-	p := filepath.Join(vault, filepath.FromSlash(in.Rel))
-	cur, err := os.ReadFile(p)
+	skipped := func(note string) (string, error) {
+		return KindSkipped, j.Append(Entry{Kind: KindSkipped, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To, Note: note})
+	}
+	applied := func() (string, error) {
+		return KindApplied, j.Append(Entry{Kind: KindApplied, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To})
+	}
+	src := filepath.Join(vault, filepath.FromSlash(in.Rel))
+	if create {
+		if _, err := os.Stat(src); err == nil {
+			return skipped("a note already exists at the path this intent would create")
+		}
+		if err := writeAtomic(src, in.After); err != nil {
+			return "", err
+		}
+		return applied()
+	}
+	cur, err := os.ReadFile(src)
 	if err != nil {
 		return "", err
 	}
 	if Hash(cur) != Hash(in.Before) {
-		return KindSkipped, j.Append(Entry{Kind: KindSkipped, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, Note: ErrConflict.Error()})
+		return skipped(ErrConflict.Error())
 	}
-	if err := writeAtomic(p, in.After); err != nil {
+	if in.To != "" {
+		dst := filepath.Join(vault, filepath.FromSlash(in.To))
+		if _, err := os.Stat(dst); err == nil {
+			return skipped("the destination is taken")
+		}
+		if err := writeAtomic(dst, in.After); err != nil {
+			return "", err
+		}
+		if err := os.Remove(src); err != nil {
+			return "", err
+		}
+		return applied()
+	}
+	if err := writeAtomic(src, in.After); err != nil {
 		return "", err
 	}
-	return KindApplied, j.Append(Entry{Kind: KindApplied, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel})
+	return applied()
 }
 
 func writeAtomic(p string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
 	tmp := p + ".dreaming.tmp"
 	if err := os.WriteFile(tmp, content, 0o644); err != nil {
 		return err
