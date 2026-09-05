@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.16.0] - 2026-09-05
+
+Filing v2 part 6 — lifecycle and the dreaming binary ([#550](https://github.com/alexherrero/agentm/pull/550), [#551](https://github.com/alexherrero/agentm/pull/551), [#552](https://github.com/alexherrero/agentm/pull/552), [#553](https://github.com/alexherrero/agentm/pull/553), [#554](https://github.com/alexherrero/agentm/pull/554), [#555](https://github.com/alexherrero/agentm/pull/555), [#556](https://github.com/alexherrero/agentm/pull/556)), the last part of the arc, live the same days. Memory ages honestly along one frontmatter axis, and the nightly pass is a Go binary with mutation authority that took over from the Python layer on 2026-09-05. This release sets `agentm-filing-v2` to launched.
+
+### Added
+
+- **The lifecycle axis in ranking** — the daemon parses `lifecycle:` and the
+  classifier reads it as classes: `lifecycle-dormant`, `lifecycle-archived`,
+  `lifecycle-superseded` at the standard 0.30 demotion, `pinned` in `durable`
+  (never ages, never lifted). `archived` sits behind a wall (`index.wallArchived`)
+  that only an explicit query lifts — `include_archived` on the MCP surface,
+  `-include-archived` on the CLI — and the search outcome says how many it hid.
+  `recall.py` mirrors it in process. A separation harness
+  (`scripts/health/eval_lifecycle_separation.py`) measures the axis: 24/24
+  pairs separated, 8/8 archived hidden and back.
+- **The governance lanes** (`lifecycle_transitions.py`) — in-place transitions
+  that edit `lifecycle:` and `lifecycle_since:` and journal every move to
+  `<engine state dir>/lifecycle-journal.jsonl`; `archived` only through the
+  confirm surface (`ConfirmationRequired`), the dream stage proposing it for
+  dormant memories past `archive_after_days` (1825); the digest and the
+  corpus scorecard read the journal back. `purge.py` is the operator-only
+  deletion lane: a manifest first, then `apply --confirm-count`. The
+  memory-archive move retired. Contract: `thresholds.dormant_after_days: 365`.
+- **The dreaming binary** (`agentmdream`, `daemon/cmd/agentmdream`, engine
+  `daemon/internal/dreaming`) — one pass and exit under a dual gate (elapsed
+  ≥ `-every` and activity since: captures in the index, genuine recalls),
+  behind a lock compatible with `vault_lock.py` (mkdir + heartbeat + stale
+  window, pid takeover of a dead holder; a second start exits 3), with an
+  fsynced intent/applied/skipped journal, hash-checked idempotent resume for
+  edits, moves and creations, torn-tail healing, and a governance line
+  written before the applied line so a kill at any point is closed by the
+  resume. Report-only by default; `-apply`, `-force`, `-pace`, `-cap`,
+  `-reclassify`, `-json`; `status` and `journal` subcommands. Built beside
+  `agentmd` by `install.sh`; the runner triggers it through
+  `templates/jobs/dreaming.yaml`.
+- **Its jobs** — `lifecycle` (the policy, byte for byte), `copies`
+  (content-identical families collapsed into the earliest note, copies marked
+  `status: superseded` + `supersedes:`), `refile` (a memory whose `type:` the
+  contract routes elsewhere moves under the same basename; stale
+  `near-duplicate` flags cleared), `promote` (a target three or more distinct
+  episodic notes link becomes `memory/crystallized/consolidated-<slug>.md`
+  with `consolidated_from` and `derived_from`; `check-vault-frontmatter` fails
+  a crystallized note without provenance), `calendar` (the register's weekly
+  and monthly reviews), `mocs` (one map of content per memory type, created
+  at `moc_min_members` 5, split past `moc_split_at` 40, `stale: true` past
+  `moc_stale_after_days` 90), `dates` (additive glosses — `last week (the
+  week of 2026-08-24)` — in notes older than `date_gloss_after_days` 30, never
+  a rewrite, never in a fence), then the report-only checks: the vocabulary
+  audit, trend flags with the design's re-audit triggers, the sampled
+  re-classification diff (`reclassify_sample` 30) on a filing-pass-version
+  change or `-reclassify`.
+- **Parity as a recording** — `scripts/fixtures/dreaming-parity/expected.json`,
+  recorded from the Python producers with the clock pinned; the Go tests
+  reproduce it (the calendar reviews byte for byte) and
+  `scripts/check-dreaming-parity.sh` guards it in the battery and CI. The
+  Python producers retired with the takeover, so the recording is the
+  contract: a changed decision is a deliberate edit to it.
+
+### Changed
+
+- **The takeover.** The binary ran report-only beside the Python layer through
+  an overlap window with a daily divergence review; the one review agreed on
+  every surface and the operator flipped the same day (`-apply` in the runner
+  job; the first applying pass collapsed 5 copies families, wrote 10 reviews,
+  regenerated 18 MOC pages, glossed 1 date). `dream.py` no longer runs the
+  suffix-backlog drain, the calendar rollups or the lifecycle policy's sinking
+  and lifting: it reads the axis and says whose the moves are, stages the
+  archive proposals, and runs the stages the binary does not carry.
+  `policy_pass` is read-only. Removed: `calendar_rollups.py`, the parity
+  recorder, the Python drift test, the divergence review and its job.
+- **The Go suite gates merges.** `aggregate` — the one required check — polls
+  a hand-listed set of workflows that lacked `daemon.yml`; #554 merged with the
+  Go suite red. Added, and `test_ci_consistency.py` pins the list.
+- `recall.py` normalizes CRLF frontmatter (the Windows install smoke).
+
+### Fixed
+
+- **The scheduled runner ran nothing** ([#557](https://github.com/alexherrero/agentm/pull/557)).
+  `templates/jobs/dreaming.yaml`'s command began with a quoted path and kept
+  going — a YAML parse error — and `retrieval-gate-nightly.yaml` (registered)
+  and `online-recall-nightly.yaml` carried `tier: T1`, which the runner
+  refuses; the runner loads every manifest or none, so every scheduled job
+  stopped with nothing but a launchd-log traceback to show for it. One quoted
+  scalar; `T3`; and `scripts/test_job_templates.py` loads every template
+  through the runner's own parser.
+- **The nightly Python cycle crashed in the lint stage** (same PR). Since the
+  projects merge the graph snapshot keyed the vault-root `Projects/` space
+  relative to the vault root and joined those keys onto the memory root;
+  `_abs_path` is the inverse join, with a nested-layout test.
+- The Windows daemon job's `TestCaptureStaysUnderBudget` read past its budget
+  on a PR with no Go change and passed on a rerun — recorded as a follow-up.
+
+### Internal
+
+- The live contract mirrors the six new thresholds; the index was rebuilt from
+  scratch with an embed backfill for the classifier change (flags are computed
+  at index time). `.harness/jobs/dreaming.yaml` registered, applying.
+
 ## [9.15.0] - 2026-09-04
 
 Filing v2 part 5 — the calendar ([#548](https://github.com/alexherrero/agentm/pull/548)), live the same day. The vault-root `Calendar/` becomes the agent-maintained daily register the design named: one note per day per facet, created only when the day has content, append-only while the day is open and corrected by a linked entry once it has closed; a generated day index that shows the whole day from one file; weekly and monthly reviews that appear on the dreaming cadence whether or not anyone remembered to want them; and a diary that earns its facets — a label recurring on three distinct days becomes a proposal the operator confirms, never a registry the agent widens on its own. The PR's own checks, crossing UTC midnight, exposed a write-path gap that rode along: the volume gate now counts against the day a capture is stamped for.
