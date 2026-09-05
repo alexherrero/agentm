@@ -178,6 +178,10 @@ func PlanLifecycle(root string, r *rules.Rules, now time.Time, cap int) (Lifecyc
 	}
 	log := note.NewAccessLog(root)
 	since := now.UTC().Format("2006-01-02")
+	// Silence is counted in whole days from midnight, the way the Python
+	// policy counts it (its anchors and its `now` are dates), so the two
+	// layers agree on the figure and not just on the decision.
+	dayNow := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	for _, rel := range rels {
 		p := filepath.Join(root, filepath.FromSlash(rel))
 		raw, err := os.ReadFile(p)
@@ -206,7 +210,7 @@ func PlanLifecycle(root string, r *rules.Rules, now time.Time, cap int) (Lifecyc
 		if !n.Captured.IsZero() {
 			captured = n.Captured.UTC().Format(time.RFC3339)
 		}
-		days, ok := note.ElapsedDays(log, slug, n.Updated, n.Created, captured, n.CapturedSource, now)
+		days, ok := note.ElapsedDays(log, slug, n.Updated, n.Created, captured, n.CapturedSource, dayNow)
 		if !ok {
 			continue
 		}

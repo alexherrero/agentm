@@ -179,6 +179,10 @@ def consolidate_target(
         supersedes=None,
         lifecycle_tier="durable",
         derived_from=source_paths,
+        # The contract's word for the provenance a derived-class note must
+        # carry (filing v2 part 6); `derived_from` stays for the readers that
+        # follow the older lineage edge. The CI gate checks this one.
+        extra={"consolidated_from": list(source_paths)},
     )
     # NOT body.rstrip("\n") — when the last field (open_threads) is empty,
     # _render_body's trailing blank-line-then-nothing is exactly the

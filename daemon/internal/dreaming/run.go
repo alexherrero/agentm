@@ -44,11 +44,15 @@ type Report struct {
 	Decision Decision      `json:"decision"`
 	Resumed  int           `json:"resumed"`
 	Plan     LifecyclePlan `json:"plan"`
+	Copies   CopiesPlan    `json:"copies"`
+	Refile   RefilePlan    `json:"refile"`
+	Promote  PromotePlan   `json:"promote"`
 	Applied  int           `json:"applied"`
 	Skipped  int           `json:"skipped"`
 	Outcome  string        `json:"outcome"`
 	Refused  string        `json:"refused,omitempty"`
 	Root     string        `json:"root,omitempty"`
+	seq      int
 }
 
 // ErrRefused is returned (with a Report) when the pass could not take its
@@ -154,30 +158,57 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		return rep, err
 	}
 
+	// The jobs, in the order they land: the lifecycle lane, the copy
+	// collapse, the re-file, the promotion. Each plans against the corpus as
+	// the previous left it in a report; when applying, each is planned and
+	// applied before the next plans, so a note the copy job just superseded
+	// is not re-filed under it.
+	var intents []Intent
 	plan, err := PlanLifecycle(root, contract, now, opt.Cap)
 	if err != nil {
 		return rep, err
 	}
 	rep.Plan = plan
+	intents = append(intents, plan.Intents...)
 	if opt.Apply {
-		for i, in := range plan.Intents {
-			id := fmt.Sprintf("%s-%04d", runID, i+1)
-			kind, err := journal.Commit(root, runID, id, in, now)
-			if err != nil {
-				return rep, err
-			}
-			if kind == KindSkipped {
-				rep.Skipped++
-			} else {
-				rep.Applied++
-				from, to := transitionOf(in)
-				if err := AppendLifecycleJournal(cfg.EngineStateDir, in.Rel, from, to, in.Summary, runID, now); err != nil {
-					return rep, err
-				}
-			}
-			if opt.Pace > 0 {
-				time.Sleep(opt.Pace)
-			}
+		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+		intents = nil
+	}
+	copies, err := PlanCopies(root, DefaultCopiesCap)
+	if err != nil {
+		return rep, err
+	}
+	rep.Copies = copies
+	intents = append(intents, copies.Intents...)
+	if opt.Apply {
+		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+		intents = nil
+	}
+	refile, err := PlanRefile(root, contract)
+	if err != nil {
+		return rep, err
+	}
+	rep.Refile = refile
+	intents = append(intents, refile.Intents...)
+	if opt.Apply {
+		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+		intents = nil
+	}
+	promote, err := PlanPromote(root, now)
+	if err != nil {
+		return rep, err
+	}
+	rep.Promote = promote
+	intents = append(intents, promote.Intents...)
+	if opt.Apply {
+		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
 		}
 		rep.Outcome = OutcomeApplied
 	} else {
@@ -191,6 +222,35 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		return rep, err
 	}
 	return rep, nil
+}
+
+// applyAll commits intents through the journal, in order, counting the
+// outcomes on the report; a lifecycle intent also lands in the governance
+// journal so both layers keep one record.
+func applyAll(cfg *config.Config, journal *Journal, root, runID string, intents []Intent, now time.Time, pace time.Duration, rep *Report) error {
+	for _, in := range intents {
+		rep.seq++
+		id := fmt.Sprintf("%s-%04d", runID, rep.seq)
+		kind, err := journal.Commit(root, runID, id, in, now)
+		if err != nil {
+			return err
+		}
+		if kind == KindSkipped {
+			rep.Skipped++
+		} else {
+			rep.Applied++
+			if in.Job == JobLifecycle {
+				from, to := transitionOf(in)
+				if err := AppendLifecycleJournal(cfg.EngineStateDir, in.Rel, from, to, in.Summary, runID, now); err != nil {
+					return err
+				}
+			}
+		}
+		if pace > 0 {
+			time.Sleep(pace)
+		}
+	}
+	return nil
 }
 
 // activity reads what happened since the last completed pass: captures from

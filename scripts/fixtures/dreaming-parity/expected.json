@@ -1,0 +1,51 @@
+{
+ "copies": [
+  {
+   "after": {
+    "memory/procedural/copy-1.md": "---\ntitle: the procedure (again)\nkind: workflow\nstatus: superseded\nslug: copy-1\nlifecycle: active\ncreated: 2026-02-01\nsupersedes: memory/procedural/copy-canon.md\n---\n\n  Run  the checks,   then push.\n\nNEVER tag before green.\n",
+    "memory/procedural/copy-2.md": "---\ntitle: the procedure (legacy copy)\nkind: workflow\nstatus: superseded\nslug: copy-2\nlifecycle: active\nsupersedes: memory/procedural/copy-canon.md\n---\n\nrun the checks, then push.\nnever tag before green.\n"
+   },
+   "canonical": "memory/procedural/copy-canon.md",
+   "copies": [
+    "memory/procedural/copy-1.md",
+    "memory/procedural/copy-2.md"
+   ],
+   "summary": "memory/procedural/copy-canon.md + 2 content-identical legacy copies — collapse into the earliest, mark the rest superseded"
+  }
+ ],
+ "lifecycle": {
+  "archive_candidates": [
+   [
+    "memory/semantic/dormant-cold.md",
+    2073.0
+   ]
+  ],
+  "considered": 11,
+  "demoted": [
+   [
+    "memory/semantic/silent-a.md",
+    461.0
+   ]
+  ],
+  "previews": [],
+  "revived": [
+   [
+    "memory/semantic/dormant-back.md",
+    1.0
+   ]
+  ],
+  "skipped_by_cap": 0
+ },
+ "pin": "2026-09-05",
+ "promote": {
+  "shared-target": {
+   "body": "## Question\n\nWhat recurring reference to 'shared-target' appears across episodic entries?\n\n## Investigation\n\n3 episodic entries reference 'shared-target':\n- memory/episodic/e1.md\n- memory/episodic/e2.md\n- memory/episodic/e3.md\n\n## Findings\n\n'shared-target' recurs across 3 distinct entries (recurrence floor: 3), a deterministic signal that this is durable, not incidental.\n\n## Lessons\n\nPromoted episodic -> semantic (V6-4). The consolidated entry is durable (decay-exempt) and carries a derived_from provenance edge back to its 3 sources; none of those sources were deleted or modified.\n\n## Open threads\n\n\n",
+   "slug": "consolidated-shared-target",
+   "sources": [
+    "memory/episodic/e1.md",
+    "memory/episodic/e2.md",
+    "memory/episodic/e3.md"
+   ]
+  }
+ }
+}
