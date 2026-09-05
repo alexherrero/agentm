@@ -265,6 +265,10 @@ type searchArgs struct {
 	K      int    `json:"k"`
 	After  string `json:"after"`
 	Before string `json:"before"`
+	// IncludeArchived is the contract's explicit archive query: an archived
+	// memory has left everyday search and comes back only when asked for by
+	// name. Published in the inputSchema below (filing v2 part 6).
+	IncludeArchived bool `json:"include_archived"`
 	// Mode is published in the inputSchema below as of the hook cutover
 	// (task 5). It was accepted-but-hidden from task 1 onward: advertising it
 	// earlier would have let the agent opt into a mode with 0% correct
@@ -305,7 +309,8 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 	if a.K > 50 {
 		a.K = 50
 	}
-	q := index.Query{Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode, Lex3: a.Lex3}
+	q := index.Query{Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode, Lex3: a.Lex3,
+		IncludeArchived: a.IncludeArchived}
 	if a.Mode == index.ModeHybrid && s.embed != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -421,6 +426,10 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 					"mode": map[string]any{
 						"type": "string", "enum": []string{"and", "fusion", "hybrid"}, "default": "and",
 						"description": "\"and\" (default) requires every query term in one note. \"fusion\" best-matches any subset of terms — looser than \"and\", still exact-word. \"hybrid\" adds a dense-vector arm on top of fusion, fused by reciprocal rank — set `question` alongside it so the vector arm embeds the real question rather than `query`'s bare terms.",
+					},
+					"include_archived": map[string]any{
+						"type":        "boolean",
+						"description": "Also return memories whose lifecycle is archived — the explicit archive query. Off by default: an archived memory has left everyday search while staying on disk, and comes back only when asked for by name.",
 					},
 					"question": map[string]any{
 						"type":        "string",

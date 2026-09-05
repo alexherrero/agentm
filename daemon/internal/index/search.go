@@ -95,6 +95,11 @@ type Query struct {
 	// (task 3.5) were both measured with it off, and neither column may move by
 	// a single row for this one to ship.
 	Lex3 bool
+	// IncludeArchived is the contract's "explicit archive query": a memory
+	// whose `lifecycle:` is `archived` has left everyday search, and only a
+	// caller that asks for it by name gets it back — demoted like any other
+	// penalized class, but present. Off by default. See wallArchived.
+	IncludeArchived bool
 
 	// Vector is the query's embedding, supplied by the caller. ModeHybrid needs
 	// it; every other mode ignores it.
@@ -121,6 +126,11 @@ type SearchOutcome struct {
 	Note string `json:"note,omitempty"`
 	// Matched is how many rows the over-fetch window saw before re-ranking.
 	Matched int `json:"matched"`
+	// ArchivedHidden is how many of those rows the archive wall removed —
+	// notes whose `lifecycle:` is `archived`, absent unless the query set
+	// IncludeArchived. Reported for the reason RawScore and Decay are: a row
+	// that is not there should be visible in the call log, not inferred.
+	ArchivedHidden int `json:"archived_hidden,omitempty"`
 
 	// RerankMS and RerankPairs describe a cross-encoder pass, when one ran.
 	// This package never sets them itself — reranking is a caller-side
@@ -161,9 +171,9 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 
 	switch q.Mode {
 	case "", ModeAnd:
-		return x.searchAnd(text, k, after, before)
+		return x.searchAnd(text, k, after, before, q.IncludeArchived)
 	case ModeFusion:
-		return x.searchFusion(text, k, after, before, q.Lex3)
+		return x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived)
 	case ModeHybrid:
 		return x.searchHybrid(text, k, after, before, q)
 	default:
@@ -198,8 +208,8 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 // and 1,784ms ranked-with-snippets, because the matched set included notes of
 // 1.0–1.3 MB. Six of 206 benchmark queries cost four to six seconds each. Rank
 // first and the scan is priced for the five rows anyone will read.
-func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutcome, error) {
-	out, wonBy, err := x.andRanked(text, k, after, before)
+func (x *Index) searchAnd(text string, k int, after, before string, includeArchived bool) (SearchOutcome, error) {
+	out, wonBy, err := x.andRanked(text, k, after, before, includeArchived)
 	if err != nil {
 		return out, err
 	}
@@ -220,7 +230,7 @@ func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutco
 // The split exists because a snippet is priced per document scanned, not per row
 // returned, so it must never be computed for a row the caller will not see. See
 // fusionRanked, which the same reasoning splits for the same reason.
-func (x *Index) andRanked(text string, k int, after, before string) (SearchOutcome, map[string]string, error) {
+func (x *Index) andRanked(text string, k int, after, before string, includeArchived bool) (SearchOutcome, map[string]string, error) {
 	out := SearchOutcome{Results: []Result{}}
 
 	limit := note.Overfetch
@@ -234,6 +244,7 @@ func (x *Index) andRanked(text string, k int, after, before string) (SearchOutco
 	}
 	out.Note = note1
 	out.Matched = len(rows)
+	rows, out.ArchivedHidden = wallArchived(rows, includeArchived)
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
@@ -364,8 +375,8 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 // query — that gap, not a ranking preference, is the mechanism. A query under
 // three terms has no triple regardless of lex3 and falls through unchanged: the
 // bound `l := j + 1; l < len(terms)` is simply never satisfied.
-func (x *Index) searchFusion(text string, k int, after, before string, lex3 bool) (SearchOutcome, error) {
-	out, wonBy, err := x.fusionRanked(text, k, after, before, lex3)
+func (x *Index) searchFusion(text string, k int, after, before string, lex3, includeArchived bool) (SearchOutcome, error) {
+	out, wonBy, err := x.fusionRanked(text, k, after, before, lex3, includeArchived)
 	if err != nil {
 		return out, err
 	}
@@ -389,12 +400,12 @@ func (x *Index) searchFusion(text string, k int, after, before string, lex3 bool
 // against 26ms of ranking on the operator's corpus. Ranking is flat in k — the
 // over-fetch window is note.Overfetch regardless — so every bit of that was
 // decorative text for rows nobody would see.
-func (x *Index) fusionRanked(text string, k int, after, before string, lex3 bool) (SearchOutcome, map[string]string, error) {
+func (x *Index) fusionRanked(text string, k int, after, before string, lex3, includeArchived bool) (SearchOutcome, map[string]string, error) {
 	terms := dedupeTerms(ftsTokenRe.FindAllString(text, -1))
 	if len(terms) < 2 {
 		// One term has no two-term subset, and the fused ranking for it is just
 		// that term's own. Fall back rather than return nothing.
-		return x.andRanked(text, k, after, before)
+		return x.andRanked(text, k, after, before, includeArchived)
 	}
 
 	out := SearchOutcome{Results: []Result{}}
@@ -442,6 +453,7 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3 bool
 		rows = append(rows, c.row)
 		wonBy[path] = c.expr
 	}
+	rows, out.ArchivedHidden = wallArchived(rows, includeArchived)
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
@@ -482,7 +494,7 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// Ranked, not snippeted. This arm is read to rrfDepth for its ranks; the
 	// snippet pass runs once at the end, over the k rows that actually survive
 	// fusion — see fusionRanked for what snippeting all fifty costs.
-	lexical, wonBy, err := x.fusionRanked(text, rrfDepth, after, before, q.Lex3)
+	lexical, wonBy, err := x.fusionRanked(text, rrfDepth, after, before, q.Lex3, q.IncludeArchived)
 	if err != nil {
 		return lexical, err
 	}
@@ -509,12 +521,15 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// reads positions, so a demotion that lands after the ranks are taken would
 	// have no effect at all — the penalized note would already have contributed
 	// its rank-1 reciprocal.
+	var denseHidden int
+	dense, denseHidden = wallArchived(dense, q.IncludeArchived)
 	decayLog, decayNow := x.decayClock()
 	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
 		note.QueryWantsArtifact(text))
 
 	fused := fuseRRF(lexical.Results, dense)
-	out := SearchOutcome{Results: fused, Matched: len(fused)}
+	out := SearchOutcome{Results: fused, Matched: len(fused),
+		ArchivedHidden: lexical.ArchivedHidden + denseHidden}
 	if len(out.Results) > k {
 		out.Results = out.Results[:k]
 	}
@@ -836,6 +851,47 @@ func normalizeBound(s string) (string, error) {
 // withoutFlag returns flags with one class removed, leaving the input untouched.
 // The row keeps its recorded Penalty either way, so a lifted note still reports
 // what class it is — the lift changes its rank, not its identity.
+// wallArchived removes the rows whose note has left everyday search —
+// `lifecycle: archived`, the contract's one visibility state — unless the
+// caller asked for them by name. It runs on the over-fetch window, before the
+// penalty, so the k rows that come back are the best *admissible* rows rather
+// than a top k with holes in it.
+//
+// This is the one place in the ranking path that drops a row, and the reason
+// it is allowed to is that it is not a classifier judgement. Every class above
+// is the daemon's opinion about a note's shape, and an opinion may only demote
+// — the amputation that left recall dead for four months was a filter acting
+// on one. `archived` is the operator's own decision about one note, taken
+// through the confirm lane, reversible by editing the same field; the note
+// stays on disk and in this index, cold rather than gone, and comes back to
+// any query that sets IncludeArchived (the contract's "explicit archive
+// query"). The count of what was walled rides on the outcome so the absence is
+// visible in the call log.
+func wallArchived(rows []Result, include bool) ([]Result, int) {
+	if include {
+		return rows, 0
+	}
+	kept := make([]Result, 0, len(rows))
+	hidden := 0
+	for _, r := range rows {
+		if hasFlag(splitFlags(r.Penalty), note.ClassArchived) {
+			hidden++
+			continue
+		}
+		kept = append(kept, r)
+	}
+	return kept, hidden
+}
+
+func hasFlag(flags []string, want string) bool {
+	for _, f := range flags {
+		if f == want {
+			return true
+		}
+	}
+	return false
+}
+
 func withoutFlag(flags []string, drop string) []string {
 	out := make([]string, 0, len(flags))
 	for _, f := range flags {

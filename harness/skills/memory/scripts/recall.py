@@ -277,6 +277,39 @@ _STEM_MIN_STEM_LEN = 3
 # a visibility one.
 _UNSERVED_STATUSES = frozenset({"superseded", "inbox", "ingest_staged", "ingest_duplicate"})
 
+# The lifecycle axis (filing v2 part 6): `superseded` never competes with its
+# successor, and `archived` has left everyday search — on disk, in the index,
+# and back for the explicit archive query (`include_archive`, `--include-archive`
+# on the CLI, `-include-archived` on the daemon). `dormant` is a ranking matter,
+# not a visibility one: it is demoted below its active twin here and in the
+# daemon, never walled. `pinned` and `active` are served untouched.
+_UNSERVED_LIFECYCLES = frozenset({"superseded", "archived"})
+# The daemon's class weight for a dormant note (note.Weights[ClassDormant]) —
+# and for an archived one the explicit archive query brought back (present,
+# demoted, never restored to parity) — applied here so the in-process arm and
+# the daemon agree on the ordering. The daemon's own sweep found strength is
+# not the knob — every weight at or below 0.6 ranks the same — so this is not
+# a tuning surface either.
+_LIFECYCLE_DEMOTION = 0.30
+_DEMOTED_LIFECYCLES = frozenset({"dormant", "archived"})
+
+
+def _lifecycle_of(fm: dict) -> str:
+    return str(fm.get("lifecycle") or "").strip().strip("'\"").lower()
+
+
+def _unserved(fm: dict, *, include_archive: bool = False) -> bool:
+    """Whether recall leaves this note out: a staging or retired `status`, or
+    a `lifecycle` that has left everyday search — `superseded` always (the
+    successor answers), `archived` unless the caller asked for the archive by
+    name. One reading, shared by both in-process arms and the daemon path."""
+    if fm.get("status") in _UNSERVED_STATUSES:
+        return True
+    lc = _lifecycle_of(fm)
+    if lc == "superseded":
+        return True
+    return lc == "archived" and not include_archive
+
 
 def _stem(token: str) -> str:
     for suffix in _STEM_SUFFIXES:
@@ -623,7 +656,16 @@ def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
     `---\\n`), returns ({}, content). Inline parser — handles the limited
     YAML subset that save.py / evolve.py write (string values, simple lists
     in `[a, b]` form). PyYAML is NOT a hook-time dependency.
+
+    CRLF is read as LF first. A note written on Windows — or read back
+    through a backend that does not translate newlines — arrives as
+    `---\r\n`, and a parser that only knew `---\n` returned no frontmatter
+    at all: every status and lifecycle wall silently off, on exactly the
+    files it was meant to read. Found by the lifecycle recall tests on the
+    Windows runner (filing v2 part 6).
     """
+    if "\r\n" in content:
+        content = content.replace("\r\n", "\n")
     if not content.startswith("---\n"):
         return {}, content
     end = content.find("\n---\n", 4)
@@ -778,7 +820,7 @@ def session_start(
         # Filter superseded entries (defense-in-depth; supersession normally
         # moves entries to _archive/, but a stale _always-load/ entry could
         # have been flagged superseded without being moved).
-        if fm.get("status") in _UNSERVED_STATUSES:
+        if _unserved(fm):
             continue
         parsed_entries.append((md_path.stem, fm, body))
 
@@ -1057,7 +1099,7 @@ def _grep_search(
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)
-        if fm.get("status") in _UNSERVED_STATUSES:
+        if _unserved(fm, include_archive=include_archive):
             continue
         if filter_criteria and not _entry_matches_filter(fm, filter_criteria):
             continue
@@ -1155,7 +1197,7 @@ def _bm25_search(
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)
-        if fm.get("status") in _UNSERVED_STATUSES:
+        if _unserved(fm, include_archive=include_archive):
             continue
         if filter_criteria and not _entry_matches_filter(fm, filter_criteria):
             continue
@@ -1279,7 +1321,7 @@ def _metadata_filter_only(
         except (OSError, UnicodeDecodeError):
             continue
         fm, _ = _parse_frontmatter(content)
-        if fm.get("status") in _UNSERVED_STATUSES:
+        if _unserved(fm, include_archive=include_archive):
             continue
         if _entry_matches_filter(fm, criteria):
             out.append(_vault_rel(md_path, vault))
@@ -1520,14 +1562,23 @@ def query(
 
         lifecycle_tier = None
         decay_score = 1.0
+        try:
+            content = (vault / path).read_text(encoding="utf-8")
+            fm, _ = _parse_frontmatter(content)
+        except (OSError, UnicodeDecodeError):
+            fm = {}
         if lifecycle is not None:
-            try:
-                content = (vault / path).read_text(encoding="utf-8")
-                fm, _ = _parse_frontmatter(content)
-            except (OSError, UnicodeDecodeError):
-                fm = {}
             lifecycle_tier = lifecycle.lifecycle_tier_for(fm, path)
             decay_score = lifecycle.compute_decay_score(vault, slug, fm, path)
+        # The lifecycle axis as the daemon ranks it: a dormant note below its
+        # active twin, an archived note (here only on the explicit archive
+        # query) below both, multiplicatively, never dropped. `pinned` is not
+        # a lift — nothing here multiplies above 1.0 — it is the absence of a
+        # demotion.
+        lifecycle_value = _lifecycle_of(fm)
+        demoted = lifecycle_value in _DEMOTED_LIFECYCLES
+        if demoted:
+            decay_score *= _LIFECYCLE_DEMOTION
 
         combined = fused[path] * decay_score
 
@@ -1540,6 +1591,9 @@ def query(
         }
         if lifecycle_tier is not None:
             entry["lifecycle_tier"] = lifecycle_tier
+            entry["decay_score"] = decay_score
+        if demoted:
+            entry["lifecycle"] = lifecycle_value
             entry["decay_score"] = decay_score
         merged.append(entry)
     # Sort by combined desc, tiebreak by sim desc then path asc.
@@ -2146,6 +2200,10 @@ def _daemon_search(
             argv += ["-before", before]
     if daemon_vault and daemon_index:
         argv += ["-vault", daemon_vault, "-index", daemon_index]
+    if include_archive:
+        # The daemon walls `lifecycle: archived` itself; the explicit archive
+        # query lifts its wall and this function's own reading together.
+        argv.append("-include-archived")
     argv.append(search_terms)
 
     started = time.monotonic()
@@ -2485,7 +2543,7 @@ def prompt_submit(
         # too. Harmless duplication for the in-process path, and the only such
         # check on the daemon path — a retired entry must not come back just
         # because a faster engine found it.
-        if fm.get("status") in _UNSERVED_STATUSES:
+        if _unserved(fm, include_archive=include_archive):
             continue
         raw_blocks.append(_format_recall_result(result, body, fm))
         raw_slugs.append(result["slug"])
@@ -2791,7 +2849,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     q.add_argument("--include-inbox", action="store_true",
                    help="include _inbox/ entries in the search (default: excluded)")
     q.add_argument("--include-archive", action="store_true",
-                   help="include _archive/ entries in the search (default: excluded)")
+                   help="the explicit archive query: include notes whose lifecycle is archived "
+                        "(and the legacy _archive/ directory) — excluded from everyday recall")
     q.add_argument("--filter", dest="filter_expr", default=None,
                    help="hybrid filter, e.g. 'tag=security AND project=sherwood' "
                         "(supported keys: tag, kind, project, status, group)")

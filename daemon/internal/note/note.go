@@ -18,13 +18,16 @@ var (
 	frontmatterRe = regexp.MustCompile(`(?s)\A---[ \t\r]*\n(.*?)\n---[ \t\r]*\n`)
 	titleRe       = regexp.MustCompile(`(?m)^title:[ \t]*(.+?)[ \t\r]*$`)
 	statusRe      = regexp.MustCompile(`(?m)^status:[ \t]*(\S+)`)
-	miningRe      = regexp.MustCompile(`(?m)^mining_confidence:`)
-	probeRe       = regexp.MustCompile(`(?m)^probe:[ \t]*(\S+)`)
-	capturedRe    = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
-	updatedRe     = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
-	altitudeRe    = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
-	confidenceRe  = regexp.MustCompile(`(?m)^confidence:[ \t]*([0-9.]+)[ \t\r]*$`)
-	createdRe     = regexp.MustCompile(`(?m)^created:[ \t]*(.+?)[ \t\r]*$`)
+	// The lifecycle axis. `lifecycle:` and nothing else — `lifecycle_tier:`
+	// below is the older durability marker and must not read as a value here.
+	lifecycleRe  = regexp.MustCompile(`(?m)^lifecycle:[ \t]*(\S+)`)
+	miningRe     = regexp.MustCompile(`(?m)^mining_confidence:`)
+	probeRe      = regexp.MustCompile(`(?m)^probe:[ \t]*(\S+)`)
+	capturedRe   = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
+	updatedRe    = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
+	altitudeRe   = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
+	confidenceRe = regexp.MustCompile(`(?m)^confidence:[ \t]*([0-9.]+)[ \t\r]*$`)
+	createdRe    = regexp.MustCompile(`(?m)^created:[ \t]*(.+?)[ \t\r]*$`)
 	// The two frontmatter routes into durability — see isDurable.
 	lifecycleTierRe = regexp.MustCompile(`(?m)^lifecycle_tier:[ \t]*(.+?)[ \t\r]*$`)
 	kindRe          = regexp.MustCompile(`(?m)^kind:[ \t]*(.+?)[ \t\r]*$`)
@@ -57,6 +60,11 @@ type Note struct {
 	Body string
 
 	Status string
+	// Lifecycle is the note's aging state on the contract's one axis —
+	// pinned, active, dormant, archived, superseded — lower-cased, "" when the
+	// note carries none. Ranking reads it as a demotion (classify) and search
+	// reads `archived` as a visibility state (index.wallArchived).
+	Lifecycle string
 	// Probe marks a synthetic self-probe note. It is read from the frontmatter
 	// marker rather than inferred from the note's location, because the design
 	// requires a probe to be excludable by what it carries: capture shards by
@@ -170,9 +178,10 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	}
 
 	n.Status = parseStatus(head)
+	n.Lifecycle = parseLifecycle(head)
 	n.Probe = parseProbe(head)
 	n.Captured, n.CapturedSource = parseCaptured(head, modTime)
-	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status)
+	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status, n.Lifecycle)
 	if m := sourceRe.FindStringSubmatch(head); m != nil {
 		n.Source = strings.Trim(strings.TrimSpace(m[1]), `'"`)
 	}
@@ -231,6 +240,17 @@ func parseFlowList(raw string) []string {
 
 func parseStatus(head string) string {
 	if m := statusRe.FindStringSubmatch(head); m != nil {
+		return strings.ToLower(strings.Trim(m[1], `'"`))
+	}
+	return ""
+}
+
+// parseLifecycle reads the contract's aging axis the way parseStatus reads
+// status: one bare value, lower-cased, quotes stripped, "" when absent. It
+// does not validate against the contract — a value the contract does not name
+// earns no class and no wall, which is the safe reading of a typo.
+func parseLifecycle(head string) string {
+	if m := lifecycleRe.FindStringSubmatch(head); m != nil {
 		return strings.ToLower(strings.Trim(m[1], `'"`))
 	}
 	return ""

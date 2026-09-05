@@ -15,7 +15,7 @@ func withDampened(t *testing.T, spaces []string) {
 func TestADampenedNoteIsDemotedNotExcluded(t *testing.T) {
 	withDampened(t, []string{"Personal"})
 
-	flags := classify("Personal/Church/Prepared Lessons/lesson.md", "", "Some lesson notes.\n", "active")
+	flags := classify("Personal/Church/Prepared Lessons/lesson.md", "", "Some lesson notes.\n", "active", "")
 	m := Multiplier(flags)
 
 	if m >= 1.0 {
@@ -28,7 +28,7 @@ func TestADampenedNoteIsDemotedNotExcluded(t *testing.T) {
 
 func TestAnUndampenedSpaceIsUntouched(t *testing.T) {
 	withDampened(t, []string{"Personal"})
-	flags := classify("Agent/memory/semantic/a-fact.md", "", "A durable fact.\n", "active")
+	flags := classify("Agent/memory/semantic/a-fact.md", "", "A durable fact.\n", "active", "")
 	for _, f := range flags {
 		if f == ClassSpace {
 			t.Errorf("a note outside the dampened set carries %q: %v", ClassSpace, flags)
@@ -41,7 +41,7 @@ func TestMatchingIsOnTheFirstSegmentOnly(t *testing.T) {
 	// itself — a space is a top-level directory, and matching deeper would make
 	// the rule fire on a name rather than on a space.
 	withDampened(t, []string{"Personal"})
-	flags := classify("Agent/desk/projects/x/personal/notes.md", "", "Project notes.\n", "active")
+	flags := classify("Agent/desk/projects/x/personal/notes.md", "", "Project notes.\n", "active", "")
 	for _, f := range flags {
 		if f == ClassSpace {
 			t.Error("a nested folder named `personal` was treated as the Personal space")
@@ -69,7 +69,7 @@ func TestAnEmptySetDampensNothing(t *testing.T) {
 // leak the operator can see; dampening too much is an answer that never arrives.
 func TestNothingIsDampenedBeforeAnythingIsSet(t *testing.T) {
 	withDampened(t, nil)
-	flags := classify("Personal/Church/x.md", "", "Body.\n", "active")
+	flags := classify("Personal/Church/x.md", "", "Body.\n", "active", "")
 	for _, f := range flags {
 		if f == ClassSpace {
 			t.Error("a space was dampened with no contract loaded")
