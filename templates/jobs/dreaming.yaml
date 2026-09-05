@@ -1,0 +1,25 @@
+# dreaming.yaml — the dreaming binary's scheduled trigger (filing v2 part 6,
+# task 3). The runner fires it often; the binary's own dual gate decides
+# whether a pass is due — enough time since the last pass AND activity since
+# (captures, genuine recalls) — and exits at once when it is not. Triggered-
+# and-exits, lock-coordinated, journaled: never a resident process.
+#
+# Register it by copying to .harness/jobs/dreaming.yaml in the repo that runs
+# the agentm runner (scripts/agentm-runner.sh), beside dream.yaml, which keeps
+# running the Python layer. The binary is report-only until the parity gate
+# (task 6) flips `-apply`: it decides, prints, journals its run, and touches
+# no note. `-every` is the binary's own interval; the runner's `schedule` is
+# only how often it is asked.
+schedule: daily
+lookback: 3d
+
+# The runner runs from `scripts/`; the binary reads the kernel config for the
+# vault, and $AGENTM_STATE_DIR (or ~/.local/state/agentm) for its state,
+# journal and lock. Report-only: no `-apply` until the parity gate.
+command: "$HOME/.local/bin/agentmdream" run -every 168h
+
+# T3: the agent's own memory maintenance, no model calls in this scaffold.
+tier: T3
+
+# No `budget:` — the pass makes no LLM calls.
+dry_run: false

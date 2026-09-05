@@ -102,3 +102,12 @@ jobs:
           cat err.txt
           grep -q "no vault path" err.txt || {
             echo "::error::expected a message naming the missing vault path"; exit 1; }
+          # The dreaming binary fails the same way: one pass, no vault, a named refusal.
+          go build -o agentmdream-probe ./cmd/agentmdream
+          ./agentmdream-probe version
+          if ./agentmdream-probe run --config /nonexistent/agentm.json 2>err2.txt; then
+            echo "::error::agentmdream run succeeded with no vault configured"; exit 1
+          fi
+          cat err2.txt
+          grep -q "no vault path" err2.txt || {
+            echo "::error::expected agentmdream to name the missing vault path"; exit 1; }

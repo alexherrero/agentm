@@ -616,6 +616,17 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
     rm -f "$DAEMON_BIN.new"
     daemon_fail "the daemon build failed; the existing binary was left in place" "$DAEMON_STILL_RESIDENT"
   fi
+  # The dreaming binary (filing v2 part 6): one pass and exit, driven by the
+  # runner's job manifest (templates/jobs/dreaming.yaml), never resident — so
+  # no launchd entry of its own. Built beside the daemon, swapped the same way.
+  DREAMER_BIN="$DAEMON_BIN_DIR/agentmdream"
+  if ( cd "$DAEMON_SRC" && CGO_ENABLED=0 go build -o "$DREAMER_BIN.new" ./cmd/agentmdream ); then
+    mv -f "$DREAMER_BIN.new" "$DREAMER_BIN"
+    echo "    built $DREAMER_BIN"
+  else
+    rm -f "$DREAMER_BIN.new"
+    echo "    warning: the dreaming binary build failed; the existing one (if any) was left in place" >&2
+  fi
 fi
 
 # ── the embedding model: fetched once, verified by checksum ─────────────────
