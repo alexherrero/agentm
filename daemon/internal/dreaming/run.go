@@ -288,7 +288,7 @@ func applyAll(cfg *config.Config, journal *Journal, root, runID string, intents 
 			rep.Applied++
 			if in.Job == JobLifecycle {
 				from, to := transitionOf(in)
-				if err := AppendLifecycleJournal(cfg.EngineStateDir, in.Rel, from, to, in.Summary, runID, now); err != nil {
+				if err := EnsureLifecycleJournal(cfg.EngineStateDir, in.Rel, from, to, in.Summary, runID, now); err != nil {
 					return err
 				}
 			}

@@ -247,12 +247,11 @@ func TestAKilledPassResumesWithoutLossOrDoubleApplication(t *testing.T) {
 			t.Errorf("lifecycle journal has %s %d times", rel, n)
 		}
 	}
-	// Notes the resume settled (journaled by the first pass before the kill,
-	// written by the second) are recorded by the resume, not the governance
-	// journal — the intent's own line is the record. So the governance count
-	// is at most 30 and covers what the two applying passes wrote.
-	if len(seen) > 30 || len(seen) < 30-rep.Resumed {
-		t.Errorf("lifecycle journal covers %d notes; want between %d and 30", len(seen), 30-rep.Resumed)
+	// A note the resume settled owes the same governance line the pass would
+	// have written; the line is idempotent by run, note and state, so the
+	// journal covers every note exactly once whichever side wrote it.
+	if len(seen) != 30 {
+		t.Errorf("lifecycle journal covers %d notes; want 30", len(seen))
 	}
 }
 

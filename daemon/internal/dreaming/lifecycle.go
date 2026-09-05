@@ -221,13 +221,15 @@ func PlanLifecycle(root string, r *rules.Rules, now time.Time, cap int) (Lifecyc
 				continue
 			}
 			after := SetLifecycle(text, "dormant", since)
-			plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel, Before: raw, After: []byte(after),
-				Summary: fmt.Sprintf("silent %.0f days, past %s %.0f → dormant", days, lifecycleKeyDormant, dormantAfter)})
+			summary := fmt.Sprintf("silent %.0f days, past %s %.0f → dormant", days, lifecycleKeyDormant, dormantAfter)
+			plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel, Before: raw, After: []byte(after), Summary: summary,
+				Meta: map[string]string{"from": state, "to": "dormant", "reason": summary}})
 			plan.Demoted = append(plan.Demoted, Move{rel, days})
 		case state == "dormant" && days <= dormantAfter:
 			after := SetLifecycle(text, lifecycleDefaultState, since)
-			plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel, Before: raw, After: []byte(after),
-				Summary: fmt.Sprintf("recalled %.0f days ago, within %s → active", days, lifecycleKeyDormant)})
+			summary := fmt.Sprintf("recalled %.0f days ago, within %s → active", days, lifecycleKeyDormant)
+			plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel, Before: raw, After: []byte(after), Summary: summary,
+				Meta: map[string]string{"from": state, "to": lifecycleDefaultState, "reason": summary}})
 			plan.Revived = append(plan.Revived, Move{rel, days})
 		case state == "dormant" && days > archiveAfter:
 			plan.Candidates = append(plan.Candidates, Move{rel, days})
@@ -258,6 +260,32 @@ func AppendLifecycleJournal(engineStateDir, rel, from, to, reason, runID string,
 	if err := os.MkdirAll(engineStateDir, 0o755); err != nil {
 		return err
 	}
+	return appendLifecycleLine(p, rel, from, to, reason, runID, now)
+}
+
+// EnsureLifecycleJournal is AppendLifecycleJournal made idempotent: a line
+// for the same run, note and state is written once, whichever of the pass
+// and its resume gets there first.
+func EnsureLifecycleJournal(engineStateDir, rel, from, to, reason, runID string, now time.Time) error {
+	p := filepath.Join(engineStateDir, LifecycleJournalName)
+	if blob, err := os.ReadFile(p); err == nil {
+		for _, line := range strings.Split(string(blob), "\n") {
+			var got lifecycleLine
+			if json.Unmarshal([]byte(line), &got) != nil {
+				continue
+			}
+			if got.Rel == rel && got.To == to && got.RunID != nil && *got.RunID == runID {
+				return nil
+			}
+		}
+	}
+	if err := os.MkdirAll(engineStateDir, 0o755); err != nil {
+		return err
+	}
+	return appendLifecycleLine(p, rel, from, to, reason, runID, now)
+}
+
+func appendLifecycleLine(p, rel, from, to, reason, runID string, now time.Time) error {
 	line := lifecycleLine{Actor: "policy", From: from, Reason: reason, Rel: rel, To: to,
 		TS: now.UTC().Format("2006-01-02T15:04:05+00:00")}
 	if runID != "" {
