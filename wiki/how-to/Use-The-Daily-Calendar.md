@@ -41,7 +41,15 @@
 
    Lists whichever facet notes exist for that day, each with a context phrase and its entry count, plus the day's episodic session traces and system digest when either exists. A day with nothing recorded has no index at all — `--dry-run` prints `(nothing on YYYY-MM-DD)` rather than an empty file.
 
-5. **Correct a day that's already closed.** A plain `append` only ever targets today or a later day you name; naming a day before today with `--day` raises `ClosedDay` rather than silently editing the past:
+5. **See this week's or this month's review.** Weekly and monthly reviews are written by the dreaming binary's `calendar` job, on its own cadence — not something you run by hand day to day. `-force` skips the binary's own gate and previews a pass right now; add `-apply` to actually write:
+
+   ```bash
+   "$HOME/.local/bin/agentmdream" run -force -apply
+   ```
+
+   Writes `Calendar/YYYY/YYYY-Www-review.md` for every closed ISO week in the trailing eight, and `Calendar/YYYY/YYYY-MM-review.md` for the running month and the one before — sparse or not, only when the text changed. Drop `-apply` to preview what a pass would do without writing anything. The Python rollups CLI (`calendar_rollups.py`) retired with the takeover (filing v2 part 6, 2026-09-05); this is how you generate a review now.
+
+6. **Correct a day that's already closed.** A plain `append` only ever targets today or a later day you name; naming a day before today with `--day` raises `ClosedDay` rather than silently editing the past:
 
    ```bash
    python3 harness/skills/memory/scripts/calendar_facets.py --vault <memory-root> correct --facet meetings --day 2026-09-03 --text "The release is Thursday, not Friday."
@@ -58,7 +66,7 @@
 ## Troubleshooting
 
 - **`error: nothing to record: the text is empty`** — `--text` was blank or whitespace-only. Nothing is written.
-- **`... is closed; the register is corrected by a new dated entry, never by an edit into the past`** — you passed `append --day` naming a day before today. Use `correct` instead (step 5).
+- **`... is closed; the register is corrected by a new dated entry, never by an edit into the past`** — you passed `append --day` naming a day before today. Use `correct` instead (step 6).
 - **`facet '...' is not registered; the register carries ...`** — the facet named isn't in the contract's registry. Adding one is an edit to `standards/storage-rules.md`, never a call-site improvisation — it happens automatically as a confirm-gated proposal once a diary label recurs on three or more distinct days in thirty (the dreaming cycle's facet-promotion stage; see [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar)).
 - **`no Calendar/ space beside <vault>: the register is discovered, never conjured`** — `Calendar/` doesn't exist yet at the vault root (or the vault root above a nested memory root). Create the directory once, by hand; nothing in this feature creates it for you.
 
@@ -66,4 +74,5 @@
 
 - [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar) — the full design: why the register is discovered rather than created, the rollup cadence, and the facet-promotion rationale.
 - [Memory daemon reference](Memory-Daemon#lifecycle-sources-and-facets) — the `facets` and calendar `record_kinds` contract vocabulary.
+- [Memory daemon reference § the dreaming binary](Memory-Daemon#the-dreaming-binary-agentmdream) — `agentmdream`'s gate, lock, journal, and its jobs in order, including `calendar`.
 - [Vault write protocol](Vault-Write-Protocol) — the lock and atomic-write primitives the calendar's own writer shares with the rest of the vault.

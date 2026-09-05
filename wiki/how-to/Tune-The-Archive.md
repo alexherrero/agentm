@@ -2,14 +2,14 @@
 
 > [!NOTE]
 > **Status: implemented** — shipped by `PLAN-auto-org-shelf-and-archive.md` (FRIDAY ladder feature 5, auto-organization part 1 of 3).
-> **Goal:** Understand the tidying stage's floors and caps — how long a memory holds full strength before it starts to fade, how long a work artifact sits untouched before it shelves, and how to bring a shelved or archived item back — and where to change them if the schedule doesn't fit how you actually use the vault.
+> **Goal:** Understand what ages a memory and what shelves an artifact — the lifecycle axis's two thresholds (a year of silence sinks a memory to `dormant`; five years makes it an archive proposal you confirm, in place), the artifact shelf's one (a year untouched), the caps and the anomaly breaker — and how to bring a dormant, archived or shelved item back.
 > **Prereqs:** None to read this page. Changing a floor means editing `harness/skills/memory/scripts/lifecycle.py` or `dream.py` directly (see below) — there's no config file for these yet.
 
 Tidying runs automatically, inside the weekly dreaming cycle (`dream.py`'s `run_dream_and_auto_apply`) or on demand (`python3 harness/skills/memory/scripts/dream.py --vault-path <path>`). You don't have to do anything for it to work. This page is for understanding what it's doing, and for the rare case where the default schedule doesn't fit.
 
 ## Steps
 
-1. **Know the two lanes.** A **memory** (any entry with a `kind:` frontmatter field) fades on a stepped schedule and archives after five years of silence. An **artifact** (any entry with no `kind:` at all — a loose doc, not a proper memory entry) shelves after a year untouched. Both clocks reset to zero the moment the entry is genuinely recalled again — a lint pass, an index rebuild, or a dreaming cycle touching the file never resets either clock, only a real hit does.
+1. **Know the two lanes.** A **memory** (any entry with a `kind:` frontmatter field) never moves. It ages on the `lifecycle:` axis (filing v2 part 6): silent past `dormant_after_days` (365) it sinks to `dormant` and ranks below its active twins; the next genuine recall lifts it back; past `archive_after_days` (1825) the weekly dream cycle stages an archive *proposal* — `lifecycle: archived` written in place once you confirm it, hidden from everyday search, still on disk. The sinking and lifting are the dreaming binary's (`agentmdream`); every move lands in `<engine state dir>/lifecycle-journal.jsonl`. An **artifact** (any entry with no `kind:` at all — a loose doc, a plan close-out) still moves: untouched for a year, the tidying stage shelves it under `_shelf/`, and a touch brings it back.
 
 2. **Read the current floors and caps in code** — there's no config file yet, so the tunable constants live directly in the modules that use them:
 
@@ -19,8 +19,9 @@ Tidying runs automatically, inside the weekly dreaming cycle (`dream.py`'s `run_
    | Half strength through | 365 days (~1y) | `_STEPPED_BANDS`, `lifecycle.py` |
    | An eighth through | 1095 days (~3y) | `_STEPPED_BANDS`, `lifecycle.py` |
    | A sixteenth through, then floor | 1825 days (~5y) | `_STEPPED_BANDS`, `lifecycle.py` |
-   | Archive preview (heads-up in the digest) | 1642.5 days (~4.5y) | `_ARCHIVE_PREVIEW_DAYS`, `dream.py` |
-   | Archive threshold (the actual move) | 1825 days (5y) | `_ARCHIVE_THRESHOLD_DAYS`, `dream.py` |
+   | Dormant after (a memory sinks) | 365 days (1y) | `thresholds.dormant_after_days`, `standards/storage-rules.md` (the contract; packaged default in `daemon/internal/rules/storage-rules.default.md`) |
+   | Archive proposal after (confirm-gated, in place) | 1825 days (5y) — preview in the digest from 90% of the line | `thresholds.archive_after_days`, the same contract; `PREVIEW_FRACTION`, `lifecycle_transitions.py` |
+   | Demotion cap (memories sunk per pass) | 25 | `DEMOTION_BATCH_CAP`, `lifecycle_transitions.py`; `-cap` on `agentmdream run` |
    | Shelf threshold (artifacts) | 365 days (1y) | `_SHELF_THRESHOLD_DAYS`, `dream.py` |
    | Auto-apply batch cap (per cycle, all auto-apply stages combined) | 25 | `DEFAULT_AUTO_APPLY_BATCH_CAP`, `dream_confirm.py` |
    | Anomaly breaker trailing window | 8 cycles | `ANOMALY_HISTORY_WINDOW`, `dream_confirm.py` |
@@ -30,8 +31,8 @@ Tidying runs automatically, inside the weekly dreaming cycle (`dream.py`'s `run_
 
 3. **Bring an item back.**
    - **A shelved artifact** returns on its own: touch it again (a genuine recall hit), and the next dreaming cycle proposes moving it back to its original folder. No manual step needed. Everyday search already finds a shelved item — the shelf never left `_shelf/` out of ordinary recall, only your browse eyeline.
-   - **An archived memory** doesn't return automatically — that's the one asymmetry between the two lanes. Search for it with `--include-archive` (`python3 harness/skills/memory/scripts/recall.py query "<query>" --include-archive`), or read the file directly at its `_archive/` path. There's no "un-archive" move today; if you want it back in the tier's live folder, move the file yourself.
-   - **Either move reverts.** Every tidying move journals through the revert log — `RevertLog(vault_path).revert(run_id, entry_id)` restores the original file and removes the moved copy. The entry ID is in the run's digest (`~/.local/state/agentm/dream-runs/<run_id>/digest.md` — a run's digest and revert bundle are engine state, not vault content) next to the proposal that applied it.
+   - **A dormant memory** comes back on its own: a genuine recall lifts it to `active` on the binary's next pass. **An archived memory** doesn't — search for it with `--include-archive` (`python3 harness/skills/memory/scripts/recall.py query "<query>" --include-archive`; `include_archived` on the MCP surface; `-include-archived` on `agentmd search`), then set `lifecycle: active` by hand (`lifecycle_transitions.py transition <rel> active --actor operator`) — the journal records who did it.
+   - **A shelf move and a confirmed archive both revert.** Every tidying move and every confirmed proposal journals through the revert log — `RevertLog(vault_path).revert(run_id, entry_id)` restores the original file and removes the moved copy. The entry ID is in the run's digest (`~/.local/state/agentm/dream-runs/<run_id>/digest.md` — a run's digest and revert bundle are engine state, not vault content) next to the proposal that applied it.
 
 4. **The stepped decay curve is shadow-mode only until the eval holds.** The stepped curve computes alongside the original 30-day exponential curve, but nothing wires it into live ranking yet — that's a deliberate, separate future step, not something this page's floors control. Run the comparison yourself: `python3 scripts/health/eval_v6_retrieval.py --vault-path <path> --decay-curve stepped`. It reports the same three signals (accuracy, compression, discovery-rate) the original RRF-retrieval eval does, comparing today's live exponential-decay ranking against the same ranking with the stepped curve substituted in.
 
@@ -42,12 +43,12 @@ The clock only resets on a genuine recall — `recall.py`'s `prompt_submit()` is
 ## Verify
 
 - `TestSteppedDecayScore` / `TestShadowModeComparison` (`scripts/test_memory_lifecycle.py`) — the stepped curve's four bands and boundaries, and that the shadow comparison never mutates the sidecar.
-- `TidyingStageBandTests` / `ArtifactShelfBandTests` (`scripts/test_dream.py`) — the exact fixture bands this page's table lists, plus the recall-resets-the-clock and touched-shelved-artifact-returns cases.
+- `LifecycleStageBandTests` / `ArtifactShelfBandTests` (`scripts/test_dream.py`) and `ThePolicy` (`scripts/test_lifecycle_transitions.py`) — the exact bands this page's table lists, plus the recall-resets-the-clock and touched-shelved-artifact-returns cases.
 - `AnomalyBreakerTests` (`scripts/test_dream_confirm.py`) — the anomaly breaker's trip threshold and its no-poisoning-the-baseline guarantee.
 
 ## Troubleshooting
 
-- **A note I thought was long-cold hasn't archived yet.** Check `.lifecycle.json` at your vault root for its `last_access` — a stale sidecar entry from before the tidying stage shipped, or a recall hit you forgot about, resets the clock. Durable-tier entries (`lifecycle_tier: durable`), `kind: failure-incident` entries, and anything under a `decisions/` path never archive at all, regardless of age.
+- **A note I thought was long-cold is still `active`, or has no archive proposal.** Check `.lifecycle.json` at your memory root for its last genuine access — a recall resets the clock — and `agentmdream status` for the binary's last pass: a memory sinks to `dormant` only on a pass, and only a *dormant* memory past five years is proposed for the archive. `agentmdream run -force` prints what the next pass would do.
 - **A shelved artifact didn't come back after I touched it.** Return isn't instant — it's proposed on the *next* dreaming cycle after the touch, same as every other tidying move (staged, then auto-applied). Run `/dream` by hand if you don't want to wait for the weekly schedule.
 - **A whole batch of proposals didn't apply, and the digest shows "ANOMALY BREAKER TRIPPED."** The cycle proposed several times the usual tidying volume — the breaker suppressed the whole batch rather than applying an abnormal one. Every proposal is still there, staged and confirmable by hand (`dream_confirm.confirm(vault_path, run_id, index, revert_log)`) if the volume is genuinely expected (e.g. right after this feature first shipped, against a vault with years of backlog).
 

@@ -1,6 +1,6 @@
 ---
 title: AgentM Filing v2
-status: final
+status: launched
 visibility: published
 kind: design
 scope: arc
@@ -8,7 +8,7 @@ area: agentm/vault
 author: alexherrero
 contributors: []
 created: 2026-09-01
-updated: 2026-09-04
+updated: 2026-09-05
 last_major_revision: 2026-09-01
 prd:
 project:
@@ -405,6 +405,24 @@ Until the port reaches parity (verified by fixtures against recorded
 Python-pass outputs, not mirror tests), the Python layer keeps running and
 the binary lands job-by-job.
 
+**Shipped (v9.16.0, 2026-09-05; PRs #550–#555, #556).** The axis ranks as
+classes at the standard demotion (the daemon's own sweep found every weight
+past the standard one a regression, so the "demotion-curve parameters" are
+not a knob), `pinned` lands in `durable`, and `archived` sits behind a wall
+only an explicit query lifts — recall mirrors it. The governance lanes
+journal every move; `archived` only through the confirm surface; purge
+operator-only with a manifest. The binary carries the whole job list except
+entity-file maintenance, which the write path's entity rollups already own;
+relative dates are glossed additively (`last week (the week of 2026-08-24)`),
+never rewritten, since the corpus is the operator's words. Parity is a
+recording of the Python layer's decisions with the clock pinned, reproduced
+by the Go planners; the layers ran side by side through an overlap window
+with a daily divergence review, the one review agreed on every surface, and
+the operator flipped the takeover the same day — `-apply` on the binary, the
+three Python lanes removed, the recording kept as the contract. The overlap
+window's length was a gap this design left open; it closed by operator
+ruling.
+
 ## Alternatives Considered
 
 **Amend `agentm-rescope-filing` instead of a new design.** Rejected (ruled):
@@ -657,3 +675,4 @@ layer, which is not retired until parity fixtures pass.
 | 2026-09-04 | Part 4 (write-path) reconciled to what shipped (v9.13.0, PR #540; deployed live the same day). Body: DD§4 gains the shipped paragraph — the soft inbox is a status read that keeps `unfiled` served (why not exclude it: the daemon's own captures are that population and the canary fired when a draft did; re-audit if the enrichment queue ever drains to zero and `unfiled` stops meaning "the daemon's backlog"); the cap grounded in the corpus (200 over a busiest day of 110); the two meanings of `source:` recorded as an open question (why not rename in this part: no writer-side plan carried it; re-audit when the trust tier is read at retrieval time); and the labeled sample's finding that the next work is the miner's, with the operator's four rulings. | final |
 | 2026-09-04 | The write path's follow-up (miner-provenance, v9.14.0, PR #546) reconciled: DD§4's shipped paragraph records the four rulings as shipped. No locked call changed; the miner is upstream of this design's write path, and its rules live in reflect.py's pattern tables (why not fold the miner into the design: it predates filing v2 and serves every part; re-audit when a later labeled sample disowns a "User stated" note again). | final |
 | 2026-09-04 | Part 5 (calendar) reconciled to what shipped (v9.15.0, PR #548; live the same day). Body: DD§5's calendar section gains the shipped paragraph — the register discovered through the Projects witness and never conjured (why not create it: the vault root is the operator's; re-audit if a flat vault needs a register); rollups on the Python dream cadence until the binary takes them over in part 6, empty weeks saying so once (why not skip them: schedule replaced discipline; re-audit if empty reviews become noise); promotion as a confirm-gated rules proposal, never auto-applied (why not auto-apply: the registry is the operator's per part 1; re-audit only toward a lighter confirm). Residuals named: the register outside the daemon's index scope; the operator's flat daily notes coexisting in `Calendar/`. The write path gains one amendment this part's CI found at UTC midnight: the volume gate counts against the day the arriving note's `captured` stamp names, the same day the writes-per-day reading files it under (why not the wall clock: the gate and the reading disagreed about which day a write belonged to, and a flood in progress at midnight found the door open; re-audit if a writer ever backdates `captured` deliberately — the gate would count against the backdated day). | final |
+| 2026-09-05 | Part 6 (lifecycle-dreaming) reconciled to what shipped (v9.16.0, PRs #550–#555, #556; live the same days) and the design launched. Body: DD§6 gains the shipped paragraph — the axis as classes at the standard demotion (why not a tuned curve: the daemon's 125-point sweep found every other weight a regression; re-audit when the corpus has age spread); additive date glosses (why not rewrite: the corpus is the operator's words and every other mutation is additive; re-audit if glossed notes read badly in recall excerpts); the takeover as one change to two manifests after a written disposition of the divergence reviews (why not a longer window: the one review agreed on every surface and the operator ruled; re-audit if a first applying pass ever skips an intent). Gap closed by ruling: the overlap window's length and who closes it. | launched |

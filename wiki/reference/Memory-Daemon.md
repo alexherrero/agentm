@@ -122,7 +122,10 @@ Miner fragments are short and quote the operator's own words, so BM25 ranks them
 | `staging` | 0.30 | a dream-staging proposal, which quotes both notes it is about |
 | `space` | 0.30 | the note's first path segment is named in the contract's `dampened_spaces` |
 | `artifact` | 0.30 | the note says `altitude: artifact` — dampening lifted for a question that asks for that shape |
-| `durable` | *none* | the note never ages: `lifecycle_tier: durable`, `kind: failure-incident`, a `decisions/` path segment, or a contract-exempt space |
+| `lifecycle-dormant` | 0.30 | frontmatter `lifecycle: dormant` — silent past the axis's `dormant_after_days` |
+| `lifecycle-archived` | 0.30 | frontmatter `lifecycle: archived` — also walled out of the default result set (see below) |
+| `lifecycle-superseded` | 0.30 | frontmatter `lifecycle: superseded` — a separate field from the pre-existing `status: superseded` value in the `status` row above; a note can carry either, or both |
+| `durable` | *none* | the note never ages: `lifecycle_tier: durable`, `lifecycle: pinned`, `kind: failure-incident`, a `decisions/` path segment, or a contract-exempt space |
 
 Four properties are load-bearing:
 
@@ -130,6 +133,10 @@ Four properties are load-bearing:
 - **Multiply over an over-fetch.** 200 rows are fetched, each score multiplied by the product of its classes' weights, then re-sorted. Re-ranking only the top k cannot promote the note the fragments were hiding.
 - **Filing overrides shape.** `fragment-promoted` carries no weight, so a fragment-shaped note that filing promoted keeps its score. That protects 1,288 notes, including 229 of the 232 in `memory/preferences/` — the promotion pipeline promoted their bodies verbatim, so they look mined and are filed.
 - **Never exclude.** A penalized note that is the best thing the corpus has still comes back first. Exclusion is what left recall returning nothing for four months.
+
+### The archived wall
+
+`lifecycle-archived` is the one class that breaks the "never exclude" rule above, on purpose. An archived note leaves the default result set entirely — on disk, in the index, but invisible until you ask for the archive by name: `include_archived: true` on `memory_search`, `-include-archived` on `agentmd search`. Ask, and it comes back present and still demoted, never restored to parity with an active note. Every search outcome reports `archived_hidden`, the count the wall kept out of that call's results, so an absence is visible rather than inferred.
 
 ### Space, altitude, and the two that are not penalties
 
@@ -163,10 +170,11 @@ There is no OR query rewrite. It read as the largest available win on one run; r
 | `k` | `int` | `5` | Capped at 50. |
 | `after` | `str` | — | Capture date on or after. `YYYY-MM-DD` or RFC3339. |
 | `before` | `str` | — | Capture date before. |
+| `include_archived` | `bool` | `false` | Lifts the archived wall for this call — an archived note re-enters the result set, demoted like any other lifecycle class. |
 
 Two more knobs exist in the code and are deliberately not in this table: a `-lex3` flag (widens `fusion`'s subset search from 2-term to 2- and 3-term) and a `rerank` mode (cross-encoder rerank with a score floor). Neither is in `memory_search`'s published schema and neither is requested by the prompt-submit hook — `lex3` missed its own recall floor by two questions, and `rerank` could not separate true answers from hard negatives at any threshold. Both stay in the tree as tested, working code reachable only from `agentmd search` directly: a refuted rung is still worth keeping when it costs nothing in production. See [AgentM Hybrid Retrieval](agentm-hybrid-retrieval).
 
-Returns `{results, note, matched}`. Each result carries `path`, `score`, `raw_score`, `penalty`, `captured`, `captured_source`, and `snippet`. `score` is the penalized score and larger is better; `raw_score` is the value before demotion, so a penalty is visible rather than inferred from a number moving.
+Returns `{results, note, matched, archived_hidden}`. Each result carries `path`, `score`, `raw_score`, `penalty`, `captured`, `captured_source`, and `snippet`. `score` is the penalized score and larger is better; `raw_score` is the value before demotion, so a penalty is visible rather than inferred from a number moving. `archived_hidden` is the count the archived wall kept out of this call's results — present even at `0`, so an absence reads as measured rather than assumed.
 
 `note` is set whenever the driver should know something — a rewritten query, or an empty result set.
 
@@ -354,10 +362,11 @@ The same design added three calendar values to `record_kinds`
 - `day-index`
 - `calendar-review`
 
-All three are in active use as of the calendar's own build (filing v2
-part 5, [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar)):
-`calendar_facets.py` writes `calendar-facet`, `calendar_index.py` writes
-`day-index`, and `calendar_rollups.py` writes `calendar-review`.
+All three are in active use: `calendar_facets.py` writes `calendar-facet`,
+`calendar_index.py` writes `day-index`, and the dreaming binary's `calendar`
+job (see [§ The dreaming binary, `agentmdream`](#the-dreaming-binary-agentmdream))
+writes `calendar-review` — `calendar_rollups.py` wrote it before the
+takeover (filing v2 part 6, 2026-09-05) retired that script.
 
 The `routing` table now sends an `idea` to `memory/semantic`, previously
 `desk` (`storage-rules.default.md:175`). At the time this reclassification
@@ -489,6 +498,50 @@ of its own starts `active` — an enriched note is an auto-filed note
 either way, the same default a fresh write gets. `main.go`'s `cmdEnrich`
 is the one caller, threading the pre-rewrite note's text through
 `CarryProvenance` before the write applies.
+
+## The dreaming binary, `agentmdream`
+
+The second Go binary the design names, built beside `agentmd` by `install.sh`. Where `agentmd` stays resident, `agentmdream` runs one pass and exits — under a dual gate: enough time has to have passed since the last pass (`-every`, 168h by default) **and** something has to have happened since (captures in the index, genuine recalls in the recall history). A second start while one is already running is refused (exit 3) by a lock compatible with `vault_lock.py` (mkdir + heartbeat + a stale window, pid takeover of a dead holder). Every mutation is journaled — intent, then applied, then skipped — fsynced before it happens, so a crash resumes from that journal by hash instead of losing or repeating work. Report-only by default; `-apply` makes the writes.
+
+| | |
+|---|---|
+| Binary | `agentmdream` — built beside `agentmd` by `install.sh` |
+| Subcommands | `run`, `status`, `journal`, `version` |
+| Gate | elapsed ≥ `-every` (168h default) **and** activity since the last pass |
+| Lock | mkdir + heartbeat, stale-window pid takeover; a second start exits 3 |
+| Journal | fsynced intent → applied → skipped, hash-checked resume after a crash |
+| Default mode | report-only (decides and prints); `-apply` writes |
+| Triggered by | `templates/jobs/dreaming.yaml`, through the runner |
+
+```bash
+"$HOME/.local/bin/agentmdream" run -every 168h -apply   # the applying pass the runner schedules daily
+agentmdream status                                        # the last pass, the gate's answer now, the lock
+agentmdream journal -tail 20                               # the mutation journal, newest last
+```
+
+`run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON).
+
+### Its jobs, in order
+
+| Job | What it does |
+|---|---|
+| `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. A dormant memory past `archive_after_days` (1825) becomes an archive candidate — named for the confirm surface here, never moved by this job itself. |
+| `copies` | Content-identical families collapse into the earliest note; every other copy is marked `status: superseded` + `supersedes:`, never deleted. |
+| `refile` | A memory whose `type:` the contract routes elsewhere moves under the same basename; a stale `near-duplicate` flag whose twin is gone gets cleared. |
+| `promote` | A target three or more distinct episodic notes link becomes `memory/crystallized/consolidated-<slug>.md`, carrying `consolidated_from` and `derived_from`. |
+| `calendar` | Writes the daily register's weekly and monthly reviews. |
+| `mocs` | One map of content per memory type, created at `moc_min_members` (5), split past `moc_split_at` (40), flagged `stale: true` past `moc_stale_after_days` (90). |
+| `dates` | Additive relative-date glosses (`last week (the week of 2026-08-24)`) in notes older than `date_gloss_after_days` (30) — never a rewrite, never inside a fence. |
+
+Then three checks that write nothing: a vocabulary audit (every `type:`/`kind:` against the contract's own registers), trend flags (writes doubling week over week, a day at the cap, a class growing by half since the last pass), and a sampled re-classification diff (`reclassify_sample`, 30 notes) whenever the filing-pass version has changed since the last pass, or on `-reclassify`.
+
+### The takeover (2026-09-05)
+
+The binary ran report-only beside the Python `dream.py` cycle through an overlap window, with a daily divergence review comparing the two. The one review agreed on every surface, and the operator flipped `-apply` in `templates/jobs/dreaming.yaml` the same day. Since then, `dream.py` no longer runs the suffix-backlog drain, the calendar rollups, or the lifecycle policy's own sinking and lifting — it reads the lifecycle axis and reports what it sees, stages archive proposals for the confirm surface, and runs the stages the binary doesn't carry: lint repair, compression, the artifact shelf, inbox triage, the needs-review MOC, insights, and the rest of the confirm-gated proposals. Rolling back is report-only mode — drop `-apply` — since the Python lanes it replaced are gone.
+
+### Parity as a recording
+
+`scripts/fixtures/dreaming-parity/expected.json` was recorded from the Python producers, clock pinned, before they retired. The Go tests reproduce it — including the calendar reviews, byte for byte — and [`scripts/check-dreaming-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-dreaming-parity.sh) guards it in the local battery and in CI (see [CI gates](CI-Gates)). The recording can't be re-recorded: the Python producers it was taken from are gone, so a changed decision from here is a deliberate edit to the recording, made on purpose.
 
 ## The derived indexes
 
