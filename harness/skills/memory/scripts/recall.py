@@ -656,7 +656,16 @@ def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
     `---\\n`), returns ({}, content). Inline parser — handles the limited
     YAML subset that save.py / evolve.py write (string values, simple lists
     in `[a, b]` form). PyYAML is NOT a hook-time dependency.
+
+    CRLF is read as LF first. A note written on Windows — or read back
+    through a backend that does not translate newlines — arrives as
+    `---\r\n`, and a parser that only knew `---\n` returned no frontmatter
+    at all: every status and lifecycle wall silently off, on exactly the
+    files it was meant to read. Found by the lifecycle recall tests on the
+    Windows runner (filing v2 part 6).
     """
+    if "\r\n" in content:
+        content = content.replace("\r\n", "\n")
     if not content.startswith("---\n"):
         return {}, content
     end = content.find("\n---\n", 4)

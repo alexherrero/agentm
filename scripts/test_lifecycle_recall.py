@@ -125,6 +125,31 @@ class TheInProcessArm(_Vault):
             self.assertNotIn("lifecycle", r)
 
 
+class TheParserReadsCRLF(unittest.TestCase):
+    # The Windows runner writes CRLF; a parser that only knew LF returned no
+    # frontmatter and every wall was silently off there.
+    def test_crlf_frontmatter_parses_like_lf(self):
+        lf = "---\ntitle: T\nstatus: active\nlifecycle: archived\n---\n\nBody line.\n"
+        crlf = lf.replace("\n", "\r\n")
+        fm_lf, body_lf = recall._parse_frontmatter(lf)
+        fm_crlf, body_crlf = recall._parse_frontmatter(crlf)
+        self.assertEqual(fm_crlf, fm_lf)
+        self.assertEqual(fm_crlf.get("lifecycle"), "archived")
+        self.assertEqual(body_crlf, body_lf)
+        self.assertTrue(recall._unserved(fm_crlf))
+
+    def test_a_crlf_note_on_disk_is_walled_too(self):
+        vault = Path(tempfile.mkdtemp(prefix="lifecycle-crlf-"))
+        self.addCleanup(shutil.rmtree, vault, ignore_errors=True)
+        (vault / "memory" / "semantic").mkdir(parents=True)
+        p = vault / "memory/semantic/a-archived.md"
+        p.write_bytes(("---\ntitle: Gate\nkind: reference\nstatus: active\nlifecycle: archived\n---\n\n" + BODY)
+                      .replace("\n", "\r\n").encode("utf-8"))
+        _note(vault, "memory/semantic/b-active.md", "active")
+        got = [r["path"] for r in recall.query(vault=vault, query_text=QUERY, k=5)]
+        self.assertEqual(got, ["memory/semantic/b-active.md"])
+
+
 class TheDaemonPath(_Vault):
     def _argv(self, **kw) -> list:
         seen: dict = {}
