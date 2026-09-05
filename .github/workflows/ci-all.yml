@@ -1,7 +1,10 @@
 name: "[T] CI All"
 
-# Aggregator workflow that waits for the 3 per-OS test workflows on the same
-# commit, then reports a combined success/failure. The README + wiki Home
+# Aggregator workflow that waits for the 3 per-OS test workflows and the Go
+# daemon workflow on the same commit, then reports a combined
+# success/failure. `aggregate` is the one check branch protection requires,
+# so a workflow missing from WORKFLOWS gates nothing: daemon.yml was missing
+# until 2026-09-05, and #554 auto-merged over a red Go suite. The README + wiki Home
 # badge points at this workflow only, so it's not affected by other apps'
 # check suites (e.g. a stuck-queued check from an installed GitHub App).
 #
@@ -53,9 +56,9 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           set -e
-          WORKFLOWS="tests-linux tests-mac tests-windows"
+          WORKFLOWS="tests-linux tests-mac tests-windows daemon"
 
-          # Poll until all 3 reach 'completed' status, or timeout via job-level setting.
+          # Poll until all of them reach 'completed' status, or timeout via job-level setting.
           for attempt in $(seq 1 45); do
             all_done=true
             for wf in $WORKFLOWS; do
@@ -83,12 +86,12 @@ jobs:
 
           if ! $all_done; then
             echo ""
-            echo "FAIL: not all 3 OS workflows completed within timeout."
+            echo "FAIL: not every gated workflow completed within timeout."
             exit 1
           fi
 
           echo ""
-          echo "All 3 OS workflows completed — checking conclusions:"
+          echo "All gated workflows completed — checking conclusions:"
           fail=0
           for wf in $WORKFLOWS; do
             conclusion=$(gh run list \
@@ -105,9 +108,9 @@ jobs:
 
           if [ $fail -ne 0 ]; then
             echo ""
-            echo "FAIL: at least one OS workflow did not pass."
+            echo "FAIL: at least one gated workflow did not pass."
             exit 1
           fi
 
           echo ""
-          echo "PASS: all 3 OS workflows succeeded on $SHA"
+          echo "PASS: every gated workflow succeeded on $SHA"

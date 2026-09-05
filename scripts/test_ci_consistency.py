@@ -172,9 +172,13 @@ class TestAggregateFilenameCoupling(unittest.TestCase):
         m = re.search(r'WORKFLOWS="([^"]+)"', text)
         self.assertIsNotNone(m, 'ci-all.yml must declare WORKFLOWS="..."')
         names = m.group(1).split()
+        # The three per-OS Python workflows and the Go daemon workflow (added
+        # 2026-09-05: `aggregate` is the one required check, and a workflow
+        # missing from this list gates nothing — #554 merged with the Go
+        # suite red).
         self.assertEqual(
             sorted(names),
-            ["tests-linux", "tests-mac", "tests-windows"],
+            ["daemon", "tests-linux", "tests-mac", "tests-windows"],
             "ci-all.yml's WORKFLOWS list changed — update this test + the CI design",
         )
         for name in names:

@@ -2,6 +2,8 @@ package dreaming
 
 import (
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -317,5 +319,99 @@ func TestTheJournalResumesMovesAndCreations(t *testing.T) {
 	// Commit refuses to create over an existing note or move onto a taken path.
 	if kind, _ := j.Commit(root, "r", "r-3", Intent{Job: JobPromote, Rel: "memory/crystallized/c.md", After: created}, now); kind != KindSkipped {
 		t.Errorf("creating over an existing note must skip: %s", kind)
+	}
+}
+
+// governanceLines counts the parseable governance-journal lines for one note.
+func governanceLines(t *testing.T, state, rel string) int {
+	t.Helper()
+	blob, err := os.ReadFile(filepath.Join(state, LifecycleJournalName))
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, line := range strings.Split(string(blob), "\n") {
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil && m["rel"] == rel {
+			n++
+		}
+	}
+	return n
+}
+
+// The window that bit CI: a kill after the applied line had been fsynced
+// but before the governance line was written left a note the resume, which
+// only revisits pending intents, could never close. The order is now
+// governance line, then applied line, so every kill point leaves a state
+// Resolve finishes — and the line is written exactly once whichever side
+// wrote it.
+func TestAKillAroundTheGovernanceLineIsClosedByResumeExactlyOnce(t *testing.T) {
+	root := t.TempDir()
+	state := t.TempDir()
+	j, _ := OpenJournal(state)
+	now := time.Now().UTC()
+	before := []byte("---\ntitle: n\ntype: workflow\nlifecycle: active\n---\n\nbody\n")
+	after := []byte("---\ntitle: n\ntype: workflow\nlifecycle: dormant\nlifecycle_since: 2026-09-05\n---\n\nbody\n")
+	meta := map[string]string{"from": "active", "to": "dormant", "reason": "silent 400 days"}
+	if err := j.Append(Entry{Kind: KindRunStart, RunID: "r", TS: now, Mode: "apply"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Kill between the governance line and the applied line.
+	writeRaw(t, root, "memory/procedural/a.md", string(before))
+	killed := errors.New("killed")
+	j.crashBeforeApplied = func() error { return killed }
+	if _, err := j.Commit(root, "r", "r-1", Intent{Job: JobLifecycle, Rel: "memory/procedural/a.md", Before: before, After: after, Summary: meta["reason"], Meta: meta}, now); !errors.Is(err, killed) {
+		t.Fatalf("the stand-in kill should surface from Commit: %v", err)
+	}
+	j.crashBeforeApplied = nil
+	if got, _ := os.ReadFile(filepath.Join(root, "memory/procedural/a.md")); string(got) != string(after) {
+		t.Fatalf("the write landed before the kill: %q", got)
+	}
+	if n := governanceLines(t, state, "memory/procedural/a.md"); n != 1 {
+		t.Fatalf("governance lines before the applied line = %d, want 1 — the governance line must precede the applied line", n)
+	}
+	entries, _ := j.Read()
+	runID, pending := Unfinished(entries)
+	if runID != "r" || len(pending) != 1 || pending[0].Rel != "memory/procedural/a.md" {
+		t.Fatalf("the killed intent is what the resume finds pending: run %q, %d pending", runID, len(pending))
+	}
+	if kind, err := j.Resolve(root, pending[0], now); kind != KindApplied || err != nil {
+		t.Fatalf("the resume settles it applied: %s %v", kind, err)
+	}
+	if n := governanceLines(t, state, "memory/procedural/a.md"); n != 1 {
+		t.Errorf("governance lines after the resume = %d, want exactly 1 (idempotent by run, note and state)", n)
+	}
+
+	// Kill between the write and the governance line: the intent is pending,
+	// the note is already at `after`, no governance line yet.
+	writeRaw(t, root, "memory/procedural/b.md", string(after))
+	intent := Entry{Kind: KindIntent, RunID: "r", ID: "r-2", Job: JobLifecycle, Rel: "memory/procedural/b.md",
+		BeforeHash: Hash(before), AfterHash: Hash(after), After: base64.StdEncoding.EncodeToString(after), Meta: meta}
+	if kind, err := j.Resolve(root, intent, now); kind != KindApplied || err != nil {
+		t.Fatalf("a note found at `after` is applied on resume: %s %v", kind, err)
+	}
+	if n := governanceLines(t, state, "memory/procedural/b.md"); n != 1 {
+		t.Errorf("the resume writes the governance line the pass never reached: %d, want 1", n)
+	}
+	entries, _ = j.Read()
+	if _, pending := Unfinished(entries); len(pending) != 0 {
+		t.Errorf("%d intent(s) still pending after the resume", len(pending))
+	}
+
+	// A kill mid-append leaves a torn governance line; the next line must not
+	// be glued onto the fragment.
+	p := filepath.Join(state, LifecycleJournalName)
+	f, _ := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o644)
+	_, _ = f.WriteString(`{"actor":"policy","rel":"memory/procedural/c.md","to":"dor`)
+	_ = f.Close()
+	if err := EnsureLifecycleJournal(state, "memory/procedural/c.md", "active", "dormant", "silent", "r", now); err != nil {
+		t.Fatal(err)
+	}
+	if n := governanceLines(t, state, "memory/procedural/c.md"); n != 1 {
+		t.Errorf("the line after a torn tail parses on its own: %d, want 1", n)
+	}
+	if n := governanceLines(t, state, "memory/procedural/a.md") + governanceLines(t, state, "memory/procedural/b.md"); n != 2 {
+		t.Errorf("earlier lines untouched: %d, want 2", n)
 	}
 }
