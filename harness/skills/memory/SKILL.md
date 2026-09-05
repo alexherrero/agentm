@@ -1125,6 +1125,24 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/inbox_triage.py \
 - **Don't reach for `--no-auto-apply` as the normal mode.** Auto-apply is the default as of 2026-07-11's second ruling; `--no-auto-apply` is an explicit opt-out for someone who specifically wants to inspect proposals before they apply, not the standing posture.
 - **Don't run `--bulk-review` in batch / non-interactive contexts expecting to hand-pick dispositions.** It already auto-applies everything eligible; use `--confirm` / `--reject` with an explicit `--run-id` + index only when you want to intervene on one specific proposal.
 
+### The calendar — the daily register (filing v2 part 5)
+
+`Calendar/YYYY/` at the vault root is the agent-maintained daily register: one note per day per facet (`YYYY-MM-DD-<facet>.md`, kind `calendar-facet`) for the facets the contract registers — `meetings`, `correspondence`, `docs`, `diary` — created only on a day that had content for it, and a generated day index (`YYYY-MM-DD.md`, kind `day-index`) over the facet notes, the day's episodic traces and the digest. Facet membership is the selection rule; nothing scores importance. The register is discovered at the vault root through the Obsidian witness, never created by the code.
+
+```
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_facets.py --vault <memory-root> quick --text "a diary line for today"
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_facets.py --vault <memory-root> append --facet meetings --text "Sync about the release." [--day YYYY-MM-DD]
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_facets.py --vault <memory-root> correct --facet meetings --day YYYY-MM-DD --text "The release is Thursday, not Friday."
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_index.py --vault <memory-root> --day YYYY-MM-DD [--dry-run]
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_rollups.py --vault <memory-root> [--today YYYY-MM-DD]
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_promotion.py --vault <memory-root>
+```
+
+- **Append-only while open.** A facet note's frontmatter is written once; every later entry is a new timestamped paragraph. The day index regenerates after each append.
+- **Closed days are corrected, never edited.** A day before today refuses an append. `correct` writes a new note dated today (`YYYY-MM-DD-<facet>-corrects-<day>.md`) carrying `supersedes:` back to the original, which stays byte for byte; both days' indexes show the correction.
+- **Rollups arrive on the weekly dream cadence.** `YYYY-Www-review.md` for every closed week and `YYYY-MM-review.md` for the running and previous month, unconditionally — a sparse week reads sparse.
+- **The diary earns its facets.** A label a diary entry opens with (`gym: 40 minutes`) that recurs on three or more distinct days in thirty becomes a proposal in the dream cycle: `standards/storage-rules.md` with one line added under `facets:`, staged for your confirm like every other proposal. Adding a facet is always that edit — never a call-site improvisation.
+
 ### `/memory heat-policy`
 
 Evaluates the heat-based always-load curation policy: entries in `_always-load/` with zero recall hits across enough recorded sessions are demotion candidates; entries elsewhere that have gotten hot enough are promotion candidates. Part G of ROADMAP #46, canonical implementation at `skills/memory/scripts/heat_policy.py` (`run_policy()`), exposed as a `recall.py` sub-command — this row closes the gap E6's dashboard inventory found: the verb has existed and worked since Part G shipped, but was never listed here.
