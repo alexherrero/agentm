@@ -64,6 +64,10 @@ type Entry struct {
 // Journal is an append-only file.
 type Journal struct {
 	Path string
+	// crashBeforeApplied, when set, is a test's stand-in for a kill between
+	// the governance line and the applied line: Commit returns its error
+	// instead of writing the applied line.
+	crashBeforeApplied func() error
 	// EngineStateDir is where the governance journal lives, for the lines a
 	// resume owes.
 	EngineStateDir string
@@ -286,19 +290,34 @@ func (j *Journal) governance(e Entry, now time.Time) error {
 // or journals it skipped when the target changed between the plan and now.
 // The intent line is fsynced before the write begins; a crash in between is
 // what Resolve exists for. Returns the outcome kind it journaled.
+//
+// The order after the write is governance line, then applied line. An
+// applied record therefore implies everything it stands for is on disk:
+// a crash before the governance line leaves the intent pending, and Resolve
+// (which finds the note already at `after`) writes the line the pass owed.
+// The other order left a window — applied fsynced, governance not yet
+// written — that a resume, which only revisits pending intents, could
+// never close.
 func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Time) (string, error) {
 	create := in.Before == nil
-	if err := j.Append(Entry{
+	intent := Entry{
 		Kind: KindIntent, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To, Create: create,
 		BeforeHash: Hash(in.Before), AfterHash: Hash(in.After),
 		After: base64.StdEncoding.EncodeToString(in.After), Summary: in.Summary, Meta: in.Meta,
-	}); err != nil {
+	}
+	if err := j.Append(intent); err != nil {
 		return "", err
 	}
 	skipped := func(note string) (string, error) {
 		return KindSkipped, j.Append(Entry{Kind: KindSkipped, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To, Note: note})
 	}
 	applied := func() (string, error) {
+		if err := j.governance(intent, now); err != nil {
+			return "", err
+		}
+		if j.crashBeforeApplied != nil {
+			return "", j.crashBeforeApplied()
+		}
 		return KindApplied, j.Append(Entry{Kind: KindApplied, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To})
 	}
 	src := filepath.Join(vault, filepath.FromSlash(in.Rel))

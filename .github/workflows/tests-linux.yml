@@ -169,6 +169,13 @@ jobs:
         # (no silent apply on timeout); the shipped job manifest
         # (templates/jobs/dream.yaml) parses and stays dry_run: true.
         run: bash scripts/verify-dreaming.sh
+      - name: check-dreaming-parity (the dreaming binary reproduces the recorded Python pass)
+        # Filing v2 part 6: scripts/fixtures/dreaming-parity/expected.json was
+        # recorded from the Python producers with the clock pinned; the Go
+        # planners must reproduce it and the Python producers must still
+        # produce it. A rewritten recording during the port is a re-audit
+        # trigger by the design's own rule.
+        run: bash scripts/check-dreaming-parity.sh
       - name: verify-declare-a-type (contract edit -> coverage falls -> queue -> climbs)
         # PLAN-dreaming-ledger-and-sources task 9, across the seam rather than
         # inside it: a corpus enriched under one filing contract reads as fully

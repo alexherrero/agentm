@@ -180,7 +180,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	rep.Plan = plan
 	intents = append(intents, plan.Intents...)
 	if opt.Apply {
-		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
 		intents = nil
@@ -192,7 +192,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	rep.Copies = copies
 	intents = append(intents, copies.Intents...)
 	if opt.Apply {
-		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
 		intents = nil
@@ -204,7 +204,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	rep.Refile = refile
 	intents = append(intents, refile.Intents...)
 	if opt.Apply {
-		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
 		intents = nil
@@ -216,7 +216,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	rep.Promote = promote
 	intents = append(intents, promote.Intents...)
 	if opt.Apply {
-		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
 		intents = nil
@@ -242,7 +242,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	rep.Dates = dates
 	intents = append(intents, dates.Intents...)
 	if opt.Apply {
-		if err := applyAll(cfg, journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
 		rep.Outcome = OutcomeApplied
@@ -272,9 +272,11 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 }
 
 // applyAll commits intents through the journal, in order, counting the
-// outcomes on the report; a lifecycle intent also lands in the governance
-// journal so both layers keep one record.
-func applyAll(cfg *config.Config, journal *Journal, root, runID string, intents []Intent, now time.Time, pace time.Duration, rep *Report) error {
+// outcomes on the report. A lifecycle intent also lands in the governance
+// journal so both layers keep one record — Commit writes that line itself,
+// before the applied line, so a crash anywhere leaves a state Resolve can
+// finish.
+func applyAll(journal *Journal, root, runID string, intents []Intent, now time.Time, pace time.Duration, rep *Report) error {
 	for _, in := range intents {
 		rep.seq++
 		id := fmt.Sprintf("%s-%04d", runID, rep.seq)
@@ -286,12 +288,6 @@ func applyAll(cfg *config.Config, journal *Journal, root, runID string, intents 
 			rep.Skipped++
 		} else {
 			rep.Applied++
-			if in.Job == JobLifecycle {
-				from, to := transitionOf(in)
-				if err := EnsureLifecycleJournal(cfg.EngineStateDir, in.Rel, from, to, in.Summary, runID, now); err != nil {
-					return err
-				}
-			}
 		}
 		if pace > 0 {
 			time.Sleep(pace)

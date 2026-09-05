@@ -295,19 +295,23 @@ func appendLifecycleLine(p, rel, from, to, reason, runID string, now time.Time) 
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, err = f.Write(append(blob, '\n'))
-	return err
-}
-
-// transitionOf reads the from/to states an intent encodes, for the
-// governance journal line.
-func transitionOf(in Intent) (from, to string) {
-	from = LifecycleOf(note.Parse(in.Rel, string(in.Before), time.Time{}))
-	to = LifecycleOf(note.Parse(in.Rel, string(in.After), time.Time{}))
-	return
+	// A kill mid-append leaves a torn last line; healed first, as the
+	// mutation journal does, so this line is not glued onto the fragment.
+	if st, err := f.Stat(); err == nil && st.Size() > 0 {
+		last := make([]byte, 1)
+		if _, err := f.ReadAt(last, st.Size()-1); err == nil && last[0] != '\n' {
+			if _, err := f.Write([]byte{'\n'}); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := f.Write(append(blob, '\n')); err != nil {
+		return err
+	}
+	return f.Sync()
 }

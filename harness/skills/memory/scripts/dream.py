@@ -1435,7 +1435,7 @@ def _stage_part5_jobs(vault_path: Path) -> list:
             stage="part5_jobs", unavailable=f"{type(exc).__name__}: {exc}")]
 
 
-def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
+def run_dream(vault_path: Path, *, run_id: str | None = None, skip_ported: bool = False) -> DreamDigest:
     """Run the full thin `/dream` pass once against `vault_path`. Never
     mutates an existing entry — dedup/contradiction/compression stages only
     PROPOSE (see module docstring). Insight candidates are the one
@@ -1488,7 +1488,12 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     lifecycle_proposals, lifecycle_previews = _stage_lifecycle(vault_path)
     proposals.extend(lifecycle_proposals)
     tidying_previews = list(tidying_previews) + list(lifecycle_previews)
-    proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
+    # Filing v2 part 6 (task 6): the suffix-backlog drain is one of the jobs
+    # the dreaming binary carries (`copies`). While the binary is report-only
+    # this stage keeps running; once the binary applies, `skip_ported` hands
+    # the lane over so one layer mutates it, never two.
+    if not skip_ported:
+        proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
     proposals.extend(_stage_opinion_supplement(vault_path))
     proposals.extend(_stage_facet_promotion(vault_path))
 
@@ -1540,6 +1545,10 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
 _ANOMALY_WATCHED_STAGES = ("tidying", "suffix_backlog_drain", "lint", "lifecycle")
 
 
+class _Ported(RuntimeError):
+    """A lane the dreaming binary owns now; this cycle steps aside."""
+
+
 def run_dream_and_auto_apply(
     vault_path: Path,
     *,
@@ -1549,6 +1558,7 @@ def run_dream_and_auto_apply(
     log_root: Path | str | None = None,
     lock_root: Path | str | None = None,
     include_inbox_triage: bool = True,
+    skip_ported: bool = False,
 ):
     """Run `run_dream()` (unchanged), then auto-apply its compression-stage,
     tidying-stage, and link-improvement-stage proposals through
@@ -1596,7 +1606,7 @@ def run_dream_and_auto_apply(
     from revert_log import RevertLog  # noqa: E402
 
     vault_path = Path(vault_path)
-    digest = run_dream(vault_path, run_id=run_id)
+    digest = run_dream(vault_path, run_id=run_id, skip_ported=skip_ported)
 
     if revert_log is None:
         revert_log = RevertLog(vault_path, log_root=log_root, lock_root=lock_root)
@@ -1657,11 +1667,17 @@ def run_dream_and_auto_apply(
     # Filing v2 part 5 (task 4): the register's weekly and monthly reviews
     # ride this cadence unconditionally — every closed week, the running
     # month and the one before — sparse or not. Best-effort like the rest.
-    try:
-        import calendar_rollups  # function-local: keeps dream's import graph flat
-        digest.rollups = calendar_rollups.catch_up(vault_path)
-    except Exception as e:  # pragma: no cover
-        print(f"warning: calendar rollups failed: {e}", file=sys.stderr)
+    # Filing v2 part 6 (task 6): the rollups and the lifecycle policy below
+    # are jobs the dreaming binary carries (`calendar`, `lifecycle`). With
+    # `skip_ported` the binary owns them and this cycle only says so.
+    if skip_ported:
+        digest.rollups = {"written": [], "refreshed": 0, "skipped": "ported: the dreaming binary owns the rollups"}
+    else:
+        try:
+            import calendar_rollups  # function-local: keeps dream's import graph flat
+            digest.rollups = calendar_rollups.catch_up(vault_path)
+        except Exception as e:  # pragma: no cover
+            print(f"warning: calendar rollups failed: {e}", file=sys.stderr)
 
     # Filing v2 part 6 (task 2): the lifecycle axis's automatic lane — the
     # silent sink to dormant, the recalled lift back — capped per cycle,
@@ -1671,6 +1687,8 @@ def run_dream_and_auto_apply(
     # proposal run_dream staged above, waiting on the operator's confirm.
     try:
         import lifecycle_transitions  # function-local: keeps dream's import graph flat
+        if skip_ported:
+            raise _Ported("the dreaming binary owns the lifecycle policy")
         preview = lifecycle_transitions.policy_pass(vault_path, run_id=digest.run_id, apply=False)
         breaker = dream_confirm.check_stage_anomaly(vault_path, "lifecycle-demotion", len(preview.demoted))
         if breaker.tripped:
@@ -1679,6 +1697,9 @@ def run_dream_and_auto_apply(
         else:
             digest.lifecycle = lifecycle_transitions.policy_pass(vault_path, run_id=digest.run_id).as_dict()
         digest.lifecycle["summary"] = lifecycle_transitions.describe(lifecycle_transitions.summarize(vault_path))
+    except _Ported as e:
+        digest.lifecycle = {"demoted": [], "revived": [], "archive_candidates": [], "previews": [], "skipped_by_cap": 0,
+                            "considered": 0, "summary": f"ported: {e}"}
     except Exception as e:  # pragma: no cover
         print(f"warning: lifecycle policy pass failed: {e}", file=sys.stderr)
 
@@ -1767,6 +1788,12 @@ def main(argv: list | None = None) -> int:
              "compression, stays pending for a manual dream_confirm.confirm() call",
     )
     parser.add_argument(
+        "--skip-ported", action="store_true",
+        help="hand the lanes the dreaming binary carries (suffix-backlog drain, calendar rollups, "
+             "lifecycle policy) to the binary: this cycle no longer runs them. Flip together with "
+             "`agentmdream run -apply` in templates/jobs/dreaming.yaml, after the overlap window.",
+    )
+    parser.add_argument(
         "--log-root", default=None,
         help="override RevertLog's journal directory (default: "
              "~/.cache/agentm/dream/revert-log/, XDG_CACHE_HOME-honoring). "
@@ -1785,7 +1812,7 @@ def main(argv: list | None = None) -> int:
         return 1
 
     if args.no_auto_apply:
-        digest = run_dream(vault, run_id=args.run_id)
+        digest = run_dream(vault, run_id=args.run_id, skip_ported=args.skip_ported)
         print(
             f"dream run {digest.run_id}: {len(digest.proposals)} proposal(s), "
             f"{len(digest.insight_candidates)} insight candidate(s) — digest at {digest.digest_path} "
@@ -1795,7 +1822,7 @@ def main(argv: list | None = None) -> int:
 
     digest, batch = run_dream_and_auto_apply(
         vault, run_id=args.run_id, batch_cap=args.batch_cap,
-        log_root=args.log_root, lock_root=args.lock_root,
+        log_root=args.log_root, lock_root=args.lock_root, skip_ported=args.skip_ported,
     )
     print(
         f"dream run {digest.run_id}: {len(digest.proposals)} proposal(s), "

@@ -55,6 +55,13 @@ lookback: 14d
 # wait on an explicit `dream_confirm.confirm()` call; only the
 # compression/"expire" stage auto-applies, per the operator's 2026-07-11
 # ruling (wiki/designs/agentm-experience-and-dreaming.md's amendment log).
+# Filing v2 part 6 (task 6): once the dreaming binary applies
+# (dreaming.yaml's `-apply`), add `--skip-ported` here in the same change —
+# the suffix-backlog drain, the calendar rollups and the lifecycle policy
+# then belong to the binary and this cycle steps aside from them. The stages
+# the binary does not carry (lint repair, compression, the artifact shelf,
+# inbox triage, the needs-review MOC, insights, the confirm-gated proposals)
+# keep running here.
 command: python3 ../harness/skills/memory/scripts/dream.py --batch-cap 25
 
 # Insight-candidate writes land under _dream/insights/ — new, agent-
