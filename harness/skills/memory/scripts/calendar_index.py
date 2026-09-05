@@ -67,6 +67,19 @@ def _phrase(path: Path) -> "tuple[str, int]":
     return first, len(entries)
 
 
+def _corrections_written_on(vault: "Path | str", day: date) -> list:
+    """(facet, corrected-day, path) for the correction notes dated `day`."""
+    root = cf.calendar_root(vault)
+    if root is None:
+        return []
+    out = []
+    for p in sorted((root / f"{day.year:04d}").glob(f"{day.isoformat()}-*-corrects-*.md")):
+        stem = p.stem                              # YYYY-MM-DD-<facet>-corrects-YYYY-MM-DD
+        facet, corrected = stem[11:].rsplit("-corrects-", 1)
+        out.append((facet, corrected, p))
+    return out
+
+
 def episodic_traces(vault: "Path | str", day: date) -> list:
     """(slug, title) for every flat episodic note that belongs to the day —
     by its `day:` field, else by `created:`. None exist before the
@@ -111,7 +124,9 @@ def render(vault: "Path | str", day: date) -> "str | None":
     facets = cf.notes_for_day(vault, day)
     traces = episodic_traces(vault, day)
     digest = digest_embed(vault, day)
-    if not facets and not traces and not digest:
+    corrections_out = _corrections_written_on(vault, day)
+    corrections_in = cf.corrections_of(vault, day)
+    if not facets and not traces and not digest and not corrections_out:
         return None
     key = day.isoformat()
     lines = [
@@ -137,6 +152,14 @@ def render(vault: "Path | str", day: date) -> "str | None":
         phrase, n = _phrase(path)
         count = f"{n} entr{'y' if n == 1 else 'ies'}"
         lines += [f"## {facet}", "", f"- [[{path.stem}]] — {phrase} ({count})" if phrase else f"- [[{path.stem}]] ({count})", ""]
+    if corrections_out:
+        lines += ["## Corrections made today", ""]
+        for facet, corrected, path in corrections_out:
+            phrase, _n = _phrase(path)
+            lines.append(f"- [[{path.stem}]] — corrects {corrected} ({facet}): {phrase}" if phrase else f"- [[{path.stem}]] — corrects {corrected} ({facet})")
+        lines.append("")
+    if corrections_in:
+        lines += ["## Corrected later", ""] + [f"- [[{p.stem}]] ({facet})" for facet, p in corrections_in] + [""]
     if traces:
         lines += ["## Session traces", ""] + [f"- [[{slug}]] — {title}" for slug, title in traces] + [""]
     if digest:
