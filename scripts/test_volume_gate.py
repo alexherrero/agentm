@@ -73,7 +73,25 @@ class TheGate(_Vault):
         self.assertIn("daily cap is 3", r.error)
         self.assertIn("thresholds.daily_write_cap", r.error)
         # Caught at the gate: the corpus holds exactly the cap, nothing more.
-        self.assertEqual(volume_gate.today_count(self.root), 3)
+        self.assertEqual(volume_gate.today_count(self.root, today=_TODAY), 3)
+
+    def test_the_gate_counts_the_day_the_capture_is_stamped_for(self):
+        # The wall clock may have rolled past the day a capture is stamped
+        # for. The gate counts against the stamp — the same day the
+        # writes-per-day reading files the note under — so a flood stamped
+        # for one day is never counted against another (and the gate
+        # cannot open by accident at midnight while a flood is in progress).
+        self._cap(2)
+        then = _NOW - timedelta(days=1)
+        for i in range(2):
+            self.assertTrue(cap.capture(self.root, f"then {i}", now=then).success)
+        r = cap.capture(self.root, "then, one too many", now=then)
+        self.assertFalse(r.success)
+        self.assertIn(then.date().isoformat(), r.error)
+        # Another day is another count: the gate opens again.
+        self.assertTrue(cap.capture(self.root, "and now", now=_NOW).success)
+        self.assertEqual(volume_gate.today_count(self.root, today=then.date()), 2)
+        self.assertEqual(volume_gate.today_count(self.root, today=_NOW.date()), 1)
 
     def test_reflect_counts_a_refusal_apart_from_an_error(self):
         self._cap(2)

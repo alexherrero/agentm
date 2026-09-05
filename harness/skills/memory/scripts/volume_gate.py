@@ -12,8 +12,9 @@ alarm that replaces the pile.
 The cap is the contract's `thresholds.daily_write_cap` — an edit to
 `standards/storage-rules.md`, live at the next write; `0` disables the gate.
 `AGENTM_DAILY_WRITE_CAP` overrides it for a test or an emergency. The count is
-the corpus itself — every memory whose `captured` (else `created`) date is
-today — so the gate cannot drift from the truth and needs no ledger. A
+the corpus itself — every memory whose `captured` (else `created`) date is the
+day of the write, the day the arriving note's own `captured` stamp names — so
+the gate cannot drift from the truth and needs no ledger. A
 refusal is loud: a named error every writer relays verbatim, so a flood is
 caught at the door rather than discovered in the corpus.
 """

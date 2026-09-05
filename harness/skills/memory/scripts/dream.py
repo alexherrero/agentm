@@ -168,6 +168,9 @@ class DreamDigest:
     # by `run_dream_and_auto_apply`, which regenerates the MOC after the
     # folded sub-runs have applied. None on a bare `run_dream()`.
     needs_review: Optional[dict] = None
+    # The calendar's rollups (filing v2 part 5, task 4): what the cadence
+    # wrote or refreshed this cycle. None on a bare `run_dream()`.
+    rollups: Optional[dict] = None
 
 
 # -----------------------------------------------------------------------------
@@ -277,6 +280,33 @@ def _load(entries: list) -> dict:
 # -----------------------------------------------------------------------------
 # Stage 0 — corpus stats (deterministic)
 # -----------------------------------------------------------------------------
+
+def _stage_facet_promotion(vault_path, *, today=None, rules=None) -> list:
+    """Filing v2 part 5, task 5: a diary label recurring on three or more
+    distinct days is a standing facet the registry is missing. Each one is a
+    proposal — the contract file with one line added under `facets:` — that
+    waits on the operator's confirm like dedup and contradiction triage do.
+    Never in AUTO_APPLY_STAGES: the agent does not widen its own registry.
+    Best-effort: a vault without a register proposes nothing."""
+    try:
+        import calendar_promotion  # function-local: keeps dream's import graph flat
+        found = calendar_promotion.proposals(vault_path, today=today, rules=rules)
+    except Exception as e:  # pragma: no cover
+        print(f"warning: facet-promotion detector failed: {e}", file=sys.stderr)
+        return []
+    out = []
+    for label, s, path, new_text in found:
+        out.append(Proposal(
+            stage="facet_promotion",
+            kind="promote-facet",
+            paths=[str(path)],
+            summary=(f"the diary carries `{label}` on {s.days} days ({s.first} … {s.last}, {s.entries} entries; "
+                     f"e.g. {s.sample!r}) — propose registering it as a facet in standards/storage-rules.md; "
+                     "confirm to apply the one-line rules edit"),
+            mutations=[(path, new_text)],
+        ))
+    return out
+
 
 def _stage_corpus_stats(entries: list) -> dict:
     return {
@@ -1202,6 +1232,11 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) ->
             f"{t['proposals']} proposal(s), {t['auto_applied']} auto-applied, "
             f"{t['needs_your_eye']} needs-your-eye · full digest: {t['digest_path']}"
         )
+    if digest.rollups is not None:
+        r = digest.rollups
+        lines.append(f"Calendar rollups: {r.get('refreshed', 0)} review(s) checked, "
+                     f"{len(r.get('written', []))} written ({', '.join(r.get('written', [])) or 'none'})"
+                     + (f" · {r['skipped']}" if r.get("skipped") else ""))
     if digest.needs_review is not None:
         n = digest.needs_review
         reasons = ", ".join(f"{k} {v}" for k, v in (n.get("by_reason") or {}).items()) or "nothing waiting"
@@ -1437,6 +1472,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(tidying_proposals)
     proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
     proposals.extend(_stage_opinion_supplement(vault_path))
+    proposals.extend(_stage_facet_promotion(vault_path))
 
     # The four stages part 5 adds: entity rollups, stub synthesis, backlink
     # footers and the unfiled drain. Discovery-only apart from the footer, and
@@ -1599,6 +1635,15 @@ def run_dream_and_auto_apply(
         digest.needs_review = dict(needs_review.summary(vault_path), moc=str(moc_path))
     except Exception as e:  # pragma: no cover
         print(f"warning: needs-review MOC regeneration failed: {e}", file=sys.stderr)
+
+    # Filing v2 part 5 (task 4): the register's weekly and monthly reviews
+    # ride this cadence unconditionally — every closed week, the running
+    # month and the one before — sparse or not. Best-effort like the rest.
+    try:
+        import calendar_rollups  # function-local: keeps dream's import graph flat
+        digest.rollups = calendar_rollups.catch_up(vault_path)
+    except Exception as e:  # pragma: no cover
+        print(f"warning: calendar rollups failed: {e}", file=sys.stderr)
 
     # The sampled higher-tier audit (task 9): "links" = this cycle's
     # applied link_improvement mutations; "merges" = the folded inbox-
