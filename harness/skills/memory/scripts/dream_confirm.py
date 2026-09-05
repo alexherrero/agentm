@@ -429,6 +429,13 @@ def confirm(
 
         mutations = [(Path(path), content) for path, content in entry["mutations"]]
         entry_id = revert_log.record_and_apply(run_id, entry["stage"], mutations)
+        if entry.get("stage") == "lifecycle" and entry.get("kind") == "archive":
+            # Filing v2 part 6: the confirm surface is the one lane into
+            # `archived`, so the journal line for the move is written here,
+            # by the surface that made it.
+            import lifecycle_transitions  # noqa: E402  (same skill dir)
+            for rel in entry.get("paths") or []:
+                lifecycle_transitions.journal_confirmed_archive(vault_path, rel, run_id=run_id, entry_id=entry_id)
 
         state.setdefault(str(index), {})["confirmed"] = True
         state[str(index)]["entry_id"] = entry_id

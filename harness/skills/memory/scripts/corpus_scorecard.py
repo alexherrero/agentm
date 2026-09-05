@@ -240,6 +240,20 @@ def _writes_reading(vault, *, today=None) -> Reading:
                             note=volume_gate.describe(t))
 
 
+def _lifecycle_reading(vault, *, today=None) -> Reading:
+    """The lifecycle axis, counted (filing v2 part 6): how many memories sit
+    in each state, and what the automatic lane and the confirm surface moved
+    this week — what quietly sank, in one line."""
+    if vault is None or not (Path(vault) / "memory").is_dir():
+        return Reading.unavailable("lifecycle", "no memory/ under the vault",
+                                   source="memory/<class>/ walk + lifecycle journal")
+    import lifecycle_transitions  # same skill dir
+    summary = lifecycle_transitions.summarize(vault, now=today)
+    return Reading.measured("lifecycle", summary["populations"].get("dormant", 0),
+                            source="memory/<class>/ walk + lifecycle journal",
+                            note=lifecycle_transitions.describe(summary))
+
+
 def section_corpus(vault: "Path | None" = None, *, today=None) -> Section:
     """How much memory there is, and how much of it is waiting."""
     s = Section("The corpus", blurb=(
@@ -247,6 +261,7 @@ def section_corpus(vault: "Path | None" = None, *, today=None) -> Section:
     s.readings.append(_class_reading(vault))
     s.readings.append(_needs_review_reading(vault))
     s.readings.append(_writes_reading(vault, today=today))
+    s.readings.append(_lifecycle_reading(vault, today=today))
     try:
         status = _agentmd(["status"])
     except DaemonUnavailable as exc:

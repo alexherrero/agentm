@@ -171,6 +171,10 @@ class DreamDigest:
     # The calendar's rollups (filing v2 part 5, task 4): what the cadence
     # wrote or refreshed this cycle. None on a bare `run_dream()`.
     rollups: Optional[dict] = None
+    # The lifecycle axis's automatic lane (filing v2 part 6, task 2): what sank
+    # to dormant this cycle, what a genuine recall lifted back, what waits on
+    # the confirm surface. None on a bare `run_dream()`.
+    lifecycle: Optional[dict] = None
 
 
 # -----------------------------------------------------------------------------
@@ -587,43 +591,9 @@ def _stage_compression(entries: list, loaded: dict) -> list:
 # second, non-memory lane rather than adding a separate one.
 # -----------------------------------------------------------------------------
 
-_ARCHIVE_THRESHOLD_DAYS = 1825.0  # 5 years
-_ARCHIVE_PREVIEW_DAYS = 1642.5  # 4.5 years — one cycle's heads-up before the move
+# The memory-archive thresholds used to live here; since filing v2 part 6 they
+# are the contract's (`archive_after_days`, read by lifecycle_transitions).
 
-
-def _archived_path(rel_path: Path) -> Path:
-    """Where a tidying-stage archive move for `rel_path` lands: `_archive/`
-    inserted right after the owning tier root, kind-subfolder structure
-    preserved past that point. Two tier roots are real, already-live vault
-    conventions this mirrors exactly:
-
-      personal/<kind>/...            -> personal/_archive/<kind>/...
-      projects/<project>/<kind>/...  -> projects/<project>/_archive/<kind>/...
-
-    `personal/_archive/preferences/*.md` already exists in this exact
-    shape. The `projects/` case is scoped PER-PROJECT (`_archive` inserted
-    after the project segment, not after `projects/` itself) deliberately:
-    `projects/_archive/<project>/` is a different, already-existing
-    feature — whole-*project* retirement (the 2026-07-12 amendment) — and
-    reusing that namespace for a still-active project's individual
-    archived notes would collide with it. Anything outside those two tier
-    roots — including a bare-root file with no parent directory at all,
-    the shape this module's own test fixtures use — falls back to
-    inserting `_archive` right at the root, never after the filename
-    itself (a naive "after the first segment" rule would turn `foo.md`
-    into the nonsensical `foo.md/_archive`)."""
-    parts = rel_path.parts
-    if len(parts) >= 2 and parts[0] == "memory":
-        tier_len = 1
-    elif len(parts) >= 4 and parts[:2] == ("desk", "projects"):
-        # The projects space gained a level at the stage-2 migration
-        # (`projects/<slug>/` -> `desk/projects/<slug>/`), so the tier prefix
-        # that must stay in front of the inserted directory is three segments
-        # rather than two.
-        tier_len = 3
-    else:
-        tier_len = 0
-    return Path(*parts[:tier_len], "_archive", *parts[tier_len:])
 
 
 # -----------------------------------------------------------------------------
@@ -656,7 +626,7 @@ _SHELF_THRESHOLD_DAYS = 365.0  # 1 year
 
 
 def _shelved_path(rel_path: Path) -> Path:
-    """Mirrors `_archived_path`'s tier-root insertion, using `_shelf`
+    """Tier-root insertion (the retired memory-archive lane used the same rule), using `_shelf`
     instead of `_archive` — same two real tier-root conventions, same
     bare-root fallback."""
     parts = rel_path.parts
@@ -737,29 +707,56 @@ def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | 
                         mutations=[(path, None), (vault_path / dest_rel, raw)],
                     )
                 )
-            continue  # artifacts don't participate in the memory-archive lane below
-
-        if elapsed > _ARCHIVE_THRESHOLD_DAYS:
-            dest_rel = _archived_path(rel)
-            proposals.append(
-                Proposal(
-                    stage="tidying",
-                    kind="archive",
-                    paths=[str(rel)],
-                    summary=(
-                        f"{rel} — {elapsed:.0f} days ({elapsed / 365.25:.1f}y) since last genuine "
-                        f"recall access, past the 5y archive threshold — propose move to {dest_rel}"
-                    ),
-                    mutations=[(path, None), (vault_path / dest_rel, raw)],
-                )
-            )
-        elif elapsed > _ARCHIVE_PREVIEW_DAYS:
-            preview_lines.append(
-                f"{rel} — {elapsed:.0f} days ({elapsed / 365.25:.1f}y) silent, crosses the 5y "
-                "archive threshold within roughly the next cycle"
-            )
-
+            continue
+        # A memory (a note with a `kind`) never moves for lifecycle reasons.
+        # Its aging is the lifecycle axis's — `_stage_lifecycle` proposes
+        # `lifecycle: archived` in place, and the automatic lane in
+        # `run_dream_and_auto_apply` sinks it to dormant first (filing v2
+        # part 6). This stage keeps only the artifact shelf above.
     return proposals, preview_lines
+
+
+# -----------------------------------------------------------------------------
+# Stage — the lifecycle axis's confirm surface (filing v2 part 6, task 2). A
+# dormant memory silent past the contract's `archive_after_days` is proposed
+# for `lifecycle: archived` — an in-place frontmatter edit the operator
+# confirms through the flow dedup and contradiction triage already use. The
+# note stays where it is, keeps its links, and answers the explicit archive
+# query; nothing here moves a file or applies anything. Never in
+# AUTO_APPLY_STAGES: entering `archived` is the operator's, by design.
+# -----------------------------------------------------------------------------
+def _stage_lifecycle(vault_path: Path, *, now: str | None = None, rules=None) -> tuple:
+    """Returns (proposals, preview_lines) — the archive proposals and the
+    one-cycle heads-up for dormant notes nearing the line."""
+    import lifecycle_transitions  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
+    if now is None:
+        import datetime
+        now = datetime.date.today().isoformat()
+    report = lifecycle_transitions.policy_pass(vault_path, now=now, rules=rules, apply=False)
+    _dormant_after, archive_after = lifecycle_transitions.thresholds(rules)
+    proposals = []
+    for rel, days in report.archive_candidates:
+        path = Path(vault_path) / rel
+        raw = path.read_text(encoding="utf-8")
+        proposals.append(
+            Proposal(
+                stage="lifecycle",
+                kind="archive",
+                paths=[rel],
+                summary=(
+                    f"{rel} — {days:.0f} days ({days / 365.25:.1f}y) since last genuine recall, dormant past "
+                    f"the archive line ({archive_after:.0f} days) — propose `lifecycle: archived` in place; "
+                    "the note stays where it is and answers the explicit archive query"
+                ),
+                mutations=[(path, lifecycle_transitions.archive_proposal_text(raw, since=now[:10]))],
+            )
+        )
+    previews = [
+        f"{rel} — {days:.0f} days ({days / 365.25:.1f}y) silent and dormant, crosses the archive line "
+        f"({archive_after:.0f} days) within roughly the next cycle"
+        for rel, days in report.previews
+    ]
+    return proposals, previews
 
 
 # -----------------------------------------------------------------------------
@@ -1241,6 +1238,16 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) ->
         n = digest.needs_review
         reasons = ", ".join(f"{k} {v}" for k, v in (n.get("by_reason") or {}).items()) or "nothing waiting"
         lines.append(f"Needs review: {n['total']} note(s) — {reasons} · MOC {n['moc']}")
+    if digest.lifecycle is not None:
+        lc = digest.lifecycle
+        n_prop = len(lc.get("archive_candidates", []))
+        lines.append(
+            f"Lifecycle: {len(lc.get('demoted', []))} sank to dormant, {len(lc.get('revived', []))} revived, "
+            f"{n_prop} archive proposal{'' if n_prop == 1 else 's'} waiting on confirm"
+            + (f" · {lc['skipped_by_cap']} held back by the cap" if lc.get("skipped_by_cap") else "")
+            + (f" · {lc['held_by_breaker']} held by the anomaly breaker" if lc.get("held_by_breaker") else "")
+            + (f" · {lc['summary']}" if lc.get("summary") else "")
+        )
     if digest.sampled_audit is not None:
         a = digest.sampled_audit
         if a["sampled_count"] == 0:
@@ -1258,8 +1265,16 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) ->
             lines.append(f"- `{c.path}`")
         lines.append("")
 
+    if digest.lifecycle is not None and (digest.lifecycle.get("demoted") or digest.lifecycle.get("revived")):
+        lines.append("## What quietly sank (automatic, journaled — a genuine recall lifts a note back)")
+        lines.append("")
+        for rel, days in digest.lifecycle.get("demoted", []):
+            lines.append(f"- `{rel}` — silent {days:.0f} days → dormant")
+        for rel, days in digest.lifecycle.get("revived", []):
+            lines.append(f"- `{rel}` — recalled {days:.0f} days ago → active again")
+        lines.append("")
     if digest.tidying_previews:
-        lines.append("## Archive preview (crosses the 5y threshold next cycle — no action yet)")
+        lines.append("## Archive preview (crosses the archive line next cycle — no action yet)")
         lines.append("")
         for line in digest.tidying_previews:
             lines.append(f"- {line}")
@@ -1470,6 +1485,9 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(_stage_compression(entries, loaded))
     tidying_proposals, tidying_previews = _stage_tidying(vault_path, entries, loaded)
     proposals.extend(tidying_proposals)
+    lifecycle_proposals, lifecycle_previews = _stage_lifecycle(vault_path)
+    proposals.extend(lifecycle_proposals)
+    tidying_previews = list(tidying_previews) + list(lifecycle_previews)
     proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
     proposals.extend(_stage_opinion_supplement(vault_path))
     proposals.extend(_stage_facet_promotion(vault_path))
@@ -1519,7 +1537,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
 # breaker of its own yet (see wiki/designs/agentm-auto-organization.md's
 # "Guarding the automation" section) — task 9's own plan text scopes the
 # extension to "this part's own dedup/lint mutations," not part 2's.
-_ANOMALY_WATCHED_STAGES = ("tidying", "suffix_backlog_drain", "lint")
+_ANOMALY_WATCHED_STAGES = ("tidying", "suffix_backlog_drain", "lint", "lifecycle")
 
 
 def run_dream_and_auto_apply(
@@ -1644,6 +1662,25 @@ def run_dream_and_auto_apply(
         digest.rollups = calendar_rollups.catch_up(vault_path)
     except Exception as e:  # pragma: no cover
         print(f"warning: calendar rollups failed: {e}", file=sys.stderr)
+
+    # Filing v2 part 6 (task 2): the lifecycle axis's automatic lane — the
+    # silent sink to dormant, the recalled lift back — capped per cycle,
+    # journaled, and held by the same anomaly breaker the other automatic
+    # lanes answer to (a report-only pass first, so the breaker reads the
+    # count before anything moves). The archive lane is never this: it is a
+    # proposal run_dream staged above, waiting on the operator's confirm.
+    try:
+        import lifecycle_transitions  # function-local: keeps dream's import graph flat
+        preview = lifecycle_transitions.policy_pass(vault_path, run_id=digest.run_id, apply=False)
+        breaker = dream_confirm.check_stage_anomaly(vault_path, "lifecycle-demotion", len(preview.demoted))
+        if breaker.tripped:
+            anomalies["lifecycle-demotion"] = breaker
+            digest.lifecycle = dict(preview.as_dict(), demoted=[], held_by_breaker=len(preview.demoted))
+        else:
+            digest.lifecycle = lifecycle_transitions.policy_pass(vault_path, run_id=digest.run_id).as_dict()
+        digest.lifecycle["summary"] = lifecycle_transitions.describe(lifecycle_transitions.summarize(vault_path))
+    except Exception as e:  # pragma: no cover
+        print(f"warning: lifecycle policy pass failed: {e}", file=sys.stderr)
 
     # The sampled higher-tier audit (task 9): "links" = this cycle's
     # applied link_improvement mutations; "merges" = the folded inbox-

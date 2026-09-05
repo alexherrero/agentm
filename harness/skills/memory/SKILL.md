@@ -1131,6 +1131,15 @@ Every memory carries one aging axis, `lifecycle:` — `pinned`, `active`, `dorma
 
 `scripts/health/eval_lifecycle_separation.py` measures all of this against a scratch daemon — twin pairs with the same words, an exact sign test, a control with the axis removed — and is the instrument for deciding which states are penalized. Strength is not a knob: the daemon's own sweep found every weight at or below 0.6 ranks the same.
 
+**Who moves a memory along the axis** is tiered by how hard the move is to undo (`lifecycle_transitions.py`). Active ↔ dormant runs automatic on the dreaming cadence: a memory silent past the contract's `thresholds.dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. Every move is journaled at `<engine state dir>/lifecycle-journal.jsonl` (`ts, rel, from, to, actor, reason, run_id`), capped per cycle, and held by the anomaly breaker. Entering `archived` happens only through a confirm surface: a dormant memory past `archive_after_days` (1825) becomes a dream proposal — `lifecycle: archived` written in place, the note never moved — that the operator confirms, or the operator sets it by hand. The digest's "What quietly sank" section and the scorecard's `lifecycle` line read the journal back. Deletion is not on the axis: `purge.py` writes a manifest first (`select`) and deletes exactly that on a typed count (`apply --manifest … --confirm-count N`), journaling each as the operator's; nothing automated can reach it.
+
+```bash
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/lifecycle_transitions.py --vault <memory-root> set memory/semantic/<slug>.md archived --reason "…"
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/lifecycle_transitions.py --vault <memory-root> policy --report-only
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/lifecycle_transitions.py --vault <memory-root> summary
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/purge.py --vault <memory-root> select --lifecycle archived --older-than-days 365
+```
+
 ### The calendar — the daily register (filing v2 part 5)
 
 `Calendar/YYYY/` at the vault root is the agent-maintained daily register: one note per day per facet (`YYYY-MM-DD-<facet>.md`, kind `calendar-facet`) for the facets the contract registers — `meetings`, `correspondence`, `docs`, `diary` — created only on a day that had content for it, and a generated day index (`YYYY-MM-DD.md`, kind `day-index`) over the facet notes, the day's episodic traces and the digest. Facet membership is the selection rule; nothing scores importance. The register is discovered at the vault root through the Obsidian witness, never created by the code.

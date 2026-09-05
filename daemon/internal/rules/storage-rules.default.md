@@ -332,6 +332,7 @@ thresholds:
   decay_eighth_days: 1095
   decay_floor_days: 1825
   decay_floor_weight: 0.0625
+  dormant_after_days: 365
   archive_after_days: 1825
 ```
 
@@ -362,5 +363,8 @@ is cold rather than worthless, and a floorless curve makes it unreachable rather
 than merely unlikely. Only a genuine recall resets the clock; a lint walk, an
 index rebuild or a nightly pass touching a file must never count.
 
-`archive_after_days` is when a silent memory leaves everyday search. It stays
-indexed and answers an explicit archive query. Nothing is deleted.
+`dormant_after_days` is when a silent memory sinks to `dormant` — automatic,
+journaled, and undone by the next genuine recall. `archive_after_days` is when
+a dormant memory is *proposed* for `archived`, which only a confirm applies;
+archived, it stays indexed and answers an explicit archive query. Nothing is
+deleted: a purge is an operator act with a manifest, never a policy outcome.
