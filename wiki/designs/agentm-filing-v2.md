@@ -335,6 +335,37 @@ to schedule. The calendar and `episodic/` remain distinct, cross-linked
 surfaces: the calendar is the operator's agent-assisted memory of the day;
 episodic is the agent's memory of its own sessions.
 
+**Shipped (v9.15.0, 2026-09-04; PR #548).** The four ruled facets write
+under the vault-root `Calendar/YYYY/` through the same Obsidian witness the
+`Projects/` space uses — the vault root when the memory root is nested,
+never conjured (why not create it: the vault root is the operator's, and a
+conjured folder on a flat vault would land in the home directory; re-audit
+if a flat vault ever needs a register — the writer then needs the operator's
+instruction, not a `mkdir`). Facet notes are append-only while the day is
+open; a closed day refuses the append and names the correction, which is a
+new dated note carrying `supersedes:` and `corrects:` back to an original
+that stays byte-identical, listed by both days' indexes. The day index is
+generated from what exists and rewritten byte-stably after every append; it
+already links the day's episodic traces, none of which exist until part 6
+writes them. The rollups ride the Python dream cycle's weekly cadence for
+now — every closed week in the last eight, the running month and the one
+before, sparse weeks reading sparse and empty weeks saying so once (why not
+only the weeks with entries: the review moved from discipline to schedule,
+and an honest empty line is the record; re-audit if empty reviews pile up as
+noise for a register nobody writes to — then gate on any entry in the
+window); the binary takes them over in part 6. The promotion trigger is a
+diary label on three or more distinct days in thirty, and its output is a
+confirm-gated proposal — the contract file with one line added under
+`facets:` — never applied by the agent (why not auto-apply at the recurrence
+gate consolidation uses: the registry is the operator's, per part 1;
+re-audit only if every proposal is confirmed for a quarter, and then toward
+a lighter confirm surface, never toward auto-apply). Two residuals:
+`Calendar/` sits outside the daemon's index scope, so recall does not search
+the register yet; and the operator's own flat daily notes already live in
+`Calendar/`, untouched and unread by the register — whether Obsidian's
+daily-notes template and the register become one thing is a call for part 6
+or later.
+
 #### Lifecycle and the dreaming binary
 
 One frontmatter axis, `lifecycle`, five values. `pinned` never decays.
@@ -625,3 +656,4 @@ layer, which is not retired until parity fixtures pass.
 | 2026-09-03 | Part 3 (corpus-migration) reconciled to what shipped (v9.12.0, PRs #533–#537; applied live the same day). Body: DD§3's map gains the shipped paragraph — the expired cohort was 2,638 across populations, not the inbox's 1,630 (why not purge the inbox alone: the same auto-miner retirements sat in the legacy dirs, `_archive` and 444 supplements, and leaving them as `lifecycle: archived` would have kept a rank-penalized junk corpus on disk against the design's own "maps it away"; re-audit if a future miner produces an expired cohort worth keeping); supplements kept their lane shape under `crystallized/<opinion>/` (why not flatten: the accumulate loop's nine consumers walk lanes, and one resolver moved them all); `external/primos` moved to `Projects/primos/` as a project tree (why not route: it held records, no memory); four record kinds registered (why not re-kind: 45 live records already meant those shapes). Migrations gains the resumable-pass and canonical-instrument invariants and the confirmed-count purge. Residual named for part 4: the Python capture path's pre-v2 vocabulary. | final |
 | 2026-09-04 | Part 4 (write-path) reconciled to what shipped (v9.13.0, PR #540; deployed live the same day). Body: DD§4 gains the shipped paragraph — the soft inbox is a status read that keeps `unfiled` served (why not exclude it: the daemon's own captures are that population and the canary fired when a draft did; re-audit if the enrichment queue ever drains to zero and `unfiled` stops meaning "the daemon's backlog"); the cap grounded in the corpus (200 over a busiest day of 110); the two meanings of `source:` recorded as an open question (why not rename in this part: no writer-side plan carried it; re-audit when the trust tier is read at retrieval time); and the labeled sample's finding that the next work is the miner's, with the operator's four rulings. | final |
 | 2026-09-04 | The write path's follow-up (miner-provenance, v9.14.0, PR #546) reconciled: DD§4's shipped paragraph records the four rulings as shipped. No locked call changed; the miner is upstream of this design's write path, and its rules live in reflect.py's pattern tables (why not fold the miner into the design: it predates filing v2 and serves every part; re-audit when a later labeled sample disowns a "User stated" note again). | final |
+| 2026-09-04 | Part 5 (calendar) reconciled to what shipped (v9.15.0, PR #548; live the same day). Body: DD§5's calendar section gains the shipped paragraph — the register discovered through the Projects witness and never conjured (why not create it: the vault root is the operator's; re-audit if a flat vault needs a register); rollups on the Python dream cadence until the binary takes them over in part 6, empty weeks saying so once (why not skip them: schedule replaced discipline; re-audit if empty reviews become noise); promotion as a confirm-gated rules proposal, never auto-applied (why not auto-apply: the registry is the operator's per part 1; re-audit only toward a lighter confirm). Residuals named: the register outside the daemon's index scope; the operator's flat daily notes coexisting in `Calendar/`. The write path gains one amendment this part's CI found at UTC midnight: the volume gate counts against the day the arriving note's `captured` stamp names, the same day the writes-per-day reading files it under (why not the wall clock: the gate and the reading disagreed about which day a write belonged to, and a flood in progress at midnight found the door open; re-audit if a writer ever backdates `captured` deliberately — the gate would count against the backdated day). | final |

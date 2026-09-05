@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.15.0] - 2026-09-04
+
+Filing v2 part 5 — the calendar ([#548](https://github.com/alexherrero/agentm/pull/548)), live the same day. The vault-root `Calendar/` becomes the agent-maintained daily register the design named: one note per day per facet, created only when the day has content, append-only while the day is open and corrected by a linked entry once it has closed; a generated day index that shows the whole day from one file; weekly and monthly reviews that appear on the dreaming cadence whether or not anyone remembered to want them; and a diary that earns its facets — a label recurring on three distinct days becomes a proposal the operator confirms, never a registry the agent widens on its own. The PR's own checks, crossing UTC midnight, exposed a write-path gap that rode along: the volume gate now counts against the day a capture is stamped for.
+
+### Added
+
+- **The facet writers** (`harness/skills/memory/scripts/calendar_facets.py`)
+  — `Calendar/YYYY/YYYY-MM-DD-<facet>.md` for the contract's registered
+  facets (`meetings`, `correspondence`, `docs`, `diary`), created lazily: the
+  frontmatter written once, every later entry a new timestamped paragraph
+  under the vault mutex. `quick` is the operator's diary line. An unregistered
+  facet is refused naming the registry, and the space is discovered through
+  the same Obsidian witness the `Projects/` space uses — the vault root when
+  the memory root is nested — never conjured.
+- **The generated day index** (`calendar_index.py`) — the bare-date
+  `YYYY-MM-DD.md` lists exactly the facet notes that exist, each with a
+  context phrase and its entry count, the day's episodic traces (none until
+  part 6 writes them) and the system digest as a vault-root-relative embed.
+  Byte-stable regeneration, no index for an empty day, regenerated after
+  every append. Kinds: `day-index` for the index, `calendar-facet` for the
+  notes.
+- **Corrections and the closed-day guard** — an append to a day before today
+  is refused (`ClosedDay`) naming the correction; `correct` writes a new
+  dated note `YYYY-MM-DD-<facet>-corrects-<day>.md` carrying `corrects:` and
+  `supersedes:` back to the original, which stays byte-identical, and both
+  days' indexes list it.
+- **Rollups** (`calendar_rollups.py`) — `YYYY-Www-review.md` for a closed ISO
+  week and `YYYY-MM-review.md` for a month (kind `calendar-review`): the days
+  that had entries linked with their facets and counts, one line naming the
+  days that had none, the corrections made in the period. Sparse reads
+  sparse; an empty week says so once. `catch_up` writes every closed week in
+  the last eight, the running month and the one before, and rewrites nothing
+  that has not changed.
+- **The facet-promotion trigger** (`calendar_promotion.py` and the dream
+  stage `facet_promotion`) — a diary label (`gym: 40 minutes on the rower`)
+  recurring on three or more distinct days inside thirty, and not already a
+  facet, becomes a `Proposal` whose one mutation is `standards/storage-rules.md`
+  with one `  - <label>` line added under `facets:`. Confirm-gated through the
+  existing dream flow; not in `AUTO_APPLY_STAGES`, and never will be.
+- The memory skill's `SKILL.md` gains "The calendar".
+
+### Changed
+
+- **The dream cycle runs the calendar rollups** after the needs-review
+  regeneration, unconditionally; `DreamDigest.rollups` reports what was
+  checked and written.
+- **The volume gate counts the day a capture is stamped for.**
+  `filing_engine.apply` derives the gate's day from the arriving note's
+  `captured` stamp (`_write_day`), the wall clock only when the caller set
+  none — the same day the writes-per-day reading files the note under. Found
+  when #548's checks went red at 01:19 UTC: `test_volume_gate` pins its clock
+  to 2026-09-04, the gate read the runner's date, and the pinned flood walked
+  through. A new test pins the rollover; the fix was proven failing on the
+  old gate and passing under three zones.
+
+### Internal
+
+- Tests: `test_calendar_facets`, `test_calendar_index`,
+  `test_calendar_corrections`, `test_calendar_rollups`,
+  `test_calendar_promotion` (44 tests) plus the volume-gate rollover test;
+  the battery was 44/44 before every task commit.
+- Deployed by advancing the clone — Python only, no daemon rebuild, no
+  migration. The live register resolved to the operator's existing vault-root
+  `Calendar/`, which already holds a daily template and one flat note the
+  register neither reads nor touches; two notes on disk, no promotion
+  candidates yet.
+- Not in this part, recorded as follow-ups: `Calendar/` is outside the
+  daemon's index scope, so recall does not search the register; the episodic
+  traces the day index links arrive with part 6, as does the binary's takeover
+  of the rollups; the older `calendar_layer.py` (an earlier arc's trace
+  writer, no callers) waits for that part.
+
 ## [9.14.0] - 2026-09-04
 
 The miner's provenance and value ([#546](https://github.com/alexherrero/agentm/pull/546)) — the four rulings the operator took on the write path's labeled sample, applied to the reflect miner and pinned by the rows that produced them. The engine had been judged right wherever its input was sane; what it was fed was the problem: a pasted handoff prompt mined as the operator's own words, tool-invocation counts filed as procedures, fix candidates cut into report fragments, an in-the-moment request filed as a standing preference. Applied live the same day, with the 830 existing stubs purged on the operator's confirmed count.
