@@ -56,8 +56,13 @@ schedule: daily
 lookback: 24h
 command: python3 -m health.online_recall_job --max-spend 2.00
 
-# T1 — machine-facing measurement, nothing operator-interruptive. The number
-# reaches the operator through the scorecard, never as a notification.
-tier: T1
+# T3 — the manifest's default and the least operator-facing tier a job may
+# write: machine-facing measurement, nothing operator-interruptive; the number
+# reaches the operator through the scorecard, never as a notification. (T1 is
+# the always-load tier and never a job target: the runner refuses a T1
+# manifest, and a refused manifest stops every job it has. This template
+# carried T1 until 2026-09-05; scripts/test_job_templates.py now loads every
+# template through the runner's own parser.)
+tier: T3
 
 dry_run: false

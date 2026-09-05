@@ -267,8 +267,24 @@ def _walk_vault_paths(vault: Path) -> list[str]:
     return out
 
 
+def _abs_path(vault: Path, rel_path: str) -> Path:
+    """The inverse of `_vault_rel`: a key the walk made relative to the
+    memory root joins onto it; a root-space key (the `Projects/` sibling of a
+    nested memory root, filing-v2 2b) joins onto the vault root instead.
+    Joining every key onto the memory root sent the sibling's notes to a
+    path that does not exist and crashed the nightly cycle in the lint
+    stage."""
+    direct = vault / rel_path
+    if direct.exists():
+        return direct
+    sibling = vault.parent / rel_path
+    if sibling.exists() and _root_projects_dir(vault) is not None:
+        return sibling
+    return direct
+
+
 def _slug_for(vault: Path, rel_path: str) -> str:
-    return _extract_meta_from_file(vault / rel_path)["slug"] or Path(rel_path).stem
+    return _extract_meta_from_file(_abs_path(vault, rel_path))["slug"] or Path(rel_path).stem
 
 
 def _reindex_one(conn: sqlite3.Connection, vault: Path, rel_path: str, mtime: float) -> int:
@@ -276,7 +292,7 @@ def _reindex_one(conn: sqlite3.Connection, vault: Path, rel_path: str, mtime: fl
     Returns the number of edges written. Caller commits."""
     conn.execute("DELETE FROM edges WHERE source_path = ?", (rel_path,))
     try:
-        content = (vault / rel_path).read_text(encoding="utf-8")
+        content = _abs_path(vault, rel_path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return 0
     edges = graph.extract_edges(rel_path, content)
@@ -331,7 +347,7 @@ def rebuild(vault_path: Path | str, *, paths: list[str] | None = None) -> Rebuil
 
         if paths is not None:
             for rel_path in paths:
-                full = vault / rel_path
+                full = _abs_path(vault, rel_path)
                 if not full.is_file():
                     cur = conn.execute("SELECT 1 FROM nodes WHERE path = ?", (rel_path,))
                     if cur.fetchone():
@@ -359,7 +375,7 @@ def rebuild(vault_path: Path | str, *, paths: list[str] | None = None) -> Rebuil
         }
 
         for rel_path in walked:
-            mtime = (vault / rel_path).stat().st_mtime
+            mtime = _abs_path(vault, rel_path).stat().st_mtime
             stored_mtime = stored.get(rel_path)
             if stored_mtime is not None and mtime <= stored_mtime:
                 continue  # unchanged — skip re-extraction
