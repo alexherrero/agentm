@@ -34,6 +34,11 @@ class TheRecording(unittest.TestCase):
         self.assertEqual(list(expected["promote"]), ["shared-target"])
         self.assertEqual(expected["promote"]["shared-target"]["sources"],
                          ["memory/episodic/e1.md", "memory/episodic/e2.md", "memory/episodic/e3.md"])
+        week = expected["calendar"]["week"]["2026-W35"]
+        self.assertIn("- [[2026-08-25]] — meetings (2), diary (1)", week)
+        self.assertIn("Nothing recorded on Mon, Wed, Fri, Sat, Sun.", week)
+        self.assertIn("- [[2026-08-28-meetings-corrects-2026-08-25]] — corrects 2026-08-25 (meetings)", week)
+        self.assertIn("- 2026-W35 — 2 of 7 days with entries", expected["calendar"]["month"]["2026-08"])
 
 
 if __name__ == "__main__":

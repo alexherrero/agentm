@@ -334,6 +334,11 @@ thresholds:
   decay_floor_weight: 0.0625
   dormant_after_days: 365
   archive_after_days: 1825
+  moc_min_members: 5
+  moc_split_at: 40
+  moc_stale_after_days: 90
+  date_gloss_after_days: 30
+  reclassify_sample: 30
 ```
 
 ## What `default_type` is for
@@ -368,3 +373,12 @@ journaled, and undone by the next genuine recall. `archive_after_days` is when
 a dormant memory is *proposed* for `archived`, which only a confirm applies;
 archived, it stays indexed and answers an explicit archive query. Nothing is
 deleted: a purge is an operator act with a manifest, never a policy outcome.
+
+The dreaming binary's maintenance jobs read the last five. A memory type
+earns a map of content at `moc_min_members` notes, the map splits into pages
+past `moc_split_at`, and a map whose newest member is older than
+`moc_stale_after_days` is flagged stale. A note older than
+`date_gloss_after_days` gets its relative dates glossed with the absolute
+ones ("last week (the week of 2026-08-24)"). `reclassify_sample` is how many
+notes the sampled re-classification diff reads when the filing pass version
+changes.

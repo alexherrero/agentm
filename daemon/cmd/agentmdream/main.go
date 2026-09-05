@@ -97,6 +97,7 @@ func cmdRun(args []string) error {
 	every := fs.Duration("every", 7*24*time.Hour, "minimum interval between passes")
 	pace := fs.Duration("pace", 0, "sleep between mutations (tests)")
 	cap := fs.Int("cap", dreaming.DefaultDemotionCap, "at most this many automatic demotions per pass")
+	reclassify := fs.Bool("reclassify", false, "run the sampled re-classification diff this pass even if the filing pass version is unchanged")
 	asJSON := fs.Bool("json", false, "emit the report as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -108,7 +109,7 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	rep, err := dreaming.Run(cfg, dreaming.Options{Apply: *apply, Force: *force, Every: *every, Pace: *pace, Cap: *cap})
+	rep, err := dreaming.Run(cfg, dreaming.Options{Apply: *apply, Force: *force, Every: *every, Pace: *pace, Cap: *cap, Reclassify: *reclassify})
 	if *asJSON {
 		blob, _ := json.MarshalIndent(rep, "", "  ")
 		fmt.Println(string(blob))
@@ -155,6 +156,53 @@ func printReport(rep dreaming.Report) {
 	}
 	for _, m := range p.Candidates {
 		fmt.Printf("  archive candidate %s — %.0f days (the confirm surface's, never this pass's)\n", m.Rel, m.Days)
+	}
+	would := "would "
+	if rep.Mode == "apply" {
+		would = ""
+	}
+	fmt.Printf("copies: %d famil%s (%d deferred) · refile: %d move(s), %d unflag(s), %d blocked · promote: %d new, %d existing\n",
+		len(rep.Copies.Families), map[bool]string{true: "y", false: "ies"}[len(rep.Copies.Families) == 1], rep.Copies.Deferred,
+		len(rep.Refile.Moves), len(rep.Refile.Unflags), len(rep.Refile.Blocked), len(rep.Promote.Promotions), len(rep.Promote.Existing))
+	if rep.Calendar.Skipped != "" {
+		fmt.Printf("calendar: skipped — %s\n", rep.Calendar.Skipped)
+	} else {
+		fmt.Printf("calendar: %d review(s) checked, %s%d written (%s)\n", rep.Calendar.Refreshed, would, len(rep.Calendar.Written),
+			map[bool]string{true: "none", false: strings.Join(rep.Calendar.Written, ", ")}[len(rep.Calendar.Written) == 0])
+	}
+	changed := 0
+	for _, pg := range rep.Mocs.Pages {
+		if pg.Changed {
+			changed++
+		}
+	}
+	fmt.Printf("mocs: %d page(s), %s%d regenerated, %d type(s) below the floor · dates: %s%d gloss(es) across %d aging note(s)\n",
+		len(rep.Mocs.Pages), would, changed, len(rep.Mocs.BelowFloor), would, len(rep.Dates.Glossed), rep.Dates.Aging)
+	fmt.Printf("vocabulary: %d note(s) — %d unrecognized, %d malformed, %d retired\n", rep.Vocabulary.Considered,
+		len(rep.Vocabulary.Unrecognized), len(rep.Vocabulary.Malformed), len(rep.Vocabulary.Retired))
+	for _, f := range rep.Vocabulary.Unrecognized {
+		fmt.Printf("  unrecognized %s: %s %s\n", f.Field, f.Value, f.Rel)
+	}
+	pct := "no previous week"
+	if rep.Trends.ChangePct != nil {
+		pct = fmt.Sprintf("%+d%% week over week", *rep.Trends.ChangePct)
+	}
+	fmt.Printf("trends: week %d vs previous %d (%s), peak %d, cap %d", rep.Trends.Week, rep.Trends.PreviousWeek, pct, rep.Trends.Peak, rep.Trends.Cap)
+	if len(rep.Trends.Flags) == 0 {
+		fmt.Println(" — nothing flagged")
+	} else {
+		fmt.Println()
+		for _, f := range rep.Trends.Flags {
+			fmt.Printf("  ⚠ %s\n", f)
+		}
+	}
+	if rep.Reclassify.Ran {
+		fmt.Printf("reclassify: %s — sampled %d of %d, %d mismatch(es)\n", rep.Reclassify.Reason, rep.Reclassify.Sampled, rep.Reclassify.Available, len(rep.Reclassify.Mismatches))
+		for _, m := range rep.Reclassify.Mismatches {
+			fmt.Printf("  %s: type %s sits in %s, routes to %s (%s)\n", m.Rel, m.Type, m.Class, m.Routed, m.Note)
+		}
+	} else {
+		fmt.Printf("reclassify: not run — %s\n", rep.Reclassify.Reason)
 	}
 }
 
