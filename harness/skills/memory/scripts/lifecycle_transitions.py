@@ -279,17 +279,16 @@ def survey(vault: "Path | str", *, now: "str | None" = None, rules=None) -> list
     return out
 
 
-def policy_pass(vault: "Path | str", *, now=None, rules=None, cap: int = DEMOTION_BATCH_CAP,
-                run_id: "str | None" = None, journal: "Path | str | None" = None,
-                apply: bool = True) -> PolicyResult:
-    """The automatic lane. Sinks silent active memories to `dormant`, lifts
-    dormant memories a genuine recall touched back to `active`, and names —
-    never moves — the dormant ones past `archive_after_days` as archive
-    candidates for the confirm surface. `apply=False` reports without
-    writing (the report-only mode the binary will inherit)."""
+def policy_pass(vault: "Path | str", *, now=None, rules=None, cap: int = DEMOTION_BATCH_CAP) -> PolicyResult:
+    """The automatic lane, read-only: the active memories silent past
+    `dormant_after_days` (what the binary sinks to `dormant`), the dormant ones
+    a genuine recall touched (what it lifts back), and the dormant ones past
+    `archive_after_days` — the archive candidates the confirm surface
+    proposes, never moved by policy. The sinking and the lifting themselves
+    are the dreaming binary's (`agentmdream`, filing v2 part 6), journaled to
+    the same lifecycle journal; nothing here writes."""
     vault = Path(vault)
-    ts = _now_iso(now)
-    today = ts[:10]
+    today = _now_iso(now)[:10]
     dormant_after, archive_after = thresholds(rules)
     res = PolicyResult()
     for rel, state, days in survey(vault, now=today, rules=rules):
@@ -300,15 +299,9 @@ def policy_pass(vault: "Path | str", *, now=None, rules=None, cap: int = DEMOTIO
             if len(res.demoted) >= cap:
                 res.skipped_by_cap += 1
                 continue
-            if apply:
-                transition(vault, rel, "dormant", actor="policy", now=ts, run_id=run_id, rules=rules,
-                           journal=journal, reason=f"silent {days:.0f} days, past {DORMANT_AFTER_KEY} {dormant_after:.0f}")
             res.demoted.append((rel, days))
         elif state == "dormant":
             if days <= dormant_after:
-                if apply:
-                    transition(vault, rel, DEFAULT_STATE, actor="policy", now=ts, run_id=run_id, rules=rules,
-                               journal=journal, reason=f"recalled {days:.0f} days ago, within {DORMANT_AFTER_KEY}")
                 res.revived.append((rel, days))
             elif days > archive_after:
                 res.archive_candidates.append((rel, days))

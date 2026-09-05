@@ -152,28 +152,24 @@ class OneTransition(_Vault):
 
 
 class ThePolicy(_Vault):
-    def test_a_silent_active_memory_sinks_and_a_recent_one_does_not(self):
+    def test_a_silent_active_memory_is_named_to_sink_and_a_recent_one_is_not(self):
         old = self._note("old", lifecycle="active", created=_ago(400))
         fresh = self._note("fresh", lifecycle="active", created=_ago(30))
         bare = self._note("bare", created=_ago(400))  # no axis at all: the default, active
-        r = lt.policy_pass(self.vault, now=NOW, rules=self.rules, run_id="cycle-1")
+        r = lt.policy_pass(self.vault, now=NOW, rules=self.rules)
         self.assertEqual(sorted(rel for rel, _ in r.demoted), sorted([old, bare]))
-        self.assertEqual(self._state(old), "dormant")
-        self.assertEqual(self._state(bare), "dormant")
-        self.assertEqual(self._state(fresh), "active")
-        self.assertIn("lifecycle_since: 2026-09-05", (self.vault / old).read_text(encoding="utf-8"))
-        j = self._journal()
-        self.assertEqual({e["rel"] for e in j}, {old, bare})
-        self.assertTrue(all(e["actor"] == "policy" and "dormant_after_days" in e["reason"] and e["run_id"] == "cycle-1" for e in j))
+        # The pass names; the dreaming binary sinks. Nothing moved, nothing journaled.
+        self.assertEqual([self._state(x) for x in (old, bare, fresh)], ["active", "active", "active"])
+        self.assertEqual(self._journal(), [])
 
-    def test_a_recalled_dormant_memory_is_lifted_back(self):
+    def test_a_recalled_dormant_memory_is_named_to_lift(self):
         rel = self._note("back", lifecycle="dormant", created=_ago(900))
         fm = {"kind": "reference", "slug": "back"}
         lifecycle.record_recall_access(self.vault, "back", fm, rel, today=TODAY)
         r = lt.policy_pass(self.vault, now=NOW, rules=self.rules)
         self.assertEqual([rel for rel, _ in r.revived], [rel])
-        self.assertEqual(self._state(rel), "active")
-        self.assertEqual(self._journal()[0]["to"], "active")
+        self.assertEqual(self._state(rel), "dormant", "the pass names the lift; the binary makes it")
+        self.assertEqual(self._journal(), [])
 
     def test_a_dormant_memory_past_the_archive_line_is_named_never_moved(self):
         rel = self._note("cold", lifecycle="dormant", created=_ago(2000))
@@ -204,11 +200,11 @@ class ThePolicy(_Vault):
             self._note(f"old-{i}", lifecycle="active", created=_ago(500))
         r = lt.policy_pass(self.vault, now=NOW, rules=self.rules, cap=1)
         self.assertEqual((len(r.demoted), r.skipped_by_cap), (1, 2))
-        self.assertEqual(len(self._journal()), 1)
+        self.assertEqual(self._journal(), [])
 
-    def test_report_only_moves_nothing(self):
+    def test_the_pass_never_writes_the_binary_does(self):
         rel = self._note("old", lifecycle="active", created=_ago(500))
-        r = lt.policy_pass(self.vault, now=NOW, rules=self.rules, apply=False)
+        r = lt.policy_pass(self.vault, now=NOW, rules=self.rules)
         self.assertEqual([x for x, _ in r.demoted], [rel])
         self.assertEqual(self._state(rel), "active")
         self.assertEqual(self._journal(), [])
@@ -259,7 +255,7 @@ class TheReading(_Vault):
     def test_summary_counts_states_and_the_weeks_moves(self):
         self._note("p", lifecycle="pinned"); self._note("a1"); self._note("a2", lifecycle="active")
         old = self._note("old", lifecycle="active", created=_ago(400))
-        lt.policy_pass(self.vault, now=NOW, rules=self.rules)
+        lt.transition(self.vault, old, "dormant", actor="policy", now=NOW, rules=self.rules, reason="silent 400 days")
         lt.journal_append({"ts": _ago(20) + "T00:00:00+00:00", "rel": "memory/semantic/x.md", "from": "active",
                            "to": "dormant", "actor": "policy", "reason": "old", "run_id": None})
         s = lt.summarize(self.vault, now=TODAY, rules=self.rules)
@@ -271,16 +267,15 @@ class TheReading(_Vault):
         self.assertIn("sank 1", lt.describe(s))
         self.assertEqual(self._state(old), "dormant")
 
-    def test_the_digest_says_what_quietly_sank(self):
-        r = lt.PolicyResult(demoted=[("memory/semantic/old.md", 402.0)], revived=[("memory/semantic/back.md", 3.0)],
-                            archive_candidates=[("memory/semantic/cold.md", 2000.0)])
-        digest = dream.DreamDigest(run_id="run-x", corpus_stats=dream._stage_corpus_stats([]), proposals=[], insight_candidates=[], lifecycle=r.as_dict())
+    def test_the_digest_reads_the_axis_and_points_at_the_binary(self):
+        proposal = dream.Proposal(stage="lifecycle", kind="archive", paths=["memory/semantic/cold.md"], summary="cold")
+        digest = dream.DreamDigest(run_id="run-x", corpus_stats=dream._stage_corpus_stats([]), proposals=[proposal],
+                                   insight_candidates=[], lifecycle={"summary": "active 3 · dormant 1 · sank 1 this week"})
         text = dream._render_digest(digest)
-        self.assertIn("What quietly sank", text)
-        self.assertIn("memory/semantic/old.md", text)
-        self.assertIn("402 days", text)
-        self.assertIn("memory/semantic/back.md", text)
         self.assertIn("1 archive proposal", text)
+        self.assertIn("active 3", text)
+        self.assertIn("dreaming binary", text)
+        self.assertNotIn("What quietly sank", text)
 
     def test_the_scorecard_carries_the_line(self):
         self._note("a"); self._note("d", lifecycle="dormant", created=_ago(500))
@@ -292,17 +287,18 @@ class TheReading(_Vault):
 
 
 class TheCycle(_Vault):
-    def test_the_policy_rides_the_dream_cycle(self):
+    def test_the_cycle_reads_the_axis_and_never_sinks(self):
         old = self._note("old", lifecycle="active", created=_ago(500))
         digest, _batch = dream.run_dream_and_auto_apply(
             self.vault, run_id="run-cycle", log_root=self.top / "revert", lock_root=self.top / "locks",
             include_inbox_triage=False)
-        self.assertEqual(self._state(old), "dormant")
+        self.assertEqual(self._state(old), "active", "sinking is the dreaming binary's, not this cycle's")
         self.assertIsNotNone(digest.lifecycle)
-        self.assertEqual([x for x, _ in digest.lifecycle["demoted"]], [old])
+        self.assertIn("active", digest.lifecycle["summary"])
         text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("What quietly sank", text)
-        self.assertEqual(self._journal()[0]["run_id"], "run-cycle")
+        self.assertIn("dreaming binary", text)
+        self.assertNotIn("What quietly sank", text)
+        self.assertEqual(self._journal(), [])
 
 
 if __name__ == "__main__":

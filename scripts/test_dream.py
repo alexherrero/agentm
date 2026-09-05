@@ -209,7 +209,7 @@ class OpinionsDirExclusionTests(_DreamTestBase):
         digest = dream.run_dream(self.vault, run_id="run-opinions-exclusion")
         general_stages = {
             "dedup", "contradiction_triage", "compression", "tidying",
-            "link_improvement", "suffix_backlog_drain", "lint",
+            "link_improvement", "lint",
         }
         offenders = [p for p in digest.proposals if p.stage in general_stages]
         self.assertEqual(offenders, [], "no general-corpus stage may touch _opinions/ content")
@@ -345,11 +345,11 @@ class CliTests(_DreamTestBase):
         # call, not just the stages with an item this run -- tidying joined
         # compression in that set (auto-organization part 1, task 3),
         # link_improvement joined both (auto-organization part 2, task 4),
-        # suffix_backlog_drain joined all three (auto-organization part 3,
-        # task 6), and lint joined all four (task 7, wikilink_repair only).
+        # lint joined (task 7, wikilink_repair only); the suffix-backlog drain
+        # left with filing v2 part 6 — the dreaming binary's copies job.
         self.assertEqual(
             auto_expired["stages"],
-            ["compression", "link_improvement", "lint", "suffix_backlog_drain", "tidying"],
+            ["compression", "link_improvement", "lint", "tidying"],
         )
 
         latest = json.loads(
@@ -738,7 +738,8 @@ class CrossStageAutoApplyCollisionTests(_DreamTestBase):
     def test_a_move_and_a_rewrite_of_the_same_path_never_collide(self) -> None:
         # The guard itself, on two synthetic proposals: a tidying move of a
         # path (delete the old, write the shelved copy) and a later
-        # suffix_backlog_drain rewrite of the same old path. The move wins
+        # later auto-applied rewrite of the same old path (lint here; the
+        # drain that first raced it left with filing v2 part 6). The move wins
         # (lower index); the rewrite is skipped and stays pending; no ghost
         # file is resurrected at the old path. The memory-archive lane that
         # first produced this collision retired with part 6, but the guard
@@ -751,7 +752,7 @@ class CrossStageAutoApplyCollisionTests(_DreamTestBase):
         proposals = [
             dream.Proposal(stage="tidying", kind="shelve", paths=["copy.md"], summary="move",
                            mutations=[(old_path, None), (dest, raw)]),
-            dream.Proposal(stage="suffix_backlog_drain", kind="supersede", paths=["copy.md"], summary="rewrite",
+            dream.Proposal(stage="lint", kind="supersede", paths=["copy.md"], summary="rewrite",
                            mutations=[(old_path, raw.replace("status: active", "status: superseded"))]),
         ]
         digest = dream.DreamDigest(run_id="run-collide", corpus_stats=dream._stage_corpus_stats([]),
@@ -763,7 +764,7 @@ class CrossStageAutoApplyCollisionTests(_DreamTestBase):
         self.assertTrue(dest.exists())
         self.assertIn("status: active", dest.read_text(encoding="utf-8"))
         pending = dc.list_pending(self.vault, "run-collide")
-        skipped = [p for p in pending if p.stage == "suffix_backlog_drain"]
+        skipped = [p for p in pending if p.stage == "lint"]
         self.assertEqual(len(skipped), 1)
         self.assertEqual(skipped[0].status, "pending")
 
@@ -873,9 +874,10 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
 
 class MultiStageAnomalyBreakerIntegrationTests(_DreamTestBase):
     """Task 9 verification: the anomaly breaker generalized beyond tidying
-    (part 1) now also watches `suffix_backlog_drain` and `lint` (part 3's
-    own dedup/lint mutations) -- each with its OWN independent history, so
-    a spike in one watched stage never trips or suppresses another."""
+    (part 1) watches `lint` and `lifecycle` too -- each with its OWN
+    independent history, so a spike in one watched stage never trips or
+    suppresses another. (The suffix-backlog drain it once watched left the
+    cycle with filing v2 part 6; the dreaming binary's copies job owns it.)"""
 
     def setUp(self) -> None:
         super().setUp()
@@ -888,136 +890,46 @@ class MultiStageAnomalyBreakerIntegrationTests(_DreamTestBase):
             self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
         )
 
-    def _write_suffix_family(self, index: int) -> None:
-        base = f"family-{index:02d}"
-        body = f"identical legacy content, family {index}\n"
-        self._write(
-            f"memory/reference/{base}.md",
-            f"---\nkind: reference\nslug: {base}\nstatus: active\ncreated: 2025-01-01\n---\n{body}",
-        )
-        self._write(
-            f"memory/reference/{base}_1.md",
-            f"---\nkind: reference\nslug: {base}_1\nstatus: active\ncreated: 2025-06-01\n---\n{body}",
-        )
+    def _write_aged_artifact(self, index: int) -> None:
+        # No `kind`: an operational artifact past a year -- the population the
+        # tidying stage shelves.
+        import datetime
+        created = (datetime.date.today() - datetime.timedelta(days=1900)).isoformat()
+        self._write(f"artifact-{index:02d}.md", f"---\nslug: artifact-{index:02d}\ncreated: {created}\n---\nBody.\n")
 
-    def test_suffix_backlog_drain_spike_trips_independently_of_tidying(self) -> None:
-        (self.vault / "memory" / "reference").mkdir(parents=True)
-        # Seed a "usual" baseline of 1 suffix-family collapse per cycle for
-        # suffix_backlog_drain; tidying gets no history at all (cold start).
+    def test_a_tidying_spike_trips_independently_of_lint(self) -> None:
+        # Seed a "usual" baseline of 1 per cycle for both watched stages.
         for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
-            self.dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 1)
+            self.dc.check_stage_anomaly(self.vault, "tidying", 1)
+            self.dc.check_stage_anomaly(self.vault, "lint", 1)
 
-        # 6 families this cycle -- well past baseline(1) * multiplier(3.0).
+        # 6 shelvable artifacts this cycle -- past baseline(1) * multiplier(3.0);
+        # nothing at all for lint.
         for i in range(6):
-            self._write_suffix_family(i)
+            self._write_aged_artifact(i)
 
         digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-drain-anomaly", revert_log=self.revert_log,
+            self.vault, run_id="run-tidying-anomaly", revert_log=self.revert_log,
         )
 
-        drain_applied = [i for i in batch.items if i["stage"] == "suffix_backlog_drain"]
-        self.assertEqual(drain_applied, [], "nothing should auto-apply from the tripped stage")
+        tidying_applied = [i for i in batch.items if i["stage"] == "tidying"]
+        self.assertEqual(tidying_applied, [], "nothing should auto-apply from the tripped stage")
 
-        pending = self.dc.list_pending(self.vault, "run-drain-anomaly")
-        drain_pending = [p for p in pending if p.stage == "suffix_backlog_drain"]
-        self.assertEqual(len(drain_pending), 6)
-        self.assertTrue(all(p.status == "pending" for p in drain_pending))
+        pending = self.dc.list_pending(self.vault, "run-tidying-anomaly")
+        tidying_pending = [p for p in pending if p.stage == "tidying"]
+        self.assertEqual(len(tidying_pending), 6)
+        self.assertTrue(all(p.status == "pending" for p in tidying_pending))
 
         digest_text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("ANOMALY BREAKER TRIPPED — suffix_backlog_drain", digest_text)
+        self.assertIn("ANOMALY BREAKER TRIPPED — tidying", digest_text)
 
         payload = json.loads((dream.engine_state.engine_state_dir() / "dream-anomaly-latest.json").read_text(encoding="utf-8"))
-        self.assertEqual(len(payload), 1)
-        self.assertEqual(payload[0]["stage"], "suffix_backlog_drain")
+        self.assertEqual([entry["stage"] for entry in payload], ["tidying"])
         self.assertEqual(payload[0]["current_count"], 6)
 
-        # tidying was never watched with any history this cycle -- a cold
-        # start never trips, regardless of the suffix_backlog_drain spike.
-        tidying_flagged = any(entry["stage"] == "tidying" for entry in payload)
-        self.assertFalse(tidying_flagged)
-
-
-class SuffixBacklogDrainTests(_DreamTestBase):
-    """Task 6 verification: a fixture vault with N > 25 suffix families
-    confirms exactly 25 collapse in one cycle, the remainder carrying
-    over; a second cycle against the same fixture processes the
-    remainder and doesn't reprocess already-collapsed families."""
-
-    _N = 30  # > _SUFFIX_BACKLOG_BATCH_CAP (25)
-
-    def setUp(self) -> None:
-        super().setUp()
-        (self.vault / "memory" / "reference").mkdir(parents=True)
-        for i in range(self._N):
-            base = f"family-{i:02d}"
-            body = f"identical legacy content, family {i}\n"
-            self._write(
-                f"memory/reference/{base}.md",
-                f"---\nkind: reference\nslug: {base}\nstatus: active\n"
-                f"created: 2025-01-01\n---\n{body}",
-            )
-            self._write(
-                f"memory/reference/{base}_1.md",
-                f"---\nkind: reference\nslug: {base}_1\nstatus: active\n"
-                f"created: 2025-06-01\n---\n{body}",
-            )
-
-    def _run_cycle(self):
-        entries = dream._iter_entries(self.vault)
-        loaded = dream._load(entries)
-        return dream._stage_suffix_backlog_drain(self.vault, entries, loaded)
-
-    def _apply(self, proposals):
-        for p in proposals:
-            for path, content in p.mutations:
-                path.write_text(content, encoding="utf-8")
-
-    def test_exactly_cap_collapses_remainder_carries_over_no_reprocess(self) -> None:
-        proposals_1 = self._run_cycle()
-        self.assertEqual(len(proposals_1), dream._SUFFIX_BACKLOG_BATCH_CAP)
-        expected_first_batch = {f"memory/reference/family-{i:02d}.md" for i in range(25)}
-        self.assertEqual({p.paths[0] for p in proposals_1}, expected_first_batch)
-        for p in proposals_1:
-            self.assertEqual(p.stage, "suffix_backlog_drain")
-            self.assertEqual(p.kind, "collapse")
-            self.assertEqual(len(p.mutations), 1)
-            copy_path, new_content = p.mutations[0]
-            self.assertTrue(copy_path.name.endswith("_1.md"))
-            self.assertIn("status: superseded", new_content)
-            self.assertIn(f"supersedes: {p.paths[0]}", new_content)
-
-        self._apply(proposals_1)
-
-        # Cycle 2: the remainder (families 25-29) carries over; nothing
-        # already collapsed in cycle 1 is reprocessed.
-        proposals_2 = self._run_cycle()
-        self.assertEqual(len(proposals_2), self._N - dream._SUFFIX_BACKLOG_BATCH_CAP)
-        expected_second_batch = {f"memory/reference/family-{i:02d}.md" for i in range(25, self._N)}
-        self.assertEqual({p.paths[0] for p in proposals_2}, expected_second_batch)
-
-    def test_survivor_is_earliest_by_created_and_stays_unmutated(self) -> None:
-        proposals = self._run_cycle()
-        p = next(p for p in proposals if p.paths[0] == "memory/reference/family-00.md")
-        mutated = {str(path.relative_to(self.vault)).replace("\\", "/") for path, _c in p.mutations}
-        self.assertNotIn("memory/reference/family-00.md", mutated)
-        self.assertIn("memory/reference/family-00_1.md", mutated)
-        # The canonical's own file on disk is untouched by the proposal
-        # (mutations only ever target copies).
-        original = (self.vault / "memory/reference/family-00.md").read_text(encoding="utf-8")
-        self.assertIn("status: active", original)
-
-    def test_always_load_notes_excluded_from_collapse(self) -> None:
-        (self.vault / "_always-load").mkdir(parents=True)
-        self._write(
-            "_always-load/pinned.md",
-            "---\nkind: convention\nslug: pinned\nstatus: active\n"
-            "created: 2020-01-01\n---\nidentical legacy content, family 0\n",
-        )
-        proposals = self._run_cycle()
-        touched = {p for prop in proposals for p in prop.paths}
-        self.assertNotIn("_always-load/pinned.md", touched)
-        family_0 = next(p for p in proposals if p.paths[0] == "memory/reference/family-00.md")
-        self.assertEqual(len(family_0.mutations), 1)  # still just the one _1 copy
+        # lint keeps its own history: a quiet cycle for it never trips,
+        # regardless of tidying's spike.
+        self.assertFalse(any(entry["stage"] == "lint" for entry in payload))
 
 
 class ConnectivityMeterTests(_DreamTestBase):
