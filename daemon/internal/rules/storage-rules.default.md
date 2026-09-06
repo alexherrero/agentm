@@ -176,6 +176,7 @@ routing:
 
 record_kinds:
   - brief
+  - session-trace
   - telemetry
   - session-cost
   - session-brief

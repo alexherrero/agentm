@@ -1139,6 +1139,8 @@ Every memory carries one aging axis, `lifecycle:` — `pinned`, `active`, `dorma
 
 **Its jobs, batch 2** — the maintenance jobs and the report-only checks. `calendar` takes over the register's reviews: the port of `calendar_rollups.py`, byte for byte against the recording, every closed week in the last eight and the running month and the one before, written only when the text changed. `mocs` regenerates one map of content per memory type under `memory/mocs/` (`kind: moc`, a context phrase per link, newest first), created at `thresholds.moc_min_members` (5), split into numbered pages past `moc_split_at` (40), flagged `stale: true` when the newest member is older than `moc_stale_after_days` (90); a page carries its newest member's date as `updated`, so an unchanged membership rewrites nothing, and a type that fell below the floor keeps its page. `dates` glosses relative dates in notes older than `date_gloss_after_days` (30) with the absolute date anchored on the note's own `captured` or `created` day — `last week (the week of 2026-08-24)`, `yesterday (2026-09-04)`, `3 days ago (…)` — additively, never a rewrite, never inside a fence or a code span, never twice; `recently` is unresolvable and left alone. Then the checks, which mutate nothing: the vocabulary audit (every `type:` and `kind:` against the contract's registers: unrecognized, malformed, retired), the class-distribution and volume trends with the design's own re-audit triggers as flags (writes doubling week over week, a day at the cap, a class growing by half since the last pass), and the sampled re-classification diff — `reclassify_sample` (30) notes, seeded, re-routed through the contract and diffed against where they sit — whenever the filing pass version (the enrichment prompt plus the contract's hash) changed since the last pass, or on `-reclassify`.
 
+**Session traces.** `memory/episodic/` holds the agent's memory of its own sessions: one note per session (`kind: session-trace`, `day:`), written at session end by the reflection hook from the transcript and the recall history with no model call — the notes the session captured and recalled as wikilinks, under the first request as its title, capped at 40 links. A session that touched nothing leaves no trace. The calendar's day index links the day's traces; the dreaming binary's promotion job reads their links as its recurrence signal (a target three or more traces link becomes a crystallized entry). `episodic_trace.py <transcript> --session <id>` writes one by hand.
+
 **The takeover (2026-09-05).** The binary ran report-only beside the Python layer through an overlap window — a daily divergence review over a copy of the memory root, every disagreement written verbatim; the one review agreed on every surface and the operator flipped the same day. The flip was `-apply` on `agentmdream run` in `templates/jobs/dreaming.yaml`, and the three lanes the Python cycle carried (the suffix-backlog drain, the calendar rollups, the lifecycle policy's sinking and lifting) left `dream.py` for good: the cycle now reads the lifecycle axis and says what it sees, stages the archive proposals for the confirm surface, and runs the stages the binary does not carry (lint repair, compression, the artifact shelf, inbox triage, the needs-review MOC, insights, the confirm-gated proposals). `scripts/check-dreaming-parity.sh` keeps the recording as the contract in the battery and CI. Rollback is report-only mode — drop `-apply` — since the Python lanes are gone.
 
 ```bash
@@ -1165,6 +1167,32 @@ python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_promotion.py
 - **Closed days are corrected, never edited.** A day before today refuses an append. `correct` writes a new note dated today (`YYYY-MM-DD-<facet>-corrects-<day>.md`) carrying `supersedes:` back to the original, which stays byte for byte; both days' indexes show the correction.
 - **Rollups arrive with the dreaming binary's pass** (`agentmdream`, the `calendar` job — the Python rollups retired with the takeover). `YYYY-Www-review.md` for every closed week and `YYYY-MM-review.md` for the running and previous month, unconditionally — a sparse week reads sparse.
 - **The diary earns its facets.** A label a diary entry opens with (`gym: 40 minutes`) that recurs on three or more distinct days in thirty becomes a proposal in the dream cycle: `standards/storage-rules.md` with one line added under `facets:`, staged for your confirm like every other proposal. Adding a facet is always that edit — never a call-site improvisation.
+
+### `/memory diary`
+
+A diary line for today, or a paragraph on any facet of the daily register (filing v2 part 5; the verb is remainders task 8). The register is the operator's agent-assisted memory of the day — `Calendar/YYYY/YYYY-MM-DD-<facet>.md` — and this is its front door from a session: the agent runs the calendar writer, nothing else.
+
+#### Invocation shape
+
+```
+/memory diary "<text>"                         # → calendar_facets.py --vault <memory-root> quick --text "<text>"
+/memory diary --facet meetings "<text>"        # → calendar_facets.py --vault <memory-root> append --facet meetings --text "<text>"
+/memory diary --facet docs --day YYYY-MM-DD "<text>"   # a past day is refused: use `correct`
+```
+
+| Arg | Required | Meaning |
+|---|---|---|
+| `<text>` | yes | The line. Written as a new timestamped paragraph; a facet note's frontmatter is written once, on its first entry. |
+| `--facet <f>` | no (default `diary` via `quick`) | One of the contract's registered facets (`meetings`, `correspondence`, `docs`, `diary`); an unregistered facet is refused naming the registry — adding one is a rules edit, never a mkdir. |
+| `--day YYYY-MM-DD` | no | Today by default. A day before today is closed and refuses the append; correct it with `calendar_facets.py correct --facet <f> --day <day> --text "…"`, which writes a new dated note carrying `supersedes:` back to the original. |
+
+**Step 1 — Resolve the memory root** the way every other verb does (`--vault-path` → `MEMORY_VAULT_PATH` → the kernel config). The register sits at the vault root beside `Projects/`, discovered through the Obsidian witness, never conjured.
+
+**Step 2 — Run the writer.** `python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_facets.py --vault <memory-root> quick --text "<text>"` for the diary; `append --facet <f> --text "<text>" [--day …]` otherwise. The writer takes the vault mutex, appends, and regenerates the day index.
+
+**Step 3 — Report** the path it printed, or the refusal verbatim (`ClosedDay`, an unregistered facet). Never retry a refused closed day with a different date.
+
+No MCP tool: the daemon serves exactly two (`memory_search`, `memory_capture`), deliberately.
 
 ### `/memory heat-policy`
 

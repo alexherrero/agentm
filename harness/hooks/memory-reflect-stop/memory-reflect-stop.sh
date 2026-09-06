@@ -200,6 +200,13 @@ fi
 # We capture output once + reuse for both the transparency line + stdout
 # pass-through. Running reflect.py --route twice would error on slug
 # collision (HIGH save would refuse the second time).
+# Filing v2 remainders task 7: the session's episodic trace — what it captured
+# and recalled, as links under memory/episodic/ — written before the mine so a
+# slow mine never costs the trace. Best-effort: a trace never blocks session end.
+TRACE_PY="$(_resolve_memory_script episodic_trace.py 2>/dev/null)" || TRACE_PY=""
+if [[ -n "$TRACE_PY" ]]; then
+    "$AGENTM_PY" "$TRACE_PY" "$TRANSCRIPT" --session "$SESSION_ID" >/dev/null 2>&1 || true
+fi
 REFLECT_OUT="$("$AGENTM_PY" "$REFLECT_PY" "$TRANSCRIPT" --summary --route 2>&1)"
 REFLECT_EXIT=$?
 if [[ $REFLECT_EXIT -ne 0 ]]; then
