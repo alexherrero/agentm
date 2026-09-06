@@ -59,15 +59,18 @@ _SKIP_INBOX = {"_index.md", "readme.md", "_readme.md"}
 
 # ── signal counters (each returns int; never raises) ────────────────────────
 def count_inbox(vault: Path) -> int:
-    d = Path(vault) / "memory" / "_inbox"
-    if not d.is_dir():
-        return 0
+    """How many memories are waiting to be looked at.
+
+    Filing v2 removed the staging directory: a capture lands in its class
+    folder carrying `status: unfiled` or a low confidence stamp, and "what
+    needs review" became a query rather than a place. This counted
+    `memory/_inbox/*.md` until 2026-09-06, which has been zero since the
+    directory went — a signal that could never fire, feeding a threshold that
+    could never trip."""
     try:
-        return sum(
-            1 for p in d.glob("*.md")
-            if p.is_file() and p.name.lower() not in _SKIP_INBOX
-        )
-    except OSError:
+        import needs_review
+        return int(needs_review.summary(Path(vault)).get("total", 0))
+    except Exception:
         return 0
 
 

@@ -266,22 +266,26 @@ class MemoryActivityTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_count_inbox_absent_is_zero(self):
+    def _waiting(self, cls, name, line):
+        d = self.vault / "memory" / cls
+        d.mkdir(parents=True, exist_ok=True)
+        (d / name).write_text(f"---\nkind: reference\n{line}\n---\n\nbody\n", encoding="utf-8")
+
+    def test_count_inbox_empty_vault_is_zero(self):
         self.assertEqual(c.count_inbox(self.vault), 0)
 
-    def test_count_inbox_counts_personal_inbox_excludes_index(self):
-        d = self.vault / "memory" / "_inbox"
-        d.mkdir(parents=True)
-        (d / "a.md").write_text("x", encoding="utf-8")
-        (d / "b.md").write_text("x", encoding="utf-8")
-        (d / "_index.md").write_text("x", encoding="utf-8")
+    def test_count_inbox_counts_the_review_queue(self):
+        # Filing v2 removed the staging directory this used to read; the
+        # signal is how many memories are waiting for a judgment.
+        self._waiting("semantic", "a.md", "status: unfiled")
+        self._waiting("procedural", "b.md", "filing_confidence: low")
+        self._waiting("semantic", "settled.md", "status: active")
         self.assertEqual(c.count_inbox(self.vault), 2)
 
-    def test_count_inbox_ignores_root_level_inbox(self):
-        # Confirms this reads personal/_inbox, not <vault>/_inbox.
-        d = self.vault / "_inbox"
+    def test_count_inbox_does_not_read_a_staging_directory(self):
+        d = self.vault / "memory" / "_inbox"
         d.mkdir(parents=True)
-        (d / "a.md").write_text("x", encoding="utf-8")
+        (d / "a.md").write_text("---\nstatus: unfiled\n---\n\nx\n", encoding="utf-8")
         self.assertEqual(c.count_inbox(self.vault), 0)
 
     def test_count_incubator_root_level(self):

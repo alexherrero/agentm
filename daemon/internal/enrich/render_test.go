@@ -115,10 +115,10 @@ func TestLowConfidenceLandsUnfiledWithItsNumber(t *testing.T) {
 }
 
 func TestStatusForStraddlesTheFloor(t *testing.T) {
-	if StatusFor(ConfidenceFloor) != "active" {
+	if StatusFor(DefaultConfidenceFloor, 0) != "active" {
 		t.Error("a note exactly at the floor was queued for review")
 	}
-	if StatusFor(ConfidenceFloor-0.01) != "unfiled" {
+	if StatusFor(DefaultConfidenceFloor-0.01, 0) != "unfiled" {
 		t.Error("a note below the floor was marked active")
 	}
 }
@@ -160,5 +160,38 @@ func TestTheFileJournalAppendsOnePerWrite(t *testing.T) {
 		if !strings.Contains(l, `"previous":"old"`) {
 			t.Errorf("line %d lost what was replaced: %s", i, l)
 		}
+	}
+}
+
+// The design wants a threshold moved by editing the contract, not by a
+// release. The floor rides on the Stamp, and a Stamp with none falls back to
+// the packaged default rather than to zero — a floor of zero would file
+// everything active, which is the one reading silence must never produce.
+func TestTheFloorComesFromTheContract(t *testing.T) {
+	for name, tc := range map[string]struct {
+		floor      float64
+		confidence float64
+		status     string
+	}{
+		"a stricter contract files a middling score for review": {0.8, 0.7, "unfiled"},
+		"a looser contract files the same score active":         {0.5, 0.7, "active"},
+		"exactly at the contract's floor is active":             {0.8, 0.8, "active"},
+		"no contract falls back to the packaged default":        {0, DefaultConfidenceFloor, "active"},
+		"no contract does not mean no floor":                    {0, DefaultConfidenceFloor - 0.01, "unfiled"},
+		"a negative floor is not a floor":                       {-1, DefaultConfidenceFloor - 0.01, "unfiled"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := StatusFor(tc.confidence, tc.floor); got != tc.status {
+				t.Errorf("StatusFor(%v, floor %v) = %q, want %q",
+					tc.confidence, tc.floor, got, tc.status)
+			}
+		})
+	}
+
+	// And the rendered note carries what the stamp said.
+	body := RenderNote(Response{Title: "T", Type: "reference", Confidence: 0.7},
+		Stamp{ConfidenceFloor: 0.8})
+	if !strings.Contains(body, "status: unfiled") || !strings.Contains(body, "filing_confidence: low") {
+		t.Errorf("the stamp's floor did not reach the note:\n%s", body)
 	}
 }

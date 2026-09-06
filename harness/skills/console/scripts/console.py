@@ -395,22 +395,20 @@ _CURATED_SKIP_DIRS = {"_inbox", "_skill-watchlist", "_watchlist", "_archive", "_
 
 
 def count_inbox(vault: Path) -> int:
-    """Real vault layout: `<vault>/personal/_inbox/*.md`.
+    """How many memories are waiting to be looked at.
 
-    NOTE: `harness/skills/memory/scripts/orchestration_briefing.py` carries
-    its own independent `count_inbox()` -- historically it read `<vault>/
-    _inbox` (no `personal/` segment), a mismatch against the live vault
-    layout that this function deliberately avoided by reading the real path
-    directly. That mismatch has since been fixed there too, so the two
-    implementations are now duplicates that happen to agree; this one is
-    left as-is rather than importing the other, to keep console.py's own
-    dependency footprint self-contained."""
-    d = vault / "memory" / "_inbox"
-    if not d.is_dir():
-        return 0
+    Filing v2 removed the staging directory this used to count: a capture
+    lands in its class folder carrying `status: unfiled` or a low confidence
+    stamp, and the review queue became a query. Reading `memory/_inbox/`
+    returned zero from the day the directory went until 2026-09-06.
+
+    NOTE: `orchestration_briefing.py` carries its own `count_inbox()`. The
+    two are duplicates that agree, and console.py keeps its own rather than
+    importing across the seam."""
     try:
-        return sum(1 for p in d.glob("*.md") if p.is_file() and p.name.lower() not in _INBOX_SKIP)
-    except OSError:
+        import needs_review
+        return int(needs_review.summary(vault).get("total", 0))
+    except Exception:
         return 0
 
 

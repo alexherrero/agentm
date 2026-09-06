@@ -168,6 +168,15 @@ def _block_list_items(lines: list[str], key_index: int) -> list[tuple[int, str]]
     return items
 
 
+# The contract's closed transport vocabulary. Written out rather than read
+# from the contract: this gate runs on CI runners with no vault and no
+# resolvable contract, and a rule that silently stops checking when the
+# contract cannot be found is a rule that stops checking on every runner.
+# Changing the vocabulary is an edit to the contract and a line here, which
+# is the right amount of friction for a set that decides a trust tier.
+_TRANSPORTS = frozenset({"operator-direct", "conversation", "external-fetch", "email"})
+
+
 def scan_block(rel: str, block: str, doc: dict) -> list[Finding]:
     """Report every confirmed truncation in one parsed frontmatter block.
 
@@ -224,6 +233,24 @@ def scan_block(rel: str, block: str, doc: dict) -> list[Finding]:
             "a superseded memory carries `supersedes:` — the pointer runs the wrong way: the successor carries "
             "`supersedes:`, the superseded note carries `superseded_by:`",
             line=_line_of("supersedes"),
+        ))
+
+    # One meaning for `source:` (PLAN-source-and-hygiene): it names the
+    # transport a memory arrived by, from the contract's closed vocabulary.
+    # Where the material came from lives in `source_url:` or `source_id:`.
+    # A value outside the vocabulary is the overloaded shape the corpus
+    # carried before the provenance ruling, and the trust tier that reads
+    # this field cannot fire on it.
+    source_v = str(doc.get("source") or "").strip().strip('\'"')
+    if source_v and source_v not in _TRANSPORTS:
+        fetched = source_v.lower().startswith(("http://", "https://"))
+        findings.append(Finding(
+            rel, "source-not-a-transport",
+            f"`source:` holds {source_v[:60]!r}, which is not one of the contract's "
+            f"transports ({', '.join(sorted(_TRANSPORTS))}) — "
+            + ("a fetched page's address belongs in `source_url:`" if fetched
+               else "a reference to what the memory came from belongs in `source_id:`"),
+            line=_line_of("source"),
         ))
 
     for index, line in enumerate(lines):
@@ -471,6 +498,25 @@ _FIXTURES: list[tuple[str, str, list[tuple[str, int | None]]]] = [
         "memory/semantic/superseded-inverted.md",
         "---\nkind: reference\nstatus: superseded\nsupersedes: memory/semantic/winner.md\n---\n\nThe loser pointing at the winner.\n",
         [("inverted-supersession", 4)],
+    ),
+    (
+        # One meaning for `source:`: the transport. `source:` is file line 4.
+        "memory/semantic/source-holds-a-url.md",
+        "---\nkind: reference\nstatus: active\nsource: https://example.com/page\n---\n\nA fetched page.\n",
+        [("source-not-a-transport", 4)],
+    ),
+    (
+        # A reference that is not a URL earns the same finding, pointed at the other field.
+        "memory/semantic/source-holds-a-reference.md",
+        "---\nkind: reference\nsource: idea-incubator:doom (research-complete)\n---\n\nA mined unit.\n",
+        [("source-not-a-transport", 3)],
+    ),
+    (
+        # The contract's shape: the transport in `source:`, the address in its own field.
+        "memory/semantic/source-is-a-transport.md",
+        "---\nkind: reference\nstatus: active\nsource: external-fetch\n"
+        "source_url: https://example.com/page\ntrust: untrusted\n---\n\nA fetched page, filed.\n",
+        [],
     ),
     (
         # A successor's own back-link is the right direction and is not a finding.

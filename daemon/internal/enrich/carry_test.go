@@ -75,10 +75,10 @@ func TestCarryProvenanceStartsTheAgingAxis(t *testing.T) {
 }
 
 func TestFilingConfidenceForStraddlesTheFloor(t *testing.T) {
-	if got := FilingConfidenceFor(ConfidenceFloor); got != "high" {
+	if got := FilingConfidenceFor(DefaultConfidenceFloor, 0); got != "high" {
 		t.Fatalf("at the floor: %q", got)
 	}
-	if got := FilingConfidenceFor(ConfidenceFloor - 0.01); got != "low" {
+	if got := FilingConfidenceFor(DefaultConfidenceFloor-0.01, 0); got != "low" {
 		t.Fatalf("below the floor: %q", got)
 	}
 }

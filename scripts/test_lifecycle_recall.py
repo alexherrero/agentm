@@ -127,6 +127,42 @@ class TheInProcessArm(_Vault):
             self.assertNotIn("lifecycle", r)
 
 
+class TheFilingAxis(_Vault):
+    """An unattended capture is served and ranked below a filed memory —
+    the daemon has demoted it at `note.Weights[ClassStatus]` since the
+    rescope, and the Python arm ranked it at parity until 2026-09-06."""
+
+    def test_an_unfiled_capture_ranks_below_its_filed_twin(self):
+        # The unfiled twin sorts first by path, so a tie would put it on top:
+        # the ordering is the demotion, not the tiebreak.
+        _note(self.vault, "memory/semantic/a-unfiled.md", status="unfiled")
+        _note(self.vault, "memory/semantic/b-filed.md", status="active")
+        paths = self._paths()
+        self.assertIn("memory/semantic/a-unfiled.md", paths,
+                      "an unfiled capture is served, not walled")
+        self.assertEqual(paths, ["memory/semantic/b-filed.md", "memory/semantic/a-unfiled.md"])
+
+    def test_the_filing_demotion_is_visible_on_the_row(self):
+        _note(self.vault, "memory/semantic/a-unfiled.md", status="unfiled")
+        _note(self.vault, "memory/semantic/b-filed.md", status="active")
+        row = next(r for r in self._rows() if r["path"] == "memory/semantic/a-unfiled.md")
+        self.assertEqual(row.get("status"), "unfiled")
+        self.assertIn("decay_score", row)
+
+    def test_an_unfiled_dormant_note_takes_both_demotions(self):
+        # The axes are independent and multiplicative, as they are in the
+        # daemon: a dormant unfiled capture sits below a dormant filed one.
+        _note(self.vault, "memory/semantic/a-both.md", "dormant", status="unfiled")
+        _note(self.vault, "memory/semantic/b-dormant.md", "dormant", status="active")
+        self.assertEqual(self._paths(),
+                         ["memory/semantic/b-dormant.md", "memory/semantic/a-both.md"])
+
+    def test_the_weights_mirror_the_daemons(self):
+        self.assertEqual(recall._STATUS_DEMOTION, 0.60,
+                         "the Python arm mirrors note.Weights[ClassStatus]")
+        self.assertEqual(recall._LIFECYCLE_DEMOTION, 0.30)
+
+
 class TheParserReadsCRLF(unittest.TestCase):
     # The Windows runner writes CRLF; a parser that only knew LF returned no
     # frontmatter and every wall was silently off there.

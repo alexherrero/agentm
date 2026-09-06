@@ -67,13 +67,32 @@ def _get(lines: list, key: str) -> str:
     return ""
 
 
+def _scalar(value: str) -> str:
+    """A value YAML will read back as the string it is.
+
+    `_get` strips the quotes off whatever it reads, so a value that arrived
+    quoted has to leave quoted or the note stops parsing. The corpus has such
+    values: one memory's provenance was `opinion-supplements: good/... (24
+    independent minings)`, and writing that bare turns the frontmatter into a
+    nested mapping."""
+    if value == "":
+        return '""'
+    needs = (": " in value or value.endswith(":") or "#" in value
+             or value != value.strip()
+             or value[0] in "-?:,[]{}#&*!|>'\"%@`")
+    if not needs:
+        return value
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def _set(lines: list, key: str, value: str) -> None:
     prefix = key + ":"
+    rendered = f"{key}: {_scalar(value)}"
     for i, line in enumerate(lines):
         if line.startswith(prefix):
-            lines[i] = f"{key}: {value}"
+            lines[i] = rendered
             return
-    lines.append(f"{key}: {value}")
+    lines.append(rendered)
 
 
 def _drop(lines: list, key: str) -> None:

@@ -293,6 +293,19 @@ _UNSERVED_LIFECYCLES = frozenset({"superseded", "archived"})
 _LIFECYCLE_DEMOTION = 0.30
 _DEMOTED_LIFECYCLES = frozenset({"dormant", "archived", "superseded"})
 
+# The filing axis, as the daemon ranks it (`note.Weights[ClassStatus]`). An
+# unattended capture is served — excluding it would shrink the searched corpus
+# against the indexed one — but it is not the equal of a filed memory, and
+# until now the Python arm was the only place it ranked as one. `inbox` and a
+# `status: superseded` note are walled above rather than demoted, so the two
+# states this reaches are the ones recall actually serves.
+_STATUS_DEMOTION = 0.60
+_DEMOTED_STATUSES = frozenset({"unfiled", "expired"})
+
+
+def _status_of(fm: dict) -> str:
+    return str(fm.get("status") or "").strip().strip("'\"").lower()
+
 
 def _lifecycle_of(fm: dict) -> str:
     return str(fm.get("lifecycle") or "").strip().strip("'\"").lower()
@@ -1577,6 +1590,12 @@ def query(
         demoted = lifecycle_value in _DEMOTED_LIFECYCLES
         if demoted:
             decay_score *= _LIFECYCLE_DEMOTION
+        # The filing axis, multiplicatively and independently: a dormant
+        # unfiled capture takes both, which is what the daemon does too.
+        status_value = _status_of(fm)
+        status_demoted = status_value in _DEMOTED_STATUSES
+        if status_demoted:
+            decay_score *= _STATUS_DEMOTION
 
         combined = fused[path] * decay_score
 
@@ -1592,6 +1611,9 @@ def query(
             entry["decay_score"] = decay_score
         if demoted:
             entry["lifecycle"] = lifecycle_value
+            entry["decay_score"] = decay_score
+        if status_demoted:
+            entry["status"] = status_value
             entry["decay_score"] = decay_score
         merged.append(entry)
     # Sort by combined desc, tiebreak by sim desc then path asc.
