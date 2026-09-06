@@ -268,6 +268,9 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	if err := SaveState(cfg.EngineStateDir, st); err != nil {
 		return rep, err
 	}
+	if err := SaveLastReport(cfg.EngineStateDir, rep); err != nil {
+		return rep, err
+	}
 	return rep, nil
 }
 

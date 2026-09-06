@@ -283,5 +283,59 @@ class FileTests(unittest.TestCase):
                 self.assertIn(" — ", line, f"a silent daemon produced a number: {line}")
 
 
+class TheDreamingBinarySection(unittest.TestCase):
+    """Filing-v2 remainders task 4: the binary's last pass is on the scorecard."""
+
+    def _build(self, tmp: Path):
+        with mock.patch.object(ds, "_agentmd", side_effect=answers(**daemon())):
+            _dated, stable = ds.build(tmp, now=AT, rel=REL, staging=STAGE_AT(tmp), engine_dir=tmp)
+        return stable.read_text(encoding="utf-8")
+
+    def test_no_report_is_a_sentence_not_zeros(self):
+        with tempfile.TemporaryDirectory() as td:
+            body = self._build(Path(td))
+        self.assertIn("## The dreaming binary", body)
+        self.assertIn("No pass recorded", body)
+        self.assertNotIn("| lifecycle |", body)
+
+    def test_the_last_report_renders_job_by_job(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            (tmp / "dreaming").mkdir()
+            (tmp / "dreaming" / "last-report.json").write_text(json.dumps({
+                "run_id": "pass-2026-09-05-e3f8", "mode": "apply", "outcome": "applied",
+                "decision": {"due": True, "reason": "forced"},
+                "plan": {"demoted": [], "revived": [], "archive_candidates": [], "previews": [], "skipped_by_cap": 0, "considered": 718},
+                "copies": {"families": [{"canonical": "a.md", "copies": ["a~dup.md"]}] * 5, "considered": 700, "deferred": 0},
+                "refile": {"moves": [], "unflags": [], "blocked": [], "considered": 687},
+                "promote": {"promotions": [], "existing": [], "sources": 0},
+                "calendar": {"written": ["2026-W35-review.md"] * 10, "refreshed": 10},
+                "mocs": {"pages": [{"changed": True}] * 18 + [{"changed": False}], "below_floor": {}, "considered": 700},
+                "dates": {"glossed": [{"rel": "x.md"}], "aging": 216},
+                "vocabulary": {"considered": 736, "unrecognized": [], "malformed": [], "retired": []},
+                "trends": {"week": 93, "previous_week": 48, "change_pct": 93, "peak": 45, "cap": 200, "flags": []},
+                "reclassify": {"ran": False, "reason": "the filing pass version is unchanged"},
+                "applied": 38, "skipped": 0,
+            }), encoding="utf-8")
+            body = self._build(tmp)
+        self.assertIn("Run `pass-2026-09-05-e3f8` — apply pass, outcome applied; gate: forced", body)
+        self.assertIn("| lifecycle | sank 0, revived 0, archive candidates 0, held by cap 0, considered 718 |", body)
+        self.assertIn("| copies | 5 families collapsed, 0 deferred |", body)
+        self.assertIn("| calendar | 10 written of 10 checked |", body)
+        self.assertIn("| mocs | 18 regenerated of 19 pages |", body)
+        self.assertIn("| dates | 1 glosses across 216 aging notes |", body)
+        self.assertIn("| reclassify | not run — the filing pass version is unchanged |", body)
+        self.assertIn("| applied / skipped | 38 / 0 |", body)
+        self.assertNotIn("No pass recorded", body)
+
+    def test_an_unreadable_report_is_no_report(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            (tmp / "dreaming").mkdir()
+            (tmp / "dreaming" / "last-report.json").write_text("{half", encoding="utf-8")
+            body = self._build(tmp)
+        self.assertIn("No pass recorded", body)
+
+
 if __name__ == "__main__":
     unittest.main()
