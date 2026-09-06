@@ -103,27 +103,62 @@ def _validate(name: str, data: dict, path: Path) -> JobManifest:
     )
 
 
+@dataclass(frozen=True)
+class Refusal:
+    """One manifest the loader would not accept, and why."""
+
+    path: Path
+    reason: str
+
+
+def _manifest_paths(jobs_dir: Path) -> list[Path]:
+    jobs_dir = Path(jobs_dir)
+    if not jobs_dir.is_dir():
+        return []
+    return [p for p in sorted(jobs_dir.iterdir()) if p.suffix in (".yaml", ".yml")]
+
+
+def _load_one(p: Path) -> JobManifest:
+    try:
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        raise ManifestError(f"{p}: invalid YAML ({e})") from e
+    if not isinstance(data, dict):
+        raise ManifestError(f"{p}: manifest body must be a mapping")
+    return _validate(p.stem, data, p)
+
+
 def load_manifests(jobs_dir: Path) -> list[JobManifest]:
     """Read every `*.yaml`/`*.yml` in `jobs_dir` into a `JobManifest`.
 
     Returns `[]` if `jobs_dir` doesn't exist (a fresh install with no jobs
     configured yet — not an error). Raises `ManifestError` on the first
-    malformed manifest found, naming the offending file.
+    malformed manifest found, naming the offending file — the strict, all-or-
+    nothing contract. The runner's cycle uses `load_manifests_lenient` since
+    filing-v2 remainders task 1; this one stays for `--strict` and for callers
+    that want a single answer.
     """
     if yaml is None:
         raise ManifestError("PyYAML not available — cannot parse job manifests")
-    jobs_dir = Path(jobs_dir)
-    if not jobs_dir.is_dir():
-        return []
-    out: list[JobManifest] = []
-    for p in sorted(jobs_dir.iterdir()):
-        if p.suffix not in (".yaml", ".yml"):
-            continue
+    return [_load_one(p) for p in _manifest_paths(jobs_dir)]
+
+
+def load_manifests_lenient(jobs_dir: Path) -> tuple[list[JobManifest], list[Refusal]]:
+    """Every manifest that loads, and every one that does not, with its reason.
+
+    One bad file used to stop every scheduled job on the machine, with a
+    traceback in a launchd log as the only trace (2026-09-05: a `tier: T1`
+    and a half-quoted command, each alone enough). Now a refused manifest is
+    data — in the cycle report, the session brief and the doctor — and the
+    jobs that load still run.
+    """
+    if yaml is None:
+        raise ManifestError("PyYAML not available — cannot parse job manifests")
+    loaded: list[JobManifest] = []
+    refused: list[Refusal] = []
+    for p in _manifest_paths(jobs_dir):
         try:
-            data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError as e:
-            raise ManifestError(f"{p}: invalid YAML ({e})") from e
-        if not isinstance(data, dict):
-            raise ManifestError(f"{p}: manifest body must be a mapping")
-        out.append(_validate(p.stem, data, p))
-    return out
+            loaded.append(_load_one(p))
+        except ManifestError as e:
+            refused.append(Refusal(path=p, reason=str(e)))
+    return loaded, refused

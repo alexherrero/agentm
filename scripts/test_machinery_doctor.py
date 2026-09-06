@@ -730,5 +730,46 @@ class RealRepoSmokeTests(unittest.TestCase):
         self.assertIn("summary", payload)
 
 
+class RunnerCycleRowTests(unittest.TestCase):
+    """Filing-v2 remainders task 1: the doctor reads the runner's last cycle."""
+
+    def test_the_three_states(self):
+        import json as _json
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            row = md.check_runner_cycle(state_root=root)
+            self.assertEqual(row.status, "UNVERIFIED")
+            (root / "last-cycle.json").write_text(_json.dumps({
+                "at": 1000.0, "loaded": 2, "refused": [{"file": "dreaming.yaml", "reason": "invalid YAML"}],
+                "outcomes": [{"job": "dream", "ran": True}]}), encoding="utf-8")
+            row = md.check_runner_cycle(state_root=root)
+            self.assertEqual(row.status, "FAIL")
+            self.assertIn("dreaming.yaml", row.detail)
+            self.assertIn("every other job still ran", row.detail)
+            (root / "last-cycle.json").write_text(_json.dumps({
+                "at": 1000.0, "loaded": 2, "refused": [], "outcomes": [{"job": "dream", "ran": True}, {"job": "x", "ran": False}]}),
+                encoding="utf-8")
+            row = md.check_runner_cycle(state_root=root)
+            self.assertEqual(row.status, "OK")
+            self.assertIn("loaded 2 manifest(s), 1 ran", row.detail)
+
+    def test_a_siblings_refusal_is_not_this_jobs_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / "templates" / "jobs").mkdir(parents=True)
+            (repo / ".harness" / "jobs").mkdir(parents=True)
+            good = "schedule: daily\nlookback: 6h\ncommand: true\ntier: T3\n"
+            (repo / "templates" / "jobs" / "vault-lint.yaml").write_text(good, encoding="utf-8")
+            (repo / ".harness" / "jobs" / "vault-lint.yaml").write_text(good, encoding="utf-8")
+            (repo / ".harness" / "jobs" / "broken.yaml").write_text("schedule: daily\ncommand: [\n", encoding="utf-8")
+            row = md.check_runner_job(repo, "vault-lint", state_root=repo / "state")
+            self.assertNotEqual(row.status, "FAIL", row.detail)
+            # This job's own manifest refused: its row says so, with the reason.
+            (repo / ".harness" / "jobs" / "vault-lint.yaml").write_text(good.replace("T3", "T1"), encoding="utf-8")
+            row = md.check_runner_job(repo, "vault-lint", state_root=repo / "state")
+            self.assertEqual(row.status, "FAIL")
+            self.assertIn("never a job target", row.detail)
+
+
 if __name__ == "__main__":
     unittest.main()

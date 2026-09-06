@@ -30,6 +30,12 @@ def _marker_path(job_name: str, state_root: Optional[Path]) -> Path:
     return _state_dir(state_root) / f"{job_name}.json"
 
 
+def cycle_summary_path(state_root: Optional[Path] = None) -> Path:
+    """Where the runner leaves its last cycle's own account — what loaded,
+    what it refused, what ran. The session brief and the doctor read it."""
+    return _state_dir(state_root) / "last-cycle.json"
+
+
 def read_marker(job_name: str, *, state_root: Optional[Path] = None) -> dict:
     """`{}` if the job has never run; else the last-written marker dict."""
     p = _marker_path(job_name, state_root)

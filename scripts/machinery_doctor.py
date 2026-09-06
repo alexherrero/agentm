@@ -274,10 +274,12 @@ def check_runner_job(repo: Path, job_name: str, *, state_root: Optional[Path] = 
             f"(copy to {registered_path} to enable)",
             last_fired=last_run,
         )
-    try:
-        jobs = manifest_mod.load_manifests(registered_path.parent)
-    except manifest_mod.ManifestError as e:
-        return Check(job_name, "FAIL", f"registered manifest fails to parse: {e}")
+    jobs, refusals = manifest_mod.load_manifests_lenient(registered_path.parent)
+    own = [r for r in refusals if Path(r.path).name == registered_path.name]
+    if own:
+        # This job's own manifest is the refused one. A sibling's refusal is
+        # the `runner-cycle` row's to report, not this job's.
+        return Check(job_name, "FAIL", f"registered manifest refused: {own[0].reason}")
     job = next((j for j in jobs if j.name == job_name), None)
     if job is None:
         return Check(job_name, "FAIL", f"{registered_path} present but not found by the loader")
@@ -288,6 +290,30 @@ def check_runner_job(repo: Path, job_name: str, *, state_root: Optional[Path] = 
 
 
 # ── job config completeness (installer data-loss regression, 2026-08-02) ────
+def check_runner_cycle(*, state_root: Optional[Path] = None) -> Check:
+    """The last runner cycle's own account: what loaded, what it refused,
+    what ran. One refused manifest used to stop every job with a traceback
+    in a launchd log as the only trace (2026-09-05); the cycle leaves this
+    summary now, and the session brief reads the same file."""
+    p = state_mod.cycle_summary_path(state_root)
+    if not p.is_file():
+        return Check("runner-cycle", "UNVERIFIED", f"no cycle recorded yet at {p}")
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return Check("runner-cycle", "FAIL", f"{p}: unreadable ({e})")
+    at = data.get("at") if isinstance(data, dict) else None
+    refused = (data.get("refused") if isinstance(data, dict) else None) or []
+    if refused:
+        names = ", ".join(str(r.get("file")) for r in refused if isinstance(r, dict))
+        return Check("runner-cycle", "FAIL",
+                     f"the last cycle refused {len(refused)} manifest(s): {names} — every other job still ran",
+                     last_fired=at)
+    outcomes = (data.get("outcomes") if isinstance(data, dict) else None) or []
+    ran = sum(1 for o in outcomes if isinstance(o, dict) and o.get("ran"))
+    return Check("runner-cycle", "OK", f"loaded {data.get('loaded', 0)} manifest(s), {ran} ran, last cycle", last_fired=at)
+
+
 # `check_runner_job()` above asks whether a job is REGISTERED. That is not the
 # same question as whether it can do anything. The two autonomy delivery
 # channels read their settings from `<prefix>/.agentm-config.json`; strip those
@@ -833,6 +859,7 @@ def run_inventory(
             note="see crickets src/developer-safety/hooks/coauthor-guard/hook.md",
         ),
     ]
+    checks.append(check_runner_cycle(state_root=state_root))
     for job_name in job_names(repo):
         checks.append(check_runner_job(repo, job_name, state_root=state_root))
     for job_name, keys_label in _JOB_CONFIG_CHECKS:
