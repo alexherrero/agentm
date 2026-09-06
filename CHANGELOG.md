@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.18.0] - 2026-09-05
+
+One vocabulary for the superseded relation ([#566](https://github.com/alexherrero/agentm/pull/566), [#567](https://github.com/alexherrero/agentm/pull/567)) — the decision the filing-v2 remainders handed over, ruled and built the same day. A superseded memory carries `lifecycle: superseded` + `superseded_by:` naming its successor; `supersedes:` is only ever the successor's back-link; both recall paths wall a superseded memory like an archived one and answer the explicit query with it demoted; the gate refuses the inverted shape; the live corpus migrated.
+
+### Changed
+
+- **Every writer converges on the contract's shape** — the dreaming binary's
+  copies job, the dedup merge, the inbox collapse, the correction flow,
+  `evolve.py` and the sources layer write `lifecycle: superseded` +
+  `superseded_by:` on the loser and never a loser-side `supersedes:`; `status`
+  is untouched, or `active` where the loser leaves the inbox pool. The dream
+  layer's old shape had the pointer on the loser, running the wrong way, and
+  the compactor read a dedup loser as a chain head. The copies job and the
+  dedup and contradiction stages skip notes the axis already settled; a copies
+  intent carries its transition, so the lifecycle journal records a collapse
+  like a sink.
+- **One effect for one relation** — the daemon's wall (`wallUnserved`) covers
+  `lifecycle: superseded` beside `archived`; `include_archived` (MCP) and
+  `-include-archived` (CLI) lift both; the search outcome reports
+  `superseded_hidden`. `recall.py` serves a superseded note on the explicit
+  query, demoted, instead of never.
+- **The parity recording, edited on purpose** — the copies entries' `after`
+  texts are the new patcher's; the fixture README records the one deliberate
+  change to a job's decisions since the recording.
+
+### Added
+
+- **`supersession_migrate.py`** — report, then `--apply`: a memory with
+  `status: superseded` and/or a loser-side `supersedes:` becomes the
+  contract's shape, journaled as actor `migration`; idempotent. The successor is resolved
+  inside the vault (a relative path, an absolute path under the root written
+  relative, a note found by stem or slug; a source version kept verbatim), and
+  a note whose successor is gone is revived rather than walled behind
+  nothing; a note with no pointer is named, never guessed. It walks the whole
+  vault, the population the gate scans. Live: 9 converted, 3 revived, one
+  telemetry digest outside `memory/` converted.
+- **The gate knows the shape** — `check-vault-frontmatter` refuses a superseded
+  memory without a successor (`missing-successor`) or carrying `supersedes:`
+  (`inverted-supersession`); `vault_lint` resolves `superseded_by:` (a path, a
+  slug, or the sources layer's `<id> at <version>`) and treats a note's own
+  successor as the lineage its dangling check asks for; a back-link to a
+  target that moved on the lifecycle axis is no longer "still active".
+- The lifecycle separation harness measures superseded twins beside archived
+  ones (walled on the everyday query, back demoted on the explicit one).
+
+### Internal
+
+- `agentm-filing-v2` DD§6 amended with the ruling; the live contract's two
+  prose lines mirrored.
+
 ## [9.17.0] - 2026-09-05
 
 Filing v2 remainders ([#560](https://github.com/alexherrero/agentm/pull/560), [#561](https://github.com/alexherrero/agentm/pull/561), [#562](https://github.com/alexherrero/agentm/pull/562), [#563](https://github.com/alexherrero/agentm/pull/563)) — the loose ends the six-part arc left behind, landed the same day. A bad job manifest no longer stops every scheduled job and is surfaced where the operator looks; the dreaming binary's passes show on the scorecard; the register is in the dense arm; `memory/episodic/` holds the agent's own session traces so the promotion job has sources; quick capture has a verb.
