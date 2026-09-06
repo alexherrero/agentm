@@ -1070,5 +1070,29 @@ class BrowseSurfaceCountsTests(_DreamTestBase):
         self.assertEqual(digest.corpus_stats["browse_archived_count"], 1)
 
 
+class SupersededNotesStayOutOfTheStages(_DreamTestBase):
+    """PLAN-superseded-vocabulary: a note the axis already settled is not a
+    dedup candidate against its own successor, and never proposed again."""
+
+    def test_a_superseded_note_is_never_matched_against_its_successor(self) -> None:
+        body = "The server retries three times on timeout.\n"
+        self._write("winner.md", "---\nslug: retries\nkind: fix\nstatus: active\n---\n" + body)
+        self._write("loser.md", "---\nslug: retries-old\nkind: fix\nstatus: active\nlifecycle: superseded\nsuperseded_by: winner.md\n---\n" + body)
+        digest = dream.run_dream(self.vault, run_id="run-superseded-skip")
+        self.assertEqual([p for p in digest.proposals if p.stage == "dedup"], [])
+
+    def test_the_merge_writes_the_contracts_shape(self) -> None:
+        self._write("a.md", "---\nslug: a\nkind: fix\nstatus: active\n---\nThe server retries three times on timeout.\n")
+        self._write("b.md", "---\nslug: b\nkind: fix\nstatus: active\n---\nThe server retries three times on timeout!\n")
+        digest = dream.run_dream(self.vault, run_id="run-merge-shape")
+        merges = [p for p in digest.proposals if p.stage == "dedup"]
+        self.assertEqual(len(merges), 1)
+        (_, _merged), (_, superseded) = merges[0].mutations
+        self.assertIn("lifecycle: superseded", superseded)
+        self.assertIn("superseded_by: ", superseded)
+        self.assertNotIn("status: superseded", superseded)
+        self.assertNotIn("supersedes:", superseded)
+
+
 if __name__ == "__main__":
     unittest.main()

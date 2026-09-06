@@ -220,9 +220,10 @@ class MergeProposalTests(VaultCase):
         self.assertEqual(len(p["mutations"]), 2,
                          "three notes merge into one survivor and two superseded")
         for path, content in p["mutations"]:
-            self.assertIn("status: superseded", content)
-            self.assertIn("supersedes: m/a.md", content,
+            self.assertIn("lifecycle: superseded", content)
+            self.assertIn("superseded_by: m/a.md", content,
                           "the survivor is the first by path order")
+            self.assertNotIn("supersedes:", content)
             self.assertNotIn("m/a.md", Path(path).name)
 
     def test_superseding_preserves_the_body(self):
@@ -247,7 +248,8 @@ class MergeProposalTests(VaultCase):
         head = content.split("---")[1]
         self.assertEqual(head.count("status:"), 1,
                          f"two status keys in one frontmatter block:\n{head}")
-        self.assertNotIn("status: active", head)
+        self.assertEqual(head.count("lifecycle:"), 1)
+        self.assertIn("status: active", head, "status stays; the axis carries the supersession")
 
     def test_a_merge_of_one_note_is_refused(self):
         self.v.write("m/a.md", "---\nstatus: active\n---\n\nbody\n")

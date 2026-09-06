@@ -444,15 +444,23 @@ def _browse_surface_counts(vault_path: Path, entries: list) -> dict:
 # Stage 1 — dedup
 # -----------------------------------------------------------------------------
 
+def _is_live(fm: dict) -> bool:
+    """A note the mutation stages may still act on: not a tombstone by
+    `status`, not settled by the lifecycle axis (`superseded`, `archived`)."""
+    status = str(fm.get("status") or "").strip().strip("'\"").lower()
+    lifecycle = str(fm.get("lifecycle") or "").strip().strip("'\"").lower()
+    return status not in ("superseded", "expired", "deleted") and lifecycle not in ("superseded", "archived")
+
+
 def _stage_dedup(entries: list, loaded: dict) -> list:
     proposals = []
     matched = set()
     for i, a in enumerate(entries):
-        if a in matched:
+        if a in matched or not _is_live(loaded[a][0]):
             continue
         _, body_a, raw_a = loaded[a]
         for b in entries[i + 1:]:
-            if b in matched:
+            if b in matched or not _is_live(loaded[b][0]):
                 continue
             _, body_b, raw_b = loaded[b]
             ratio = difflib.SequenceMatcher(None, body_a, body_b).ratio()
@@ -460,7 +468,9 @@ def _stage_dedup(entries: list, loaded: dict) -> list:
                 continue
             merged_body = body_a.rstrip("\n") + "\n" + body_b.rstrip("\n") + "\n"
             merged_content = raw_a[: raw_a.rfind(body_a)] + merged_body if body_a in raw_a else merged_body
-            superseded_content = _patch_frontmatter(raw_b, {"status": "superseded", "supersedes": str(a)})
+            # The contract's shape for the relation (PLAN-superseded-vocabulary):
+            # the loser names its successor; `supersedes:` is the winner's.
+            superseded_content = _patch_frontmatter(raw_b, {"status": "active", "lifecycle": "superseded", "superseded_by": str(a)})
             proposals.append(
                 Proposal(
                     stage="dedup",
@@ -483,7 +493,7 @@ def _stage_contradiction_triage(entries: list, loaded: dict) -> list:
     for p in entries:
         fm, _, _ = loaded[p]
         slug = fm.get("slug")
-        if not slug:
+        if not slug or not _is_live(fm):
             continue
         by_slug.setdefault(slug, []).append(p)
 

@@ -62,8 +62,8 @@ class TheReading(unittest.TestCase):
         self.assertFalse(recall._unserved({"lifecycle": "archived"}, include_archive=True))
         self.assertTrue(recall._unserved({"lifecycle": '"Archived"'}), "quoted, cased value still reads")
         self.assertTrue(recall._unserved({"lifecycle": "superseded"}))
-        self.assertTrue(recall._unserved({"lifecycle": "superseded"}, include_archive=True),
-                        "the explicit archive query lifts the archive wall, never the successor's")
+        self.assertFalse(recall._unserved({"lifecycle": "superseded"}, include_archive=True),
+                         "the explicit archive query brings a superseded note back, demoted beside its successor")
         for st in recall._UNSERVED_STATUSES:
             self.assertTrue(recall._unserved({"status": st, "lifecycle": "active"}), st)
 
@@ -107,10 +107,12 @@ class TheInProcessArm(_Vault):
         self.assertEqual(self._paths(), [])
         self.assertEqual(self._paths(include_archive=True), ["memory/semantic/only.md"])
 
-    def test_superseded_never_competes_even_on_the_explicit_query(self):
+    def test_a_superseded_note_leaves_everyday_recall_and_comes_back_demoted_on_the_explicit_query(self):
+        # PLAN-superseded-vocabulary: one effect for one relation, like `archived`.
         _note(self.vault, "memory/semantic/a-old.md", "superseded")
         _note(self.vault, "memory/semantic/b-new.md", "active")
-        self.assertEqual(self._paths(include_archive=True), ["memory/semantic/b-new.md"])
+        self.assertEqual(self._paths(), ["memory/semantic/b-new.md"])
+        self.assertEqual(self._paths(include_archive=True), ["memory/semantic/b-new.md", "memory/semantic/a-old.md"])
 
     def test_pinned_and_active_twins_tie(self):
         _note(self.vault, "memory/semantic/a-pinned.md", "pinned")

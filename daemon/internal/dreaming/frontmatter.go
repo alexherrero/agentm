@@ -190,3 +190,9 @@ func LiveFingerprint(content string) string {
 	}
 	return Fingerprint(body)
 }
+
+// ParseFrontmatterValue is one key's value from the block, "" when absent.
+func ParseFrontmatterValue(content, key string) string {
+	fm, _ := ParseFrontmatter(content)
+	return fm[key]
+}

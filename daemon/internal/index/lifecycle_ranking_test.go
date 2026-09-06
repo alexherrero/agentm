@@ -166,3 +166,43 @@ func TestTheWallReachesTheDenseArm(t *testing.T) {
 			resultPaths(explicit.Results), explicit.ArchivedHidden)
 	}
 }
+
+// PLAN-superseded-vocabulary: one effect for one relation — a superseded note
+// leaves everyday search like an archived one and comes back, demoted, to the
+// same explicit query.
+func TestASupersededNoteIsWalledLikeAnArchivedOne(t *testing.T) {
+	idx := openScratch(t)
+	body := "The release gate waits for the checks to finish before the tag.\n"
+	indexLifecycle(t, idx, "Agent/memory/semantic/a-superseded.md", "Gate", "superseded", body)
+	indexLifecycle(t, idx, "Agent/memory/semantic/b-active.md", "Gate", "active", body)
+
+	for _, mode := range []string{ModeAnd, ModeFusion} {
+		everyday, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: mode})
+		if err != nil {
+			t.Fatalf("%s: search: %v", mode, err)
+		}
+		if len(everyday.Results) != 1 || !strings.HasSuffix(everyday.Results[0].Path, "b-active.md") {
+			t.Errorf("%s: everyday search should see only the active twin: %v", mode, resultPaths(everyday.Results))
+		}
+		if everyday.SupersededHidden != 1 {
+			t.Errorf("%s: the wall must count what it hid: superseded_hidden=%d, want 1", mode, everyday.SupersededHidden)
+		}
+		if everyday.Matched != 2 {
+			t.Errorf("%s: the window saw both rows before the wall: matched=%d, want 2", mode, everyday.Matched)
+		}
+
+		explicit, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: mode, IncludeArchived: true})
+		if err != nil {
+			t.Fatalf("%s: explicit archive query: %v", mode, err)
+		}
+		if len(explicit.Results) != 2 {
+			t.Fatalf("%s: the explicit archive query should see both: %v", mode, resultPaths(explicit.Results))
+		}
+		if !strings.HasSuffix(explicit.Results[0].Path, "b-active.md") || !strings.HasSuffix(explicit.Results[1].Path, "a-superseded.md") {
+			t.Errorf("%s: included, the superseded twin is present and demoted, not restored to parity: %v", mode, resultPaths(explicit.Results))
+		}
+		if explicit.SupersededHidden != 0 {
+			t.Errorf("%s: nothing hidden on the explicit query, got superseded_hidden=%d", mode, explicit.SupersededHidden)
+		}
+	}
+}

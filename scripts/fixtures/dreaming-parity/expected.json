@@ -1,59 +1,59 @@
 {
- "calendar": {
-  "month": {
-   "2026-08": "---\nkind: calendar-review\nstatus: active\naltitude: artifact\ncreated: 2026-08-31\nupdated: 2026-08-31\ntags: [calendar, review, month]\ngroup: calendar\nslug: 2026-08-review\nperiod: month\nmonth: 2026-08\nfrom: 2026-08-01\nto: 2026-08-31\ngenerated_by: calendar_rollups.py\n---\n\n# 2026-08\n\nGenerated from the month's day indexes and week reviews; the facet notes are the source.\n\n## Weeks\n\n- 2026-W31 — 0 of 2 days with entries\n- 2026-W32 — 0 of 7 days with entries\n- 2026-W33 — 0 of 7 days with entries\n- 2026-W34 — 0 of 7 days with entries\n- 2026-W35 — 2 of 7 days with entries\n- 2026-W36 — 0 of 1 days with entries\n\n## Days\n\n- [[2026-08-25]] — meetings (2), diary (1)\n- [[2026-08-27]] — docs (1)\n\n2 of 31 days with entries.\n"
+  "calendar": {
+    "month": {
+      "2026-08": "---\nkind: calendar-review\nstatus: active\naltitude: artifact\ncreated: 2026-08-31\nupdated: 2026-08-31\ntags: [calendar, review, month]\ngroup: calendar\nslug: 2026-08-review\nperiod: month\nmonth: 2026-08\nfrom: 2026-08-01\nto: 2026-08-31\ngenerated_by: calendar_rollups.py\n---\n\n# 2026-08\n\nGenerated from the month's day indexes and week reviews; the facet notes are the source.\n\n## Weeks\n\n- 2026-W31 — 0 of 2 days with entries\n- 2026-W32 — 0 of 7 days with entries\n- 2026-W33 — 0 of 7 days with entries\n- 2026-W34 — 0 of 7 days with entries\n- 2026-W35 — 2 of 7 days with entries\n- 2026-W36 — 0 of 1 days with entries\n\n## Days\n\n- [[2026-08-25]] — meetings (2), diary (1)\n- [[2026-08-27]] — docs (1)\n\n2 of 31 days with entries.\n"
+    },
+    "week": {
+      "2026-W35": "---\nkind: calendar-review\nstatus: active\naltitude: artifact\ncreated: 2026-08-30\nupdated: 2026-08-30\ntags: [calendar, review, week]\ngroup: calendar\nslug: 2026-W35-review\nperiod: week\nweek: 2026-W35\nfrom: 2026-08-24\nto: 2026-08-30\ngenerated_by: calendar_rollups.py\n---\n\n# Week 2026-W35 — 2026-08-24 to 2026-08-30\n\nGenerated from the week's day indexes; the facet notes are the source.\n\n## Days\n\n- [[2026-08-25]] — meetings (2), diary (1)\n- [[2026-08-27]] — docs (1)\n\nNothing recorded on Mon, Wed, Fri, Sat, Sun.\n\n## Corrections\n\n- [[2026-08-28-meetings-corrects-2026-08-25]] — corrects 2026-08-25 (meetings)\n\n2 of 7 days with entries.\n"
+    }
   },
-  "week": {
-   "2026-W35": "---\nkind: calendar-review\nstatus: active\naltitude: artifact\ncreated: 2026-08-30\nupdated: 2026-08-30\ntags: [calendar, review, week]\ngroup: calendar\nslug: 2026-W35-review\nperiod: week\nweek: 2026-W35\nfrom: 2026-08-24\nto: 2026-08-30\ngenerated_by: calendar_rollups.py\n---\n\n# Week 2026-W35 — 2026-08-24 to 2026-08-30\n\nGenerated from the week's day indexes; the facet notes are the source.\n\n## Days\n\n- [[2026-08-25]] — meetings (2), diary (1)\n- [[2026-08-27]] — docs (1)\n\nNothing recorded on Mon, Wed, Fri, Sat, Sun.\n\n## Corrections\n\n- [[2026-08-28-meetings-corrects-2026-08-25]] — corrects 2026-08-25 (meetings)\n\n2 of 7 days with entries.\n"
-  }
- },
- "copies": [
-  {
-   "after": {
-    "memory/procedural/copy-1.md": "---\ntitle: the procedure (again)\nkind: workflow\nstatus: superseded\nslug: copy-1\nlifecycle: active\ncreated: 2026-02-01\nsupersedes: memory/procedural/copy-canon.md\n---\n\n  Run  the checks,   then push.\n\nNEVER tag before green.\n",
-    "memory/procedural/copy-2.md": "---\ntitle: the procedure (legacy copy)\nkind: workflow\nstatus: superseded\nslug: copy-2\nlifecycle: active\nsupersedes: memory/procedural/copy-canon.md\n---\n\nrun the checks, then push.\nnever tag before green.\n"
-   },
-   "canonical": "memory/procedural/copy-canon.md",
-   "copies": [
-    "memory/procedural/copy-1.md",
-    "memory/procedural/copy-2.md"
-   ],
-   "summary": "memory/procedural/copy-canon.md + 2 content-identical legacy copies — collapse into the earliest, mark the rest superseded"
-  }
- ],
- "lifecycle": {
-  "archive_candidates": [
-   [
-    "memory/semantic/dormant-cold.md",
-    2073.0
-   ]
+  "copies": [
+    {
+      "after": {
+        "memory/procedural/copy-1.md": "---\ntitle: the procedure (again)\nkind: workflow\nstatus: active\nslug: copy-1\nlifecycle: superseded\ncreated: 2026-02-01\nsuperseded_by: memory/procedural/copy-canon.md\n---\n\n  Run  the checks,   then push.\n\nNEVER tag before green.\n",
+        "memory/procedural/copy-2.md": "---\ntitle: the procedure (legacy copy)\nkind: workflow\nstatus: active\nslug: copy-2\nlifecycle: superseded\nsuperseded_by: memory/procedural/copy-canon.md\n---\n\nrun the checks, then push.\nnever tag before green.\n"
+      },
+      "canonical": "memory/procedural/copy-canon.md",
+      "copies": [
+        "memory/procedural/copy-1.md",
+        "memory/procedural/copy-2.md"
+      ],
+      "summary": "memory/procedural/copy-canon.md + 2 content-identical legacy copies — collapse into the earliest, mark the rest superseded"
+    }
   ],
-  "considered": 11,
-  "demoted": [
-   [
-    "memory/semantic/silent-a.md",
-    461.0
-   ]
-  ],
-  "previews": [],
-  "revived": [
-   [
-    "memory/semantic/dormant-back.md",
-    1.0
-   ]
-  ],
-  "skipped_by_cap": 0
- },
- "pin": "2026-09-05",
- "promote": {
-  "shared-target": {
-   "body": "## Question\n\nWhat recurring reference to 'shared-target' appears across episodic entries?\n\n## Investigation\n\n3 episodic entries reference 'shared-target':\n- memory/episodic/e1.md\n- memory/episodic/e2.md\n- memory/episodic/e3.md\n\n## Findings\n\n'shared-target' recurs across 3 distinct entries (recurrence floor: 3), a deterministic signal that this is durable, not incidental.\n\n## Lessons\n\nPromoted episodic -> semantic (V6-4). The consolidated entry is durable (decay-exempt) and carries a derived_from provenance edge back to its 3 sources; none of those sources were deleted or modified.\n\n## Open threads\n\n\n",
-   "slug": "consolidated-shared-target",
-   "sources": [
-    "memory/episodic/e1.md",
-    "memory/episodic/e2.md",
-    "memory/episodic/e3.md"
-   ]
+  "lifecycle": {
+    "archive_candidates": [
+      [
+        "memory/semantic/dormant-cold.md",
+        2073.0
+      ]
+    ],
+    "considered": 11,
+    "demoted": [
+      [
+        "memory/semantic/silent-a.md",
+        461.0
+      ]
+    ],
+    "previews": [],
+    "revived": [
+      [
+        "memory/semantic/dormant-back.md",
+        1.0
+      ]
+    ],
+    "skipped_by_cap": 0
+  },
+  "pin": "2026-09-05",
+  "promote": {
+    "shared-target": {
+      "body": "## Question\n\nWhat recurring reference to 'shared-target' appears across episodic entries?\n\n## Investigation\n\n3 episodic entries reference 'shared-target':\n- memory/episodic/e1.md\n- memory/episodic/e2.md\n- memory/episodic/e3.md\n\n## Findings\n\n'shared-target' recurs across 3 distinct entries (recurrence floor: 3), a deterministic signal that this is durable, not incidental.\n\n## Lessons\n\nPromoted episodic -> semantic (V6-4). The consolidated entry is durable (decay-exempt) and carries a derived_from provenance edge back to its 3 sources; none of those sources were deleted or modified.\n\n## Open threads\n\n\n",
+      "slug": "consolidated-shared-target",
+      "sources": [
+        "memory/episodic/e1.md",
+        "memory/episodic/e2.md",
+        "memory/episodic/e3.md"
+      ]
+    }
   }
- }
 }

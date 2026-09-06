@@ -230,21 +230,25 @@ _FRONTMATTER = re.compile(r"\A---[ \t\r]*\n(.*?)\n---[ \t\r]*\n", re.S)
 
 
 def _mark_superseded(raw: str, keeper: str) -> str:
-    """Set `status: superseded` and point at the survivor.
+    """Mark the loser superseded on the lifecycle axis and point it at the
+    survivor — `lifecycle: superseded` + `superseded_by: <keeper>`, the
+    contract's one shape for the relation (PLAN-superseded-vocabulary); the
+    note leaves the inbox pool (`status: active`), and `supersedes:` is only
+    ever the survivor's back-link.
 
     Never deletes and never rewrites the body. The design is explicit that a
-    superseded memory is rank-penalized rather than removed, and that its text
-    stays in git at the capture commit — so the whole of this change is two
-    frontmatter keys.
+    superseded memory leaves everyday search rather than the disk, and that
+    its text stays in git at the capture commit — so the whole of this change
+    is three frontmatter keys.
     """
     m = _FRONTMATTER.match(raw)
     if not m:
-        return ("---\nstatus: superseded\nsupersedes: " + keeper + "\n---\n\n"
+        return ("---\nstatus: active\nlifecycle: superseded\nsuperseded_by: " + keeper + "\n---\n\n"
                 + raw.lstrip("\n"))
     head, rest = m.group(1), raw[m.end():]
     lines = [ln for ln in head.split("\n")
-             if not ln.startswith(("status:", "supersedes:"))]
-    lines += ["status: superseded", f"supersedes: {keeper}"]
+             if not ln.startswith(("status:", "supersedes:", "lifecycle:", "superseded_by:"))]
+    lines += ["status: active", "lifecycle: superseded", f"superseded_by: {keeper}"]
     return "---\n" + "\n".join(lines) + "\n---\n" + rest
 
 

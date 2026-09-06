@@ -101,8 +101,11 @@ func Supersede(ctx context.Context, id ID, version string, at time.Time,
 // keeping a superseded memory at all, and a supersession that edited the text
 // would leave nothing to compare the new distillation against.
 func markSuperseded(body string, id ID, version, at string) string {
+	// The contract's shape (PLAN-superseded-vocabulary): the relation lives on
+	// the lifecycle axis, the successor here being the source version that
+	// replaced this memory's, not a note. `status` is left alone.
 	fields := [][2]string{
-		{"status", "superseded"},
+		{"lifecycle", "superseded"},
 		{"superseded_by", id.String() + " at " + version},
 		{"superseded_at", at},
 	}
@@ -154,7 +157,7 @@ func markSuperseded(body string, id ID, version, at string) string {
 
 func isSupersessionField(key string) bool {
 	switch strings.ToLower(key) {
-	case "status", "superseded_by", "superseded_at":
+	case "lifecycle", "superseded_by", "superseded_at", "lifecycle_since":
 		return true
 	}
 	return false

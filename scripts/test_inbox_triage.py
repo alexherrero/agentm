@@ -267,7 +267,8 @@ class PostCutoverAutoApplyTests(_InboxTriageTestBase):
         # first) keeps `status: inbox` in its own frontmatter -- only its
         # body changes to absorb dup2's content; dup2 (the match) is the
         # one that gets patched `status: superseded`.
-        self.assertEqual(self._status(self._inbox_dir() / "dup2.md"), "superseded")
+        self.assertEqual(self._status(self._inbox_dir() / "dup2.md"), "active")
+        self.assertIn("lifecycle: superseded", (self._inbox_dir() / "dup2.md").read_text(encoding="utf-8"))
         dup1_body = (self._inbox_dir() / "dup1.md").read_text(encoding="utf-8")
         self.assertIn("merge testing purposes today!", dup1_body, "the merge mutation must have applied (body absorbed dup2's content)")
         self.assertEqual(self._status(self._inbox_dir() / "reinforced.md"), "promoted")
@@ -450,7 +451,8 @@ class BacklogPromoteAndMergeAutoApplyTests(_InboxTriageTestBase):
         self.assertEqual(len(merges), 1)
         self.assertEqual(len(batch.items), 1, "a backlog-shaped merge pair must auto-apply, no confirm call")
         self.assertEqual(batch.items[0]["stage"], it.MERGE_STAGE)
-        self.assertEqual(self._status(self._inbox_dir() / "b.md"), "superseded")
+        self.assertEqual(self._status(self._inbox_dir() / "b.md"), "active")
+        self.assertIn("lifecycle: superseded", (self._inbox_dir() / "b.md").read_text(encoding="utf-8"))
 
 
 # -----------------------------------------------------------------------------
@@ -721,8 +723,10 @@ class ClusterAwareDedupTests(_InboxTriageTestBase):
         for copy_name in ("insight-1.md", "insight-2.md", "insight-3.md"):
             copy = self._inbox_dir() / copy_name
             self.assertTrue(copy.exists(), f"{copy_name} must be marked, never deleted")
-            self.assertEqual(self._status(copy), "superseded")
-            self.assertIn("supersedes:", copy.read_text(encoding="utf-8"))
+            self.assertEqual(self._status(copy), "active")
+            self.assertIn("lifecycle: superseded", (copy).read_text(encoding="utf-8"))
+            self.assertIn("superseded_by:", copy.read_text(encoding="utf-8"))
+            self.assertNotIn("supersedes:", copy.read_text(encoding="utf-8"))
         # Survivor: untouched content, still status inbox (its own
         # disposition comes on a later cycle like any live candidate).
         survivor = self._inbox_dir() / "insight.md"
@@ -730,7 +734,7 @@ class ClusterAwareDedupTests(_InboxTriageTestBase):
         self.assertIn(base, survivor.read_text(encoding="utf-8"))
 
     def test_superseded_copies_enter_the_tidying_lanes_shape(self) -> None:
-        # The collapse marks copies `status: superseded` -- the same status
+        # The collapse marks copies `lifecycle: superseded` -- the same shape
         # dream's own dedup mutation writes, which part 1's tidying lanes
         # already treat as a normal aged-entry input. Assert the exact
         # frontmatter shape those lanes key on.
@@ -742,8 +746,9 @@ class ClusterAwareDedupTests(_InboxTriageTestBase):
                 self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
             )
         copy_raw = (self._inbox_dir() / "obs-1.md").read_text(encoding="utf-8")
-        self.assertIn("status: superseded", copy_raw)
-        self.assertIn(f"supersedes: {self._inbox_dir() / 'obs.md'}", copy_raw)
+        self.assertIn("lifecycle: superseded", copy_raw)
+        self.assertIn(f"superseded_by: {self._inbox_dir() / 'obs.md'}", copy_raw)
+        self.assertNotIn("supersedes:", copy_raw)
 
     def test_fuzzy_pair_confident_yes_verdict_collapses(self) -> None:
         self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
@@ -754,7 +759,8 @@ class ClusterAwareDedupTests(_InboxTriageTestBase):
             )
         self.assertEqual(len([p for p in digest.proposals if p.stage == it.MERGE_STAGE]), 1)
         self.assertEqual(digest.needs_your_eye, [])
-        self.assertEqual(self._status(self._inbox_dir() / "b.md"), "superseded")
+        self.assertEqual(self._status(self._inbox_dir() / "b.md"), "active")
+        self.assertIn("lifecycle: superseded", (self._inbox_dir() / "b.md").read_text(encoding="utf-8"))
 
     def test_fuzzy_pair_unsure_verdict_lands_on_needs_your_eye(self) -> None:
         self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
@@ -847,7 +853,8 @@ class TriageFoldsIntoDreamingTests(_InboxTriageTestBase):
 
         self.assertIsNotNone(digest.inbox_triage_run)
         self.assertGreaterEqual(digest.inbox_triage_run["auto_applied"], 1)
-        self.assertEqual(self._status(self._inbox_dir() / "dup-1.md"), "superseded")
+        self.assertEqual(self._status(self._inbox_dir() / "dup-1.md"), "active")
+        self.assertIn("lifecycle: superseded", (self._inbox_dir() / "dup-1.md").read_text(encoding="utf-8"))
         self.assertEqual(self._status(self._inbox_dir() / "dup.md"), "inbox")
         digest_text = digest.digest_path.read_text(encoding="utf-8")
         self.assertIn("Inbox triage (folded into this cycle)", digest_text)

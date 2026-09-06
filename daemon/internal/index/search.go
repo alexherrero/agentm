@@ -98,7 +98,8 @@ type Query struct {
 	// IncludeArchived is the contract's "explicit archive query": a memory
 	// whose `lifecycle:` is `archived` has left everyday search, and only a
 	// caller that asks for it by name gets it back — demoted like any other
-	// penalized class, but present. Off by default. See wallArchived.
+	// penalized class, but present — and so does a superseded one, its
+	// successor beside it. Off by default. See wallUnserved.
 	IncludeArchived bool
 
 	// Vector is the query's embedding, supplied by the caller. ModeHybrid needs
@@ -131,6 +132,11 @@ type SearchOutcome struct {
 	// IncludeArchived. Reported for the reason RawScore and Decay are: a row
 	// that is not there should be visible in the call log, not inferred.
 	ArchivedHidden int `json:"archived_hidden,omitempty"`
+	// SupersededHidden is the same wall's count for `lifecycle: superseded`
+	// (PLAN-superseded-vocabulary): a superseded memory has left everyday
+	// search like an archived one and comes back, demoted, to the same
+	// explicit query.
+	SupersededHidden int `json:"superseded_hidden,omitempty"`
 
 	// RerankMS and RerankPairs describe a cross-encoder pass, when one ran.
 	// This package never sets them itself — reranking is a caller-side
@@ -244,7 +250,7 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 	}
 	out.Note = note1
 	out.Matched = len(rows)
-	rows, out.ArchivedHidden = wallArchived(rows, includeArchived)
+	rows, out.ArchivedHidden, out.SupersededHidden = wallUnserved(rows, includeArchived)
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
@@ -453,7 +459,7 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3, inc
 		rows = append(rows, c.row)
 		wonBy[path] = c.expr
 	}
-	rows, out.ArchivedHidden = wallArchived(rows, includeArchived)
+	rows, out.ArchivedHidden, out.SupersededHidden = wallUnserved(rows, includeArchived)
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
@@ -521,15 +527,15 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// reads positions, so a demotion that lands after the ranks are taken would
 	// have no effect at all — the penalized note would already have contributed
 	// its rank-1 reciprocal.
-	var denseHidden int
-	dense, denseHidden = wallArchived(dense, q.IncludeArchived)
+	var denseHidden, denseSuperseded int
+	dense, denseHidden, denseSuperseded = wallUnserved(dense, q.IncludeArchived)
 	decayLog, decayNow := x.decayClock()
 	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
 		note.QueryWantsArtifact(text))
 
 	fused := fuseRRF(lexical.Results, dense)
 	out := SearchOutcome{Results: fused, Matched: len(fused),
-		ArchivedHidden: lexical.ArchivedHidden + denseHidden}
+		ArchivedHidden: lexical.ArchivedHidden + denseHidden, SupersededHidden: lexical.SupersededHidden + denseSuperseded}
 	if len(out.Results) > k {
 		out.Results = out.Results[:k]
 	}
@@ -851,36 +857,42 @@ func normalizeBound(s string) (string, error) {
 // withoutFlag returns flags with one class removed, leaving the input untouched.
 // The row keeps its recorded Penalty either way, so a lifted note still reports
 // what class it is — the lift changes its rank, not its identity.
-// wallArchived removes the rows whose note has left everyday search —
-// `lifecycle: archived`, the contract's one visibility state — unless the
-// caller asked for them by name. It runs on the over-fetch window, before the
-// penalty, so the k rows that come back are the best *admissible* rows rather
-// than a top k with holes in it.
+// wallUnserved removes the rows whose note has left everyday search —
+// `lifecycle: archived` and `lifecycle: superseded`, the contract's two
+// visibility states — unless the caller asked for them by name. It runs on
+// the over-fetch window, before the penalty, so the k rows that come back are
+// the best *admissible* rows rather than a top k with holes in it.
 //
 // This is the one place in the ranking path that drops a row, and the reason
 // it is allowed to is that it is not a classifier judgement. Every class above
 // is the daemon's opinion about a note's shape, and an opinion may only demote
 // — the amputation that left recall dead for four months was a filter acting
 // on one. `archived` is the operator's own decision about one note, taken
-// through the confirm lane, reversible by editing the same field; the note
-// stays on disk and in this index, cold rather than gone, and comes back to
-// any query that sets IncludeArchived (the contract's "explicit archive
-// query"). The count of what was walled rides on the outcome so the absence is
-// visible in the call log.
-func wallArchived(rows []Result, include bool) ([]Result, int) {
+// through the confirm lane; `superseded` is a writer's statement that a named
+// successor exists (`superseded_by:`) — both reversible by editing the same
+// field; the note stays on disk and in this index, cold rather than gone, and
+// comes back to any query that sets IncludeArchived (the contract's "explicit
+// archive query"). The counts of what was walled ride on the outcome so the
+// absence is visible in the call log.
+func wallUnserved(rows []Result, include bool) ([]Result, int, int) {
 	if include {
-		return rows, 0
+		return rows, 0, 0
 	}
 	kept := make([]Result, 0, len(rows))
-	hidden := 0
+	archived, superseded := 0, 0
 	for _, r := range rows {
-		if hasFlag(splitFlags(r.Penalty), note.ClassArchived) {
-			hidden++
+		flags := splitFlags(r.Penalty)
+		if hasFlag(flags, note.ClassArchived) {
+			archived++
+			continue
+		}
+		if hasFlag(flags, note.ClassSuperseded) {
+			superseded++
 			continue
 		}
 		kept = append(kept, r)
 	}
-	return kept, hidden
+	return kept, archived, superseded
 }
 
 func hasFlag(flags []string, want string) bool {

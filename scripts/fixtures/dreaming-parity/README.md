@@ -9,3 +9,7 @@ battery and in CI.
 
 The recording is the contract now. It cannot be re-recorded, so a change to a job's decisions is a deliberate
 edit to `expected.json`, reviewed as such.
+
+Edited on purpose, 2026-09-05 (PLAN-superseded-vocabulary): the copies' `after` texts now carry the contract's
+shape — `lifecycle: superseded` + `superseded_by: <canonical>` on the loser, `status` untouched, no loser-side
+`supersedes:` — the one deliberate change to a job's decisions since the recording; the Go parity test reproduces it.
