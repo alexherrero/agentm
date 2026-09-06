@@ -521,7 +521,11 @@ func cmdCapture(args []string) error {
 	status := fs.String("status", "", "active | unfiled")
 	tags := fs.String("tags", "", "comma-separated tags")
 	aliases := fs.String("aliases", "", "comma-separated alternate phrasings")
-	source := fs.String("source", "", "URL or message-id")
+	source := fs.String("source", "", "how it arrived: operator-direct | conversation | external-fetch | email")
+	sourceID := fs.String("source-id", "",
+		"the unit it was mined from, as <namespace>:<ref>")
+	sourceURL := fs.String("source-url", "",
+		"the address of the page it was fetched from")
 	sourceHash := fs.String("source-hash", "",
 		"content hash the source had when it was read")
 	sourceVersion := fs.String("source-version", "",
@@ -553,7 +557,8 @@ func cmdCapture(args []string) error {
 	res, err := capture.New(cfg, idx).Do(capture.Request{
 		Text: text, Title: *title, Type: *noteType, Status: *status,
 		Tags: splitList(*tags), Aliases: splitList(*aliases),
-		Source: *source, SourceHash: *sourceHash, SourceVersion: *sourceVersion,
+		Source: *source, SourceID: *sourceID, SourceURL: *sourceURL,
+		SourceHash: *sourceHash, SourceVersion: *sourceVersion,
 		Space: *space,
 	})
 	if err != nil {
