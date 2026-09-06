@@ -512,6 +512,29 @@ def check_wikilinks(entry: Entry, model: VaultModel) -> list:
     return out
 
 
+def _is_source_reference(value: str) -> bool:
+    """The sources layer's successor is a source version, not a note:
+    `<source id> at <version>` (PLAN-superseded-vocabulary keeps that one)."""
+    return " at " in value
+
+
+def check_superseded_by(entry: Entry, model: VaultModel) -> list:
+    """`superseded_by:` names the successor — a note (path or slug) or a
+    source version. A note it names must exist; a superseded memory that
+    names nothing is `check_dangling_supersession_status`'s."""
+    by = entry.frontmatter.get("superseded_by", "").strip().strip("'\"")
+    if not by or _is_source_reference(by):
+        return []
+    target_slug = _supersede_target_slug(by)
+    if target_slug not in model.slugs:
+        return [Finding(
+            "supersede-integrity", "error", entry.rel,
+            f"`superseded_by: {by}` doesn't resolve to any entry",
+            "fix the successor reference or remove it",
+        )]
+    return []
+
+
 def check_supersede(entry: Entry, model: VaultModel) -> list:
     out = []
     sup = entry.frontmatter.get("supersedes", "").strip()
@@ -529,11 +552,15 @@ def check_supersede(entry: Entry, model: VaultModel) -> list:
     target = model.by_slug.get(target_slug)
     if target is not None:
         tstatus = target.frontmatter.get("status", "").strip()
-        if tstatus == "active":
+        tlifecycle = target.frontmatter.get("lifecycle", "").strip().strip("'\"").lower()
+        # The contract's shape leaves `status` alone and moves the note on the
+        # lifecycle axis, so a target that is `lifecycle: superseded` is not
+        # "still active" whatever its status says.
+        if tstatus == "active" and tlifecycle != "superseded":
             out.append(Finding(
                 "supersede-integrity", "warn", entry.rel,
-                f"supersedes `{target_slug}` but that entry's status is still `active`",
-                f"set `{target_slug}`'s status to `superseded`",
+                f"supersedes `{target_slug}` but that entry is still active on the lifecycle axis",
+                f"set `{target_slug}`'s `lifecycle: superseded` and name the successor in its `superseded_by:`",
             ))
     return out
 
@@ -599,13 +626,18 @@ def check_supersede_fork(entry: Entry, model: VaultModel) -> list:
 
 
 def check_dangling_supersession_status(entry: Entry, model: VaultModel) -> list:
-    """`status: superseded` with no entry's `supersedes:` pointing here is
-    a status field with nothing backing it — the note claims to have been
-    replaced but the lineage that would say by what is missing. Surfaced
-    only; deciding the real lineage (or reverting the status) is an
-    editorial call, never auto-resolved."""
-    if entry.frontmatter.get("status", "").strip() != "superseded":
+    """A superseded memory — `lifecycle: superseded`, or the pre-contract
+    `status: superseded` — with no lineage: no `superseded_by:` of its own
+    and no entry's `supersedes:` pointing here. The note claims to have been
+    replaced but nothing says by what. Surfaced only; deciding the real
+    lineage (or reverting the state) is an editorial call, never
+    auto-resolved."""
+    superseded = (entry.frontmatter.get("status", "").strip() == "superseded"
+                  or entry.frontmatter.get("lifecycle", "").strip().strip("'\"").lower() == "superseded")
+    if not superseded:
         return []
+    if entry.frontmatter.get("superseded_by", "").strip():
+        return []  # the note names its successor: that is the lineage
     slug = entry.frontmatter.get("slug", "").strip() or entry.path.stem
     stem = entry.path.stem
     for other in model.entries:
@@ -616,9 +648,9 @@ def check_dangling_supersession_status(entry: Entry, model: VaultModel) -> list:
             return []  # some entry's lineage explains this one's superseded status
     return [Finding(
         "dangling-supersession", "warn", entry.rel,
-        "`status: superseded` but no entry's `supersedes:` points here",
-        "add `supersedes: <successor>` on the entry that actually replaced this one, "
-        "or revert `status` if nothing did",
+        "superseded, but it names no successor and no entry's `supersedes:` points here",
+        "add `superseded_by: <successor>` on this note (and `supersedes:` on the successor), "
+        "or revert the state if nothing replaced it",
     )]
 
 
@@ -688,6 +720,7 @@ CHECKS = (
     check_schema_drift,
     check_wikilinks,
     check_supersede,
+    check_superseded_by,
     check_supersede_cycle,
     check_supersede_fork,
     check_dangling_supersession_status,

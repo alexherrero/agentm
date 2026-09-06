@@ -396,6 +396,57 @@ class TestChecks(unittest.TestCase):
             _, findings = _lint(v)
             self.assertNotIn("dangling-supersession", _ids(findings))
 
+    # PLAN-superseded-vocabulary (2026-09-05): the superseded memory names its
+    # successor in `superseded_by:`. The pointer must resolve, it is lineage
+    # enough on its own, and a successor's back-link to a note that moved on
+    # the lifecycle axis is not "still active".
+    def test_superseded_by_must_resolve(self):
+        with _Vault() as v:
+            fm = _clean("gone-old") + ["lifecycle: superseded", "superseded_by: memory/_always-load/never-written.md"]
+            _write(v, "memory/_always-load/gone-old.md", fm)
+            _, findings = _lint(v)
+            errs = [f for f in findings if f.check_id == "supersede-integrity" and f.severity == "error"]
+            self.assertEqual(len(errs), 1, [f.message for f in findings])
+            self.assertIn("superseded_by", errs[0].message)
+
+    def test_superseded_by_resolves_by_path_and_by_slug(self):
+        with _Vault() as v:
+            _write(v, "memory/_always-load/keeper.md", _clean("keeper"))
+            by_path = _clean("old-by-path") + ["lifecycle: superseded", "superseded_by: memory/_always-load/keeper.md"]
+            by_slug = _clean("old-by-slug") + ["lifecycle: superseded", "superseded_by: keeper"]
+            _write(v, "memory/_always-load/old-by-path.md", by_path)
+            _write(v, "memory/_always-load/old-by-slug.md", by_slug)
+            _, findings = _lint(v)
+            self.assertNotIn("supersede-integrity", _ids(findings, "error"))
+            self.assertNotIn("dangling-supersession", _ids(findings))
+
+    def test_superseded_by_a_source_version_is_left_alone(self):
+        # The sources layer's successor is a source version, not a note.
+        with _Vault() as v:
+            fm = _clean("old-source-note") + ["lifecycle: superseded", "superseded_by: github-issues at 2026-09-01"]
+            _write(v, "memory/_always-load/old-source-note.md", fm)
+            _, findings = _lint(v)
+            self.assertNotIn("supersede-integrity", _ids(findings))
+            self.assertNotIn("dangling-supersession", _ids(findings))
+
+    def test_lifecycle_superseded_without_lineage_is_dangling(self):
+        with _Vault() as v:
+            _write(v, "memory/_always-load/orphan-lifecycle.md", _clean("orphan-lifecycle") + ["lifecycle: superseded"])
+            _, findings = _lint(v)
+            dangling = [f for f in findings if f.check_id == "dangling-supersession"]
+            self.assertEqual(len(dangling), 1, [f.message for f in findings])
+            self.assertEqual(dangling[0].severity, "warn")
+            self.assertIn("superseded_by", dangling[0].suggestion)
+
+    def test_back_link_to_a_lifecycle_superseded_target_is_clean(self):
+        with _Vault() as v:
+            old = _clean("axis-old") + ["lifecycle: superseded", "superseded_by: axis-new"]  # status stays active
+            _write(v, "memory/_always-load/axis-old.md", old)
+            _write(v, "memory/_always-load/axis-new.md", _clean("axis-new") + ["supersedes: axis-old"])
+            _, findings = _lint(v)
+            self.assertNotIn("supersede-integrity", _ids(findings))
+            self.assertNotIn("dangling-supersession", _ids(findings))
+
     def test_kind_taxonomy_unknown_kind_flagged(self):
         with _Vault() as v:
             fm = _clean("mystery")
