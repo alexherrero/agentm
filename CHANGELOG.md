@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.17.0] - 2026-09-05
+
+Filing v2 remainders ([#560](https://github.com/alexherrero/agentm/pull/560), [#561](https://github.com/alexherrero/agentm/pull/561), [#562](https://github.com/alexherrero/agentm/pull/562), [#563](https://github.com/alexherrero/agentm/pull/563)) — the loose ends the six-part arc left behind, landed the same day. A bad job manifest no longer stops every scheduled job and is surfaced where the operator looks; the dreaming binary's passes show on the scorecard; the register is in the dense arm; `memory/episodic/` holds the agent's own session traces so the promotion job has sources; quick capture has a verb.
+
+### Added
+
+- **Episodic session traces** (`harness/skills/memory/scripts/episodic_trace.py`) —
+  one `kind: session-trace` note per session under `memory/episodic/`, written at
+  session end by the Stop hook (bash and pwsh): the notes the session captured and
+  recalled as wikilinks under the first request as its title, from the transcript
+  and the recall history, no model call, capped at 40 links. A session that touched
+  nothing leaves no trace. The calendar's day index links the day's traces; the
+  binary's promotion job reads their links as its recurrence signal. The contract's
+  `record_kinds` gains `session-trace`. `calendar_layer.py` (an earlier trace writer
+  with no callers) retired into it.
+- **`/memory diary`** — the register's front door from a session, a skill verb over
+  `calendar_facets.py quick` / `append` with the closed-day rule and the refusals
+  spelled out. No third MCP tool: the daemon serves exactly two, deliberately.
+- **The dreaming binary on the scorecard** — `agentmdream` leaves the report of each
+  completed pass at `<engine state dir>/dreaming/last-report.json`; a refused or
+  not-due start keeps the previous file. `dreaming_scorecard.py` renders a "The
+  dreaming binary" section: run, mode, outcome, the gate's reason, the pass's age,
+  one row per job, applied/skipped — with no report a sentence, never zeros.
+- **The runner survives a bad manifest and says so** — `load_manifests_lenient`
+  keeps every manifest that loads and names each it refused; the cycle runs what
+  loaded, records the refusals, and leaves its account at
+  `~/.cache/agentm/runner/last-cycle.json`; the CLI exits 3 only when nothing
+  loaded (`--strict` for the old all-or-nothing load, `--state-root` for hand runs);
+  the session brief's line names the refusals; the doctor gains a `runner-cycle` row.
+
+### Changed
+
+- **The register joins the dense arm** — `Calendar` in `config.defaultEmbedScope`,
+  beside `Projects`; the lexical index covered it from the start.
+- **The Windows capture budget asserts the ratio** — `TestCaptureStaysUnderBudget`
+  skips its absolute p95 budget on a Windows CI runner (the runner's shared disk read
+  past it on two PRs with no Go change) and leaves the floor-relative share test as
+  the regression catcher there.
+- **The dream suites run by hand** — `test_dream`, `test_dream_confirm` and
+  `test_needs_your_eye_surface` govern their own engine state per test.
+- The launched `agentm-filing-v2` design's `area:` reads the taxonomy's
+  `agentm/vault-taxonomy`; the governs-index gate had refused `agentm/vault` since
+  the launch.
+
+### Not changed, on purpose
+
+- **One vocabulary for the superseded relation** stays the operator's decision: the
+  copies job marks the loser with `status: superseded` + `supersedes: <winner>`,
+  the write path with `lifecycle: superseded` + `superseded_by:`, and the two
+  differ in direction and in effect. The analysis and a recommendation are in
+  `PLAN-filing-v2-remainders`'s locked calls; nothing was built.
+
+### Internal
+
+- The live contract mirrors the packaged lifecycle paragraph and the
+  `session-trace` kind. The runner log dated the Python dream job's silence: 89
+  `not-due` cycles between 2026-08-27 and the outage, a schedule longer than
+  weekly on the live manifest before its re-registration.
+
 ## [9.16.0] - 2026-09-05
 
 Filing v2 part 6 — lifecycle and the dreaming binary ([#550](https://github.com/alexherrero/agentm/pull/550), [#551](https://github.com/alexherrero/agentm/pull/551), [#552](https://github.com/alexherrero/agentm/pull/552), [#553](https://github.com/alexherrero/agentm/pull/553), [#554](https://github.com/alexherrero/agentm/pull/554), [#555](https://github.com/alexherrero/agentm/pull/555), [#556](https://github.com/alexherrero/agentm/pull/556)), the last part of the arc, live the same days. Memory ages honestly along one frontmatter axis, and the nightly pass is a Go binary with mutation authority that took over from the Python layer on 2026-09-05. This release sets `agentm-filing-v2` to launched.
