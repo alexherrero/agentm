@@ -51,6 +51,37 @@ class JobOutcome:
 class CycleReport:
     outcomes: list = field(default_factory=list)
     budget_ceiling_hit: bool = False
+    # The manifests the loader refused this cycle, as {"file", "reason"} —
+    # every job that did load still ran (filing-v2 remainders task 1).
+    refused: list = field(default_factory=list)
+    loaded: int = 0
+
+
+def report_summary(report: "CycleReport", *, now: Optional[float] = None) -> dict:
+    """The cycle as one JSON object: printed by the CLI and left at
+    `state.cycle_summary_path()` for the session brief and the doctor."""
+    return {
+        "at": now if now is not None else time.time(),
+        "loaded": report.loaded,
+        "refused": list(report.refused),
+        "budget_ceiling_hit": report.budget_ceiling_hit,
+        "outcomes": [
+            {
+                "job": o.name, "ran": o.ran, "dry_run": o.dry_run,
+                "skipped_reason": o.skipped_reason, "exit_code": o.exit_code,
+                "cost_usd": o.cost_usd,
+            }
+            for o in report.outcomes
+        ],
+    }
+
+
+def _write_cycle_summary(state_root: Optional[Path], report: "CycleReport", now: float) -> None:
+    p = state_mod.cycle_summary_path(state_root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(report_summary(report, now=now), indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
 
 
 # Fail-CLOSED default (ROADMAP-TAIL-ADJUDICATIONS.md B3; AA4 2026-07-08
@@ -236,17 +267,26 @@ def run_cycle(
     state_root: Optional[Path] = None,
     report_path: Optional[Path] = None,
     harness_dir: Optional[Path] = None,
+    strict: bool = False,
 ) -> CycleReport:
     """One idempotent cycle: read manifests, run what's due, advance state,
     return a report. A single job's failure never aborts the cycle — its
-    exit code is captured in its own outcome, not propagated."""
+    exit code is captured in its own outcome, not propagated. Neither does a
+    manifest the loader refuses: it lands on the report's `refused` list and
+    the jobs that loaded still run (`strict=True` restores the old all-or-
+    nothing load, raising on the first bad file)."""
     now = now if now is not None else time.time()
-    jobs = manifest_mod.load_manifests(jobs_dir)
+    if strict:
+        jobs = manifest_mod.load_manifests(jobs_dir)
+        refused: list = []
+    else:
+        jobs, refusals = manifest_mod.load_manifests_lenient(jobs_dir)
+        refused = [{"file": r.path.name, "reason": r.reason} for r in refusals]
     # ceiling is never None (fail-CLOSED default) -- spend is always tracked.
     ceiling = _read_daily_ceiling(harness_dir)
     spend = _spend_so_far(state_root)
 
-    report = CycleReport()
+    report = CycleReport(refused=refused, loaded=len(jobs))
     for job in jobs:
         if not job.dry_run and watchdog_mod.is_stopped(job.name, state_root=state_root):
             # The throttle->pause->stop ladder: "throttle" and "pause" are
@@ -272,4 +312,5 @@ def run_cycle(
         outcome = _run_one(job, now=now, state_root=state_root, report_path=report_path)
         spend += outcome.cost_usd
         report.outcomes.append(outcome)
+    _write_cycle_summary(state_root, report, now)
     return report

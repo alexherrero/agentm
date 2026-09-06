@@ -4,7 +4,7 @@ status: launched
 visibility: published
 kind: design
 scope: arc
-area: agentm/vault
+area: agentm/vault-taxonomy
 author: alexherrero
 contributors: []
 created: 2026-09-01

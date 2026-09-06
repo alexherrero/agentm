@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -559,6 +560,89 @@ class WatchdogTests(unittest.TestCase):
             report = cycle.run_cycle(jobs_dir, now=now, state_root=state_root)
             self.assertFalse(report.outcomes[0].ran)
             self.assertEqual(report.outcomes[0].skipped_reason, "watchdog-stop")
+
+
+class LenientLoadingTests(unittest.TestCase):
+    """Filing-v2 remainders task 1: a refused manifest is data, not a halt."""
+
+    def _dir_with_one_good_and_two_bad(self, td: Path) -> Path:
+        jobs_dir = td / "jobs"
+        _write_job(jobs_dir, "good", schedule="daily", lookback="6h", command="true", dry_run=False)
+        (jobs_dir / "half-quoted.yaml").write_text(
+            'schedule: daily\nlookback: 6h\ncommand: "$HOME/bin/x" run -every 168h\n', encoding="utf-8")
+        _write_job(jobs_dir, "always-load", schedule="daily", lookback="6h", command="true", tier="T1")
+        return jobs_dir
+
+    def test_lenient_load_keeps_the_good_manifest_and_names_each_bad_one(self):
+        with tempfile.TemporaryDirectory() as td:
+            jobs_dir = self._dir_with_one_good_and_two_bad(Path(td))
+            loaded, refused = manifest.load_manifests_lenient(jobs_dir)
+        self.assertEqual([j.name for j in loaded], ["good"])
+        self.assertEqual(sorted(r.path.name for r in refused), ["always-load.yaml", "half-quoted.yaml"])
+        reasons = {r.path.name: r.reason for r in refused}
+        self.assertIn("invalid YAML", reasons["half-quoted.yaml"])
+        self.assertIn("never a job target", reasons["always-load.yaml"])
+        # The strict loader still raises on the first bad file, as before.
+        with tempfile.TemporaryDirectory() as td:
+            jobs_dir = self._dir_with_one_good_and_two_bad(Path(td))
+            with self.assertRaises(manifest.ManifestError):
+                manifest.load_manifests(jobs_dir)
+
+    def test_the_cycle_runs_the_good_job_and_reports_the_refusals(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            jobs_dir = self._dir_with_one_good_and_two_bad(td)
+            state_root = td / "state"
+            report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=state_root,
+                                     report_path=td / "digest.jsonl", harness_dir=td / "harness")
+            self.assertEqual(report.loaded, 1)
+            self.assertEqual(sorted(r["file"] for r in report.refused), ["always-load.yaml", "half-quoted.yaml"])
+            good = [o for o in report.outcomes if o.name == "good"]
+            self.assertEqual(len(good), 1)
+            self.assertTrue(good[0].ran)
+            self.assertEqual(good[0].exit_code, 0)
+            # The cycle leaves its own account for the brief and the doctor.
+            summary = json.loads(state.cycle_summary_path(state_root).read_text(encoding="utf-8"))
+            self.assertEqual(summary["loaded"], 1)
+            self.assertEqual(sorted(r["file"] for r in summary["refused"]), ["always-load.yaml", "half-quoted.yaml"])
+            self.assertEqual([o["job"] for o in summary["outcomes"]], ["good"])
+            self.assertEqual(summary["at"], 1000.0)
+            # strict=True is the old contract.
+            with self.assertRaises(manifest.ManifestError):
+                cycle.run_cycle(jobs_dir, now=1001.0, state_root=state_root, report_path=td / "digest.jsonl",
+                                harness_dir=td / "harness", strict=True)
+
+    def test_the_cli_exits_3_only_when_nothing_loaded(self):
+        import contextlib
+        import io
+        from runner import cli
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            jobs_dir = self._dir_with_one_good_and_two_bad(td)
+            common = ["--harness-dir", str(td / "harness"), "--report-path", str(td / "digest.jsonl"),
+                      "--state-root", str(td / "state")]
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = cli.main(["run", "--jobs-dir", str(jobs_dir)] + common)
+            self.assertEqual(rc, 0, "one manifest loaded and ran: the cycle is a success that names its refusals")
+            printed = json.loads(out.getvalue())
+            self.assertEqual(sorted(r["file"] for r in printed["refused"]), ["always-load.yaml", "half-quoted.yaml"])
+            # Only bad manifests: nothing loaded, exit 3, one line on stderr, no traceback.
+            only_bad = td / "only-bad"
+            (only_bad).mkdir()
+            (only_bad / "broken.yaml").write_text("schedule: daily\nlookback: 6h\ncommand: [\n", encoding="utf-8")
+            err = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                rc = cli.main(["run", "--jobs-dir", str(only_bad)] + common)
+            self.assertEqual(rc, 3)
+            self.assertIn("no manifest loaded", err.getvalue())
+            self.assertIn("broken.yaml", err.getvalue())
+            # --strict: the first bad manifest ends the cycle before any job runs.
+            err = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                rc = cli.main(["run", "--jobs-dir", str(jobs_dir), "--strict"] + common)
+            self.assertEqual(rc, 3)
+            self.assertIn("agentm-runner:", err.getvalue())
 
 
 if __name__ == "__main__":
