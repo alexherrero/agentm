@@ -291,7 +291,7 @@ _UNSERVED_LIFECYCLES = frozenset({"superseded", "archived"})
 # not the knob — every weight at or below 0.6 ranks the same — so this is not
 # a tuning surface either.
 _LIFECYCLE_DEMOTION = 0.30
-_DEMOTED_LIFECYCLES = frozenset({"dormant", "archived"})
+_DEMOTED_LIFECYCLES = frozenset({"dormant", "archived", "superseded"})
 
 
 def _lifecycle_of(fm: dict) -> str:
@@ -300,15 +300,13 @@ def _lifecycle_of(fm: dict) -> str:
 
 def _unserved(fm: dict, *, include_archive: bool = False) -> bool:
     """Whether recall leaves this note out: a staging or retired `status`, or
-    a `lifecycle` that has left everyday search — `superseded` always (the
-    successor answers), `archived` unless the caller asked for the archive by
-    name. One reading, shared by both in-process arms and the daemon path."""
+    a `lifecycle` that has left everyday search — `archived` and `superseded`
+    alike, unless the caller asked for the archive by name, in which case both
+    come back demoted (PLAN-superseded-vocabulary: one effect for one
+    relation). One reading, shared by both in-process arms and the daemon path."""
     if fm.get("status") in _UNSERVED_STATUSES:
         return True
-    lc = _lifecycle_of(fm)
-    if lc == "superseded":
-        return True
-    return lc == "archived" and not include_archive
+    return _lifecycle_of(fm) in _UNSERVED_LIFECYCLES and not include_archive
 
 
 def _stem(token: str) -> str:

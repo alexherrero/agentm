@@ -116,7 +116,9 @@ carrying it is a note the migration has not reached yet.
 A memory ages on one frontmatter axis, `lifecycle`, and never by moving.
 `pinned` never decays; `active` is what filing stamps; `dormant` ranks below
 its active twin; `archived` leaves everyday search while staying on disk;
-`superseded` points at its successor. Ranking reads the axis as a demotion
+`superseded` names its successor in `superseded_by:` and leaves everyday
+search the same way, answering the explicit query demoted — `supersedes:` is
+only ever the successor's back-link. Ranking reads the axis as a demotion
 curve on top of the `decay_*` schedule below — the schedule is what moves a
 silent memory along, the axis is what makes the state legible and editable.
 
@@ -256,7 +258,8 @@ deprecations:
 # move. `pinned` never decays. `active` is the default every fresh filing
 # stamps. `dormant` ranks below its active twin. `archived` leaves everyday
 # search while staying on disk and answering an explicit archive query.
-# `superseded` points at its successor and never competes with it.
+# `superseded` names its successor (`superseded_by:`), leaves everyday search
+# like `archived`, and never competes with it; `supersedes:` is the successor's.
 #
 # `expired` is deliberately not here: it was a data-quality artifact of the
 # retired auto-miner, not a lifecycle state, and the migration maps it away.

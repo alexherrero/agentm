@@ -4,7 +4,7 @@
 # Archives an existing entry + writes a new entry in its place (in-place
 # or with --new-slug rename). Both files cross-link via supersedes /
 # superseded_by frontmatter so the supersession graph is queryable.
-# Recall filters skip status: superseded entries by default.
+# Recall walls lifecycle: superseded entries by default (the explicit query brings them back demoted).
 #
 # Used by:
 #   - Claude Code hooks (plan #7a part 3 reflection sidecar — the
@@ -241,10 +241,13 @@ def evolve_entry(
 
     # Build archive content (old frontmatter + superseded fields; body unchanged).
     archive_fm = dict(fm)
-    archive_fm["status"] = "superseded"
+    # The contract's shape (PLAN-superseded-vocabulary): the relation lives on
+    # the lifecycle axis; `status` is left as it was.
+    archive_fm["lifecycle"] = "superseded"
     new_relative = new_path.relative_to(vault) if new_path.is_absolute() else (vault / new_path).relative_to(vault)
     archive_fm["superseded_by"] = str(new_relative).replace(os.sep, "/")
     archive_fm["superseded_at"] = _now_iso_utc()
+    archive_fm["lifecycle_since"] = _now_iso_utc()[:10]
     archive_fm["superseded_reason"] = reason
     archive_content = _compose_entry(archive_fm, body)
 

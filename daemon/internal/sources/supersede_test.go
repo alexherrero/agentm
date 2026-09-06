@@ -64,7 +64,7 @@ func TestSupersedeMarksEveryMemoryTheSourceProduced(t *testing.T) {
 
 	for _, rel := range rep.Superseded {
 		body := v.files[rel]
-		if !strings.Contains(body, "status: superseded") {
+		if !strings.Contains(body, "lifecycle: superseded") {
 			t.Errorf("%s is not marked superseded:\n%s", rel, body)
 		}
 		if !strings.Contains(body, id.String()) {
@@ -73,8 +73,13 @@ func TestSupersedeMarksEveryMemoryTheSourceProduced(t *testing.T) {
 		if !strings.Contains(body, "superseded_at") {
 			t.Errorf("%s does not say when:\n%s", rel, body)
 		}
-		if strings.Contains(body, "status: active") {
-			t.Errorf("%s still carries its old status:\n%s", rel, body)
+		// The relation lives on the lifecycle axis: exactly one lifecycle line,
+		// and `status` neither carries supersession nor gets rewritten.
+		if strings.Count(body, "lifecycle:") != 1 {
+			t.Errorf("%s: one lifecycle line, want exactly one:\n%s", rel, body)
+		}
+		if strings.Contains(body, "status: superseded") {
+			t.Errorf("%s: status carries supersession; the axis does:\n%s", rel, body)
 		}
 	}
 
@@ -122,7 +127,7 @@ func TestSupersedingTwiceDoesNotStackKeys(t *testing.T) {
 		}
 	}
 	body := v.files["a.md"]
-	for _, key := range []string{"status:", "superseded_by:", "superseded_at:"} {
+	for _, key := range []string{"lifecycle:", "superseded_by:", "superseded_at:"} {
 		if n := strings.Count(body, key); n != 1 {
 			t.Errorf("%q appears %d times after three supersessions:\n%s", key, n, body)
 		}
@@ -143,7 +148,7 @@ func TestSupersedeGivesAnUnstructuredNoteFrontmatter(t *testing.T) {
 	if !strings.HasPrefix(body, "---\n") {
 		t.Errorf("no frontmatter was added:\n%s", body)
 	}
-	if !strings.Contains(body, "status: superseded") {
+	if !strings.Contains(body, "lifecycle: superseded") {
 		t.Errorf("the note is not marked:\n%s", body)
 	}
 	if !strings.Contains(body, "just prose, no frontmatter") {

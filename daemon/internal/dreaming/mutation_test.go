@@ -88,6 +88,7 @@ func TestCopiesCollapseIntoTheEarliestAndLeaveTheSurvivorAlone(t *testing.T) {
 	writeRaw(t, root, "memory/procedural/copy-2.md", "---\ntitle: legacy\nkind: workflow\nstatus: active\n---\n\nrun the checks, then push.\nnever tag before green.\n")
 	writeRaw(t, root, "memory/procedural/copy-canon.md", "---\ntitle: the procedure\nkind: workflow\nstatus: active\ncreated: 2026-01-01\n---\n\n"+body)
 	writeRaw(t, root, "memory/procedural/superseded-copy.md", "---\ntitle: old\nkind: workflow\nstatus: superseded\ncreated: 2025-01-01\n---\n\n"+body)
+	writeRaw(t, root, "memory/procedural/settled-copy.md", "---\ntitle: settled\nkind: workflow\nstatus: active\nlifecycle: superseded\nsuperseded_by: memory/procedural/copy-canon.md\n---\n\n"+body)
 	writeRaw(t, root, "memory/semantic/_always-load/curated.md", "---\ntitle: curated\nstatus: active\nlifecycle: pinned\n---\n\n"+body)
 	writeRaw(t, root, "memory/semantic/lonely.md", "---\ntitle: lonely\nstatus: active\n---\n\nNothing else says this.\n")
 	plan, err := PlanCopies(root, 0)
@@ -95,7 +96,7 @@ func TestCopiesCollapseIntoTheEarliestAndLeaveTheSurvivorAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if plan.Considered != 4 {
-		t.Errorf("considered %d active notes, want 4 (the superseded one and the curated one excluded)", plan.Considered)
+		t.Errorf("considered %d active notes, want 4 (the superseded ones — by status or by lifecycle — and the curated one excluded)", plan.Considered)
 	}
 	if len(plan.Families) != 1 {
 		t.Fatalf("families = %+v, want one", plan.Families)
@@ -112,8 +113,14 @@ func TestCopiesCollapseIntoTheEarliestAndLeaveTheSurvivorAlone(t *testing.T) {
 	}
 	for _, in := range plan.Intents {
 		after := string(in.After)
-		if !strings.Contains(after, "status: superseded\n") || !strings.Contains(after, "supersedes: memory/procedural/copy-canon.md\n") {
+		// The contract's shape: the loser names its successor on the axis;
+		// `status` untouched; never a loser-side `supersedes:`.
+		if !strings.Contains(after, "lifecycle: superseded\n") || !strings.Contains(after, "superseded_by: memory/procedural/copy-canon.md\n") ||
+			strings.Contains(after, "status: superseded") || strings.Contains(after, "supersedes:") {
 			t.Errorf("%s: after = %q", in.Rel, after)
+		}
+		if in.Meta["to"] != "superseded" || in.Meta["from"] != "active" {
+			t.Errorf("%s: the intent says where the axis moved: %v", in.Rel, in.Meta)
 		}
 		if got, _ := os.ReadFile(filepath.Join(root, in.Rel)); string(got) != string(in.Before) {
 			t.Errorf("planning wrote %s", in.Rel)
@@ -413,5 +420,29 @@ func TestAKillAroundTheGovernanceLineIsClosedByResumeExactlyOnce(t *testing.T) {
 	}
 	if n := governanceLines(t, state, "memory/procedural/a.md") + governanceLines(t, state, "memory/procedural/b.md"); n != 2 {
 		t.Errorf("earlier lines untouched: %d, want 2", n)
+	}
+}
+
+// A collapse is a move along the axis like any other, and the lifecycle
+// journal records it through the intent's Meta — the same line the policy's
+// sinks write, written once.
+func TestACopiesIntentLandsInTheLifecycleJournal(t *testing.T) {
+	root := t.TempDir()
+	state := t.TempDir()
+	j, _ := OpenJournal(state)
+	now := time.Now().UTC()
+	before := []byte("---\ntitle: c\nkind: workflow\nstatus: active\n---\n\nbody\n")
+	after := []byte("---\ntitle: c\nkind: workflow\nstatus: active\nlifecycle: superseded\nsuperseded_by: memory/procedural/canon.md\n---\n\nbody\n")
+	writeRaw(t, root, "memory/procedural/c.md", string(before))
+	if err := j.Append(Entry{Kind: KindRunStart, RunID: "r", TS: now, Mode: "apply"}); err != nil {
+		t.Fatal(err)
+	}
+	in := Intent{Job: JobCopies, Rel: "memory/procedural/c.md", Before: before, After: after, Summary: "collapse",
+		Meta: map[string]string{"from": "active", "to": "superseded", "reason": "content-identical copy of memory/procedural/canon.md"}}
+	if kind, err := j.Commit(root, "r", "r-1", in, now); kind != KindApplied || err != nil {
+		t.Fatalf("commit: %s %v", kind, err)
+	}
+	if n := governanceLines(t, state, "memory/procedural/c.md"); n != 1 {
+		t.Fatalf("governance lines = %d, want 1", n)
 	}
 }

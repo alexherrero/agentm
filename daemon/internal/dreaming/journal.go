@@ -277,10 +277,11 @@ func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) 
 	}
 }
 
-// governance writes the lifecycle journal line an applied lifecycle intent
-// owes, once.
+// governance writes the lifecycle journal line an applied intent owes when
+// it moved a note along the axis (its Meta says from/to) — the lifecycle
+// job's sinks and lifts, the copies job's supersessions — once.
 func (j *Journal) governance(e Entry, now time.Time) error {
-	if e.Job != JobLifecycle || e.Meta == nil || j.EngineStateDir == "" {
+	if e.Meta == nil || e.Meta["to"] == "" || j.EngineStateDir == "" {
 		return nil
 	}
 	return EnsureLifecycleJournal(j.EngineStateDir, e.Rel, e.Meta["from"], e.Meta["to"], e.Meta["reason"], e.RunID, now)

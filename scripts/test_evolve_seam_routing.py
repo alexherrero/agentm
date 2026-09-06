@@ -45,7 +45,9 @@ class TestEvolveInPlace(unittest.TestCase):
         self.assertIn("status: active", new_content)
         archive_content = archive_path.read_text(encoding="utf-8")
         self.assertIn("original body", archive_content)
-        self.assertIn("status: superseded", archive_content)
+        self.assertIn("lifecycle: superseded", archive_content)
+        self.assertIn("superseded_by:", archive_content)
+        self.assertNotIn("status: superseded", archive_content)
 
     def test_renamed_evolve_writes_new_slug_and_removes_old(self):
         original = save.save_entry(self.vault, "reference", "old-slug", "original body", group="memory")

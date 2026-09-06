@@ -428,7 +428,8 @@ def _still_untriaged(vault_path: Path):
     scan. Returns (paths, loaded)."""
     all_paths = _iter_inbox_files(vault_path)
     all_loaded = _load(all_paths)
-    paths = [p for p in all_paths if all_loaded[p][0].get("status", "inbox") == "inbox"]
+    paths = [p for p in all_paths if all_loaded[p][0].get("status", "inbox") == "inbox"
+             and str(all_loaded[p][0].get("lifecycle") or "").strip().lower() != "superseded"]
     loaded = {p: all_loaded[p] for p in paths}
     return paths, loaded
 
@@ -553,7 +554,7 @@ def _build_merge_and_promote_clusters(entries: list, loaded: dict) -> ClusterSca
     body). A bucket of two or more is a suffix family: content-identical
     modulo formatting, however many `_1`/`_2` copies deep. The whole
     family collapses into the canonical EARLIEST note in one disposition
-    (`inbox_collapse`): every copy is marked `status: superseded` +
+    (`inbox_collapse`): every copy is marked `lifecycle: superseded` +
     `supersedes: <canonical>` — marked, never deleted, so part 1's tidying
     lanes pick the copies up on later cycles — and the surviving note's
     content is left exactly as it is (the copies are the same content;
@@ -595,8 +596,11 @@ def _build_merge_and_promote_clusters(entries: list, loaded: dict) -> ClusterSca
         copies = [p for p in family if p != canonical]
         mutations = [
             (copy, _patch_frontmatter(loaded[copy][2], {
-                "status": "superseded",
-                "supersedes": str(canonical),
+                # The contract's shape (PLAN-superseded-vocabulary): the copy
+                # leaves the inbox pool and names its successor on the axis.
+                "status": "active",
+                "lifecycle": "superseded",
+                "superseded_by": str(canonical),
             }))
             for copy in copies
         ]

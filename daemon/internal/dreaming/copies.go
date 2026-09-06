@@ -14,7 +14,7 @@ import (
 // bucketed by its live body fingerprint; a bucket of two or more is a
 // family; each family collapses into its canonical EARLIEST note (by
 // `created`, path order for the legacy shape with no `created` at all):
-// every copy is marked `status: superseded` + `supersedes: <canonical rel>`,
+// every copy is marked `lifecycle: superseded` + `superseded_by: <canonical rel>`,
 // never deleted, and the survivor is left untouched. Families are ordered
 // by their canonical rel and capped per pass, so a re-run against an
 // unchanged corpus is idempotent — a collapsed family's copies drop out of
@@ -82,6 +82,13 @@ func PlanCopies(root string, cap int) (CopiesPlan, error) {
 		if fm["status"] != "active" {
 			continue
 		}
+		// The lifecycle axis has already settled these: a superseded or
+		// archived note is out of everyday search, a pinned one is the
+		// operator's word. None of them is a copy to collapse.
+		switch strings.ToLower(strings.TrimSpace(fm["lifecycle"])) {
+		case "superseded", "archived", "pinned":
+			continue
+		}
 		plan.Considered++
 		fp := LiveFingerprint(text)
 		if _, seen := byFingerprint[fp]; !seen {
@@ -142,9 +149,18 @@ func PlanCopies(root string, cap int) (CopiesPlan, error) {
 			canonical.rel, len(copies), noun)
 		for _, c := range copies {
 			f.Copies = append(f.Copies, c.rel)
-			after := PatchFrontmatter(c.raw, []Update{{"status", "superseded"}, {"supersedes", canonical.rel}})
+			// The contract's one shape for the relation (PLAN-superseded-vocabulary):
+			// the loser carries `lifecycle: superseded` + `superseded_by:` naming
+			// its successor; `status` is not touched, and `supersedes:` is only
+			// ever the successor's back-link. The lifecycle journal records the
+			// move like any other transition, through the intent's Meta.
+			after := PatchFrontmatter(c.raw, []Update{{"lifecycle", "superseded"}, {"superseded_by", canonical.rel}})
+			from := strings.TrimSpace(ParseFrontmatterValue(c.raw, "lifecycle"))
+			if from == "" {
+				from = lifecycleDefaultState
+			}
 			plan.Intents = append(plan.Intents, Intent{Job: JobCopies, Rel: c.rel, Before: []byte(c.raw), After: []byte(after),
-				Summary: f.Summary})
+				Summary: f.Summary, Meta: map[string]string{"from": from, "to": "superseded", "reason": "content-identical copy of " + canonical.rel}})
 		}
 		plan.Families = append(plan.Families, f)
 	}

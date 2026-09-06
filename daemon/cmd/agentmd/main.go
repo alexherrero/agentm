@@ -410,8 +410,8 @@ func cmdSearch(args []string) error {
 		"widen `fusion`/`hybrid`'s lexical arm from 2-term to 2- and 3-term subsets "+
 			"(task 4, column `+lex3`); false reproduces `lexical-fusion`/`+question` exactly")
 	includeArchived := fs.Bool("include-archived", false,
-		"also return notes whose lifecycle is archived — the contract's explicit archive query; "+
-			"off by default, an archived memory has left everyday search while staying on disk")
+		"also return notes whose lifecycle is archived or superseded — the contract's explicit archive query; "+
+			"off by default, both have left everyday search while staying on disk (a superseded note comes back demoted beside its successor)")
 	ef := bindEmbedderFlags(fs)
 	rf := bindRerankerFlags(fs)
 	asJSON := fs.Bool("json", false, "emit JSON")

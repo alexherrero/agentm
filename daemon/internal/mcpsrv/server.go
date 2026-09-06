@@ -267,7 +267,8 @@ type searchArgs struct {
 	Before string `json:"before"`
 	// IncludeArchived is the contract's explicit archive query: an archived
 	// memory has left everyday search and comes back only when asked for by
-	// name. Published in the inputSchema below (filing v2 part 6).
+	// name — and so does a superseded one, demoted beside its successor
+	// (PLAN-superseded-vocabulary). Published in the inputSchema below.
 	IncludeArchived bool `json:"include_archived"`
 	// Mode is published in the inputSchema below as of the hook cutover
 	// (task 5). It was accepted-but-hidden from task 1 onward: advertising it
