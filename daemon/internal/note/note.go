@@ -34,6 +34,8 @@ var (
 	dateRe          = regexp.MustCompile(`(?m)^date:[ \t]*(.+?)[ \t\r]*$`)
 	sourceRe        = regexp.MustCompile(`(?m)^source:[ \t]*(.+?)[ \t\r]*$`)
 	derivedFromRe   = regexp.MustCompile(`(?m)^derived_from:[ \t]*(.+?)[ \t\r]*$`)
+	sourceIDRe      = regexp.MustCompile(`(?m)^source_id:[ \t]*(.+?)[ \t\r]*$`)
+	sourceURLRe     = regexp.MustCompile(`(?m)^source_url:[ \t]*(.+?)[ \t\r]*$`)
 	sourceHashRe    = regexp.MustCompile(`(?m)^source_hash:[ \t]*(.+?)[ \t\r]*$`)
 	sourceVersionRe = regexp.MustCompile(`(?m)^source_version:[ \t]*(.+?)[ \t\r]*$`)
 	proposalRe      = regexp.MustCompile(`\A#[ \t]*Proposal[ \t]+\d+[ \t]*:`)
@@ -77,11 +79,21 @@ type Note struct {
 	// oddly is diagnosable rather than mysterious.
 	CapturedSource string
 
-	// Source is the note's `source:` field — the unit of external material it
-	// was distilled from. Verbatim, not parsed into an identity: this package
-	// reads files and has no business deciding what counts as a source
-	// namespace, and a note whose source is a sentence rather than an identity
-	// should still round-trip the sentence.
+	// Source is the unit of external material the note was distilled from —
+	// `source_id:` if the note names a registry identity, else `source_url:`
+	// if it names a fetched page, else the note's `source:` field.
+	//
+	// The fallback is for notes nobody migrated. Since the provenance ruling
+	// (2026-09-06) `source:` carries the contract's transport vocabulary and
+	// the reference lives in its own field, but the corpus predates that and a
+	// reader that refused the old shape would make the registry blind to the
+	// population it exists to cover. Writers are strict, readers are tolerant,
+	// and the frontmatter gate keeps new instances from appearing.
+	//
+	// Verbatim, not parsed into an identity: this package reads files and has
+	// no business deciding what counts as a source namespace, and a note whose
+	// source is a sentence rather than an identity should still round-trip the
+	// sentence.
 	//
 	// It is what makes re-ingestion source-scoped. Without it, "supersede every
 	// memory this email produced" is a walk of the whole corpus.
@@ -182,9 +194,7 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	n.Probe = parseProbe(head)
 	n.Captured, n.CapturedSource = parseCaptured(head, modTime)
 	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status, n.Lifecycle)
-	if m := sourceRe.FindStringSubmatch(head); m != nil {
-		n.Source = strings.Trim(strings.TrimSpace(m[1]), `'"`)
-	}
+	n.Source = firstFrontmatterValue(head, sourceIDRe, sourceURLRe, sourceRe)
 	if m := derivedFromRe.FindStringSubmatch(head); m != nil {
 		n.DerivedFrom = parseFlowList(m[1])
 	}
@@ -284,6 +294,19 @@ func parseProbe(head string) bool {
 // filesystem. Which one won is recorded rather than smoothed over: sharding and
 // the temporal bounds both hang off this value, and a silently-guessed date
 // would make an episodic query quietly wrong instead of visibly approximate.
+// firstFrontmatterValue returns the trimmed value of the first regexp that
+// matches, so a preference order over frontmatter keys reads as one call.
+func firstFrontmatterValue(head string, res ...*regexp.Regexp) string {
+	for _, re := range res {
+		if m := re.FindStringSubmatch(head); m != nil {
+			if v := strings.Trim(strings.TrimSpace(m[1]), `'"`); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}
+
 func parseCaptured(head string, modTime time.Time) (time.Time, string) {
 	for _, probe := range []struct {
 		re  *regexp.Regexp

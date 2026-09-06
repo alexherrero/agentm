@@ -48,7 +48,22 @@ if str(_HERE) not in sys.path:
 import forward_learning as fl  # noqa: E402
 
 FRONTMATTER = re.compile(r"\A---[ \t\r]*\n(.*?)\n---[ \t\r]*\n", re.S)
+# The page's address. `source_url:` since the provenance ruling of 2026-09-06;
+# `source:` for a note written before it, which is most of this pass's
+# population. Both are read, the reference field first.
+SOURCE_URL_FM = re.compile(r"^source_url:\s*(\S+)\s*$", re.M)
 SOURCE_FM = re.compile(r"^source:\s*(\S+)\s*$", re.M)
+
+
+def source_url(frontmatter: str) -> str:
+    """The fetched page this note came from, or "" when it names none."""
+    for pattern in (SOURCE_URL_FM, SOURCE_FM):
+        match = pattern.search(frontmatter)
+        if match:
+            value = match.group(1).strip().strip("'\"")
+            if value.lower().startswith(("http://", "https://")):
+                return value
+    return ""
 TYPE_FM = re.compile(r"^type:\s*reference\s*$", re.M)
 STATUS_FM = re.compile(r"^status:\s*(\S+)", re.M)
 HEADING = re.compile(r"^\s*#{1,6}\s")
@@ -110,9 +125,7 @@ def repo_of(raw: str) -> str:
     """The `owner/name` this note came from, or "" if it did not come from one."""
     m = FRONTMATTER.match(raw)
     head = m.group(1) if m else ""
-    url = ""
-    if s := SOURCE_FM.search(head):
-        url = s.group(1)
+    url = source_url(head)
     if not url:
         if s := SOURCE_LINE.search(raw):
             url = s.group(1)

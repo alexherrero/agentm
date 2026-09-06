@@ -58,3 +58,52 @@ func TestSourceProvenanceIsReadFromFrontmatter(t *testing.T) {
 			bare.SourceHash, bare.SourceVersion)
 	}
 }
+
+// The provenance ruling of 2026-09-06 split the field: `source:` names the
+// transport a memory arrived by, and the unit it came from lives in
+// `source_id:` (a registry identity) or `source_url:` (a fetched page). The
+// reader prefers those and falls back to `source:` for the corpus that
+// predates the ruling — writers strict, readers tolerant.
+func TestTheReferenceFieldsWinOverTheLegacySource(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct{ body, want string }{
+		"source_id wins over both": {
+			"---\nsource: conversation\nsource_id: email:<abc@example.com>\n" +
+				"source_url: https://example.com/a\n---\n\nbody\n",
+			"email:<abc@example.com>",
+		},
+		"source_url when there is no identity": {
+			"---\nsource: external-fetch\nsource_url: https://example.com/a\n---\n\nbody\n",
+			"https://example.com/a",
+		},
+		// The legacy shape: a URL sitting in the transport's field. Still read,
+		// because refusing it would make the registry blind to the population
+		// it exists to cover until the migration has run everywhere.
+		"legacy source carries the unit": {
+			"---\nsource: https://example.com/a\n---\n\nbody\n",
+			"https://example.com/a",
+		},
+		// A migrated note: the transport alone. It names no unit, and reading
+		// `conversation` as one would put a watermark on a source nothing can
+		// ever match — but that is the registry's judgment, not this parser's,
+		// so the parser reports what the field holds.
+		"a transport is what the field holds": {
+			"---\nsource: conversation\n---\n\nbody\n",
+			"conversation",
+		},
+		"quoted reference": {
+			"---\n" + `source_url: "https://example.com/a"` + "\n---\n\nbody\n",
+			"https://example.com/a",
+		},
+		"an empty reference field falls through": {
+			"---\nsource_id:\nsource: conversation\n---\n\nbody\n",
+			"conversation",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := Parse("a.md", tc.body, at).Source; got != tc.want {
+				t.Errorf("Source = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -392,5 +392,20 @@ class TestEmit(unittest.TestCase):
             shutil.rmtree(empty, ignore_errors=True)
 
 
+# Every test in this module gets its own engine state dir. Without it a hand
+# run shares one directory across the file and reads what the last test left
+# (PLAN-source-and-hygiene, task 3); the battery's runner hid that from CI.
+# The path insert is here rather than assumed: a hand run reaches this module
+# as `scripts.<name>`, which puts the repo root on the path and not `scripts/`.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()

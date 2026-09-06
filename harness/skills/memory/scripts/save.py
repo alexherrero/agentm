@@ -156,7 +156,11 @@ def entry_target_path(
 # forbids.
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "kind", "status", "altitude", "created", "updated", "tags", "arc", "group", "slug",
-    "source_url", "source_fetched",
+    # Where the material came from, as opposed to how it arrived (`source:`,
+    # below). `source_url` is a fetched page's address and `source_id` a
+    # registry identity — the provenance ruling of 2026-09-06 gave each its
+    # own field so `source:` could go back to naming the transport alone.
+    "source_url", "source_fetched", "source_id",
     "fingerprint", "occurrences", "always_load", "supersedes", "lifecycle_tier",
     "derived_from", "heat_pin",
     # Filing-v2 (the write path): the aging axis, the provenance transport, and
@@ -195,7 +199,7 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
 # existed is complete without it — and requiring it would have turned every note
 # in the corpus into a lint error to make a point the default already makes.
 _OPTIONAL_FIELDS = frozenset({
-    "source_url", "source_fetched", "fingerprint", "occurrences", "supersedes",
+    "source_url", "source_fetched", "source_id", "fingerprint", "occurrences", "supersedes",
     "lifecycle_tier", "derived_from", "heat_pin", "arc", "altitude",
     "lifecycle", "source", "filing_confidence",
     "via", "captured", "surface", "instructions", "review_flags", "related", "trust",
@@ -220,12 +224,24 @@ DEFAULT_ALTITUDE = "artifact"
 def _trust_tier(source: str) -> "str | None":
     """The tier the contract's `sources` map gives a transport, or None for
     a transport the contract does not name. Trust is a property of the
-    transport, never of how plausible the content reads."""
+    transport, never of how plausible the content reads.
+
+    A URL is not a transport, but a note that still carries one in `source:`
+    was fetched from outside, and the Go capture has stamped that `untrusted`
+    since the write path shipped. Both paths agree here so a memory written
+    before the provenance ruling reads the same on either side."""
+    value = (source or "").strip()
     try:
         import storage_rules  # function-local, as every contract read in this module is
-        return storage_rules.rules().sources().get(source) or None
+        tier = storage_rules.rules().sources().get(value)
     except Exception:
-        return None
+        tier = None
+    if tier:
+        return tier
+    lowered = value.lower()
+    if lowered.startswith("http://") or lowered.startswith("https://"):
+        return "untrusted"
+    return None
 
 
 def _default_lifecycle() -> str:
