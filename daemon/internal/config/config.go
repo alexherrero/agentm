@@ -366,6 +366,11 @@ func defaultEmbedScope(memoryRoot string) []string {
 	// `desk` before the merge and were dense-retrievable; the move must not
 	// silently drop them from the vector arm.
 	out = append(out, "Projects")
+	// The vault-root `Calendar/` register (filing-v2 part 5) is the same kind
+	// of sibling. Its facet notes, day indexes and reviews were lexically
+	// indexed from the start; the dense arm reaches them too now (filing-v2
+	// remainders task 3).
+	out = append(out, "Calendar")
 	return out
 }
 

@@ -11,7 +11,7 @@ import (
 // notes and a vector arm with no vectors looks exactly like one that is cold.
 func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 	got := defaultEmbedScope("Agent")
-	want := []string{"Agent/memory", "Agent/desk", "Agent/external", "Agent/diagnostics", "Projects"}
+	want := []string{"Agent/memory", "Agent/desk", "Agent/external", "Agent/diagnostics", "Projects", "Calendar"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,7 +23,7 @@ func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 	for _, root := range []string{"", "  ", "/"} {
 		got := defaultEmbedScope(root)
-		want := "memory,desk,external,diagnostics,Projects"
+		want := "memory,desk,external,diagnostics,Projects,Calendar"
 		if strings.Join(got, ",") != want {
 			t.Errorf("memory_root %q gave %v, want %s", root, got, want)
 		}
