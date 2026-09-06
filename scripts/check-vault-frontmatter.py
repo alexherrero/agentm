@@ -199,6 +199,33 @@ def scan_block(rel: str, block: str, doc: dict) -> list[Finding]:
                 line=kind_line,
             ))
 
+    # One shape for the superseded relation (PLAN-superseded-vocabulary): the
+    # superseded memory names its successor in `superseded_by:`, and
+    # `supersedes:` is only ever the successor's back-link. A superseded note
+    # without a successor has lost its lineage; a superseded note carrying
+    # `supersedes:` is the inverted shape the dream layer used to write.
+    def _line_of(key: str):
+        for i, l in enumerate(lines):
+            m = _TOP_KEY_RE.match(l)
+            if m and m.group("key").strip() == key:
+                return i + _FILE_LINE
+        return None
+    lifecycle_v = str(doc.get("lifecycle") or "").strip().strip("'\"").lower()
+    status_v = str(doc.get("status") or "").strip().strip("'\"").lower()
+    if lifecycle_v == "superseded" and not str(doc.get("superseded_by") or "").strip():
+        findings.append(Finding(
+            rel, "missing-successor",
+            "`lifecycle: superseded` without `superseded_by:` — a superseded memory names its successor",
+            line=_line_of("lifecycle"),
+        ))
+    if (lifecycle_v == "superseded" or status_v == "superseded") and str(doc.get("supersedes") or "").strip():
+        findings.append(Finding(
+            rel, "inverted-supersession",
+            "a superseded memory carries `supersedes:` — the pointer runs the wrong way: the successor carries "
+            "`supersedes:`, the superseded note carries `superseded_by:`",
+            line=_line_of("supersedes"),
+        ))
+
     for index, line in enumerate(lines):
         match = _TOP_KEY_RE.match(line)
         if not match:
@@ -426,6 +453,30 @@ _FIXTURES: list[tuple[str, str, list[tuple[str, int | None]]]] = [
         "memory/crystallized/consolidated-empty-list.md",
         "---\nkind: crystallized\nconsolidated_from: []\n---\n\nAn empty list is no provenance.\n",
         [("missing-provenance", 2)],
+    ),
+    (
+        # The contract's shape: a superseded memory names its successor.
+        "memory/semantic/superseded-clean.md",
+        "---\nkind: reference\nstatus: active\nlifecycle: superseded\nsuperseded_by: memory/semantic/winner.md\n---\n\nThe old wording.\n",
+        [],
+    ),
+    (
+        # `lifecycle:` is file line 3.
+        "memory/semantic/superseded-orphan.md",
+        "---\nkind: reference\nlifecycle: superseded\n---\n\nNobody says what replaced this.\n",
+        [("missing-successor", 3)],
+    ),
+    (
+        # The inverted shape the dream layer used to write: `supersedes:` is file line 4.
+        "memory/semantic/superseded-inverted.md",
+        "---\nkind: reference\nstatus: superseded\nsupersedes: memory/semantic/winner.md\n---\n\nThe loser pointing at the winner.\n",
+        [("inverted-supersession", 4)],
+    ),
+    (
+        # A successor's own back-link is the right direction and is not a finding.
+        "memory/semantic/winner.md",
+        "---\nkind: reference\nstatus: active\nsupersedes: memory/semantic/superseded-clean.md\n---\n\nThe new wording.\n",
+        [],
     ),
 ]
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The lifecycle-separation harness runs against the shipped daemon and reads
-what it ranked: every dormant twin below its active twin, every archived twin
-hidden until asked for, and the control seeing plain path order. Skipped when
+what it ranked: every dormant twin below its active twin, every archived or
+superseded twin hidden until asked for, and the control seeing plain path order. Skipped when
 no daemon binary is at hand ($AGENTMD, as the battery exports it)."""
 from __future__ import annotations
 
@@ -30,15 +30,19 @@ class TheSignTest(unittest.TestCase):
 @unittest.skipUnless(_BIN and Path(_BIN).exists(), "needs the daemon binary in $AGENTMD")
 class TheMeasurement(unittest.TestCase):
     def test_the_axis_separates_the_twins_and_the_control_does_not(self):
-        out = els.measure(_BIN, pairs=6, archived=3)
+        out = els.measure(_BIN, pairs=6, archived=3, superseded=2)
         m, c = out["measured"], out["control"]
         self.assertEqual((m["dormant_below_active"], m["ties"], m["missing"]), (6, 0, 0), m)
         self.assertLess(m["p_two_sided"], 0.05)
         self.assertEqual(m["archived_hidden_everyday"], 3, m)
         self.assertEqual(m["archived_back_on_explicit"], 3, m)
         self.assertEqual(m["archived_below_active_on_explicit"], 3, m)
+        self.assertEqual(m["superseded_hidden_everyday"], 2, m)
+        self.assertEqual(m["superseded_back_on_explicit"], 2, m)
+        self.assertEqual(m["superseded_below_active_on_explicit"], 2, m)
         self.assertEqual(c["a_first"], 6, "with the axis removed the a-twin must win the path tiebreak")
         self.assertEqual(c["archived_hidden_everyday"], 0, c)
+        self.assertEqual(c["superseded_hidden_everyday"], 0, "the wall is the lifecycle's, not the successor pointer's")
         self.assertTrue(out["pass"], out["verdict"])
         self.assertIn("verdict", els.render(out))
 

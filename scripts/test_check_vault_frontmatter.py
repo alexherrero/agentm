@@ -251,5 +251,48 @@ class TestCli(unittest.TestCase):
         self.assertNotIn("clean", result.stdout)
 
 
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class TestSupersededShape(unittest.TestCase):
+    """One shape for the superseded relation (PLAN-superseded-vocabulary): the
+    superseded memory names its successor; `supersedes:` is the successor's."""
+
+    def test_the_contract_shape_is_clean(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, {
+                "memory/semantic/old.md": "---\nkind: reference\nstatus: active\nlifecycle: superseded\n"
+                                          "superseded_by: memory/semantic/new.md\n---\n\nOld.\n",
+                "memory/semantic/new.md": "---\nkind: reference\nstatus: active\nsupersedes: memory/semantic/old.md\n---\n\nNew.\n",
+            })
+        self.assertEqual(_codes(findings), [])
+
+    def test_a_superseded_note_without_a_successor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, {
+                "memory/semantic/orphan.md": "---\nkind: reference\nstatus: active\nlifecycle: superseded\n---\n\nBy what?\n",
+            })
+        self.assertEqual(_codes(findings), ["missing-successor"])
+        self.assertEqual(findings[0].line, 4)  # the `lifecycle:` line
+
+    def test_the_inverted_shape_on_either_axis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, {
+                "memory/semantic/old-status.md": "---\nkind: reference\nstatus: superseded\n"
+                                                 "supersedes: memory/semantic/new.md\n---\n\nInverted, old axis.\n",
+                "memory/semantic/old-lifecycle.md": "---\nkind: reference\nlifecycle: superseded\n"
+                                                    "superseded_by: memory/semantic/new.md\nsupersedes: memory/semantic/new.md\n---\n\nInverted, new axis.\n",
+            })
+        self.assertEqual(_codes(findings), ["inverted-supersession", "inverted-supersession"])
+        by_file = {f.rel: f.line for f in findings}
+        self.assertEqual(by_file["memory/semantic/old-status.md"], 4)
+        self.assertEqual(by_file["memory/semantic/old-lifecycle.md"], 5)
+
+    def test_a_successor_back_link_alone_is_not_a_finding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, {
+                "memory/semantic/new.md": "---\nkind: reference\nstatus: active\nsupersedes: memory/semantic/old.md\n---\n\nNew.\n",
+            })
+        self.assertEqual(_codes(findings), [])
+
+
 if __name__ == "__main__":
     unittest.main()

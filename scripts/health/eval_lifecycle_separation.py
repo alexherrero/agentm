@@ -68,20 +68,21 @@ def _sentence(words: tuple) -> str:
             f"why the {a} was moved there in the first place.\n")
 
 
-def _write(vault: Path, rel: str, title: str, lifecycle: str | None, body: str) -> None:
+def _write(vault: Path, rel: str, title: str, lifecycle: str | None, body: str, extra: str = "") -> None:
     p = vault / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     fm = f"---\ntitle: {title}\nkind: reference\nstatus: active\n"
     if lifecycle:
         fm += f"lifecycle: {lifecycle}\n"
+    fm += extra
     p.write_text(fm + "---\n\n" + body, encoding="utf-8")
 
 
-def build_fixture(vault: Path, *, pairs: int, archived: int, control: bool) -> dict:
+def build_fixture(vault: Path, *, pairs: int, archived: int, control: bool, superseded: int = 0) -> dict:
     """The twin corpus. Returns the pair table: {pair_id: (a_rel, b_rel, words)}."""
-    if pairs + archived > len(_TOPICS):
-        raise SystemExit(f"at most {len(_TOPICS)} pairs in total (asked {pairs} + {archived})")
-    table = {"dormant": [], "archived": []}
+    if pairs + archived + superseded > len(_TOPICS):
+        raise SystemExit(f"at most {len(_TOPICS)} pairs in total (asked {pairs} + {archived} + {superseded})")
+    table = {"dormant": [], "archived": [], "superseded": []}
     for i in range(pairs):
         words = _TOPICS[i]
         a = f"memory/semantic/d{i:02d}-a-dormant.md"
@@ -96,6 +97,16 @@ def build_fixture(vault: Path, *, pairs: int, archived: int, control: bool) -> d
         _write(vault, a, f"Archived {j} a", None if control else "archived", _sentence(words))
         _write(vault, b, f"Archived {j} b", "active", _sentence(words))
         table["archived"].append((a, b, words))
+    for k in range(superseded):
+        # PLAN-superseded-vocabulary: one effect for one relation — the
+        # superseded twin names its successor and is walled like an archived one.
+        words = _TOPICS[pairs + archived + k]
+        a = f"memory/semantic/s{k:02d}-a-superseded.md"
+        b = f"memory/semantic/s{k:02d}-b-active.md"
+        _write(vault, a, f"Superseded {k} a", None if control else "superseded", _sentence(words),
+               extra=f"superseded_by: {b}\n")
+        _write(vault, b, f"Superseded {k} b", "active", _sentence(words))
+        table["superseded"].append((a, b, words))
     return table
 
 
@@ -148,14 +159,14 @@ def sign_test_two_sided(k: int, n: int) -> float:
     return min(1.0, 2 * tail)
 
 
-def measure(binary: str, *, pairs: int, archived: int, keep: bool = False) -> dict:
+def measure(binary: str, *, pairs: int, archived: int, keep: bool = False, superseded: int = 0) -> dict:
     work = Path(tempfile.mkdtemp(prefix="lifecycle-separation-"))
     try:
-        out = {"n_dormant": pairs, "n_archived": archived, "binary": binary}
+        out = {"n_dormant": pairs, "n_archived": archived, "n_superseded": superseded, "binary": binary}
         for arm in ("measured", "control"):
             vault = work / arm / "vault"
             (vault / "memory" / "semantic").mkdir(parents=True)
-            table = build_fixture(vault, pairs=pairs, archived=archived, control=(arm == "control"))
+            table = build_fixture(vault, pairs=pairs, archived=archived, control=(arm == "control"), superseded=superseded)
             d = Daemon(binary, work / arm, vault)
             d.reindex()
             rows = []
@@ -180,8 +191,20 @@ def measure(binary: str, *, pairs: int, archived: int, keep: bool = False) -> di
                     present_back += 1
                     if explicit.get(b) is not None and explicit[a] > explicit[b]:
                         below_back += 1
+            s_hidden = s_back = s_below = 0
+            for a, b, words in table["superseded"]:
+                everyday = d.search(" ".join(words))
+                if a not in _ranks(everyday) and everyday.get("superseded_hidden", 0) >= 1:
+                    s_hidden += 1
+                explicit = _ranks(d.search(" ".join(words), include_archived=True))
+                if a in explicit:
+                    s_back += 1
+                    if explicit.get(b) is not None and explicit[a] > explicit[b]:
+                        s_below += 1
             a_first = sum(1 for x in rows if x["a"] is not None and x["b"] is not None and x["a"] < x["b"])
             out[arm] = {
+                "superseded_hidden_everyday": s_hidden, "superseded_back_on_explicit": s_back,
+                "superseded_below_active_on_explicit": s_below,
                 "dormant_below_active": below, "ties": ties, "missing": missing, "a_first": a_first,
                 "p_two_sided": sign_test_two_sided(below, pairs) if pairs else None,
                 "archived_hidden_everyday": hidden, "archived_back_on_explicit": present_back,
@@ -192,9 +215,12 @@ def measure(binary: str, *, pairs: int, archived: int, keep: bool = False) -> di
         out["verdict"] = {
             "demotion": m["dormant_below_active"] == pairs and m["missing"] == 0,
             "wall": m["archived_hidden_everyday"] == archived and m["archived_back_on_explicit"] == archived
-                    and m["archived_below_active_on_explicit"] == archived,
+                    and m["archived_below_active_on_explicit"] == archived
+                    and m["superseded_hidden_everyday"] == superseded and m["superseded_back_on_explicit"] == superseded
+                    and m["superseded_below_active_on_explicit"] == superseded,
             "instrument": c["a_first"] == pairs and c["archived_hidden_everyday"] == 0
-                          and c["archived_back_on_explicit"] == archived,
+                          and c["archived_back_on_explicit"] == archived
+                          and c["superseded_hidden_everyday"] == 0 and c["superseded_back_on_explicit"] == superseded,
         }
         out["pass"] = all(out["verdict"].values())
         if keep:
@@ -214,7 +240,10 @@ def render(out: dict) -> str:
         f"two-sided sign test p = {m['p_two_sided']:.2e}" if m["p_two_sided"] is not None else "  no dormant pairs",
         f"  archived hidden on the everyday query: {m['archived_hidden_everyday']}/{a}; back on the explicit query: "
         f"{m['archived_back_on_explicit']}/{a}, of which below the active twin: {m['archived_below_active_on_explicit']}/{a}",
-        f"  control (axis removed): a-twin first by path in {c['a_first']}/{n}; archived hidden {c['archived_hidden_everyday']}/{a} (expect 0)",
+        f"  superseded hidden on the everyday query: {m['superseded_hidden_everyday']}/{out['n_superseded']}; back on the explicit query: "
+        f"{m['superseded_back_on_explicit']}/{out['n_superseded']}, of which below the active twin: {m['superseded_below_active_on_explicit']}/{out['n_superseded']}",
+        f"  control (axis removed): a-twin first by path in {c['a_first']}/{n}; archived hidden {c['archived_hidden_everyday']}/{a} (expect 0); "
+        f"superseded hidden {c['superseded_hidden_everyday']}/{out['n_superseded']} (expect 0)",
         f"  verdict: demotion {'PASS' if v['demotion'] else 'FAIL'} · wall {'PASS' if v['wall'] else 'FAIL'} · "
         f"instrument {'PASS' if v['instrument'] else 'FAIL'}",
     ]
@@ -227,13 +256,14 @@ def main(argv=None) -> int:
                    help="the daemon binary (default: $AGENTMD, then PATH)")
     p.add_argument("--pairs", type=int, default=24, help="dormant/active twin pairs (n)")
     p.add_argument("--archived", type=int, default=8, help="archived/active twin pairs")
+    p.add_argument("--superseded", type=int, default=4, help="superseded/active twin pairs (walled like archived)")
     p.add_argument("--json", action="store_true", help="print the summary as JSON")
     p.add_argument("--keep", action="store_true", help="keep the scratch vaults and print their path")
     args = p.parse_args(argv)
     if not args.agentmd or not Path(args.agentmd).exists():
         print("eval_lifecycle_separation: no agentmd binary (set $AGENTMD or --agentmd)", file=sys.stderr)
         return 2
-    out = measure(args.agentmd, pairs=args.pairs, archived=args.archived, keep=args.keep)
+    out = measure(args.agentmd, pairs=args.pairs, archived=args.archived, keep=args.keep, superseded=args.superseded)
     if args.json:
         print(json.dumps(out, indent=2))
     else:
