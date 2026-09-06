@@ -164,6 +164,13 @@ func TestCaptureStaysUnderBudget(t *testing.T) {
 		len(samples), p50.Round(time.Microsecond), p95.Round(time.Microsecond),
 		worst.Round(time.Microsecond), floor.Round(time.Microsecond), captureBudgetP95)
 
+	if skipAbsoluteBudget(runtime.GOOS, os.Getenv("CI")) {
+		t.Logf("SKIPPING the absolute budget on a Windows CI runner (p95 %v, floor %v): its disk is "+
+			"shared with every other test package and read past the budget twice in one afternoon "+
+			"with no Go change (#556, #557). TestExtractionStaysASmallShareOfCapture is the "+
+			"regression catcher, and it runs here.", p95.Round(time.Microsecond), floor.Round(time.Microsecond))
+		return
+	}
 	if floor >= floorSkipThreshold {
 		t.Logf("SKIPPING the absolute budget: the transaction floor alone is %v, past the %v "+
 			"point where this assertion measures the machine rather than the code. The "+
@@ -176,6 +183,32 @@ func TestCaptureStaysUnderBudget(t *testing.T) {
 			"floor is only %v. Something was added to the capture path that does not "+
 			"belong on it — capture writes the file and updates the index, and waits "+
 			"on nothing else.", p95, captureBudgetP95, floor.Round(time.Microsecond))
+	}
+}
+
+// skipAbsoluteBudget: the absolute p95 budget is a statement about this
+// machine's disk as much as about the code, and the Windows CI runner's disk is
+// shared with every other test package running beside this one. The
+// floor-relative share (TestExtractionStaysASmallShareOfCapture) is the
+// machine-independent assertion; on Windows CI it is the only one.
+func skipAbsoluteBudget(goos, ci string) bool {
+	return goos == "windows" && ci != ""
+}
+
+func TestAbsoluteBudgetSkipsOnlyOnWindowsCI(t *testing.T) {
+	cases := []struct {
+		goos, ci string
+		want     bool
+	}{
+		{"windows", "true", true},
+		{"windows", "", false},
+		{"linux", "true", false},
+		{"darwin", "true", false},
+	}
+	for _, c := range cases {
+		if got := skipAbsoluteBudget(c.goos, c.ci); got != c.want {
+			t.Errorf("%s/CI=%q: got %v, want %v", c.goos, c.ci, got, c.want)
+		}
 	}
 }
 

@@ -24,6 +24,7 @@ Covers (plan task 2 verification):
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -44,7 +45,21 @@ class _DreamTestBase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.vault = Path(self._tmp.name) / "vault"
         self.vault.mkdir()
+        self._env = {k: os.environ.get(k) for k in ("AGENTM_STATE_DIR", "XDG_CACHE_HOME")}
+        os.environ["AGENTM_STATE_DIR"] = str(Path(self._tmp.name) / "state")
+        os.environ["XDG_CACHE_HOME"] = str(Path(self._tmp.name) / "cache")
+        self.addCleanup(self._restore_env)
 
+
+    def _restore_env(self) -> None:
+        # Hand runs share one engine state dir across tests unless each test
+        # governs its own (filing-v2 remainders task 6); the battery's runner
+        # did this from outside, and a bare `python3 test_dream.py` did not.
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     def _write(self, name: str, content: str) -> Path:
         path = self.vault / name
         path.write_text(content, encoding="utf-8")
