@@ -84,6 +84,39 @@ def default_history_path() -> Path:
     return _cache_root() / "digest-history.jsonl"
 
 
+def default_runner_cycle_path() -> Path:
+    return Path.home() / ".cache" / "agentm" / "runner" / "last-cycle.json"
+
+
+def runner_refusals(path: "Path | None" = None) -> list:
+    """The manifests the last runner cycle refused, as [{"file", "reason"}].
+    Empty when no cycle has been recorded or none were refused. A refused
+    manifest used to stop every scheduled job with only a launchd-log
+    traceback to show for it; this is where it reaches the operator."""
+    p = Path(path) if path is not None else default_runner_cycle_path()
+    if not p.is_file():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = data.get("refused") if isinstance(data, dict) else None
+    return [r for r in (rows or []) if isinstance(r, dict) and r.get("file")]
+
+
+def _refusal_names(refused: list) -> str:
+    names = ", ".join(str(r["file"]) for r in refused[:3])
+    return names + (", …" if len(refused) > 3 else "")
+
+
+def _refusal_clause(refused: list) -> str:
+    if not refused:
+        return ""
+    n = len(refused)
+    return (f" · ⚠ runner refused {n} manifest{'s' if n != 1 else ''}: {_refusal_names(refused)}"
+            " (every other job still runs; see ~/.cache/agentm/runner/last-cycle.json)")
+
+
 def default_state_path() -> Path:
     return _cache_root() / "session-brief-state.json"
 
@@ -304,6 +337,7 @@ def _days_between(later: datetime, earlier: datetime) -> int:
 def build_brief(
     *, vault: Path, now: datetime, deadman_days: int = _DEFAULT_DEADMAN_DAYS,
     park_dir: "Path | None" = None, history_path: "Path | None" = None,
+    runner_cycle_path: "Path | None" = None,
 ) -> "dict | None":
     """Compose the observability line, or None when there is honestly nothing
     to say (the ladder was never configured on this vault). Returns
@@ -316,7 +350,14 @@ def build_brief(
 
     digest = latest_digest(vault)
     hist_latest = history_latest_date(history_path)
+    refused = runner_refusals(runner_cycle_path)
     if digest is None and hist_latest is None:
+        if refused:
+            # The ladder never ran here, but the runner has something to say.
+            n = len(refused)
+            return {"line": f"[agentm] ⚠ Runner — refused {n} manifest{'s' if n != 1 else ''}: "
+                            f"{_refusal_names(refused)}; every other job still runs.",
+                    "signature": f"refused|{_refusal_names(refused)}"}
         return None  # honest-quiet: ladder never ran here
 
     parked = count_parked(park_dir)
@@ -335,6 +376,8 @@ def build_brief(
             f" · {crystallize_pending} session{'s' if crystallize_pending != 1 else ''} "
             f"awaiting crystallization"
         )
+    parked_clause += _refusal_clause(refused)
+    refusal_sig = f"|refused={len(refused)}"
 
     hist_str = hist_latest.strftime("%Y-%m-%d") if hist_latest is not None else None
 
@@ -347,7 +390,7 @@ def build_brief(
             else:
                 age = f"{stale_days}d ago" if stale_days else "today"
             line = f"[agentm] Observability — {digest['headline']} (last cycle {age}){parked_clause}."
-            signature = f"fresh|{digest['slug']}|{parked}|{needs_eye}|{crystallize_pending}"
+            signature = f"fresh|{digest['slug']}|{parked}|{needs_eye}|{crystallize_pending}{refusal_sig}"
             return {"line": line, "signature": signature}
         # Deadman — a note exists but the ladder has gone quiet.
         extra = ""
@@ -358,7 +401,7 @@ def build_brief(
             f"[agentm] ⚠ Observability — no digest in {stale_days} days, "
             f"ladder stalled (last: {last}).{extra}{parked_clause}"
         )
-        signature = f"deadman|{last}|{stale_days}|{hist_str or '-'}|{parked}"
+        signature = f"deadman|{last}|{stale_days}|{hist_str or '-'}|{parked}{refusal_sig}"
         return {"line": line, "signature": signature}
 
     # No digest note at all, but the ledger shows the ladder ran before → the
@@ -368,7 +411,7 @@ def build_brief(
         f"(ladder last computed {hist_str}, but no note reached the vault — see runner)"
         f"{parked_clause}."
     )
-    signature = f"deadman-nonote|{hist_str}|{parked}"
+    signature = f"deadman-nonote|{hist_str}|{parked}{refusal_sig}"
     return {"line": line, "signature": signature}
 
 

@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from . import cycle as cycle_mod
+from . import manifest as manifest_mod
 
 _DEFAULT_JOBS_DIR = Path(".harness") / "jobs"
 _DEFAULT_REPORT_PATH = Path.home() / ".cache" / "agentm" / "runner" / "digest.jsonl"
@@ -22,29 +23,32 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--jobs-dir", default=str(_DEFAULT_JOBS_DIR))
     run.add_argument("--harness-dir", default=".harness")
     run.add_argument("--report-path", default=str(_DEFAULT_REPORT_PATH))
+    run.add_argument("--state-root", default=None,
+                     help="per-job markers and the cycle summary (default ~/.cache/agentm/runner)")
+    run.add_argument("--strict", action="store_true",
+                     help="the old all-or-nothing load: exit 3 on the first refused manifest, run nothing")
     return p
 
 
 def main(argv=None) -> int:
     ns = _build_parser().parse_args(argv)
     if ns.cmd == "run":
-        report = cycle_mod.run_cycle(
-            Path(ns.jobs_dir),
-            harness_dir=Path(ns.harness_dir),
-            report_path=Path(ns.report_path),
-        )
-        summary = {
-            "budget_ceiling_hit": report.budget_ceiling_hit,
-            "outcomes": [
-                {
-                    "job": o.name, "ran": o.ran, "dry_run": o.dry_run,
-                    "skipped_reason": o.skipped_reason, "exit_code": o.exit_code,
-                    "cost_usd": o.cost_usd,
-                }
-                for o in report.outcomes
-            ],
-        }
-        print(json.dumps(summary, indent=2))
+        try:
+            report = cycle_mod.run_cycle(
+                Path(ns.jobs_dir),
+                harness_dir=Path(ns.harness_dir),
+                report_path=Path(ns.report_path),
+                state_root=Path(ns.state_root) if ns.state_root else None,
+                strict=ns.strict,
+            )
+        except manifest_mod.ManifestError as e:  # --strict only
+            print(f"agentm-runner: {e}", file=sys.stderr)
+            return 3
+        print(json.dumps(cycle_mod.report_summary(report), indent=2))
+        if report.refused and report.loaded == 0:
+            names = ", ".join(r["file"] for r in report.refused)
+            print(f"agentm-runner: no manifest loaded — refused {len(report.refused)}: {names}", file=sys.stderr)
+            return 3
         return 0
     return 2
 
