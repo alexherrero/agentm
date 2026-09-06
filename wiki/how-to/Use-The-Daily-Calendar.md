@@ -17,7 +17,7 @@
 
    Prints the contract's registry, one per line — `meetings`, `correspondence`, `docs`, `diary` unless `standards/storage-rules.md` names others.
 
-2. **Record today's diary line.**
+2. **Record today's diary line.** From a session, `/memory diary "<text>"` is the front door — it wraps the same writer below and prints the same thing. Calling the script directly works identically:
 
    ```bash
    python3 harness/skills/memory/scripts/calendar_facets.py --vault <memory-root> quick --text "a diary line for today"
@@ -25,13 +25,13 @@
 
    Creates `Calendar/YYYY/YYYY-MM-DD-diary.md` on first use that day, or appends a new timestamped paragraph to it. Prints `created ...` or `appended ...` naming the path written, relative to the vault root. `quick` always writes to today — it takes no `--day`.
 
-3. **Log a specific facet instead of the diary.**
+3. **Log a specific facet instead of the diary.** From a session: `/memory diary --facet meetings "Sync about the release."` (add `--day YYYY-MM-DD` to name a different open day). Calling the script directly works the same way:
 
    ```bash
    python3 harness/skills/memory/scripts/calendar_facets.py --vault <memory-root> append --facet meetings --text "Sync about the release."
    ```
 
-   Same append-only behavior, under `Calendar/YYYY/YYYY-MM-DD-meetings.md`. `--day YYYY-MM-DD` names a different day; a day before today refuses (see Troubleshooting) — `append` only ever adds to a day that's still open.
+   Same append-only behavior, under `Calendar/YYYY/YYYY-MM-DD-meetings.md`. `--day YYYY-MM-DD` names a different day; a day before today refuses (see Troubleshooting) — `append` only ever adds to a day that's still open, and `/memory diary` refuses the same way.
 
 4. **Check the day index.** It regenerates automatically after every append or correction, so this step is for inspection, not required:
 
@@ -40,6 +40,8 @@
    ```
 
    Lists whichever facet notes exist for that day, each with a context phrase and its entry count, plus the day's episodic session traces and system digest when either exists. A day with nothing recorded has no index at all — `--dry-run` prints `(nothing on YYYY-MM-DD)` rather than an empty file.
+
+   An episodic session trace is the agent's own memory of one session: one `kind: session-trace` note under `memory/episodic/`, written at session end by the Stop hook from the transcript and the recall history, no model call. Its title is the session's first request; its body links what that session captured and recalled. A session that touched nothing leaves no trace file at all, so a quiet day's index links few or none.
 
 5. **See this week's or this month's review.** Weekly and monthly reviews are written by the dreaming binary's `calendar` job, on its own cadence — not something you run by hand day to day. `-force` skips the binary's own gate and previews a pass right now; add `-apply` to actually write:
 

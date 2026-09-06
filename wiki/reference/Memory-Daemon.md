@@ -108,7 +108,7 @@ Hybrid search is optional and additive: the daemon is still pure Go (`CGO_ENABLE
 
 Liveness comes from the work, not from `/health`: a wedged `llama-server` answers `/health` with 200 while failing every real embedding, so three consecutive failed embeddings — not an HTTP code — condemn the child and trigger a restart with exponential backoff. `agentmd status` reports `embedder ok (warm) · <model> · N/M embedded` or `DEGRADED — hybrid off` with the reason; the same detail is on `/status` as `health.embedder`.
 
-Notes longer than the window are split into overlapping chunks (the model's own byte budget, 1/10 overlap) rather than truncated — a note scores by its single best-matching chunk. The vector arm is scoped to `Agent/memory`, `Agent/desk`, `Agent/external`, `Agent/diagnostics` (the diagnostics space joined in filing-v2 part 2a — the digests and scorecards it holds lived under `desk` before the move and were already dense-retrievable), and the vault-root `Projects/` (joined in filing-v2 part 2b — the project trees lived under `desk` before that merge and were already dense-retrievable too, so the move must not silently drop them from the vector arm); `_vault-archive/` and the residual `_meta/` are never embedded.
+Notes longer than the window are split into overlapping chunks (the model's own byte budget, 1/10 overlap) rather than truncated — a note scores by its single best-matching chunk. The vector arm is scoped to `Agent/memory`, `Agent/desk`, `Agent/external`, `Agent/diagnostics` (the diagnostics space joined in filing-v2 part 2a — the digests and scorecards it holds lived under `desk` before the move and were already dense-retrievable), the vault-root `Projects/` (joined in filing-v2 part 2b — the project trees lived under `desk` before that merge and were already dense-retrievable too, so the move must not silently drop them from the vector arm), and the vault-root `Calendar/` (joined in filing-v2 remainders task 3 — its facet notes, day indexes and reviews were lexically indexed from the start, and the dense arm now reaches them too); `_vault-archive/` and the residual `_meta/` are never embedded.
 
 ## The rank penalty
 
@@ -512,6 +512,7 @@ The second Go binary the design names, built beside `agentmd` by `install.sh`. W
 | Journal | fsynced intent → applied → skipped, hash-checked resume after a crash |
 | Default mode | report-only (decides and prints); `-apply` writes |
 | Triggered by | `templates/jobs/dreaming.yaml`, through the runner |
+| Last-pass report | `<engine state dir>/dreaming/last-report.json`, left by every completed pass; a refused or not-due start leaves the previous file — the scorecard's "The dreaming binary" section reads it |
 
 ```bash
 "$HOME/.local/bin/agentmdream" run -every 168h -apply   # the applying pass the runner schedules daily
@@ -519,7 +520,7 @@ agentmdream status                                        # the last pass, the g
 agentmdream journal -tail 20                               # the mutation journal, newest last
 ```
 
-`run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON).
+`run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON). See [Read the nightly scorecards](Read-The-Nightly-Scorecards) for how to read the last-pass report on the scorecard.
 
 ### Its jobs, in order
 
@@ -542,6 +543,20 @@ The binary ran report-only beside the Python `dream.py` cycle through an overlap
 ### Parity as a recording
 
 `scripts/fixtures/dreaming-parity/expected.json` was recorded from the Python producers, clock pinned, before they retired. The Go tests reproduce it — including the calendar reviews, byte for byte — and [`scripts/check-dreaming-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-dreaming-parity.sh) guards it in the local battery and in CI (see [CI gates](CI-Gates)). The recording can't be re-recorded: the Python producers it was taken from are gone, so a changed decision from here is a deliberate edit to the recording, made on purpose.
+
+## The runner, and a refused manifest
+
+The local scheduler (`scripts/agentm-runner.sh` → `scripts/runner/cli.py`; design: [AgentM Runner](agentm-runner)) that fires `agentmdream` and every other `.harness/jobs/*.yaml` manifest on its own cadence. One malformed manifest used to stop every job in the cycle, with a launchd-log traceback as the only trace. `load_manifests_lenient` (`scripts/runner/manifest.py`) now keeps every manifest that loads and names each one it refuses, and the cycle runs whatever loaded rather than aborting.
+
+The cycle's own account — what loaded, what was refused and why, what ran — lands at `~/.cache/agentm/runner/last-cycle.json` after every run. Three surfaces read it:
+
+| Surface | What it shows |
+|---|---|
+| Session brief | `⚠ runner refused N manifest(s): <name>, <name>, … (every other job still runs; see ~/.cache/agentm/runner/last-cycle.json)` |
+| Doctor | A `runner-cycle` row — `FAIL` naming the refused files when the last cycle refused any (even though the other jobs in that cycle still ran), `OK` with the loaded/ran counts otherwise, `UNVERIFIED` when no cycle has run yet |
+| `agentm-runner run --strict` | The old all-or-nothing load, on demand: exits 3 on the first refused manifest and runs nothing |
+
+A plain (non-`--strict`) cycle exits 3 only when nothing loaded at all; refusing some manifests while the rest load and run is exit 0.
 
 ## The derived indexes
 
@@ -898,6 +913,7 @@ There is no bearer token, on purpose. It would gate other processes running as t
 ## Related
 
 - [AgentM Rescope — Storage Topology](agentm-rescope-topology) — the daemon's design.
+- [AgentM Runner](agentm-runner) — the scheduler design behind the runner section above: the manifest schema, the job template contract, and the launchd/cron triggers.
 - [AgentM Rescope — The Memory Engine](agentm-rescope-memory) — layout, frontmatter, capture doctrine.
 - [AgentM Hybrid Retrieval](agentm-hybrid-retrieval) — the recall ladder that added the embedder child, the search modes, and their measurements.
 - [Vault write protocol](Vault-Write-Protocol) — the caller-facing shape of the same write-time stamps and gate refusal.

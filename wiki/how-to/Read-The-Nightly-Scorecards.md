@@ -21,20 +21,21 @@ what ran, what it cost, and what it could not finish.
 
 ## Steps
 
-1. **Read the corpus scorecard top to bottom, not by hunting for red.** The
-   sections are ordered so each one gives the next its context: how much is in the
-   corpus, whether enrichment kept what the sources said, whether the writing is
-   converging, and what the graph looks like. The first line is **class
-   populations** — flat memory counts per class directory (`semantic`,
-   `procedural`, `episodic`, `entities`, `crystallized`, `mocs`), the accumulate
-   loop's supplement lanes reported apart so a class holding only lanes doesn't
-   read as populated. It exists because the six class directories once sat built
-   and empty for months while the corpus lived in a staging area, with nothing
-   counting them — filing-v2 part 3 populated them, and this is the line that
-   keeps that failure from going invisible again. `episodic`, `entities`, and
-   `mocs` commonly read zero: they're derived classes nothing routes to directly
-   yet, not a sign anything is missing. A diversity number means something
-   different over 500 notes than over 5.
+1. **Read the corpus scorecard top to bottom, not by hunting for red.** The sections
+   are ordered so each one gives the next its context: how much is in the corpus,
+   whether enrichment kept what the sources said, whether the writing is converging,
+   and what the graph looks like. The first line is **class populations** — flat
+   memory counts per class directory (`semantic`, `procedural`, `episodic`,
+   `entities`, `crystallized`, `mocs`), the accumulate loop's supplement lanes
+   reported apart so a class holding only lanes doesn't read as populated. It exists
+   because the six class directories once sat built and empty for months while the
+   corpus lived in a staging area, with nothing counting them — filing-v2 part 3
+   populated them, and this is the line that keeps that failure from going invisible
+   again. `entities` and `mocs` commonly read zero: they're derived classes nothing
+   routes to directly yet, not a sign anything is missing. `episodic` holds one
+   session-trace note per session, written at session end — it populates as soon as a
+   session runs on this vault. A diversity number means something different over 500
+   notes than over 5.
 
 2. **Read "needs review" and "writes per day" right after class populations.**
    Both replace what the old staging directory used to make visible just by
@@ -87,7 +88,20 @@ what ran, what it cost, and what it could not finish.
    that finished everything and a cycle that ran out of budget both look busy; only
    the deferral count distinguishes them.
 
-8. **Regenerate on demand** rather than waiting for the next cycle:
+8. **Read "The dreaming binary" for the binary's own pass.** This section is
+   `agentmdream`'s last completed pass, reported separately from the
+   deferred/dead-lettered rows above: the run id, its mode and outcome, the gate's
+   reason, how long ago it finished, one row per job (lifecycle, copies, refile,
+   promote, calendar, mocs, dates, vocabulary, trends, reclassify) naming what each
+   did, and an applied/skipped count. It comes from
+   `<engine state dir>/dreaming/last-report.json`, left by every completed pass; a
+   refused or not-due start leaves the previous file in place, so the section always
+   describes the last pass that actually ran.
+
+   **"No pass recorded" is not a row of zeros.** It means no pass has completed on
+   this machine yet, or that the engine state dir moved.
+
+9. **Regenerate on demand** rather than waiting for the next cycle:
 
    ```bash
    python3 harness/skills/memory/scripts/corpus_scorecard.py

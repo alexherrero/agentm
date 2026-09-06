@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.16.0](https://github.com/alexherrero/agentm/releases/tag/v9.16.0).** Filing v2 part 6 — lifecycle and the dreaming binary: memory ages honestly along one axis, and the nightly pass is a Go binary with mutation authority that took over from the Python layer. The six-part filing v2 arc is now complete, and [AgentM Filing v2](agentm-filing-v2) is launched.
+> **Latest release: [v9.17.0](https://github.com/alexherrero/agentm/releases/tag/v9.17.0).** Filing v2 remainders: the runner tells you when it refuses a job, the agent remembers its own sessions, and the binary's pass is on the scorecard.
