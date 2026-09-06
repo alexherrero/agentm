@@ -19,12 +19,12 @@
    - Merge them by hand.
    - Leave the newer one to age out on its own.
 
-   A same-key entry means two notes assert different values for the same thing. Decide which one is current, then supersede the other:
+   A same-key entry means two notes assert different values for the same thing. Decide which one is current, then supersede the outdated one:
 
-   - Set the note's `lifecycle: superseded`.
-   - Add the `supersedes:` pointer to the note it replaces.
+   - Set its `lifecycle: superseded`.
+   - Add its `superseded_by:`, naming the note that replaces it.
 
-   See [Memory daemon reference](Memory-Daemon) for both fields.
+   The current note needs no change — its `supersedes:` back-link is optional. See [Memory daemon reference](Memory-Daemon) for both fields.
 
 3. **Type the unfiled captures.** These arrived through the capture front door with nobody standing behind a type. Take these actions:
 

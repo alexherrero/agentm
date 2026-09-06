@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.17.0](https://github.com/alexherrero/agentm/releases/tag/v9.17.0).** Filing v2 remainders: the runner tells you when it refuses a job, the agent remembers its own sessions, and the binary's pass is on the scorecard.
+> **Latest release: [v9.18.0](https://github.com/alexherrero/agentm/releases/tag/v9.18.0).** One vocabulary for the superseded relation: the loser names its successor, both recall paths wall it like an archived note, and the vault has migrated to it.

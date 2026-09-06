@@ -30,10 +30,10 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 | `placeholder-value` | warn | A frontmatter value still holds an unfilled template option-list (`a \| b \| c`). | Replace with the single chosen value. |
 | `schema-drift` | warn | A frontmatter key is not in the locked schema (unknown key). | Remove the key, or confirm an intentional schema addition. |
 | `wikilink-resolution` | error | Every `[[link]]` in the body resolves to a file in the enclosing Obsidian vault — by filename stem, by relative path, or by an `aliases:` entry, vault-wide. | Fix the target, create the note, or remove the link. |
-| `supersede-integrity` | error / warn | `supersedes:` resolves to a real entry (error if dangling); the superseded entry is no longer `active` (warn if still `active`). | Fix the reference / set the target's status to `superseded`. |
+| `supersede-integrity` | error / warn | `superseded_by:` and `supersedes:` each resolve to a real entry (error if dangling; a source version `<id> at <version>` is left alone); a `supersedes:` target still `active` on the lifecycle axis warns. | Fix the reference, or set the target's `lifecycle: superseded` and name the successor in its `superseded_by:`. |
 | `supersede-cycle` | error | A `supersedes:` chain loops back on itself (A supersedes B ... supersedes A). | Break the cycle — fix the `supersedes` target on one entry in the chain. |
 | `supersede-fork` | warn | Two or more entries both claim `supersedes:` the same target. | Keep exactly one successor; reconcile the others (merge, retarget, or drop the extra `supersedes`). |
-| `dangling-supersession` | warn | `status: superseded` but no entry's `supersedes:` points here. | Add `supersedes: <successor>` on the entry that replaced this one, or revert `status` if nothing did. |
+| `dangling-supersession` | warn | A superseded memory (`lifecycle: superseded`, or the pre-contract `status: superseded`) with no lineage: no `superseded_by:` of its own, and no entry's `supersedes:` points here. | Add `superseded_by: <successor>` on this note (and `supersedes:` on the successor), or revert the state if nothing replaced it. |
 | `kind-taxonomy` | warn | `kind` is not in `kind_registry.py`'s `KNOWN_KINDS` registry. | Use a registered kind, or add this one to `KNOWN_KINDS` if it's a genuine addition. |
 | `arc-registry` | error | `arc` (when present — most entries carry none) is kebab-case and a recognized slug in `arc_registry.py`'s `KNOWN_ARCS`. | Rename to kebab-case, or add the slug to `KNOWN_ARCS`. |
 

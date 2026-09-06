@@ -423,6 +423,29 @@ three Python lanes removed, the recording kept as the contract. The overlap
 window's length was a gap this design left open; it closed by operator
 ruling.
 
+**Amended (v9.18.0, 2026-09-05; PRs #566, #567).** One vocabulary for the
+superseded relation. The dream layer's stages — the copies job, the dedup
+merge, the inbox collapse, the correction flow — had marked the *loser* with
+`status: superseded` + `supersedes: <winner>`, which inverted the direction
+every other writer and reader used (`supersedes:` on the successor; the
+compactor read it as winner→loser, so a dedup loser looked like a chain head)
+and differed in effect from the write path's `lifecycle: superseded` +
+`superseded_by:` (hidden from the Python walk; only demoted by the daemon).
+Ruled: a superseded memory carries `lifecycle: superseded` + `superseded_by:`
+naming its successor; `supersedes:` is only ever the successor's back-link;
+both recall paths keep a superseded memory out of everyday search and answer
+the explicit query with it demoted, exactly like `archived`; `status:` no
+longer carries supersession for memories (readers still accept
+`status: superseded` on a note nobody migrated); the migration walks the
+whole vault, resolves the successor inside it, and revives a note whose
+successor is gone rather than wall it behind nothing; the frontmatter gate
+refuses a superseded memory without a successor or with a loser-side
+`supersedes:`; the parity recording was edited on purpose. Why not keep two vocabularies: one relation with two directions
+and two effects is two bugs waiting, and the inverted pointer had already
+made the compactor misread lineage. Re-audit trigger: a writer that needs
+the successor to be something other than a note (the sources layer's
+`<source id> at <version>` is the one exception, kept).
+
 ## Alternatives Considered
 
 **Amend `agentm-rescope-filing` instead of a new design.** Rejected (ruled):
@@ -676,3 +699,4 @@ layer, which is not retired until parity fixtures pass.
 | 2026-09-04 | The write path's follow-up (miner-provenance, v9.14.0, PR #546) reconciled: DD§4's shipped paragraph records the four rulings as shipped. No locked call changed; the miner is upstream of this design's write path, and its rules live in reflect.py's pattern tables (why not fold the miner into the design: it predates filing v2 and serves every part; re-audit when a later labeled sample disowns a "User stated" note again). | final |
 | 2026-09-04 | Part 5 (calendar) reconciled to what shipped (v9.15.0, PR #548; live the same day). Body: DD§5's calendar section gains the shipped paragraph — the register discovered through the Projects witness and never conjured (why not create it: the vault root is the operator's; re-audit if a flat vault needs a register); rollups on the Python dream cadence until the binary takes them over in part 6, empty weeks saying so once (why not skip them: schedule replaced discipline; re-audit if empty reviews become noise); promotion as a confirm-gated rules proposal, never auto-applied (why not auto-apply: the registry is the operator's per part 1; re-audit only toward a lighter confirm). Residuals named: the register outside the daemon's index scope; the operator's flat daily notes coexisting in `Calendar/`. The write path gains one amendment this part's CI found at UTC midnight: the volume gate counts against the day the arriving note's `captured` stamp names, the same day the writes-per-day reading files it under (why not the wall clock: the gate and the reading disagreed about which day a write belonged to, and a flood in progress at midnight found the door open; re-audit if a writer ever backdates `captured` deliberately — the gate would count against the backdated day). | final |
 | 2026-09-05 | Part 6 (lifecycle-dreaming) reconciled to what shipped (v9.16.0, PRs #550–#555, #556; live the same days) and the design launched. Body: DD§6 gains the shipped paragraph — the axis as classes at the standard demotion (why not a tuned curve: the daemon's 125-point sweep found every other weight a regression; re-audit when the corpus has age spread); additive date glosses (why not rewrite: the corpus is the operator's words and every other mutation is additive; re-audit if glossed notes read badly in recall excerpts); the takeover as one change to two manifests after a written disposition of the divergence reviews (why not a longer window: the one review agreed on every surface and the operator ruled; re-audit if a first applying pass ever skips an intent). Gap closed by ruling: the overlap window's length and who closes it. | launched |
+| 2026-09-05 | One vocabulary for the superseded relation (v9.18.0, PRs #566, #567): the loser carries `lifecycle: superseded` + `superseded_by:`, `supersedes:` is the successor's back-link only, both recall paths wall a superseded memory like `archived` and answer the explicit query with it demoted, the gate refuses the inverted shape, the corpus migrated (9 converted, 3 revived whose successors were gone, 1 digest), the parity recording edited on purpose (why not two vocabularies: two directions and two effects for one relation; re-audit if a successor ever needs to be something other than a note). | launched |

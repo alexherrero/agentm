@@ -124,7 +124,7 @@ Miner fragments are short and quote the operator's own words, so BM25 ranks them
 | `artifact` | 0.30 | the note says `altitude: artifact` — dampening lifted for a question that asks for that shape |
 | `lifecycle-dormant` | 0.30 | frontmatter `lifecycle: dormant` — silent past the axis's `dormant_after_days` |
 | `lifecycle-archived` | 0.30 | frontmatter `lifecycle: archived` — also walled out of the default result set (see below) |
-| `lifecycle-superseded` | 0.30 | frontmatter `lifecycle: superseded` — a separate field from the pre-existing `status: superseded` value in the `status` row above; a note can carry either, or both |
+| `lifecycle-superseded` | 0.30 | frontmatter `lifecycle: superseded` — the axis is now the only carrier of supersession for a memory; also walled out of the default result set like archived (see below), lifted by `include_archived`, counted in `superseded_hidden` |
 | `durable` | *none* | the note never ages: `lifecycle_tier: durable`, `lifecycle: pinned`, `kind: failure-incident`, a `decisions/` path segment, or a contract-exempt space |
 
 Four properties are load-bearing:
@@ -134,9 +134,9 @@ Four properties are load-bearing:
 - **Filing overrides shape.** `fragment-promoted` carries no weight, so a fragment-shaped note that filing promoted keeps its score. That protects 1,288 notes, including 229 of the 232 in `memory/preferences/` — the promotion pipeline promoted their bodies verbatim, so they look mined and are filed.
 - **Never exclude.** A penalized note that is the best thing the corpus has still comes back first. Exclusion is what left recall returning nothing for four months.
 
-### The archived wall
+### The archived and superseded wall
 
-`lifecycle-archived` is the one class that breaks the "never exclude" rule above, on purpose. An archived note leaves the default result set entirely — on disk, in the index, but invisible until you ask for the archive by name: `include_archived: true` on `memory_search`, `-include-archived` on `agentmd search`. Ask, and it comes back present and still demoted, never restored to parity with an active note. Every search outcome reports `archived_hidden`, the count the wall kept out of that call's results, so an absence is visible rather than inferred.
+`lifecycle-archived` and `lifecycle-superseded` are the two classes that break the "never exclude" rule above, on purpose. An archived or superseded note leaves the default result set entirely — on disk, in the index, but invisible until you ask for it by name: `include_archived: true` on `memory_search`, `-include-archived` on `agentmd search`. Ask, and it comes back present and still demoted, never restored to parity with an active note. Every search outcome reports `archived_hidden` and `superseded_hidden`, the counts the wall kept out of that call's results, so an absence is visible rather than inferred.
 
 ### Space, altitude, and the two that are not penalties
 
@@ -170,11 +170,11 @@ There is no OR query rewrite. It read as the largest available win on one run; r
 | `k` | `int` | `5` | Capped at 50. |
 | `after` | `str` | — | Capture date on or after. `YYYY-MM-DD` or RFC3339. |
 | `before` | `str` | — | Capture date before. |
-| `include_archived` | `bool` | `false` | Lifts the archived wall for this call — an archived note re-enters the result set, demoted like any other lifecycle class. |
+| `include_archived` | `bool` | `false` | Lifts the archived and superseded wall for this call — the note re-enters the result set, demoted like any other lifecycle class. |
 
 Two more knobs exist in the code and are deliberately not in this table: a `-lex3` flag (widens `fusion`'s subset search from 2-term to 2- and 3-term) and a `rerank` mode (cross-encoder rerank with a score floor). Neither is in `memory_search`'s published schema and neither is requested by the prompt-submit hook — `lex3` missed its own recall floor by two questions, and `rerank` could not separate true answers from hard negatives at any threshold. Both stay in the tree as tested, working code reachable only from `agentmd search` directly: a refuted rung is still worth keeping when it costs nothing in production. See [AgentM Hybrid Retrieval](agentm-hybrid-retrieval).
 
-Returns `{results, note, matched, archived_hidden}`. Each result carries `path`, `score`, `raw_score`, `penalty`, `captured`, `captured_source`, and `snippet`. `score` is the penalized score and larger is better; `raw_score` is the value before demotion, so a penalty is visible rather than inferred from a number moving. `archived_hidden` is the count the archived wall kept out of this call's results — present even at `0`, so an absence reads as measured rather than assumed.
+Returns `{results, note, matched, archived_hidden, superseded_hidden}`. Each result carries `path`, `score`, `raw_score`, `penalty`, `captured`, `captured_source`, and `snippet`. `score` is the penalized score and larger is better; `raw_score` is the value before demotion, so a penalty is visible rather than inferred from a number moving. `archived_hidden` and `superseded_hidden` are the counts the wall kept out of this call's results — present even at `0`, so an absence reads as measured rather than assumed.
 
 `note` is set whenever the driver should know something — a rewritten query, or an empty result set.
 
@@ -527,7 +527,7 @@ agentmdream journal -tail 20                               # the mutation journa
 | Job | What it does |
 |---|---|
 | `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. A dormant memory past `archive_after_days` (1825) becomes an archive candidate — named for the confirm surface here, never moved by this job itself. |
-| `copies` | Content-identical families collapse into the earliest note; every other copy is marked `status: superseded` + `supersedes:`, never deleted. |
+| `copies` | Content-identical families collapse into the earliest note; every other copy is marked `lifecycle: superseded` + `superseded_by: <canonical>`, never deleted; `status` is untouched. |
 | `refile` | A memory whose `type:` the contract routes elsewhere moves under the same basename; a stale `near-duplicate` flag whose twin is gone gets cleared. |
 | `promote` | A target three or more distinct episodic notes link becomes `memory/crystallized/consolidated-<slug>.md`, carrying `consolidated_from` and `derived_from`. |
 | `calendar` | Writes the daily register's weekly and monthly reviews. |
