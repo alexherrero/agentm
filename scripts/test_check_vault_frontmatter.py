@@ -294,5 +294,53 @@ class TestSupersededShape(unittest.TestCase):
         self.assertEqual(_codes(findings), [])
 
 
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class TestSourceIsATransport(unittest.TestCase):
+    """One meaning for `source:` (PLAN-source-and-hygiene): the contract's
+    closed transport vocabulary. The unit a memory came from lives in
+    `source_url:` or `source_id:`."""
+
+    def test_every_transport_the_contract_names_is_clean(self) -> None:
+        notes = {
+            f"memory/semantic/{t}.md": f"---\nkind: reference\nstatus: active\nsource: {t}\n---\n\nx.\n"
+            for t in ("operator-direct", "conversation", "external-fetch", "email")
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, notes)
+        self.assertEqual(_codes(findings), [])
+
+    def test_a_url_in_the_transport_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, {
+                "memory/semantic/a.md": "---\nkind: reference\nsource: https://example.com/x\n---\n\nx.\n",
+            })
+        self.assertEqual(_codes(findings), ["source-not-a-transport"])
+        self.assertIn("source_url", findings[0].detail)
+        self.assertEqual(findings[0].line, 3)
+
+    def test_a_reference_in_the_transport_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, {
+                "memory/semantic/a.md": "---\nkind: reference\nsource: email:<abc@example.com>\n---\n\nx.\n",
+            })
+        self.assertEqual(_codes(findings), ["source-not-a-transport"])
+        self.assertIn("source_id", findings[0].detail)
+
+    def test_the_reference_fields_are_not_checked_against_the_vocabulary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, {
+                "memory/semantic/a.md": "---\nkind: reference\nsource: external-fetch\n"
+                                        "source_url: https://example.com/x\nsource_id: url:https://example.com/x\n"
+                                        "---\n\nx.\n",
+            })
+        self.assertEqual(_codes(findings), [])
+
+    def test_a_note_with_no_source_is_not_a_finding(self) -> None:
+        # Most of the corpus predates the field. Absence is not a wrong value.
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = _scan(tmp, {"memory/semantic/a.md": "---\nkind: reference\n---\n\nx.\n"})
+        self.assertEqual(_codes(findings), [])
+
+
 if __name__ == "__main__":
     unittest.main()

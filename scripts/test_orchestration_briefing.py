@@ -46,6 +46,13 @@ def _promoted_entry(vault: Path, source: str, slug: str, promoted_at: str) -> No
     )
 
 
+def _waiting(vault: Path, cls: str, name: str, line: str) -> None:
+    """A memory in its class folder, carrying whatever makes it wait."""
+    d = vault / "memory" / cls
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(f"---\nkind: reference\n{line}\n---\n\nbody\n", encoding="utf-8")
+
+
 def _inbox_entry(vault: Path, name: str) -> None:
     d = vault / "memory" / "_inbox"
     d.mkdir(parents=True, exist_ok=True)
@@ -64,23 +71,35 @@ class TestCounters(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def test_inbox_absent_is_zero(self) -> None:
+    def test_inbox_empty_vault_is_zero(self) -> None:
         self.assertEqual(ob.count_inbox(self.vault), 0)
 
-    def test_inbox_counts_md_excludes_index(self) -> None:
-        _inbox_entry(self.vault, "a.md")
-        _inbox_entry(self.vault, "b.md")
-        _inbox_entry(self.vault, "_index.md")  # excluded
-        _inbox_entry(self.vault, "notes.txt")  # not .md, excluded by glob
+    def test_inbox_counts_the_review_queue(self) -> None:
+        # Filing v2 removed the staging directory; the signal is now how many
+        # memories are waiting for a judgment, wherever they were filed.
+        _waiting(self.vault, "semantic", "a.md", "status: unfiled")
+        _waiting(self.vault, "procedural", "b.md", "filing_confidence: low")
+        _waiting(self.vault, "semantic", "settled.md", "status: active")  # not waiting
         self.assertEqual(ob.count_inbox(self.vault), 2)
 
-    def test_inbox_ignores_root_level_inbox(self) -> None:
-        # Real vault layout is personal/_inbox; confirms this doesn't also
-        # (or instead) read a root-level <vault>/_inbox.
-        d = self.vault / "_inbox"
+    def test_inbox_does_not_count_a_staging_directory(self) -> None:
+        # The retired `memory/_inbox/` is not the signal any more. A vault
+        # that still has one contributes nothing on its own.
+        d = self.vault / "memory" / "_inbox"
         d.mkdir(parents=True, exist_ok=True)
-        (d / "a.md").write_text("x", encoding="utf-8")
+        (d / "a.md").write_text("---\nstatus: unfiled\n---\n\nx\n", encoding="utf-8")
         self.assertEqual(ob.count_inbox(self.vault), 0)
+
+    def test_inbox_agrees_with_the_console(self) -> None:
+        # Two implementations of one signal; they must not drift apart again.
+        import importlib.util
+        _waiting(self.vault, "semantic", "a.md", "status: unfiled")
+        spec = importlib.util.spec_from_file_location(
+            "console_for_count",
+            Path(__file__).resolve().parent.parent / "harness" / "skills" / "console" / "scripts" / "console.py")
+        console = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(console)
+        self.assertEqual(ob.count_inbox(self.vault), console.count_inbox(self.vault))
 
     def test_watchlist_high_pending_only(self) -> None:
         _watchlist_entry(self.vault, "src", "p1", "HIGH", "pending-review")    # counts

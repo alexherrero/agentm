@@ -20,11 +20,26 @@ import (
 // unchanged corpus is idempotent — a collapsed family's copies drop out of
 // the `active` grouping on their own.
 //
-// Two departures from the Python stage, both narrowing, both stated: the
-// Python stage walks the whole vault minus its excluded dirs; this job walks
-// the memory classes, which is the binary's authority. And the frontmatter
-// patch is the byte-exact port, so the copy's new text matches what the
-// Python stage would have written for the same note.
+// Two departures from the Python stage, both narrowing, both stated.
+//
+// The Python stage walked the whole vault minus its excluded dirs; this job
+// walks the memory classes, and since 2026-09-06 that is a ruling rather
+// than an inherited default. Measured on the live corpus that day: 21
+// content-identical families inside the memory classes and exactly two
+// outside — `latest_health_scorecard.md` beside its dated original and
+// `latest_dreaming_scorecard.md` beside its own. Both are deliberate
+// mirrors whose whole job is to be byte-identical to the file they point
+// at, and collapsing either would break the pointer. So the rest of the
+// vault is out of scope on purpose: what lives there is the operator's own
+// files and the diagnostics the harness writes, where duplication is
+// sometimes the point. The report says which population it walked, so the
+// scope is visible rather than assumed.
+//
+// And the frontmatter patch is the byte-exact port, so the copy's new text
+// matches what the Python stage would have written for the same note.
+
+// CopiesPopulation names what PlanCopies walks, for the report.
+const CopiesPopulation = "the memory classes"
 
 const (
 	JobCopies          = "copies"
@@ -46,6 +61,9 @@ type CopiesPlan struct {
 	Families []Family `json:"families"`
 	// Considered is how many active memories were fingerprinted.
 	Considered int `json:"considered"`
+	// Population names what was walked. A count with no population reads as
+	// "the vault", and this job's scope is narrower than that on purpose.
+	Population string `json:"population"`
 	// Deferred is how many families the cap left for the next pass.
 	Deferred int `json:"deferred"`
 }
@@ -164,5 +182,6 @@ func PlanCopies(root string, cap int) (CopiesPlan, error) {
 		}
 		plan.Families = append(plan.Families, f)
 	}
+	plan.Population = CopiesPopulation
 	return plan, nil
 }

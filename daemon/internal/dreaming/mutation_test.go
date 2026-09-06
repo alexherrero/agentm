@@ -446,3 +446,42 @@ func TestACopiesIntentLandsInTheLifecycleJournal(t *testing.T) {
 		t.Fatalf("governance lines = %d, want 1", n)
 	}
 }
+
+// The scope is a ruling, not an inherited default (2026-09-06). Measured on
+// the live corpus that day, the only content-identical families outside the
+// memory classes were the two `latest_*` scorecard mirrors, whose whole job
+// is to be byte-identical to the file they point at. A job that collapsed
+// those would break the pointer on its first applying pass.
+func TestTheCopiesJobOwnsTheMemoryClassesOnly(t *testing.T) {
+	root := t.TempDir()
+	same := "---\nkind: telemetry\nstatus: active\n---\n\nThe same spend line, twice.\n"
+	writeRaw(t, root, "diagnostics/health/2026-09-03-health-scorecard.md", same)
+	writeRaw(t, root, "diagnostics/health/latest_health_scorecard.md", same)
+
+	plan, err := PlanCopies(root, 0)
+	if err != nil {
+		t.Fatalf("PlanCopies: %v", err)
+	}
+	if len(plan.Families) != 0 {
+		t.Errorf("a mirror outside the memory classes was proposed for collapse: %+v", plan.Families)
+	}
+	if plan.Considered != 0 {
+		t.Errorf("Considered = %d; nothing outside the memory classes is fingerprinted", plan.Considered)
+	}
+	if plan.Population != CopiesPopulation {
+		t.Errorf("the report names its population %q, want %q", plan.Population, CopiesPopulation)
+	}
+
+	// The same two bytes inside the memory classes are a family, so the test
+	// above is about the scope and not about the fingerprinting being broken.
+	memory := "---\nkind: reference\nstatus: active\nlifecycle: active\n---\n\nThe same wording, twice.\n"
+	writeRaw(t, root, "memory/semantic/a.md", memory)
+	writeRaw(t, root, "memory/semantic/b.md", memory)
+	plan, err = PlanCopies(root, 0)
+	if err != nil {
+		t.Fatalf("PlanCopies: %v", err)
+	}
+	if len(plan.Families) != 1 {
+		t.Fatalf("the same pair inside the memory classes gave %d families", len(plan.Families))
+	}
+}

@@ -486,6 +486,18 @@ func (r *Rules) SourceTier(v string) (string, bool) {
 }
 
 // IsFacet reports whether v is a standing calendar facet.
+// Threshold reads one of the contract's `thresholds`. The second return says
+// whether the contract named it, so a caller can tell "the contract says 0"
+// from "the contract does not say" — those are different states and only one
+// of them is a number anybody chose.
+func (r *Rules) Threshold(name string) (float64, bool) {
+	if r == nil || r.Thresholds == nil {
+		return 0, false
+	}
+	v, ok := r.Thresholds[name]
+	return v, ok
+}
+
 func (r *Rules) IsFacet(v string) bool {
 	for _, f := range r.Facets {
 		if f == v {

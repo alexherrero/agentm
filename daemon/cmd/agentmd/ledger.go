@@ -211,11 +211,22 @@ func currentRulesHash(cfg *config.Config) string {
 }
 
 // enrichStamp is the durable record a write leaves in the note.
+//
+// The confidence floor rides along rather than being compiled in: the design
+// wants a threshold moved by editing the contract, and the stamp is already
+// the place a judgment records which contract it was made under.
 func enrichStamp(cfg *config.Config, at time.Time) enrich.Stamp {
+	floor := 0.0
+	if loaded, err := cfg.Rules.Get(); err == nil {
+		if v, ok := loaded.Threshold(enrich.ConfidenceFloorThreshold); ok {
+			floor = v
+		}
+	}
 	return enrich.Stamp{
-		Version:   enrich.PassVersion,
-		RulesHash: currentRulesHash(cfg),
-		At:        at.UTC(),
+		Version:         enrich.PassVersion,
+		RulesHash:       currentRulesHash(cfg),
+		ConfidenceFloor: floor,
+		At:              at.UTC(),
 	}
 }
 

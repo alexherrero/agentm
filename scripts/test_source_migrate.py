@@ -101,6 +101,36 @@ class MigrationTests(unittest.TestCase):
                                   today="2026-09-06", journal=self.journal, vocabulary=VOCAB), 0)
         self.assertEqual(p.read_text(encoding="utf-8"), first)
 
+    def test_a_value_that_needs_quoting_is_written_quoted(self):
+        # `_get` strips the quotes off whatever it reads, so a value that
+        # arrived quoted has to leave quoted. The live corpus had one: a
+        # provenance string holding a colon-space, which written bare turns
+        # the frontmatter into a nested mapping and stops the note parsing.
+        import yaml
+        awkward = "opinion-supplements: good/don-t-use-no-verify (24 minings, 2026-06..2026-08)"
+        p = self._w("awkward.md", f'kind: reference\nsource: "{awkward}"')
+        rows = sm.plan(self.vault, vocabulary=VOCAB)
+        self.assertEqual(rows, [("memory/semantic/awkward.md", sm.REFERENCE, awkward)])
+        sm.apply(self.vault, rows, today="2026-09-06", journal=self.journal, vocabulary=VOCAB)
+        head = p.read_text(encoding="utf-8").split("\n---\n")[0].removeprefix("---\n")
+        doc = yaml.safe_load(head)
+        self.assertIsInstance(doc, dict, f"the note stopped parsing:\n{head}")
+        self.assertEqual(doc["source_id"], awkward, "the value must survive the round trip")
+
+    def test_the_scalar_writer_quotes_only_what_needs_it(self):
+        for value, quoted in (
+            ("https://example.com/x", False),
+            ("idea-incubator:doom (research-complete)", False),   # a colon with no space is fine
+            ("email:<abc@example.com>", False),
+            ("a: b", True),                                        # colon-space starts a mapping
+            ("trailing:", True),
+            ("has # a hash", True),
+            (" leading space", True),
+            ("- looks like a list", True),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(sm._scalar(value).startswith('"'), quoted, sm._scalar(value))
+
     def test_the_cli_reports_before_it_writes(self):
         self._w("x.md", "kind: reference\nsource: https://example.com/y")
         out = io.StringIO()

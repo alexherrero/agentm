@@ -77,7 +77,13 @@ echo "verify-orchestration-briefing: scratch vault = $SV"
 # ── B. briefing signals (read-only render) ──────────────────────────────────
 assert_equals  "briefing: empty vault renders nothing" "$(render)" ""
 
-mkdir -p "$SV/memory/_inbox"; for i in $(seq 1 10); do echo x > "$SV/memory/_inbox/e$i.md"; done
+# Ten memories waiting for a judgment. Filing v2 removed the staging
+# directory this used to stage into: a capture lands in its class folder
+# carrying `status: unfiled`, and the pending signal is a query over that.
+mkdir -p "$SV/memory/semantic"
+for i in $(seq 1 10); do
+  printf -- "---\nkind: reference\nstatus: unfiled\n---\n\nwaiting %s\n" "$i" > "$SV/memory/semantic/e$i.md"
+done
 assert_contains "briefing: inbox over threshold surfaces"       "$(render)" "10 inbox entries to sort"
 
 mkdir -p "$SV/memory/_skill-watchlist/src"

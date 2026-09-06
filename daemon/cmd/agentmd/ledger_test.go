@@ -534,3 +534,38 @@ func indexOverVault(t *testing.T, vault, rel, body string) *index.Index {
 	}
 	return x
 }
+
+// The floor the stamp carries is the contract's, and the fallback constant
+// says what the packaged contract says. Home here rather than in `enrich`,
+// which deliberately does not import `rules` — this is the wiring's test.
+func TestTheEnrichmentFloorComesFromTheContract(t *testing.T) {
+	loaded, err := rules.Load("")
+	if err != nil {
+		t.Fatalf("loading the packaged contract: %v", err)
+	}
+	v, ok := loaded.Threshold(enrich.ConfidenceFloorThreshold)
+	if !ok {
+		t.Fatalf("the packaged contract names no %q threshold", enrich.ConfidenceFloorThreshold)
+	}
+	if v != enrich.DefaultConfidenceFloor {
+		t.Errorf("the contract says %v and the fallback constant says %v; a daemon that "+
+			"cannot read the contract would file to a different bar", v, enrich.DefaultConfidenceFloor)
+	}
+
+	// And the stamp the daemon builds carries it, rather than leaving the
+	// pass to compile one in.
+	cfg := &config.Config{Rules: rules.NewHolder("", time.Now())}
+	if got := enrichStamp(cfg, time.Now()).ConfidenceFloor; got != v {
+		t.Errorf("the stamp carries floor %v, want the contract's %v", got, v)
+	}
+
+	// A holder that never resolved stamps nothing rather than zero-as-a-floor;
+	// `enrich.Floor` is what turns that silence into the packaged default.
+	unresolved := &config.Config{Rules: &rules.Holder{}}
+	if got := enrichStamp(unresolved, time.Now()).ConfidenceFloor; got != 0 {
+		t.Errorf("an unresolved contract stamped floor %v, want 0", got)
+	}
+	if got := enrich.Floor(0); got != enrich.DefaultConfidenceFloor {
+		t.Errorf("Floor(0) = %v, want the packaged default %v", got, enrich.DefaultConfidenceFloor)
+	}
+}

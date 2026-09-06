@@ -14,14 +14,23 @@ import (
 // a search rather than a place, and nothing has to be moved back out of anywhere
 // once it is judged.
 
-// ConfidenceFloor is the score below which an enrichment is filed for review
-// rather than marked active.
+// DefaultConfidenceFloor is the score below which an enrichment is filed for
+// review rather than marked active, when no contract answers.
+//
+// The contract's `thresholds.low_confidence` is the real number and a Stamp
+// carries it, because the design wants a threshold moved by editing the
+// contract rather than by a release. This constant is what a pass uses when
+// the contract could not be read at all — it matches what the packaged
+// contract says, so an unreadable contract does not quietly loosen the bar.
 //
 // A note landing `unfiled` is not a rejection: it is fully indexed, fully
 // searchable, and carries a rank penalty. The distinction that matters is
 // between "the system is unsure" and "the system dropped it", and the second
 // never happens here.
-const ConfidenceFloor = 0.6
+const DefaultConfidenceFloor = 0.65
+
+// ConfidenceFloorThreshold is the contract key holding the real floor.
+const ConfidenceFloorThreshold = "low_confidence"
 
 // StampFormat is the layout `enriched_at` is written in.
 //
@@ -52,6 +61,10 @@ type Stamp struct {
 	// from the note when empty rather than written as a blank, because an empty
 	// hash reads as "judged under no contract" and that is never true.
 	RulesHash string
+	// ConfidenceFloor is the contract's `thresholds.low_confidence` as it read
+	// at the moment of the judgment. Zero means no contract answered, and the
+	// packaged default stands in — never "everything clears the bar".
+	ConfidenceFloor float64
 	// At is when. A zero time writes no `enriched_at` at all — a note that does
 	// not know when it was enriched should say nothing rather than guess, and
 	// leaving it out is what keeps a rendered note byte-identical across calls
@@ -71,12 +84,12 @@ func RenderNote(r Response, s Stamp) string {
 	writeScalar(&b, "title", r.Title)
 	writeScalar(&b, "type", r.Type)
 	writeScalar(&b, "altitude", r.Altitude)
-	writeScalar(&b, "status", StatusFor(r.Confidence))
+	writeScalar(&b, "status", StatusFor(r.Confidence, s.ConfidenceFloor))
 	fmt.Fprintf(&b, "confidence: %.2f\n", r.Confidence)
 	// The categorical twin of the number, in the vocabulary every writer
 	// shares (filing v2): the needs-review reading selects on it without
 	// knowing this pass's floor.
-	writeScalar(&b, "filing_confidence", FilingConfidenceFor(r.Confidence))
+	writeScalar(&b, "filing_confidence", FilingConfidenceFor(r.Confidence, s.ConfidenceFloor))
 	writeList(&b, "tags", r.Tags)
 	writeList(&b, "aliases", r.Aliases)
 	if r.Summary != "" {
@@ -111,19 +124,30 @@ func RenderNote(r Response, s Stamp) string {
 // gates agreed, and a judge found nothing invented. Below it the note is
 // `unfiled` — the same state capture leaves an unattended note in, and the state
 // the review queue is a query over.
-func StatusFor(confidence float64) string {
-	if confidence >= ConfidenceFloor {
+func StatusFor(confidence, floor float64) string {
+	if confidence >= Floor(floor) {
 		return "active"
 	}
 	return "unfiled"
+}
+
+// Floor is the floor a caller should apply: the contract's number when it
+// answered, the packaged default when it did not. A zero or negative value
+// means "no contract answered" — a floor of zero would file everything
+// active, which is the one reading that must never come from silence.
+func Floor(floor float64) float64 {
+	if floor > 0 {
+		return floor
+	}
+	return DefaultConfidenceFloor
 }
 
 // FilingConfidenceFor is the write-time confidence stamp an enrichment earns —
 // `high` at or above the floor, `low` below it. Two values on purpose: the
 // floor is the one judgment this pass makes about its own number, and a third
 // band would be a threshold nobody measured.
-func FilingConfidenceFor(confidence float64) string {
-	if confidence >= ConfidenceFloor {
+func FilingConfidenceFor(confidence, floor float64) string {
+	if confidence >= Floor(floor) {
 		return "high"
 	}
 	return "low"
