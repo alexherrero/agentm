@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.19.0] - 2026-09-06
+
+One meaning for `source:`, and the hygiene the filing arc left ([#570](https://github.com/alexherrero/agentm/pull/570), [#571](https://github.com/alexherrero/agentm/pull/571), [#572](https://github.com/alexherrero/agentm/pull/572)). The provenance field carried three vocabularies at once — the contract's transport, a bare URL and a namespaced reference — so no gate could refuse a wrong value and the trust tier read from that field had never fired on a fetched page. It now names the transport and nothing else, the unit a memory came from has its own field, the corpus migrated, and four residuals the filing arc left behind are closed.
+
+### Changed
+
+- **`source:` is the transport, always** — a fetched page names its address in
+  `source_url:`, a mined unit its registry identity in `source_id:`, and
+  `source_hash:` / `source_version:` record what that unit held. Readers
+  resolve the reference fields first and fall back to the legacy field for
+  notes nobody migrated: writers strict, readers tolerant. The frontmatter
+  gate refuses a `source:` outside the contract's vocabulary
+  (`source-not-a-transport`), naming which field the value belongs in.
+- **The caller surfaces advertise the split** — `memory_capture`'s MCP input
+  schema described `source` as "URL or message-id, for anything ingested from
+  outside", the job the field no longer has, and offered neither new field;
+  `agentmd capture` had no flag for either, so from the CLI they could not be
+  passed at all. The schema now names the transport and both reference fields,
+  the CLI gains `-source-id` and `-source-url`, and a test reads the advertised
+  schema against the packaged contract's transport list.
+- **The enrichment floor comes from the contract** — `enrich.ConfidenceFloor`
+  (a compiled-in 0.6) is gone. The floor rides on the enrichment stamp from
+  `thresholds.low_confidence` (0.65), so moving it is an edit to the
+  contract. `DefaultConfidenceFloor` stands in when no contract can be read,
+  and a test pins it against the packaged contract so the two cannot drift.
+- **Recall demotes an unattended capture** — the Python arm now applies the
+  daemon's own status weight (0.60) to a served `unfiled` or `expired` note,
+  independently of the lifecycle demotion. The two arms had ordered the same
+  corpus differently since the rescope.
+- **The review-queue counts read the review queue** — the briefing's and the
+  console's `count_inbox` read `needs_review.summary()` instead of
+  `memory/_inbox/`, a directory filing v2 removed. Both had returned zero
+  since it went, feeding a threshold that could never trip.
+- **The copies job's scope is a ruling** — the dreaming binary's copies job
+  owns the memory classes on purpose, and its report says which population it
+  walked. Measured on the live corpus: 21 content-identical families inside
+  the memory classes, and exactly two outside, both `latest_*` scorecard
+  mirrors whose duplication is their function.
+
+### Added
+
+- **`source_migrate.py`** — report, then `--apply`: a URL in `source:` becomes
+  `source_url:` with `source: external-fetch` and the tier the contract gives
+  that transport, derived rather than guessed. Any other non-vocabulary value
+  becomes `source_id:` with `source:` dropped rather than invented — nothing
+  on disk says how that memory arrived, and a made-up transport would carry a
+  trust tier nobody measured. Journaled, idempotent, whole-vault, and it
+  refuses to write when no contract answers.
+- **`scripts/engine_state_isolation.py`** — one engine state dir per test.
+  `isolate_module(globals())` wraps `TestCase.run` for the classes a module
+  defines, so a `setUp` that forgets `super()` cannot skip it. Nineteen
+  suites adopted it and a test pins the adoption.
+
+### Internal
+
+- `agentm-filing-v2` DD§4 amended with the provenance ruling; the live
+  contract's provenance paragraph mirrored.
+- The isolation surfaced two latent defects on its first run: a suite relying
+  on the developer's own state directory existing, and a schema pin that
+  needed the new caller-optional field.
+
 ## [9.18.0] - 2026-09-05
 
 One vocabulary for the superseded relation ([#566](https://github.com/alexherrero/agentm/pull/566), [#567](https://github.com/alexherrero/agentm/pull/567)) — the decision the filing-v2 remainders handed over, ruled and built the same day. A superseded memory carries `lifecycle: superseded` + `superseded_by:` naming its successor; `supersedes:` is only ever the successor's back-link; both recall paths wall a superseded memory like an archived one and answer the explicit query with it demoted; the gate refuses the inverted shape; the live corpus migrated.
