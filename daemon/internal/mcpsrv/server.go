@@ -475,8 +475,17 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 						"description": "Alternate phrasings someone might later search for. Indexed above the body — this is the direct fix for asking in words the note does not contain.",
 					},
 					"source": map[string]any{
+						"type": "string",
+						"description": "How this arrived: operator-direct, conversation, external-fetch or email. " +
+							"It sets the trust tier, so it names the transport and never the thing it came from.",
+					},
+					"source_id": map[string]any{
 						"type":        "string",
-						"description": "URL or message-id, for anything ingested from outside.",
+						"description": "The unit this was mined from, as <namespace>:<ref> — a message-id, a session id.",
+					},
+					"source_url": map[string]any{
+						"type":        "string",
+						"description": "The address of the page this was fetched from.",
 					},
 					"space": map[string]any{
 						"type": "string", "default": "memory",
