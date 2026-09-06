@@ -131,8 +131,13 @@ writes a manifest first, and no policy outcome ever deletes a memory.
 ## Provenance
 
 Every filed memory records how it arrived — `source:` in frontmatter, from
-the closed transport vocabulary in the block. The tier is about the
-transport, never the content: material from an untrusted transport files
+the closed transport vocabulary in the block, and nothing else. Where the
+material came from is a separate question with its own fields: a fetched
+page names its address in `source_url:`, a mined unit names its registry
+identity in `source_id:`, and the pair `source_hash:` / `source_version:`
+records what that unit held when it was read. One field, one question — a
+`source:` that holds a URL answers neither, and the trust tier that reads it
+cannot fire. The tier is about the transport, never the content: material from an untrusted transport files
 normally, ranks normally, and is simply never treated as instructions, and
 no write-time judgment is asked to decide whether a plausible claim from
 outside is true. That is a boundary screening measurably cannot hold, so the

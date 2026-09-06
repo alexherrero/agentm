@@ -42,7 +42,15 @@ type Request struct {
 	Status  string   `json:"status,omitempty"`
 	Tags    []string `json:"tags,omitempty"`
 	Aliases []string `json:"aliases,omitempty"`
-	Source  string   `json:"source,omitempty"`
+	// Source is the transport the material arrived by — one of the contract's
+	// `sources` vocabulary. Where it came from goes in SourceID or SourceURL.
+	Source string `json:"source,omitempty"`
+	// SourceID is a registry identity (`<namespace>:<ref>`) and SourceURL the
+	// address of a fetched page. Either one names the unit; `source:` names how
+	// it arrived. Splitting them is the provenance ruling of 2026-09-06: one
+	// field answering two questions let a URL sit where the trust tier looks.
+	SourceID  string `json:"source_id,omitempty"`
+	SourceURL string `json:"source_url,omitempty"`
 	// SourceHash and SourceVersion are the rest of the provenance — what the
 	// source contained when it was read, and the pass that read it. Written into
 	// the note so the source registry can be rebuilt from the corpus rather than
@@ -152,6 +160,18 @@ func dailyWriteCap(contract *rules.Rules, contractErr error) int {
 // source that is a URL — a page the sources pass mined — is external content
 // and untrusted whatever it says; anything else earns no stamp rather than a
 // guess.
+// unit is what the note says it was distilled from, in the order a reader
+// resolves it: the registry identity, the fetched page, then the legacy
+// overloaded `source:`.
+func (d noteData) unit() string {
+	for _, v := range []string{d.SourceID, d.SourceURL, d.Source} {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 func trustTier(contract *rules.Rules, contractErr error, source string) string {
 	if source == "" {
 		return ""
@@ -314,6 +334,8 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		Tags:             req.Tags,
 		Aliases:          aliases,
 		Source:           strings.TrimSpace(req.Source),
+		SourceID:         strings.TrimSpace(req.SourceID),
+		SourceURL:        strings.TrimSpace(req.SourceURL),
 		SourceHash:       strings.TrimSpace(req.SourceHash),
 		SourceVersion:    strings.TrimSpace(req.SourceVersion),
 		Probe:            req.Probe,
@@ -433,6 +455,10 @@ type noteData struct {
 	Tags     []string
 	Aliases  []string
 	Source   string
+	// SourceID and SourceURL name the unit the note came from — a registry
+	// identity or a fetched page's address. `Source` names the transport.
+	SourceID  string
+	SourceURL string
 	// SourceHash and SourceVersion complete the provenance: what the source
 	// contained when it was read, and the pass that read it. Cheap to write now
 	// and impossible to reconstruct later, which is what makes the source
@@ -475,12 +501,20 @@ func renderNote(d noteData) string {
 	if d.Source != "" {
 		fmt.Fprintf(&b, "source: %s\n", yamlScalar(d.Source))
 	}
-	// Only alongside a source. A hash with nothing to hash names no unit, and
-	// a rebuild reading one would recover a row keyed on nothing.
-	if d.Source != "" && d.SourceHash != "" {
+	if d.SourceID != "" {
+		fmt.Fprintf(&b, "source_id: %s\n", yamlScalar(d.SourceID))
+	}
+	if d.SourceURL != "" {
+		fmt.Fprintf(&b, "source_url: %s\n", yamlScalar(d.SourceURL))
+	}
+	// Only alongside a unit. A hash with nothing to hash names no unit, and a
+	// rebuild reading one would recover a row keyed on nothing. The unit is
+	// whichever field names it — the reference fields since the provenance
+	// ruling, `source:` for a caller that has not moved yet.
+	if d.unit() != "" && d.SourceHash != "" {
 		fmt.Fprintf(&b, "source_hash: %s\n", yamlScalar(d.SourceHash))
 	}
-	if d.Source != "" && d.SourceVersion != "" {
+	if d.unit() != "" && d.SourceVersion != "" {
 		fmt.Fprintf(&b, "source_version: %s\n", yamlScalar(d.SourceVersion))
 	}
 	if d.FilingConfidence != "" {

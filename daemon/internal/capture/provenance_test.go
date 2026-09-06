@@ -98,3 +98,70 @@ func readNote(t *testing.T, cp *Capturer, rel string) string {
 	}
 	return string(blob)
 }
+
+// One field, one question (the provenance ruling of 2026-09-06): `source:`
+// says how the material arrived, `source_id:` / `source_url:` say what it
+// was. A capture that names both writes both, and the parser the rebuild
+// uses resolves the unit from the reference field.
+func TestCaptureWritesTheReferenceInItsOwnField(t *testing.T) {
+	cp := newHarness(t)
+	res, err := cp.Do(Request{
+		Text:          "what the page said",
+		Title:         "a fetched page",
+		Source:        "external-fetch",
+		SourceURL:     "https://example.com/page",
+		SourceHash:    "abc123def456",
+		SourceVersion: "ingest/1",
+	})
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	body := readNote(t, cp, res.Path)
+	if !strings.Contains(body, "source: external-fetch\n") {
+		t.Errorf("the transport is not in `source:`:\n%s", body)
+	}
+	// The address is asserted through the parser rather than as raw bytes:
+	// `yamlScalar` quotes a value containing a colon, and every URL has one.
+	if !strings.Contains(body, "source_url:") {
+		t.Errorf("no `source_url:` line at all:\n%s", body)
+	}
+	if !strings.Contains(body, "trust: untrusted\n") {
+		t.Errorf("a fetched page earns the contract's tier for its transport:\n%s", body)
+	}
+	n := note.Parse(res.Path, body, time.Time{})
+	if n.Source != "https://example.com/page" {
+		t.Errorf("the unit resolves to %q, so a rebuild would key the registry "+
+			"on the transport rather than the page", n.Source)
+	}
+	if n.SourceHash != "abc123def456" || n.SourceVersion != "ingest/1" {
+		t.Errorf("the hash and version did not survive alongside the reference: %q/%q",
+			n.SourceHash, n.SourceVersion)
+	}
+}
+
+// A registry identity takes the same route, and the hash rides with it even
+// though `source:` holds a transport rather than the unit.
+func TestCaptureWritesASourceIdentityBesideItsTransport(t *testing.T) {
+	cp := newHarness(t)
+	res, err := cp.Do(Request{
+		Text:       "what the thread said",
+		Title:      "a thread",
+		Source:     "email",
+		SourceID:   "email:<abc@example.com>",
+		SourceHash: "deadbeef",
+	})
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	body := readNote(t, cp, res.Path)
+	n := note.Parse(res.Path, body, time.Time{})
+	if n.Source != "email:<abc@example.com>" {
+		t.Errorf("the unit resolves to %q", n.Source)
+	}
+	if n.SourceHash != "deadbeef" {
+		t.Errorf("the hash did not ride with the identity: %q", n.SourceHash)
+	}
+	if !strings.Contains(body, "trust: untrusted\n") {
+		t.Errorf("`email` is an untrusted transport in the contract:\n%s", body)
+	}
+}
