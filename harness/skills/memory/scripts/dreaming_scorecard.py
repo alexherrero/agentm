@@ -55,6 +55,10 @@ import engine_state  # noqa: E402
 # Per-run dream staging left the vault for the engine state dir
 # (filing-v2 part 2a); `staging=` overrides are absolute paths now.
 STAGING_DIR = Path("dream-runs")
+# Where the dreaming binary leaves the report of its last completed pass
+# (`<engine state dir>/dreaming/last-report.json`, the JSON `agentmdream run
+# -json` prints). Filing-v2 remainders task 4.
+LAST_REPORT = Path("dreaming") / "last-report.json"
 
 
 class DaemonUnavailable(RuntimeError):
@@ -178,6 +182,79 @@ def latest_run(vault: Path, staging: Path = None) -> Optional[dict]:
     return best
 
 
+def binary_report(engine_dir: Path = None) -> Optional[dict]:
+    """The dreaming binary's last completed pass, or None when none has
+    completed (or the file is unreadable). Never a report of zeros: a pass
+    that did not happen is a sentence, not a row of 0s."""
+    root = Path(engine_dir) if engine_dir is not None else engine_state.engine_state_dir()
+    p = root / LAST_REPORT
+    if not p.is_file():
+        return None
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or not data.get("run_id"):
+        return None
+    data["_mtime"] = p.stat().st_mtime
+    return data
+
+
+def _age_phrase(seconds: float) -> str:
+    seconds = max(0.0, seconds)
+    if seconds < 3600:
+        return f"{int(seconds // 60)} min ago"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)} h ago"
+    return f"{int(seconds // 86400)} d ago"
+
+
+def render_binary(rep: Optional[dict], *, now: datetime) -> list:
+    """The dreaming binary's section: what its last pass did, job by job."""
+    out = ["## The dreaming binary", ""]
+    if rep is None:
+        out += ["No pass recorded. `agentmdream` leaves the report of each completed pass at the "
+                "engine state dir's `dreaming/last-report.json`; either no pass has completed on this "
+                "machine, or the state dir moved. A pass that did not happen is not a row of zeros.", ""]
+        return out
+    plan = rep.get("plan") or {}
+    copies = rep.get("copies") or {}
+    refile = rep.get("refile") or {}
+    promote = rep.get("promote") or {}
+    cal = rep.get("calendar") or {}
+    mocs = rep.get("mocs") or {}
+    dates = rep.get("dates") or {}
+    vocab = rep.get("vocabulary") or {}
+    trends = rep.get("trends") or {}
+    recl = rep.get("reclassify") or {}
+    decision = rep.get("decision") or {}
+    n = lambda key, d: len(d.get(key) or [])
+    calendar_cell = cal.get("skipped") or f"{n('written', cal)} written of {cal.get('refreshed', 0)} checked"
+    reclassify_cell = (f"sampled {recl.get('sampled', 0)} of {recl.get('available', 0)}, {n('mismatches', recl)} mismatch(es)"
+                       if recl.get("ran") else f"not run — {recl.get('reason', 'no reason recorded')}")
+    out += [
+        f"Run `{rep.get('run_id')}` — {rep.get('mode', '?')} pass, outcome {rep.get('outcome', '?')}; "
+        f"gate: {decision.get('reason', '?')}; {_age_phrase(now.timestamp() - rep.get('_mtime', now.timestamp()))}.", "",
+        "| job | what the pass did |", "|---|---|",
+        f"| lifecycle | sank {n('demoted', plan)}, revived {n('revived', plan)}, archive candidates "
+        f"{n('archive_candidates', plan)}, held by cap {plan.get('skipped_by_cap', 0)}, considered {plan.get('considered', 0)} |",
+        f"| copies | {n('families', copies)} families collapsed, {copies.get('deferred', 0)} deferred |",
+        f"| refile | {n('moves', refile)} moves, {n('unflags', refile)} unflags, {n('blocked', refile)} blocked |",
+        f"| promote | {n('promotions', promote)} new, {n('existing', promote)} existing |",
+        f"| calendar | {calendar_cell} |",
+        f"| mocs | {sum(1 for p in (mocs.get('pages') or []) if isinstance(p, dict) and p.get('changed'))} regenerated of "
+        f"{n('pages', mocs)} pages |",
+        f"| dates | {n('glossed', dates)} glosses across {dates.get('aging', 0)} aging notes |",
+        f"| vocabulary | {n('unrecognized', vocab)} unrecognized, {n('malformed', vocab)} malformed, "
+        f"{n('retired', vocab)} retired of {vocab.get('considered', 0)} |",
+        f"| trends | week {trends.get('week', 0)} vs previous {trends.get('previous_week', 0)}, {n('flags', trends)} flag(s) |",
+        f"| reclassify | {reclassify_cell} |",
+        f"| applied / skipped | {rep.get('applied', 0)} / {rep.get('skipped', 0)} |",
+        "",
+    ]
+    return out
+
+
 def previous_numbers(out_dir: Path) -> dict:
     """The raw numbers the last edition recorded, or {} if there is no last one.
 
@@ -202,9 +279,11 @@ def previous_numbers(out_dir: Path) -> dict:
     return {}
 
 
-def gather(vault: Path, out_dir: Path, *, staging: Path = None) -> tuple:
-    """Everything the report needs: stage rows, movements, tiers, and notes."""
+def gather(vault: Path, out_dir: Path, *, staging: Path = None, engine_dir: Path = None) -> tuple:
+    """Everything the report needs: stage rows, movements, tiers, notes, the
+    Python run, and the dreaming binary's last pass."""
     before = previous_numbers(out_dir)
+    binary = binary_report(engine_dir)
     now_numbers: dict = {}
     notes: list = []
 
@@ -271,13 +350,13 @@ def gather(vault: Path, out_dir: Path, *, staging: Path = None) -> tuple:
     except DaemonUnavailable as exc:
         notes.append(f"Tier routing could not be read: {exc}")
 
-    return stages, movements, tiers, now_numbers, notes, run
+    return stages, movements, tiers, now_numbers, notes, run, binary
 
 
 # ── the report ──────────────────────────────────────────────────────────────
 
 def render(stages, movements, tiers, numbers, notes, run, *, now: datetime,
-           vault: Path, tz=None) -> str:
+           vault: Path, tz=None, binary: Optional[dict] = None) -> str:
     stamp = now.astimezone(tz).strftime("%Y-%m-%d")
     out = [
         "---",
@@ -308,6 +387,8 @@ def render(stages, movements, tiers, numbers, notes, run, *, now: datetime,
                 "which this was."]
     out.append("")
 
+    out += render_binary(binary, now=now)
+
     out += ["## Movement", "",
             "Each number against the last edition of this report.", "",
             "| | now | since last night |", "|---|---|---|"]
@@ -334,14 +415,14 @@ def render(stages, movements, tiers, numbers, notes, run, *, now: datetime,
 
 
 def build(vault: Path, *, now: datetime, rel: Path = None,
-          staging: Path = None, tz=None) -> tuple:
+          staging: Path = None, tz=None, engine_dir: Path = None) -> tuple:
     out_dir = vault / (rel if rel is not None else DIAGNOSTICS_DIR)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    stages, movements, tiers, numbers, notes, run = gather(
-        vault, out_dir, staging=staging)
+    stages, movements, tiers, numbers, notes, run, binary = gather(
+        vault, out_dir, staging=staging, engine_dir=engine_dir)
     body = render(stages, movements, tiers, numbers, notes, run, now=now,
-                  vault=vault, tz=tz)
+                  vault=vault, tz=tz, binary=binary)
 
     dated = out_dir / f"{now.astimezone(tz).strftime('%Y-%m-%d')}-dreaming-scorecard.md"
     stable = out_dir / STABLE_NAME

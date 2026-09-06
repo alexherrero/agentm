@@ -529,3 +529,40 @@ func TestRunRefusesWhileAnotherPassHoldsTheLock(t *testing.T) {
 		t.Errorf("a second pass must be refused with the holder named: err=%v rep=%+v", err, rep)
 	}
 }
+
+// The scorecard reads the last completed pass from last-report.json; a start
+// that was not due must not replace it with a report of nothing.
+func TestACompletedPassLeavesItsReportAndANotDueStartKeepsIt(t *testing.T) {
+	cfg, root := scratchConfig(t)
+	now := time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC)
+	writeNote(t, root, "memory/semantic/old.md", "active", 400, now, "")
+	if _, err := os.Stat(LastReportPath(cfg.EngineStateDir)); !os.IsNotExist(err) {
+		t.Fatalf("no report before any pass, got %v", err)
+	}
+	rep, err := Run(cfg, Options{Now: now, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, err := os.ReadFile(LastReportPath(cfg.EngineStateDir))
+	if err != nil {
+		t.Fatalf("a completed pass leaves its report: %v", err)
+	}
+	var got Report
+	if err := json.Unmarshal(blob, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.RunID != rep.RunID || got.Outcome != OutcomeReported || got.Plan.Considered != 1 {
+		t.Fatalf("the file is the pass's own report: run %q outcome %q considered %d", got.RunID, got.Outcome, got.Plan.Considered)
+	}
+	again, err := Run(cfg, Options{Now: now.Add(time.Hour), Every: 7 * 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Outcome != OutcomeNotDue {
+		t.Fatalf("an hour after a pass with a week's interval is not due: %s", again.Outcome)
+	}
+	after, _ := os.ReadFile(LastReportPath(cfg.EngineStateDir))
+	if string(after) != string(blob) {
+		t.Fatal("a not-due start replaced the last completed pass's report")
+	}
+}

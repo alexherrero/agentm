@@ -30,6 +30,32 @@ func Dir(engineStateDir string) string { return filepath.Join(engineStateDir, "d
 
 func statePath(engineStateDir string) string { return filepath.Join(Dir(engineStateDir), "state.json") }
 
+// LastReportPath is where a completed pass leaves the report it rendered —
+// the same JSON `agentmdream run -json` prints — for the dreaming scorecard
+// to read (filing-v2 remainders task 4). A start that was refused or not due
+// leaves the previous report where it was: the file describes the last pass
+// that happened, never a pass that did not.
+func LastReportPath(engineStateDir string) string {
+	return filepath.Join(Dir(engineStateDir), "last-report.json")
+}
+
+// SaveLastReport writes the report atomically (a temp file renamed into
+// place), so a reader never sees half of one.
+func SaveLastReport(engineStateDir string, rep Report) error {
+	if err := os.MkdirAll(Dir(engineStateDir), 0o755); err != nil {
+		return err
+	}
+	blob, err := json.MarshalIndent(rep, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := LastReportPath(engineStateDir) + ".tmp"
+	if err := os.WriteFile(tmp, blob, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, LastReportPath(engineStateDir))
+}
+
 // LoadState reads the state, or returns a zero State when none exists yet.
 func LoadState(engineStateDir string) (State, error) {
 	var s State
