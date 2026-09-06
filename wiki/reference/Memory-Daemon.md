@@ -187,7 +187,9 @@ Returns `{results, note, matched, archived_hidden, superseded_hidden}`. Each res
 | `type` | `str` | `preference` | One of `preference`, `workflow`, `idea`, `fix`, `convention`, `reference`. |
 | `status` | `str` | `unfiled` | `active` when the operator asked for it in the conversation. |
 | `tags`, `aliases` | `[str]` | — | Both land in the `meta` column. |
-| `source` | `str` | — | URL or message-id for anything ingested. |
+| `source` | `str` | — | The transport the memory arrived by — one of the contract's `sources` vocabulary (`operator-direct`, `conversation`, `external-fetch`, `email`). Sets the trust tier. As of the provenance ruling (2026-09-06) it is transport only; where the material came from goes in `source_id` or `source_url` below. |
+| `source_id` | `str` | — | A mined unit's registry identity, when the memory came from one. |
+| `source_url` | `str` | — | A fetched page's address, when the memory came from one. |
 | `space` | `str` | `memory` | Which configured space to write into. |
 
 Capture writes the file, then updates the index. No model call, no network, and it works offline — the mechanism that makes something exist and findable never waits on judgment. If the index write fails, the file is still on disk and the next reconcile pass picks it up; the response says so rather than inviting a retry that would write a duplicate.
