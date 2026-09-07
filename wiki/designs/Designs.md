@@ -19,6 +19,7 @@ The [Architecture](Architecture) page lists those designs that have been impleme
 | &nbsp;&nbsp;↳ [Capture](agentm-capture)                                         | Getting a thought or article into memory from your phone, browser, or a chat — the staging front door |  Final   |
 | &nbsp;&nbsp;↳ [Auto-Organization](agentm-auto-organization)                     | Keeping the vault tidy on its own — write-time linking, tidying by age, dedup, and lint                |  Final   |
 | &nbsp;&nbsp;↳ [Filing v2](agentm-filing-v2)                                     | The whole-vault convergence — layout, write authority, the calendar, memory lifecycle, and the dreaming binary |  Final   |
+| &nbsp;&nbsp;&nbsp;&nbsp;↳ [Vault](agentm-vault)                                       | The vault shaped to the operator — the layout, the memory card, capture, dreaming, projects and tasks, a policy per space, one memory on every surface |  Draft   |
 | [Memory↔Storage Seam](memory-storage-seam)                                      | The contract memory uses to reach storage, so the backend can change without touching the engine     |  Final   |
 | &nbsp;&nbsp;↳ [Vault Storage & Presentation](agentm-vault-storage-presentation) | Where the vault lives and how it syncs to your devices                                               | Proposed |
 | [Memory index](agentm-memory-index)                                             | The metadata table behind fast, hybrid recall                                                        |  Final   |

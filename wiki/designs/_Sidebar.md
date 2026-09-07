@@ -17,6 +17,7 @@
     - [Capture](agentm-capture)
     - [Auto-Organization](agentm-auto-organization)
     - [Filing v2](agentm-filing-v2)
+      - [Vault](agentm-vault)
     - [Recall trace](agentm-recall-trace)
     - [Recall ledger retention](agentm-recall-ledger-retention)
   - [Memory↔Storage Seam](memory-storage-seam)
