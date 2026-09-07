@@ -7,7 +7,7 @@ without setting the variable therefore writes into the developer's own state
 directory, and every later test in the same process reads what the last one
 left there. The battery's runner isolates each test from outside, so the leak
 is invisible under `check-all.sh` and appears only on a hand run — which is
-how four `test_inbox_triage` tests came to fail for anyone running the file
+how four tests in one suite came to fail for anyone running that file
 directly while CI stayed green (PLAN-source-and-hygiene, task 3).
 
 Two ways in. One line at the bottom of a module governs every test in it:

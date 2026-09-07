@@ -719,11 +719,11 @@ def _resolve_route_mode(arg_mode: str | None) -> str:
 def _utcnow_iso() -> str:
     """Second-precision UTC timestamp, e.g. `2026-07-11T18:42:05+00:00`.
 
-    Inbox-bulk-review (`inbox_triage.py`) needs a real per-entry creation
-    timestamp to tell "existing backlog" from "captured after the triage
-    mechanism first ran" (its cutover-marker rule) — the pre-existing
+    A per-entry creation timestamp is what tells "existing backlog" from
+    "captured after a given mechanism first ran" — the pre-existing
     1,565-note backlog never carried this field at all, so its mere
-    presence is itself part of the signal (see `inbox_triage.py`'s
+    presence is itself part of the signal (the rule the retired inbox
+    triage engine read it by; see
     `_is_pre_existing_backlog`). Full ISO-8601 datetime, not `save.py`'s
     bare `created: YYYY-MM-DD` date convention — the cutover marker is a
     point in time, not a calendar day, so same-day precision matters here
@@ -1235,8 +1235,8 @@ def route_candidates(
 #   - MEDIUM-confidence candidates file at low confidence by default (auto
 #     mode) since historical-pass volume makes interactive routing
 #     impractical.
-#     Operator triages later via `/memory inbox --bulk-review`
-#     (`inbox_triage.py`, built 2026-07-11).
+#     A low-confidence filing waits in the review queue
+#     (`needs_review.py`) rather than in a staging directory.
 
 _STATE_SCHEMA_VERSION = 1
 

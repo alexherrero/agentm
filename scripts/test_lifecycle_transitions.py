@@ -290,8 +290,7 @@ class TheCycle(_Vault):
     def test_the_cycle_reads_the_axis_and_never_sinks(self):
         old = self._note("old", lifecycle="active", created=_ago(500))
         digest, _batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-cycle", log_root=self.top / "revert", lock_root=self.top / "locks",
-            include_inbox_triage=False)
+            self.vault, run_id="run-cycle", log_root=self.top / "revert", lock_root=self.top / "locks")
         self.assertEqual(self._state(old), "active", "sinking is the dreaming binary's, not this cycle's")
         self.assertIsNotNone(digest.lifecycle)
         self.assertIn("active", digest.lifecycle["summary"])

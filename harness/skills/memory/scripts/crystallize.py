@@ -234,9 +234,9 @@ def drop_candidate(vault_path: Path | str, phase: str, session_id: str) -> bool:
 def count_pending_candidates(vault_path: Path | str) -> int:
     """Bare directory count for the push surfaces (session_brief.py,
     console.py — call 6). Deliberately not a parse of each file's content:
-    the same clobber-proof glob shape `session_brief.count_parked` uses,
-    since `_meta/needs-your-eye.json`'s overwrite-every-cycle contract would
-    silently lose an appended item. Never raises."""
+    the same clobber-proof glob shape `session_brief.count_parked` uses.
+    A list some other pass overwrites wholesale every cycle would silently
+    lose an item appended between two of them. Never raises."""
     staging_dir = _staging_dir(vault_path)
     if not staging_dir.is_dir():
         return 0

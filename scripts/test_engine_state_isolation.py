@@ -127,7 +127,7 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
     NAMED = (
         "test_backfill_reference_bodies", "test_calendar_promotion", "test_console",
         "test_console_crystallize_section", "test_correction", "test_dream_storage_rules",
-        "test_inbox_triage", "test_incubator_lint", "test_lint", "test_notes_link_discovery",
+        "test_incubator_lint", "test_lint", "test_notes_link_discovery",
         "test_opinion_supplement", "test_orchestration_briefing", "test_orchestration_idle",
         "test_repair_excerpts", "test_retro_mining_cleanup", "test_sampled_audit_surface",
         "test_skill_modules_file_loadable", "test_storage_rules", "test_vault_lint",
