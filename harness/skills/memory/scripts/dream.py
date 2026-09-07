@@ -152,17 +152,11 @@ class DreamDigest:
     insight_candidates: list
     digest_path: Optional[Path] = None
     tidying_previews: list = field(default_factory=list)
-    # The folded inbox-triage sub-run's summary (auto-org part 3 task 4):
-    # populated by `run_dream_and_auto_apply` when the weekly cycle drives
-    # `inbox_triage`'s engine as a sibling sub-run (its own run_id, its own
-    # staging dir + digest — this is the pointer). None on a bare
-    # `run_dream()` (propose-only, never mutates — triage's auto-applying
-    # engine deliberately doesn't ride it) or when the fold is disabled.
-    inbox_triage_run: Optional[dict] = None
     # The sampled higher-tier audit's result (task 9): populated by
     # `run_dream_and_auto_apply` only — a bare `run_dream()` has nothing
-    # applied yet to sample, so this stays `None` there (matches
-    # `inbox_triage_run`'s own convention above).
+    # applied yet to sample, so this stays `None` there. The same convention
+    # the folded inbox-triage sub-run used before it was retired
+    # (2026-09-06): a field only the applying wrapper fills.
     sampled_audit: Optional[dict] = None
     # The needs-review reading (filing v2, the write path, task 3): populated
     # by `run_dream_and_auto_apply`, which regenerates the MOC after the
@@ -1128,13 +1122,6 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) ->
             f"mean quality score {digest.corpus_stats['lint_mean_quality_score']:.2f} "
             "· full report via `/memory lint`."
         )
-    if digest.inbox_triage_run is not None:
-        t = digest.inbox_triage_run
-        lines.append(
-            f"Inbox triage (folded into this cycle): run {t['run_id']} — "
-            f"{t['proposals']} proposal(s), {t['auto_applied']} auto-applied, "
-            f"{t['needs_your_eye']} needs-your-eye · full digest: {t['digest_path']}"
-        )
     if digest.needs_review is not None:
         n = digest.needs_review
         reasons = ", ".join(f"{k} {v}" for k, v in (n.get("by_reason") or {}).items()) or "nothing waiting"
@@ -1438,7 +1425,6 @@ def run_dream_and_auto_apply(
     batch_cap: int | None = None,
     log_root: Path | str | None = None,
     lock_root: Path | str | None = None,
-    include_inbox_triage: bool = True,
 ):
     """Run `run_dream()` (unchanged), then auto-apply its compression-stage,
     tidying-stage, and link-improvement-stage proposals through
@@ -1508,31 +1494,6 @@ def run_dream_and_auto_apply(
 
     batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap, stages=stages)
 
-    # Inbox triage folds into the weekly cycle (auto-org part 3 task 4):
-    # the same underlying merge/promote/collapse/expire engine `/memory
-    # inbox` drives on demand runs here automatically as a sibling sub-run
-    # — its own run_id, staging dir, digest, and auto-apply (through the
-    # SAME revert_log instance, so one cycle's undo surface stays whole).
-    # It rides this wrapper, not run_dream(), because run_dream() is
-    # propose-only by contract and triage's engine applies. Best-effort:
-    # a triage failure never takes down the rest of the cycle.
-    triage_batch = None
-    if include_inbox_triage:
-        try:
-            import inbox_triage  # function-local: inbox_triage imports dream
-            triage_digest, triage_batch = inbox_triage.run_inbox_triage_and_auto_apply(
-                vault_path, revert_log=revert_log, lock_root=lock_root,
-            )
-            digest.inbox_triage_run = {
-                "run_id": triage_digest.run_id,
-                "proposals": len(triage_digest.proposals),
-                "auto_applied": len(triage_batch.items),
-                "needs_your_eye": len(triage_digest.needs_your_eye),
-                "digest_path": str(triage_digest.digest_path),
-            }
-        except Exception as e:  # pragma: no cover
-            print(f"warning: folded inbox-triage sub-run failed: {e}", file=sys.stderr)
-
     # Filing v2, the write path (task 3): the review queue is a reading over
     # metadata now, and this cycle is the nightly pass the design names, so
     # the needs-review MOC regenerates here — after the folded sub-runs have
@@ -1556,14 +1517,13 @@ def run_dream_and_auto_apply(
     except Exception as e:  # pragma: no cover
         print(f"warning: lifecycle reading failed: {e}", file=sys.stderr)
 
-    # The sampled higher-tier audit (task 9): "links" = this cycle's
-    # applied link_improvement mutations; "merges" = the folded inbox-
-    # triage sub-run's applied inbox_merge mutations. Always
-    # sampled_count=0 today (see dream_confirm.run_sampled_audit's own
-    # header comment — the higher-tier model tier doesn't exist yet).
+    # The sampled higher-tier audit (task 9): this cycle's applied
+    # link_improvement mutations. It used to take the folded inbox-triage
+    # sub-run's applied merges too; that engine was retired on 2026-09-06
+    # when the directory it walked stopped existing. Always sampled_count=0
+    # today (see dream_confirm.run_sampled_audit's own header comment — the
+    # higher-tier model tier doesn't exist yet).
     audit_items = [i for i in batch.items if i["stage"] == "link_improvement"]
-    if triage_batch is not None:
-        audit_items += [i for i in triage_batch.items if i["stage"] == "inbox_merge"]
     sampled_audit = dream_confirm.run_sampled_audit(vault_path, audit_items)
     digest.sampled_audit = {
         "sampled_count": sampled_audit.sampled_count,

@@ -14,8 +14,9 @@ would silently discard the arriving note's real differences without the
 verdict the locked call requires — and computing the embedding a
 near-match needs would reintroduce the synchronous model-load-per-save
 regression part 2 eliminated. Near-duplicates still write normally and
-flow to the weekly cluster pass (task 3), where the verdict/needs-your-eye
-machinery owns them.
+flow to the weekly cluster pass (task 3), which owns the verdict. The
+ambiguous-pair parking that pass used to hand the operator went with the
+inbox triage engine on 2026-09-06; nothing detects that case today.
 
 One lookup surface remains:
 

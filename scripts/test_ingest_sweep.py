@@ -87,10 +87,10 @@ class StagingTests(unittest.TestCase):
     def test_same_cycle_resend_is_not_fetched_or_promoted_twice(self) -> None:
         # The Drive connector's own documented create-only ceiling: an
         # uncertain phone capture can land twice as near-identical
-        # candidates. inbox_triage.py's own dedup structurally cannot
-        # catch a same-cycle resend (both candidates leave status: inbox
-        # in the same sweep pass, before any separate triage invocation
-        # could see both still untriaged) -- confirmed empirically at
+        # candidates. A later dedup pass structurally cannot catch a
+        # same-cycle resend (both candidates leave status: inbox in the
+        # same sweep pass, before any separate pass could see both still
+        # untriaged) -- confirmed empirically at
         # /work time, not assumed. This sweep's own bounded, targeted
         # same-source_url check closes that specific gap.
         p1 = _new_candidate(self.vault, source_url="https://example.com/article")

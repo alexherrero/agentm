@@ -174,9 +174,8 @@ def write_digest_note(vault_path: "str | Path", cadence: str, body: str, *, now:
     `kind: telemetry`, `status: inbox` -- auto-apply triage read that as
     inbox noise and expired every digest within hours of creation (all
     three 07-11 notes were gone by the next morning). `_briefs/` is a
-    dedicated, non-triage home: `kind: brief`, `status: active`, never
-    touched by inbox_triage.py or dream_confirm's staging machinery, since
-    neither ever walks this directory.
+    dedicated home: `kind: brief`, `status: active`, never touched by
+    dream_confirm's staging machinery, which does not walk this directory.
 
     Idempotent per day: if today's note for this cadence already exists,
     its path is returned unchanged -- never a second file, never a

@@ -4,7 +4,7 @@
 workhorse channel).
 
 The autonomy design's delivery layer rests on one line at every session open:
-the day's digest headline, how long ago the last cycle ran, a needs-your-eye
+the day's digest headline, how long ago the last cycle ran, a crystallization
 count, and — the point — a **deadman** variant that says so when the digest
 ladder has gone quiet ("no digest in N days — ladder stalled"). The 2026-07-17
 diagnosis found the line had never actually appeared: the only session-start
@@ -255,30 +255,14 @@ def count_parked(park_dir: Path) -> int:
         return 0
 
 
-def count_needs_your_eye(vault: Path) -> int:
-    """Ambiguous dedup/merge candidates awaiting the operator — the
-    auto-organization needs-your-eye list (`_meta/needs-your-eye.json`,
-    inbox_triage.py, auto-org part 3). This is the widening the autonomy
-    design promised: the brief's needs-your-eye count now reads BOTH the
-    observability signal (parked runs, above) and this list. Best-effort
-    zero on any edge — never raises (the hook contract)."""
-    pointer = _engine_state_dir() / "needs-your-eye.json"
-    try:
-        data = json.loads(pointer.read_text(encoding="utf-8"))
-        items = data.get("items")
-        return len(items) if isinstance(items, list) else 0
-    except (OSError, ValueError, AttributeError):
-        return 0
-
-
 def count_crystallize_candidates(vault: Path) -> int:
     """Sessions staged by crystallization's phase-close trigger (agentm-
     experience-and-dreaming.md § Crystallization's phase-close trigger, call
     6), awaiting a five-field digest or an explicit dismissal. A bare
-    directory glob — deliberately not via `_meta/needs-your-eye.json` above,
-    which `inbox_triage.py` overwrites wholesale every cycle and would
-    silently lose an appended item. Best-effort zero on any edge — never
-    raises (the hook contract)."""
+    directory glob, and its own file rather than a list something else
+    overwrites wholesale — an appended item must not be lost by another
+    writer's next cycle. Best-effort zero on any edge — never raises (the
+    hook contract)."""
     staging_dir = _engine_state_dir() / "crystallize-staging"
     if not staging_dir.is_dir():
         return 0
@@ -364,12 +348,6 @@ def build_brief(
     parked_clause = ""
     if parked > 0:
         parked_clause = f" · {parked} run{'s' if parked != 1 else ''} parked, awaiting resume"
-    needs_eye = count_needs_your_eye(vault)
-    if needs_eye > 0:
-        parked_clause += (
-            f" · {needs_eye} dedup candidate{'s' if needs_eye != 1 else ''} need"
-            f"{'s' if needs_eye == 1 else ''} your eye"
-        )
     crystallize_pending = count_crystallize_candidates(vault)
     if crystallize_pending > 0:
         parked_clause += (
@@ -390,7 +368,7 @@ def build_brief(
             else:
                 age = f"{stale_days}d ago" if stale_days else "today"
             line = f"[agentm] Observability — {digest['headline']} (last cycle {age}){parked_clause}."
-            signature = f"fresh|{digest['slug']}|{parked}|{needs_eye}|{crystallize_pending}{refusal_sig}"
+            signature = f"fresh|{digest['slug']}|{parked}|{crystallize_pending}{refusal_sig}"
             return {"line": line, "signature": signature}
         # Deadman — a note exists but the ladder has gone quiet.
         extra = ""

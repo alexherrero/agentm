@@ -148,10 +148,10 @@ class SweepResult:
 
 
 # -----------------------------------------------------------------------------
-# Minimal frontmatter helpers — per-module reimplementation, matching
-# inbox_triage.py's own documented idiom ("not centralized anywhere in this
-# codebase today, so this module follows the same pattern rather than
-# introducing a new shared dependency").
+# Minimal frontmatter helpers — per-module reimplementation. Frontmatter
+# parsing is not centralized anywhere in this codebase, so this module
+# follows the prevailing pattern rather than introducing a new shared
+# dependency for two functions.
 # -----------------------------------------------------------------------------
 
 def _parse_frontmatter(content: str) -> "tuple[dict, str]":
@@ -216,8 +216,8 @@ def _iter_inbox_candidates(vault: Path) -> "list[Path]":
     staging directory used to hold, so the restamp and the act step still
     reach a plain capture — plus whatever a legacy `memory/_inbox/` still
     holds while it exists.
-    Non-recursive on purpose, matching `inbox_triage.py`'s own glob, so a
-    lane, an index, or a record folder's children never count."""
+    Non-recursive on purpose, so a lane, an index, or a record folder's
+    children never count."""
     vault = Path(vault)
     found: "list[Path]" = []
     inbox_dir = vault.joinpath(*_INBOX_SUBDIR)
@@ -254,8 +254,8 @@ def _suggest_topic(title: "str | None", fallback: str) -> str:
 def _find_duplicate_by_source_url(vault: Path, source_url: str, exclude: Path) -> "Path | None":
     """A bounded, targeted check — NOT a general dedup mechanism (that's
     auto-organization's job, parts 5-7). This exists because this sweep's
-    OWN behavior creates a specific race `inbox_triage.py`'s own dedup
-    structurally cannot catch: this sweep stages every eligible candidate
+    OWN behavior creates a specific race no later pass can catch: this
+    sweep stages every eligible candidate
     in one pass, so a same-cycle resend pair (the design's own named risk
     — "the Drive connector can create files but never update or delete
     them... an uncertain capture sometimes lands twice") both flip out of

@@ -5,8 +5,7 @@
 Unlike `session_brief.py` (fires every session boot, cooldown-gated in
 hours), this channel is runner-scheduled — once per calendar day — and
 fires a native OS notification (macOS `osascript`) carrying the same
-headline + needs-your-eye clause `session_brief.build_brief()` already
-computes. Absent-by-default: silent, zero-cost no-op unless the operator
+headline and clauses `session_brief.build_brief()` already computes. Absent-by-default: silent, zero-cost no-op unless the operator
 explicitly opts in via `agentm_config.py --notify-enabled true`
 (`plugins.autonomy.notify_enabled`).
 
