@@ -39,7 +39,7 @@ The series runs seven sessions, each taking one question and ending with a writt
 
 The vault becomes one lowercase tree that reads the same on both machines. `agent/` holds `diagnostics/` and `memory/` and nothing loose. `memory/` holds only the classes, each a few hundred notes at most once the residue is purged, each note named by its subject. A project carries the skeleton work proved — a charter, decisions, plans, research, drafts, a map — and its tasks live inside it, one directory per task with a plan, a progress log and a tracker. `standards/` is the four-file always-load surface. The calendar is facet files under a year map. One root note maps the vault; `Ideas.md` stays yours.
 
-A memory card is what you would write: a title, a type, a one-line summary, the reason it was kept, an importance you read, the filing state, the lifecycle, one confidence tier, the transport it arrived by and the trust that implies, two dates, tags and relations — then a machine block the passes own. A card gets one deep pass, with analysis and research, and light passes afterwards, updated only when new input arrives. Your own spaces — `projects/` and `personal/` — are permanent: never demoted or archived by policy, ranked by importance rather than age, and enriched only in ways that leave the original content untouched.
+A memory card is what you would write: a title, a type, a one-line summary, the reason it was kept, an importance you read, the filing state, the lifecycle, one confidence tier, the transport it arrived by and the trust that implies, two dates, tags and relations — then a machine block the passes own. A card gets one deep pass, with analysis and research, and light passes afterwards, updated only when new input arrives. Your own spaces — `projects/` and `personal/` — are permanent: never demoted or archived by policy, ranked by importance rather than age, and enriched only in ways that leave the original content untouched. A card is written where the knowledge is: by the model in the room, the moment something durable settles, with the reason it was kept. What a writer cannot know it leaves empty, and an empty `why` is what marks a candidate for the nightly pass to judge.
 
 ### Infrastructure
 
@@ -47,10 +47,10 @@ No new component. The series changes the contract, the writers, the generators a
 
 | component | role | what the series changes |
 |---|---|---|
-| `agentmd` | index, retrieval, MCP surface, capture, enrichment, the probe | field stamps, the card shape, ranking by importance in permanent spaces, the probe's root |
+| `agentmd` | index, retrieval, MCP surface, capture, enrichment, the probe | field stamps, the card shape, ranking by importance in permanent spaces, the probe's root; the tool's four capture fields, one meaning for `status`, enrichment owed by stamp, the eager trigger removed, the tally gate |
 | `agentmdream` | the nightly mutation pass, maps, rollups | map naming and pagination, empty-rollup skip, deep-once enrichment state |
-| session hooks | recall at start and prompt; capture and the session trace at stop | what a capture and a trace carry (session 2) |
-| the runner | scheduled jobs | the parked health scorecard, a daily corpus scorecard |
+| session hooks | recall at start and prompt; the trace and the miner at stop | the trace's shape; the miner files HIGH only and hands the rest to the trace (session 2, decided) |
+| the runner | scheduled jobs | the parked health scorecard, a daily corpus scorecard, the nightly enrichment batch |
 | the gate battery | deterministic verification | naming, card-shape and class-directory gates |
 
 Everything still runs on your Mac under launchd, triggered at session boundaries and nightly, with no server and no cloud component.
@@ -107,7 +107,7 @@ What a memory note holds, in the order Obsidian's properties panel shows it: wha
 title: Keep git out of Google Drive's mirrored folders   # the name; the filename is only the address
 type: workflow                                            # or kind: for a record; never both
 summary: One line — what this is and when it applies.
-why: Why this was kept — the reasoning at capture.        # its content is session 2's
+why: Why this was kept — the reasoning at capture.        # what was happening, and what this decides; only a writer that knows may write it
 importance: 7                                             # 1–10; you read it; enrichment proposes, your edit wins
 status: active                                            # active | unfiled
 lifecycle: active                                         # pinned | active | dormant | archived | superseded
@@ -125,6 +125,7 @@ enriched_by: enrich/1+prompt/a73ff0f4f5dc
 enriched_at: 2026-09-06T14:00:00Z
 rules_hash: 3c57fd89087c1a25
 fingerprint: bd36f748…
+importance_proposed: 6                                    # what enrichment proposed; when importance differs, the value is yours
 ---
 ```
 
@@ -137,9 +138,9 @@ Field by field, against the corpus of 744 and against the work card (`id · type
 | `title` | on 48% | required on every memory; the miner and `save.py` write one at capture |
 | `type` / `kind` | 93% / 7% | unchanged, one or the other, never both |
 | `summary` | on 30%, enrichment only | required when the body exceeds a paragraph; written at capture, refined by enrichment |
-| `why` | nowhere | new; the capture's reasoning. Session 2 decides what it holds and who writes it |
-| `importance` | nowhere | new, 1 to 10, the same field you read at work; enrichment proposes, an operator edit is never overwritten |
-| `status` | 100% | `active` or `unfiled`; `proposed` retires with the opinion lanes |
+| `why` | nowhere | new; what was happening when this was kept and what it decides later, one or two sentences. Written at capture by the model in the room or by you, never by enrichment; absent on a candidate (session 2) |
+| `importance` | nowhere | new, 1 to 10, the same field you read at work; capture or enrichment proposes it into `importance_proposed`, and a value that differs from the proposal is yours and is never overwritten |
+| `status` | 100% | `unfiled` means no judgment has been made, `active` means one has — one meaning for every writer (session 2); `proposed` retires with the opinion lanes |
 | `lifecycle` | 97% | unchanged; stamped on the 24 that lack it |
 | `filing_confidence` | 14% | the one confidence tier you read, on every note — backfilled `high` where an enrichment scored at or above the contract's floor and `low` below |
 | `confidence` | 43% | enrichment's numeric reading, machine block |
@@ -162,13 +163,31 @@ Field by field, against the corpus of 744 and against the work card (`id · type
 
 **Records** (`kind:` notes — traces, scorecards, maps, reviews) keep the same order for the fields they share and add their own; a record never carries `importance`, `why` or `filing_confidence`.
 
-#### Capture (session 2, open)
+#### Capture (session 2, decided)
 
-Recorded inputs. The queue is not enrichment falling behind: 283 of 356 unfiled notes are already enriched below the floor and 73 are miner fragments enrichment never reached; the session opens on who owns that verdict, after the purge ruling. A card gets one deep pass — analysis, reasoning and research toward a card that stands on its own — and light passes afterwards, updated only when new input arrives; the card must carry the state that lets a pass tell the two apart. Richness at capture is paid at every session boundary by the model already in the room; richness at enrichment is paid later by a model that reconstructs the context; the split is the decision, and `why` is the field that carries what the capturing model knew.
+What holds for a memory the moment it lands, and who may write which field. Measured on 2026-09-06 against the live writers: enrichment had run once by hand on 2026-08-27; the daemon's eager trigger was never attached and never fired; the Stop hook's candidates landed `status: active` at low confidence, a state enrichment never reads; and 572 of the 769 notes in the classes were residue from the old miner. The queue the daemon was red about was not a pass falling behind. It was a pass nobody runs.
+
+**The in-session card is the primary capture.** When something durable settles in a session — you say how you want a thing done, a decision is made, a fix is found, or a fact is learned that a later session will need — the agent writes the card immediately through `memory_capture`. It fills the fields you read: `title`, `type`, `summary`, `why`, `importance`, `tags`, and `related`. It lands `status: active`, `filing_confidence: high`, because a writer that could say why already judged it. The cost is a few hundred output tokens per card on the model already holding the context. This replaces a cold model reconstructing the same card from a 200-character excerpt. *Why not a model call in the Stop hook:* it reconstructs too, only sooner, inside a 30-second hook budget against a transcript that can reach a megabyte, and it pays on every session boundary whether or not anything durable happened. It stays named as the fallback. *Re-audit:* a month in which sessions write fewer than one card a day while the traces show decisions being made.
+
+**`why` is the reasoning, and only a writer that knows may write it.** One or two sentences: what was happening when this was kept, and what it decides later. You or the model in the room write it at capture; enrichment never writes, rewrites, or removes it. A card without `why` is a candidate — nothing has judged it worth keeping yet — and it lands `status: unfiled`. The firing miner rule is not a `why`; it goes to the trace. *Why not let enrichment write one:* a reason guessed from the note reads exactly like a real one, and the field is only worth having if it is always yours or the room's.
+
+**`status` means one thing.** `unfiled` means *no judgment has been made*; `active` means *someone or something judged this worth keeping*. The Go writer already meant the first. The Python lane meant the second and wrote `active` at low confidence, which enrichment's gate never reads. Every writer now agrees: a knowing writer's card lands `active`; anything else lands `unfiled`; enrichment's floor moves a note up or leaves it. `filing_confidence` stays the tier you read. No ranker reads it, and no document may imply one does.
+
+**The Stop hook keeps the trace and stops writing fragments.** The session trace is the handoff record, written with no model call. Its `title` is the first prompt; `project` and `surface` are stamped; `touched:` (renamed from `entities:`, which held basenames) lists what was captured and recalled. The body contains `## Asked`, `## Outcome` — the closing recap every session already ends with, which is free and the best summary the session produced — followed by `## Captured`, `## Recalled`, and `## Candidates`. `## Candidates` holds every line the miner once filed as a note, kept as a line with the firing rule, excerpt, and count. The miner files a card only for a HIGH candidate: a durability cue typed by you, under the utterance ceiling, whatever the host says about who sent it. It files that card `unfiled` with `why` empty, so the nightly pass judges it. MEDIUM and LOW never become notes. The four rulings from the write path's labeled sample are built as written. The tally template becomes a gate at the write door, so a stale miner in a worktree cannot refill the purged population. *Why not retire the miner:* the candidates list costs nothing and is the record of what a session said in passing; the next session's model, or dreaming, can promote from it with context a nightly pass over a lone note never has. *Why not keep MEDIUM as unfiled notes:* enrichment scored 85 of the 283 fragments it read at 0.2 or below; a fragment does not become a memory by being rewritten.
+
+**The deep pass is owed once, and the stamp says whether it has happened.** Eligibility moves from status to stamp. A card with no `enriched_at` is owed the deep pass whether `active` or `unfiled`. A card whose body changed since its stamp is owed a light pass. A card with neither is skipped at no cost; the fingerprint key (pass version, rules hash, body) already carries this. What the deep pass does is session 3's. What it may not touch is decided here: `why`, the Evidence block, and an `importance` you set. The machine block records `importance_proposed`; when `importance` differs from it, the value is yours and no pass writes it again.
+
+**The "no" is a demotion.** A note enrichment scores below the floor stays `unfiled` and is listed in needs-review. On a second verdict below the floor — which happens only when the body, the prompt, or the contract changed — the note moves to `lifecycle: dormant`, journaled and in the digest, as the contract already allows for demotion. It leaves the queue, stays on disk, and returns on a genuine recall. Purge stays yours, with a manifest. *Why not auto-archive:* `archived` is conspicuous by contract. *Why not leave it unfiled:* 283 notes unfiled forever is what the daemon was red about.
+
+**Enrichment runs as a nightly batch; the eager trigger retires.** This is the agent's call and reversible. The eager trigger never fired and would spend a model call per capture as it lands. The batch does the same work in one place, under a budget, with a report. Session 3 sets the budget, the order, and the prompt, which drops `altitude` and gains `importance_proposed`. The first real batch runs after that, not before, so the corpus is judged once under the new prompt rather than twice. The daemon's queue-age alert stays red until then, and that is the honest reading.
+
+**The Go capture and the MCP tool.** `memory_capture` gains `summary`, `why`, `importance`, and `related`, all optional, and its description says what `why` is. The surface stays two tools. A capture that names its type and gives a `why` lands `active`; one that does not lands `unfiled`. `instructions` moves into the Go door so the one front door carries the one security rule. The daily write cap stays. `captured` is written as `created`.
+
+**The purge, ruled 2026-09-06 by count.** Six non-overlapping manifests live in the series' working directory under `S2-manifests/`: A tool tallies 292 · B "User stated" fragments 107, including the seven TempleCoordination rules because the 2026-09-05 session's own records carry that ground · C "Fix observed" fragments 21 · D skill-discovery blurbs 116 · E opinion supplements 32 · F `~dup` twins 4. That totals 572 notes, leaving 172: 76 ideas, 47 conventions, 36 references, 5 workflows, 3 fixes, 2 preferences, 3 traces. Each manifest runs only when the day's fresh count matches the ruled count, and the tally gate lands in the same group.
 
 #### Dreaming (session 3, open)
 
-Recorded inputs. The binary's jobs are mechanical and cost nothing; the Python stages and enrichment spend model calls, and every step gets a cost and an effect before a budget and an order are set. Enrichment proposes `importance`; an operator's value is never overwritten. The crystallized class is designed toward work's shape: a synthesis per system or task cluster, with provenance. The fuzzy-similar pair parking removed in v9.20.0 is a candidate to return.
+Recorded inputs. The binary's jobs are mechanical and cost nothing; the Python stages and enrichment spend model calls, and every step gets a cost and an effect before a budget and an order are set. Enrichment proposes `importance` into `importance_proposed`; an operator's value is never overwritten. The deep pass is owed by stamp, not status; the batch is its only trigger; the prompt drops `altitude` and gains `importance_proposed`; the budget, the order and the first run under the new prompt are this session's. The crystallized class is designed toward work's shape: a synthesis per system or task cluster, with provenance. The fuzzy-similar pair parking removed in v9.20.0 is a candidate to return, as is promotion from the traces' `## Candidates` lists.
 
 #### Projects and tasks (session 4, open)
 
@@ -198,6 +217,14 @@ Recorded inputs. The memory payload has not been re-pasted into claude.ai or the
 
 **Ten fields, exactly the work card.** Rejected; home's lifecycle, transport and trust each have a reader in the daemon. The fields without a reader are retired instead.
 
+**A model call in the Stop hook as the primary capture.** Rejected for now; it reconstructs from the transcript inside a 30-second hook budget and pays on every session boundary. Named as the fallback with its re-audit trigger.
+
+**Enrichment writes `why`.** Rejected; a guessed reason reads like a real one.
+
+**Retire the miner outright.** Rejected; its candidates cost nothing as lines in the trace and are the record of what a session said in passing.
+
+**Auto-archive a twice-rejected note.** Rejected; `archived` is conspicuous by contract. It sinks to `dormant` instead.
+
 ## Dependencies
 
 [Filing v2](agentm-filing-v2.md) for every decision inherited unchanged; [Capture](agentm-capture.md) and [Experience & Dreaming](agentm-experience-and-dreaming.md), which sessions 2 and 3 reconcile; the [storage seam](memory-storage-seam.md) for the root-versus-memory-root distinction the probe and the retrieval gate both got wrong; the live contract in `standards/storage-rules.md`; the crickets development-lifecycle plugin for the `_harness/` repoint and the design template and prose pass; Obsidian's basename link resolution and the Drive sync path, which make a case-only rename a two-step; and the work vault reference in the research bundle, `REFERENCE-work-vault-layout.md`, as the transcription this design compares against.
@@ -207,12 +234,13 @@ Recorded inputs. The memory payload has not been re-pasted into claude.ai or the
 Landing groups, in the order that keeps the live vault consistent at every step; session 7 sequences them into plans and may split or merge them.
 
 1. **Hygiene.** The probe's root, the vault-root `diagnostics/`, the `Icon`-kept empties, `health-pass`, the empty reviews. No design needed; each is in the follow-ups file.
-2. **The purge.** A manifest per residue population — tool tallies, fragments, skill blurbs, opinion supplements, `~dup` twins — ruled by count, run through the migration engine. Before any backfill, so nothing dresses residue up again.
-3. **The memory root trims.** `_always-load` into `standards/`, watchlists and settings into `projects/agentm/`, engine files out of `agent/`, `_dream/` and `_meta/` out. Path repoints ship with the moves.
-4. **The card backfill.** Titles and summaries where derivable, `filing_confidence` from the enrichment score, `trust` from `source`, `created` from `captured`, the retired fields dropped, empty tag lists removed. Dry-run counts first; every backfilled note keeps its `enriched_by` so a model-written title is never mistaken for yours.
-5. **Maps and root notes.** `moc-root`, `moc-memory`, the retirement of `Home.md` and the paginated pages, `Filing.md` into `index.md`, `moc-calendar-YYYY`.
-6. **The root casing.** Last of the structural moves: quiesce, temp-name two-step per folder, the repoint inventory, link check before and after, `agentmd embed` to close.
-7. **Projects and tasks.** Session 4's landing group, paired with crickets.
+2. **The purge, and the tally gate.** The six manifests ruled in session 2 (572 notes), run through the migration engine under `--confirm-count`, with the write-door gate that refuses the tally template landing in the same group so nothing refills manifest A. Before any backfill, so nothing dresses residue up again.
+3. **The capture writers.** The tool's four fields and `instructions` in the Go door; one meaning for `status` in the Python lane; the trace's shape and the miner's HIGH-only filing; the eager trigger and its never-called attachment removed; enrichment eligible by stamp; the nightly batch registered as a runner job with its budget left to session 3. Writers land before the backfill they define.
+4. **The memory root trims.** `_always-load` into `standards/`, watchlists and settings into `projects/agentm/`, engine files out of `agent/`, `_dream/` and `_meta/` out. Path repoints ship with the moves.
+5. **The card backfill.** Titles and summaries where derivable, `filing_confidence` from the enrichment score, `trust` from `source`, `created` from `captured`, the retired fields dropped, empty tag lists removed; the 74 notes the Python lane filed `active` at low confidence re-stamped `unfiled`. Dry-run counts first; every backfilled note keeps its `enriched_by` so a model-written title is never mistaken for yours.
+6. **Maps and root notes.** `moc-root`, `moc-memory`, the retirement of `Home.md` and the paginated pages, `Filing.md` into `index.md`, `moc-calendar-YYYY`.
+7. **The root casing.** Last of the structural moves: quiesce, temp-name two-step per folder, the repoint inventory, link check before and after, `agentmd embed` to close.
+8. **Projects and tasks.** Session 4's landing group, paired with crickets.
 
 Every group is dry-run first, link-check green before and after, and inherits Filing v2's vault-wins collision doctrine and embed backfill. Rollback for every group but the purge is `git revert` plus the repoints replayed.
 
@@ -225,12 +253,15 @@ Every group is dry-run first, link-check green before and after, and inherits Fi
 - **The `_harness/` repoint is a paired release.** Mitigation: session 4 sequences it after the crickets side lands, as 2b was. Re-audit trigger: any plan-resolution path that still probes `_harness/` after the move.
 - **The always-load budget grows with the standards set.** Mitigation: session 6 sets the budget before the fourth file lands. Re-audit trigger: the tier past 25 KB.
 - **The empty-shell failure can repeat.** Mitigation: `entities/` is not recreated until written, and class populations sit on the daily scorecard. Re-audit trigger: any class at zero thirty days after its writer ships.
+- **The in-session card may be sparse.** A capture that depends on the agent noticing a durable moment can miss them. Mitigation: the always-load payload names when to capture, the session brief asks at the end what went uncaptured, and the trace's candidates list keeps what the miner saw. Re-audit trigger: fewer than one card a day over a month while the traces show decisions being made; the Stop-hook model call is the next step.
+- **The daemon stays red until session 3's first batch.** Nothing judges the queue between the capture writers landing and the budgeted batch. Mitigation: the alert is reading a true state, and the purge removes 316 of the 356 it counts. Re-audit trigger: the first batch not scheduled within a week of session 3.
+- **A stale miner in a worktree.** The hook resolves the miner relative to the session's working directory, so a worktree from an older base runs an older miner. Mitigation: the tally gate at the write door. Re-audit trigger: any note matching a retired template after the gate lands.
 
 ## Quality Attributes
 
 ### Security
 
-The write-authority table is inherited unchanged: `agent/` written freely, `calendar/` shared, `projects/` under a session grant, `personal/` per task, `standards/` and the root notes on instruction. The one new boundary is enrichment of your own spaces, which writes frontmatter and never the body, and reads `personal/` only where you opt an area in.
+The write-authority table is inherited unchanged: `agent/` written freely, `calendar/` shared, `projects/` under a session grant, `personal/` per task, `standards/` and the root notes on instruction. The one new boundary is enrichment of your own spaces, which writes frontmatter and never the body, and reads `personal/` only where you opt an area in. A capture is visible to recall from the moment it lands, at reduced weight while `unfiled`; there is no review window. The guard is that captured content never gains instruction authority, that a fetched or mailed transport carries `trust: untrusted` through every pass, and that recalled memory is data to the surface that reads it.
 
 ### Data Integrity
 
@@ -251,7 +282,8 @@ Each rule lands as a gate: kebab names with a subtype word, the card's field ord
 | landing group | size |
 |---|---|
 | hygiene | S |
-| the purge | S, gated on your ruling |
+| the purge and the tally gate | S, ruled |
+| the capture writers | M |
 | the memory root trims | S |
 | the card backfill | M |
 | maps and root notes | M |
@@ -284,4 +316,5 @@ Each landing group reverts with `git revert` in the vault repository plus its re
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-09-06 | Session 2 of the series: initial capture. The measurement first — enrichment had run once (every `enriched_at` dated 2026-08-27), the eager trigger had never been attached, the Stop hook's candidates landed `active` at low confidence where enrichment never looks, and 572 of 769 class notes were miner residue; the red queue was a pass nobody runs, not a pass behind. Seventeen rulings taken: the six purge manifests by count (572 out, 172 remain), the tally gate in the purge's landing group, no enrichment batch until session 3's prompt and budget; the in-session card as the primary capture with the Stop-hook model call named as fallback; `why` as what was happening and what it decides, written only by a knowing writer; one meaning for `status`; the trace as the handoff record (Asked · Outcome · Captured · Recalled · Candidates) and the miner filing HIGH only; the deep pass owed by stamp with `importance_proposed` guarding your edits; a second sub-floor verdict sinking to `dormant`; eager retired for the nightly batch; four optional fields on the tool. Migrations gain the capture-writers group. [Capture](agentm-capture.md) reconciled to the write path in the same change. | draft |
 | 2026-09-06 | Created in session 1 of the vault-perfection series, authored from the crickets design template as the successor to Filing v2 (which is pointed here). The layout and the card are decided — twenty-one rulings taken in conversation against the survey of the live vault and the work vault photographed the same evening: lowercase roots, `agent/` trimmed to two children, `memory/` to the classes, tasks nested under their project, `crystallized/` flat, `entities/` folded until written, maps named for what they map with `Home.md` retired, the calendar on a year map, the four-file `standards/`, one root map, kebab naming with a gate; the card's field order with `why` and `importance` added and `altitude`, `group`, `always_load` and the mining fields retired. Inputs for sessions 2 to 6 recorded in their sections: deep-once-then-light enrichment, the `tracker` definition, permanent spaces ranked by importance, personal files enriched in frontmatter only under a per-area opt-in. Prose pass: the cross-model step degraded (`agy` returned an empty result twice), so a Claude-only simplification pass ran against the fact-guard list. | draft |
