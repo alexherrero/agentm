@@ -540,7 +540,7 @@ Then three checks that write nothing: a vocabulary audit (every `type:`/`kind:` 
 
 ### The takeover (2026-09-05)
 
-The binary ran report-only beside the Python `dream.py` cycle through an overlap window, with a daily divergence review comparing the two. The one review agreed on every surface, and the operator flipped `-apply` in `templates/jobs/dreaming.yaml` the same day. Since then, `dream.py` no longer runs the suffix-backlog drain, the calendar rollups, or the lifecycle policy's own sinking and lifting — it reads the lifecycle axis and reports what it sees, stages archive proposals for the confirm surface, and runs the stages the binary doesn't carry: lint repair, compression, the artifact shelf, inbox triage, the needs-review MOC, insights, and the rest of the confirm-gated proposals. Rolling back is report-only mode — drop `-apply` — since the Python lanes it replaced are gone.
+The binary ran report-only beside the Python `dream.py` cycle through an overlap window, with a daily divergence review comparing the two. The one review agreed on every surface, and the operator flipped `-apply` in `templates/jobs/dreaming.yaml` the same day. Since then, `dream.py` no longer runs the suffix-backlog drain, the calendar rollups, or the lifecycle policy's own sinking and lifting — it reads the lifecycle axis and reports what it sees, stages archive proposals for the confirm surface, and runs the stages the binary doesn't carry: lint repair, compression, the artifact shelf, the needs-review MOC, insights, and the rest of the confirm-gated proposals. Rolling back is report-only mode — drop `-apply` — since the Python lanes it replaced are gone.
 
 ### Parity as a recording
 

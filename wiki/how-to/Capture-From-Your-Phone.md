@@ -48,7 +48,7 @@ The first version of this design would have written the fetched content straight
   The candidate never moves house for any of this. Look for it at its class directory (`memory/semantic/` for a plain thought or a link), or in `_inbox/` for a phone capture.
 
 - **A fetch failed.** The candidate stays at its current status — `unfiled` or `inbox` — with nothing recorded as lost. The sweep's digest surfaces the failure explicitly (`_render_digest()`, `ingest_sweep.py:627-668`). Fix the link, or drop the candidate by hand; the sweep retries it on the next cycle either way.
-- **An idea capture (`idea: <thought>`) doesn't show up in `Ideas.md`.** `Ideas.md` lives outside the vault, so folding an idea into it crosses the A3 permeable-write-boundary — denied by default in this sweep's unattended context. Set `MEMORY_REVIEW_MODE=silent` for the job if you want ideas folded automatically, or add it to `Ideas.md` yourself. `/memory inbox --bulk-review` won't find it: filing v2's write path moved idea captures off `_inbox/` onto their class directory, and the bulk-review triage tool still only reads the retired one.
+- **An idea capture (`idea: <thought>`) doesn't show up in `Ideas.md`.** `Ideas.md` lives outside the vault, so folding an idea into it crosses the A3 permeable-write-boundary — denied by default in this sweep's unattended context. Set `MEMORY_REVIEW_MODE=silent` for the job if you want ideas folded automatically, or add it to `Ideas.md` yourself.
 
 ## See also
 

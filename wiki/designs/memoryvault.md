@@ -253,7 +253,7 @@ Three sub-components, all shipped in plan #7b after #7a has been dogfooded for 1
 
 4. **Interactive review fatigue**. Tri-modal routing reduces prompt frequency but the MEDIUM-confidence pool may still feel like noise. Mitigation: `memory.review_mode: silent` escape hatch + adjustable confidence thresholds in skill config; default `interactive` is intentional friction during the trust-building phase.
 
-5. **Vault bloat**. Aggressive sweep + `_inbox/` could accumulate cruft if user doesn't do weekly inbox review. Mitigation: `/memory inbox` command shows inbox count + age; `/memory reflect` end-of-session output reminds user when inbox > N entries; incubator GC at 6 months gives a soft cleanup deadline.
+5. **Vault bloat**. Aggressive sweep + `_inbox/` could accumulate cruft if user doesn't do weekly inbox review. Mitigation: `/memory reflect` end-of-session output reminds user when inbox > N entries; incubator GC at 6 months gives a soft cleanup deadline.
 
 6. **Cross-machine config sanitization** (the follow-up added 2026-05-15 — see `.harness/ROADMAP.md` §7 Still open). MemoryVault skill config + hooks + crickets settings ought to be backed up to an operator-private sibling repo, but the **vault contents are private**. Need a redaction boundary — what's safe to commit (skill source, hook source, schema, templates) vs. device-local (real vault paths on disk, sync-provider identifiers, account emails, any project-specific overrides). Three candidate shapes flagged in the ROADMAP follow-up; decision deferred to a small follow-up plan.
 

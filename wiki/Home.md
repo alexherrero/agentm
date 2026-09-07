@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.19.0](https://github.com/alexherrero/agentm/releases/tag/v9.19.0).** One meaning for `source:` — it names the transport alone, a fetched page's address and a mined unit's identity each get their own field, and the vault has migrated to it.
+> **Latest release: [v9.20.0](https://github.com/alexherrero/agentm/releases/tag/v9.20.0).** The inbox triage engine retires. Its three jobs move to the heat policy, the dreaming binary, and the lifecycle axis — but nothing now parks a fuzzy-similar pair for you.
