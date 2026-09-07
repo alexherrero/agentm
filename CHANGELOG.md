@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.20.0] - 2026-09-06
+
+The inbox triage engine retires ([#575](https://github.com/alexherrero/agentm/pull/575)). It walked `memory/_inbox/`, a directory filing v2 removed and nothing writes, so its promote / merge / expire have proposed nothing since — and each of the three has an owner now: the heat policy, the dreaming binary's copies job, and the lifecycle axis. The needs-your-eye surface it was the sole producer of retires with it, rather than staying as three readers pointed at a writer that no longer exists.
+
+### Removed
+
+- **`inbox_triage.py`, its test, and the surface test** — 1,261 lines walking
+  a path that does not exist, with an auto-applying expire stage attached.
+  `dream.py` loses the folded sub-run entirely: the digest field, the call,
+  the render line, the `include_inbox_triage` switch, and the audit branch
+  that took the fold's applied merges.
+- **The needs-your-eye surface** — `console.section_needs_your_eye`,
+  `session_brief.count_needs_your_eye`, the brief clause it fed and the term
+  it contributed to the brief's dedup signature. `inbox_triage.py` was the
+  only writer of `_meta/needs-your-eye.json`, which has never existed on this
+  machine, so all three readers had reported "dark" or zero since filing v2.
+- **`/memory inbox`** — the verb row and the skill section.
+
+### Changed
+
+- Every comment that cited the engine for its reasoning is rewritten rather
+  than left pointing at a deleted module.
+
+### Internal
+
+- `agentm-experience-and-dreaming` amended with the retirement.
+- The capability the retirement removes — parking a fuzzy-similar,
+  fingerprint-distinct pair for the operator — is recorded in the follow-ups
+  as a capability, not absorbed into the diff. The copies job takes
+  content-identical; the dedup stage proposes a merge rather than parking an
+  ambiguity, so nothing detects that case today.
+
 ## [9.19.0] - 2026-09-06
 
 One meaning for `source:`, and the hygiene the filing arc left ([#570](https://github.com/alexherrero/agentm/pull/570), [#571](https://github.com/alexherrero/agentm/pull/571), [#572](https://github.com/alexherrero/agentm/pull/572)). The provenance field carried three vocabularies at once — the contract's transport, a bare URL and a namespaced reference — so no gate could refuse a wrong value and the trust tier read from that field had never fired on a fetched page. It now names the transport and nothing else, the unit a memory came from has its own field, the corpus migrated, and four residuals the filing arc left behind are closed.
