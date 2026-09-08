@@ -35,6 +35,15 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+# The sibling import needs this directory on the path: run as a script it is
+# already sys.path[0], but a foreign loader file-loads this module with a
+# pristine path (the contract test_skill_modules_file_loadable pins).
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+import drive_artifacts  # noqa: E402  (same skill dir)
 from typing import Any, Optional
 
 DAEMON_BIN = os.environ.get("AGENTMD", "agentmd")
@@ -188,7 +197,7 @@ def class_populations(vault: Path) -> "dict | None":
         flat = lanes = 0
         if d.is_dir():
             for p in d.rglob("*.md"):
-                if p.name == "_index.md" or p.name.startswith("Icon"):
+                if p.name == "_index.md" or drive_artifacts.is_artifact(p):
                     continue
                 if p.parent == d:
                     flat += 1

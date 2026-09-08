@@ -91,7 +91,7 @@ func MemoryNotes(root string) ([]string, error) {
 			if err != nil {
 				return nil
 			}
-			if d.IsDir() || filepath.Ext(p) != ".md" || d.Name() == "_index.md" || strings.HasPrefix(d.Name(), "Icon") {
+			if d.IsDir() || filepath.Ext(p) != ".md" || d.Name() == "_index.md" || note.SyncArtifact(d.Name()) {
 				return nil
 			}
 			rel, err := filepath.Rel(root, p)

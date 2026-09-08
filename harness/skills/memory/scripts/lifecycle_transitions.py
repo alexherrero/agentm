@@ -39,11 +39,13 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import engine_state  # noqa: E402  (same skill dir)
+import drive_artifacts  # noqa: E402  (same skill dir)
 from filing_engine import _frontmatter  # noqa: E402
 
 STATES = ("pinned", "active", "dormant", "archived", "superseded")
@@ -250,7 +252,7 @@ def memory_notes(vault: "Path | str"):
         if not d.is_dir():
             continue
         for p in sorted(d.rglob("*.md")):
-            if p.name == "_index.md" or p.name.startswith("Icon"):
+            if p.name == "_index.md" or drive_artifacts.is_artifact(p):
                 continue
             yield p
 

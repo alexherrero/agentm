@@ -25,9 +25,12 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
+
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
+
+import drive_artifacts  # noqa: E402  (same skill dir)
 
 from filing_engine import _frontmatter  # noqa: E402  (same skill dir)
 
@@ -79,7 +82,7 @@ def _memory_notes(vault: Path):
         if not d.is_dir():
             continue
         for p in d.rglob("*.md"):
-            if p.name == "_index.md" or p.name.startswith("Icon"):
+            if p.name == "_index.md" or drive_artifacts.is_artifact(p):
                 continue
             yield p
 

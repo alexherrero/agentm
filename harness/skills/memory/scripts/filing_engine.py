@@ -50,9 +50,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
+
+import drive_artifacts  # noqa: E402  (same skill dir)
 
 import storage_rules  # noqa: E402
 from fingerprint import compute_fingerprint  # noqa: E402
@@ -201,7 +204,7 @@ class CorpusIndex:
             if not d.is_dir():
                 continue
             for p in sorted(d.glob("*.md")):
-                if p.name == "_index.md" or p.name.startswith("Icon"):
+                if p.name == "_index.md" or drive_artifacts.is_artifact(p):
                     continue
                 try:
                     fm, body = _frontmatter(p.read_text(encoding="utf-8"))

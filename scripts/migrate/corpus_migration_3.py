@@ -69,6 +69,7 @@ for p in (_REPO / "scripts", _REPO / "harness" / "skills" / "memory" / "scripts"
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
+import drive_artifacts  # noqa: E402
 import storage_rules  # noqa: E402
 from fingerprint import compute_fingerprint  # noqa: E402
 from migrate_type_collapse import STATUS_MAP, frontmatter_lines, rewrite_line  # noqa: E402
@@ -179,7 +180,7 @@ def walk_population(vault: Path, rules):
         if not root.is_dir():
             return
         for p in sorted(root.rglob("*.md")):
-            if p.name.startswith("Icon"):
+            if drive_artifacts.is_artifact(p):
                 continue
             yield p
 
@@ -210,7 +211,7 @@ def walk_population(vault: Path, rules):
     mem = vault / "memory"
     if mem.is_dir():
         for p in sorted(mem.glob("*.md")):
-            if not p.name.startswith("Icon"):
+            if not drive_artifacts.is_artifact(p):
                 yield "stray", p
 
 
@@ -680,7 +681,7 @@ def _prune(dir_path: Path, vault_root: Path) -> int:
     for child in sorted(dir_path.iterdir()):
         if child.is_dir():
             dropped += _prune(child, vault_root)
-    entries = [p for p in dir_path.iterdir() if not p.name.startswith("Icon")]
+    entries = list(drive_artifacts.visible(dir_path.iterdir()))
     if len(entries) == 1 and entries[0].is_file() and entries[0].name == INDEX_NAME:
         if _tracked(vault_root, entries[0]):
             _git(vault_root, "rm", "-q", str(entries[0]))
@@ -689,8 +690,10 @@ def _prune(dir_path: Path, vault_root: Path) -> int:
         dropped += 1
         entries = []
     if not entries:
-        for icon in dir_path.glob("Icon*"):
-            icon.unlink()
+        # The directory is going, so its sync artifacts go with it. Removing
+        # them from a directory that stays would be churn — the sync layer
+        # writes them straight back.
+        drive_artifacts.remove_artifacts(dir_path)
         try:
             dir_path.rmdir()
         except OSError:
