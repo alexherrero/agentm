@@ -28,7 +28,14 @@ trap 'rm -f "$JSONL_TMP"' EXIT
 
 run_suite() {  # run_suite <label> <cmd...>
   local label="$1"; shift
-  echo "run-fast-tier: running $label…" >&2
+  # Braced deliberately. Under a UTF-8 LC_CTYPE, bash reads the following
+  # ellipsis's bytes as identifier characters, so an unbraced expansion here
+  # names a variable whose name has the ellipsis glued onto the end. That name
+  # is unbound, and `set -u` above kills the script on the very first suite,
+  # before a single check record is emitted. The failure is invisible from a
+  # C-locale shell and fires from a UTF-8 one, which is why it survived so
+  # long: it lives in the caller's environment, not in this file.
+  echo "run-fast-tier: running ${label}…" >&2
   if ! "$@" --jsonl-out "$JSONL_TMP" >&2; then
     echo "run-fast-tier: $label exited non-zero (recorded in the JSONL; batch continues)" >&2
   fi

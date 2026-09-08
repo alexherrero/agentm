@@ -79,6 +79,7 @@ if str(_HERE / "health") not in sys.path:
 
 from runner import manifest as manifest_mod  # noqa: E402
 from runner import state as state_mod  # noqa: E402
+from runner import watchdog as watchdog_mod  # noqa: E402
 # The autonomy channels' own config readers — reused, never re-derived, so a
 # key rename in either module can't drift from what this doctor asks about.
 import session_email as session_email_mod  # noqa: E402
@@ -284,6 +285,21 @@ def check_runner_job(repo: Path, job_name: str, *, state_root: Optional[Path] = 
     if job is None:
         return Check(job_name, "FAIL", f"{registered_path} present but not found by the loader")
     mode = "dry-run" if job.dry_run else "live"
+    # A parked job outranks every other reading here. The watchdog's `stop`
+    # rung is the runner's only hard gate, and it wrote to a JSON file no
+    # surface read: `health-pass` sat parked from 2026-07-25 to 2026-09-07
+    # while this row went on reporting "registered (live), last fired" with a
+    # six-week-old timestamp — true, and the opposite of the point.
+    health = watchdog_mod.read_health(job_name, state_root=state_root)
+    if health.get("rung") == "stop":
+        failures = health.get("consecutive_failures", 0)
+        return Check(
+            job_name, "FAIL",
+            f"registered ({mode}) but PARKED by the watchdog after {failures} "
+            f"consecutive failures — it will not run again until resumed "
+            f"(`agentm-runner.sh resume {job_name}`)",
+            last_fired=last_run,
+        )
     if last_run is None:
         return Check(job_name, "WARN", f"registered ({mode}) but has never fired on this machine", last_fired=None)
     return Check(job_name, "OK", f"registered ({mode}), last fired", last_fired=last_run)

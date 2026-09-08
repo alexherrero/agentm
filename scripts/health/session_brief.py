@@ -76,6 +76,28 @@ def _cache_root() -> Path:
     return Path.home() / ".cache" / "agentm" / "telemetry"
 
 
+def _runner_watchdog():
+    """The runner's watchdog module, imported late and defensively.
+
+    `session_brief` is on the session-start path, so an import error here would
+    cost a session its brief rather than cost the brief a clause.
+    """
+    import sys as _sys
+    scripts = Path(__file__).resolve().parent.parent
+    if str(scripts) not in _sys.path:
+        _sys.path.insert(0, str(scripts))
+    from runner import watchdog
+    return watchdog
+
+
+class _LazyWatchdog:
+    def stopped_jobs(self, *, state_root=None):
+        return _runner_watchdog().stopped_jobs(state_root=state_root)
+
+
+watchdog_mod = _LazyWatchdog()
+
+
 def default_park_dir() -> Path:
     return _cache_root() / "park"
 
@@ -115,6 +137,32 @@ def _refusal_clause(refused: list) -> str:
     n = len(refused)
     return (f" · ⚠ runner refused {n} manifest{'s' if n != 1 else ''}: {_refusal_names(refused)}"
             " (every other job still runs; see ~/.cache/agentm/runner/last-cycle.json)")
+
+
+def parked_jobs(state_root: "Path | None" = None) -> list:
+    """Job names the watchdog has parked at its `stop` rung, sorted.
+
+    A refused manifest already reaches the operator here; a parked job did not,
+    and it is the same class of silence with a longer fuse. `health-pass` sat
+    at `stop` from 2026-07-25 to 2026-09-07 — the local health scorecard simply
+    was not produced for six weeks — and the only record of it anywhere was a
+    JSON file no surface read. `forward-learning` had been parked since
+    2026-07-19 and nobody knew at all.
+    """
+    try:
+        return [name for name, _ in watchdog_mod.stopped_jobs(state_root=state_root)]
+    except Exception:
+        # The brief is a line in a session start. It never fails a session.
+        return []
+
+
+def _parked_clause(parked: list) -> str:
+    if not parked:
+        return ""
+    n = len(parked)
+    names = ", ".join(parked[:3]) + (", …" if len(parked) > 3 else "")
+    return (f" · ⚠ {n} job{'s' if n != 1 else ''} parked by the watchdog: {names}"
+            " (they do not run until resumed: agentm-runner.sh resume <job>)")
 
 
 def default_state_path() -> Path:
@@ -336,6 +384,14 @@ def build_brief(
     hist_latest = history_latest_date(history_path)
     refused = runner_refusals(runner_cycle_path)
     if digest is None and hist_latest is None:
+        parked_by_watchdog = parked_jobs()
+        if parked_by_watchdog and not refused:
+            n = len(parked_by_watchdog)
+            names = ", ".join(parked_by_watchdog[:3])
+            return {"line": f"[agentm] ⚠ Runner — {n} job{'s' if n != 1 else ''} "
+                            f"parked by the watchdog: {names}; they do not run "
+                            f"until resumed.",
+                    "signature": f"parked|{names}"}
         if refused:
             # The ladder never ran here, but the runner has something to say.
             n = len(refused)
@@ -355,7 +411,9 @@ def build_brief(
             f"awaiting crystallization"
         )
     parked_clause += _refusal_clause(refused)
-    refusal_sig = f"|refused={len(refused)}"
+    parked_by_watchdog = parked_jobs()
+    parked_clause += _parked_clause(parked_by_watchdog)
+    refusal_sig = f"|refused={len(refused)}|parked={len(parked_by_watchdog)}"
 
     hist_str = hist_latest.strftime("%Y-%m-%d") if hist_latest is not None else None
 
