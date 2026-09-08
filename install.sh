@@ -461,18 +461,17 @@ fi
 # vault everywhere without a per-project install. Only when ~/.gemini/ already
 # exists (the operator runs Antigravity/Gemini) — we don't create config dirs
 # for tools they don't use. Idempotent; preserves the operator's own GEMINI.md.
-# Source = the Antigravity workspace rule body (read-write working-agent
-# framing); ONLY agentmemory-context goes global — harness.md is a per-project
-# operating contract, not a global rule.
+# Source = templates/agentmemory-context.md rendered by payload_render.py, the
+# one renderer behind every copy (the tracked Antigravity rule is the same body
+# with always_on frontmatter). Rendering rather than copying the rule file is
+# what lets the machine-local Gemini copy carry the configured capture address
+# while the tracked rule stays neutral. ONLY agentmemory-context goes global —
+# harness.md is a per-project operating contract, not a global rule.
+# --gemini-only: an install must never dirty the repo's tracked rule.
 if [[ -d "$HOME/.gemini" ]]; then
-  _agentmemory_src="$HARNESS_ROOT/adapters/antigravity/rules/agentmemory-context.md"
-  if [[ -f "$_agentmemory_src" ]]; then
-    echo "    Antigravity global rules → ~/.gemini/GEMINI.md"
-    python3 "$HARNESS_ROOT/scripts/merge-managed-section.py" \
-      "$HOME/.gemini/GEMINI.md" "$_agentmemory_src" \
-      --marker AGENTMEMORY --strip-frontmatter \
-      || echo "    WARN: failed to merge agentmemory-context into ~/.gemini/GEMINI.md (continuing)" >&2
-  fi
+  echo "    Antigravity global rules → ~/.gemini/GEMINI.md"
+  python3 "$HARNESS_ROOT/scripts/payload_render.py" --write --gemini-only \
+    || echo "    WARN: failed to merge agentmemory-context into ~/.gemini/GEMINI.md (continuing)" >&2
 fi
 
 # ── --mcp-server: retired ───────────────────────────────────────────────────

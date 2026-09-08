@@ -1,63 +1,73 @@
+<!-- mode: how-to -->
 # How to use AgentMemory in any agent
 
 > [!NOTE]
-> **Goal:** Make any agent surface (Claude.ai, Gemini, ChatGPT, Antigravity) read your GDrive-synced AgentMemory vault natively — so it already knows your conventions, projects, and decisions without you re-explaining. **Surface-scoped access:** chat surfaces (Claude.ai, Claude Desktop) read + query the vault and *suggest* entries for you to paste in by hand — they never write; the filesystem working agents you run directly (Claude Code, Antigravity) may write to the vault, following your entry conventions.
-> **Prereqs:** the AgentMemory vault synced to Google Drive (signed into the account that owns it); the context payload (`templates/agentmemory-context.md`, shipped in #22); and operator access to each surface's connector / Gem settings (the agent can't log into your accounts — connector setup is an operator action).
+> **Goal:** make a chat surface read your vault before it answers, so it already knows your conventions and where your projects stand.
+> **Prereqs:** the vault synced to Google Drive, signed into the account that owns it; an agentm checkout; access to each surface's own settings, which the agent cannot log into for you.
 
-## Before you start (all surfaces)
+## Print the payload
 
-Every surface pastes in the same context payload: [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19). Copy its body starting at line 19 (`# Using my Agent Memory`) through the end, and skip the leading HTML comment — that part is operator-only notes. For what each section of the payload means, see the [AgentMemory context payload reference](AgentMemory-Context-Payload).
+```bash
+python3 harness/skills/memory/scripts/payload.py
+```
 
-Prereq for the Google-Drive surfaces: the vault is synced to Google Drive, and you're signed into the **Google account that owns it**.
+That prints the body, then a list of which surfaces need a paste. `--body-only` gives the bytes alone, for a clipboard.
 
-| Surface | Status | How it reads the vault |
+The text is layout-free on purpose: it names `index.md`, `standards/` and `moc-projects.md`, and no folder that a migration moves. That is why you paste it once and not again after every landing.
+
+| Surface | How it reads the vault | What you do |
 |---|---|---|
-| Claude Code | ✅ built-in | local filesystem + SessionStart hooks — no paste needed |
-| Claude.ai | ✅ validated | Google Drive connector (*search*) + **the context payload** |
-| Claude Desktop | ✅ validated | local **filesystem MCP server** → full navigation (or the Drive connector) + **the context payload** |
-| Antigravity | ✅ validated | local filesystem → installed `agentmemory-context` rule (per-project `.agents/rules/` **or** global `~/.gemini/GEMINI.md` at user scope) |
-| Gemini · ChatGPT · Codex | deferred → post-FRIDAY | no live file/search access to the vault yet |
+| Claude Code | the local path, through the session hooks | nothing |
+| Antigravity | the installed rule, and `~/.gemini/GEMINI.md` | nothing — `install.sh` writes both |
+| claude.ai | the Google Drive connector | paste |
+| Claude Desktop | the Drive connector, until the daemon is registered there | paste |
+| Gemini | the same Drive folder, in a Gem | paste |
 
-**v1 criterion:** a surface only qualifies if it has **live file-or-search access** to the vault — a filesystem agent (Claude Code, Claude Desktop via a filesystem MCP server, Antigravity) or the Drive-search connector (Claude.ai). Chat-only bots that can't reach the vault are deferred.
+## Paste it into claude.ai
 
-## Claude.ai
+1. Settings → Connectors → enable **Google Drive** and finish the OAuth. That grants search over your whole Drive; the payload is what scopes it to the vault.
+2. Paste the body into Settings → Custom instructions, or into a Project's instructions.
 
-1. **Connect Google Drive.** Settings → Connectors → enable **Google Drive** and finish the OAuth. This grants Claude *search* access to your whole Drive — **there is no folder to pin** (scoping comes from the payload).
-2. **Paste [the context payload](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19)** into Settings → Custom Instructions (applies to every chat) or a Claude **Project's** instructions.
-3. **Dogfood** (see below).
+For steadier recall, make a Claude Project, put the payload in its instructions, and add the `standards/` files to the Project's knowledge. Search at query time depends on Claude choosing to search; knowledge files do not.
 
-*More reliable recall:* search-at-query-time depends on Claude choosing to search. To ground it, create a **Claude Project**, put **the context payload** in the Project instructions, and add the always-load entries — the `standards/` files at the vault root, plus anything still in the legacy `memory/_always-load/` pen — to the Project's knowledge.
+## Paste it into the Gem
+
+Create a Gem, paste the body into its Instructions, and add `index.md` and the `standards/` files as knowledge. Gemini reaches the same Drive folder.
 
 ## Claude Desktop
 
-Best path: give Claude Desktop a **local filesystem MCP server** pointed at the vault — it then navigates the vault like Claude Code (full traversal, no Drive dependency).
+Today it is claude.ai in another window: the Drive connector plus the same paste. The design registers the daemon there as a local server — the same two tools, the same walls, the clock written — and that lands with the surfaces plan.
 
-1. **Add a filesystem MCP server.** In Claude Desktop's connector/MCP settings, add a standard **filesystem** server scoped to your vault directory (`$MEMORY_VAULT_PATH` / your vault folder).
-2. **Paste [the context payload](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19)** into a Claude **Project's** instructions (or the desktop custom instructions).
-3. **Dogfood** (see below).
+## Antigravity needs no paste
 
-*Alternative:* skip the MCP server and use the **Google Drive connector** exactly like Claude.ai above (search-based; same payload).
+`install.sh` merges the rendered payload into `~/.gemini/GEMINI.md` as a managed section, so every workspace picks up the vault with nothing installed per project. Your own content in that file is preserved. The tracked rule at `adapters/antigravity/rules/agentmemory-context.md` is generated from the same render.
 
-## Antigravity
+Unlike the chat surfaces, Antigravity may write to the vault through the capture tool.
 
-Antigravity is a local filesystem agent; it loads [the context payload](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19) as the installed `agentmemory-context` rule — no manual paste.
+## Check that it took
 
-The installer merges the payload into `~/.gemini/GEMINI.md`, Antigravity's global rules file, which applies across **every** workspace — so Antigravity picks up the vault everywhere, with nothing installed per project. It runs only when `~/.gemini/` already exists, preserves your own `GEMINI.md` content, and is idempotent. (A second channel used to land the same rule per-workspace at `<project>/.agents/rules/`; it retired with the per-project install.)
+Run these in a fresh chat, with no priming.
 
-Unlike the read-only chat surfaces above, Antigravity is a **read-write working agent**: it may read *and* write the vault, following your entry conventions, exactly like Claude Code. Validated on **both the Antigravity CLI and the Antigravity IDE**: Antigravity resolved the vault via the global `~/.gemini/GEMINI.md` rule and recalled `_always-load/` entries correctly across multiple projects. Dynamic session-start *recall* (vs. this static rule) is a future enhancement.
+1. *What's our commit-message convention?* — the answer comes from the vault and cites the note's path.
+2. *Where does agentm stand?* — the answer comes from `moc-projects.md` or a tracker's State. This one waits on the projects migration; until then the honest answer is the charter.
+3. *Where does a new capture go?* — the answer names a memory class and `status: unfiled`, and never `_inbox/`, `_always-load/`, `_index.md` or `_harness/`.
+4. From any session: a Drive title search for `storage-rules.md`, `voice-kernel.md` and `index.md` returns one file each, and `/doctor` reports the Gemini managed section equal to the template.
 
-## Deferred surfaces *(post-FRIDAY — #28)*
+Record the result where you keep the project's follow-ups.
 
-**Gemini, ChatGPT, and Codex are not in v1.** Gemini + ChatGPT are chat-only bots with **no live file/search access** to the vault — a plain Gemini chat confirmed it *"can't access or browse your live Google Drive files"* — so the read model can't work yet; revisit when they gain agentic Drive/file access. Codex is deferred completely until FRIDAY lands. The same **context payload** will be reusable for whichever gains access.
+**If a check fails.** A generic answer, or "I can't see the vault", usually means one of three things: you are signed into the wrong Google account; more than one copy of the vault is in the Drive being searched, so the connector finds a stale twin first; or a local copy has drifted. Run `/memory payload --check` for the third — it names the copy and `--write` repairs it.
 
-## The dogfood (any surface)
+## Keeping it current
 
-Open a **fresh** chat/session and ask — with no priming:
+A re-paste is owed only when the posture, the card guide or the surface list changes. Nothing else earns one. When you do change the template, run:
 
-> what's our commit-message convention?
+```bash
+python3 harness/skills/memory/scripts/payload.py --write
+```
 
-It passes when the agent reaches the vault — a Drive search on Claude.ai, a filesystem read on Claude Desktop or Antigravity — and answers from the always-load surface (`standards/` at the vault root; for example, *"no `Co-Authored-By` trailer"* and Conventional Commits) instead of general knowledge. It fails when you get a generic answer or "can't see the vault": on Claude.ai, confirm you're signed into the vault-owning Google account and try the Project approach above; on Claude Desktop, confirm the filesystem MCP server's vault path.
+and paste the new body on the two chat surfaces the same day.
 
 ## Related
 
-- [AgentMemory context payload](AgentMemory-Context-Payload) — reference for the payload's sections.
+- [AgentMemory context payload](AgentMemory-Context-Payload) — what each part of the text says, and how the copies stay equal.
+- [Memory daemon (agentmd)](Memory-Daemon) — the search surface local agents use.

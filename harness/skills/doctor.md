@@ -86,7 +86,7 @@ Then:
 
    No token check. The daemon has no bearer token by design — any local process that could present one can already read the vault files directly, so a token would add setup friction for every client without closing anything the Origin/Host guard does not.
 
-   `python3 <agentm>/scripts/memory_mcp_doctor.py` targets the **retired** Python server and its `token_env` row fails by construction against the daemon. Do not run it as part of this check.
+   There is no second server to probe. The Python FastMCP server and its own doctor were removed on 2026-09-07 (agentm-vault design, landing group 11a); the daemon above is the whole MCP surface.
 
 5. **Host wiring file**: `AGENTS.md` exists at repo root. Adapter-specific overlay file exists (`CLAUDE.md` for Claude Code, `.gemini/settings.json` for Gemini pointing at `AGENTS.md`).
 6. **Hook wiring** (Claude Code; V4 #39 — a real check, not "absent block is fine"). Hooks install at `<prefix>/hooks/<name>/` (prefix = `$AGENTM_INSTALL_PREFIX` → `~/.claude`); the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Apply this truth table to `<prefix>/hooks/` + `<prefix>/settings.json`:

@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The pasted context payload is layout-free, and every copy of it is derived**
+  ([agentm-vault](wiki/designs/agentm-vault.md), landing group 11a).
+  `templates/agentmemory-context.md` names `index.md`, `standards/` and
+  `moc-projects.md` — three things that survive every landing group — and no
+  folder that a migration moves. The map has been the payload's failure mode
+  every time: three chat surfaces served a July layout for two months, because
+  a surface that looks for a folder that is not there finds nothing, says
+  nothing, and answers from its own knowledge instead.
+- **`check-payload-layout-free`** — nine retired names the template may not
+  carry. Case-sensitive, so the card guide can still explain `agent/archive/`
+  while `Agent/` stays out. The September template is pinned as a fixture and
+  the gate is tested rejecting all nine.
+- **`check-payload-parity`** — each copy of the payload equals its render, by
+  sha256. Both copies were hand-kept until now and both had drifted: the
+  Antigravity rule and the template had become different documents, and
+  `~/.gemini/GEMINI.md` was still teaching the July map. The gate caught the
+  second on its first run.
+- **`/memory payload`** — prints the body and the surface list, `--write`
+  regenerates both derived copies, `--check` runs the parity gate. The doctor
+  gained a row per copy carrying its hash and naming the one that differs.
+
+### Changed
+
+- **`install.sh` / `install.ps1` render the Gemini managed section** rather
+  than copying the Antigravity rule file into it. One renderer,
+  `scripts/payload_render.py`, feeds the tracked rule, `~/.gemini/GEMINI.md`
+  and `/memory payload` — which is what makes comparing their hashes mean
+  anything. The tracked rule is always rendered without a capture address; the
+  machine-local copy carries one when the engine config has it.
+- **`how-to/Use-AgentMemory-In-Any-Agent.md` and
+  `reference/AgentMemory-Context-Payload.md`** rewritten to the layout-free
+  payload, the email door and the four checks that prove a paste took.
+
+### Removed
+
+- **The Python FastMCP memory server** — `memory_mcp_server.py`,
+  `memory_mcp_tools.py`, `memory_mcp_shim.py`, `memory_mcp_doctor.py`, their
+  four test files, `verify-mcp-surface.py` and its gate, both launchd plists,
+  `how-to/Stand-Up-Memory-MCP-Server.md`, and the `fastmcp` / `mcp` pins in
+  `requirements.txt` and three workflows. The Go daemon has served the two
+  memory tools since it took port 7821, and
+  `daemon/internal/mcpsrv/surface_test.go` is what pins that surface now. The
+  server had no live caller and its own doctor failed by construction against
+  the daemon.
+
+
 ## [9.20.0] - 2026-09-06
 
 The inbox triage engine retires ([#575](https://github.com/alexherrero/agentm/pull/575)). It walked `memory/_inbox/`, a directory filing v2 removed and nothing writes, so its promote / merge / expire have proposed nothing since — and each of the three has an owner now: the heat policy, the dreaming binary's copies job, and the lifecycle axis. The needs-your-eye surface it was the sole producer of retires with it, rather than staying as three readers pointed at a writer that no longer exists.

@@ -73,11 +73,10 @@ jobs:
           echo "AGENTMD=$RUNNER_TEMP/agentmd" >> "$GITHUB_ENV"
       - name: Install Python deps
         # sentence-transformers is deliberately NOT installed (1.3GB+; the
-        # e2e uses stub embed mode). fastmcp lets verify-mcp-surface.py + the
-        # auto-discovered test_memory_mcp_tools.py actually run instead of
-        # gracefully skipping — R1.6, this was previously never installed
-        # anywhere, so those MCP contract checks silently never ran.
-        run: pip install pyyaml fastmcp
+        # e2e uses stub embed mode). fastmcp went with the Python MCP server it
+        # served, retired 2026-09-07 — the Go daemon is the MCP surface now and
+        # daemon/internal/mcpsrv/surface_test.go is what pins its two tools.
+        run: pip install pyyaml
       - name: Validate adapter frontmatter / TOML / JSON
         run: python3 scripts/validate-adapters.py
       - name: Check cross-references + hook-fragment schema parity
@@ -96,6 +95,15 @@ jobs:
         # the merge base. Only the live vault instance is unreachable, and its
         # absence is a documented skip rather than a silent pass.
         run: python3 scripts/check-storage-rules.py
+      - name: check-payload-layout-free (the pasted payload names no folder a migration moves)
+        # The payload has been wrong on three chat surfaces since July because it
+        # carried a folder map. This gate is the tripwire that keeps the template
+        # naming only index.md, standards/ and moc-projects.md.
+        run: python3 scripts/check-payload-layout-free.py
+      - name: check-payload-parity (every payload copy is the template's derivation)
+        # The Gemini half graceful-skips on a runner (no ~/.gemini); the tracked
+        # Antigravity rule is checkable everywhere and never skips.
+        run: python3 scripts/check-payload-parity.py
       - name: "check-vocabulary-membership (set-ratchet self-test — collision + membership fire)"
         # A runner has no vault, so the corpus ratchet half skips itself with a
         # named line; what runs in full here is the self-test — the collision
@@ -205,12 +213,6 @@ jobs:
         # _meta/opinion-base-proposals.json; the health pointer and
         # console.section_opinion_supplements render it.
         run: bash scripts/verify-opinion-supplements.sh
-      - name: verify-mcp-surface (append/search/forget round-trip, dead-surface fate)
-        # R1.6 / agentmEngine#2: an in-process FastMCP client drives the real
-        # append->search->forget round-trip, soft-delete semantics, and the
-        # three dead-recall-surface fates (memory_recall + recall_here
-        # retired; documenter_context's V5-3 stub contract locked).
-        run: python3 scripts/verify-mcp-surface.py
       - name: health-score-determinism (scorecard byte-identical across two runs)
         # R1.8 Task 1: the health scorecard aggregator must be deterministic —
         # two runs against the same fixture input produce byte-identical markdown.

@@ -30,6 +30,7 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | Run the adapt-don't-import workflow over discovered patterns (Python rubric → enriched JSONs → LLM sub-agent judgment → watchlist entries) | `/memory adapt-skills` |
 | Review pending entries in `_skill-watchlist/` — promote / dismiss / defer | `/memory watchlist` |
 | See what the heat-based always-load policy would demote or promote (never applies without `--apply`) | `/memory heat-policy` |
+| Print the context payload to paste into claude.ai or the Gem, or regenerate the copies derived from it | `/memory payload` |
 | Check the vault for orphans, broken links, contradictions, and a per-note quality score — on demand (the weekly dreaming cycle also runs this automatically) | `/memory lint` |
 
 Auto-recall happens via the [SessionStart + UserPromptSubmit hooks](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault/parts/recall-loop.md) — operators don't invoke a recall command directly. Reflection happens automatically via Stop + idle hooks too; the manual `/memory reflect` is for one-off runs against arbitrary transcripts.
@@ -255,7 +256,7 @@ A capture's frontmatter carries `kind`, `status: inbox`, `created`, `captured` (
 
 #### The `memory_capture` MCP tool
 
-The same door, callable by any connected MCP host: `memory_capture(content, kind="capture", title=None, tags=None, instructions=None, source_url=None) -> {success, id, slug}` or `{success: false, error}` on failure — a capture is never silently dropped. Registered alongside `memory_search` / `memory_append` / `memory_forget` in `scripts/memory_mcp_tools.py`.
+The same door, callable by any connected MCP host: `memory_capture(content, kind="capture", title=None, tags=None, instructions=None, source_url=None) -> {success, id, slug}` or `{success: false, error}` on failure — a capture is never silently dropped. Served by the Go daemon at `daemon/internal/mcpsrv/server.go`, which registers exactly two tools — `memory_search` and `memory_capture`. The Python FastMCP server that used to register four was retired on 2026-09-07.
 
 #### Failure modes (graceful)
 
@@ -1134,6 +1135,47 @@ python3 harness/skills/memory/scripts/lint.py [--vault-path <path>] [--apply]
 
 - **Don't treat a nonzero finding count as a failure to fix immediately.** Most findings (orphans, contradictions, unknown kinds) are informational — the engine surfaces them because an editorial call is needed, not because something is broken.
 - **Don't reach for `--apply` as part of automation expecting it to auto-repair everything.** It only ever touches the narrow, deterministic mis-cased-wikilink case; nothing else this verb reports is ever auto-resolved by design.
+
+### `/memory payload`
+
+Print the context payload — the "how to use my memory vault" brief pasted into
+the chat surfaces — or regenerate the copies derived from it.
+
+There is one source, `templates/agentmemory-context.md`, and everything else
+comes out of it: the tracked Antigravity rule, the managed section of
+`~/.gemini/GEMINI.md`, and what this command prints. Before 2026-09-07 all three
+were kept by hand and all three had drifted; the parity gate and the doctor's
+`payload-copy` rows now catch that, and this is the command that repairs it.
+
+The payload is deliberately layout-free. It names `index.md`, `standards/` and
+`moc-projects.md` — the three names that survive every migration — and no folder
+that a landing group moves, because a surface that looks for a folder that no
+longer exists finds nothing, says nothing, and answers from its own knowledge.
+`scripts/check-payload-layout-free.py` holds that line.
+
+```
+/memory payload                 # the body, then where to paste it
+/memory payload --body-only     # just the body, for piping to a clipboard
+/memory payload --write         # regenerate both derived copies
+/memory payload --check         # report drift, write nothing
+```
+
+| Flag | Use case |
+|---|---|
+| *(none)* | Print the rendered body followed by the surface list — which surfaces need a paste, which are derived, which need nothing. |
+| `--body-only` | The body alone, byte-for-byte what belongs in the instructions box. |
+| `--write` | Regenerate `adapters/antigravity/rules/agentmemory-context.md` and `~/.gemini/GEMINI.md`'s managed section. Idempotent; everything outside the `AGENTMEMORY` markers in `GEMINI.md` is preserved. |
+| `--check` | Run `check-payload-parity.py` and report which copy differs, exit 1 if any does. |
+
+**A re-paste is owed only when the posture, the card guide or the surface list
+changes.** A layout change never triggers one — that is the whole point of the
+layout-free text. The four checks that prove a paste took live in the
+[AgentMemory context payload reference](../../../wiki/reference/AgentMemory-Context-Payload.md).
+
+The capture address in the posture paragraph comes from
+`plugins.autonomy.capture_address` in the engine config. While it is unset, the
+payload tells a chat surface to show you the card rather than mail it — it never
+points a surface at a mailbox that does not exist.
 
 ### `/memory search`
 

@@ -219,19 +219,19 @@ if ($LocalState) {
 # every workspace) as a managed section so Antigravity picks up the vault
 # everywhere without a per-project install. Only when ~/.gemini/ exists (the
 # operator runs Antigravity/Gemini). Idempotent; preserves the operator's own
-# GEMINI.md. Source = the Antigravity workspace rule body; ONLY
-# agentmemory-context goes global — harness.md is a per-project contract.
+# GEMINI.md. Source = templates/agentmemory-context.md rendered by
+# payload_render.py, the one renderer behind every copy; rendering rather than
+# copying the rule file lets this machine-local copy carry the configured
+# capture address while the tracked rule stays neutral. ONLY agentmemory-context
+# goes global — harness.md is a per-project contract. --gemini-only: an install
+# must never dirty the repo's tracked rule.
 $geminiDir = Join-Path $HOME '.gemini'
 if (Test-Path -LiteralPath $geminiDir -PathType Container) {
-    $agentmemorySrc = Join-Path $HarnessRoot 'adapters/antigravity/rules/agentmemory-context.md'
-    if (Test-Path -LiteralPath $agentmemorySrc -PathType Leaf) {
-        $geminiMd = Join-Path $geminiDir 'GEMINI.md'
-        $mergeScript = Join-Path $HarnessRoot 'scripts/merge-managed-section.py'
-        Write-Host '    Antigravity global rules -> ~/.gemini/GEMINI.md'
-        & $pythonCmd.Source $mergeScript $geminiMd $agentmemorySrc '--marker' 'AGENTMEMORY' '--strip-frontmatter'
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning '    failed to merge agentmemory-context into ~/.gemini/GEMINI.md (continuing)'
-        }
+    $renderScript = Join-Path $HarnessRoot 'scripts/payload_render.py'
+    Write-Host '    Antigravity global rules -> ~/.gemini/GEMINI.md'
+    & $pythonCmd.Source $renderScript '--write' '--gemini-only'
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning '    failed to merge agentmemory-context into ~/.gemini/GEMINI.md (continuing)'
     }
 }
 # ── done ────────────────────────────────────────────────────────────────────
