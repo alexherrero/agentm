@@ -376,14 +376,17 @@ def describe(summary: dict) -> str:
 
 def main(argv=None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="the lifecycle axis: move one memory (operator), run the policy, read the journal")
+    # No `policy` subcommand. It passed `apply=` to a `policy_pass` that has no
+    # such parameter, so every invocation raised TypeError — which nobody saw,
+    # because the automatic lane moved to the `agentmdream` binary in filing v2
+    # part 6 and `policy_pass` has been read-only since. The function stays: it
+    # is what the binary's parity recording was taken against, and the summary
+    # surfaces still read it. Only the door that could not open is gone.
+    ap = argparse.ArgumentParser(description="the lifecycle axis: move one memory (operator), read the journal, summarize")
     ap.add_argument("--vault", required=True, help="the memory root (the directory holding memory/)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("set", help="the operator moves one memory — the one lane that may enter `archived` by hand")
     s.add_argument("rel"); s.add_argument("state", choices=STATES); s.add_argument("--reason", default="operator")
-    pp = sub.add_parser("policy", help="the automatic lane: sink the silent, lift the recalled, name the archive candidates")
-    pp.add_argument("--report-only", action="store_true", help="say what would move, move nothing")
-    pp.add_argument("--json", action="store_true")
     j = sub.add_parser("journal", help="what moved, and who moved it")
     j.add_argument("--since", help="ISO date lower bound")
     sm = sub.add_parser("summary", help="populations per state and the last week's moves")
@@ -393,15 +396,6 @@ def main(argv=None) -> int:
     if a.cmd == "set":
         e = transition(vault, a.rel, a.state, actor="operator", reason=a.reason)
         print(json.dumps(e, ensure_ascii=False))
-    elif a.cmd == "policy":
-        r = policy_pass(vault, apply=not a.report_only)
-        d = r.as_dict()
-        if a.json:
-            print(json.dumps(d, indent=2))
-        else:
-            verb = "would sink" if a.report_only else "sank"
-            print(f"{verb} {len(r.demoted)}, revived {len(r.revived)}, archive candidates {len(r.archive_candidates)}, "
-                  f"previews {len(r.previews)}, skipped by cap {r.skipped_by_cap}, considered {r.considered}")
     elif a.cmd == "journal":
         for e in journal_entries(since=a.since):
             print(json.dumps(e, ensure_ascii=False))
