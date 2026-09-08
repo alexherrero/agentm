@@ -667,19 +667,15 @@ def memory_root_from_daemon() -> str:
     return str(Path(vault) / parent) if str(parent) != "." else vault
 
 
-def vault_from_daemon() -> str:
-    """Where the daemon says the vault is.
-
-    Asked rather than resolved here, for two reasons. The daemon is the component
-    that cannot be wrong about which vault it is serving — a second resolver
-    would agree with it until somebody edited the config while it was running.
-    And a script under `harness/skills/` may not import from `scripts/`, which
-    `check-one-way-imports` enforces and which caught the first version of this.
-    """
-    try:
-        return str((_agentmd(["status"]) or {}).get("vault") or "")
-    except DaemonUnavailable:
-        return ""
+# `vault_from_daemon()` used to sit here, returning the vault root. Nothing
+# reads a diagnostics path from the vault root — `diagnostics_dir()` is relative
+# to the memory root — and both of its callers were wrong about which root they
+# wanted, writing a second `diagnostics/` tree beside the memory space. Both are
+# repointed at `memory_root_from_daemon()` above, which left this with no callers
+# at all. Removed rather than kept: a helper whose name reads like the obvious
+# choice, sitting next to the one that is actually correct, is how a third caller
+# gets it wrong. The daemon is still the component asked — `memory_root_from_
+# daemon()` reads the same `status` for both halves of the answer.
 
 
 def main(argv: list = None) -> int:

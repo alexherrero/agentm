@@ -106,5 +106,66 @@ class TheScorecardReading(unittest.TestCase):
         self.assertTrue(r.missing)
 
 
+class TheArtifactRoot(unittest.TestCase):
+    """The gate's artifact belongs at the memory root, not the vault root.
+
+    Both joins produce a path that exists and looks plausible; only one of them
+    is read by anything. This one wrote `<vault>/diagnostics/health/` — a second
+    diagnostics tree beside the memory space, which nothing renders and nobody
+    opened for two days — because it asked the daemon where the *vault* was and
+    joined a memory-root-relative directory onto the answer.
+
+    The status below is the live shape, with the two roots deliberately
+    different: a fixture where the memory space sits at the vault root would
+    pass either way and prove nothing.
+    """
+
+    STATUS = {"vault": None, "spaces": {"memory": "Agent/memory",
+                                        "projects": "Projects"}}
+
+    def _status(self, vault: Path) -> dict:
+        st = dict(self.STATUS)
+        st["vault"] = str(vault)
+        return st
+
+    def test_the_artifact_lands_under_the_memory_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            vault = Path(d)
+            with mock.patch.object(sc, "_agentmd", return_value=self._status(vault)):
+                got = job.artifact_path()
+            self.assertEqual(got, vault / "Agent" / "diagnostics" / "health"
+                             / job.ARTIFACT_NAME)
+
+    def test_nothing_is_written_at_the_vault_root(self):
+        # The regression stated as the defect was: a `diagnostics/` directory
+        # appearing directly under the vault. artifact_path() creates the
+        # directory it returns, so this is a real check on the filesystem.
+        with tempfile.TemporaryDirectory() as d:
+            vault = Path(d)
+            with mock.patch.object(sc, "_agentmd", return_value=self._status(vault)):
+                job.artifact_path()
+            self.assertFalse((vault / "diagnostics").exists(),
+                             "a second diagnostics tree appeared at the vault root")
+
+    def test_the_scorecard_and_the_gate_agree_on_the_directory(self):
+        # The gate's artifact is read by the scorecard's gate_reading(). They
+        # have to resolve the same directory or the row reads "no artifact"
+        # while the artifact sits one root away.
+        with tempfile.TemporaryDirectory() as d:
+            vault = Path(d)
+            with mock.patch.object(sc, "_agentmd", return_value=self._status(vault)):
+                gate_dir = job.artifact_path().parent
+                scorecard_dir = Path(sc.memory_root_from_daemon()) / sc.diagnostics_dir()
+            self.assertEqual(gate_dir, scorecard_dir)
+
+    def test_an_unresolvable_root_writes_nothing(self):
+        # A guess is worse than a refusal: an artifact under an invented root
+        # reads as a passing gate to anything that finds it.
+        with mock.patch.object(sc, "_agentmd", return_value={}):
+            with self.assertRaises(SystemExit):
+                job.artifact_path()
+
+
+
 if __name__ == "__main__":
     unittest.main()

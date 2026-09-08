@@ -337,5 +337,54 @@ class TheDreamingBinarySection(unittest.TestCase):
         self.assertIn("No pass recorded", body)
 
 
+class TheRootItResolves(unittest.TestCase):
+    """`diagnostics_dir()` is relative to the memory root, so the root this
+    joins it onto has to be the memory root too.
+
+    This asked the daemon where the *vault* was — the same wrong-root mistake
+    the corpus scorecard fixed on 2026-09-04 and the retrieval gate repeated.
+    It never showed up in the editions on disk because the hand runs that
+    produced them had `$MEMORY_VAULT_PATH` pointing at the memory root, so the
+    daemon was never asked. That is luck, and luck stops holding the first time
+    the runner invokes this on a schedule.
+
+    The fixture keeps the two roots different on purpose: one where the memory
+    space sits at the vault root passes either way.
+    """
+
+    STATUS = {"vault": "/v", "spaces": {"memory": "Agent/memory"}}
+
+    def test_the_memory_root_is_the_vault_plus_the_spaces_parent(self):
+        with mock.patch.object(ds, "_agentmd", return_value=self.STATUS):
+            self.assertEqual(ds.memory_root_from_daemon(), "/v/Agent")
+
+    def test_it_is_not_the_vault_root(self):
+        with mock.patch.object(ds, "_agentmd", return_value=self.STATUS):
+            got = ds.memory_root_from_daemon()
+        self.assertNotEqual(got, "/v",
+                            "resolving to the vault root writes a second "
+                            "diagnostics tree beside the memory space")
+
+    def test_a_memory_space_at_the_vault_root_resolves_to_the_vault(self):
+        # A layout with no wrapper directory is legitimate, and the parent of a
+        # single-segment space is the vault itself, not a directory above it.
+        with mock.patch.object(ds, "_agentmd",
+                               return_value={"vault": "/v",
+                                             "spaces": {"memory": "memory"}}):
+            self.assertEqual(ds.memory_root_from_daemon(), "/v")
+
+    def test_no_daemon_answer_resolves_to_nothing(self):
+        # main() turns an empty answer into a refusal; a guessed root would
+        # write a scorecard somewhere nothing reads and call it a report.
+        with mock.patch.object(ds, "_agentmd", return_value={}):
+            self.assertEqual(ds.memory_root_from_daemon(), "")
+
+    def test_the_retired_vault_root_helper_is_gone(self):
+        # It resolved the wrong root for every caller it ever had, and its name
+        # reads like the obvious choice next to the one that is correct.
+        self.assertFalse(hasattr(ds, "vault_from_daemon"))
+
+
+
 if __name__ == "__main__":
     unittest.main()
