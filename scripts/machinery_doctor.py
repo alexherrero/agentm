@@ -79,6 +79,7 @@ if str(_HERE / "health") not in sys.path:
 
 from runner import manifest as manifest_mod  # noqa: E402
 from runner import state as state_mod  # noqa: E402
+from runner import watchdog as watchdog_mod  # noqa: E402
 # The autonomy channels' own config readers — reused, never re-derived, so a
 # key rename in either module can't drift from what this doctor asks about.
 import session_email as session_email_mod  # noqa: E402
@@ -284,6 +285,21 @@ def check_runner_job(repo: Path, job_name: str, *, state_root: Optional[Path] = 
     if job is None:
         return Check(job_name, "FAIL", f"{registered_path} present but not found by the loader")
     mode = "dry-run" if job.dry_run else "live"
+    # A parked job outranks every other reading here. The watchdog's `stop`
+    # rung is the runner's only hard gate, and it wrote to a JSON file no
+    # surface read: `health-pass` sat parked from 2026-07-25 to 2026-09-07
+    # while this row went on reporting "registered (live), last fired" with a
+    # six-week-old timestamp — true, and the opposite of the point.
+    health = watchdog_mod.read_health(job_name, state_root=state_root)
+    if health.get("rung") == "stop":
+        failures = health.get("consecutive_failures", 0)
+        return Check(
+            job_name, "FAIL",
+            f"registered ({mode}) but PARKED by the watchdog after {failures} "
+            f"consecutive failures — it will not run again until resumed "
+            f"(`agentm-runner.sh resume {job_name}`)",
+            last_fired=last_run,
+        )
     if last_run is None:
         return Check(job_name, "WARN", f"registered ({mode}) but has never fired on this machine", last_fired=None)
     return Check(job_name, "OK", f"registered ({mode}), last fired", last_fired=last_run)
@@ -931,6 +947,86 @@ def project_json_configs(repo: Path, *, mem_root: Optional[Path] = None) -> list
     return found
 
 
+
+# ── the clone that IS the installation (2026-09-06 stale-main regression) ───
+def _git_out(repo: Path, *args: str) -> "tuple[int, str]":
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                           text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return 1, str(e)
+    return r.returncode, r.stdout.strip()
+
+
+def check_install_head(repo: Optional[Path] = None) -> Check:
+    """Whether the clone's HEAD is the newest tag, and local `main` the remote.
+
+    This clone is the installation: hooks and skills are symlinked into it, so
+    whatever commit it has checked out is the machine-wide live configuration.
+    That makes an ordinary git state into a deployment state, and nothing said
+    so. On 2026-09-06 a session's first minute ran `git checkout main` here,
+    landing on a ref 38 commits behind; the live config silently regressed two
+    days, and a survey read a stale design and published a false finding from
+    it. Nobody could have noticed from any surface that existed.
+
+    Reported, never repaired. A doctor row says what is true; moving somebody's
+    HEAD out from under them is not a diagnosis.
+    """
+    repo = repo if repo is not None else repo_root()
+
+    rc, head = _git_out(repo, "rev-parse", "HEAD")
+    if rc != 0:
+        return Check("install-head", "UNVERIFIED", f"not a git clone at {repo}")
+
+    rc, tag = _git_out(repo, "describe", "--tags", "--abbrev=0")
+    if rc != 0:
+        return Check("install-head", "UNVERIFIED",
+                     "no tag reachable from HEAD; nothing to compare against")
+
+    rc, tag_sha = _git_out(repo, "rev-list", "-n", "1", tag)
+    notes = []
+
+    # Local `main` versus the remote. The branch is deliberately not checked
+    # out here, so it is invisible until something checks it out — which is
+    # exactly the failure.
+    rc_l, local_main = _git_out(repo, "rev-parse", "--verify", "refs/heads/main")
+    rc_r, remote_main = _git_out(repo, "rev-parse", "--verify", "refs/remotes/origin/main")
+    if rc_l == 0 and rc_r == 0 and local_main != remote_main:
+        rc_a, _ = _git_out(repo, "merge-base", "--is-ancestor", local_main, remote_main)
+        rc_c, behind = _git_out(repo, "rev-list", "--count", f"{local_main}..{remote_main}")
+        n = behind if rc_c == 0 else "?"
+        if rc_a == 0:
+            notes.append(f"local `main` is {n} commit(s) behind origin/main — a "
+                         "checkout of it would roll the live config back")
+        else:
+            notes.append("local `main` has diverged from origin/main")
+
+    if rc == 0 and head != tag_sha:
+        rc_c, ahead = _git_out(repo, "rev-list", "--count", f"{tag}..HEAD")
+        rc_b, behind = _git_out(repo, "rev-list", "--count", f"HEAD..{tag}")
+        where = []
+        if rc_c == 0 and ahead != "0":
+            where.append(f"{ahead} ahead")
+        if rc_b == 0 and behind != "0":
+            where.append(f"{behind} behind")
+        detail = (f"HEAD is not the newest tag {tag}"
+                  + (f" ({', '.join(where)})" if where else ""))
+        if notes:
+            detail += " · " + " · ".join(notes)
+        # Ahead of the tag is ordinary between releases. Behind it is the
+        # regression — and so is a stale local `main`, which is the ref that
+        # actually got checked out. Either earns the WARN; grading on the tag
+        # alone would print the stale-branch sentence under an OK.
+        behind_tag = rc_b == 0 and behind != "0"
+        status = "WARN" if (behind_tag or notes) else "OK"
+        return Check("install-head", status, detail)
+
+    detail = f"HEAD is the newest tag ({tag})"
+    if notes:
+        return Check("install-head", "WARN", detail + " · " + " · ".join(notes))
+    return Check("install-head", "OK", detail)
+
+
 # ── composition ───────────────────────────────────────────────────────────
 def run_inventory(
     repo: Optional[Path] = None, *, state_root: Optional[Path] = None,
@@ -949,6 +1045,7 @@ def run_inventory(
             note="see crickets src/developer-safety/hooks/coauthor-guard/hook.md",
         ),
     ]
+    checks.append(check_install_head(repo))
     checks.append(check_runner_cycle(state_root=state_root))
     for job_name in job_names(repo):
         checks.append(check_runner_job(repo, job_name, state_root=state_root))

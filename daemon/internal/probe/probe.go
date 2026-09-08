@@ -36,6 +36,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/health"
 	"github.com/alexherrero/agentm/daemon/internal/index"
@@ -96,6 +97,34 @@ func New(cfg *config.Config, idx *index.Index, baseURL string, markPath func(rel
 // StatePath is where the last result is recorded, for reporting.
 func (r *Runner) StatePath() string { return r.statePath }
 
+// probeType is what a probe note is captured as. Named once, because the
+// capture below and the placement check both need it to be the same type —
+// checking a note against the class of some other type would pass or fail for
+// reasons that have nothing to do with capture.
+const probeType = "reference"
+
+// classPrefix is the vault-relative directory a probe note belongs in, with a
+// trailing slash, resolved through the same routing the capture just used.
+//
+// It asks rather than asserts. Naming a literal here would be a second copy of
+// the contract's routing table, and the first time the two disagreed the probe
+// would report a routing bug that was really its own staleness — a check that
+// cries wolf is worse than no check.
+func (r *Runner) classPrefix() (string, error) {
+	spaceDir, err := r.cfg.SpaceDir("memory")
+	if err != nil {
+		return "", err
+	}
+	contract, contractErr := r.cfg.Rules.Get()
+	if class := capture.ClassDir(contract, contractErr, probeType, spaceDir); class != "" {
+		return class + "/", nil
+	}
+	// No contract, or one that does not route the probe's type: capture falls
+	// back to a date shard inside the space, so the space is the whole claim
+	// available. Still worth making — it is the half that was wrong.
+	return strings.Trim(spaceDir, "/") + "/", nil
+}
+
 // Load reads the last recorded run. A missing or unreadable record reads as
 // "never ran", which is the honest answer and the one that eventually goes red.
 func (r *Runner) Load() (State, bool) {
@@ -155,7 +184,7 @@ func (r *Runner) Run(now time.Time) (State, error) {
 			"",
 			"It is safe to delete. The next run writes another one and retires this.",
 		}, "\n"),
-		"type":   "reference",
+		"type":   probeType,
 		"status": "active",
 		"tags":   []string{Tag, "synthetic"},
 		// The alias nonce appears nowhere above. Asking for it is the sideways
@@ -173,6 +202,23 @@ func (r *Runner) Run(now time.Time) (State, error) {
 	st.Path = rel
 	if r.markPath != nil {
 		r.markPath(rel)
+	}
+
+	// Where the note landed is part of what the probe proves. For eight weeks
+	// it was not: a routing bug filed every probe under a second class tree
+	// (`<space>/memory/semantic/` instead of `<space>/semantic/`), the index
+	// walked that path as readily as any other, and the round trip passed on
+	// every run — so the one component whose job is to notice that capture is
+	// broken could not see it was writing somewhere nobody reads. A probe that
+	// checks only "can I find it again" is answering a question the index
+	// answers about itself.
+	if want, err := r.classPrefix(); err != nil {
+		return fail("cannot say where a probe should land: %v", err)
+	} else if !strings.HasPrefix(rel, want) {
+		return fail(
+			"capture wrote %s; a probe belongs under %s — the note is findable but "+
+				"filed outside its class, which is how a routing bug hides behind a "+
+				"passing round trip", rel, want)
 	}
 
 	// The file is truth and the index is a cache, so the probe checks the file

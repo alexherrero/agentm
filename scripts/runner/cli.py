@@ -7,10 +7,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import cycle as cycle_mod
 from . import manifest as manifest_mod
+from . import watchdog as watchdog_mod
 
 _DEFAULT_JOBS_DIR = Path(".harness") / "jobs"
 _DEFAULT_REPORT_PATH = Path.home() / ".cache" / "agentm" / "runner" / "digest.jsonl"
@@ -27,6 +29,19 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="per-job markers and the cycle summary (default ~/.cache/agentm/runner)")
     run.add_argument("--strict", action="store_true",
                      help="the old all-or-nothing load: exit 3 on the first refused manifest, run nothing")
+
+    # The watchdog's `stop` rung is the runner's only hard gate and had no
+    # operator surface: the ladder's own docstring said a stopped job waits for
+    # "an operator to clear its watchdog state", which in practice meant
+    # deleting a JSON file whose path nothing printed. `health-pass` sat parked
+    # for six weeks that way. These two are the way in and the way out.
+    health = sub.add_parser("health", help="what the watchdog has parked, and why")
+    health.add_argument("--state-root", default=None)
+    health.add_argument("--json", action="store_true")
+
+    resume = sub.add_parser("resume", help="clear a job's watchdog stop and let it run again")
+    resume.add_argument("job", help="the job name, as the manifest names it")
+    resume.add_argument("--state-root", default=None)
     return p
 
 
@@ -50,6 +65,43 @@ def main(argv=None) -> int:
             print(f"agentm-runner: no manifest loaded — refused {len(report.refused)}: {names}", file=sys.stderr)
             return 3
         return 0
+
+    state_root = Path(ns.state_root) if ns.state_root else None
+
+    if ns.cmd == "health":
+        stopped = watchdog_mod.stopped_jobs(state_root=state_root)
+        if ns.json:
+            print(json.dumps([{"job": n, **r} for n, r in stopped], indent=2))
+        elif not stopped:
+            print("agentm-runner: nothing parked — every job is free to run.")
+        else:
+            print(f"agentm-runner: {len(stopped)} job(s) parked at the watchdog's "
+                  f"stop rung and will not run until resumed:\n")
+            for name, record in stopped:
+                last = record.get("last_success")
+                when = (datetime.fromtimestamp(last, timezone.utc)
+                        .strftime("%Y-%m-%d") if last else "never")
+                print(f"  {name} — {record.get('consecutive_failures', 0)} "
+                      f"consecutive failures, last success {when}")
+            print("\nResume one with: agentm-runner.sh resume <job>")
+        # Parked jobs are a state to report, not an error to exit on: this is
+        # the surface that says so, and a non-zero exit would make every caller
+        # treat "something is parked" as "the runner is broken".
+        return 0
+
+    if ns.cmd == "resume":
+        record = watchdog_mod.read_health(ns.job, state_root=state_root)
+        rung = record.get("rung", "healthy")
+        existed = watchdog_mod.clear(ns.job, state_root=state_root)
+        if not existed:
+            print(f"agentm-runner: {ns.job} had no watchdog record; it was already "
+                  "free to run.")
+        else:
+            print(f"agentm-runner: {ns.job} cleared from `{rung}` "
+                  f"({record.get('consecutive_failures', 0)} consecutive failures) "
+                  "— it runs at its next due cycle.")
+        return 0
+
     return 2
 
 

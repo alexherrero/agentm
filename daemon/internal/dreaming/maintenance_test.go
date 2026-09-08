@@ -41,16 +41,47 @@ func TestCalendarReviewsMatchTheRecordedPythonText(t *testing.T) {
 	if got := RenderMonth(calendarRoot, Facets(nil), 2026, 8); got != rec.Calendar.Month["2026-08"] {
 		t.Errorf("month review differs from the recording:\n got %q\n py  %q", got, rec.Calendar.Month["2026-08"])
 	}
-	// The takeover as intents: every closed week in the window and both
-	// months are checked; only what differs from disk is written, and a
-	// second plan over the written files writes nothing.
+	// The takeover as intents: a closed period *with something in it* is
+	// checked, only what differs from disk is written, and a second plan over
+	// the written files writes nothing.
+	//
+	// The window is eight closed weeks and two months, and this fixture has
+	// content in one of each. The pass used to write all ten regardless, which
+	// is how Calendar/2026/ came to hold ten reviews whose entire body was
+	// "Nothing recorded this week. 0 of 7 days with entries." — every review
+	// the rollup had ever produced. Counted rather than hardcoded, so the
+	// assertion survives a fixture that gains a day.
 	today := time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC)
+	facets := Facets(nil)
+	wantWeeks, wantMonths := 0, 0
+	cursor := isoWeekMonday(today.ISOWeek())
+	for i := 1; i <= 8; i++ {
+		monday := cursor.AddDate(0, 0, -7*i)
+		wy, ww := monday.ISOWeek()
+		if !WeekDays(wy, ww)[6].Before(today) {
+			continue
+		}
+		if WeekHasContent(calendarRoot, facets, wy, ww) {
+			wantWeeks++
+		}
+	}
+	for _, m := range [][2]int{{2026, 8}, {2026, 9}} {
+		if MonthHasContent(calendarRoot, facets, m[0], m[1]) {
+			wantMonths++
+		}
+	}
+	want := wantWeeks + wantMonths
+	if want == 0 {
+		t.Fatal("the fixture's register has no content at all; this test would prove nothing")
+	}
+
 	plan, err := PlanCalendar(root, nil, today, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Refreshed != 10 || len(plan.Written) != 10 {
-		t.Errorf("first plan: refreshed %d written %d, want 10 and 10 (eight closed weeks, two months)", plan.Refreshed, len(plan.Written))
+	if plan.Refreshed != want || len(plan.Written) != want {
+		t.Errorf("first plan: refreshed %d written %d, want %d and %d (%d week(s) and %d month(s) with content)",
+			plan.Refreshed, len(plan.Written), want, want, wantWeeks, wantMonths)
 	}
 	j, _ := OpenJournal(t.TempDir())
 	for i, in := range plan.Intents {
@@ -59,8 +90,25 @@ func TestCalendarReviewsMatchTheRecordedPythonText(t *testing.T) {
 		}
 	}
 	again, _ := PlanCalendar(root, nil, today, 8)
-	if len(again.Written) != 0 || again.Refreshed != 10 {
+	if len(again.Written) != 0 || again.Refreshed != want {
 		t.Errorf("an unchanged register writes nothing on the next pass: %+v", again.Written)
+	}
+	// And no review was written for a period with nothing in it.
+	for _, name := range plan.Written {
+		key := strings.TrimSuffix(name, "-review.md")
+		var has bool
+		if strings.Contains(key, "-W") {
+			var y, w int
+			fmt.Sscanf(key, "%d-W%d", &y, &w)
+			has = WeekHasContent(calendarRoot, facets, y, w)
+		} else {
+			var y, m int
+			fmt.Sscanf(key, "%d-%d", &y, &m)
+			has = MonthHasContent(calendarRoot, facets, y, m)
+		}
+		if !has {
+			t.Errorf("wrote a review for %s, which has no entries", key)
+		}
 	}
 	// With the week review on disk, the month review links it.
 	month, _ := os.ReadFile(filepath.Join(calendarRoot, "2026", "2026-08-review.md"))

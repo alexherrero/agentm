@@ -27,9 +27,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
+
+import drive_artifacts  # noqa: E402  (same skill dir)
 
 from filing_engine import _frontmatter  # noqa: E402  (same skill dir)
 
@@ -110,7 +113,7 @@ def collect(vault: "Path | str") -> list:
         if not d.is_dir():
             continue
         for p in sorted(d.glob("*.md")):
-            if p.name == "_index.md" or p.name.startswith("Icon") or p.stem == MOC_SLUG:
+            if p.name == "_index.md" or drive_artifacts.is_artifact(p) or p.stem == MOC_SLUG:
                 continue
             try:
                 fm, _body = _frontmatter(p.read_text(encoding="utf-8"))

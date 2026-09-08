@@ -121,3 +121,24 @@ func SetAltitudeDampening(on bool) { altitudeDampening.Store(on) }
 // AltitudeDampening reports the current setting, for the status surface and
 // tests.
 func AltitudeDampening() bool { return altitudeDampening.Load() }
+
+// SyncArtifact reports whether a filename is written by a sync layer rather
+// than by anything in this system.
+//
+// Google Drive plants a file named "Icon" followed by a carriage return in
+// every folder it mirrors, and Finder leaves .DS_Store beside it. Neither is a
+// note, and a directory holding only these is empty in every sense that
+// matters — but both are files, so a walk that counts entries finds content
+// where there is none. The 2026-09-06 layout survey found 310 icon files, one
+// per folder, and the corpus migration's empty-directory cleanup had left five
+// directories standing because each still "held" one.
+//
+// Matched exactly. The rule was written as a "Icon" prefix test, which also
+// skips a note somebody might legitimately name Iconography.md.
+func SyncArtifact(name string) bool {
+	switch name {
+	case "Icon\r", "Icon", ".DS_Store":
+		return true
+	}
+	return false
+}

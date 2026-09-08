@@ -233,6 +233,105 @@ def post_work_reflect(
         return result
 
 
+
+# ── local `main`, kept level with the remote ────────────────────────────────
+DEFAULT_BRANCH = "main"
+
+
+def _repo_root() -> "Path | None":
+    """The clone this file is installed from, or None.
+
+    The skills directory is symlinked into the primary clone on this machine,
+    so resolving through __file__ lands on the clone whose checked-out commit
+    *is* the live configuration — which is the clone whose `main` matters.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / ".git").exists():
+            return parent
+    return None
+
+
+def _git(repo: Path, *args: str) -> "tuple[int, str]":
+    import subprocess
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                           text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return 1, str(e)
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def refresh_local_main(repo: Path, *, branch: str = DEFAULT_BRANCH,
+                       dry_run: bool = False) -> dict:
+    """Fast-forward the primary clone's local `main` to `origin/main`.
+
+    The primary clone is deliberately kept detached at `origin/main` — release
+    commits are made there detached and pushed `HEAD:main` — so local `main` is
+    never held and is always free for a worktree to take. The cost is that it
+    also goes stale, and on 2026-09-06 a desktop session's first minute ran
+    `git checkout main` in it, landing on a ref 38 commits behind. Because the
+    machine's hooks and skills are symlinks into that clone, the live
+    configuration silently regressed two days, and a survey then read a stale
+    design and reported a false finding from it.
+
+    Nothing here stops the checkout. It makes the checkout harmless: a `main`
+    that equals `origin/main` is the same tree the detached HEAD was on.
+
+    Deliberately conservative. Only a fast-forward — if local `main` holds
+    commits `origin/main` does not, that is somebody's unpushed work and this
+    leaves it alone and says so. And never while `main` is checked out
+    anywhere: `git branch -f` refuses that, and a worktree holding the branch
+    is the stranded-worktree state, not something to force through.
+    """
+    repo = Path(repo)
+    out: dict = {"step": "refresh-local-main", "branch": branch, "status": None}
+
+    rc, remote = _git(repo, "rev-parse", "--verify", f"refs/remotes/origin/{branch}")
+    if rc != 0:
+        out["status"] = "no-remote-branch"
+        return out
+    out["target"] = remote
+
+    rc, local = _git(repo, "rev-parse", "--verify", f"refs/heads/{branch}")
+    if rc != 0:
+        out["status"] = "no-local-branch"
+        return out
+    out["from"] = local
+
+    if local == remote:
+        out["status"] = "already-current"
+        return out
+
+    # Refuse to discard local commits. `--is-ancestor` is the right question
+    # here and only here: this asks whether the local ref is *reachable from*
+    # the remote one, which is what "a fast-forward is safe" means. It is not
+    # the discredited test for whether a squashed branch has landed.
+    rc, _ = _git(repo, "merge-base", "--is-ancestor", local, remote)
+    if rc != 0:
+        out["status"] = "diverged"
+        return out
+
+    # Whether a worktree has the branch checked out. `git branch -f` refuses in
+    # that case anyway; asking first turns a stderr into a reported status.
+    rc, worktrees = _git(repo, "worktree", "list", "--porcelain")
+    if rc == 0 and f"branch refs/heads/{branch}" in worktrees:
+        out["status"] = "checked-out"
+        return out
+
+    if dry_run:
+        out["status"] = "dry-run"
+        return out
+
+    rc, detail = _git(repo, "branch", "-f", branch, f"origin/{branch}")
+    if rc != 0:
+        out["status"] = "failed"
+        out["detail"] = detail
+        return out
+    out["status"] = "fast-forwarded"
+    return out
+
+
 # ── post-release refresh ────────────────────────────────────────────────────
 def post_release_refresh(
     vault: Path,
@@ -264,6 +363,15 @@ def post_release_refresh(
             # cadence-check keeps a release from blocking on a full network fetch
             ("discover-skills", [_script("discover_skills.py"), "--vault-path", v, "--cadence-check"]),
         ]
+
+        # Outside the cooldown gate on purpose. The cooldown exists to keep a
+        # burst of releases from re-running the network-touching skill refresh;
+        # levelling a local ref is free and idempotent, and "after every
+        # release" is the whole guarantee — a release skipped by the cooldown
+        # is exactly when the clone would go stale unnoticed.
+        repo = _repo_root()
+        if repo is not None:
+            result["local_main"] = refresh_local_main(repo, dry_run=dry_run)
 
         state = ao.load_state(vault)
         cooldown_ok = ao.should_fire(state, _RELEASE_CHAIN, now, _cooldown_hours(config))

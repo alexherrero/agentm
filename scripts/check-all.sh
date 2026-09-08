@@ -85,6 +85,7 @@ gate "check-opinion-honesty (no orphan Opinion references)" "$PY" scripts/check-
 gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/check-personas.py
 gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts/check-governs-index.py
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
+gate "check-sync-artifacts (the Drive Icon rule has one home)" "$PY" scripts/check-sync-artifacts.py
 gate "check-storage-rules (the filing contract parses + the taxonomy growth rule)" "$PY" scripts/check-storage-rules.py
 gate "check-payload-layout-free (the pasted payload names no folder a migration moves)" "$PY" scripts/check-payload-layout-free.py
 gate "check-payload-parity (every payload copy is the template's derivation)" "$PY" scripts/check-payload-parity.py

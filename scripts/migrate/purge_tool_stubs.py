@@ -32,6 +32,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+_REPO = Path(__file__).resolve().parent.parent.parent
+_SKILL_SCRIPTS = _REPO / "harness" / "skills" / "memory" / "scripts"
+if str(_SKILL_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SKILL_SCRIPTS))
+
+import drive_artifacts  # noqa: E402
+
 CLASS_DIRS = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
 STUB_RE = re.compile(
     r"The `(?P<tool>[^`]+)` tool was invoked (?P<count>\d+) times during this session\.",
@@ -63,7 +70,7 @@ def find_stubs(vault: Path) -> list:
         if not d.is_dir():
             continue
         for p in sorted(d.glob("*.md")):
-            if p.name == "_index.md" or p.name.startswith("Icon"):
+            if p.name == "_index.md" or drive_artifacts.is_artifact(p):
                 continue
             try:
                 text = p.read_text(encoding="utf-8")

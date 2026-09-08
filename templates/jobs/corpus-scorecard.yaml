@@ -1,0 +1,37 @@
+# corpus-scorecard.yaml — the daily corpus health scorecard's job manifest
+# (agentm-vault plan 01, task 4).
+#
+# What the memory *is*, as opposed to what last night's run *did*. Its sibling
+# report is the dreaming scorecard; the capability scorecard `health-pass`
+# runs is a third, different subject (are the designed capabilities built and
+# passing) with its own destination.
+#
+# Registered because nothing invoked corpus_scorecard.py on a schedule. The
+# four editions in `Agent/diagnostics/health/` — 08-22, 08-27, 08-28, 09-03 —
+# were each hand-run by whoever happened to be cutting a release, so the
+# corpus's own history is a record of release days rather than of the corpus.
+# The work vault, for comparison, has one scorecard per day for three weeks.
+# A report produced by whoever last released is not a trend line.
+#
+# Not folded into health-pass, which was the alternative: that job runs the
+# fast-tier verify battery and takes minutes, and a corpus count that fails
+# because a verify suite did would confuse two unrelated diagnoses. Separate
+# jobs fail separately, and the watchdog parks them separately.
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# `.harness/jobs/` is gitignored (per-project runtime state, like every other
+# `.harness/*` file), so this templates/ copy is the tracked, shipped source.
+# Register it by copying to `.harness/jobs/corpus-scorecard.yaml` in a repo
+# that runs the agentm runner (scripts/agentm-runner.sh).
+schedule: daily
+lookback: 24h
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention). The
+# script resolves the memory root by asking the daemon — never the vault root,
+# which is a different directory and where an earlier version of this writer
+# put a whole second diagnostics tree.
+command: python3 ../harness/skills/memory/scripts/corpus_scorecard.py
+
+# Deterministic counts and daemon queries; no model call, so no budget.
+tier: T2
+dry_run: false

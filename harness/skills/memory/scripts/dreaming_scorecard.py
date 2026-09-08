@@ -454,19 +454,38 @@ def staging_dir() -> Path:
     return engine_state.engine_state_dir() / STAGING_DIR
 
 
-def vault_from_daemon() -> str:
+def memory_root_from_daemon() -> str:
+    """Where the daemon says the memory root is: its vault plus the parent of
+    its `memory` space (`Agent/memory` → `<vault>/Agent`).
+
+    `diagnostics_dir()` is relative to the memory root, not the vault root, and
+    the two are different directories. Asking for the vault root here wrote a
+    second `diagnostics/` beside the memory space — the mistake the corpus
+    scorecard fixed on 2026-09-04 and the retrieval gate repeated. That it has
+    not shown up in this scorecard's output is luck rather than correctness: the
+    hand runs that produced the editions on disk had `$MEMORY_VAULT_PATH`
+    pointing at the memory root, so the daemon was never asked.
+    """
     try:
-        return str((_agentmd(["status"]) or {}).get("vault") or "")
+        status = _agentmd(["status"]) or {}
     except DaemonUnavailable:
         return ""
+    vault = str(status.get("vault") or "")
+    space = str((status.get("spaces") or {}).get("memory") or "").strip("/")
+    if not vault:
+        return ""
+    if not space:
+        return vault
+    parent = Path(space).parent
+    return str(Path(vault) / parent) if str(parent) != "." else vault
 
 
 def main(argv: list = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    vault = os.environ.get("MEMORY_VAULT_PATH") or vault_from_daemon()
+    vault = os.environ.get("MEMORY_VAULT_PATH") or memory_root_from_daemon()
     if not vault:
-        print("dreaming-scorecard: no vault. Set $MEMORY_VAULT_PATH, or start "
-              "the daemon so it can say which vault it is serving.",
+        print("dreaming-scorecard: no memory root. Set $MEMORY_VAULT_PATH, or "
+              "start the daemon so it can say which vault it is serving.",
               file=sys.stderr)
         return 2
 

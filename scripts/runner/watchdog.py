@@ -81,3 +81,50 @@ def is_paused(job_name: str, *, state_root: Optional[Path] = None) -> bool:
     `is_stopped` gates execution."""
     rung = read_health(job_name, state_root=state_root).get("rung")
     return rung in ("pause", "stop")
+
+
+def stopped_jobs(*, state_root: Optional[Path] = None) -> list:
+    """Every job the watchdog has parked, as ``(job_name, record)`` pairs,
+    sorted by name.
+
+    The rung is the runner's only hard gate, and until this existed it was
+    written to a JSON file nobody read. ``health-pass`` sat at ``stop`` from
+    2026-07-25 to 2026-09-07 — six weeks in which the local health scorecard
+    was simply not produced, no surface said so, and the fast tier it runs had
+    long since started passing again. A circuit breaker that does not announce
+    it has opened is indistinguishable from a job nobody ever scheduled.
+    """
+    from . import state as state_mod
+    directory = state_mod._state_dir(state_root)
+    if not directory.is_dir():
+        return []
+    out = []
+    for p in sorted(directory.glob("*.watchdog.json")):
+        name = p.name[: -len(".watchdog.json")]
+        record = read_health(name, state_root=state_root)
+        if record.get("rung") == "stop":
+            out.append((name, record))
+    return out
+
+
+def clear(job_name: str, *, state_root: Optional[Path] = None) -> bool:
+    """Reset a job to ``healthy``, keeping whatever ``last_success`` it had.
+
+    The way back. ``is_stopped`` deliberately never times out — a repeatedly
+    broken job should not resume on its own — but "an operator clears its
+    watchdog state" was in practice an undocumented ``rm`` of a file whose path
+    nothing printed. This is that act, named, so the escalation ladder has a
+    rung labelled *out*.
+
+    Returns whether there was a record to clear.
+    """
+    p = _watchdog_path(job_name, state_root)
+    existed = p.is_file()
+    previous = read_health(job_name, state_root=state_root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({
+        "rung": "healthy",
+        "consecutive_failures": 0,
+        "last_success": previous.get("last_success"),
+    }), encoding="utf-8")
+    return existed

@@ -75,6 +75,7 @@ UNIT_WRAPPED = {
     "check-multi-plan-naming.sh": "test_check_multi_plan_naming.py",
     "check-no-auto-worktree.sh": "test_worktree_slug_probe.py",
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",
+    "check-sync-artifacts.py": "test_drive_artifacts.py",
     "check-opinion-honesty.py": "test_check_opinion_honesty.py",
     "check-slop.py": "test_check_slop.py",
     # Needs a daemon, a vault and a warm embedder, none of which a runner has,

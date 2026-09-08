@@ -56,13 +56,21 @@ def run_gate() -> dict:
 
 
 def artifact_path() -> Path:
-    """The diagnostics dir the scorecards use, resolved the same way."""
-    vault = sc.vault_from_daemon()
-    if not vault:
-        raise SystemExit("retrieval-gate-job: no vault resolvable — the daemon "
-                         "is not answering and nothing says where diagnostics "
-                         "live. Not writing an artifact into a guess.")
-    out_dir = Path(vault) / sc.diagnostics_dir()
+    """The diagnostics dir the scorecards use, resolved the same way.
+
+    Rooted at the *memory* root, which is what `diagnostics_dir()` is relative
+    to. This asked for the vault root instead and wrote a second `diagnostics/`
+    beside the memory space — the same wrong-root mistake the corpus scorecard
+    made on 2026-09-04, in the caller its fix note said deserved the same look.
+    Both roots exist and both joins produce a plausible path; only one of them
+    is read by anything.
+    """
+    root = sc.memory_root_from_daemon()
+    if not root:
+        raise SystemExit("retrieval-gate-job: no memory root resolvable — the "
+                         "daemon is not answering and nothing says where "
+                         "diagnostics live. Not writing an artifact into a guess.")
+    out_dir = Path(root) / sc.diagnostics_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir / ARTIFACT_NAME
 

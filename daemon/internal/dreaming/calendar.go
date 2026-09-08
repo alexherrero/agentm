@@ -355,6 +355,46 @@ type CalendarPlan struct {
 // PlanCalendar is calendar_rollups.catch_up as intents: a review is an
 // intent only when its text differs from the file (or the file is missing);
 // an unchanged period costs nothing. `today` bounds the closed weeks.
+// WeekHasContent reports whether a week has anything to review: a day with a
+// facet entry, or a correction written during it.
+//
+// A review of a week with neither is eight lines of frontmatter saying
+// "Nothing recorded this week. 0 of 7 days with entries." Ten of those existed
+// under Calendar/2026/ — every weekly and monthly review the rollup had ever
+// written — because the pass wrote every closed period in its window whether
+// or not the period had anything in it. A register whose only contents are
+// notes saying it is empty is worse than an empty register: it reads, at a
+// glance, as a register that is being kept.
+//
+// Corrections count. A week whose only content is a correction to an earlier
+// day is a week something happened in.
+func WeekHasContent(calendarRoot string, facets []string, year, week int) bool {
+	for _, d := range WeekDays(year, week) {
+		if dayLine(calendarRoot, facets, d) != "" {
+			return true
+		}
+		if len(correctionsWrittenOn(calendarRoot, d)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// MonthHasContent reports whether a month has any day with a facet entry.
+//
+// Deliberately not "any of its weeks has content": a month's own body lists
+// days, and its week rows are a summary of what it links. A month whose only
+// content is a correction is still a month with no days to list, and its
+// weekly review is where that correction is already recorded.
+func MonthHasContent(calendarRoot string, facets []string, year, month int) bool {
+	for _, d := range MonthDays(year, month) {
+		if dayLine(calendarRoot, facets, d) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func PlanCalendar(root string, r *rules.Rules, today time.Time, weeks int) (CalendarPlan, error) {
 	var plan CalendarPlan
 	calendarRoot := CalendarRoot(root)
@@ -397,12 +437,20 @@ func PlanCalendar(root string, r *rules.Rules, today time.Time, weeks int) (Cale
 		if !WeekDays(wy, ww)[6].Before(today) {
 			continue // still open
 		}
+		if !WeekHasContent(calendarRoot, facets, wy, ww) {
+			continue // nothing happened; a note saying so is not a record
+		}
 		key := fmt.Sprintf("%04d-W%02d", wy, ww)
+		// Set only for a week that is actually being written, so the month
+		// below links a review that exists rather than one that was skipped.
 		planned[key] = true
 		consider(filepath.Join(calendarRoot, fmt.Sprintf("%04d", wy), key+"-review.md"), RenderWeek(calendarRoot, facets, wy, ww))
 	}
 	prev := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1)
 	for _, m := range [][2]int{{prev.Year(), int(prev.Month())}, {today.Year(), int(today.Month())}} {
+		if !MonthHasContent(calendarRoot, facets, m[0], m[1]) {
+			continue
+		}
 		key := fmt.Sprintf("%04d-%02d", m[0], m[1])
 		consider(filepath.Join(calendarRoot, fmt.Sprintf("%04d", m[0]), key+"-review.md"), renderMonth(calendarRoot, facets, m[0], m[1], planned))
 	}
