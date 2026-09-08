@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -624,8 +625,23 @@ func mergeAliases(supplied, derived []string) []string {
 
 // classDir is the vault-relative directory the contract routes a memory type
 // to, or "" when there is nothing to route by: no contract, no type, or a
-// type the routing table does not name. A routing value is accepted either
-// relative to the vault ("memory/semantic") or to the space ("semantic").
+// type the routing table does not name.
+//
+// A routing value is written from one of three vantage points and all three
+// have to resolve to the same directory, because the contract is one file and
+// the space it describes moves. "memory/semantic" read against the space
+// `memory` is already space-rooted; read against the space `Agent/memory` it
+// is relative to the *memory root* — the space's parent — and joining it onto
+// the space instead produced `Agent/memory/memory/semantic`, a second class
+// tree one note deep that the index walked happily because it walks whatever
+// is there. "semantic" is relative to the space itself.
+//
+// The order below is what distinguishes them: a value that already names the
+// space wins outright, a value that resolves under the space from the memory
+// root is read that way, and only a value that resolves nowhere near the
+// space falls through to the space-relative join. Every branch returns a
+// directory inside the space, which is the invariant worth having — a routing
+// value can no longer place a note outside the space it was captured into.
 func classDir(contract *rules.Rules, contractErr error, noteType, spaceDir string) string {
 	if contractErr != nil || contract == nil || noteType == "" {
 		return ""
@@ -638,5 +654,22 @@ func classDir(contract *rules.Rules, contractErr error, noteType, spaceDir strin
 	if class == space || strings.HasPrefix(class, space+"/") {
 		return class
 	}
-	return filepath.ToSlash(filepath.Join(spaceDir, class))
+	// Relative to the memory root: the space's parent. Accepted only when it
+	// lands back inside the space, so a value that means something else
+	// entirely cannot silently escape.
+	if root := path.Dir(space); root != "." && root != "/" {
+		if cand := path.Join(root, class); cand == space || strings.HasPrefix(cand, space+"/") {
+			return cand
+		}
+	}
+	return path.Join(space, class)
+}
+
+// ClassDir is classDir, exported for the self-probe. The probe's job is to
+// notice when capture files a note somewhere nobody reads, and it can only do
+// that if it knows where the note belonged — asking the same resolver capture
+// used, rather than naming a directory of its own that would drift from the
+// contract the first time a routing value changed.
+func ClassDir(contract *rules.Rules, contractErr error, noteType, spaceDir string) string {
+	return classDir(contract, contractErr, noteType, spaceDir)
 }
