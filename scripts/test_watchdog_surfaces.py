@@ -95,15 +95,19 @@ class TheWayOut(unittest.TestCase):
             self.assertTrue(watchdog_mod.clear("health-pass", state_root=root))
             self.assertFalse(watchdog_mod.is_stopped("health-pass", state_root=root))
 
+    # A round epoch on purpose: the real recorded value carried enough digits
+    # after the decimal point that check-no-pii read it as a US phone number.
+    LAST_SUCCESS = 1700000000.0
+
     def test_it_keeps_the_last_success(self):
         # The streak is what the ladder punishes; when the job last worked is
         # history, and erasing it would erase the evidence of how long it sat.
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            park(root, "health-pass", last_success=1784314173.4409962)
+            park(root, "health-pass", last_success=self.LAST_SUCCESS)
             watchdog_mod.clear("health-pass", state_root=root)
             record = watchdog_mod.read_health("health-pass", state_root=root)
-            self.assertEqual(record["last_success"], 1784314173.4409962)
+            self.assertEqual(record["last_success"], self.LAST_SUCCESS)
             self.assertEqual(record["consecutive_failures"], 0)
 
     def test_clearing_a_job_with_no_record_says_so(self):
@@ -126,7 +130,7 @@ class TheCli(unittest.TestCase):
     def test_health_reports_a_parked_job(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            park(root, "health-pass", last_success=1784314173.0)
+            park(root, "health-pass", last_success=1700000000.0)
             import io
             import contextlib
             buf = io.StringIO()
