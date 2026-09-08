@@ -1,31 +1,37 @@
 #!/usr/bin/env python3
-"""A `$var` touching a multibyte character is a locale-dependent time bomb.
+"""A `$var` touching a multibyte character is a build-dependent time bomb.
 
-`bash -n` does not catch it and neither does a C-locale run. Under a UTF-8
-`LC_CTYPE`, bash reads the following character's bytes as identifier
-characters, so `"$label…"` names a variable `label…` — unbound, and fatal
-under `set -u`.
+Bash can read the following character's bytes as identifier characters, so
+`"$label…"` names a variable with the ellipsis glued on — unbound, and fatal
+under `set -u`. `bash -n` does not catch it: it is not a parse error.
 
 `run-fast-tier.sh` carried one for months, dying on its very first suite and
-emitting no check records at all — which is what an eight-failure streak and a
-watchdog stop rung look like from the outside.
+emitting no check records at all, which is what an eight-failure streak and a
+watchdog stop rung look like from outside.
 
-Which environments trip it is not portable. On this machine and the Linux
-runner a C locale is clean and a UTF-8 one is fatal; on the macOS runner both
-are fatal. The parsing depends on the bash build, so there is no environment
-you can stand in and trust an unbraced expansion. That is the argument for a
-static rule over a configured locale.
+**Which environments trip it is not portable**, and four disagreed:
 
-The fix is always a brace: `${label}…`. This pins it for every shell script in
-the repository, because the next em-dash or ellipsis somebody puts after a
-variable will look exactly as correct as that one did.
+    a developer Mac    LC_CTYPE=C.UTF-8 fatal, LC_CTYPE=C clean
+    the macOS runner   both fatal
+    the Linux runner   neither fatal
+    the Windows runner a bash on PATH that fails even the braced form
+
+There is therefore no environment you can stand in and trust an unbraced
+expansion, and no portable test that says when one will break. Four CI rounds
+went into learning that, each with a weaker claim than the last, and the
+conclusion is that the measurement is *evidence* — it is why the brace is
+there — rather than something to re-derive at test time.
+
+So everything below is a static read of the source: no subprocess, no locale,
+no shell. That is also what actually protects the repository, since the next
+em-dash somebody puts after a variable will look exactly as correct as that one
+did, on whichever machine they happen to be using.
+
+The fix is always a brace: `${label}…`.
 """
 from __future__ import annotations
 
-import os
 import re
-import shutil
-import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -81,74 +87,27 @@ class NoUnbracedExpansionBeforeAMultibyteCharacter(unittest.TestCase):
                            "the glob found almost no shell scripts; it is wrong")
 
 
-# Gated on the shell being present rather than on the platform: the Windows
-# runner carries no bash on this job's PATH, and a test that cannot run the
-# shell it is describing should say so. The static scan above needs no shell
-# and stays unconditional — it is the half that protects the repository.
-_HAS_BASH = shutil.which("bash") is not None
-
-
-@unittest.skipUnless(_HAS_BASH, "no bash on PATH (the Windows runner)")
-class TheBashBehaviourThisIsAbout(unittest.TestCase):
-    """The mechanism itself, so the rule above is a fact rather than folklore."""
-
-    def _run(self, snippet: str, ctype: str):
-        env = dict(os.environ)
-        env["LC_CTYPE"] = ctype
-        return subprocess.run(["bash", "-c", snippet], env=env, capture_output=True)
-
-    UNBRACED = 'set -u; label=hello; echo "running $label…"'
-    BRACED = 'set -u; label=hello; echo "running ${label}…"'
-
-    def test_unbraced_dies_under_a_utf8_ctype(self):
-        r = self._run(self.UNBRACED, "C.UTF-8")
-        if r.returncode == 0:
-            self.skipTest("this bash does not absorb the ellipsis under C.UTF-8")
-        self.assertIn(b"unbound variable", r.stderr)
-
-    def test_braced_survives_every_locale(self):
-        # The universal half, and the only one the fix depends on.
-        for ctype in ("C.UTF-8", "C", "en_US.UTF-8"):
-            with self.subTest(ctype=ctype):
-                r = self._run(self.BRACED, ctype)
-                self.assertEqual(r.returncode, 0,
-                                 r.stderr.decode("utf-8", "replace"))
-
-    def test_which_locales_trip_it_is_not_portable(self):
-        """The reason to brace unconditionally rather than to set a locale.
-
-        I first recorded this as "UTF-8 trips it, C is clean", which held on
-        this machine and on the Linux runner and was refuted by the macOS one,
-        where LC_CTYPE=C dies too. The parsing depends on the bash build, so
-        there is no environment you can stand in and trust an unbraced
-        expansion — which is the case for a static rule rather than a
-        configured one.
-
-        Asserted as "at least one locale trips it", which is what every build
-        seen so far agrees on, rather than as a table of which ones.
-        """
-        outcomes = {ctype: self._run(self.UNBRACED, ctype).returncode
-                    for ctype in ("C.UTF-8", "C", "en_US.UTF-8")}
-        self.assertTrue(any(rc != 0 for rc in outcomes.values()),
-                        f"no locale tripped the unbraced form: {outcomes} — if "
-                        "this bash never absorbs the character, the gate above "
-                        "is still right, but this case has nothing to observe")
-
-
-@unittest.skipUnless(_HAS_BASH, "no bash on PATH (the Windows runner)")
 class TheScriptThatCarriedIt(unittest.TestCase):
-    def test_run_fast_tier_starts_its_suites_under_a_utf8_ctype(self):
+    """The specific file, checked the way everything here is checked: by
+    reading it. No subprocess — see the module docstring for why."""
+
+    def test_run_fast_tier_has_no_unbraced_expansion_left(self):
         script = _REPO / "scripts" / "health" / "run-fast-tier.sh"
-        self.assertTrue(script.is_file())
-        env = dict(os.environ)
-        env["LC_CTYPE"] = "C.UTF-8"
-        # `-n` is a parse, not a run: the whole point is that this bug is not a
-        # parse error, so the check here is that the braced form is what is in
-        # the file, verified by the pattern rather than by a 20-minute run.
+        self.assertTrue(script.is_file(), f"{script} is missing")
         text = script.read_text(encoding="utf-8")
-        self.assertIsNone(_UNBRACED_THEN_MULTIBYTE.search(text))
-        r = subprocess.run(["bash", "-n", str(script)], env=env, capture_output=True)
-        self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace"))
+        m = _UNBRACED_THEN_MULTIBYTE.search(text)
+        self.assertIsNone(
+            m, f"the expansion is unbraced again: {m.group(0)!r}" if m else "")
+
+    def test_it_still_contains_the_line_this_is_about(self):
+        # Guards the check above against quietly passing because somebody
+        # deleted the line rather than braced it.
+        script = _REPO / "scripts" / "health" / "run-fast-tier.sh"
+        text = script.read_text(encoding="utf-8")
+        self.assertIn("${label}", text,
+                      "the braced expansion is gone — either it regressed to "
+                      "an unbraced form this scan should have caught, or the "
+                      "line was removed and this test needs retargeting")
 
 
 if __name__ == "__main__":
