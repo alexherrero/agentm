@@ -41,14 +41,13 @@ jobs:
           go -C daemon build -o "$RUNNER_TEMP/agentmd" ./cmd/agentmd
           echo "AGENTMD=$RUNNER_TEMP/agentmd" >> "$GITHUB_ENV"
       - name: Install Python deps (for validate script)
-        # fastmcp lets verify-mcp-surface.py + the auto-discovered
-        # test_memory_mcp_tools.py actually run instead of gracefully
-        # skipping — R1.6, this was previously never installed anywhere.
+        # fastmcp went with the Python MCP server it served, retired
+        # 2026-09-07 — the Go daemon is the MCP surface now.
         # --ignore-installed: the macos runner image ships a system PyYAML with
         # no RECORD file, and pip's attempt to uninstall it before upgrading
         # dies with `uninstall-no-record-file` (seen 2026-09-03, both runs of
         # PR #528). Installing alongside is the documented pip answer.
-        run: python3 -m pip install --break-system-packages --ignore-installed pyyaml fastmcp
+        run: python3 -m pip install --break-system-packages --ignore-installed pyyaml
       - name: Run smoke-install (bash) + post-install integrity
         run: bash scripts/smoke-install-bash.sh
       - name: Validate adapter frontmatter / TOML / JSON (cross-platform)
@@ -68,6 +67,12 @@ jobs:
         run: python3 scripts/check-personas.py
       - name: "check-governs-index (governs:/area: overlap + unknown-area)"
         run: python3 scripts/check-governs-index.py
+      - name: check-payload-layout-free (the pasted payload names no folder a migration moves)
+        run: python3 scripts/check-payload-layout-free.py
+      - name: check-payload-parity (every payload copy is the template's derivation)
+        # The Gemini half graceful-skips on a runner (no ~/.gemini); the tracked
+        # Antigravity rule is checkable everywhere and never skips.
+        run: python3 scripts/check-payload-parity.py
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         run: bash scripts/check-vendored-parity.sh hook-config
       - name: Unit tests — auto-discover every scripts/test_*.py
@@ -143,12 +148,6 @@ jobs:
         # _meta/opinion-base-proposals.json; the health pointer and
         # console.section_opinion_supplements render it.
         run: bash scripts/verify-opinion-supplements.sh
-      - name: verify-mcp-surface (append/search/forget round-trip, dead-surface fate)
-        # R1.6 / agentmEngine#2: an in-process FastMCP client drives the real
-        # append->search->forget round-trip, soft-delete semantics, and the
-        # three dead-recall-surface fates (memory_recall + recall_here
-        # retired; documenter_context's V5-3 stub contract locked).
-        run: python3 scripts/verify-mcp-surface.py
       - name: health-score-determinism (scorecard byte-identical across two runs)
         # R1.8 Task 1: the health scorecard aggregator must be deterministic —
         # two runs against the same fixture input produce byte-identical markdown.

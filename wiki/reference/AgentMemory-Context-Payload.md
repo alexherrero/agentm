@@ -1,31 +1,62 @@
+<!-- mode: reference -->
 # AgentMemory context payload reference
 
-The AgentMemory context payload is the "how to use my memory" brief. You paste it into each agent surface. These surfaces include Claude.ai custom instructions. They include a Gemini Gem's system instructions. They include the Antigravity rule. The canonical copy lives in the repo at `templates/agentmemory-context.md`. A self-describing twin sits at `<vault>/Agent/_meta/how-to-use-agentmemory.md`. An agent that reaches the vault finds its own usage instructions waiting. Nothing regenerates that twin, so it is copied over by hand whenever the template changes. The read/write posture is surface-scoped (DC-2). Chat surfaces read and query the vault. They never write to it. Filesystem agents you run (Claude Code, Antigravity) may write. On a read-only surface, an agent suggests a paste-ready entry when it wants to capture something. You file it in Obsidian by hand.
+The context payload is the brief you paste into a chat surface so it reads your vault before it answers from its own knowledge. It has one source in this repo, `templates/agentmemory-context.md`, and everything else is derived from that file.
 
-## ⚡ Quick Reference
+The payload is **layout-free**. It names no folder that a migration moves. It names three things that do not move — `index.md`, `standards/` and `moc-projects.md` — and lets the map explain itself. A surface that goes looking for a folder that no longer exists finds nothing, says nothing, and answers from its own knowledge instead, which is the failure this text exists to prevent.
+
+## ⚡ Quick reference
 
 | Question | Answer |
 |---|---|
-| Where is the canonical payload? | [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md) (agentm) — the source of truth (DC-5). |
-| Where is the self-describing copy? | `<vault>/Agent/_meta/how-to-use-agentmemory.md` (written outside the repo, not in git; copied by hand — no installer step deploys it). |
-| Which surfaces consume it? | Claude.ai / ChatGPT, Gemini, Antigravity — see [Use AgentMemory in any agent surface](Use-AgentMemory-In-Any-Agent). The Antigravity mirror at `adapters/antigravity/rules/agentmemory-context.md` is also merged into `~/.gemini/GEMINI.md` by `install.sh`, so it is a deployment surface rather than a copy. Claude Code instead receives it via SessionStart/UserPromptSubmit hooks (no paste needed). |
-| Is it host-specific? | No — host-agnostic; no Claude-Code-specific assumptions. |
-| Read or write? | Surface-scoped (DC-2): chat surfaces (Claude.ai, Claude Desktop) are read-only — query the vault, never write. Filesystem agents you actually run (Claude Code, Antigravity) may write. Capture on read-only surfaces = suggest a paste-ready entry. |
-| What do I actually paste? | The body from [line 23 onward](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L23) (`# Using my Agent Memory`); the leading HTML comment is operator-only instructions. |
+| Where is the source? | [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md). |
+| What do I paste? | Whatever `/memory payload` prints. The leading HTML comment in the file is yours, not the surface's, and the renderer strips it. |
+| Which surfaces need a paste? | claude.ai and the Gem. Antigravity's copies are derived; Claude Code needs nothing. |
+| Where do the copies come from? | One renderer, [`scripts/payload_render.py`](https://github.com/alexherrero/agentm/blob/main/scripts/payload_render.py), feeds all three outputs. |
+| How do I know a copy is current? | [`check-payload-parity`](CI-Gates) in the battery, and the doctor's `payload-copy` rows. |
+| When do I paste again? | Only when the posture, the card guide or the surface list changes. A layout change never triggers one. |
 
-## Payload sections
+## What the payload says
 
-The payload contains required sections. They appear in order. They appear exactly as written in [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md).
+Five parts, in order.
 
-| Section (heading in template) | Covers |
+| Part | Covers |
 |---|---|
-| Intro (`# Using my Agent Memory`) | Names the vault (your vault root, a GDrive-synced Obsidian vault); states read-the-vault-before-own-memory and the read-only stance up front. |
-| Where the vault is, on your surface | Per-surface path resolution: Claude Code / local → `MEMORY_VAULT_PATH`, falling back to `.agentm-config.json::vault_path` when the env var is unset (SessionStart hooks do not receive `MEMORY_VAULT_PATH` on user-scope installs, so vault-aware hooks resolve via `env → .agentm-config.json::vault_path → none`); Antigravity → installer-configured path; Claude.ai / ChatGPT → GDrive connector (whole-Drive search; the payload is what scopes it to the vault folder); Gemini → native Workspace/Drive access. |
-| Folder map — what's where | the always-load tier read as one — `standards/` (the filing contract) plus `Agent/memory/_always-load/` (the house voice), read first — and `Projects/<slug>/` (`_index.md` / `decisions/` / `_harness/`) at the vault root, beside the agent's own `Agent/` half: `Agent/memory/` (the six classes — `semantic/`, `procedural/` and `episodic/` written from observation, `entities/`, `crystallized/` and `mocs/` derived from them), `Agent/desk/` (work in flight), `Agent/_meta/` (machine files). States that there is no inbox: a capture files into its class directory at `status: unfiled` / `filing_confidence: low` and is searchable immediately, ranked lower until filing promotes it — the metadata is the inbox, and an `_inbox/` directory in an older vault is legacy content. |
-| How to read it (priority order) | 1) the always-load tier first (`standards/` + `Agent/memory/_always-load/`) → 2) project context (`Projects/<slug>/_index.md` + `decisions/`) → 3) query by topic; vault wins over the model's general knowledge. |
-| Reading entries correctly | Markdown + YAML frontmatter; `status` + `created` plus exactly one of `type` (a memory) or `kind` (an infrastructure record) — never both; kebab-case slugs/tags; `status: active` vs `superseded` vs `unfiled` (captured but not yet filed — content awaiting confirmation, not content to skip); follow `[[wikilinks]]`. |
-| Your read/write posture | Surface-scoped (DC-2): chat surfaces read + query freely, never write — capture = suggest a paste-ready entry and name its home (the always-load tier for a global rule, `Projects/<slug>/` for project context). Filesystem agents (Claude Code, Antigravity) may write directly. GDrive sync means you see last-synced state (flag, don't guess). |
+| Where it is, on your surface | Local agents read the configured path through `memory_search`; claude.ai, Claude Desktop and Gemini read the Drive folder named `Vault`. |
+| Read in this order | `index.md` first — it is the map and it is current. Then everything in `standards/`. For a project question, `moc-projects.md`, then that project's `tracker.md` and `charter.md`. Then search, before falling back on general knowledge. If the vault says something, it wins. |
+| How to read a note | The frontmatter field order, and what `status: unfiled`, `lifecycle: dormant`, `superseded`, `completed/` and `agent/archive/` each mean. |
+| Your posture | Chat surfaces read; they never write. Local agents you run may write through the capture tool. |
+| The sync caveat | Drive shows the last-synced state. Say so rather than guess. |
+
+## The copies, and what keeps them honest
+
+| Copy | Rendered | Kept current by |
+|---|---|---|
+| `adapters/antigravity/rules/agentmemory-context.md` | without a capture address — the repo copy never carries your mailbox | `/memory payload --write`, and `check-payload-parity` in the battery |
+| the `AGENTMEMORY` section of `~/.gemini/GEMINI.md` | with the address when one is configured | `install.sh` on every run, and `/memory payload --write` |
+| what `/memory payload` prints | with the address when one is configured | it is the render itself |
+
+Everything outside the `AGENTMEMORY` markers in `GEMINI.md` is preserved, so your own global rules survive a rewrite.
+
+All three were kept by hand until 2026-09-07, and all three had drifted: the rule and the template had become different documents, and Gemini's copy was still teaching a July folder map. Never edit a copy. Edit the template and run `/memory payload --write`.
+
+## The write path
+
+Chat surfaces read only. The design gives them one write path — an email door: you write the card, mail it to a capture address, and the hourly sweep files it as an untrusted, unfiled note the nightly pass judges like any other candidate.
+
+The door is not built yet; it lands with the surfaces plan. Until then the payload's posture asks a surface to show you the card so you can file it, and it says so rather than pointing you at a mailbox that does not exist. The address lives at `plugins.autonomy.capture_address` in the engine config, and the renderer switches the sentence when it is set.
+
+## The four checks that prove a paste took
+
+1. In a fresh chat on each surface, with no priming: *what's our commit-message convention?* It passes when the answer comes from the vault and cites the note's path.
+2. *Where does agentm stand?* It passes when the answer comes from `moc-projects.md` or a tracker's State. This one can only pass after the projects migration writes the trackers.
+3. *Where does a new capture go?* It passes when the answer names a memory class and `status: unfiled`, and never `_inbox/`, `_always-load/`, `_index.md` or `_harness/`.
+4. From any session: a Drive title search for `storage-rules.md`, `voice-kernel.md` and `index.md` returns exactly one file each, and the doctor reports the Gemini managed section equal to the template.
+
+Check 4 has two halves. The Drive half passes once only one copy of the vault is in the Drive the connector searches. The doctor half is `machinery_doctor.py`'s `payload-copy: gemini managed section` row.
 
 ## Related
 
-- [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — This is the setup recipe for every surface (Claude.ai · Gemini · ChatGPT · Antigravity).
+- [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — the setup recipe, surface by surface.
+- [CI gates](CI-Gates) — `check-payload-layout-free` and `check-payload-parity`.
+- [Memory daemon (agentmd)](Memory-Daemon) — the surface local agents search through.

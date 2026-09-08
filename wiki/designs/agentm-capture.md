@@ -5,7 +5,7 @@ kind: design
 scope: feature
 area: agentm/memory
 parent: agentm-hld.md
-governs: [scripts/memory_mcp_tools.py, harness/skills/memory/scripts/capture.py, harness/skills/memory/scripts/save.py, harness/skills/memory/scripts/ingest.py, harness/skills/memory/scripts/ingest_sweep.py]
+governs: [harness/skills/memory/scripts/capture.py, harness/skills/memory/scripts/save.py, harness/skills/memory/scripts/ingest.py, harness/skills/memory/scripts/ingest_sweep.py]
 seeded: 2026-07-16
 approved: 2026-07-17
 ---

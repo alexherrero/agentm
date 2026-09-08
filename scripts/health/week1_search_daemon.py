@@ -21,7 +21,8 @@ across every question and both arms, and owns three things:
 
 Transport is newline-delimited JSON over a Unix domain socket, one request per
 connection. `week1_search_shim.py` is the client. Deliberately not HTTP and not
-the repo's existing FastMCP daemon at `scripts/memory_mcp_shim.py`: that one
+the repo's then-current FastMCP daemon at `scripts/memory_mcp_shim.py` (retired
+2026-09-07): that one
 proxies vault *writes* and pulls pydantic and httpx into a process the
 experiment spawns once per question, where startup cost is the whole point.
 

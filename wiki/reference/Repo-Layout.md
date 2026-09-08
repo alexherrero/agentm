@@ -48,7 +48,6 @@ agentm/
 │   └── gemini/                # dropped host (v2.4.0) — vestigial dir, see Compatibility
 ├── lib/                       # shared install plumbing (byte-identical to crickets/lib/)
 │   └── install/               # cp_managed, cp_user, ensure_boundary_src, sync_managed_parents
-├── install/                    # host-specific install artifacts (e.g. com.agentm.memory-server.plist, macOS launchd)
 ├── opinions/                   # the request-by-name Opinion registry (9 named opinion docs)
 ├── personas/                   # persona manifests (architect, brain, designer, engineer, maintainer, …)
 ├── assets/                     # brand/logo assets

@@ -55,16 +55,7 @@ Then:
    - Note: `scripts/telemetry.sh` is no longer a vault-resident state file (v4.6.2+). It's a user-scope helper — see check 4b below.
 4b. **Helper scripts (user-scope; v4.6.2+).** Check `<prefix>/scripts/telemetry.sh` exists + is executable. Report `[OK] telemetry.sh installed` if present. Report `[WARN] telemetry.sh not installed — re-run install.sh` if absent (graceful, never FAIL). The script roots across multiple projects (`--all` scans `~/Antigravity`, `~/Claude`, `~/Projects`), so a single copy at the install prefix is the right shape for it.
 4c. **Storage-backend preview (V5-1).** Shell out to `python3 <agentm-repo>/scripts/backend_selection.py --doctor` — the same resolver the memory engine selects through, reusing the identical install-the-plugin message the fail-loud guard raises. It resolves the selected backend (explicit `storage.backend` → existing `vault_path` → fresh `device-local`), confirms that protocol's plugin is registered, and (for `device-local`) that its root is writable — read-only, never constructing a backend. Print its single status line and map: `[OK]` (exit 0) ready; `[WARN]` (exit 0) `device-local` root not writable — preventive, never FAIL; `[FAIL]` (exit 1) unregistered plugin (prints the verbatim install-the-plugin message), `vault` with no `vault_path`, or a corrupt / non-string config. **The one structural check that legitimately FAILs** — it's the fail-loud preview shown *before* the engine refuses.
-4d. **Memory MCP server (V5-9).** Shell out to `python3 <agentm-repo>/scripts/memory_mcp_doctor.py`. **Graceful-skip if absent** — `[SKIP] memory-server not installed (pre-V5-9)`, never FAIL. Default mode checks `liveness` + `token_env`; `--live` adds `origin_guard` + `index_root_safe`. Map each result:
-   - `passed=True` → `[OK]  memory-server <name>: <msg>`
-   - `passed=False` → `[FAIL] memory-server <name>: <msg — includes named remedy>`
-   - `passed=None` → `[SKIP] memory-server <name>: <reason>`
-
-   Four checks:
-   - `liveness` — GET `/health`; expects `{"status":"ok"}`. FAIL remedy: `launchctl bootstrap gui/$UID com.agentm.memory-mcp-server`.
-   - `token_env` — `AGENTM_MCP_TOKEN` set and non-empty. FAIL remedy: `launchctl setenv AGENTM_MCP_TOKEN <token>`.
-   - `origin_guard` (`--live`) — spoofed Origin expects 403; SKIP if daemon down.
-   - `index_root_safe` (`--live`) — lock root outside synced/cloud path.
+4d. **Memory MCP surface.** Nothing to shell out to here. The Python FastMCP server this step used to probe was retired on 2026-09-07 (agentm-vault design, landing group 11a); the Go daemon serves the two memory tools, and `4a`'s daemon checks above already cover it. The payload copies the daemon's surfaces read from are reported by `machinery_doctor.py` in step 7.
 5. `AGENTS.md` + `CLAUDE.md` exist at repo root.
 6. **Hook wiring (V4 #39 — a real check, not "absent block is fine"). _Claude Code only — on Antigravity/Gemini report `[SKIP] no hook surface` and move on._** Hooks install at `~/.claude/hooks/<name>/`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Resolve the prefix (`$AGENTM_INSTALL_PREFIX` → `~/.claude`) and apply this truth table against `<prefix>/hooks/` + `<prefix>/settings.json`:
 

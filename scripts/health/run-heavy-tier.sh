@@ -14,21 +14,15 @@
 #   1. Real-embedding recall (no stub mode) — needs sentence-transformers
 #      (deliberately NOT installed in the fast-tier CI; the nightly workflow
 #      installs it separately, since it's 1.3GB+).
-#   2. Live MCP daemon round-trip — starts the REAL memory_mcp_server.py
-#      daemon (uvicorn, real HTTP, not the in-process FastMCPTransport
-#      verify-mcp-surface.py uses) against a scratch vault, connects a real
-#      StreamableHttpTransport client, round-trips append/search/forget, and
-#      shuts the daemon down. Needs fastmcp (which transitively brings in
-#      uvicorn + starlette).
-#   3. Fault-injection negatives — re-runs every VERIFY_*_FAULT=1 mode and
+#   2. Fault-injection negatives — re-runs every VERIFY_*_FAULT=1 mode and
 #      reports its actual outcome. Detection mechanism differs per script
 #      (documented in validate-audit-coverage.sh and each script's own
 #      header) — this is a report, not a uniform "must be non-zero" assertion.
-#   4. Cold-install dogfood — delegates to the existing
+#   3. Cold-install dogfood — delegates to the existing
 #      scripts/smoke-install-bash.sh (a fresh scratch HOME + target project,
 #      already the established hermetic cold-install proof; this task does
 #      not reinvent it).
-#   5. Dashboard honest-dark on a bare install (ROADMAP-TAIL-ADJUDICATIONS.md
+#   4. Dashboard honest-dark on a bare install (ROADMAP-TAIL-ADJUDICATIONS.md
 #      B3, added AA4 2026-07-08) — a bare install has no telemetry events and
 #      no fast/heavy-tier records of its own yet, so two renderers must never
 #      fabricate a score from that emptiness: (a) the observability console
@@ -39,12 +33,12 @@
 #      numeric Health Index that reads as "everything failed" — a fabricated
 #      0.00/100 is indistinguishable from a real all-red run to a stranger
 #      reading it cold.
-#   6. Fan-out/budget gates fail CLOSED with no config (same B3 ruling) — a
+#   5. Fan-out/budget gates fail CLOSED with no config (same B3 ruling) — a
 #      stranger's clone ships no `.harness/budget.yaml`; the runner's fleet
 #      budget ceiling must default to a safe conservative cap in that case
 #      (fail closed), not skip the gate entirely (fail open, today's
 #      `_read_daily_ceiling` -> None behavior disables the check outright).
-#   7. Real-telemetry rollup idempotency (AA5 consolidation task C3,
+#   6. Real-telemetry rollup idempotency (AA5 consolidation task C3,
 #      AA5-REENTRY-VERDICT.md §2 item 4) — the one genuinely data-conditioned
 #      efficiency check: reads THIS MACHINE's actual `~/.agentm/telemetry`
 #      event log (no synthetic fixture, unlike verify-efficiency.py's
@@ -81,7 +75,7 @@ emit() {  # emit <suite> <axis> <check> <pass 1|0|null>
 echo "run-heavy-tier: starting (nightly-only, never a merge gate)" >&2
 
 # ── 1. real-embedding recall ────────────────────────────────────────────────
-echo "run-heavy-tier: [1/4] real-embedding recall…" >&2
+echo "run-heavy-tier: [1/6] real-embedding recall…" >&2
 if "$PY" -c "import sentence_transformers" >/dev/null 2>&1; then
   RE_VAULT="$(mktemp -d)"
   mkdir -p "$RE_VAULT/memory/reference"
@@ -95,64 +89,12 @@ if "$PY" -c "import sentence_transformers" >/dev/null 2>&1; then
     emit "run-heavy-tier" "memory persist+recall" "real-embedding recall surfaces a seeded entry (no stub mode)" 0
   fi
 else
-  echo "run-heavy-tier: [1/4] SKIP — sentence-transformers not installed" >&2
+  echo "run-heavy-tier: [1/6] SKIP — sentence-transformers not installed" >&2
   emit "run-heavy-tier" "memory persist+recall" "real-embedding recall surfaces a seeded entry (no stub mode)" null
 fi
 
-# ── 2. live MCP daemon round-trip (real HTTP, not in-process) ─────────────
-echo "run-heavy-tier: [2/4] live MCP daemon round-trip…" >&2
-if "$PY" -c "import fastmcp, uvicorn" >/dev/null 2>&1; then
-  MCP_VAULT="$(mktemp -d)"
-  mkdir -p "$MCP_VAULT/memory/_always-load"
-  MCP_TOKEN="heavy-tier-$$-$(date +%s 2>/dev/null || echo static)"
-  MCP_PORT="$(( (RANDOM % 5000) + 20000 ))"
-  MCP_LOG="$(mktemp)"
-  ( MEMORY_VAULT_PATH="$MCP_VAULT" AGENTM_MCP_TOKEN="$MCP_TOKEN" \
-      "$PY" "$SCRIPTS_DIR/memory_mcp_server.py" --port "$MCP_PORT" >"$MCP_LOG" 2>&1 & echo $! > "$MCP_LOG.pid" )
-  DAEMON_PID="$(cat "$MCP_LOG.pid" 2>/dev/null)"
-  sleep 2
-  MCP_CLIENT_SCRIPT="$(mktemp).py"
-  cat > "$MCP_CLIENT_SCRIPT" <<PYEOF
-import asyncio, os, sys
-from fastmcp.client import Client
-from fastmcp.client.transports import StreamableHttpTransport
-
-async def main():
-    transport = StreamableHttpTransport(
-        f"http://127.0.0.1:{os.environ['MCP_PORT']}/mcp",
-        headers={"Authorization": f"Bearer {os.environ['MCP_TOKEN']}"},
-    )
-    async with Client(transport) as client:
-        appended = await client.call_tool("memory_append", {
-            "content": "heavy-tier live daemon round-trip", "kind": "reference", "title": "heavy-tier-live",
-        })
-        entry_id = appended.data["id"]
-        searched = await client.call_tool("memory_search", {"query": "heavy-tier live daemon round-trip"})
-        hits = [r["id"] for r in searched.data["results"]]
-        forgotten = await client.call_tool("memory_forget", {"id": entry_id})
-        ok = entry_id in hits and forgotten.data.get("status") == "deleted"
-        print("OK" if ok else "FAIL")
-
-asyncio.run(main())
-PYEOF
-  MCP_RESULT="$(MCP_PORT="$MCP_PORT" MCP_TOKEN="$MCP_TOKEN" "$PY" "$MCP_CLIENT_SCRIPT" 2>&1)"
-  kill "$DAEMON_PID" 2>/dev/null || true
-  wait "$DAEMON_PID" 2>/dev/null || true
-  rm -f "$MCP_CLIENT_SCRIPT" "$MCP_LOG" "$MCP_LOG.pid"
-  rm -rf "$MCP_VAULT"
-  if printf '%s' "$MCP_RESULT" | grep -q "^OK"; then
-    emit "run-heavy-tier" "capability function" "live MCP daemon (real HTTP) append/search/forget round-trip" 1
-  else
-    emit "run-heavy-tier" "capability function" "live MCP daemon (real HTTP) append/search/forget round-trip" 0
-    echo "run-heavy-tier: live daemon round-trip did not report OK: $MCP_RESULT" >&2
-  fi
-else
-  echo "run-heavy-tier: [2/4] SKIP — fastmcp/uvicorn not installed" >&2
-  emit "run-heavy-tier" "capability function" "live MCP daemon (real HTTP) append/search/forget round-trip" null
-fi
-
-# ── 3. fault-injection negatives (report, not a uniform assertion) ────────
-echo "run-heavy-tier: [3/4] fault-injection negatives…" >&2
+# ── 2. fault-injection negatives (report, not a uniform assertion) ────────
+echo "run-heavy-tier: [2/6] fault-injection negatives…" >&2
 report_fault() {  # report_fault <suite> <axis> <env-var> <interpreter> <script>
   local suite="$1" axis="$2" envvar="$3" interp="$4" script="$5" rc
   env "$envvar=1" "$interp" "$SCRIPTS_DIR/$script" >/dev/null 2>&1; rc=$?
@@ -165,18 +107,17 @@ report_fault() {  # report_fault <suite> <axis> <env-var> <interpreter> <script>
 report_fault "verify-hook-resolution" "memory persist+recall" "VERIFY_HOOK_RESOLUTION_FAULT" bash "verify-hook-resolution.sh"
 report_fault "verify-state-routing"   "safety/recoverability"  "VERIFY_STATE_ROUTING_FAULT"   bash "verify-state-routing.sh"
 report_fault "verify-reflection"      "memory persist+recall"  "VERIFY_REFLECTION_FAULT"      bash "verify-reflection.sh"
-report_fault "verify-mcp-surface"     "capability function"    "VERIFY_MCP_SURFACE_FAULT"     "$PY" "verify-mcp-surface.py"
 
-# ── 4. cold-install dogfood ────────────────────────────────────────────────
-echo "run-heavy-tier: [4/4] cold-install dogfood (smoke-install-bash.sh)…" >&2
+# ── 3. cold-install dogfood ────────────────────────────────────────────────
+echo "run-heavy-tier: [3/6] cold-install dogfood (smoke-install-bash.sh)…" >&2
 if bash "$SCRIPTS_DIR/smoke-install-bash.sh" >/dev/null 2>&1; then
   emit "run-heavy-tier" "capability function" "cold-install dogfood: smoke-install-bash.sh (fresh HOME, hooks resolve)" 1
 else
   emit "run-heavy-tier" "capability function" "cold-install dogfood: smoke-install-bash.sh (fresh HOME, hooks resolve)" 0
 fi
 
-# ── 5. dashboard honest-dark on a bare install (B3) ────────────────────────
-echo "run-heavy-tier: [5/6] dashboard honest-dark on a bare install…" >&2
+# ── 4. dashboard honest-dark on a bare install (B3) ────────────────────────
+echo "run-heavy-tier: [4/6] dashboard honest-dark on a bare install…" >&2
 BARE_CHECK_SCRIPT="$(mktemp).py"
 # Written to a scratch file rather than a heredoc nested inside $(...) --
 # bash 3.2 (macOS's default /bin/bash, still the health-nightly-macos leg's
@@ -248,8 +189,8 @@ else
   emit "run-heavy-tier" "verification honesty" "bare-install dashboard: Health-Scorecard with zero live records never renders a fabricated 0.00/100 Health Index" 0
 fi
 
-# ── 6. fan-out/budget gates fail CLOSED with no config (B3) ───────────────
-echo "run-heavy-tier: [6/6] fan-out/budget gates fail closed with no config…" >&2
+# ── 5. fan-out/budget gates fail CLOSED with no config (B3) ───────────────
+echo "run-heavy-tier: [5/6] fan-out/budget gates fail closed with no config…" >&2
 GATE_CHECK_SCRIPT="$(mktemp).py"
 cat > "$GATE_CHECK_SCRIPT" <<'PYEOF'
 import sys, tempfile, json
@@ -302,8 +243,8 @@ else
   emit "run-heavy-tier" "safety/recoverability" "no-config gate: runner fleet-budget ceiling fails CLOSED (safe default) with no .harness/budget.yaml, not open" 0
 fi
 
-# ── 7. real-telemetry rollup idempotency (data-conditioned, honest-dark) ──
-echo "run-heavy-tier: [7/7] real-telemetry rollup idempotency…" >&2
+# ── 6. real-telemetry rollup idempotency (data-conditioned, honest-dark) ──
+echo "run-heavy-tier: [6/6] real-telemetry rollup idempotency…" >&2
 TELEMETRY_CHECK_SCRIPT="$(mktemp).py"
 cat > "$TELEMETRY_CHECK_SCRIPT" <<'PYEOF'
 import sqlite3

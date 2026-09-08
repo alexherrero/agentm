@@ -28,7 +28,6 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | How-to | What it does |
 |---|---|
 | [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) | Read the vault from Claude.ai, Gemini, or Antigravity. |
-| [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server) | Let any MCP-aware agent reach the vault. |
 
 ## Keep it smart and efficient
 

@@ -26,7 +26,7 @@ one real design call in this build:
   **Startup cost decides the implementation.** This process is spawned once per
   question — 120 times across a full run — so it imports `json`, `socket`, and
   `sys`, and nothing else. The repo's existing FastMCP shim
-  (`scripts/memory_mcp_shim.py`) would pull pydantic and httpx into every one of
+  (the retired `memory_mcp_shim.py`) would pull pydantic and httpx into every one of
   those spawns, and it is bound to the memory daemon's vault-writing concern,
   which this experiment has no business touching.
 

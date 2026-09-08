@@ -86,6 +86,8 @@ gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/ch
 gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts/check-governs-index.py
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
 gate "check-storage-rules (the filing contract parses + the taxonomy growth rule)" "$PY" scripts/check-storage-rules.py
+gate "check-payload-layout-free (the pasted payload names no folder a migration moves)" "$PY" scripts/check-payload-layout-free.py
+gate "check-payload-parity (every payload copy is the template's derivation)" "$PY" scripts/check-payload-parity.py
 gate "check-vocabulary-membership (--strict: any unregistered type/kind value fails; collision self-test)" "$PY" scripts/check-vocabulary-membership.py --strict
 gate "check-retrieval-regression (shipped ranker vs the pinned gold-set baseline)" bash scripts/check-retrieval-regression.sh
 gate "check-vault-frontmatter (every note's frontmatter parses as YAML)" "$PY" scripts/check-vault-frontmatter.py
@@ -109,7 +111,6 @@ gate "check-dreaming-parity (the dreaming binary reproduces the recorded Python 
 gate "verify-declare-a-type (contract edit -> coverage falls -> queue -> climbs, real binary)" bash scripts/verify-declare-a-type.sh
 gate "verify-auto-org-meters (connectivity + browse-surface e2e)" bash scripts/verify-auto-org-meters.sh
 gate "verify-opinion-supplements (accumulate loop Stages 2-3: recurrence gate, contradiction, confirm-gated compose e2e)" bash scripts/verify-opinion-supplements.sh
-gate "verify-mcp-surface (append/search/forget round-trip, dead-surface fate)" "$PY" scripts/verify-mcp-surface.py
 gate "health-score-determinism (scorecard byte-identical across two runs)" "$PY" scripts/health/health_score.py --check-determinism --path scripts/health/fixtures/sample-records.jsonl
 gate "validate-audit-coverage (4 in-scope mythos-readiness blockers detectable)" bash scripts/health/validate-audit-coverage.sh
 gate "run-ablation-baseline (mechanical uplift, on/off per subsystem)" bash scripts/health/run-ablation-baseline.sh

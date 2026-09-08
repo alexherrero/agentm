@@ -522,6 +522,96 @@ def check_storage_rules() -> Check:
     return Check(name, status, detail)
 
 
+def check_payload_copies() -> list:
+    """One row per local copy of the context payload, with its hash.
+
+    The payload is the text pasted into claude.ai and the Gem, and every copy of
+    it is derived from `templates/agentmemory-context.md`. Both copies were hand-
+    kept until 2026-09-07 and both had drifted — one into a different document,
+    the other into a July folder map that three chat surfaces served for two
+    months. Drift here is silent by nature: a stale payload does not error, it
+    just sends a surface looking for a folder that is not there, and the surface
+    answers from its own knowledge instead. So the doctor prints the copy's hash
+    beside the template's and names the one that differs.
+
+    This is also the doctor half of the design's check 4.
+    """
+    name_prefix = "payload-copy"
+    try:
+        sys.path.insert(0, str(repo_root() / "scripts"))
+        import payload_render as pr
+    except Exception as exc:  # pragma: no cover — an unimportable renderer is the story
+        return [Check(
+            name=f"{name_prefix}", status="UNVERIFIED",
+            detail=f"cannot load payload_render: {exc}",
+            owner="agentm-vault design, group 11a",
+        )]
+
+    try:
+        template = pr.read_template()
+        neutral = pr.render(template, None)
+        address = pr.capture_address()
+        addressed = pr.render(template, address) if address else neutral
+    except Exception as exc:
+        return [Check(
+            name=f"{name_prefix}", status="FAIL",
+            detail=f"the template will not render: {exc}",
+            owner="agentm-vault design, group 11a",
+        )]
+
+    checks = []
+
+    rule_path = pr.ANTIGRAVITY_RULE_PATH
+    expected = pr.antigravity_rule(neutral)
+    if not rule_path.is_file():
+        checks.append(Check(
+            name=f"{name_prefix}: antigravity rule", status="FAIL",
+            detail=f"missing — expected {rule_path}",
+            owner="/memory payload --write",
+        ))
+    else:
+        actual = rule_path.read_text(encoding="utf-8")
+        if actual == expected:
+            checks.append(Check(
+                name=f"{name_prefix}: antigravity rule", status="OK",
+                detail=f"sha {pr.short(actual)} == template",
+            ))
+        else:
+            checks.append(Check(
+                name=f"{name_prefix}: antigravity rule", status="FAIL",
+                detail=f"sha {pr.short(actual)} differs from template's {pr.short(expected)} — {rule_path}",
+                owner="/memory payload --write",
+            ))
+
+    gemini_path = pr.GEMINI_RULES_PATH
+    if not gemini_path.is_file():
+        checks.append(Check(
+            name=f"{name_prefix}: gemini managed section", status="UNVERIFIED",
+            detail=f"no {gemini_path} on this machine (Antigravity not installed)",
+        ))
+    else:
+        section = pr.managed_section(gemini_path.read_text(encoding="utf-8"))
+        if section is None:
+            checks.append(Check(
+                name=f"{name_prefix}: gemini managed section", status="FAIL",
+                detail=f"no {pr.MARKER} managed section in {gemini_path}",
+                owner="/memory payload --write",
+            ))
+        elif section == addressed:
+            checks.append(Check(
+                name=f"{name_prefix}: gemini managed section", status="OK",
+                detail=f"sha {pr.short(section)} == template",
+            ))
+        else:
+            checks.append(Check(
+                name=f"{name_prefix}: gemini managed section", status="FAIL",
+                detail=f"sha {pr.short(section)} differs from template's {pr.short(addressed)} — {gemini_path}",
+                owner="/memory payload --write",
+            ))
+
+    return checks
+
+
 def check_crickets_sibling() -> Check:
     root = find_crickets_root()
     if root is None:
@@ -867,6 +957,7 @@ def run_inventory(
     checks.append(check_unattended_merge_gate(repo))
     checks.append(check_memory_hook_interpreter(repo))
     checks.append(check_storage_rules())
+    checks.extend(check_payload_copies())
     for config_path, label in project_json_configs(repo):
         checks.append(check_project_json_pointers(config_path, label))
     crickets_check = check_crickets_sibling()

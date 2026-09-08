@@ -40,7 +40,6 @@ run_suite "verify-hook-resolution"          bash "$SCRIPTS_DIR/verify-hook-resol
 run_suite "verify-state-routing"            bash "$SCRIPTS_DIR/verify-state-routing.sh"
 run_suite "verify-reflection"               bash "$SCRIPTS_DIR/verify-reflection.sh"
 run_suite "verify-dreaming"                 bash "$SCRIPTS_DIR/verify-dreaming.sh"
-run_suite "verify-mcp-surface"              "$PY" "$SCRIPTS_DIR/verify-mcp-surface.py"
 run_suite "verify-phases"                   bash "$SCRIPTS_DIR/verify-phases.sh"
 run_suite "eval-v6-graph"                    "$PY" "$HERE/eval_v6_graph.py"
 run_suite "eval-v6-retrieval"                "$PY" "$HERE/eval_v6_retrieval.py"

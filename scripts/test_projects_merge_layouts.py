@@ -185,13 +185,13 @@ class WritersFollowTheTree(unittest.TestCase):
             self.assertEqual(save.group_target_dir(flat, "projects/p"), flat / "Projects" / "p")
 
     def test_group_segment_follows_the_project_home(self):
-        import memory_mcp_tools as mcp
+        # The MCP-side copy of this helper retired with the Python server
+        # (2026-09-07); harness_memory's is the one that survives, and it is
+        # what the door calls.
         with tempfile.TemporaryDirectory() as td:
             memory_root = self._nested(Path(td), project="moved")
             (memory_root / "desk" / "projects" / "stayed").mkdir(parents=True)
-            self.assertEqual(mcp._project_group_segment(memory_root, "moved"), "projects")
-            self.assertEqual(mcp._project_group_segment(memory_root, "stayed"), "desk/projects")
-            self.assertEqual(mcp._project_group_segment(memory_root, "brand-new"), "projects")
+            self.assertEqual(hm._project_group_segment(memory_root, "moved"), "projects")
             self.assertEqual(hm._project_group_segment(memory_root, "stayed"), "desk/projects")
             self.assertEqual(hm._project_group_segment(memory_root, "brand-new"), "projects")
 

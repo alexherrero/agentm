@@ -2,49 +2,20 @@
 trigger: always_on
 ---
 
-# AgentMemory — my durable memory vault
+# Using my memory vault
 
-You have access to my durable memory: a Google-Drive-synced Obsidian vault. It holds my conventions, projects, decisions, and recent context. **Before you answer from your own knowledge, read the relevant parts of this vault** — it is the authoritative source for how I work and what I'm working on.
+You have access to my durable memory: an Obsidian vault, synced to Google Drive and served locally by a daemon. It is the authoritative record of how I work, what I have decided, and where my projects stand. Read it before you answer from your own knowledge.
 
-## Where the vault is
+**Where it is, on your surface.** Claude Code and other local agents: the path the installer configured, with a search tool named `memory_search`. claude.ai and Claude Desktop: my Google Drive, through the Drive connector. The live vault is the Drive folder named `Vault`. Gemini: the same `Vault` folder in my Drive.
 
-Resolve the vault root from, in order:
+**Read in this order.** First `index.md` at the vault root: it is the map, and it is current. Then everything in `standards/`: the filing contract, my preferences, and the standing security rules, which apply to every answer. For a project question, `moc-projects.md` says where every project stands tonight; the project's own `tracker.md` says it in full; its `charter.md` says what the project is. Then search for the subject of my question before falling back to what you already know. If the vault says something, it wins.
 
-1. The `MEMORY_VAULT_PATH` environment variable, if set.
-2. The `vault_path` key in `.agentm-config.json` — a project-local one wins if present, else the one at the install prefix (`$AGENTM_INSTALL_PREFIX`, default `~/.claude/.agentm-config.json`).
+**How to read a note.** Frontmatter first: `title`, then `type` (a memory) or `kind` (a record), `summary`, `why` (the reason it was kept), `importance` (1–10, mine), `status`, `lifecycle`. `status: unfiled` means nobody has judged it yet — real, ranked lower, not to be skipped. `lifecycle: dormant` means unused for a year; `superseded` means follow `superseded_by` instead. A note under `agent/archive/` or a `completed/` folder is finished work, still true, not current. `[[wikilinks]]` name related notes by title.
 
-A self-describing copy of these instructions lives at `<vault>/Agent/_meta/how-to-use-agentmemory.md` — read it if you need the in-vault reference.
+**Your posture.** Chat surfaces — claude.ai, Claude Desktop, Gemini — read only. Never modify the vault, even with a tool that could.
 
-## Folder map — what's where
+To keep something durable — an idea, a decision, a preference, a fact — write it out as a card (title, type, one-line summary, why it is worth keeping, importance 1–10, tags, project if any) and show it to me so I can file it. A chat surface has no write door yet.
 
-My own spaces and the agent's share one vault root. `Agent/` is the agent's half; `standards/` and `Projects/` sit beside it at the root.
+Local agents I run (Claude Code, Antigravity) may write, through the capture tool, one concept per note, with the reason it was kept.
 
-- **`standards/`** + **`Agent/memory/_always-load/`** — the always-load tier, read as one: the filing contract (`standards/storage-rules.md`) and the house voice (`_always-load/voice-kernel.md`). **Read these first, every session.** My git and harness conventions live with the coding agents that act on them, so you won't find them here.
-- **`Projects/<slug>/`** — per-project context: `_index.md` (anchor + current state), `decisions/` (locked design calls — don't re-litigate), `_harness/` (the project's roadmap / plan / progress).
-- **`Agent/memory/`** — the memory corpus, one directory per class. `semantic/` holds facts, principles and learned tool behaviour, `procedural/` holds recipes and protocols, and `episodic/` holds session traces. Three more are derived from those and rebuildable from them: `entities/` keeps a living file per person, system or repo, `crystallized/` keeps the lessons repetition produced, and `mocs/` keeps generated maps of content.
-- **`Agent/desk/`** — work in flight: `briefs/`, `projects/`, `tasks/`, `scratch/`.
-- **`Agent/_meta/`** — machine files + audit reports (readable, not curated prose).
-
-**There is no inbox.** A capture files straight into its class directory and is searchable the moment it lands, carrying `status: unfiled` and `filing_confidence: low` until filing promotes it — which ranks it lower rather than hiding it. The metadata is the inbox. Read `status: unfiled` as the "unsorted, low-signal" marker a staging folder used to mean. If you meet an `_inbox/` directory in an older vault, it holds legacy content and is not where new captures go.
-
-## How to read it (priority order)
-
-1. **The always-load tier first** — load everything in `standards/` and `Agent/memory/_always-load/`; durable rules that apply to every answer.
-2. **Project context** — if the question concerns a project, read that project's `Projects/<slug>/_index.md` + `decisions/` before answering.
-3. **Query by topic** — search the vault for the subject *before* falling back to your own general knowledge. If the vault says something, it wins.
-
-## Reading entries correctly
-
-- Entries are markdown with YAML frontmatter. Every entry carries `status` + `created`, plus exactly one of `type` (a memory) or `kind` (an infrastructure record such as a brief or a session trace) — never both. Slugs and tags are kebab-case.
-- `status: active` = current; `status: superseded` = historical (don't follow it); `status: unfiled` = captured but not yet filed, which is real content awaiting confirmation rather than content to skip.
-- `[[wikilinks]]` cross-reference related entries — follow them when relevant.
-
-## Read / write posture — you are one of my working agents
-
-You (Antigravity) are one of the filesystem agents I run directly, so **you may read AND write the vault** — following my entry conventions (kebab slugs; `status` + `created` plus exactly one of `type` or `kind`; one entry per concern). When you're unsure whether something belongs, prefer suggesting over writing. (My chat surfaces — Claude.ai, Claude Desktop — are read-only; you are not one of them.)
-
-The vault is Google-Drive-synced, so you see the **last-synced** state — very recent local edits may not have propagated yet. If something seems missing, say so rather than guessing.
-
-## Source of truth
-
-This rule mirrors the canonical payload [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md) in the agentm repo. If the vault structure changes, that file is updated and this rule refreshes on `--update`.
+The Drive copy is the last-synced state; if something seems missing, say so rather than guess.
