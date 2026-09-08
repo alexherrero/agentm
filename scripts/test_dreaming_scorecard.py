@@ -355,13 +355,16 @@ class TheRootItResolves(unittest.TestCase):
     STATUS = {"vault": "/v", "spaces": {"memory": "Agent/memory"}}
 
     def test_the_memory_root_is_the_vault_plus_the_spaces_parent(self):
+        # Built with Path, not spelled as a POSIX literal: the resolver joins
+        # with Path too, so on Windows the right answer really is `\v\Agent`
+        # and a hardcoded separator would be testing the separator.
         with mock.patch.object(ds, "_agentmd", return_value=self.STATUS):
-            self.assertEqual(ds.memory_root_from_daemon(), "/v/Agent")
+            self.assertEqual(ds.memory_root_from_daemon(), str(Path("/v") / "Agent"))
 
     def test_it_is_not_the_vault_root(self):
         with mock.patch.object(ds, "_agentmd", return_value=self.STATUS):
             got = ds.memory_root_from_daemon()
-        self.assertNotEqual(got, "/v",
+        self.assertNotEqual(Path(got), Path("/v"),
                             "resolving to the vault root writes a second "
                             "diagnostics tree beside the memory space")
 
@@ -371,7 +374,7 @@ class TheRootItResolves(unittest.TestCase):
         with mock.patch.object(ds, "_agentmd",
                                return_value={"vault": "/v",
                                              "spaces": {"memory": "memory"}}):
-            self.assertEqual(ds.memory_root_from_daemon(), "/v")
+            self.assertEqual(Path(ds.memory_root_from_daemon()), Path("/v"))
 
     def test_no_daemon_answer_resolves_to_nothing(self):
         # main() turns an empty answer into a refusal; a guessed root would

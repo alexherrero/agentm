@@ -30,6 +30,28 @@ def plant_icon(directory: Path) -> Path:
     return p
 
 
+def _filesystem_accepts_the_icon_name() -> bool:
+    """Whether a file named `Icon` + carriage return can exist here.
+
+    NTFS rejects a carriage return in a filename, so on Windows the fixture
+    cannot be built — and neither can the bug: Drive plants this file on the
+    macOS side. The predicate below is a pure string test and runs everywhere;
+    only the cases that need the file on disk are gated, and on what the
+    filesystem actually accepts rather than on the platform's name.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        try:
+            plant_icon(Path(td))
+        except (OSError, ValueError):
+            return False
+    return True
+
+
+_CAN_PLANT = _filesystem_accepts_the_icon_name()
+_NEEDS_POSIX_NAMES = unittest.skipUnless(
+    _CAN_PLANT, "this filesystem rejects a carriage return in a filename")
+
+
 class ThePredicate(unittest.TestCase):
     def test_the_name_drive_actually_writes(self):
         self.assertTrue(da.is_artifact(ICON))
@@ -48,8 +70,10 @@ class ThePredicate(unittest.TestCase):
         self.assertTrue(da.is_artifact(".DS_Store"))
 
     def test_it_takes_a_path_or_a_name(self):
+        # Constructed, not written: the predicate reads the final component,
+        # so this case has no business needing a filesystem that accepts it.
         with tempfile.TemporaryDirectory() as td:
-            self.assertTrue(da.is_artifact(plant_icon(Path(td))))
+            self.assertTrue(da.is_artifact(Path(td) / ICON))
 
     def test_a_note_that_merely_starts_with_icon_is_content(self):
         # The prefix test this replaces skipped it. Somebody may legitimately
@@ -61,17 +85,13 @@ class ThePredicate(unittest.TestCase):
         self.assertFalse(da.is_artifact("a-durable-fact.md"))
 
 
-class TheEmptinessItDecides(unittest.TestCase):
-    """The criterion: a directory holding only `Icon\\r` is reported empty."""
+class TheEmptinessItDecidesAnywhere(unittest.TestCase):
+    """The emptiness cases that need no carriage return in a filename.
 
-    def test_a_directory_holding_only_the_icon_is_empty(self):
-        with tempfile.TemporaryDirectory() as td:
-            d = Path(td) / "briefs"
-            d.mkdir()
-            plant_icon(d)
-            self.assertFalse(next(d.iterdir(), None) is None,
-                             "the fixture did not plant anything")
-            self.assertTrue(da.is_empty(d))
+    Kept out of the gated class below so they still run on a filesystem that
+    rejects that name — which is the platform most likely to surprise a path
+    assumption, and so the one worth exercising.
+    """
 
     def test_a_directory_holding_only_finders_artifact_is_empty(self):
         with tempfile.TemporaryDirectory() as td:
@@ -79,14 +99,6 @@ class TheEmptinessItDecides(unittest.TestCase):
             d.mkdir()
             (d / ".DS_Store").write_bytes(b"")
             self.assertTrue(da.is_empty(d))
-
-    def test_one_real_note_beside_the_icon_is_not_empty(self):
-        with tempfile.TemporaryDirectory() as td:
-            d = Path(td) / "semantic"
-            d.mkdir()
-            plant_icon(d)
-            (d / "a-fact.md").write_text("body", encoding="utf-8")
-            self.assertFalse(da.is_empty(d))
 
     def test_a_missing_directory_is_empty(self):
         with tempfile.TemporaryDirectory() as td:
@@ -100,6 +112,36 @@ class TheEmptinessItDecides(unittest.TestCase):
             f.write_text("body", encoding="utf-8")
             self.assertFalse(da.is_empty(f))
 
+    def test_removing_artifacts_leaves_a_directory_of_content_alone(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            (d / ".DS_Store").write_bytes(b"")
+            (d / "a-fact.md").write_text("body", encoding="utf-8")
+            self.assertEqual(da.remove_artifacts(d), 1)
+            self.assertEqual([x.name for x in d.iterdir()], ["a-fact.md"])
+
+
+@_NEEDS_POSIX_NAMES
+class TheEmptinessItDecides(unittest.TestCase):
+    """The criterion: a directory holding only `Icon\\r` is reported empty."""
+
+    def test_a_directory_holding_only_the_icon_is_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "briefs"
+            d.mkdir()
+            plant_icon(d)
+            self.assertFalse(next(d.iterdir(), None) is None,
+                             "the fixture did not plant anything")
+            self.assertTrue(da.is_empty(d))
+
+    def test_one_real_note_beside_the_icon_is_not_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "semantic"
+            d.mkdir()
+            plant_icon(d)
+            (d / "a-fact.md").write_text("body", encoding="utf-8")
+            self.assertFalse(da.is_empty(d))
+
     def test_visible_drops_the_artifacts_and_keeps_the_rest(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td)
@@ -109,6 +151,7 @@ class TheEmptinessItDecides(unittest.TestCase):
             self.assertEqual([p.name for p in da.visible(d.iterdir())], ["kept.md"])
 
 
+@_NEEDS_POSIX_NAMES
 class TheRemoval(unittest.TestCase):
     def test_it_removes_the_artifacts_and_reports_how_many(self):
         with tempfile.TemporaryDirectory() as td:
@@ -139,6 +182,7 @@ class TheRemoval(unittest.TestCase):
             self.assertFalse(d.exists())
 
 
+@_NEEDS_POSIX_NAMES
 class TheCleanupUsesIt(unittest.TestCase):
     """The migration's empty-directory cleanup, against the real name.
 
