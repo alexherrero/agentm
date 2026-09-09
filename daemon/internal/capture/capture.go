@@ -202,10 +202,26 @@ func New(cfg *config.Config, idx *index.Index) *Capturer {
 // because the file is truth and the index is a cache: if the process dies between
 // the two, the reconcile pass picks the note up and nothing is lost. The reverse
 // ordering could index a note that does not exist.
+// tallyTemplate is the retired miner's tool-tally body — "The `Bash` tool was
+// invoked 2592 times during this session." followed by an instruction to capture
+// the sequence, which nothing ever did. 292 of them were purged as manifest A
+// (agentm-vault, landing group 02). The miner is resolved against the session's
+// working directory, so a worktree cut from an older base still runs the old
+// one; the gate therefore sits at the door, where a stale writer cannot get
+// past it. It matches the template and nothing wider: a door that guesses costs
+// a real capture.
+var tallyTemplate = regexp.MustCompile("The `[^`]+` tool was invoked [0-9]+ times during this session\\.")
+
 func (c *Capturer) Do(req Request) (Result, error) {
 	text := strings.TrimSpace(req.Text)
 	if text == "" {
 		return Result{}, errors.New("text is required — capture needs something to remember")
+	}
+	if tallyTemplate.MatchString(req.Title + "\n" + text) {
+		c.refused.Add(1)
+		return Result{}, errors.New("this body is the retired miner's tool-tally template, " +
+			"which counts a tool without recording the sequence or when to use it. It is not " +
+			"captured. If there is a workflow here, capture the steps")
 	}
 
 	var notes []string
