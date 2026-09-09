@@ -959,15 +959,35 @@ def _git_out(repo: Path, *args: str) -> "tuple[int, str]":
 
 
 def check_install_head(repo: Optional[Path] = None) -> Check:
-    """Whether the clone's HEAD is the newest tag, and local `main` the remote.
+    """Whether the live configuration is the code that has actually shipped.
 
-    This clone is the installation: hooks and skills are symlinked into it, so
-    whatever commit it has checked out is the machine-wide live configuration.
-    That makes an ordinary git state into a deployment state, and nothing said
-    so. On 2026-09-06 a session's first minute ran `git checkout main` here,
-    landing on a ref 38 commits behind; the live config silently regressed two
-    days, and a survey read a stale design and published a false finding from
-    it. Nobody could have noticed from any surface that existed.
+    This clone is the installation: hooks, skills and every scheduled job's
+    command resolve through it, so whatever commit it has checked out is the
+    machine-wide live configuration. That makes an ordinary git state into a
+    deployment state, and nothing said so.
+
+    Three ways it goes wrong, each seen:
+
+      * **HEAD behind the newest tag.** On 2026-09-06 a session's first minute
+        ran `git checkout main` here, landing 38 commits back; the live config
+        regressed two days and a survey published a false finding from a stale
+        design.
+      * **A stale local `main`.** The branch is deliberately never held here, so
+        it drifts unseen until something checks it out — and then the first
+        failure happens again.
+      * **HEAD missing merged work.** On 2026-09-08 the clone sat on a feature
+        branch cut before a fix merged. For twenty-three hours every scheduled
+        job ran that older tree, and the nightly retrieval-gate job re-created a
+        directory the plan that fixed it had verified gone hours earlier. The
+        first two checks were both quiet: the branch was *ahead* of the last
+        tag, which is ordinary between releases, and local `main` was level.
+
+    The third is the general case and the other two are its symptoms, so it is
+    asked directly: is `origin/main` an ancestor of HEAD? Detached at
+    `origin/main` it is (a commit is its own ancestor); mid-release, with HEAD
+    ahead, it still is; on a branch cut from current `main` it still is. It
+    stops being one exactly when the working tree lacks commits that have
+    landed — which is the condition under which running this code is wrong.
 
     Reported, never repaired. A doctor row says what is true; moving somebody's
     HEAD out from under them is not a diagnosis.
@@ -989,8 +1009,27 @@ def check_install_head(repo: Optional[Path] = None) -> Check:
     # Local `main` versus the remote. The branch is deliberately not checked
     # out here, so it is invisible until something checks it out — which is
     # exactly the failure.
-    rc_l, local_main = _git_out(repo, "rev-parse", "--verify", "refs/heads/main")
     rc_r, remote_main = _git_out(repo, "rev-parse", "--verify", "refs/remotes/origin/main")
+
+    # The live tree versus what has merged. This is the check the other two
+    # were standing in for: a working tree missing commits that are on
+    # origin/main is running code that has been superseded, whatever its
+    # relationship to the last tag. `--is-ancestor` is the right question and
+    # is safe here — it asks reachability between two refs that share a
+    # history, not whether a squashed branch has landed.
+    if rc_r == 0:
+        rc_a, _ = _git_out(repo, "merge-base", "--is-ancestor", remote_main, "HEAD")
+        if rc_a != 0:
+            rc_c, missing = _git_out(repo, "rev-list", "--count", f"HEAD..origin/main")
+            n = missing if rc_c == 0 else "?"
+            rc_b, branch = _git_out(repo, "rev-parse", "--abbrev-ref", "HEAD")
+            where = (f"`{branch}`" if rc_b == 0 and branch not in ("HEAD", "")
+                     else "this checkout")
+            notes.append(
+                f"{where} is missing {n} commit(s) that are on origin/main — "
+                "every hook, skill and scheduled job is running that older code")
+
+    rc_l, local_main = _git_out(repo, "rev-parse", "--verify", "refs/heads/main")
     if rc_l == 0 and rc_r == 0 and local_main != remote_main:
         rc_a, _ = _git_out(repo, "merge-base", "--is-ancestor", local_main, remote_main)
         rc_c, behind = _git_out(repo, "rev-list", "--count", f"{local_main}..{remote_main}")

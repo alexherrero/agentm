@@ -213,5 +213,131 @@ class TheDoctorsInstallRow(unittest.TestCase):
         self.assertIn("install-head", names)
 
 
+class TheLiveTreeVersusWhatHasMerged(unittest.TestCase):
+    """The case the other two checks were standing in for, and could not see.
+
+    On 2026-09-08 the primary clone sat on a feature branch cut before a fix
+    merged. For twenty-three hours every scheduled job ran that older tree, and
+    the nightly retrieval-gate job re-created a directory the plan that fixed it
+    had verified gone hours earlier. The row said OK throughout: the branch was
+    *ahead* of the last tag, which is ordinary between releases, and local
+    `main` was level with the remote.
+    """
+
+    def test_a_branch_cut_before_a_merge_warns_and_counts_what_is_missing(self):
+        # The reproduction, in miniature.
+        with tempfile.TemporaryDirectory() as td:
+            origin, work = clone_pair(Path(td))
+            git(work, "tag", "v1.0.0")
+            git(work, "checkout", "-q", "-b", "feature")
+            commit(work, "my own work")          # ahead of the tag
+            commit(origin, "somebody else's fix")  # merges to main meanwhile
+            commit(origin, "and another")
+            git(work, "fetch", "-q", "origin")
+
+            check = doctor_mod.check_install_head(work)
+
+        self.assertEqual(check.status, "WARN", check.detail)
+        self.assertIn("missing 2 commit(s)", check.detail)
+        self.assertIn("feature", check.detail)
+        self.assertIn("scheduled job", check.detail)
+
+    def test_the_tag_comparison_cannot_see_this_and_the_main_one_misnames_it(self):
+        """Why the new comparison was needed, stated exactly.
+
+        The tag check is blind here: the branch is *ahead* of the newest tag,
+        which is the ordinary state between releases. The local-`main` check
+        does fire once the fix merges — but it reports a branch nobody has
+        checked out, while the tree actually executing every hook and scheduled
+        job goes unmentioned. Right signal, wrong ref, and the operator reads
+        "a branch I never use is stale" rather than "you are running old code".
+        """
+        with tempfile.TemporaryDirectory() as td:
+            origin, work = clone_pair(Path(td))
+            git(work, "tag", "v1.0.0")
+            git(work, "checkout", "-q", "-b", "feature")
+            commit(work, "my own work")
+            commit(origin, "somebody else's fix")
+            git(work, "fetch", "-q", "origin")
+
+            # Blind: HEAD is ahead of the newest tag, never behind it.
+            self.assertEqual(git(work, "rev-list", "--count", "HEAD..v1.0.0"), "0")
+
+            check = doctor_mod.check_install_head(work)
+
+        # The old note is there, and it names `main` — a ref that is not
+        # checked out and is not what the jobs are running.
+        self.assertIn("local `main`", check.detail)
+        # The new one names the branch that is.
+        self.assertIn("feature", check.detail)
+        self.assertIn("older code", check.detail)
+
+    def test_detached_at_origin_main_is_quiet(self):
+        # The normal state of the primary clone. A commit is its own ancestor.
+        with tempfile.TemporaryDirectory() as td:
+            origin, work = clone_pair(Path(td))
+            git(work, "tag", "v1.0.0")
+            commit(origin, "two")
+            git(work, "fetch", "-q", "origin")
+            git(work, "checkout", "-q", "--detach", "origin/main")
+
+            check = doctor_mod.check_install_head(work)
+
+        self.assertNotIn("missing", check.detail)
+
+    def test_being_ahead_of_origin_main_is_quiet(self):
+        # Mid-release: the commit is made detached here and pushed after.
+        with tempfile.TemporaryDirectory() as td:
+            _, work = clone_pair(Path(td))
+            git(work, "tag", "v1.0.0")
+            git(work, "checkout", "-q", "--detach", "origin/main")
+            commit(work, "the release commit, not yet pushed")
+
+            check = doctor_mod.check_install_head(work)
+
+        self.assertNotIn("missing", check.detail)
+        self.assertEqual(check.status, "OK", check.detail)
+
+    def test_a_branch_cut_from_current_main_is_quiet(self):
+        # Ordinary feature work on an up-to-date tree is not a finding.
+        with tempfile.TemporaryDirectory() as td:
+            _, work = clone_pair(Path(td))
+            git(work, "tag", "v1.0.0")
+            git(work, "checkout", "-q", "-b", "feature")
+            commit(work, "my own work")
+
+            check = doctor_mod.check_install_head(work)
+
+        self.assertNotIn("missing", check.detail)
+
+    def test_a_detached_head_that_is_stale_says_this_checkout(self):
+        # No branch name to print, and "HEAD" would be a useless one.
+        with tempfile.TemporaryDirectory() as td:
+            origin, work = clone_pair(Path(td))
+            git(work, "tag", "v1.0.0")
+            stale = git(work, "rev-parse", "HEAD")
+            commit(origin, "two")
+            git(work, "fetch", "-q", "origin")
+            git(work, "checkout", "-q", "--detach", stale)
+
+            check = doctor_mod.check_install_head(work)
+
+        self.assertEqual(check.status, "WARN", check.detail)
+        self.assertIn("this checkout", check.detail)
+        self.assertNotIn("`HEAD`", check.detail)
+
+    def test_no_remote_main_is_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td) / "solo"
+            repo.mkdir()
+            git(repo, "init", "-q", "-b", "main")
+            commit(repo, "one")
+            git(repo, "tag", "v1.0.0")
+
+            check = doctor_mod.check_install_head(repo)
+
+        self.assertNotIn("missing", check.detail)
+
+
 if __name__ == "__main__":
     unittest.main()
