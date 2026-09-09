@@ -71,6 +71,112 @@ def select(vault: "Path | str", *, lifecycle: str = "archived", older_than_days:
     return rows
 
 
+# --- the six ruled residue populations (agentm-vault, landing group 02) ------
+#
+# Session 2 ruled six non-overlapping manifests by count on 2026-09-06. The
+# rows live in the series' working directory; what lives here is the *shape*
+# that produced them, so the corpus can be re-selected on the day a purge
+# runs. A population's fresh count is the gate: it must equal the ruled count
+# or the run stops, which is how a corpus that moved under a ruling announces
+# itself instead of taking notes the operator never saw.
+#
+# The predicates were calibrated against the ruled rows: with the claim order
+# below, they reproduce 291 of manifest A's 292 and every row of B–F. A's one
+# miss is `semantic/never-edit-or-delete-a-failing-test.md`, which carries a
+# procedure and is not a tally — a false positive in the ruling, dropped here
+# rather than inherited.
+
+_TALLY_RE = re.compile(
+    r"(?:tool was invoked|invoked the `[^`]+` tool|tool invoked|tool used)\s+\d+\s+times"
+    r"|invoked \d+ times"
+    r"|\d+ invocations of the `[^`]+` tool"
+    r"|`[^`]+` tool was called \d+ times"
+    r"|tool[-_ ]use frequency threshold"
+    r"|mining[- ]stub",
+    re.I,
+)
+_DUP_RE = re.compile(r"~dup\d*\.md$")
+
+
+def _is_tally(rel, fm, body):
+    hay = f"{fm.get('title', '')}\n{fm.get('summary', '')}\n{body}"
+    return bool(_TALLY_RE.search(hay))
+
+
+def _is_skill_blurb(rel, fm, body):
+    tags = fm.get("tags") or ""
+    if not isinstance(tags, str):
+        tags = " ".join(str(t) for t in tags)
+    return "skill-discovery" in tags or str(fm.get("source") or "") == "external-fetch"
+
+
+def _is_fix_fragment(rel, fm, body):
+    return bool(re.search(r"[Ff]ix observed", f"{fm.get('title', '')}\n{body}"))
+
+
+def _is_opinion_supplement(rel, fm, body):
+    return str(fm.get("kind") or "") == "opinion-supplement"
+
+
+def _is_user_stated(rel, fm, body):
+    return "User stated:" in f"{fm.get('title', '')}\n{body}"
+
+
+def _is_dup_twin(rel, fm, body):
+    return bool(_DUP_RE.search(rel))
+
+
+# letter -> (title, ruled count, the class dirs it may claim from, predicate)
+POPULATIONS = {
+    "A": ("tool-tallies", 292, ("procedural", "semantic"), _is_tally),
+    "D": ("skill-discovery-blurbs", 116, ("semantic",), _is_skill_blurb),
+    "C": ("fix-observed-fragments", 21, ("procedural", "crystallized"), _is_fix_fragment),
+    "E": ("opinion-supplements", 32, ("crystallized",), _is_opinion_supplement),
+    "B": ("user-stated-fragments", 107, ("semantic",), _is_user_stated),
+    "F": ("dup-twins", 4, ("semantic",), _is_dup_twin),
+}
+# A path belongs to the first population that claims it, so the counts add and
+# nothing is ruled twice — the rule the ruled manifests were rendered under.
+CLAIM_ORDER = ("A", "D", "C", "E", "B", "F")
+
+
+def classify_populations(vault: "Path | str") -> dict:
+    """{relative path -> letter} for every note a population claims today."""
+    vault = Path(vault)
+    out = {}
+    for p in lt.memory_notes(vault):
+        rel = p.relative_to(vault).as_posix()
+        cls = Path(rel).parts[1] if len(Path(rel).parts) > 1 else ""
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        fm, body = _frontmatter(text)
+        for letter in CLAIM_ORDER:
+            _, _, dirs, pred = POPULATIONS[letter]
+            if cls in dirs and pred(rel, fm, body):
+                out[rel] = letter
+                break
+    return out
+
+
+def select_population(vault: "Path | str", letter: str, *, claimed: "dict | None" = None) -> list:
+    """Today's rows for one ruled population, in the manifest shape `apply` reads."""
+    letter = letter.upper()
+    if letter not in POPULATIONS:
+        raise RefusedPurge(f"no such population {letter!r}; the ruled six are {', '.join(sorted(POPULATIONS))}")
+    vault = Path(vault)
+    claimed = classify_populations(vault) if claimed is None else claimed
+    rows = []
+    for rel in sorted(r for r, L in claimed.items() if L == letter):
+        text = (vault / rel).read_text(encoding="utf-8")
+        fm, _ = _frontmatter(text)
+        rows.append({"rel": rel, "title": str(fm.get("title") or Path(rel).stem),
+                     "lifecycle": lt.lifecycle_of(text), "since": str(fm.get("lifecycle_since") or "")[:10],
+                     "status": str(fm.get("status") or ""), "sha256": _hash(text)})
+    return rows
+
+
 def inbound_links(vault: "Path | str", rels: list) -> list:
     """Wikilinks elsewhere in the vault that still resolve to a row's stem —
     what a purge would break. Reported, never acted on."""
@@ -140,6 +246,9 @@ def main(argv=None) -> int:
     s = sub.add_parser("select", help="write the manifest of what a purge would delete (deletes nothing)")
     s.add_argument("--lifecycle", default="archived", choices=lt.STATES)
     s.add_argument("--older-than-days", type=int, help="only memories in that state at least this long (by lifecycle_since)")
+    s.add_argument("--population", help="re-select one ruled residue population (A-F) instead of a lifecycle state")
+    s.add_argument("--expect-count", type=int,
+                   help="the ruled count; select exits 4 and refuses when today's count differs")
     s.add_argument("--report-dir", help="where the manifest goes (default: <vault>/diagnostics/migrations/purge/<ts>)")
     a_ = sub.add_parser("apply", help="delete exactly what a manifest lists, on a matching confirmed count")
     a_.add_argument("--manifest", required=True)
@@ -147,10 +256,38 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     vault = Path(a.vault)
     if a.cmd == "select":
-        rows = select(vault, lifecycle=a.lifecycle, older_than_days=a.older_than_days)
-        path = write_manifest(vault, rows, criteria={"lifecycle": a.lifecycle, "older_than_days": a.older_than_days},
-                              out_dir=a.report_dir)
+        if a.population:
+            letter = a.population.upper()
+            if letter not in POPULATIONS:
+                print(f"purge refused: no such population {a.population!r}; the ruled six are "
+                      f"{', '.join(sorted(POPULATIONS))}", file=sys.stderr)
+                return 2
+            title, ruled, _, _ = POPULATIONS[letter]
+            rows = select_population(vault, letter)
+            expected = a.expect_count if a.expect_count is not None else ruled
+            matches = len(rows) == expected
+            criteria = {"population": letter, "title": title, "ruled_count": ruled,
+                        "expected_count": expected, "fresh_count": len(rows), "count_matches": matches}
+        else:
+            rows = select(vault, lifecycle=a.lifecycle, older_than_days=a.older_than_days)
+            expected, matches, criteria = None, True, {"lifecycle": a.lifecycle,
+                                                       "older_than_days": a.older_than_days}
+        path = write_manifest(vault, rows, criteria=criteria, out_dir=a.report_dir)
         links = json.loads(path.read_text(encoding="utf-8"))["inbound_links"]
+        if a.population:
+            letter = a.population.upper()
+            title = POPULATIONS[letter][0]
+            print(f"population {letter} ({title}): fresh {len(rows)}, ruled {expected}"
+                  f"{'' if matches else '  <-- MOVED'}; {len(links)} inbound link(s) would break; "
+                  f"manifest at {path}.")
+            if not matches:
+                print(f"purge refused: population {letter} counted {len(rows)} today against the ruled "
+                      f"{expected}. The corpus moved under the ruling; re-rule it before running. "
+                      f"Nothing deleted.", file=sys.stderr)
+                return 4
+            print(f"Nothing deleted. To apply: purge.py --vault {vault} apply --manifest {path} "
+                  f"--confirm-count {len(rows)}")
+            return 0
         print(f"{len(rows)} memor{'y' if len(rows) == 1 else 'ies'} selected, {len(links)} inbound link(s) would break; "
               f"manifest at {path}. Nothing deleted. To apply: purge.py --vault {vault} apply --manifest {path} "
               f"--confirm-count {len(rows)}")
