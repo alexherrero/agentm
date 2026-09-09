@@ -73,91 +73,11 @@ def select(vault: "Path | str", *, lifecycle: str = "archived", older_than_days:
 
 # --- the six ruled residue populations (agentm-vault, landing group 02) ------
 #
-# Session 2 ruled six non-overlapping manifests by count on 2026-09-06. The
-# rows live in the series' working directory; what lives here is the *shape*
-# that produced them, so the corpus can be re-selected on the day a purge
-# runs. A population's fresh count is the gate: it must equal the ruled count
-# or the run stops, which is how a corpus that moved under a ruling announces
-# itself instead of taking notes the operator never saw.
-#
-# The predicates were calibrated against the ruled rows: with the claim order
-# below, they reproduce 291 of manifest A's 292 and every row of B–F. A's one
-# miss is `semantic/never-edit-or-delete-a-failing-test.md`, which carries a
-# procedure and is not a tally — a false positive in the ruling, dropped here
-# rather than inherited.
-
-_TALLY_RE = re.compile(
-    r"(?:tool was invoked|invoked the `[^`]+` tool|tool invoked|tool used)\s+\d+\s+times"
-    r"|invoked \d+ times"
-    r"|\d+ invocations of the `[^`]+` tool"
-    r"|`[^`]+` tool was called \d+ times"
-    r"|tool[-_ ]use frequency threshold"
-    r"|mining[- ]stub",
-    re.I,
-)
-_DUP_RE = re.compile(r"~dup\d*\.md$")
-
-
-def _is_tally(rel, fm, body):
-    hay = f"{fm.get('title', '')}\n{fm.get('summary', '')}\n{body}"
-    return bool(_TALLY_RE.search(hay))
-
-
-def _is_skill_blurb(rel, fm, body):
-    tags = fm.get("tags") or ""
-    if not isinstance(tags, str):
-        tags = " ".join(str(t) for t in tags)
-    return "skill-discovery" in tags or str(fm.get("source") or "") == "external-fetch"
-
-
-def _is_fix_fragment(rel, fm, body):
-    return bool(re.search(r"[Ff]ix observed", f"{fm.get('title', '')}\n{body}"))
-
-
-def _is_opinion_supplement(rel, fm, body):
-    return str(fm.get("kind") or "") == "opinion-supplement"
-
-
-def _is_user_stated(rel, fm, body):
-    return "User stated:" in f"{fm.get('title', '')}\n{body}"
-
-
-def _is_dup_twin(rel, fm, body):
-    return bool(_DUP_RE.search(rel))
-
-
-# letter -> (title, ruled count, the class dirs it may claim from, predicate)
-POPULATIONS = {
-    "A": ("tool-tallies", 292, ("procedural", "semantic"), _is_tally),
-    "D": ("skill-discovery-blurbs", 116, ("semantic",), _is_skill_blurb),
-    "C": ("fix-observed-fragments", 21, ("procedural", "crystallized"), _is_fix_fragment),
-    "E": ("opinion-supplements", 32, ("crystallized",), _is_opinion_supplement),
-    "B": ("user-stated-fragments", 107, ("semantic",), _is_user_stated),
-    "F": ("dup-twins", 4, ("semantic",), _is_dup_twin),
-}
-# A path belongs to the first population that claims it, so the counts add and
-# nothing is ruled twice — the rule the ruled manifests were rendered under.
-CLAIM_ORDER = ("A", "D", "C", "E", "B", "F")
-
-
-def classify_populations(vault: "Path | str") -> dict:
-    """{relative path -> letter} for every note a population claims today."""
-    vault = Path(vault)
-    out = {}
-    for p in lt.memory_notes(vault):
-        rel = p.relative_to(vault).as_posix()
-        cls = Path(rel).parts[1] if len(Path(rel).parts) > 1 else ""
-        try:
-            text = p.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        fm, body = _frontmatter(text)
-        for letter in CLAIM_ORDER:
-            _, _, dirs, pred = POPULATIONS[letter]
-            if cls in dirs and pred(rel, fm, body):
-                out[rel] = letter
-                break
-    return out
+# The shapes live in `residue_shapes`, not here. The corpus scorecard counts
+# residue every night and must not import this module — `test_no_automated_caller`
+# holds that the purge lane is the operator's alone — so both read one definition
+# from a module that only classifies and never deletes.
+from residue_shapes import POPULATIONS, CLAIM_ORDER, classify as classify_populations  # noqa: E402,F401
 
 
 def select_population(vault: "Path | str", letter: str, *, claimed: "dict | None" = None) -> list:

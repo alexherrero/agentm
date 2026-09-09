@@ -263,11 +263,46 @@ def _lifecycle_reading(vault, *, today=None) -> Reading:
                             note=lifecycle_transitions.describe(summary))
 
 
+def residue_counts(vault: Path) -> "dict | None":
+    """The residue shapes, counted per shape, or None when the vault has no memory/.
+
+    Residue is what the retired miner and the retired ingest left behind: a tool
+    tally, a `User stated:` or `Fix observed:` cut from mid-sentence, a one-line
+    repo blurb, an opinion supplement stranded at `proposed`, a `~dup` twin. 627
+    were purged as the six ruled manifests (agentm-vault, landing group 02); 292
+    of those had survived an earlier purge by being enriched into confident
+    prose, which is why this is a standing line rather than a migration report.
+
+    The shapes come from `residue_shapes`, the same module the purge lane selects
+    on, so the line cannot drift from the thing it measures. It is not `purge`:
+    the purge lane is operator-only and nothing that runs nightly may import it.
+    """
+    import residue_shapes  # same skill dir
+    return residue_shapes.counts(vault)
+
+
+def _residue_reading(vault) -> Reading:
+    """The line the purge is measured against. It reads zero, and a number
+    that climbs off zero names a writer that started producing residue again —
+    which is what the tally gate at the write door exists to stop."""
+    counts = residue_counts(vault) if vault is not None else None
+    if counts is None:
+        return Reading.unavailable("residue", "no memory/ under the vault",
+                                   source="memory/<class>/ walk")
+    total = sum(counts.values())
+    present = [f"{name} {n}" for name, n in counts.items() if n]
+    return Reading.measured("residue", total, source="memory/<class>/ walk",
+                            note=(" · ".join(present) if present
+                                  else "no tally, fragment, blurb, supplement, `proposed`, "
+                                       "`deleted` or `~dup` in the classes"))
+
+
 def section_corpus(vault: "Path | None" = None, *, today=None) -> Section:
     """How much memory there is, and how much of it is waiting."""
     s = Section("The corpus", blurb=(
         "How much there is, and how much of it is still waiting to be filed."))
     s.readings.append(_class_reading(vault))
+    s.readings.append(_residue_reading(vault))
     s.readings.append(_needs_review_reading(vault))
     s.readings.append(_writes_reading(vault, today=today))
     s.readings.append(_lifecycle_reading(vault, today=today))

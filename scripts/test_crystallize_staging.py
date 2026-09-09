@@ -14,6 +14,7 @@ Run: python3 scripts/test_crystallize_staging.py
 from __future__ import annotations
 
 import sys
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -54,8 +55,21 @@ class TestStageCandidate(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self.tmp.name) / "vault"
+        # Staging lives in the engine state dir, not the vault (filing-v2 2a),
+        # so without this these count whatever the operator's own daemon has
+        # staged — green on a fresh machine, red on a working one.
+        self._state = os.environ.get("AGENTM_STATE_DIR")
+        os.environ["AGENTM_STATE_DIR"] = str(Path(self.tmp.name) / "state")
 
     def tearDown(self) -> None:
+        if self._state is None:
+            os.environ.pop("AGENTM_STATE_DIR", None)
+        else:
+            os.environ["AGENTM_STATE_DIR"] = self._state
+        if self._state is None:
+            os.environ.pop("AGENTM_STATE_DIR", None)
+        else:
+            os.environ["AGENTM_STATE_DIR"] = self._state
         self.tmp.cleanup()
 
     def test_first_fire_stages_a_candidate_with_a_transcript_pointer(self) -> None:
@@ -150,6 +164,21 @@ class TestStagingDirnameHasOneMeaning(unittest.TestCase):
     assert they are one string.
     """
 
+    def setUp(self) -> None:
+        # Staging is read from the engine state dir, not the vault the tests
+        # build, so without this the counts below include whatever the
+        # operator's own daemon has staged.
+        self._tmp = tempfile.TemporaryDirectory()
+        self._state = os.environ.get("AGENTM_STATE_DIR")
+        os.environ["AGENTM_STATE_DIR"] = str(Path(self._tmp.name) / "state")
+
+    def tearDown(self) -> None:
+        if self._state is None:
+            os.environ.pop("AGENTM_STATE_DIR", None)
+        else:
+            os.environ["AGENTM_STATE_DIR"] = self._state
+        self._tmp.cleanup()
+
     def _load(self, rel_dir: str, module_name: str):
         path = _HERE.parent / rel_dir
         if str(path) not in sys.path:
@@ -201,8 +230,14 @@ class TestResolveTranscriptForStaging(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.harness_dir = self.root / ".harness"
+        self._state = os.environ.get("AGENTM_STATE_DIR")
+        os.environ["AGENTM_STATE_DIR"] = str(Path(self.tmp.name) / "state")
 
     def tearDown(self) -> None:
+        if self._state is None:
+            os.environ.pop("AGENTM_STATE_DIR", None)
+        else:
+            os.environ["AGENTM_STATE_DIR"] = self._state
         self.tmp.cleanup()
 
     def _live_transcript(self, name: str) -> Path:
@@ -300,8 +335,14 @@ class TestStageCrystallizationCandidate(unittest.TestCase):
         self.vault.mkdir()
         self.project_root = self.root / "proj"
         self.project_root.mkdir()
+        self._state = os.environ.get("AGENTM_STATE_DIR")
+        os.environ["AGENTM_STATE_DIR"] = str(Path(self.tmp.name) / "state")
 
     def tearDown(self) -> None:
+        if self._state is None:
+            os.environ.pop("AGENTM_STATE_DIR", None)
+        else:
+            os.environ["AGENTM_STATE_DIR"] = self._state
         self.tmp.cleanup()
 
     def _transcript(self, name: str = "t.jsonl") -> Path:

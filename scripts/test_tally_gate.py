@@ -61,9 +61,11 @@ class TheTallyGate(unittest.TestCase):
             self.assertIsNone(filing_engine.TALLY_TEMPLATE_RE.search(body), body)
 
     def test_the_gate_matches_the_purged_population(self):
-        # the same sentence the purge lane's manifest-A predicate recognises
-        import purge
-        self.assertTrue(purge._TALLY_RE.search(TEMPLATE))
+        # the same sentence manifest A's predicate recognises. The shapes live in
+        # `residue_shapes`, which the purge lane and the scorecard both read; the
+        # gate cannot import the purge lane itself (operator-only).
+        import residue_shapes
+        self.assertTrue(residue_shapes._TALLY_RE.search(TEMPLATE))
         self.assertTrue(filing_engine.TALLY_TEMPLATE_RE.search(TEMPLATE))
 
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import sys
+import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -121,17 +122,28 @@ class CountCrystallizeCandidatesTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
+        # Staging lives in the engine state dir, not the vault (filing-v2 2a).
+        # The conftest points $AGENTM_STATE_DIR at a tmp dir under pytest, but
+        # check-all.sh runs this battery with `python3 -m unittest`, which loads
+        # no conftest — so set it here too, or these read the operator's real
+        # state dir and go red the moment a daemon has staged anything.
+        self._state = os.environ.get("AGENTM_STATE_DIR")
+        os.environ["AGENTM_STATE_DIR"] = str(Path(self._tmp.name) / "state")
 
     def tearDown(self):
+        if self._state is None:
+            os.environ.pop("AGENTM_STATE_DIR", None)
+        else:
+            os.environ["AGENTM_STATE_DIR"] = self._state
         self._tmp.cleanup()
 
     def test_zero_when_missing(self):
         self.assertEqual(sb.count_crystallize_candidates(self.vault), 0)
 
     def test_counts_staged_candidates(self):
-        # Staging left the vault for the engine state dir (filing-v2 2a); the
-        # suite conftest points $AGENTM_STATE_DIR at a tmp dir, so the reader
-        # and this fixture meet there.
+        # Staging left the vault for the engine state dir (filing-v2 2a), so the
+        # reader and this fixture meet at $AGENTM_STATE_DIR, which setUp points
+        # at a tmp dir.
         staging = sb._engine_state_dir() / "crystallize-staging"
         staging.mkdir(parents=True)
         (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
@@ -171,8 +183,17 @@ class BuildBriefTests(unittest.TestCase):
         self.vault.mkdir()
         self.park = self.tmp / "park"
         self.hist = self.tmp / "digest-history.jsonl"
+        # The crystallize clause reads staging out of the engine state dir, which
+        # is the operator's real one unless this says otherwise — see the note in
+        # CountCrystallizeCandidatesTests.
+        self._state = os.environ.get("AGENTM_STATE_DIR")
+        os.environ["AGENTM_STATE_DIR"] = str(self.tmp / "state")
 
     def tearDown(self):
+        if self._state is None:
+            os.environ.pop("AGENTM_STATE_DIR", None)
+        else:
+            os.environ["AGENTM_STATE_DIR"] = self._state
         self._tmp.cleanup()
 
     def _brief(self, **kw):

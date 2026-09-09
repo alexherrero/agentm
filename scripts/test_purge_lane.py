@@ -176,7 +176,10 @@ class TheRuledPopulations(_Vault):
     def test_each_population_claims_its_own_shape(self):
         a = self._note("procedural", "tally.md", "The `Bash` tool was invoked 92 times during this session.",
                        title="Bash 92")
-        d = self._note("semantic", "blurb.md", "A distributed file system.", title="3FS", tags="[skill-discovery]")
+        # a blurb carries the ingest's rubric stamp; that is what tells it from
+        # the research corpus, which arrives through the same fetch path
+        d = self._note("semantic", "blurb.md", "A distributed file system.", title="3FS",
+                       tags="[skill-discovery]", rubric_score="2", evaluator_classification="MEDIUM")
         c = self._note("procedural", "fix.md", "Fix observed: the cache was stale.", title="stale cache")
         e = self._note("crystallized", "supp.md", "User stated: never freeform.", kind="opinion-supplement")
         b = self._note("semantic", "frag.md", "User stated: always squash merges.", title="squash")
@@ -232,6 +235,39 @@ class TheRuledPopulations(_Vault):
         m = purge.write_manifest(self.vault, rows, criteria={"population": "F"}, out_dir=self.top / "m")
         self.assertEqual(purge.apply(self.vault, m, confirm_count=1), 1)
         self.assertFalse((self.vault / rel).exists())
+
+    def test_the_research_corpus_is_not_a_skill_discovery_blurb(self):
+        """A regression, paid for on 2026-09-09.
+
+        The ingest's blurbs and the authored research corpus both arrive through
+        the fetch path and both carry `source: external-fetch`. Selecting D on
+        the source swept nine research notes — the frozen gold set's whole
+        `research-corpus` stratum — into the purge; they were restored from the
+        baseline commit. Only the ingest writes a rubric score, so that is what
+        D selects on now.
+        """
+        blurb = self._note("semantic", "3fs.md", "A distributed file system.\n\nSource: https://x",
+                           title="3FS", tags="[skill-discovery, web]", source="external-fetch",
+                           evaluator_classification="MEDIUM", rubric_score="2")
+        research = self._note(
+            "semantic", "read-all-versus-search.md",
+            "Inference from comparing the Always-On agent to agentm. Handing an LLM every "
+            "memory beats any retrieval step when the corpus fits the context window.",
+            title="Read-all versus search is a corpus-size decision, not a quality one",
+            tags="[design-judgment, memory-architecture, retrieval, scaling]",
+            aliases='["is rag necessary at small scale"]', source="external-fetch")
+        claimed = purge.classify_populations(self.vault)
+        self.assertEqual(claimed.get(blurb), "D")
+        self.assertNotIn(research, claimed,
+                         "an authored research note was claimed for purge; only the ingest's "
+                         "rubric-scored blurbs belong to D")
+
+    def test_a_blurb_needs_the_ingest_stamp_and_its_tag(self):
+        # the stamp alone is not enough: something else scoring a note does not
+        # make it the ingest's.
+        scored_elsewhere = self._note("semantic", "other.md", "a note", title="o",
+                                      rubric_score="2", source="conversation")
+        self.assertNotIn(scored_elsewhere, purge.classify_populations(self.vault))
 
     def test_the_ruled_counts_are_recorded_beside_each_population(self):
         self.assertEqual({k: v[1] for k, v in purge.POPULATIONS.items()},
