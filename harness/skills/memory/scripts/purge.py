@@ -71,6 +71,32 @@ def select(vault: "Path | str", *, lifecycle: str = "archived", older_than_days:
     return rows
 
 
+# --- the six ruled residue populations (agentm-vault, landing group 02) ------
+#
+# The shapes live in `residue_shapes`, not here. The corpus scorecard counts
+# residue every night and must not import this module — `test_no_automated_caller`
+# holds that the purge lane is the operator's alone — so both read one definition
+# from a module that only classifies and never deletes.
+from residue_shapes import POPULATIONS, CLAIM_ORDER, classify as classify_populations  # noqa: E402,F401
+
+
+def select_population(vault: "Path | str", letter: str, *, claimed: "dict | None" = None) -> list:
+    """Today's rows for one ruled population, in the manifest shape `apply` reads."""
+    letter = letter.upper()
+    if letter not in POPULATIONS:
+        raise RefusedPurge(f"no such population {letter!r}; the ruled six are {', '.join(sorted(POPULATIONS))}")
+    vault = Path(vault)
+    claimed = classify_populations(vault) if claimed is None else claimed
+    rows = []
+    for rel in sorted(r for r, L in claimed.items() if L == letter):
+        text = (vault / rel).read_text(encoding="utf-8")
+        fm, _ = _frontmatter(text)
+        rows.append({"rel": rel, "title": str(fm.get("title") or Path(rel).stem),
+                     "lifecycle": lt.lifecycle_of(text), "since": str(fm.get("lifecycle_since") or "")[:10],
+                     "status": str(fm.get("status") or ""), "sha256": _hash(text)})
+    return rows
+
+
 def inbound_links(vault: "Path | str", rels: list) -> list:
     """Wikilinks elsewhere in the vault that still resolve to a row's stem —
     what a purge would break. Reported, never acted on."""
@@ -140,6 +166,9 @@ def main(argv=None) -> int:
     s = sub.add_parser("select", help="write the manifest of what a purge would delete (deletes nothing)")
     s.add_argument("--lifecycle", default="archived", choices=lt.STATES)
     s.add_argument("--older-than-days", type=int, help="only memories in that state at least this long (by lifecycle_since)")
+    s.add_argument("--population", help="re-select one ruled residue population (A-F) instead of a lifecycle state")
+    s.add_argument("--expect-count", type=int,
+                   help="the ruled count; select exits 4 and refuses when today's count differs")
     s.add_argument("--report-dir", help="where the manifest goes (default: <vault>/diagnostics/migrations/purge/<ts>)")
     a_ = sub.add_parser("apply", help="delete exactly what a manifest lists, on a matching confirmed count")
     a_.add_argument("--manifest", required=True)
@@ -147,10 +176,38 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     vault = Path(a.vault)
     if a.cmd == "select":
-        rows = select(vault, lifecycle=a.lifecycle, older_than_days=a.older_than_days)
-        path = write_manifest(vault, rows, criteria={"lifecycle": a.lifecycle, "older_than_days": a.older_than_days},
-                              out_dir=a.report_dir)
+        if a.population:
+            letter = a.population.upper()
+            if letter not in POPULATIONS:
+                print(f"purge refused: no such population {a.population!r}; the ruled six are "
+                      f"{', '.join(sorted(POPULATIONS))}", file=sys.stderr)
+                return 2
+            title, ruled, _, _ = POPULATIONS[letter]
+            rows = select_population(vault, letter)
+            expected = a.expect_count if a.expect_count is not None else ruled
+            matches = len(rows) == expected
+            criteria = {"population": letter, "title": title, "ruled_count": ruled,
+                        "expected_count": expected, "fresh_count": len(rows), "count_matches": matches}
+        else:
+            rows = select(vault, lifecycle=a.lifecycle, older_than_days=a.older_than_days)
+            expected, matches, criteria = None, True, {"lifecycle": a.lifecycle,
+                                                       "older_than_days": a.older_than_days}
+        path = write_manifest(vault, rows, criteria=criteria, out_dir=a.report_dir)
         links = json.loads(path.read_text(encoding="utf-8"))["inbound_links"]
+        if a.population:
+            letter = a.population.upper()
+            title = POPULATIONS[letter][0]
+            print(f"population {letter} ({title}): fresh {len(rows)}, ruled {expected}"
+                  f"{'' if matches else '  <-- MOVED'}; {len(links)} inbound link(s) would break; "
+                  f"manifest at {path}.")
+            if not matches:
+                print(f"purge refused: population {letter} counted {len(rows)} today against the ruled "
+                      f"{expected}. The corpus moved under the ruling; re-rule it before running. "
+                      f"Nothing deleted.", file=sys.stderr)
+                return 4
+            print(f"Nothing deleted. To apply: purge.py --vault {vault} apply --manifest {path} "
+                  f"--confirm-count {len(rows)}")
+            return 0
         print(f"{len(rows)} memor{'y' if len(rows) == 1 else 'ies'} selected, {len(links)} inbound link(s) would break; "
               f"manifest at {path}. Nothing deleted. To apply: purge.py --vault {vault} apply --manifest {path} "
               f"--confirm-count {len(rows)}")

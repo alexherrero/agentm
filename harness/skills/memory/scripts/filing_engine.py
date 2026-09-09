@@ -115,6 +115,28 @@ _NEGATIVE = frozenset({"never", "don't", "do not", "must not", "should not"})
 _CLAUSE_END = re.compile(r"\s+[—–-]\s+|[,;:.!?]|\s+\(|\s+(?:because|since|unless|so that|when|if)\b", re.I)
 
 
+# The retired miner's tool-tally template. Its whole body was a placeholder —
+# "The `Bash` tool was invoked 2592 times during this session. If this
+# represents a repeatable workflow, capture the sequence + when to use it." —
+# and nothing ever captured the sequence: 292 of them were purged as manifest A
+# (agentm-vault, landing group 02). The miner is resolved relative to the
+# session's working directory, so a worktree cut from an older base still runs
+# the old one. The gate is here, at the door, rather than in the writer: a
+# stale writer cannot be recalled, and a refused write is the only thing that
+# holds whatever the session is running.
+#
+# Deliberately narrow — the template, not any note that counts something. A
+# write door that guesses costs a real capture; this one only recognises the
+# sentence the miner emitted.
+TALLY_TEMPLATE_RE = re.compile(
+    r"The `[^`]+` tool was invoked \d+ times during this session\.",
+)
+
+
+class RefusedTally(ValueError):
+    """A write whose body is the retired miner's tool tally."""
+
+
 def _tokens(text: str) -> list:
     return [w for w in _WORD.findall(text.casefold()) if w not in _STOP]
 
@@ -306,6 +328,11 @@ def decide(vault: "Path | str", *, title: str, body: str, slug: str, type_hint: 
            kind_hint: "str | None" = None, confidence: "str | None" = None, source: "str | None" = None,
            rules=None, corpus: "CorpusIndex | None" = None, search=None, near_threshold: float = 0.6) -> FilingDecision:
     vault = Path(vault)
+    if TALLY_TEMPLATE_RE.search(f"{title}\n{body}"):
+        raise RefusedTally(
+            "this body is the retired miner's tool-tally template, which counts a tool "
+            "without recording the sequence or when to use it. It is not filed. If there "
+            "is a workflow here, capture the steps.")
     rules = rules or storage_rules.rules()
     corpus = corpus or CorpusIndex(vault)
     mtype, reasons = _resolve_type(rules, type_hint, kind_hint)
