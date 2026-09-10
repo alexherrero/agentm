@@ -41,10 +41,6 @@ type Eligibility struct {
 	// this package does not depend on the rules package, and so a test can
 	// state the rule it is testing.
 	MayRead func(rel string) bool
-	// Statuses are the statuses a note must carry to be enriched. A note that
-	// is already `active` has been judged; re-enriching it would overwrite a
-	// decision with a guess.
-	Statuses map[string]bool
 	// ForbiddenDirs are path segments enrichment may never write into. The
 	// three derived classes: `entities/`, `crystallized/` and `mocs/` are
 	// produced by other passes from notes enrichment already touched, so
@@ -55,8 +51,7 @@ type Eligibility struct {
 // DefaultEligibility is the shipped rule set.
 func DefaultEligibility(mayRead func(string) bool) *Eligibility {
 	return &Eligibility{
-		MayRead:  mayRead,
-		Statuses: map[string]bool{"unfiled": true, "inbox": true},
+		MayRead: mayRead,
 		ForbiddenDirs: map[string]bool{
 			"entities": true, "crystallized": true, "mocs": true,
 		},
@@ -76,15 +71,53 @@ func (g *Eligibility) Check(_ context.Context, req Request, body string) error {
 				ErrNotEligible, seg)
 		}
 	}
-	status := frontmatterValue(body, "status")
-	if len(g.Statuses) > 0 && !g.Statuses[strings.ToLower(status)] {
-		if status == "" {
-			status = "(none)"
-		}
-		return fmt.Errorf("%w: status is %s, not one waiting to be filed",
-			ErrNotEligible, status)
-	}
+	// No status check. Eligibility is a question about the stamp, not about
+	// the verdict — see PassDepth. What this replaces refused any note that
+	// was not `unfiled`, on the reasoning that an `active` note had been
+	// judged; the corpus then held 283 notes that had been enriched and scored
+	// below the floor, and a further set that was `active` because a writer
+	// asserted it rather than because anything read it. Status said nothing
+	// about whether the pass had run.
 	return nil
+}
+
+// Depth says how much of the pass a note is owed.
+type Depth int
+
+const (
+	// DepthDeep is the whole pass. A note with no `enriched_at` has never been
+	// through it, whatever its status says.
+	DepthDeep Depth = iota
+	// DepthLight is the pass over a note that has been enriched before and has
+	// moved since. Its shape is the night's to decide; what is decided here is
+	// which notes are owed which.
+	DepthLight
+)
+
+func (d Depth) String() string {
+	switch d {
+	case DepthDeep:
+		return "deep"
+	case DepthLight:
+		return "light"
+	}
+	return fmt.Sprintf("depth(%d)", int(d))
+}
+
+// PassDepth reads the stamp and says what the note is owed.
+//
+// The third case — enriched before and unchanged since — is not this
+// function's to answer and is deliberately not one of its return values. The
+// fingerprint gate already refuses it for free, keyed on the pass version, the
+// rules hash and the body together, so a note that has genuinely not moved
+// costs zero model calls and a note whose *prompt* moved is correctly owed
+// another pass. Answering it twice, in two places, is how the two answers
+// start to disagree.
+func PassDepth(body string) Depth {
+	if strings.TrimSpace(frontmatterValue(body, "enriched_at")) == "" {
+		return DepthDeep
+	}
+	return DepthLight
 }
 
 // --- 2. privacy -------------------------------------------------------------

@@ -60,6 +60,11 @@ type Request struct {
 	Raw string
 	// Trigger says which moment this run belongs to.
 	Trigger Trigger
+	// Depth is how much of the pass this note is owed, read from its stamp by
+	// PassDepth. Set by the pass itself just before the gates run, so a caller
+	// cannot ask for a deep pass over a note that has already had one — the
+	// note's own frontmatter decides, and it is the only thing that does.
+	Depth Depth
 }
 
 // Outcome is what one run did, and it distinguishes three things a caller would
@@ -222,6 +227,9 @@ func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 		out.Elapsed = time.Since(started)
 		return out, nil
 	}
+
+	// What this note is owed, from its own stamp rather than from the caller.
+	req.Depth = PassDepth(req.Raw)
 
 	// The concurrency bound, taken here rather than at a fan-out helper. It
 	// used to sit in the eager trigger, which is where the fan-out was; with
