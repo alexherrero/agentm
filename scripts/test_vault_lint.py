@@ -108,7 +108,7 @@ class TestGateAndParse(unittest.TestCase):
             self.assertEqual(len(model.entries), 0)
 
     def test_opinions_dir_skipped(self):
-        # Accumulate-loop supplement lanes (reflect._save_candidate_to_opinions)
+        # Accumulate-loop supplement lanes (whose writer has since retired)
         # carry the full agent-shaped trio but a bespoke schema — timestamp
         # `created:`, no updated/tags/group — so without the exclusion every
         # lane entry floods the lint with false findings. And a served

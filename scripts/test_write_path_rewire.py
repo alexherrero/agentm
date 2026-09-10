@@ -87,47 +87,62 @@ class TheReflectLanesFileAtClass(_Vault):
         self.assertEqual(fm["lifecycle"], "active")
         self.assertEqual(fm["source"], "conversation")
         self.assertEqual(fm["filing_confidence"], "high")
+        # The card the miner files is still a candidate for the night: the
+        # miner can see that a sentence was meant to last, not why it was
+        # kept, and only a writer that knows may write a `why`.
+        self.assertEqual(fm["status"], "unfiled")
+        self.assertNotIn("why", fm)
         self._no_staging_dir()
 
-    def test_a_low_candidate_is_filed_flagged_not_staged(self):
-        # The soft inbox: the note is home, `filing_confidence: low` is what
-        # the needs-review reading selects on, and `status: unfiled` says
-        # plainly that nothing has judged it — the miner is a candidate lane,
-        # so nothing it files claims a verdict.
+    def test_a_low_candidate_becomes_a_trace_line_and_never_a_note(self):
+        # Enrichment read 283 of these fragments and scored 85 of them at 0.2
+        # or below. A fragment does not become a memory by being rewritten;
+        # the line lives under the session trace's `## Candidates` instead.
         stats = self._route([_cand("User stated: the vault root sits outside the checkout.",
                                    confidence="LOW", slug="vault-root-outside")])
-        self.assertEqual(stats["filed_low"], 1, stats)
+        self.assertEqual(stats["candidates"], 1, stats)
         self.assertEqual(stats["auto_saved"], 0)
-        self.assertEqual(self._filed(), ["memory/semantic/vault-root-outside.md"])
-        fm = _frontmatter(self.root / "memory/semantic/vault-root-outside.md")
-        self.assertEqual(fm["type"], "preference")
-        self.assertEqual(fm["filing_confidence"], "low")
-        self.assertEqual(fm["status"], "unfiled")
+        self.assertEqual(stats["filed_low"], 0)
+        self.assertEqual(self._filed(), [])
         self._no_staging_dir()
 
+    def test_a_medium_candidate_becomes_a_trace_line_in_every_mode(self):
+        # The three route modes existed to decide what happened to a MEDIUM.
+        for mode in (reflect.ROUTE_MODE_AUTO, reflect.ROUTE_MODE_SILENT,
+                     reflect.ROUTE_MODE_INTERACTIVE):
+            with self.subTest(mode=mode):
+                stats = self._route([_cand("User stated: prefer rebasing.", confidence="MEDIUM",
+                                           slug=f"prefer-rebasing-{mode}")], mode=mode)
+                self.assertEqual(stats["candidates"], 1, stats)
+                self.assertEqual(self._filed(), [])
+
     def test_a_machine_session_is_a_tag_and_the_transport_stays_conversation(self):
-        # L1 ruling 8 asked for the origin on every low-confidence entry so a
-        # bulk review can batch a flood. `source:` is the contract's transport
-        # vocabulary now, so the origin rides as a tag instead.
-        self._route([_cand("User stated: prefer short commit subjects.", slug="short-subjects")],
-                    source="machine-session")
+        # L1 ruling 8 asked for the origin on every entry so a bulk review can
+        # batch a flood. `source:` is the contract's transport vocabulary now,
+        # so the origin rides as a tag instead.
+        self._route([_cand("User stated: prefer short commit subjects.", confidence="HIGH",
+                           slug="short-subjects")], source="machine-session")
         fm = _frontmatter(self.root / "memory/semantic/short-subjects.md")
         self.assertEqual(fm["source"], "conversation")
         self.assertIn("machine-session", fm.get("tags", ""))
 
     def test_the_per_session_cap_still_bounds_low_confidence_filings(self):
-        cands = [_cand(f"User stated: observation number {i}.", slug=f"obs-{i}") for i in range(4)]
-        stats = self._route(cands, max_inbox=2)
-        self.assertEqual(stats["filed_low"], 2, stats)
+        # Ideas are the low-confidence filings that remain, and the cap that
+        # kept a machine session from burying the operator still bounds them.
+        ideas = [_cand(f"What if the digest ran per project, take {i}?",
+                       category="idea", slug=f"digest-{i}") for i in range(4)]
+        stats = self._route([], ideas=ideas, max_inbox=2)
+        self.assertEqual(stats["ideas_filed"], 2, stats)
         self.assertEqual(stats["capped"], 2, stats)
         self.assertEqual(len(self._filed()), 2)
 
     def test_a_repeat_is_a_noop_that_reinforces_not_a_second_file(self):
-        c = _cand("User stated: the build machine has two GPUs.", slug="two-gpus")
+        c = _cand("User stated: the build machine has two GPUs.", confidence="HIGH", slug="two-gpus")
         self._route([c])
-        stats = self._route([_cand("User stated: the build machine has two GPUs.", slug="two-gpus")])
+        stats = self._route([_cand("User stated: the build machine has two GPUs.",
+                                   confidence="HIGH", slug="two-gpus")])
         self.assertEqual(stats["deduped"], 1, stats)
-        self.assertEqual(stats["filed_low"], 0)
+        self.assertEqual(stats["auto_saved"], 0)
         self.assertEqual(self._filed(), ["memory/semantic/two-gpus.md"])
 
     def test_an_idea_files_as_type_idea(self):

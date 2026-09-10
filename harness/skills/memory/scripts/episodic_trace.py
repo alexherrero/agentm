@@ -307,12 +307,44 @@ def default_history_path() -> Path:
     return Path.home() / ".cache" / "agentm" / "telemetry" / "recall-history.jsonl"
 
 
+def mined_candidates(messages: list) -> list:
+    """The lines the miner will not file: every candidate below HIGH, as
+    `{"rule", "excerpt", "count"}`.
+
+    Mined here rather than handed over from the routing pass, because the two
+    run as separate processes from the Stop hook and `mine_transcript` is
+    deterministic over the same transcript — reading it twice is cheaper than
+    passing a candidate list between them, and it keeps the trace buildable
+    from the transcript alone. A HIGH candidate is not listed: it becomes a
+    card, and a record that says both would double-count it.
+    """
+    try:
+        import reflect
+        mined = reflect.mine_transcript_messages(messages)
+    except Exception:
+        # A miner failure must never cost the trace: the sections above it are
+        # the handoff, and this one is the appendix.
+        return []
+    out = []
+    for c in mined.get("memory_candidates") or []:
+        if getattr(c, "confidence", "") == "HIGH":
+            continue
+        out.append({
+            "rule": getattr(c, "rationale", "") or "",
+            "excerpt": (getattr(c, "excerpts", None) or [getattr(c, "title", "")])[0],
+            "count": getattr(c, "occurrences", 1),
+        })
+    return out
+
+
 def from_transcript(transcript_path: Path, *, session_id: str, when: date = None,
                     history_path: Path = None, project: str = "", surface: str = "",
                     candidates: list = None) -> Trace:
     import reflect  # the sidecar's own transcript reader, so both read one shape
 
     messages = reflect.load_messages(Path(transcript_path))
+    if candidates is None:
+        candidates = mined_candidates(messages)
     pending: dict = {}
     captured: list = []
     recalled: list = []

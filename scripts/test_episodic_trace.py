@@ -187,6 +187,45 @@ class TheHandoffRecord(unittest.TestCase):
         self.assertEqual(trace.touched, [])
         self.assertIsNotNone(et.write_trace(self.vault, trace))
 
+    def test_the_trace_mines_its_own_candidates_when_none_are_handed_over(self):
+        """The miner and the trace run as separate processes from the Stop
+        hook, so the trace mines the transcript itself rather than having a
+        list passed between them. HIGH is excluded — it becomes a card, and a
+        record that said both would double-count it."""
+        rows = self.transcript.read_text(encoding="utf-8").rstrip("\n").split("\n")
+        rows.insert(1, _line("user", [{"type": "text", "text":
+                                       "I prefer short commit subjects on this repo."}],
+                             "2026-09-05T10:00:01Z"))
+        self.transcript.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+        trace = self._trace()
+        self.assertTrue(trace.candidates, "the trace mined nothing it could list")
+        rules = {c["rule"] for c in trace.candidates}
+        self.assertIn("explicit preference statement (no durability cue)", rules)
+        body = (self.vault / et.write_trace(self.vault, trace)).read_text(encoding="utf-8")
+        self.assertIn("## Candidates", body)
+        self.assertIn("short commit subjects", body)
+
+    def test_a_high_candidate_is_not_listed_because_it_becomes_a_card(self):
+        import reflect
+        messages = [
+            {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text":
+                "I prefer that we always squash-merge on this repo."}]}},
+            {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text":
+                "I want the summary at the top."}]}},
+        ]
+        mined = reflect.mine_transcript_messages(messages)["memory_candidates"]
+        tiers = {c.confidence for c in mined}
+        self.assertIn("HIGH", tiers, "the fixture no longer produces a HIGH candidate")
+
+        high = [c for c in mined if c.confidence == "HIGH"]
+        listed = et.mined_candidates(messages)
+        self.assertTrue(listed)
+        # By rule, not by sentence: two patterns can fire on one sentence, so
+        # the same words legitimately appear as both a card and a line.
+        self.assertNotIn(high[0].rationale, [c["rule"] for c in listed])
+        self.assertEqual(len(listed), len(mined) - len(high))
+
     def test_a_session_with_no_closing_prose_gets_no_outcome(self):
         """A final turn that is nothing but tool calls has no recap, and a
         manufactured one would be worse than none."""

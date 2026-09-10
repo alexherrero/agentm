@@ -223,17 +223,20 @@ def _extract_text(msg: dict) -> str:
 # characters; everything else, 8,266.
 #
 # The filter is layered, precise signals first, heuristic last:
-#   1. `origin.kind` — the host's own attribution. Decides outright, in BOTH
-#      directions, when present. Only ~10% of transcripts carry it today.
+#   1. `origin.kind` — the host's own attribution. Decides outright in ONE
+#      direction: a message the host says a person did not send is not mined.
+#      A human stamp is not the converse, because the stamp names who *sent*
+#      the message and the ceiling below is about who *wrote* it. Only ~10% of
+#      transcripts carry it today.
 #   2. `isMeta` — Claude Code's flag for injected content. Precise, but set on
 #      only ~6% of the messages that produce matches.
 #   3. Envelope stripping — remove injected blocks from an otherwise real
 #      message, so a typed sentence with a reminder stapled to it still mines
 #      on the typed half rather than being thrown away whole.
-#   4. A length ceiling on what survives. This one IS a heuristic and is named
-#      as such: at 4,000 characters it keeps 99% of the human-attributed
-#      messages in the sample and drops 80% of the rest. It is the last resort,
-#      reached only when nothing above could say who was speaking.
+#   4. A length ceiling on what survives, applied to everything that gets this
+#      far. This one IS a heuristic and is named as such: at 4,000 characters
+#      it keeps 99% of the human-attributed messages in the sample and drops
+#      80% of the rest.
 MAX_OPERATOR_UTTERANCE_CHARS = int(
     os.environ.get("AGENTM_MAX_OPERATOR_UTTERANCE_CHARS", "").strip() or 4000
 )
@@ -282,16 +285,18 @@ def _operator_text(msg: dict) -> str:
     if _HANDOFF_MARKER_KEY in _extract_text(msg):
         return ""
     origin = msg.get("origin")
-    if isinstance(origin, dict) and origin.get("kind"):
-        # The host said who spoke. Believe it, both ways — a long message
-        # positively attributed to a person is a long message a person wrote,
-        # and the ceiling below must not override that.
-        if origin.get("kind") != "human":
-            return ""
-        return _strip_envelopes(_extract_text(msg))
+    if isinstance(origin, dict) and origin.get("kind") and origin.get("kind") != "human":
+        # The host said someone other than a person sent this. Believe it.
+        return ""
     if msg.get("isMeta"):
         return ""
     text = _strip_envelopes(_extract_text(msg))
+    # The ceiling applies whatever the host says about who sent it (ruling 1).
+    # The stamp says who *sent* the message, not who wrote it: a 7,684-char
+    # handoff prompt the agent wrote and the operator pasted arrives stamped
+    # `origin.kind: human`, and the labeled sample found five "User stated: …
+    # never …" preferences mined out of one. Typed messages ran to a median of
+    # 270 characters; nothing a person types by hand reaches four thousand.
     if len(text) > MAX_OPERATOR_UTTERANCE_CHARS:
         return ""
     return text
@@ -510,17 +515,25 @@ def mine_transcript(transcript_path: Path) -> dict:
       - idea_candidates: list[Candidate] for the idea-ledger pass
 
     Candidates are deduped per (category, slug) — repeated patterns bump
-    `occurrences` rather than emit duplicate candidates. Confidence is
-    initially set per pattern type; candidates with `occurrences < 3` in
-    MEDIUM-mode-initial buckets get demoted to LOW per the locked tri-modal
-    routing (a single-instance inference files at low confidence, not as a
-    reviewed one).
+    `occurrences` rather than emit duplicate candidates. Confidence is set per
+    pattern type; a MEDIUM-initial candidate seen fewer than three times is
+    demoted to LOW, and everything below HIGH is a line in the session's trace
+    rather than a note.
 
     The function is deterministic for a given transcript — same input
     produces same output. No I/O beyond reading the transcript.
     """
-    messages = load_messages(transcript_path)
+    return {"transcript_path": str(transcript_path),
+            **mine_transcript_messages(load_messages(transcript_path))}
 
+
+def mine_transcript_messages(messages: list) -> dict:
+    """`mine_transcript` over messages already in hand.
+
+    Split out for the episodic trace, which loads the same transcript to build
+    its links and would otherwise read and parse the file a second time to
+    list what the miner is not filing.
+    """
     # (category, slug) → Candidate. Dedupes repeated matches.
     seen_memory: dict[tuple[str, str], Candidate] = {}
     seen_ideas: dict[str, Candidate] = {}
@@ -666,7 +679,6 @@ def mine_transcript(transcript_path: Path) -> dict:
     )
 
     return {
-        "transcript_path": str(transcript_path),
         "messages_processed": len(messages),
         "tool_counts": dict(sorted(tool_counts.items())),
         "memory_candidates": memory_candidates,
@@ -674,27 +686,28 @@ def mine_transcript(transcript_path: Path) -> dict:
     }
 
 
-# ── Routing (plan #7a part 3 task 5) ───────────────────────────────────────
+# ── Routing ────────────────────────────────────────────────────────────────
 #
-# Tri-modal confidence routing per locked design call B2.iii:
-#   HIGH   → auto-save via save.save_entry() at canonical path
-#   MEDIUM → interactive prompt (if --route-mode=interactive AND stdin is a TTY)
-#            OR auto-save (if --route-mode=silent)
-#            OR file at class, flagged (if --route-mode=auto — the safe default)
-#   LOW    → file at class with filing_confidence: low (the soft inbox)
+#   HIGH → one card, `status: unfiled`, `why` empty. A durability cue the
+#          operator typed, under the utterance ceiling, whatever the host says
+#          about who sent it. `unfiled` because the miner is not a writer that
+#          knows: it can see that a sentence was meant to last, not why it was
+#          kept, and only a writer that knows may write a `why`. The nightly
+#          pass judges it.
+#   below → a line in the session's episodic trace, under `## Candidates`,
+#          carrying the rule that fired, the excerpt and the count. Never a
+#          note.
 #
-# Routing modes (--route-mode flag OR MEMORY_REVIEW_MODE env var):
-#   - `auto` (default): hook-safe; never prompts; MEDIUM → filed flagged. Used by
-#     Stop + idle hooks since hook contexts have no TTY.
-#   - `silent`: auto-approves MEDIUM (saves to canonical path); used when
-#     operator trusts the heuristic fully + wants zero prompts.
-#   - `interactive`: prompts for each MEDIUM candidate (only meaningful when
-#     stdin is a TTY; falls back to `auto` behavior otherwise).
+# What this replaces was a tri-modal ladder that filed MEDIUM and LOW as notes
+# at low confidence. Enrichment read 283 of the resulting fragments and scored
+# 85 of them at 0.2 or below; 572 of the 769 notes in the classes were that
+# residue. A fragment does not become a memory by being rewritten. Keeping the
+# line costs nothing and is the record of what a session said in passing —
+# and the next session's model, or dreaming, can promote from a trace with a
+# context that a nightly pass over one orphaned note never has.
 #
-# The HIGH path is unconditional auto-save — explicit user signals
-# (always X / never Y / prefer Z) are saved without prompting in all modes.
-# The LOW path always files flagged — single-instance inferences are
-# never important enough to interrupt the operator.
+# `--route-mode` / `MEMORY_REVIEW_MODE` are still accepted and no longer route
+# anything: all three modes existed to decide what happened to a MEDIUM.
 
 ROUTE_MODE_AUTO = "auto"
 ROUTE_MODE_SILENT = "silent"
@@ -758,39 +771,6 @@ _CATEGORY_TYPES = {
     "facts": "fact", "ideas": "idea", "idea": "idea",
 }
 
-_MINING_METADATA_HEADING = "\n\n## Mining metadata\n\n"
-_NUMBERED_SIBLING = re.compile(r"-(\d+)\.md$")
-
-
-def _written_body(text: str) -> str:
-    """The candidate-derived prose of an already-written note.
-
-    Both writers lay a note out the same way: frontmatter, the candidate's body,
-    then a `## Mining metadata` block. Only the body is stable across re-mines.
-    The occurrence count rises and the excerpt list grows every time a longer
-    transcript is mined again, whereas the body is cut from the FIRST match and
-    so does not move — on the live vault
-    `never-fan-out-parallel-implementers` has 132 files, five distinct
-    occurrence counts, and two distinct bodies. Comparing bodies is what makes a
-    re-mine recognizable as one; comparing whole files never would.
-
-    Read back out of the file rather than stored as a fingerprint field, so the
-    guard also matches notes written before it existed. A stored field would
-    entitle every one of the existing clusters to one more copy first.
-    """
-    _, sep, after = text.partition("\n---\n")
-    body = after if sep else text
-    return body.partition(_MINING_METADATA_HEADING)[0].strip()
-
-
-def _written_sessions(text: str) -> str:
-    """The `sessions:` frontmatter value, or "" when the note carries none."""
-    for line in text.splitlines():
-        if line.startswith("sessions:"):
-            return line[len("sessions:"):].strip()
-    return ""
-
-
 def _file_candidate(
     candidate: Candidate, vault: Path, *, source: str | None = None, corpus=None, search=None,
     stderr=sys.stderr, type_hint: str | None = None,
@@ -832,202 +812,6 @@ def _file_candidate(
         return None
 
 
-def _existing_capture(
-    directory: Path, slug: str, body: str, *, sessions: str | None = None
-) -> Path | None:
-    """The already-written note this candidate would duplicate, if any.
-
-    Scans the `<slug>.md`, `<slug>-1.md`, … family the collision handler builds,
-    by listing rather than by counting upward from zero: once redundant copies
-    start being reaped the family stops being contiguous, and a walk that halted
-    at the first gap would start writing duplicates again exactly when the
-    cleanup ran.
-
-    `sessions` is compared only when the caller passes it. The opinion lane's
-    recurrence gate promotes on two DISTINCT session ids, so deduping across
-    sessions there would delete the signal it counts.
-    """
-    candidates = [directory / f"{slug}.md"]
-    try:
-        candidates += sorted(
-            p for p in directory.glob(f"{slug}-*.md")
-            if _NUMBERED_SIBLING.search(p.name)
-        )
-    except OSError:
-        pass
-    for p in candidates:
-        try:
-            text = p.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        if _written_body(text) != body:
-            continue
-        if sessions is not None and _written_sessions(text) != sessions:
-            continue
-        return p
-    return None
-
-
-def _classify_standard_shaped(candidate: Candidate) -> str | None:
-    """Deterministic standard-shaped classifier (accumulate loop, Stage 1).
-
-    Thin wrapper so a missing sibling module degrades to today's behavior
-    rather than breaking reflection outright — reflect.py runs from a Stop
-    hook, where an ImportError would cost the session's mined candidates.
-    Returns the target opinion name, or None to route normally.
-    """
-    try:
-        from opinion_routing import classify_standard_shaped  # type: ignore  # noqa
-    except ImportError:
-        return None
-    try:
-        return classify_standard_shaped(candidate)
-    except Exception:
-        # A classifier bug must never take reflection down with it; the
-        # candidate simply routes the normal way.
-        return None
-
-
-def _save_candidate_to_opinions(
-    candidate: Candidate, vault: Path, opinion: str, *,
-    source: str | None = None, session_id: str | None = None, stderr=sys.stderr,
-) -> "Path | object | None":
-    """Save a standard-shaped candidate to the opinion supplement lane.
-
-    Accumulate loop, Stage 1 (schema extended for Stages 2-3, locked call
-    2). The target is `<vault>/personal/_opinions/<opinion>/<slug>.md` — an
-    `opinions/` area beside the always-load conventions, per the opinions
-    design's own placement sentence. Returns the saved path, or None on
-    failure.
-
-    **This never writes into a coded base opinion.** The spec's own
-    extend-never-override guard keeps `opinions/<name>.md` authoritative;
-    entries land here as candidate supplements for later triage. Stage 1
-    ships no auto-append, so the corruption ceiling is zero by construction
-    rather than by a guard that isn't built yet.
-
-    `session_id` (`reflect._session_id_from_path`, threaded down through
-    `route_candidates` — Stage 1 did not carry this) becomes the entry's
-    `sessions:` list, a single-element list on write. Dreaming's recurrence
-    gate (`opinion_supplement.py`) unions this field across a lane's
-    similarity-matched entries and promotes only once two DISTINCT session
-    ids are present — without this field there is no substrate for that
-    gate at all, so every Stage-1-era entry (written before this change)
-    permanently reads as zero sessions and can only ever contribute to,
-    never complete, a recurrence group on its own.
-    """
-    import opinion_supplement  # noqa: E402  (lazy; the leaf module is the one place the lane root is spelled)
-    lane = opinion_supplement.lane_base(vault) / opinion
-    try:
-        lane.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        print(f"[reflect.route] cannot create opinion lane {lane}: {e}", file=stderr)
-        return None
-
-    # Already supplemented? Same guard as the inbox, scoped to the session.
-    # This lane duplicated harder than the inbox did — 1,446 files carrying 191
-    # distinct contents, 86.8% redundant — and it is the substrate the
-    # recurrence gate counts, so a repeat here is worse than wasted disk: it
-    # inflates a lane toward promotion on one session's re-mines. Scoping to
-    # `sessions` keeps the two-distinct-sessions signal the gate needs intact.
-    supplement_body = f"## {candidate.title}\n\n{candidate.body}".strip()
-    duplicate = _existing_capture(
-        lane, candidate.slug, supplement_body,
-        sessions=f"[{session_id}]" if session_id else "",
-    )
-    if duplicate is not None:
-        return ALREADY_CAPTURED  # type: ignore[return-value]
-
-    target = lane / f"{candidate.slug}.md"
-    if target.exists():
-        n = 1
-        while target.exists():
-            target = lane / f"{candidate.slug}-{n}.md"
-            n += 1
-
-    excerpts_block = ""
-    if candidate.excerpts:
-        excerpts_block = "\n\n## Supporting excerpts\n\n" + "\n".join(
-            f"> {e}" for e in candidate.excerpts
-        )
-    # The title leads, unlike an inbox entry (which writes the body alone).
-    # A supplement's audience is different: an inbox entry is opened by a
-    # person who can see its filename and context, whereas a supplement gets
-    # folded into an opinion and served back to the agent as guidance, so it
-    # has to state its own rule. Dropping the title there would serve the
-    # supporting detail without the standard it supports.
-    body = (
-        f"## {candidate.title}\n\n"
-        f"{candidate.body}\n\n"
-        f"## Mining metadata\n\n"
-        f"- **Proposed supplement to**: `{opinion}`\n"
-        f"- **Category**: `{candidate.category}`\n"
-        f"- **Confidence**: `{candidate.confidence}`\n"
-        f"- **Rationale**: {candidate.rationale}\n"
-        f"- **Occurrences**: {candidate.occurrences}\n"
-        f"{excerpts_block}"
-    )
-    source_line = f"source: {source}\n" if source else ""
-    sessions_line = f"sessions: [{session_id}]\n" if session_id else ""
-    fm = (
-        "---\n"
-        "kind: opinion-supplement\n"
-        "status: proposed\n"
-        f"created: {_utcnow_iso()}\n"
-        f"slug: {target.stem}\n"
-        f"opinion: {opinion}\n"
-        f"{source_line}"
-        f"{sessions_line}"
-        f"mining_confidence: {candidate.confidence}\n"
-        f"mining_rationale: {json.dumps(candidate.rationale)}\n"
-        f"mining_occurrences: {candidate.occurrences}\n"
-        "---\n"
-    )
-    target.write_bytes((fm + "\n" + body + "\n").encode("utf-8"))
-    return target
-
-
-def _prompt_user_for_candidate(
-    candidate: Candidate, *, stdin=sys.stdin, stdout=sys.stdout
-) -> str:
-    """Display a MEDIUM-confidence candidate + prompt user for action.
-
-    Returns one of: 'approve' / 'reject' / 'skip' / 'inbox'.
-    The 'edit' + 'supersede' options from the design doc are deferred — v1
-    supports approve / reject / skip / inbox (the 4 verbs operator can
-    perform without launching $EDITOR or invoking /memory evolve mid-prompt).
-    """
-    print("", file=stdout)
-    print("─" * 72, file=stdout)
-    print(f"MEDIUM-confidence candidate ({candidate.category}):", file=stdout)
-    print(f"  slug:       {candidate.slug}", file=stdout)
-    print(f"  title:      {candidate.title[:80]}", file=stdout)
-    print(f"  rationale:  {candidate.rationale}", file=stdout)
-    print(f"  occurrences: {candidate.occurrences}", file=stdout)
-    if candidate.excerpts:
-        print(f"  excerpts:", file=stdout)
-        for ex in candidate.excerpts[:3]:
-            print(f"    > {ex[:120]}", file=stdout)
-    print("─" * 72, file=stdout)
-    print("Action: [a]pprove (save canonical) / [r]eject / [s]kip / [i]nbox (default: i)", file=stdout)
-    stdout.flush()
-    try:
-        choice = stdin.readline().strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return "skip"
-    if not choice or choice in ("i", "inbox"):
-        return "inbox"
-    if choice in ("a", "approve"):
-        return "approve"
-    if choice in ("r", "reject"):
-        return "reject"
-    if choice in ("s", "skip"):
-        return "skip"
-    # Unknown input → safe default (inbox).
-    print(f"  (unknown choice {choice!r}; defaulting to inbox)", file=stdout)
-    return "inbox"
-
-
 # L1 (ledger ruling 8): first-cut per-session inbox cap for machine-sourced
 # reflection -- coordinator/worker sessions were burying the operator's own
 # captures at hundreds/day, far above dreaming's weekly cap of 25. Untuned
@@ -1048,52 +832,50 @@ def route_candidates(
     stdout=sys.stdout,
     stderr=sys.stderr,
 ) -> dict:
-    """Route mined candidates per the tri-modal heuristic.
+    """Route mined candidates: HIGH files a card, everything below is a line
+    in the session's trace.
 
     Args:
         memory_candidates: from `mine_transcript`'s memory_candidates list
         idea_candidates: ditto idea_candidates
         vault: MemoryVault root (where save.py writes)
-        mode: 'auto' | 'silent' | 'interactive' (see module-level docstring)
-        session_id: `_session_id_from_path(transcript)` — threaded into a
-            standard-shaped candidate's opinion-supplement entry as its
-            `sessions:` list (accumulate loop, Stages 2-3, locked call 2).
-            Every caller of this function processes exactly one
-            transcript, so one id covers the whole call. `None` (e.g. a
-            caller with no transcript path) simply omits the field on
-            write — the recurrence gate then reads that entry as
-            contributing zero sessions, never an error.
+        mode: accepted for the CLI's stable interface and no longer routes
+            memory candidates — the three modes existed to decide what
+            happened to a MEDIUM, and nothing below HIGH becomes a note in
+            any of them.
+        session_id: accepted for the CLI's stable interface. It fed the
+            opinion lanes' `sessions:` field, and the lanes retired with the
+            loop that read them.
         source: optional origin tag (e.g. "machine-session"). The contract's
             `source:` field carries the transport (a mined candidate arrived
             through a conversation, whoever was driving it), so a session tag
             becomes a tag on every entry this call files — a bulk-review pass
             can still batch a machine flood by origin (L1, ruling 8).
-        max_inbox: optional cap on low-confidence filings this call (LOW +
-            auto-mode-MEDIUM + interactive-fallback + ideas, combined — the
-            metadata soft inbox the needs-review MOC reads). Candidates that
-            would exceed the cap are counted in `stats["capped"]` instead of
+        max_inbox: optional cap on the low-confidence filings this call makes
+            — ideas, now that they are the only ones. Candidates that would
+            exceed the cap are counted in `stats["capped"]` instead of
             written. None (default) = no cap.
 
     Returns stats dict:
         {
-            "auto_saved": N,       # HIGH + silent-mode-MEDIUM auto-saves
-            "approved": N,         # interactive-mode-MEDIUM user-approved saves
-            "rejected": N,         # interactive-mode-MEDIUM user-rejected
-            "skipped": N,          # interactive-mode-MEDIUM user-skipped
-            "filed_low": N,        # LOW + auto-mode-MEDIUM + interactive-fallback,
-                                   #   filed at class with filing_confidence
+            "auto_saved": N,       # HIGH candidates filed as unfiled cards
+            "candidates": N,       # everything below HIGH — a trace line, no note
             "ideas_filed": N,      # idea candidates filed as `type: idea`
             "capped": N,           # low-confidence filings skipped past max_inbox
             "deduped": N,          # already on disk from an earlier pass over
                                    #   this transcript — skipped, not written
             "refused": N,          # the volume gate shut the door (daily cap)
             "errors": N,           # save errors (e.g. slug collision)
+            "approved"/"rejected"/"skipped"/"filed_low"/"opinion_supplements":
+                                   # kept at 0 so a reader of the transparency
+                                   # line does not have to learn a new shape
+                                   # in the same release the shape changed
         }
     """
     stats = {
         "auto_saved": 0, "approved": 0, "rejected": 0,
         "skipped": 0, "filed_low": 0, "ideas_filed": 0, "capped": 0, "errors": 0,
-        "opinion_supplements": 0, "deduped": 0, "refused": 0,
+        "opinion_supplements": 0, "deduped": 0, "refused": 0, "candidates": 0,
     }
     # One corpus index and one search per pass: every candidate is judged
     # against the notes already home plus the ones this pass just filed.
@@ -1111,9 +893,10 @@ def route_candidates(
                                type_hint=type_hint)
 
     def _file_capped(c: Candidate, *, type_hint: "str | None" = None) -> bool:
-        """File a MEDIUM/LOW candidate unless max_inbox (the per-session cap on
-        machine-sourced low-confidence filings, L1) is set and already reached.
-        Returns True if written, False if capped or deduped (never raises)."""
+        """File a low-confidence candidate unless max_inbox (the per-session
+        cap on machine-sourced low-confidence filings, L1) is set and already
+        reached. Returns True if written, False if capped or deduped (never
+        raises)."""
         nonlocal low_filings_so_far
         if max_inbox is not None and low_filings_so_far >= max_inbox:
             stats["capped"] += 1
@@ -1145,61 +928,28 @@ def route_candidates(
         else:
             stats["errors"] += 1
 
-    # If interactive mode but stdin is not a TTY, fall back to auto (hook-safe).
-    if mode == ROUTE_MODE_INTERACTIVE and not stdin.isatty():
+    if mode == ROUTE_MODE_INTERACTIVE:
         print(
-            "[reflect.route] interactive mode requested but stdin is not a TTY; "
-            "falling back to auto-route (MEDIUM → filed at low confidence)",
+            "[reflect.route] interactive mode has nothing to ask about: the miner "
+            "files a card only for a HIGH candidate, and everything below it is a "
+            "line in the session's trace. To keep one, capture it with a `why`.",
             file=stderr,
         )
-        mode = ROUTE_MODE_AUTO
 
     for c in memory_candidates:
-        # Accumulate loop, Stage 1: a standard-shaped candidate — a rule
-        # about how work should be judged or done — belongs to an opinion
-        # supplement, not general memory. Checked before the confidence
-        # ladder so it can't be auto-saved into the corpus first and then
-        # need extracting back out. Classification is deterministic and
-        # deliberately narrow; anything it can't place returns None and
-        # falls through to the normal routing below, unchanged.
-        opinion = _classify_standard_shaped(c)
-        if opinion:
-            saved = _save_candidate_to_opinions(
-                c, vault, opinion, source=source, session_id=session_id, stderr=stderr
-            )
-            if saved is ALREADY_CAPTURED:
-                stats["deduped"] += 1
-            elif saved:
-                stats["opinion_supplements"] += 1
-            else:
-                stats["errors"] += 1
-            continue
         if c.confidence == "HIGH":
             _file_counted(c, "auto_saved")
             continue
-        if c.confidence == "MEDIUM":
-            if mode == ROUTE_MODE_SILENT:
-                _file_counted(c, "auto_saved")
-                continue
-            if mode == ROUTE_MODE_INTERACTIVE:
-                action = _prompt_user_for_candidate(c, stdin=stdin, stdout=stdout)
-                if action == "approve":
-                    _file_counted(c, "approved")
-                elif action == "reject":
-                    stats["rejected"] += 1
-                elif action == "skip":
-                    stats["skipped"] += 1
-                else:  # file it, flagged for review
-                    if _file_capped(c):
-                        stats["filed_low"] += 1
-                continue
-            # Default route mode: MEDIUM → filed at its class, medium confidence
-            if _file_capped(c):
-                stats["filed_low"] += 1
-            continue
-        # LOW → filed at its class, low confidence — the metadata soft inbox
-        if _file_capped(c):
-            stats["filed_low"] += 1
+        # Everything below HIGH stays a line in the session's trace and never
+        # becomes a note, in every mode. Enrichment read 283 of these fragments
+        # and scored 85 of them at 0.2 or below: a fragment does not become a
+        # memory by being rewritten. The record of what was said in passing is
+        # worth keeping and costs nothing — the next session's model, or
+        # dreaming, can promote from the trace with a context a nightly pass
+        # over a lone note never has. An operator who wants one kept has a
+        # better door than approving a mined fragment: `memory_capture` with a
+        # `why`, which files the card judged.
+        stats["candidates"] += 1
 
     # Idea candidates file as `type: idea` at low confidence. The ingest
     # sweep's idea fold and the ledger read them from the class directory —

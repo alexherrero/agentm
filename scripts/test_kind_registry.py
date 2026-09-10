@@ -73,11 +73,10 @@ class TestKnownKinds(unittest.TestCase):
         self.assertTrue(kr.is_known("capture"))
 
     def test_opinion_supplement_is_known(self):
-        # Accumulate loop Stage 1 (v9.1.0) already writes `kind:
-        # opinion-supplement` via reflect._save_candidate_to_opinions, but
-        # this registry never carried it -- the vault was at zero
-        # unrecognized kinds only because no standard had been mined yet
-        # (Stages 2-3 design pass, locked call 3).
+        # The lane's writer retired with the miner's below-HIGH filing, but
+        # the kind stays registered while entries written under it are still
+        # on disk and the reader half still serves them: an unrecognized kind
+        # in the corpus is a lint finding, not a cleanup.
         self.assertTrue(kr.is_known("opinion-supplement"))
 
 
