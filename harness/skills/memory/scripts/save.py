@@ -540,6 +540,20 @@ def save_entry(
             source = "conversation"
         if filing_confidence is None:
             filing_confidence = "high"
+        # One meaning for `status`, held at the write door rather than at each
+        # caller. `active` says something judged this worth keeping; `low`
+        # confidence says the writer did not know where it goes. A note
+        # carrying both claims a verdict it cannot back, and 74 notes in the
+        # corpus did exactly that — enrichment's gate never reads that state,
+        # so nothing ever revisited them. Refused loudly rather than quietly
+        # downgraded: a caller that asked for it meant something, and it
+        # should hear that it means nothing here.
+        if status == "active" and filing_confidence == "low":
+            raise ValueError(
+                "`status: active` at `filing_confidence: low` is not a state a note may "
+                "land in — `active` means something judged this, and low confidence means "
+                "the writer did not know. File it `unfiled` and let a pass judge it."
+            )
         trust = _trust_tier(source)
     else:
         trust = None

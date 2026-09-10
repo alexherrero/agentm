@@ -469,7 +469,20 @@ def apply(vault: "Path | str", decision: FilingDecision, *, body: str, tags: "li
     import volume_gate  # noqa: E402  (same skill dir)
     volume_gate.check(vault, today=_write_day(extra))
     if status is None:
-        status = "unfiled" if "no-type" in decision.flags else "active"
+        # `unfiled` for everything this lane files, whatever the type resolved
+        # to. `status` has one meaning: `unfiled` is *no judgment has been
+        # made*, `active` is *something judged this worth keeping*. Nothing
+        # reaching this function has judged anything — it is the candidate
+        # lane, fed by the miner and the ingest — and a resolved type is a
+        # filing decision, not a judgment.
+        #
+        # What this replaces wrote `active` for any note the contract could
+        # type, which stamped "judged" on 74 notes at low confidence: a state
+        # enrichment's gate never reads, so they sat claiming a verdict nobody
+        # had reached and no pass would ever reach. A knowing writer's card
+        # comes through the Go door, which decides its own status from the
+        # `why` it was given.
+        status = "unfiled"
     # The flags a reviewer acts on ride on the note itself, with the note they
     # point at, so the needs-review reading is a walk over metadata rather
     # than a replay of this decision.

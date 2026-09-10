@@ -238,6 +238,38 @@ class Applying(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertIn("occurrences: 2", (self.vault / "memory" / "semantic" / "daemon-port.md").read_text(encoding="utf-8"))
 
+    def test_every_candidate_lands_unfiled_whatever_its_type_resolved_to(self):
+        """`status` has one meaning, and this lane never gets to claim it.
+
+        What this replaces wrote `active` for any note the contract could
+        type, which is how 74 notes came to say "judged" at low confidence —
+        a state enrichment's gate never reads, so nothing ever revisited them.
+        A confidently-typed candidate is still only a candidate: the type is a
+        filing decision, not a judgment.
+        """
+        for slug, hint, confidence in (
+            ("typed-confidently", "preference", "HIGH"),
+            ("typed-uncertainly", "preference", "LOW"),
+            ("typed-by-nobody", None, "LOW"),
+        ):
+            with self.subTest(slug=slug):
+                body = f"User stated: a thing worth keeping, {slug}."
+                d = fe.decide(self.vault, title=slug.replace("-", " "), body=body, slug=slug,
+                              type_hint=hint, confidence=confidence, rules=self.rules,
+                              corpus=self.corpus)
+                text = fe.apply(self.vault, d, body=body).read_text(encoding="utf-8")
+                self.assertIn("status: unfiled\n", text)
+
+    def test_active_at_low_confidence_is_refused_at_the_write_door(self):
+        """The invariant, not just the default: a caller that reaches past
+        `apply` and asks for the retired state is told it means nothing here,
+        rather than having it quietly downgraded."""
+        import save  # noqa: E402  (the skill dir is already on sys.path)
+        with self.assertRaises(ValueError) as caught:
+            save.save_entry(self.vault, "preference", "asserted-judgment",
+                            "A judgment nothing made.", filing_confidence="low", status="active")
+        self.assertIn("filing_confidence: low", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

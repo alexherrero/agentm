@@ -90,8 +90,10 @@ class TheReflectLanesFileAtClass(_Vault):
         self._no_staging_dir()
 
     def test_a_low_candidate_is_filed_flagged_not_staged(self):
-        # The soft inbox: the note is home, and `filing_confidence: low` is
-        # what the needs-review reading selects on.
+        # The soft inbox: the note is home, `filing_confidence: low` is what
+        # the needs-review reading selects on, and `status: unfiled` says
+        # plainly that nothing has judged it — the miner is a candidate lane,
+        # so nothing it files claims a verdict.
         stats = self._route([_cand("User stated: the vault root sits outside the checkout.",
                                    confidence="LOW", slug="vault-root-outside")])
         self.assertEqual(stats["filed_low"], 1, stats)
@@ -100,7 +102,7 @@ class TheReflectLanesFileAtClass(_Vault):
         fm = _frontmatter(self.root / "memory/semantic/vault-root-outside.md")
         self.assertEqual(fm["type"], "preference")
         self.assertEqual(fm["filing_confidence"], "low")
-        self.assertEqual(fm["status"], "active")
+        self.assertEqual(fm["status"], "unfiled")
         self._no_staging_dir()
 
     def test_a_machine_session_is_a_tag_and_the_transport_stays_conversation(self):
