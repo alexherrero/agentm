@@ -15,7 +15,6 @@
 package capture
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -28,7 +27,6 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
-	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/extract"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/note"
@@ -179,19 +177,7 @@ type Capturer struct {
 	// Its own number: a flood being stopped and a contract being broken are
 	// different facts, and the status surface should say which.
 	capped atomic.Int64
-
-	// enrich is the pass fired after the transaction commits, or nil when
-	// enrichment is not configured. Held as a pointer the capture path only ever
-	// *hands work to* — it never reads a result and never waits — because the
-	// whole guarantee is that no amount of slowness here reaches a capture's
-	// latency.
-	enrich *enrich.Pass
 }
-
-// SetEnrichPass attaches the enrichment pass. Optional: a Capturer without one
-// captures exactly as it always did, which is what every test and every
-// one-shot command gets.
-func (c *Capturer) SetEnrichPass(p *enrich.Pass) { c.enrich = p }
 
 // RefusedCaptures is how many captures the missing contract has cost since boot.
 func (c *Capturer) RefusedCaptures() int64 { return c.refused.Load() }
@@ -484,15 +470,11 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	}
 	res.Indexed = true
 
-	// The transaction has committed. Enrichment starts now, out of band, and
-	// this returns without waiting — see enrich.Pass.FireEager. A note whose
-	// enrichment fails, is declined, or never starts stays exactly as written
-	// here, `unfiled`, which is the state the nightly batch pass collects.
-	if c.enrich != nil {
-		c.enrich.FireEager(context.Background(), enrich.Request{
-			Rel: rel, Raw: body, AskerPhrasing: req.Text,
-		}, nil)
-	}
+	// Capture ends here, and nothing fires from this path. The eager trigger
+	// spent a model call per note as it landed; it was never attached to a
+	// running daemon and never fired once. Enrichment is a nightly batch now —
+	// the same work in one place, under a budget, with a report — and the note
+	// waits for it exactly as written here.
 	return res, nil
 }
 

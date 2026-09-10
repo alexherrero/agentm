@@ -17,14 +17,16 @@ import (
 // guessing at a distribution it cannot see, and the guesses crowd out the terms
 // the note actually contains.
 //
-// So the rule is derivation, and it varies by trigger for one reason: at the
-// eager trigger there is an asker, and the words they used are evidence rather
-// than invention. At the batch trigger there is nobody, and an alias that cannot
-// be derived from the note is the exact thing that was measured and rejected.
+// So the rule is derivation from the note itself. It used to vary by trigger:
+// an eager run had an asker whose words counted as evidence rather than
+// invention. That trigger retired, and what is left is the half that was
+// measured — an alias that cannot be derived from the note is the exact thing
+// that was rejected.
 //
 // The cold scheduled backfill — a pass over the whole corpus writing aliases
 // with no note-level trigger at all — is banned outright, and the ban is
-// structural: there are two triggers and neither is it.
+// structural: the pass runs over notes that are owed one, and a backfill is
+// not that.
 
 // Aliases is the post-gate.
 type Aliases struct {
@@ -48,13 +50,9 @@ func (g *Aliases) Check(_ context.Context, req Request, body string) error {
 		return nil
 	}
 
-	// What counts as derivable. At the eager trigger the asking session's words
-	// join the note as evidence; at the batch trigger they do not exist and must
-	// not be substituted for by invention.
+	// What counts as derivable: the note, and nothing else. There is nobody to
+	// ask, and invention must not stand in for evidence.
 	source := sourceBody(req.Raw)
-	if req.Trigger == TriggerEager {
-		source += "\n" + req.AskerPhrasing
-	}
 
 	var invented []string
 	for _, a := range r.Aliases {
@@ -65,14 +63,8 @@ func (g *Aliases) Check(_ context.Context, req Request, body string) error {
 	if len(invented) == 0 {
 		return nil
 	}
-	if req.Trigger == TriggerEager {
-		// Should not happen — the asker's words are already folded in above — so
-		// if it does, the alias came from neither the note nor the person.
-		return fmt.Errorf("%w: %s came from neither the note nor the asker",
-			ErrNotEligible, strings.Join(quoteAll(invented), ", "))
-	}
 	return fmt.Errorf("%w: %s cannot be derived from the note, and there is no "+
-		"asker at the batch trigger; invented aliases were measured at "+
+		"asker to derive it from; invented aliases were measured at "+
 		"−3.85 R@5 (p=0.0411, six replicates)", ErrNotEligible,
 		strings.Join(quoteAll(invented), ", "))
 }

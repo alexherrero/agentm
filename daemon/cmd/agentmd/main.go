@@ -1232,7 +1232,7 @@ func cmdEnrich(args []string) error {
 			"the next page in cursor order")
 	seed := fs.Int64("seed", 0, "seed for --sample (0 picks one and prints it)")
 	yes := fs.Bool("yes", false,
-		"run this one batch even though the eager trigger is off")
+		"run this one batch even though scheduled enrichment is off")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1335,18 +1335,18 @@ func cmdEnrich(args []string) error {
 		return nil
 	}
 
-	// `daemon.enrich_enabled` governs the *eager trigger* — whether every
-	// capture fires a model call on the operator's machine. An explicit
-	// `agentmd enrich --yes` is already a deliberate act, so it does not need
-	// that switch thrown, and requiring it would mean turning on automatic
-	// enrichment in order to test enrichment once.
+	// `daemon.enrich_enabled` governs the standing behaviour — whether the
+	// nightly batch runs on its own. An explicit `agentmd enrich --yes` is
+	// already a deliberate act, so it does not need that switch thrown, and
+	// requiring it would mean turning on scheduled enrichment in order to test
+	// enrichment once.
 	//
 	// The refusal stays the default, because "I ran the command and nothing
 	// happened" is a report this project has debugged too many times.
 	if !cfg.EnrichEnabled && !*yes {
 		return fmt.Errorf("enrichment is off — pass --yes to run this one batch, " +
-			"or set daemon.enrich_enabled to arm the eager trigger for every " +
-			"capture (this refuses rather than doing nothing quietly)")
+			"or set daemon.enrich_enabled to let the nightly batch run on its own " +
+			"(this refuses rather than doing nothing quietly)")
 	}
 
 	name := cfg.EnrichModel

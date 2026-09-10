@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -38,117 +39,72 @@ func passWith(t *testing.T, response string) *Pass {
 	return p
 }
 
-// The property the two-trigger design exists to make true: one implementation,
-// called twice. Not two implementations that agree — those drift, and the drift
-// is invisible until someone diffs two outputs nobody was comparing.
-func TestBothTriggersProduceIdenticalOutput(t *testing.T) {
-	p := passWith(t, "the enriched body")
-	req := Request{Rel: "Agent/memory/semantic/x.md", Raw: "raw text"}
-
-	req.Trigger = TriggerEager
-	eager, err := p.Run(context.Background(), req)
-	if err != nil {
-		t.Fatalf("eager: %v", err)
-	}
-	req.Trigger = TriggerBatch
-	batch, err := p.Run(context.Background(), req)
-	if err != nil {
-		t.Fatalf("batch: %v", err)
-	}
-
-	if eager.Body != batch.Body {
-		t.Errorf("the triggers disagree:\n  eager: %q\n  batch: %q",
-			eager.Body, batch.Body)
-	}
-	if !eager.Enriched || !batch.Enriched {
-		t.Errorf("a trigger declined to enrich: eager=%v batch=%v",
-			eager.Enriched, batch.Enriched)
-	}
-}
-
 // The trigger is carried into the gates rather than branched on at the top,
-// because exactly one thing depends on it (alias vocabulary) and a top-level
-// branch would invite a second.
+// because exactly one thing ever depended on it (alias vocabulary) and a
+// top-level branch would invite a second.
 func TestTheTriggerReachesTheGates(t *testing.T) {
-	seen := make(chan Trigger, 2)
+	seen := make(chan Trigger, 1)
 	p := passWith(t, "body")
 	p.AddPre(gateFunc("record", func(req Request) error {
 		seen <- req.Trigger
 		return nil
 	}))
 
-	for _, want := range []Trigger{TriggerEager, TriggerBatch} {
-		if _, err := p.Run(context.Background(), Request{
-			Rel: "x.md", Raw: "raw", Trigger: want,
-		}); err != nil {
-			t.Fatalf("run: %v", err)
-		}
-		if got := <-seen; got != want {
-			t.Errorf("gate saw trigger %v, want %v", got, want)
-		}
+	if _, err := p.Run(context.Background(), Request{
+		Rel: "x.md", Raw: "raw", Trigger: TriggerBatch,
+	}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := <-seen; got != TriggerBatch {
+		t.Errorf("gate saw trigger %v, want %v", got, TriggerBatch)
 	}
 }
 
-// FireEager must return before the work is done, or "never on the critical
-// path" is a budget rather than a guarantee.
-func TestFireEagerReturnsBeforeTheWorkFinishes(t *testing.T) {
+// Runs are bounded, so a pass over many notes cannot start one `claude`
+// subprocess per note — the type-collapse migration rewrote 9,899 notes in an
+// afternoon, and unbounded that is 9,899 live processes.
+//
+// The bound used to sit in the eager trigger, which is where the fan-out was.
+// It sits in Run now, which is the only place left that can hold it. The batch
+// runs sequentially, so this asserts the bound itself rather than a batch
+// behaviour: three goroutines against a limit of one, and never more than one
+// inside at a time.
+func TestRunsAreBoundedByTheConcurrencyLimit(t *testing.T) {
 	p := NewPass(newStubCaller(t, stubOpts{
-		stdout: "body", sleep: time.Second,
-	}), 2)
-	p.SetEnabled(true)
-
-	var done sync.WaitGroup
-	done.Add(1)
-	start := time.Now()
-	p.FireEager(context.Background(), Request{Rel: "x.md", Raw: "raw"},
-		func(Outcome, error) { done.Done() })
-	returned := time.Since(start)
-
-	if returned > 200*time.Millisecond {
-		t.Errorf("FireEager blocked for %s on a call that takes a second — the "+
-			"capture path is waiting on the model", returned)
-	}
-	done.Wait()
-	if total := time.Since(start); total < 900*time.Millisecond {
-		t.Fatalf("the work finished in %s, so the stub never actually ran and this "+
-			"test proves nothing", total)
-	}
-}
-
-// A capture burst must not start one subprocess per note. The migration rewrote
-// 9,899 notes in an afternoon; unbounded, that is 9,899 concurrent `claude`
-// processes.
-func TestAConcurrencyLimitSkipsRatherThanQueues(t *testing.T) {
-	p := NewPass(newStubCaller(t, stubOpts{
-		stdout: "body", sleep: time.Second,
+		stdout: "body", sleep: 200 * time.Millisecond,
 	}), 1)
 	p.SetEnabled(true)
 
-	outcomes := make(chan Outcome, 4)
-	for i := 0; i < 4; i++ {
-		p.FireEager(context.Background(), Request{Rel: fmt.Sprint(i, ".md"), Raw: "raw"},
-			func(o Outcome, _ error) { outcomes <- o })
-	}
-	p.Wait()
-	close(outcomes)
-
-	var skipped, ran int
-	for o := range outcomes {
-		if o.Skipped {
-			skipped++
-			if !strings.Contains(o.Reason, "batch pass") {
-				t.Errorf("a skip did not say where the note went: %q", o.Reason)
+	// Counted from inside the bound: a pre-gate runs after the limit is taken
+	// and before it is released, so it sees exactly what is in flight.
+	var live, worst int32
+	p.AddPre(gateFunc("count", func(Request) error {
+		n := atomic.AddInt32(&live, 1)
+		for {
+			w := atomic.LoadInt32(&worst)
+			if n <= w || atomic.CompareAndSwapInt32(&worst, w, n) {
+				break
 			}
-		} else {
-			ran++
 		}
+		time.Sleep(50 * time.Millisecond)
+		atomic.AddInt32(&live, -1)
+		return nil
+	}))
+
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, _ = p.Run(context.Background(), Request{
+				Rel: fmt.Sprint(i, ".md"), Raw: "raw",
+			})
+		}(i)
 	}
-	if ran != 1 {
-		t.Errorf("%d runs got past a limit of 1", ran)
-	}
-	if skipped != 3 {
-		t.Errorf("%d skipped, want 3 — the limit queued instead of skipping, which "+
-			"is how a burst becomes a backlog of live subprocesses", skipped)
+	wg.Wait()
+
+	if worst != 1 {
+		t.Errorf("%d runs were inside the pass at once, past a limit of 1", worst)
 	}
 }
 
@@ -294,15 +250,6 @@ func TestThePassIsOffUnlessAskedFor(t *testing.T) {
 		t.Errorf("a disabled pass did work: %+v", out)
 	}
 
-	var got Outcome
-	var wg sync.WaitGroup
-	wg.Add(1)
-	p.FireEager(context.Background(), Request{Rel: "x.md", Raw: "raw"},
-		func(o Outcome, _ error) { got = o; wg.Done() })
-	wg.Wait()
-	if got.Enriched || got.Calls != 0 {
-		t.Errorf("a disabled pass did work through FireEager: %+v", got)
-	}
 	if p.Stats().Calls != 0 {
 		t.Errorf("a disabled pass spent %d calls", p.Stats().Calls)
 	}
