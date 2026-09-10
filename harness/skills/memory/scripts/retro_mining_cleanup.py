@@ -93,6 +93,16 @@ class Report:
         return dict(sorted(c.items(), key=lambda kv: -kv[1]))
 
 
+# The `-1`, `-2`, `-3` suffixes the collision handler appended, and the
+# `## Mining metadata` block every mined note carries below its body. Both used
+# to be borrowed from `reflect`; they are spelled here now because the miner no
+# longer files anything below HIGH and its own copies retired with that lane.
+# This tool reads the corpus those writers left behind, so it needs them for as
+# long as the corpus does.
+_NUMBERED_SIBLING = re.compile(r"-(\d+)\.md$")
+_MINING_METADATA_HEADING = "\n\n## Mining metadata\n\n"
+
+
 def _primary_first(path: Path):
     """Order so `<slug>.md` is visited before `<slug>-1.md`, `<slug>-2.md`, …
 
@@ -100,17 +110,23 @@ def _primary_first(path: Path):
     hyphen precedes a dot. That made the numbered copy the survivor and retired
     the original — backwards, since the numbered ones are what the collision
     handler appended and the un-numbered one is what anything pointing at this
-    note is pointing at. `reflect._existing_capture` checks `<slug>.md` first for
-    the same reason.
+    note is pointing at.
     """
-    m = reflect._NUMBERED_SIBLING.search(path.name)
+    m = _NUMBERED_SIBLING.search(path.name)
     stem = path.name[:m.start()] if m else path.stem
     return (str(path.parent), stem, 1 if m else 0, path.name)
 
 
 def _body(raw: str) -> str:
-    """The mined body, using reflect's own reader so the key matches #487's."""
-    return reflect._written_body(raw) or ""
+    """The candidate-derived prose of an already-written note: frontmatter,
+    the body, then the mining-metadata block, of which only the body is stable
+    across re-mines. The occurrence count rises and the excerpt list grows
+    every time a longer transcript is mined again; the body is cut from the
+    FIRST match and does not move, which is what makes a re-mine recognizable
+    as one. Keyed the same way #487 keyed it."""
+    _, sep, after = raw.partition("\n---\n")
+    body = after if sep else raw
+    return body.partition(_MINING_METADATA_HEADING)[0].strip()
 
 
 def _transcript(raw: str, transcripts: Path):

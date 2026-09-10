@@ -118,7 +118,7 @@ if (Test-Path $ReflectedGuard) {
 # slow mine never costs the trace. Best-effort: a trace never blocks session end.
 $TracePy = ".claude/skills/memory/scripts/episodic_trace.py"
 if (Test-Path $TracePy) {
-    try { & $Py $TracePy $Transcript "--session" $SessionId 2>$null | Out-Null } catch { }
+    try { & $Py $TracePy $Transcript "--session" $SessionId "--surface" "claude-code" 2>$null | Out-Null } catch { }
 }
 $ReflectArgs = @($ReflectPy, $Transcript, "--summary", "--route")
 $ReflectOut = & $Py @ReflectArgs 2>&1 | Out-String

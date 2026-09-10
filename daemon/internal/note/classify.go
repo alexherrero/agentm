@@ -79,6 +79,17 @@ const (
 	ClassDormant    = "lifecycle-dormant"
 	ClassArchived   = "lifecycle-archived"
 	ClassSuperseded = "lifecycle-superseded"
+	// ClassIngestStaged is a unit the ingest sweep has fetched and not yet
+	// promoted: raw external text sitting in the vault, waiting for a review
+	// window to pass. It is not a memory and answering a question with one
+	// would be answering with a web page somebody's link happened to point at.
+	//
+	// The Python recall path has never served it — `_UNSERVED_STATUSES` in
+	// recall.py — and this is the Go arm agreeing. Two halves of one system
+	// disagreeing about what is servable is the shape that produced the
+	// four-month recall amputation, and the disagreement is worse when it is
+	// the *permissive* half that is silent.
+	ClassIngestStaged = "ingest-staged"
 )
 
 // Weights are applied multiplicatively to the BM25 score.
@@ -106,6 +117,10 @@ var Weights = map[string]float64{
 	// below 0.6 ranks identically, so this number is not a tuning knob and there
 	// is nothing to gain by picking a different one.
 	ClassSpace: 0.30,
+	// Reached only by a query that lifted the wall by name. Same 0.30 as every
+	// other demoted class: a lifted row is present and last, not promoted by
+	// having been asked for.
+	ClassIngestStaged: 0.30,
 	// Also 0.30, same reasoning. Note that this is the *dampened* case only — a
 	// canonical note carries no flag and so multiplies by 1.0, which is how the
 	// design's "canonical gets a flat lift" is expressed without any multiplier
@@ -303,6 +318,13 @@ func classify(rel, head, body, status, lifecycle string) []string {
 
 	if penalizedStatuses[status] {
 		flags = append(flags, ClassStatus)
+	}
+
+	// The sweep's own status, read literally. It is not in penalizedStatuses
+	// because a demotion is not what this needs: a staged unit is walled, and
+	// a wall and a weight are different answers.
+	if status == "ingest_staged" {
+		flags = append(flags, ClassIngestStaged)
 	}
 
 	if strings.HasPrefix(rel, "_dream-staging/") &&

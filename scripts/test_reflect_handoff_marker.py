@@ -55,13 +55,14 @@ class TheMarker(unittest.TestCase):
         p.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
         return reflect.mine_transcript(p)
 
-    def test_an_unmarked_human_origin_paste_is_still_mined_as_ruled(self):
-        # The override stands: the host said a person sent it. This is the
-        # failure the sample found, kept as the control the marker is judged
-        # against.
+    def test_an_unmarked_human_origin_paste_is_caught_by_the_ceiling(self):
+        # The ceiling now applies whatever the host says about who sent it, so
+        # even an unmarked paste is refused. The marker is the precise signal
+        # and this is the backstop: a handoff the renderer forgot to mark is
+        # still 7,684 characters, and nothing typed by hand is.
         out = self._mine([_user(HANDOFF, origin={"kind": "human"})])
         nevers = [c for c in out["memory_candidates"] if "never" in c.body.lower()]
-        self.assertGreaterEqual(len(nevers), 4, [c.title for c in out["memory_candidates"]])
+        self.assertEqual(nevers, [], [c.title for c in out["memory_candidates"]])
 
     def test_a_marked_paste_yields_nothing(self):
         out = self._mine([_user(reflect.HANDOFF_MARKER + "\n" + HANDOFF, origin={"kind": "human"})])

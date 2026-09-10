@@ -164,9 +164,9 @@ type Config struct {
 	//
 	// Off in the shipped configuration, and for a different reason than the two
 	// ranking flags beside it: those are off because a measurement said so, and
-	// this one is off because it *spends*. The eager trigger fires on real
-	// captures, so switching it on with a binary update would start making model
-	// calls on the operator's machine without anyone deciding to.
+	// this one is off because it *spends*. Switching it on with a binary update
+	// would start making model calls on the operator's machine without anyone
+	// deciding to.
 	EnrichEnabled bool
 
 	// EnrichModel is the model name enrichment passes to `claude -p`. A name,
@@ -187,8 +187,8 @@ type Config struct {
 	// faithfulness half is per note and does not consult it.
 	EnrichSampleRate int
 
-	// EnrichConcurrency bounds simultaneous eager runs. A capture burst would
-	// otherwise start one subprocess per note, and the type-collapse migration
+	// EnrichConcurrency bounds simultaneous runs. Unbounded, a pass over many
+	// notes starts one subprocess per note, and the type-collapse migration
 	// rewrote 9,899 notes in an afternoon.
 	EnrichConcurrency int
 

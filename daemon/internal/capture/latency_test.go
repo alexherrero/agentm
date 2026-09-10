@@ -2,7 +2,6 @@ package capture
 
 import (
 	"fmt"
-	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -322,114 +321,5 @@ func BenchmarkCapture(b *testing.B) {
 		if _, err := cp.Do(Request{Text: body(i), Title: fmt.Sprintf("bench %d", i)}); err != nil {
 			b.Fatal(err)
 		}
-	}
-}
-
-// The whole claim of "the model is never on the critical path", measured as a
-// difference rather than against a clock.
-//
-// The first version of this asserted the same absolute 100ms budget
-// TestCaptureStaysUnderBudget owns — and failed on ubuntu-latest at 103.9ms,
-// because that test carries a runner-floor skip this one had copied nothing of.
-// The absolute budget was never this test's property to assert. What belongs
-// here is the *difference* enrichment makes, which is immune to how slow the
-// runner is: measure the same captures with the pass off and with it on, and
-// compare.
-//
-// The stub sleeps a full second on purpose. A fast stub would pass whether the
-// call was synchronous or not, which is the shape of test that looks like
-// coverage and is not.
-func TestEnrichmentDoesNotReachCaptureLatency(t *testing.T) {
-	if testing.Short() {
-		t.Skip("timing test")
-	}
-	if runtime.GOOS == "windows" {
-		// The stub is a shell script. The portable-stub treatment the enrich
-		// package got is not worth duplicating here: FireEager's handoff is
-		// pure Go and is covered portably by
-		// TestFireEagerReturnsBeforeTheWorkFinishes; what this test adds is
-		// that the property survives the real capture path, and one platform
-		// demonstrating that is enough.
-		t.Skip("the stub is a shell script")
-	}
-
-	// Both statistics from one pass, because the two assertions below are claims
-	// of different shapes and need different numbers. The maximum answers "did
-	// any capture wait"; the median answers "did every capture get slower".
-	measure := func(cp *Capturer, n int) (worst, median time.Duration) {
-		t.Helper()
-		if _, err := cp.Do(Request{Text: body(0), Title: "warm up"}); err != nil {
-			t.Fatalf("warm-up capture: %v", err)
-		}
-		samples := make([]time.Duration, 0, n)
-		for i := 1; i <= n; i++ {
-			start := time.Now()
-			if _, err := cp.Do(Request{
-				Text: body(i), Title: fmt.Sprintf("note %d", i),
-			}); err != nil {
-				t.Fatalf("capture %d: %v", i, err)
-			}
-			samples = append(samples, time.Since(start))
-		}
-		sort.Slice(samples, func(a, b int) bool { return samples[a] < samples[b] })
-		return samples[len(samples)-1], samples[len(samples)*50/100]
-	}
-
-	const n = 20
-	baseWorst, baseMedian := measure(newHarness(t), n)
-
-	stubDir := t.TempDir()
-	stub := filepath.Join(stubDir, "slow-claude")
-	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep 1\nprintf 'enriched'\n"),
-		0o755); err != nil {
-		t.Fatal(err)
-	}
-	caller := enrich.DefaultCaller("sonnet")
-	caller.Bin = stub
-	pass := enrich.NewPass(caller, 8)
-	pass.SetEnabled(true)
-
-	cp := newHarness(t)
-	cp.SetEnrichPass(pass)
-	t.Cleanup(pass.Wait)
-	liveWorst, liveMedian := measure(cp, n)
-
-	t.Logf("capture without enrichment: median %v · max %v",
-		baseMedian.Round(time.Microsecond), baseWorst.Round(time.Microsecond))
-	t.Logf("capture with enrichment:    median %v · max %v",
-		liveMedian.Round(time.Microsecond), liveWorst.Round(time.Microsecond))
-
-	// Every one of those captures started a subprocess that sleeps a second. If
-	// any capture waited on one, the worst case is at least a second.
-	//
-	// A maximum, and it has to be: one blocked capture is a failure, and an
-	// average would hide it among nineteen that were fine. Machine-independent
-	// by construction — no runner makes a one-second sleep finish in 900ms — so
-	// this half needs no allowance for a slow one.
-	if liveWorst >= 900*time.Millisecond {
-		t.Errorf("the slowest capture took %s while enrichment was live — the "+
-			"capture path is waiting on the model", liveWorst)
-	}
-
-	// And nothing measurable was added to an ordinary capture.
-	//
-	// Medians rather than maxima, and that is the whole point of reading it this
-	// way. The claim here is about typical behaviour, so a worst-of-20 sample is
-	// the wrong instrument: it is the noisiest statistic available, taken on a
-	// shared runner, in the arm that additionally has eight subprocesses of its
-	// own running. On ubuntu-latest this same test has produced worst-case
-	// captures of 5ms and of 104ms — a twenty-fold spread that is scheduling
-	// rather than code, and which failed this comparison twice on numbers the
-	// change under test had nothing to do with.
-	//
-	// A median differential survives a slow machine without an allowance for
-	// one, because both arms pay the same filesystem floor and the subtraction
-	// cancels it. The bar is unchanged at 50ms; it was the statistic that was
-	// wrong, and moving the number instead is the rubber stamp the sibling gate
-	// in this file was split to avoid.
-	if slack := liveMedian - baseMedian; slack > 50*time.Millisecond {
-		t.Errorf("enrichment added %s to the median capture (%s -> %s), which is "+
-			"an ordinary capture getting slower rather than one unlucky sample",
-			slack, baseMedian, liveMedian)
 	}
 }

@@ -65,9 +65,6 @@ Rules that are not negotiable:
   - Do not summarize a note that is already short. If the source is already good
     prose, return it close to unchanged and say so with a high confidence.`
 
-const aliasRuleEager = `  - Aliases may include the phrasing the person actually used when
-    capturing this, as well as terms derived from the note.`
-
 const aliasRuleBatch = `  - Aliases must be derivable from the note itself: acronyms it spells
     out, compound identifiers it contains, alternative names it uses. Do not
     invent phrasing a reader might hypothetically search for. This is measured:
@@ -79,11 +76,7 @@ func BuildPrompt(req Request, types []string) string {
 	b.WriteString(instructions)
 	b.WriteString("\n\n")
 
-	if req.Trigger == TriggerEager {
-		b.WriteString(aliasRuleEager)
-	} else {
-		b.WriteString(aliasRuleBatch)
-	}
+	b.WriteString(aliasRuleBatch)
 	b.WriteString("\n\nThe `type` field must be exactly one of:\n\n")
 	if len(types) == 0 {
 		// No contract resolved. Say so rather than offering nothing, which reads
@@ -98,11 +91,6 @@ func BuildPrompt(req Request, types []string) string {
 	b.WriteString("\nVoice:\n\n")
 	b.WriteString(voiceSpec)
 
-	if req.Trigger == TriggerEager && strings.TrimSpace(req.AskerPhrasing) != "" {
-		b.WriteString("\n\nThe person captured this by saying:\n\n")
-		b.WriteString(strings.TrimSpace(req.AskerPhrasing))
-	}
-
 	b.WriteString("\n\nThe note:\n\n")
 	b.WriteString(req.Raw)
 	return b.String()
@@ -110,13 +98,17 @@ func BuildPrompt(req Request, types []string) string {
 
 // PromptHash identifies the prompt's wording, for the pass version.
 //
-// It covers the instructions, the voice and both alias rules — everything whose
+// It covers the instructions, the voice and the alias rule — everything whose
 // change means a note enriched before it was enriched by a different pass. It
 // deliberately does *not* cover the type enum: the contract changing is already
 // in the key separately as the rules hash, and folding it in twice would make
 // the two indistinguishable in a bug report.
+//
+// Dropping the retired eager rule changes this hash, which is correct and is
+// the point of the mechanism: every note enriched under the old prompt is now
+// owed a pass under the new one.
 func PromptHash() string {
 	h := sha256.New()
-	fmt.Fprint(h, instructions, voiceSpec, aliasRuleEager, aliasRuleBatch)
+	fmt.Fprint(h, instructions, voiceSpec, aliasRuleBatch)
 	return hex.EncodeToString(h.Sum(nil))[:12]
 }

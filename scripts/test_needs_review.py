@@ -55,13 +55,28 @@ class _Vault(unittest.TestCase):
 class TheReading(_Vault):
     def test_a_low_confidence_filing_appears_with_a_context_phrase(self):
         save.save_entry(self.root, "preference", "short-subjects", "Prefer short commit subjects.",
-                        filing_confidence="low")
+                        filing_confidence="low", status="unfiled")
         text = self._moc()
-        self.assertIn("## Filed at low confidence (1)", text)
-        self.assertIn("- [[short-subjects]] — short subjects · filed as preference at low confidence via conversation", text)
+        # A note the writer could not place is `unfiled` as well as low, so it
+        # is listed once, under the first reason it carries — and still
+        # explains itself: the confidence phrase rides along either way.
+        self.assertIn("## Unfiled captures (1)", text)
+        self.assertIn("- [[short-subjects]] — short subjects · unfiled since ", text)
+        self.assertIn("filed as preference at low confidence via conversation", text)
         s = needs_review.summary(self.root)
         self.assertEqual(s["total"], 1)
         self.assertEqual(s["by_reason"]["low-confidence"], 1)
+
+    def test_a_legacy_active_low_confidence_note_still_reads_as_low_confidence(self):
+        """The corpus predates the one-meaning rule: 74 notes sit `active` at
+        low confidence, and the card backfill re-stamps them. Until it does,
+        the reading has to keep listing them under their own section — a
+        section no *new* write can reach is still the section they land in."""
+        p = save.save_entry(self.root, "preference", "legacy-note", "Prefer short commit subjects.")
+        _flip(p, "filing_confidence: high", "filing_confidence: low")
+        text = self._moc()
+        self.assertIn("## Filed at low confidence (1)", text)
+        self.assertIn("- [[legacy-note]] — legacy note · filed as preference at low confidence via conversation", text)
 
     def test_an_unfiled_capture_is_awaiting_enrichment(self):
         r = cap.capture(self.root, "a thought worth keeping", now=_NOW)
@@ -94,11 +109,15 @@ class TheReading(_Vault):
         self.assertNotIn("- [[vault-root-outside]] —", text)
 
     def test_an_entry_clears_when_the_note_is_re_judged(self):
+        # A low-confidence note is `unfiled` by contract now — `active` at low
+        # confidence is a state no writer may land in — so re-judging it means
+        # raising both stamps, exactly as it does for the capture below.
         p = save.save_entry(self.root, "preference", "short-subjects", "Prefer short commit subjects.",
-                            filing_confidence="low")
+                            filing_confidence="low", status="unfiled")
         r = cap.capture(self.root, "a thought worth keeping", now=_NOW)
         self.assertEqual(needs_review.summary(self.root)["total"], 2)
         _flip(p, "filing_confidence: low", "filing_confidence: high")
+        _flip(p, "status: unfiled", "status: active")
         _flip(r.path, "status: unfiled", "status: active")
         _flip(r.path, "filing_confidence: low", "filing_confidence: high")
         text = self._moc()
@@ -108,13 +127,13 @@ class TheReading(_Vault):
 
     def test_a_superseded_note_is_no_longer_waiting(self):
         p = save.save_entry(self.root, "preference", "old-value", "The port is 8901.",
-                            filing_confidence="low")
+                            filing_confidence="low", status="unfiled")
         _flip(p, "lifecycle: active", "lifecycle: superseded")
         self.assertEqual(needs_review.summary(self.root)["total"], 0)
 
     def test_regeneration_is_deterministic_and_keeps_created(self):
         save.save_entry(self.root, "preference", "short-subjects", "Prefer short commit subjects.",
-                        filing_confidence="low")
+                        filing_confidence="low", status="unfiled")
         first = needs_review.write(self.root, today="2026-09-04").read_text(encoding="utf-8")
         second = needs_review.write(self.root, today="2026-09-04").read_text(encoding="utf-8")
         self.assertEqual(first, second)
@@ -136,12 +155,14 @@ class TheReading(_Vault):
 
     def test_the_scorecard_carries_the_count(self):
         save.save_entry(self.root, "preference", "short-subjects", "Prefer short commit subjects.",
-                        filing_confidence="low")
+                        filing_confidence="low", status="unfiled")
         cap.capture(self.root, "a thought worth keeping", now=_NOW)
         reading = corpus_scorecard._needs_review_reading(self.root)
         self.assertEqual(reading.value, 2)
+        # Two notes, each carrying both reasons: a low-confidence note is
+        # `unfiled` now, so the two counts move together rather than apart.
         self.assertIn("low-confidence 2", reading.note)
-        self.assertIn("unfiled 1", reading.note)
+        self.assertIn("unfiled 2", reading.note)
         self.assertIn(needs_review.MOC_REL, reading.note)
 
 

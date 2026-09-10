@@ -17,8 +17,8 @@ Operations:
                                             #   vault-less machine into repo-local state
     agentm_config.py --storage-backend <name>  # write storage.backend (the selected
                                             #   storage backend protocol name; V5-1 part 5)
-    agentm_config.py --enrich-enabled true # arm the eager enrichment trigger
-                                            #   (daemon.enrich_enabled; spends on every capture)
+    agentm_config.py --enrich-enabled true # let the nightly enrichment batch run
+                                            #   (daemon.enrich_enabled; it spends)
     agentm_config.py --notify-enabled true # opt in to the daily on-device notification
                                             #   (plugins.autonomy.notify_enabled; FRIDAY feature 1)
     agentm_config.py --email-to <address>  # opt in to the daily digest email
@@ -282,12 +282,16 @@ def cmd_set_storage_backend(prefix: Path, name: str) -> int:
 
 
 def cmd_set_enrich_enabled(prefix: Path, value: str) -> int:
-    """Arm or disarm the eager enrichment trigger (`daemon.enrich_enabled`).
+    """Let the nightly enrichment batch run (`daemon.enrich_enabled`).
 
     Off in the shipped configuration for a reason the daemon's own comment
-    states plainly: this flag *spends*. Armed, every capture fires a
-    `claude -p` call on this machine, so it is set by an operator deciding for
-    their own install and never by a binary update.
+    states plainly: this flag *spends*. Armed, the nightly batch makes
+    `claude -p` calls on this machine under its budget, so it is set by an
+    operator deciding for their own install and never by a binary update.
+
+    It no longer arms anything on the capture path. The eager trigger — a
+    model call per note as the note landed — retired with the vault series'
+    capture-writers landing; capture makes no model call at all now.
 
     `agentmd enrich --yes` runs one batch without this — the flag is for the
     standing behaviour, not for trying it once. Idempotent: silent no-op when
@@ -543,8 +547,8 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--notify-enabled", metavar="{true,false}",
                     help="set plugins.autonomy.notify_enabled — opt in/out of the daily on-device notification")
     op.add_argument("--enrich-enabled", metavar="{true,false}",
-                    help="set daemon.enrich_enabled — arm the eager enrichment "
-                         "trigger, which fires a model call on every capture")
+                    help="set daemon.enrich_enabled — let the nightly enrichment "
+                         "batch run; it makes model calls, under its budget")
     op.add_argument("--email-to", metavar="ADDRESS",
                     help="set plugins.autonomy.email_to — opt in to the daily digest email")
     op.add_argument("--email-smtp-url", metavar="URL",

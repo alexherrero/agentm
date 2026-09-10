@@ -25,10 +25,13 @@ func TestEligibilityRefusesWhatIsNotEnrichmentsBusiness(t *testing.T) {
 		want            bool // eligible
 	}{
 		{"an unfiled memory", "Agent/memory/semantic/x.md", note("unfiled", "b"), true},
-		{"an inbox note", "Agent/memory/_inbox/x.md", note("inbox", "b"), true},
-		{"already active", "Agent/memory/semantic/x.md", note("active", "b"), false},
-		{"superseded", "Agent/memory/semantic/x.md", note("superseded", "b"), false},
-		{"no status at all", "Agent/memory/semantic/x.md", "no frontmatter", false},
+		// Status is no longer a reason to refuse. A card is `active` because a
+		// writer that knew said why, which says nothing about whether the pass
+		// has ever run over it — and 283 notes in the corpus had been enriched
+		// and scored below the floor while sitting `unfiled`.
+		{"already active", "Agent/memory/semantic/x.md", note("active", "b"), true},
+		{"superseded", "Agent/memory/semantic/x.md", note("superseded", "b"), true},
+		{"no status at all", "Agent/memory/semantic/x.md", "no frontmatter", true},
 		{"the operator's own space", "Personal/Church/x.md", note("unfiled", "b"), false},
 		{"a derived class — entities", "Agent/memory/entities/x.md", note("unfiled", "b"), false},
 		{"a derived class — crystallized", "Agent/memory/crystallized/x.md", note("unfiled", "b"), false},
@@ -50,15 +53,62 @@ func TestEligibilityRefusesWhatIsNotEnrichmentsBusiness(t *testing.T) {
 	}
 }
 
-// A note whose *prose* mentions a status is talking about one, not carrying one.
+// The deep pass is owed once, and the stamp is what says whether it has
+// happened. Status said nothing about it: a card is `active` because a writer
+// that knew said why, and `unfiled` because none did.
+func TestTheDepthComesFromTheStampNotTheStatus(t *testing.T) {
+	stamped := "---\ntitle: A note\nstatus: unfiled\nenriched_at: 2026-09-01T00:00:00Z\n---\n\nb\n"
+	for _, tc := range []struct {
+		name, body string
+		want       Depth
+	}{
+		{"no stamp at all", note("unfiled", "b"), DepthDeep},
+		{"no stamp, and active", note("active", "b"), DepthDeep},
+		{"no frontmatter", "just prose\n", DepthDeep},
+		{"stamped", stamped, DepthLight},
+		{"stamped and active", strings.Replace(stamped, "unfiled", "active", 1), DepthLight},
+		{"an empty stamp is no stamp", strings.Replace(stamped,
+			"enriched_at: 2026-09-01T00:00:00Z", "enriched_at:", 1), DepthDeep},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := PassDepth(tc.body); got != tc.want {
+				t.Errorf("PassDepth = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A note whose *prose* mentions a stamp is talking about one, not carrying one.
 // This corpus is full of notes about its own frontmatter, so reading the body
-// would make every note about filing look already-filed.
-func TestEligibilityReadsFrontmatterNotProse(t *testing.T) {
-	g := DefaultEligibility(nil)
-	body := "---\ntitle: About filing\nstatus: unfiled\n---\n\n" +
-		"A note is filed by writing\n\n```yaml\nstatus: active\n```\n\ninto its head.\n"
-	if err := g.Check(context.Background(), Request{Rel: "Agent/memory/x.md"}, body); err != nil {
-		t.Errorf("a note *about* `status: active` was read as carrying it: %v", err)
+// would make every note about enrichment look enriched.
+func TestTheDepthReadsFrontmatterNotProse(t *testing.T) {
+	body := "---\ntitle: About enrichment\nstatus: unfiled\n---\n\n" +
+		"A note records its pass by writing\n\n```yaml\nenriched_at: 2026-09-01T00:00:00Z\n```\n\ninto its head.\n"
+	if got := PassDepth(body); got != DepthDeep {
+		t.Errorf("a note *about* `enriched_at` was read as carrying one: %v", got)
+	}
+}
+
+// The pass reads the depth off the note, not off the caller. A caller that
+// asked for a deep pass over an already-enriched note would be asking the
+// model to redo work the stamp says is done.
+func TestTheRequestsDepthIsOverwrittenByTheNote(t *testing.T) {
+	seen := make(chan Depth, 1)
+	p := passWith(t, "body")
+	p.AddPre(gateFunc("record", func(req Request) error {
+		seen <- req.Depth
+		return nil
+	}))
+
+	stamped := "---\ntitle: A note\nstatus: unfiled\nenriched_at: 2026-09-01T00:00:00Z\n---\n\nb\n"
+	if _, err := p.Run(context.Background(), Request{
+		Rel: "x.md", Raw: stamped, Depth: DepthDeep,
+	}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := <-seen; got != DepthLight {
+		t.Errorf("the gate saw depth %v; the note carries a stamp and is owed %v",
+			got, DepthLight)
 	}
 }
 
@@ -300,7 +350,9 @@ func TestAnEarlyDeclineShortCircuitsTheRest(t *testing.T) {
 	p.AddPre(DefaultEligibility(nil), later)
 
 	out, err := p.Run(context.Background(), Request{
-		Rel: "Agent/memory/x.md", Raw: note("active", "b"), // ineligible
+		// A derived class: produced by another pass from notes enrichment
+		// already touched, so enriching it feeds a pass its own output.
+		Rel: "Agent/memory/mocs/x.md", Raw: note("unfiled", "b"),
 	})
 	if err != nil {
 		t.Fatalf("run: %v", err)

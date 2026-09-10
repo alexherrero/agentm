@@ -518,7 +518,19 @@ func cmdCapture(args []string) error {
 		knownTypes = strings.Join(r.TypesSorted(), ", ")
 	}
 	noteType := fs.String("type", "", "one of: "+knownTypes)
-	status := fs.String("status", "", "active | unfiled")
+	// No --status flag. Status is derived from -type and -why: name both and
+	// the card lands `active`, leave either out and it lands `unfiled`. A flag
+	// that asserted it would be a way to claim a judgment nothing made.
+	summary := fs.String("summary", "", "one line: what this is and when it applies")
+	why := fs.String("why", "",
+		"why this was kept — what was happening, and what it decides later; "+
+			"with -type, this is what files the card as judged")
+	importance := fs.Int("importance", 0, "1-10, how much this matters")
+	related := fs.String("related", "", "comma-separated notes this sits beside, by slug or [[wikilink]]")
+	project := fs.String("project", "", "the project slug this was captured under")
+	task := fs.String("task", "", "the task's verb-slug this was captured under")
+	instructions := fs.String("instructions", "",
+		"an operator-typed action to run after absorb; typed here and nowhere else")
 	tags := fs.String("tags", "", "comma-separated tags")
 	aliases := fs.String("aliases", "", "comma-separated alternate phrasings")
 	source := fs.String("source", "", "how it arrived: operator-direct | conversation | external-fetch | email")
@@ -555,8 +567,11 @@ func cmdCapture(args []string) error {
 	defer idx.Close()
 
 	res, err := capture.New(cfg, idx).Do(capture.Request{
-		Text: text, Title: *title, Type: *noteType, Status: *status,
-		Tags: splitList(*tags), Aliases: splitList(*aliases),
+		Text: text, Title: *title, Type: *noteType,
+		Summary: *summary, Why: *why, Importance: *importance,
+		Related: splitList(*related), Project: *project, Task: *task,
+		Instructions: *instructions,
+		Tags:         splitList(*tags), Aliases: splitList(*aliases),
 		Source: *source, SourceID: *sourceID, SourceURL: *sourceURL,
 		SourceHash: *sourceHash, SourceVersion: *sourceVersion,
 		Space: *space,
@@ -1217,7 +1232,7 @@ func cmdEnrich(args []string) error {
 			"the next page in cursor order")
 	seed := fs.Int64("seed", 0, "seed for --sample (0 picks one and prints it)")
 	yes := fs.Bool("yes", false,
-		"run this one batch even though the eager trigger is off")
+		"run this one batch even though scheduled enrichment is off")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1320,18 +1335,18 @@ func cmdEnrich(args []string) error {
 		return nil
 	}
 
-	// `daemon.enrich_enabled` governs the *eager trigger* — whether every
-	// capture fires a model call on the operator's machine. An explicit
-	// `agentmd enrich --yes` is already a deliberate act, so it does not need
-	// that switch thrown, and requiring it would mean turning on automatic
-	// enrichment in order to test enrichment once.
+	// `daemon.enrich_enabled` governs the standing behaviour — whether the
+	// nightly batch runs on its own. An explicit `agentmd enrich --yes` is
+	// already a deliberate act, so it does not need that switch thrown, and
+	// requiring it would mean turning on scheduled enrichment in order to test
+	// enrichment once.
 	//
 	// The refusal stays the default, because "I ran the command and nothing
 	// happened" is a report this project has debugged too many times.
 	if !cfg.EnrichEnabled && !*yes {
 		return fmt.Errorf("enrichment is off — pass --yes to run this one batch, " +
-			"or set daemon.enrich_enabled to arm the eager trigger for every " +
-			"capture (this refuses rather than doing nothing quietly)")
+			"or set daemon.enrich_enabled to let the nightly batch run on its own " +
+			"(this refuses rather than doing nothing quietly)")
 	}
 
 	name := cfg.EnrichModel

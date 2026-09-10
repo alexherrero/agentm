@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Capture-dedup tests for the reflection routing path.
 
+The miner files one card, for a HIGH candidate, and everything below it is a
+line in the session's trace — so this covers the one lane that still writes.
+The opinion-supplement lane's own dedup tests retired with its writer.
+
 The inbox and the opinion-supplement lane both wrote through a bare filename
 collision handler: if `<slug>.md` existed, the writer appended `-1`, `-2`, `-3`
 and kept going, forever. That handler was never a dedup check — nothing
@@ -34,7 +38,7 @@ if str(_SCRIPTS) not in sys.path:
 import reflect  # noqa: E402
 
 
-def _cand(body, *, confidence="LOW", category="preferences", slug="a-slug",
+def _cand(body, *, confidence="HIGH", category="preferences", slug="a-slug",
           title="A title", excerpts=None):
     return reflect.Candidate(
         category=category, confidence=confidence, slug=slug,
@@ -121,38 +125,6 @@ class TestInboxDedup(_Base):
         c.occurrences = 3
         self._route([c])
         self.assertEqual(self._inbox_files(), ["dupe.md"])
-
-
-class TestOpinionLaneDedup(_Base):
-    def test_same_supplement_routed_twice_writes_one_file(self):
-        # The lane duplicated harder than the inbox did (86.8% vs 68.5% of
-        # files redundant), and it feeds the recurrence gate, so it needs the
-        # same guard rather than a weaker one.
-        self._route([_cand(_STANDARD_BODY, slug="dupe")], session_id="proj/aaa")
-        self._route([_cand(_STANDARD_BODY, slug="dupe")], session_id="proj/aaa")
-        self.assertEqual(self._lane_files(), ["dupe.md"])
-
-    def test_repeat_supplement_is_counted_not_silently_dropped(self):
-        self._route([_cand(_STANDARD_BODY, slug="dupe")], session_id="proj/aaa")
-        stats = self._route([_cand(_STANDARD_BODY, slug="dupe")], session_id="proj/aaa")
-        self.assertEqual(stats["opinion_supplements"], 0)
-        self.assertEqual(stats["deduped"], 1)
-        self.assertEqual(stats["errors"], 0)
-
-    def test_a_second_session_still_writes_its_own_entry(self):
-        # The recurrence gate promotes on two DISTINCT session ids. Deduping
-        # across sessions would remove the very signal it counts, so the guard
-        # has to stop at the session boundary and no further.
-        self._route([_cand(_STANDARD_BODY, slug="dupe")], session_id="proj/aaa")
-        self._route([_cand(_STANDARD_BODY, slug="dupe")], session_id="proj/bbb")
-        self.assertEqual(self._lane_files(), ["dupe-1.md", "dupe.md"])
-
-    def test_different_supplement_same_slug_still_keeps_both(self):
-        self._route([_cand("Never push without a green gate.", slug="dupe")],
-                    session_id="proj/aaa")
-        self._route([_cand("Never merge without a green gate.", slug="dupe")],
-                    session_id="proj/aaa")
-        self.assertEqual(self._lane_files(), ["dupe-1.md", "dupe.md"])
 
 
 if __name__ == "__main__":

@@ -132,6 +132,11 @@ type SearchOutcome struct {
 	// IncludeArchived. Reported for the reason RawScore and Decay are: a row
 	// that is not there should be visible in the call log, not inferred.
 	ArchivedHidden int `json:"archived_hidden,omitempty"`
+	// StagedHidden is the same wall's count for `status: ingest_staged` — a
+	// unit the ingest sweep fetched and has not promoted. Reported for the
+	// same reason the other two are: an absence nobody can see is an absence
+	// nobody can debug.
+	StagedHidden int `json:"staged_hidden,omitempty"`
 	// SupersededHidden is the same wall's count for `lifecycle: superseded`
 	// (PLAN-superseded-vocabulary): a superseded memory has left everyday
 	// search like an archived one and comes back, demoted, to the same
@@ -250,7 +255,7 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 	}
 	out.Note = note1
 	out.Matched = len(rows)
-	rows, out.ArchivedHidden, out.SupersededHidden = wallUnserved(rows, includeArchived)
+	rows, out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = wallUnserved(rows, includeArchived)
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
@@ -459,7 +464,7 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3, inc
 		rows = append(rows, c.row)
 		wonBy[path] = c.expr
 	}
-	rows, out.ArchivedHidden, out.SupersededHidden = wallUnserved(rows, includeArchived)
+	rows, out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = wallUnserved(rows, includeArchived)
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
@@ -527,15 +532,17 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// reads positions, so a demotion that lands after the ranks are taken would
 	// have no effect at all — the penalized note would already have contributed
 	// its rank-1 reciprocal.
-	var denseHidden, denseSuperseded int
-	dense, denseHidden, denseSuperseded = wallUnserved(dense, q.IncludeArchived)
+	var denseHidden, denseSuperseded, denseStaged int
+	dense, denseHidden, denseSuperseded, denseStaged = wallUnserved(dense, q.IncludeArchived)
 	decayLog, decayNow := x.decayClock()
 	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
 		note.QueryWantsArtifact(text))
 
 	fused := fuseRRF(lexical.Results, dense)
 	out := SearchOutcome{Results: fused, Matched: len(fused),
-		ArchivedHidden: lexical.ArchivedHidden + denseHidden, SupersededHidden: lexical.SupersededHidden + denseSuperseded}
+		ArchivedHidden:   lexical.ArchivedHidden + denseHidden,
+		SupersededHidden: lexical.SupersededHidden + denseSuperseded,
+		StagedHidden:     lexical.StagedHidden + denseStaged}
 	if len(out.Results) > k {
 		out.Results = out.Results[:k]
 	}
@@ -874,12 +881,12 @@ func normalizeBound(s string) (string, error) {
 // comes back to any query that sets IncludeArchived (the contract's "explicit
 // archive query"). The counts of what was walled ride on the outcome so the
 // absence is visible in the call log.
-func wallUnserved(rows []Result, include bool) ([]Result, int, int) {
+func wallUnserved(rows []Result, include bool) ([]Result, int, int, int) {
 	if include {
-		return rows, 0, 0
+		return rows, 0, 0, 0
 	}
 	kept := make([]Result, 0, len(rows))
-	archived, superseded := 0, 0
+	archived, superseded, staged := 0, 0, 0
 	for _, r := range rows {
 		flags := splitFlags(r.Penalty)
 		if hasFlag(flags, note.ClassArchived) {
@@ -890,9 +897,13 @@ func wallUnserved(rows []Result, include bool) ([]Result, int, int) {
 			superseded++
 			continue
 		}
+		if hasFlag(flags, note.ClassIngestStaged) {
+			staged++
+			continue
+		}
 		kept = append(kept, r)
 	}
-	return kept, archived, superseded
+	return kept, archived, superseded, staged
 }
 
 func hasFlag(flags []string, want string) bool {

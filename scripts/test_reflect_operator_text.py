@@ -52,15 +52,25 @@ class TestOperatorText(unittest.TestCase):
     def test_a_typed_sentence_is_minable(self):
         self.assertEqual(self._mined(_user(DIRECTIVE)), DIRECTIVE)
 
-    def test_human_origin_is_minable_even_when_long(self):
-        # A long message the host positively attributes to a person is a long
-        # message a person wrote. The ceiling is a fallback for when nothing
-        # says who spoke, and must never override something that does.
-        long_typed = DIRECTIVE + " " + ("and here is more context. " * 400)
-        got = self._mined(_user(long_typed, origin={"kind": "human"}))
-        self.assertEqual(got, long_typed.strip())
+    def test_a_human_origin_stamp_still_mines_a_short_message(self):
+        # The stamp is believed in the direction it can be: a person sent this,
+        # and it is short enough to be one a person typed.
+        self.assertEqual(self._mined(_user(DIRECTIVE, origin={"kind": "human"})), DIRECTIVE)
 
     # ── what does not ────────────────────────────────────────────────────────
+
+    def test_a_long_message_is_not_minable_even_when_the_host_says_a_person_sent_it(self):
+        """Ruling 1 from the labeled sample: the stamp says who *sent* the
+        message, not who wrote it.
+
+        A 7,684-character handoff prompt the agent wrote and the operator
+        pasted arrives stamped `origin.kind: human`, and five "User stated: …
+        never …" preferences were mined out of exactly one of them. Typed
+        messages in the sample ran to a median of 270 characters; nothing a
+        person types by hand reaches four thousand.
+        """
+        pasted = DIRECTIVE + " " + ("and here is more context. " * 400)
+        self.assertEqual(self._mined(_user(pasted, origin={"kind": "human"})), "")
 
     def test_a_slash_command_expansion_is_not_minable(self):
         # The `/work` expansion: ~31,000 characters of second-person directive

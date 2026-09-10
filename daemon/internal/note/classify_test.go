@@ -219,6 +219,25 @@ func TestParseCapturedPrecedence(t *testing.T) {
 		t.Errorf("source = %s", n.CapturedSource)
 	}
 
+	// `created:` is what the capture door writes now. A note carrying only the
+	// new spelling must still date itself from its own frontmatter — falling
+	// through to mtime would silently re-date every note the rename touched,
+	// and the after:/before: bounds read this.
+	n = Parse("a.md", "---\ncreated: 2026-09-09T08:15:00Z\n---\nx\n", mtime)
+	if got := n.Captured.Format(time.RFC3339); got != "2026-09-09T08:15:00Z" {
+		t.Errorf("captured = %s, want the frontmatter created field", got)
+	}
+	if n.CapturedSource != "frontmatter:created" {
+		t.Errorf("source = %s, want frontmatter:created", n.CapturedSource)
+	}
+
+	// Mid-migration a note can carry both. `captured:` still wins, so a bound
+	// resolves to exactly what it resolved to before the rename.
+	n = Parse("a.md", "---\ncaptured: 2026-08-03T14:22:00Z\ncreated: 2026-09-09\n---\nx\n", mtime)
+	if got := n.Captured.Format(time.RFC3339); got != "2026-08-03T14:22:00Z" {
+		t.Errorf("captured = %s, want the older spelling to keep winning", got)
+	}
+
 	n = Parse("a.md", "---\ndate: 2026-06-17\n---\nx\n", mtime)
 	if got := n.Captured.Format("2006-01-02"); got != "2026-06-17" {
 		t.Errorf("captured = %s, want the date field as the fallback", got)

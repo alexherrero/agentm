@@ -205,7 +205,7 @@ fi
 # slow mine never costs the trace. Best-effort: a trace never blocks session end.
 TRACE_PY="$(_resolve_memory_script episodic_trace.py 2>/dev/null)" || TRACE_PY=""
 if [[ -n "$TRACE_PY" ]]; then
-    "$AGENTM_PY" "$TRACE_PY" "$TRANSCRIPT" --session "$SESSION_ID" >/dev/null 2>&1 || true
+    "$AGENTM_PY" "$TRACE_PY" "$TRANSCRIPT" --session "$SESSION_ID" --surface claude-code >/dev/null 2>&1 || true
 fi
 REFLECT_OUT="$("$AGENTM_PY" "$REFLECT_PY" "$TRANSCRIPT" --summary --route 2>&1)"
 REFLECT_EXIT=$?

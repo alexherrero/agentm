@@ -313,6 +313,13 @@ func parseCaptured(head string, modTime time.Time) (time.Time, string) {
 		src string
 	}{
 		{capturedRe, "frontmatter:captured"},
+		// `created:` is the surviving spelling — the capture door writes it
+		// and `captured:` folds into it across the corpus. Read after
+		// `captured:` rather than before, so a half-migrated note carrying
+		// both resolves to exactly the value it resolved to yesterday: this
+		// bound is what the `after:`/`before:` filters and the +3.75 R@5
+		// measurement run on, and it should not move under a rename.
+		{createdRe, "frontmatter:created"},
 		{dateRe, "frontmatter:date"},
 	} {
 		m := probe.re.FindStringSubmatch(head)

@@ -5,54 +5,47 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// The pass, and the two moments it runs.
+// The pass, and the one moment it runs.
 //
-// One body of code, two triggers. **Eager** fires immediately after a capture
-// transaction commits, out of band; **batch** runs inside dreaming over anything
-// still `unfiled`. They are not two implementations that agree — they are the
-// same implementation called twice, which is the only arrangement where "both
-// triggers produce identical output" is a property rather than a hope.
+// **Batch**: a nightly run over the notes that are owed a pass, in one place,
+// under a budget, with a report. There used to be a second trigger — eager,
+// fired just after a capture committed — and it retires here. It spent a model
+// call per note as the note landed, it was never attached to a running daemon,
+// and it never fired once.
 //
-// The trigger is visible to the pass for exactly one reason: alias vocabulary
-// rules differ by it. At the eager trigger the asking session's phrasing is
-// available and permitted; at the batch trigger there is no asker, so aliases
-// must be derivable from the note itself. The cold scheduled backfill is banned
-// outright, and that ban is measured rather than preferred — −3.85 R@5 at
+// The alias rule is what the trigger used to be visible for: an eager run had
+// an asker whose phrasing counted as evidence, and a batch run has nobody, so
+// an alias must be derivable from the note itself. Only the second half is
+// left, which is the half that was measured. The cold scheduled backfill — a
+// pass over the whole corpus writing aliases with no note-level trigger at all
+// — stays banned outright, measured rather than preferred: −3.85 R@5 at
 // p = 0.0411 over six replicates.
 //
-// # What "never on the critical path" costs
+// # Nothing waits on this
 //
-// Capture writes the file, commits, and returns. Enrichment starts after that
-// and cannot make it slower, because nothing in the capture path waits on it.
-// The guarantee is structural rather than a budget: `FireEager` hands the work
-// to a goroutine and returns immediately, so the only way enrichment could delay
-// a capture is if it held a lock capture also wants, which it does not — it
-// re-reads the note from disk rather than sharing state with the writer.
-//
-// A failure anywhere leaves the note exactly as capture wrote it, `unfiled`, for
-// the nightly pass to pick up. That is not error handling bolted on; it is the
-// reason the status exists.
+// Capture writes the file, commits, and returns, and enrichment is not on that
+// path at all any more. A failure anywhere leaves the note exactly as capture
+// wrote it, `unfiled`, for the next night to pick up. That is not error
+// handling bolted on; it is the reason the status exists.
 
-// Trigger says which moment a run belongs to.
+// Trigger says which moment a run belongs to. One value, kept as a named type
+// rather than dropped: the journal records it on every write, and a row that
+// says which pass wrote it is worth more than the field costs.
 type Trigger int
 
 const (
-	// TriggerEager fires just after a capture commits, where the asking
-	// session's context still exists.
-	TriggerEager Trigger = iota
-	// TriggerBatch runs over the standing `unfiled` queue, with no asker.
-	TriggerBatch
+	// TriggerBatch runs over the standing queue, with no asker. The zero
+	// value, so a Request built without one cannot claim a trigger that does
+	// not exist.
+	TriggerBatch Trigger = iota
 )
 
 func (t Trigger) String() string {
 	switch t {
-	case TriggerEager:
-		return "eager"
 	case TriggerBatch:
 		return "batch"
 	}
@@ -67,10 +60,11 @@ type Request struct {
 	Raw string
 	// Trigger says which moment this run belongs to.
 	Trigger Trigger
-	// AskerPhrasing carries the words the operator actually used, when there
-	// was an operator. Only ever populated at the eager trigger, and only ever
-	// read by the alias rules.
-	AskerPhrasing string
+	// Depth is how much of the pass this note is owed, read from its stamp by
+	// PassDepth. Set by the pass itself just before the gates run, so a caller
+	// cannot ask for a deep pass over a note that has already had one — the
+	// note's own frontmatter decides, and it is the only thing that does.
+	Depth Depth
 }
 
 // Outcome is what one run did, and it distinguishes three things a caller would
@@ -126,10 +120,9 @@ type Pass struct {
 	// moment of the call, and this package has no business reading that file.
 	types func() []string
 
-	// enabled gates the whole pass. Off in the shipped configuration: the eager
-	// trigger fires on real captures, which is real spend on the operator's
-	// machine, so turning it on is a deliberate act rather than a consequence of
-	// updating the binary.
+	// enabled gates the whole pass. Off in the shipped configuration, because
+	// a pass that runs spends on the operator's machine, and turning that on is
+	// a deliberate act rather than a consequence of updating the binary.
 	enabled atomic.Bool
 
 	// calls counts model calls since boot, for the status surface. The
@@ -153,16 +146,15 @@ type Pass struct {
 	// ledger row answers.
 	observer func(Request, Outcome, error)
 
-	// inflight bounds concurrent eager runs. A capture burst — the migration
-	// rewrote 9,899 notes in an afternoon — would otherwise start one
-	// subprocess per note and take the machine down. Bounded rather than
-	// queued: a run that cannot start is skipped and the note stays `unfiled`,
-	// which is exactly what the nightly batch pass exists to collect.
+	// inflight bounds concurrent runs, so a batch cannot start one subprocess
+	// per note and take the machine down — the type-collapse migration rewrote
+	// 9,899 notes in an afternoon. Bounded rather than queued: a run that
+	// cannot start is skipped and the note keeps waiting, which is what the
+	// next night exists to collect.
 	inflight chan struct{}
-	wg       sync.WaitGroup
 }
 
-// NewPass builds the pass. `concurrency` bounds simultaneous eager runs.
+// NewPass builds the pass. `concurrency` bounds simultaneous runs.
 func NewPass(caller *Caller, concurrency int) *Pass {
 	if concurrency < 1 {
 		concurrency = 1
@@ -236,6 +228,18 @@ func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 		return out, nil
 	}
 
+	// What this note is owed, from its own stamp rather than from the caller.
+	req.Depth = PassDepth(req.Raw)
+
+	// The concurrency bound, taken here rather than at a fan-out helper. It
+	// used to sit in the eager trigger, which is where the fan-out was; with
+	// that gone, a bound anywhere else would be a config key with no reader.
+	// The batch runs one note at a time, so today this never waits — what it
+	// does is make `daemon.enrich_concurrency` true for whoever runs notes in
+	// parallel next.
+	p.inflight <- struct{}{}
+	defer func() { <-p.inflight }()
+
 	p.runs.Add(1)
 
 	// Pre-gates, in order. A decline is a skip and costs nothing; any other
@@ -283,55 +287,6 @@ func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 	out.Elapsed = time.Since(started)
 	return out, nil
 }
-
-// FireEager runs the pass out of band and returns immediately.
-//
-// This is the whole "never on the critical path" guarantee, and it is structural
-// rather than budgeted: the capture path calls this and continues, so no amount
-// of slowness here can show up in a capture's latency. The only way it could is
-// by contending on a lock capture also holds, which is why the pass re-reads the
-// note from disk instead of sharing anything with the writer.
-//
-// `done` is optional and exists for tests, which otherwise have no way to know
-// the goroutine finished. Production passes nil.
-func (p *Pass) FireEager(ctx context.Context, req Request, done func(Outcome, error)) {
-	req.Trigger = TriggerEager
-	if !p.enabled.Load() {
-		if done != nil {
-			done(Outcome{Rel: req.Rel, Skipped: true, Reason: "enrichment is disabled"}, nil)
-		}
-		return
-	}
-
-	select {
-	case p.inflight <- struct{}{}:
-	default:
-		// At capacity. The note stays `unfiled` and the batch pass collects it,
-		// which is the designed fallback rather than a dropped write.
-		p.skips.Add(1)
-		if done != nil {
-			done(Outcome{
-				Rel: req.Rel, Skipped: true,
-				Reason: "at concurrency limit; left for the batch pass",
-			}, nil)
-		}
-		return
-	}
-
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
-		defer func() { <-p.inflight }()
-		out, err := p.Run(ctx, req)
-		if done != nil {
-			done(out, err)
-		}
-	}()
-}
-
-// Wait blocks until every in-flight eager run has finished. For shutdown and for
-// tests; nothing on the capture path calls it.
-func (p *Pass) Wait() { p.wg.Wait() }
 
 // call asks the model. Split out so a test can drive the pass without one.
 func (p *Pass) call(ctx context.Context, req Request) (string, error) {

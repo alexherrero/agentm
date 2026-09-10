@@ -60,6 +60,15 @@ class JobManifest:
     gate: Optional[str] = None
     budget_tokens: Optional[int] = None
     dry_run: bool = True
+    # A job can be registered and off. Defaults to on, so every manifest
+    # written before this field existed keeps running; a job that ships with
+    # `enabled: false` is one whose command is real but whose schedule has not
+    # been decided yet, and the cycle skips it by name in the report rather
+    # than silently.
+    #
+    # Distinct from `dry_run`, which still runs the command and asks it not to
+    # write. A disabled job does not run at all.
+    enabled: bool = True
     path: Optional[Path] = None
 
     @property
@@ -99,6 +108,7 @@ def _validate(name: str, data: dict, path: Path) -> JobManifest:
         gate=data.get("gate"),
         budget_tokens=budget_tokens,
         dry_run=bool(data.get("dry_run", True)),
+        enabled=bool(data.get("enabled", True)),
         path=path,
     )
 

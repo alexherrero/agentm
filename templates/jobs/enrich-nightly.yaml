@@ -1,0 +1,56 @@
+# enrich-nightly.yaml — the nightly enrichment batch (agentm-vault, the capture
+# writers).
+#
+# Registered and off. The eager trigger — a model call per note as the note
+# landed — retired with this landing; the batch is what replaces it, doing the
+# same work in one place, under a budget, with a report. What the pass *does*
+# is the night's plan to decide (agentm-vault § Dreaming): the budget, the
+# order it walks the queue in, and a prompt that drops `altitude` and gains
+# `importance_proposed`. Until that lands, this file exists so the job has a
+# name and a home rather than being invented under time pressure later.
+#
+# .harness/jobs/ is gitignored (per-project runtime state, same as every other
+# .harness/* file), so this templates/ copy is the tracked, shipped source.
+# Register it by copying to .harness/jobs/enrich-nightly.yaml in a repo that
+# runs the agentm runner (scripts/agentm-runner.sh).
+#
+# **Turning it on is two edits, and they belong together**: `enabled: true`
+# here, and `daemon.enrich_enabled true` in the kernel config
+# (`agentm_config.py --enrich-enabled true`). Either alone does nothing —
+# `enabled: true` schedules a command that refuses while the switch is off, and
+# the switch alone arms a pass with nothing scheduled to call it. See the
+# `command:` note below for what that depends on.
+schedule: daily
+lookback: 36h
+
+# Registered and off. `enabled: false` is not `dry_run: true`: a dry run still
+# runs the command and asks it not to write, and this job's command has no
+# schedule, budget or prompt decided for it yet. The cycle skips it by name, so
+# it is visible in the report rather than forgotten.
+enabled: false
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
+#
+# **No `--yes`, deliberately.** That flag bypasses `daemon.enrich_enabled`
+# outright — it exists so a person can run one batch by hand without throwing
+# the standing switch. In a *scheduled* command it would defeat the one flag
+# whose whole point is that spending is never turned on by anything but an
+# operator's own decision: the job would spend every night with the switch
+# still off. Without it, the command refuses until the switch is thrown, which
+# is what makes the two edits above genuinely need each other.
+#
+# The budget lives in the flags the night's plan sets, not here.
+command: $HOME/.local/bin/agentmd enrich
+
+# Spends model calls, over the operator's own corpus, unattended. The same tier
+# every other job that calls a model carries.
+tier: T3
+
+# No `budget:` yet. The night's plan sets the call ceiling and the walk order
+# together, and a number invented here would be the one nobody re-derived.
+
+# Not a dry run when it is eventually turned on: the pass's whole job is to
+# write, and its own gates — eligibility by stamp, the fingerprint key, the
+# confidence floor — are what make that safe. A dry-run nightly enrichment
+# would print a queue every night and enrich nothing.
+dry_run: false

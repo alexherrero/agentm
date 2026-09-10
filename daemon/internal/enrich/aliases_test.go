@@ -41,28 +41,22 @@ func TestAnInventedAliasIsRejectedAtTheBatchTrigger(t *testing.T) {
 	}
 }
 
-// At the eager trigger there is an asker, and their words are evidence rather
-// than invention. That is the entire difference between the two triggers.
-func TestAskerPhrasingIsAcceptedAtTheEagerTriggerOnly(t *testing.T) {
+// There is no asker, so a phrase nobody can point at in the note is invention.
+// This used to be the one difference between the two triggers: an eager run
+// had someone in the room whose words were evidence. That trigger retired, and
+// the rule that is left is the one that was measured.
+func TestAPhraseNobodySaidIsRejected(t *testing.T) {
 	g := DefaultAliases()
 	src := "Reciprocal rank fusion combines the lexical and dense arms."
 	alias := "how do I make search better"
 
-	eager := Request{
-		Rel: "x.md", Raw: src, Trigger: TriggerEager,
-		AskerPhrasing: "remember how do I make search better",
+	req := Request{Rel: "x.md", Raw: src, Trigger: TriggerBatch}
+	err := g.Check(context.Background(), req, withAliases(t, src, alias))
+	if err == nil {
+		t.Fatal("an alias derivable from neither the note nor anyone was accepted")
 	}
-	if err := g.Check(context.Background(), eager, withAliases(t, src, alias)); err != nil {
-		t.Errorf("the asker's own words were rejected at the eager trigger: %v", err)
-	}
-
-	// The same alias, the same phrasing in the struct, at the batch trigger —
-	// where there is no asker and the field is whatever happened to be there.
-	batch := eager
-	batch.Trigger = TriggerBatch
-	if err := g.Check(context.Background(), batch, withAliases(t, src, alias)); err == nil {
-		t.Error("asker phrasing was accepted at the batch trigger, where there is " +
-			"no asker to have said it")
+	if !strings.Contains(err.Error(), "no asker") {
+		t.Errorf("the rejection does not say why there is nothing to derive from: %v", err)
 	}
 }
 
@@ -150,19 +144,17 @@ func TestNoAliasesPasses(t *testing.T) {
 }
 
 // The cold scheduled backfill is banned structurally rather than by a check:
-// there are two triggers and neither is it. This asserts the shape rather than
-// a behaviour, because the ban is the absence of a third option.
-func TestThereAreOnlyTwoTriggers(t *testing.T) {
-	// If a third is ever added, this fails and whoever adds it has to decide
+// there is one trigger and it is not that. This asserts the shape rather than
+// a behaviour, because the ban is the absence of a second option.
+func TestThereIsOnlyOneTrigger(t *testing.T) {
+	// If another is ever added, this fails and whoever adds it has to decide
 	// what the alias rule is for it — which is the conversation the −3.85
 	// measurement exists to force.
-	for _, tr := range []Trigger{TriggerEager, TriggerBatch} {
-		if tr.String() == "" || strings.HasPrefix(tr.String(), "trigger(") {
-			t.Errorf("trigger %d has no name", int(tr))
-		}
+	if s := TriggerBatch.String(); s == "" || strings.HasPrefix(s, "trigger(") {
+		t.Errorf("the batch trigger has no name")
 	}
-	if got := Trigger(2).String(); !strings.HasPrefix(got, "trigger(") {
-		t.Errorf("a third trigger exists and is named %q; the cold scheduled "+
+	if got := Trigger(1).String(); !strings.HasPrefix(got, "trigger(") {
+		t.Errorf("a second trigger exists and is named %q; the cold scheduled "+
 			"backfill is banned, and a new trigger needs its own alias rule", got)
 	}
 }

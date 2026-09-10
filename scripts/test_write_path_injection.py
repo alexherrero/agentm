@@ -96,7 +96,10 @@ class SmuggledInstructionsStayInert(_Vault):
         )
         self.assertEqual(stats["auto_saved"], 1, stats)
         path = self.root / "memory" / "semantic" / "pasted-page.md"
-        self.assertEqual(_fm(path)["status"], "active")
+        # Same reading as the capture case above, and now it discriminates:
+        # the miner files candidates `unfiled`, the smuggled block says
+        # `active`, so the two no longer agree by accident.
+        self.assertEqual(_fm(path)["status"], "unfiled")
         self._inert(path)
 
     def test_a_fetched_page_never_becomes_an_instruction(self):

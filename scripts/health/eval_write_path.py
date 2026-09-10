@@ -148,11 +148,23 @@ def render(rows: list, *, transcript: Path, messages: int, provenance: dict, tod
             excerpt = excerpt[:400] + " …"
         related = f" · related `{r['related']}`" if r["related"] else ""
         flags = f" · flags {', '.join(r['flags'])}" if r["flags"] else ""
+        # What the miner will actually do, not what the engine would do if it
+        # were asked. Only a HIGH candidate becomes a note; everything below it
+        # is a line in the session's trace, and a worksheet that showed an
+        # `add` for one would be asking you to judge a filing that never
+        # happens.
+        if r["confidence"] == "HIGH":
+            decision = (f"- decision: **{r['op']}** as `{r['type']}` → `{r['dest']}` "
+                        f"at {r['filing_confidence']} confidence{related}{flags}")
+        else:
+            decision = ("- decision: **not filed** — a line under `## Candidates` in the "
+                        f"session's trace. Were it filed it would {r['op']} as `{r['type']}` "
+                        f"→ `{r['dest']}`{related}{flags}")
         lines += [
             f"### {i}. {r['title']}",
             "",
             f"- mined as **{r['category']} / {r['confidence']}** (×{r['occurrences']}), slug `{r['slug']}`",
-            f"- decision: **{r['op']}** as `{r['type']}` → `{r['dest']}` at {r['filing_confidence']} confidence{related}{flags}",
+            decision,
             f"- why: {'; '.join(r['reasons']) or '—'}",
             f"- text: {excerpt}",
             "",

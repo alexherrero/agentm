@@ -122,19 +122,8 @@ class CountCrystallizeCandidatesTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        # Staging lives in the engine state dir, not the vault (filing-v2 2a).
-        # The conftest points $AGENTM_STATE_DIR at a tmp dir under pytest, but
-        # check-all.sh runs this battery with `python3 -m unittest`, which loads
-        # no conftest — so set it here too, or these read the operator's real
-        # state dir and go red the moment a daemon has staged anything.
-        self._state = os.environ.get("AGENTM_STATE_DIR")
-        os.environ["AGENTM_STATE_DIR"] = str(Path(self._tmp.name) / "state")
 
     def tearDown(self):
-        if self._state is None:
-            os.environ.pop("AGENTM_STATE_DIR", None)
-        else:
-            os.environ["AGENTM_STATE_DIR"] = self._state
         self._tmp.cleanup()
 
     def test_zero_when_missing(self):
@@ -384,6 +373,22 @@ class ResolveVaultTests(unittest.TestCase):
                 os.environ.pop("AGENTM_INSTALL_PREFIX", None)
             else:
                 os.environ["AGENTM_INSTALL_PREFIX"] = old_prefix
+
+
+# Staging lives in the engine state dir, not the vault (filing-v2 part 2a), so
+# these read the operator's real state directory and go red the moment a daemon
+# has staged anything. This suite sits one directory below the helper, so
+# `scripts/` joins the path here rather than only the test's own directory.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+for _p in (_osp.dirname(_osp.abspath(__file__)),
+           _osp.dirname(_osp.dirname(_osp.abspath(__file__)))):
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
 
 
 if __name__ == "__main__":

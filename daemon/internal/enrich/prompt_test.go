@@ -30,42 +30,24 @@ func TestAnUnresolvedContractSaysSoRatherThanOfferingNothing(t *testing.T) {
 	}
 }
 
-// The alias rule is the one thing that differs by trigger, and the difference is
-// measured rather than preferred: invented aliases cost 3.85 points of R@5.
-func TestTheAliasRuleDiffersByTrigger(t *testing.T) {
-	eager := BuildPrompt(Request{Raw: "n", Trigger: TriggerEager}, []string{"fact"})
-	batch := BuildPrompt(Request{Raw: "n", Trigger: TriggerBatch}, []string{"fact"})
+// The alias rule requires derivation and carries its evidence, which is the
+// half of the old two-trigger difference that was measured: invented aliases
+// cost 3.85 points of R@5.
+func TestTheAliasRuleRequiresDerivationAndSaysWhatItCosts(t *testing.T) {
+	got := BuildPrompt(Request{Raw: "n", Trigger: TriggerBatch}, []string{"fact"})
 
-	if !strings.Contains(eager, "phrasing the person actually used") {
-		t.Error("the eager prompt does not permit asker phrasing")
+	if !strings.Contains(got, "derivable from the note itself") {
+		t.Error("the prompt does not require derivation")
 	}
-	if strings.Contains(batch, "phrasing the person actually used") {
-		t.Error("the batch prompt permits asker phrasing, with no asker to take " +
-			"it from")
+	// A future reader loosening it should know what it costs.
+	if !strings.Contains(got, "3.85") {
+		t.Error("the rule states a ban without its evidence")
 	}
-	if !strings.Contains(batch, "derivable from the note itself") {
-		t.Error("the batch prompt does not require derivation")
-	}
-	// And the batch rule carries the measurement, so a future reader loosening
-	// it knows what it costs.
-	if !strings.Contains(batch, "3.85") {
-		t.Error("the batch rule states a ban without its evidence")
-	}
-}
-
-// The asking session's words are only ever sent at the eager trigger, because
-// only then is there an asker. Sending them at batch would be sending whatever
-// happened to be in a struct.
-func TestAskerPhrasingOnlyTravelsAtTheEagerTrigger(t *testing.T) {
-	req := Request{Raw: "n", AskerPhrasing: "remember how the staging gate works"}
-
-	req.Trigger = TriggerEager
-	if !strings.Contains(BuildPrompt(req, []string{"fact"}), "staging gate works") {
-		t.Error("the eager prompt dropped the asker's phrasing")
-	}
-	req.Trigger = TriggerBatch
-	if strings.Contains(BuildPrompt(req, []string{"fact"}), "staging gate works") {
-		t.Error("the batch prompt carried asker phrasing")
+	// The retired permission is gone, not merely unreachable: a prompt that
+	// still offered it would invite the model to write invented aliases and
+	// leave the post-gate to refuse every one of them.
+	if strings.Contains(got, "phrasing the person actually used") {
+		t.Error("the prompt still permits asker phrasing, with no asker to take it from")
 	}
 }
 
