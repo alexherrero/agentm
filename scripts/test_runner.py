@@ -241,6 +241,25 @@ class CycleIdempotencyTests(unittest.TestCase):
             self.assertFalse(r2.outcomes[0].ran)
             self.assertEqual(r2.outcomes[0].skipped_reason, "not-due")
 
+    def test_a_disabled_job_is_skipped_by_name_and_never_runs(self):
+        """Registered and off. Reported rather than dropped at load time: a
+        job nobody can see in the cycle report is a job nobody remembers to
+        turn on. The command below would create a file if it ran."""
+        with TemporaryDirectory() as td:
+            jobs_dir = Path(td) / "jobs"
+            state_root = Path(td) / "state"
+            marker = Path(td) / "it-ran"
+            _write_job(jobs_dir, "off", schedule="daily", lookback="6h",
+                       command=f"touch {marker}", tier="T3", dry_run=False,
+                       enabled=False)
+
+            report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=state_root)
+            self.assertEqual(len(report.outcomes), 1)
+            self.assertEqual(report.outcomes[0].name, "off")
+            self.assertFalse(report.outcomes[0].ran)
+            self.assertEqual(report.outcomes[0].skipped_reason, "disabled")
+            self.assertFalse(marker.exists(), "a disabled job ran its command")
+
     @unittest.skipUnless(os.name == "posix",
                           "reproduces a bash ctype mis-tokenization; "
                           "job.command runs under cmd.exe on Windows, not bash")

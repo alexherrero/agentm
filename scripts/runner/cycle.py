@@ -288,6 +288,12 @@ def run_cycle(
 
     report = CycleReport(refused=refused, loaded=len(jobs))
     for job in jobs:
+        if not job.enabled:
+            # Registered and off. Reported by name rather than dropped at load
+            # time, because a job nobody can see in the cycle report is a job
+            # nobody remembers to turn on.
+            report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason="disabled"))
+            continue
         if not job.dry_run and watchdog_mod.is_stopped(job.name, state_root=state_root):
             # The throttle->pause->stop ladder: "throttle" and "pause" are
             # visible-in-the-report warning rungs that still let the job keep

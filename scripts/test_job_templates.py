@@ -49,6 +49,31 @@ class JobTemplatesLoad(unittest.TestCase):
         self.assertEqual(job.command, "$HOME/.local/bin/agentmdream run -every 168h -apply")
         self.assertFalse(job.dry_run)
 
+    def test_the_nightly_enrichment_job_is_registered_and_off(self):
+        """Registered so the job has a name and a home; off because its
+        budget, walk order and prompt are the night's plan to decide.
+
+        `enabled: false` is not `dry_run: true` — a dry run still runs the
+        command and asks it not to write, and this command has nothing
+        decided for it yet.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            jobs = Path(td) / "jobs"
+            jobs.mkdir()
+            shutil.copy(TEMPLATES / "enrich-nightly.yaml", jobs / "enrich-nightly.yaml")
+            (job,) = manifest.load_manifests(jobs)
+        self.assertFalse(job.enabled)
+        self.assertIn("agentmd enrich", job.command)
+
+    def test_a_manifest_without_the_field_is_enabled(self):
+        """Every manifest written before the field existed keeps running."""
+        with tempfile.TemporaryDirectory() as td:
+            jobs = Path(td) / "jobs"
+            jobs.mkdir()
+            shutil.copy(TEMPLATES / "dreaming.yaml", jobs / "dreaming.yaml")
+            (job,) = manifest.load_manifests(jobs)
+        self.assertTrue(job.enabled)
+
 
 if __name__ == "__main__":
     unittest.main()
