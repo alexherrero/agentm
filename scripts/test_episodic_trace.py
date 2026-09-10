@@ -110,5 +110,96 @@ class TraceTests(unittest.TestCase):
         self.assertIn("skipped", err.getvalue())
 
 
+class TheHandoffRecord(unittest.TestCase):
+    """The trace is what the next session reads instead of this one's context:
+    what was asked, what came of it, what was written, what was read, and what
+    was said in passing."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.vault = self.root / "vault"
+        (self.vault / "memory" / "episodic").mkdir(parents=True)
+        self.transcript = self.root / "session.jsonl"
+        self.history = self.root / "recall-history.jsonl"
+        self.history.write_text(
+            json.dumps({"ts": "2026-09-05T10:02:00+00:00", "hit_slugs": ["vault-location"]}) + "\n",
+            encoding="utf-8")
+        _transcript(self.transcript)
+
+    def _trace(self, **kw):
+        return et.from_transcript(self.transcript, session_id="d46db2c7-0000",
+                                  history_path=self.history, **kw)
+
+    def test_the_five_sections_and_the_renamed_field(self):
+        trace = self._trace(
+            project="agentm", surface="claude-code",
+            candidates=[
+                {"rule": "durability-cue", "excerpt": "always run the battery first", "count": 3},
+                {"rule": "fix-observed", "excerpt": "the port was 8902, not 8901", "count": 1},
+            ],
+        )
+        rel = et.write_trace(self.vault, trace)
+        text = (self.vault / rel).read_text(encoding="utf-8")
+
+        for heading in ("## Asked", "## Outcome", "## Captured", "## Recalled", "## Candidates"):
+            self.assertIn(heading + "\n", text, f"the record is missing {heading}")
+        self.assertIn("\n## Asked\n\nHelp me tune the archive thresholds.\n", text)
+        self.assertIn("\n## Outcome\n\nDone.\n", text)
+
+        # The rename, both directions: a field that promised named things and
+        # held basenames now says what it holds.
+        self.assertIn("touched: [", text)
+        self.assertNotIn("entities:", text)
+
+        import yaml
+        fm = yaml.safe_load(text.split("---")[1])
+        self.assertEqual(fm["project"], "agentm")
+        self.assertEqual(fm["surface"], "claude-code")
+        self.assertIn("archive-line-ruling", fm["touched"])
+
+    def test_a_candidate_line_carries_its_rule_excerpt_and_count(self):
+        trace = self._trace(candidates=[
+            {"rule": "durability-cue", "excerpt": "always run the battery first", "count": 3},
+            {"rule": "fix-observed", "excerpt": "the port was 8902", "count": 1},
+        ])
+        body = (self.vault / et.write_trace(self.vault, trace)).read_text(encoding="utf-8")
+        self.assertIn("- durability-cue (×3) — “always run the battery first”", body)
+        # A count of one is not written: "×1" is noise on the common case.
+        self.assertIn("- fix-observed — “the port was 8902”", body)
+
+    def test_a_multi_line_excerpt_cannot_break_the_list(self):
+        trace = self._trace(candidates=[
+            {"rule": "durability-cue", "excerpt": "one\n- two\n\nthree", "count": 1}])
+        body = (self.vault / et.write_trace(self.vault, trace)).read_text(encoding="utf-8")
+        self.assertIn("- durability-cue — “one - two three”", body)
+
+    def test_the_candidates_cap_holds(self):
+        trace = self._trace(candidates=[{"rule": f"r{i}", "excerpt": "x"} for i in range(60)])
+        self.assertEqual(len(trace.candidates), et.MAX_CANDIDATES)
+
+    def test_a_session_whose_only_output_was_things_said_in_passing_still_leaves_a_trace(self):
+        """The miner files no note below HIGH any more, so this material is
+        here or nowhere."""
+        trace = et.Trace(when=date(2026, 9, 5), session_id="s", title="a session",
+                         candidates=[{"rule": "durability-cue", "excerpt": "x", "count": 1}])
+        self.assertEqual(trace.touched, [])
+        self.assertIsNotNone(et.write_trace(self.vault, trace))
+
+    def test_a_session_with_no_closing_prose_gets_no_outcome(self):
+        """A final turn that is nothing but tool calls has no recap, and a
+        manufactured one would be worse than none."""
+        rows = self.transcript.read_text(encoding="utf-8").rstrip("\n").split("\n")[:-1]
+        rows.append(_line("assistant", [{"type": "tool_use", "id": "t9", "name": "Bash",
+                                         "input": {"command": "ls"}}], "2026-09-05T10:11:00Z"))
+        self.transcript.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        trace = self._trace()
+        self.assertEqual(trace.outcome, "")
+        body = (self.vault / et.write_trace(self.vault, trace)).read_text(encoding="utf-8")
+        self.assertNotIn("## Outcome", body)
+        self.assertIn("## Asked", body)
+
+
 if __name__ == "__main__":
     unittest.main()
