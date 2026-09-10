@@ -131,6 +131,16 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         "test_opinion_supplement", "test_orchestration_briefing", "test_orchestration_idle",
         "test_repair_excerpts", "test_retro_mining_cleanup", "test_sampled_audit_surface",
         "test_skill_modules_file_loadable", "test_storage_rules", "test_vault_lint",
+        # Derived by running every state-mentioning suite against a scratch
+        # state directory and watching what it wrote or read, rather than by
+        # reading imports. The breaker suite is the sharpest case: its trip
+        # record lives here and ignores the vault path it is handed, so one
+        # test's trip was the next test's starting state — five failures on a
+        # hand run while the battery's own per-test rotation kept it green.
+        # The health suite appends to `health/history.jsonl`, which the
+        # scorecard reads. The last two carried a by-hand copy of this helper.
+        "test_enrichment_breaker", "test_health_score", "test_crystallize_staging",
+        "health/test_session_brief",
     )
 
     def test_each_named_suite_calls_the_helper(self):

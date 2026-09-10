@@ -55,21 +55,8 @@ class TestStageCandidate(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self.tmp.name) / "vault"
-        # Staging lives in the engine state dir, not the vault (filing-v2 2a),
-        # so without this these count whatever the operator's own daemon has
-        # staged — green on a fresh machine, red on a working one.
-        self._state = os.environ.get("AGENTM_STATE_DIR")
-        os.environ["AGENTM_STATE_DIR"] = str(Path(self.tmp.name) / "state")
 
     def tearDown(self) -> None:
-        if self._state is None:
-            os.environ.pop("AGENTM_STATE_DIR", None)
-        else:
-            os.environ["AGENTM_STATE_DIR"] = self._state
-        if self._state is None:
-            os.environ.pop("AGENTM_STATE_DIR", None)
-        else:
-            os.environ["AGENTM_STATE_DIR"] = self._state
         self.tmp.cleanup()
 
     def test_first_fire_stages_a_candidate_with_a_transcript_pointer(self) -> None:
@@ -165,18 +152,9 @@ class TestStagingDirnameHasOneMeaning(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        # Staging is read from the engine state dir, not the vault the tests
-        # build, so without this the counts below include whatever the
-        # operator's own daemon has staged.
         self._tmp = tempfile.TemporaryDirectory()
-        self._state = os.environ.get("AGENTM_STATE_DIR")
-        os.environ["AGENTM_STATE_DIR"] = str(Path(self._tmp.name) / "state")
 
     def tearDown(self) -> None:
-        if self._state is None:
-            os.environ.pop("AGENTM_STATE_DIR", None)
-        else:
-            os.environ["AGENTM_STATE_DIR"] = self._state
         self._tmp.cleanup()
 
     def _load(self, rel_dir: str, module_name: str):
@@ -461,6 +439,19 @@ class TestStageCrystallizationCandidate(unittest.TestCase):
         )
         self.assertEqual(r2["status"], "staged")
         self.assertEqual(crystallize.count_pending_candidates(self.vault), 2)
+
+
+# Engine state left the vault (filing-v2 part 2a), so a suite that touches it
+# and does not say where writes into the developer's own directory and reads
+# what the last run left there.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
 
 
 if __name__ == "__main__":

@@ -373,5 +373,18 @@ class TestMainCLI(unittest.TestCase):
             Path(path).unlink()
 
 
+# Engine state left the vault (filing-v2 part 2a), so a suite that touches it
+# and does not say where writes into the developer's own directory and reads
+# what the last run left there.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()
