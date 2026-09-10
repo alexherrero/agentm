@@ -518,7 +518,19 @@ func cmdCapture(args []string) error {
 		knownTypes = strings.Join(r.TypesSorted(), ", ")
 	}
 	noteType := fs.String("type", "", "one of: "+knownTypes)
-	status := fs.String("status", "", "active | unfiled")
+	// No --status flag. Status is derived from -type and -why: name both and
+	// the card lands `active`, leave either out and it lands `unfiled`. A flag
+	// that asserted it would be a way to claim a judgment nothing made.
+	summary := fs.String("summary", "", "one line: what this is and when it applies")
+	why := fs.String("why", "",
+		"why this was kept — what was happening, and what it decides later; "+
+			"with -type, this is what files the card as judged")
+	importance := fs.Int("importance", 0, "1-10, how much this matters")
+	related := fs.String("related", "", "comma-separated notes this sits beside, by slug or [[wikilink]]")
+	project := fs.String("project", "", "the project slug this was captured under")
+	task := fs.String("task", "", "the task's verb-slug this was captured under")
+	instructions := fs.String("instructions", "",
+		"an operator-typed action to run after absorb; typed here and nowhere else")
 	tags := fs.String("tags", "", "comma-separated tags")
 	aliases := fs.String("aliases", "", "comma-separated alternate phrasings")
 	source := fs.String("source", "", "how it arrived: operator-direct | conversation | external-fetch | email")
@@ -555,8 +567,11 @@ func cmdCapture(args []string) error {
 	defer idx.Close()
 
 	res, err := capture.New(cfg, idx).Do(capture.Request{
-		Text: text, Title: *title, Type: *noteType, Status: *status,
-		Tags: splitList(*tags), Aliases: splitList(*aliases),
+		Text: text, Title: *title, Type: *noteType,
+		Summary: *summary, Why: *why, Importance: *importance,
+		Related: splitList(*related), Project: *project, Task: *task,
+		Instructions: *instructions,
+		Tags:         splitList(*tags), Aliases: splitList(*aliases),
 		Source: *source, SourceID: *sourceID, SourceURL: *sourceURL,
 		SourceHash: *sourceHash, SourceVersion: *sourceVersion,
 		Space: *space,

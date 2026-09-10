@@ -449,7 +449,7 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 				"",
 				"Record what was learned, not what was said.",
 				"",
-				"Set status: \"active\" when the operator asked for this in the conversation — he has already approved it by asking. Leave it unset (it defaults to \"unfiled\") for anything captured unattended; unfiled notes are fully searchable and simply rank lower until filing promotes them.",
+				"Fill the fields a reader reads: title, type, summary, why, importance, tags, related. A capture that names its type and gives a why is a card you judged, and it lands \"active\". One that does not lands \"unfiled\" — a candidate the nightly pass judges later. Unfiled notes are fully searchable and simply rank lower until something promotes them. Status is not yours to set: it follows from what you said.",
 			}, "\n"),
 			"inputSchema": map[string]any{
 				"type": "object",
@@ -463,9 +463,36 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 						"description": "Short title. Derived from the text when omitted; the title is weighted 4x in ranking, so a good one is worth writing.",
 					},
 					"type": typeSchema,
-					"status": map[string]any{
-						"type": "string", "enum": []string{"unfiled", "active"}, "default": "unfiled",
-						"description": "\"active\" for a capture the operator asked for; \"unfiled\" for anything unattended.",
+					// `status` is not advertised: it is derived from the type
+					// and the `why`, and a field a model can set is a field a
+					// model will set. Offering it back would re-open the exact
+					// hole this contract closes — a note that says "judged"
+					// with nothing behind the claim.
+					"summary": map[string]any{
+						"type":        "string",
+						"description": "One line: what this is and when it applies. Worth writing whenever the body runs past a paragraph.",
+					},
+					"why": map[string]any{
+						"type": "string",
+						"description": "Why this was kept: what was happening when it came up, and what it decides later. " +
+							"One or two sentences. Write it only when you actually know — it is never guessed later, " +
+							"and it is what marks the note as judged rather than as a candidate.",
+					},
+					"importance": map[string]any{
+						"type": "integer", "minimum": 1, "maximum": 10,
+						"description": "1-10, how much this matters. Your reading is a proposal; an operator's edit wins over it forever after.",
+					},
+					"related": map[string]any{
+						"type": "array", "items": map[string]any{"type": "string"},
+						"description": "Notes this one sits beside, by slug or as [[wikilinks]].",
+					},
+					"project": map[string]any{
+						"type":        "string",
+						"description": "The project slug this was captured under, when the session has one.",
+					},
+					"task": map[string]any{
+						"type":        "string",
+						"description": "The task's verb-slug this was captured under, when the session has one.",
 					},
 					"tags": map[string]any{
 						"type": "array", "items": map[string]any{"type": "string"},

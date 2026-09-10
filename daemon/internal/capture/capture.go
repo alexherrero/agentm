@@ -37,12 +37,61 @@ import (
 
 // Request is one capture.
 type Request struct {
-	Text    string   `json:"text"`
-	Title   string   `json:"title,omitempty"`
-	Type    string   `json:"type,omitempty"`
-	Status  string   `json:"status,omitempty"`
-	Tags    []string `json:"tags,omitempty"`
-	Aliases []string `json:"aliases,omitempty"`
+	Text  string `json:"text"`
+	Title string `json:"title,omitempty"`
+	Type  string `json:"type,omitempty"`
+	// Status is accepted for callers that have not moved yet, and is no longer
+	// authoritative. Status is derived from what the writer knew — see
+	// knowingWriter — because a caller-asserted `active` is precisely the
+	// Python lane's bug: it wrote `active` at low confidence, a state
+	// enrichment's gate never reads, and the corpus ended up saying "judged"
+	// about 74 notes nothing had judged. A supplied value that disagrees with
+	// the derivation is reported back in Result.Note rather than obeyed or
+	// swallowed.
+	Status string `json:"status,omitempty"`
+	// Summary is one line: what this is and when it applies. Written at
+	// capture, refined by the deep pass.
+	Summary string `json:"summary,omitempty"`
+	// Why is the reasoning — what was happening when this was kept, and what
+	// it decides later. Only a writer that knows may write it: the operator or
+	// the model that was in the room. No pass, gate or fallback invents one,
+	// because a reason guessed from the note reads exactly like a real one and
+	// the field is only worth having if it is always the room's.
+	//
+	// It is also the judgment signal. A card with a `why` and a named type is
+	// a card someone stood behind; a card without is a candidate the night
+	// still has to judge.
+	Why string `json:"why,omitempty"`
+	// Importance is the operator-read 1-10 reading. A capture-time value is a
+	// *proposal*: it is written to both `importance` and `importance_proposed`
+	// so that a later edit to `importance` differs from the proposal, which is
+	// what marks the value as the operator's and stops any pass overwriting it.
+	Importance int `json:"importance,omitempty"`
+	// Related are the notes this one sits beside — `supersedes` and
+	// `superseded_by` live in their own fields. Rendered as wikilinks so
+	// Obsidian resolves them from the properties panel.
+	Related []string `json:"related,omitempty"`
+	// Project and Task are the binding the card was captured under: the
+	// project slug and the task's verb-slug. Stamped by every writer that
+	// knows its binding, absent from every writer that does not — this door
+	// takes them and never infers them.
+	Project string `json:"project,omitempty"`
+	Task    string `json:"task,omitempty"`
+	// Instructions is the security-boundary field, moved here so the one front
+	// door carries the one rule: this door stores exactly the string it is
+	// handed and never inspects Text to derive one. The ingest sweep executes
+	// a matching instruction under a fixed grammar, so a value derived from
+	// note *content* would be an execution path for whatever that content
+	// says. A caller that populates it from anything but the operator's own
+	// capture-time text breaks the invariant at the call site.
+	//
+	// Deliberately absent from the published tool schema, for the same reason
+	// Probe is: a model that can see the field will eventually fill it, and
+	// the only safe writer is an operator-typed surface (the CLI's
+	// --instructions, the clipper).
+	Instructions string   `json:"instructions,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	Aliases      []string `json:"aliases,omitempty"`
 	// Source is the transport the material arrived by — one of the contract's
 	// `sources` vocabulary. Where it came from goes in SourceID or SourceURL.
 	Source string `json:"source,omitempty"`
@@ -92,13 +141,28 @@ var slugScrubRe = regexp.MustCompile(`[^a-z0-9]+`)
 // from a later judgment rather than by asserting it about itself.
 const DefaultAltitude = "artifact"
 
-// Statuses capture may land in. Deliberate capture lands `active` — a session the
-// operator directed produces memories he already approved by asking for them, and
-// routing those through triage would page him about a backlog that is not one.
-// Unattended capture lands `unfiled`, which is rank-penalized but fully indexed
-// and searchable: there is no inbox, and rank-penalized is a very different
+// Statuses capture may land in. `unfiled` means no judgment has been made;
+// `active` means one has. That is the whole vocabulary, and it means the same
+// thing for every writer in the system.
+//
+// A note that lands `unfiled` is rank-penalized but fully indexed and
+// searchable: there is no inbox, and rank-penalized is a very different
 // condition from absent.
 var validStatuses = map[string]bool{"unfiled": true, "active": true}
+
+// MaxImportance is the top of the operator-read 1-10 reading.
+const MaxImportance = 10
+
+// knowingWriter reports whether this capture came from a writer that judged it
+// — a named type and a `why`. Both, because either alone is not a judgment: a
+// type is a filing decision, and a `why` on an untyped note says the writer
+// knew what it meant but not where it goes.
+//
+// This is the one place status is decided. Every writer in the system now
+// agrees on it, which is what the field being worth reading depends on.
+func knowingWriter(noteType, why string) bool {
+	return strings.TrimSpace(noteType) != "" && strings.TrimSpace(why) != ""
+}
 
 // Capturer writes captures into a vault and its index.
 type Capturer struct {
@@ -263,14 +327,37 @@ func (c *Capturer) Do(req Request) (Result, error) {
 			noteType, strings.Join(contract.TypesSorted(), ", "))
 	}
 
-	status := strings.ToLower(strings.TrimSpace(req.Status))
-	if status == "" {
-		status = "unfiled"
+	// Status is derived, never asserted. A card whose writer named its type
+	// and said why lands `active`; everything else lands `unfiled` and waits
+	// for the night to judge it.
+	why := strings.TrimSpace(req.Why)
+	// Against the type the *caller* named, not the one the contract defaulted
+	// to a few lines up. A defaulted type is the contract's guess, and a guess
+	// plus a reason is not a writer that knew where the note goes — which is
+	// the same distinction `filing_confidence` is drawing.
+	status := "unfiled"
+	if knowingWriter(req.Type, why) {
+		status = "active"
 	}
-	if !validStatuses[status] {
+	if asked := strings.ToLower(strings.TrimSpace(req.Status)); asked != "" {
+		if !validStatuses[asked] {
+			return Result{}, fmt.Errorf(
+				`status %q is not one of: active (a card its writer judged), `+
+					`unfiled (a candidate nothing has judged yet)`, asked)
+		}
+		if asked != status {
+			notes = append(notes, fmt.Sprintf(
+				"status is derived from what the writer knew, so this landed %q rather than "+
+					"the %q you asked for; a card lands `active` when it names its type and "+
+					"gives a `why`", status, asked))
+		}
+	}
+
+	importance := req.Importance
+	if importance != 0 && (importance < 1 || importance > MaxImportance) {
 		return Result{}, fmt.Errorf(
-			`status %q is not one of: active (a capture the operator asked for), `+
-				`unfiled (anything unattended)`, status)
+			"importance %d is outside 1-%d; leave it unset rather than guessing",
+			importance, MaxImportance)
 	}
 
 	title := strings.TrimSpace(req.Title)
@@ -348,6 +435,13 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		Captured:         captured,
 		Slug:             slug,
 		Title:            title,
+		Summary:          strings.TrimSpace(req.Summary),
+		Why:              why,
+		Importance:       importance,
+		Related:          req.Related,
+		Project:          strings.TrimSpace(req.Project),
+		Task:             strings.TrimSpace(req.Task),
+		Instructions:     strings.TrimSpace(req.Instructions),
 		Tags:             req.Tags,
 		Aliases:          aliases,
 		Source:           strings.TrimSpace(req.Source),
@@ -469,9 +563,21 @@ type noteData struct {
 	Captured time.Time
 	Slug     string
 	Title    string
-	Tags     []string
-	Aliases  []string
-	Source   string
+	// Summary, Why, Importance, Related, Project and Task are the operator-read
+	// half of the card. Why is written only when the writer knew one; the
+	// renderer never manufactures any of them from the body.
+	Summary    string
+	Why        string
+	Importance int
+	Related    []string
+	Project    string
+	Task       string
+	// Instructions is stored verbatim — see Request.Instructions for the rule
+	// this field exists to keep in one place.
+	Instructions string
+	Tags         []string
+	Aliases      []string
+	Source       string
 	// SourceID and SourceURL name the unit the note came from — a registry
 	// identity or a fetched page's address. `Source` names the transport.
 	SourceID  string
@@ -503,17 +609,47 @@ func renderNote(d noteData) string {
 	// field a later pass can change in place — an absent one has to be
 	// distinguished from a deliberate one first.
 	fmt.Fprintf(&b, "altitude: %s\n", d.Altitude)
-	fmt.Fprintf(&b, "captured: %s\n", d.Captured.Format(index.CapturedFormat()))
+	// `created`, not `captured`. One field names the day a memory came into
+	// existence, and the corpus carried two spellings of it — 30% one, 26% the
+	// other. Readers stay tolerant of both while the backfill runs; this
+	// writer emits only the one that survives.
+	fmt.Fprintf(&b, "created: %s\n", d.Captured.Format(index.CapturedFormat()))
 	fmt.Fprintf(&b, "updated: %s\n", d.Captured.Format(index.CapturedFormat()))
 	fmt.Fprintf(&b, "slug: %s\n", d.Slug)
 	if d.Title != "" {
 		fmt.Fprintf(&b, "title: %s\n", yamlScalar(d.Title))
+	}
+	if d.Summary != "" {
+		fmt.Fprintf(&b, "summary: %s\n", yamlScalar(d.Summary))
+	}
+	if d.Why != "" {
+		fmt.Fprintf(&b, "why: %s\n", yamlScalar(d.Why))
+	}
+	// Both fields, from one value. `importance` is what you read and edit;
+	// `importance_proposed` is the reading as proposed. Writing them equal at
+	// capture is what makes a later edit legible as yours — the deep pass
+	// leaves an `importance` that differs from the proposal alone.
+	if d.Importance != 0 {
+		fmt.Fprintf(&b, "importance: %d\n", d.Importance)
 	}
 	if len(d.Tags) > 0 {
 		fmt.Fprintf(&b, "tags: [%s]\n", strings.Join(cleanList(d.Tags), ", "))
 	}
 	if len(d.Aliases) > 0 {
 		fmt.Fprintf(&b, "aliases: [%s]\n", strings.Join(quoteList(d.Aliases), ", "))
+	}
+	// Wikilinks in a quoted flow list: `related: ["[[a]]", "[[b]]"]`. Quoted
+	// because a bare `[[a]]` is a nested YAML sequence rather than a link, and
+	// this file has to parse strictly; wrapped because a caller that passed a
+	// slug meant the note, and a plain string is not a link Obsidian resolves.
+	if len(d.Related) > 0 {
+		fmt.Fprintf(&b, "related: [%s]\n", strings.Join(quoteList(wikilinks(d.Related)), ", "))
+	}
+	if d.Project != "" {
+		fmt.Fprintf(&b, "project: %s\n", yamlScalar(d.Project))
+	}
+	if d.Task != "" {
+		fmt.Fprintf(&b, "task: %s\n", yamlScalar(d.Task))
 	}
 	if d.Source != "" {
 		fmt.Fprintf(&b, "source: %s\n", yamlScalar(d.Source))
@@ -539,6 +675,12 @@ func renderNote(d noteData) string {
 	}
 	if d.Trust != "" {
 		fmt.Fprintf(&b, "trust: %s\n", d.Trust)
+	}
+	if d.Instructions != "" {
+		fmt.Fprintf(&b, "instructions: %s\n", yamlScalar(d.Instructions))
+	}
+	if d.Importance != 0 {
+		fmt.Fprintf(&b, "importance_proposed: %d\n", d.Importance)
 	}
 	// The probe marker. Written as a frontmatter field rather than expressed by
 	// where the note lives, because everything downstream that must not count a
@@ -567,6 +709,25 @@ func cleanList(in []string) []string {
 		out = append(out, s)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// wikilinks wraps each entry in `[[ ]]` unless it already is one, so a caller
+// may pass either a slug or a link and the note ends up with a link either way.
+// A `.md` suffix is dropped: the link target is the note's name, and Obsidian
+// resolves `[[foo]]` where `[[foo.md]]` dangles.
+func wikilinks(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if !strings.HasPrefix(s, "[[") {
+			s = "[[" + strings.TrimSuffix(s, ".md") + "]]"
+		}
+		out = append(out, s)
+	}
 	return out
 }
 

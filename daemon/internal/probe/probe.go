@@ -184,9 +184,14 @@ func (r *Runner) Run(now time.Time) (State, error) {
 			"",
 			"It is safe to delete. The next run writes another one and retires this.",
 		}, "\n"),
-		"type":   probeType,
-		"status": "active",
-		"tags":   []string{Tag, "synthetic"},
+		"type": probeType,
+		// The probe knows why it wrote this, so it says so — and saying so is
+		// now what lands the note `active` rather than a status the caller
+		// asserts. An `unfiled` probe note would be rank-penalized, which is
+		// a handicap on the one round trip that must not be handicapped.
+		"why": "The daemon writes this once a day to prove a capture can be found again; " +
+			"it decides whether the round trip is reported healthy.",
+		"tags": []string{Tag, "synthetic"},
 		// The alias nonce appears nowhere above. Asking for it is the sideways
 		// question: it can only be answered from the meta column.
 		"aliases": []string{aliasNonce},
