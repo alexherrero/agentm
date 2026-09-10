@@ -17,8 +17,9 @@
 # **Turning it on is two edits, and they belong together**: `enabled: true`
 # here, and `daemon.enrich_enabled true` in the kernel config
 # (`agentm_config.py --enrich-enabled true`). Either alone does nothing —
-# the job would run a command that refuses, or the command would be armed with
-# nothing scheduled to call it.
+# `enabled: true` schedules a command that refuses while the switch is off, and
+# the switch alone arms a pass with nothing scheduled to call it. See the
+# `command:` note below for what that depends on.
 schedule: daily
 lookback: 36h
 
@@ -29,11 +30,17 @@ lookback: 36h
 enabled: false
 
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
-# `--yes` is deliberate and is the narrower of the two arms: it runs this one
-# batch without requiring `daemon.enrich_enabled`, which is the standing switch
-# an operator throws for their own install. The budget lives in the flags the
-# night's plan sets, not here.
-command: $HOME/.local/bin/agentmd enrich --yes
+#
+# **No `--yes`, deliberately.** That flag bypasses `daemon.enrich_enabled`
+# outright — it exists so a person can run one batch by hand without throwing
+# the standing switch. In a *scheduled* command it would defeat the one flag
+# whose whole point is that spending is never turned on by anything but an
+# operator's own decision: the job would spend every night with the switch
+# still off. Without it, the command refuses until the switch is thrown, which
+# is what makes the two edits above genuinely need each other.
+#
+# The budget lives in the flags the night's plan sets, not here.
+command: $HOME/.local/bin/agentmd enrich
 
 # Spends model calls, over the operator's own corpus, unattended. The same tier
 # every other job that calls a model carries.

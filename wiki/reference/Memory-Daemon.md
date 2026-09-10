@@ -73,7 +73,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `graph` | The memory context graph, laid out deterministically and written as SVG. `--cap`, `--out`. |
 | `clusters` | Which notes are too similar to be independent memories, and what kind of too-similar. `--threshold`, `--sample`, `--json`. |
 | `embed` | Compute the vector arm's embeddings for in-scope notes. |
-| `enrich` | Run the enrichment pass over the unfiled queue. `--sample N --seed S` draws a reproducible random batch, `--dump` writes before/after pairs, `--yes` runs one batch without arming the eager trigger. |
+| `enrich` | Run the enrichment pass over the notes owed one. `--sample N --seed S` draws a reproducible random batch, `--dump` writes before/after pairs, `--yes` runs one batch without needing `daemon.enrich_enabled` set. |
 | `ledger` | Ask what dreaming has already done, and what is pending. |
 | `queue` | Show the pending-work queues, or record work owed. |
 | `sources` | Ask whether a source has been mined, and watermark it. |
@@ -125,6 +125,7 @@ Miner fragments are short and quote the operator's own words, so BM25 ranks them
 | `lifecycle-dormant` | 0.30 | frontmatter `lifecycle: dormant` — silent past the axis's `dormant_after_days` |
 | `lifecycle-archived` | 0.30 | frontmatter `lifecycle: archived` — also walled out of the default result set (see below) |
 | `lifecycle-superseded` | 0.30 | frontmatter `lifecycle: superseded` — the axis is now the only carrier of supersession for a memory; also walled out of the default result set like archived (see below), lifted by `include_archived`, counted in `superseded_hidden` |
+| `ingest-staged` | 0.30 | `status: ingest_staged` — a unit the ingest sweep fetched and has not yet promoted; walled out of the default result set like archived and superseded (see below), lifted by `include_archived`, counted in `staged_hidden` (`daemon/internal/note/classify.go:82-92,326-327`) |
 | `durable` | *none* | the note never ages: `lifecycle_tier: durable`, `lifecycle: pinned`, `kind: failure-incident`, a `decisions/` path segment, or a contract-exempt space |
 
 Four properties are load-bearing:
@@ -134,9 +135,9 @@ Four properties are load-bearing:
 - **Filing overrides shape.** `fragment-promoted` carries no weight, so a fragment-shaped note that filing promoted keeps its score. That protects 1,288 notes, including 229 of the 232 in `memory/preferences/` — the promotion pipeline promoted their bodies verbatim, so they look mined and are filed.
 - **Never exclude.** A penalized note that is the best thing the corpus has still comes back first. Exclusion is what left recall returning nothing for four months.
 
-### The archived and superseded wall
+### The archived, superseded, and staged wall
 
-`lifecycle-archived` and `lifecycle-superseded` are the two classes that break the "never exclude" rule above, on purpose. An archived or superseded note leaves the default result set entirely — on disk, in the index, but invisible until you ask for it by name: `include_archived: true` on `memory_search`, `-include-archived` on `agentmd search`. Ask, and it comes back present and still demoted, never restored to parity with an active note. Every search outcome reports `archived_hidden` and `superseded_hidden`, the counts the wall kept out of that call's results, so an absence is visible rather than inferred.
+`lifecycle-archived`, `lifecycle-superseded`, and `ingest-staged` are the three classes that break the "never exclude" rule above, on purpose. An archived, superseded, or staged note leaves the default result set entirely — on disk, in the index, but invisible until you ask for it by name: `include_archived: true` on `memory_search`, `-include-archived` on `agentmd search`. One flag lifts all three walls together (`wallUnserved`, `daemon/internal/index/search.go:884-907`); there is no separate flag for staged units alone. Ask, and each comes back present and still demoted, never restored to parity with an active note. Every search outcome reports `archived_hidden`, `superseded_hidden`, and `staged_hidden`, the counts each wall kept out of that call's results, so an absence is visible rather than inferred.
 
 ### Space, altitude, and the two that are not penalties
 
@@ -174,7 +175,7 @@ There is no OR query rewrite. It read as the largest available win on one run; r
 
 Two more knobs exist in the code and are deliberately not in this table: a `-lex3` flag (widens `fusion`'s subset search from 2-term to 2- and 3-term) and a `rerank` mode (cross-encoder rerank with a score floor). Neither is in `memory_search`'s published schema and neither is requested by the prompt-submit hook — `lex3` missed its own recall floor by two questions, and `rerank` could not separate true answers from hard negatives at any threshold. Both stay in the tree as tested, working code reachable only from `agentmd search` directly: a refuted rung is still worth keeping when it costs nothing in production. See [AgentM Hybrid Retrieval](agentm-hybrid-retrieval).
 
-Returns `{results, note, matched, archived_hidden, superseded_hidden}`. Each result carries `path`, `score`, `raw_score`, `penalty`, `captured`, `captured_source`, and `snippet`. `score` is the penalized score and larger is better; `raw_score` is the value before demotion, so a penalty is visible rather than inferred from a number moving. `archived_hidden` and `superseded_hidden` are the counts the wall kept out of this call's results — present even at `0`, so an absence reads as measured rather than assumed.
+Returns `{results, note, matched, archived_hidden, superseded_hidden, staged_hidden}`. Each result carries `path`, `score`, `raw_score`, `penalty`, `captured`, `captured_source`, and `snippet`. `score` is the penalized score and larger is better; `raw_score` is the value before demotion, so a penalty is visible rather than inferred from a number moving. `archived_hidden`, `superseded_hidden`, and `staged_hidden` are the counts each wall kept out of this call's results — present even at `0`, so an absence reads as measured rather than assumed.
 
 `note` is set whenever the driver should know something — a rewritten query, or an empty result set.
 
@@ -185,14 +186,24 @@ Returns `{results, note, matched, archived_hidden, superseded_hidden}`. Each res
 | `text` | `str` | required | The fact, in plain prose. One concept per call. |
 | `title` | `str` | derived | Weighted 4x in ranking, so a good one is worth writing. |
 | `type` | `str` | `preference` | One of `preference`, `workflow`, `idea`, `fix`, `convention`, `reference`. |
-| `status` | `str` | `unfiled` | `active` when the operator asked for it in the conversation. |
+| `summary` | `str` | — | One line: what this is and when it applies. Worth writing whenever the body runs past a paragraph. |
+| `why` | `str` | — | Why this was kept — what was happening, and what it decides later. Only write it when you actually know; a guessed reason is never invented downstream either. This is also the judgment signal — see `status` below. |
+| `importance` | `int` | — | 1-10. Written to both `importance` and `importance_proposed` — an operator's later edit to `importance` alone is what marks the value theirs from then on. |
+| `related` | `[str]` | — | Notes this one sits beside, by slug or `[[wikilink]]`. Rendered as a quoted flow list of wikilinks. |
+| `project`, `task` | `str` | — | The project slug and the task's verb-slug this was captured under, when the session has one. |
 | `tags`, `aliases` | `[str]` | — | Both land in the `meta` column. |
 | `source` | `str` | — | The transport the memory arrived by — one of the contract's `sources` vocabulary (`operator-direct`, `conversation`, `external-fetch`, `email`). Sets the trust tier. As of the provenance ruling (2026-09-06) it is transport only; where the material came from goes in `source_id` or `source_url` below. |
 | `source_id` | `str` | — | A mined unit's registry identity, when the memory came from one. |
 | `source_url` | `str` | — | A fetched page's address, when the memory came from one. |
 | `space` | `str` | `memory` | Which configured space to write into. |
 
-Capture writes the file, then updates the index. No model call, no network, and it works offline — the mechanism that makes something exist and findable never waits on judgment. If the index write fails, the file is still on disk and the next reconcile pass picks it up; the response says so rather than inviting a retry that would write a duplicate.
+`status` is not a published param and cannot be set through this tool. It is derived from what the writer knew: a call that names a `type` and gives a `why` is a card someone judged, and it lands `active`; anything else lands `unfiled`, a candidate the nightly pass judges later (`knowingWriter`, `daemon/internal/capture/capture.go:161`; called from `Do` at `:316-339`). The wire-level `Request.Status` field still exists for callers that haven't moved off it, but a value that disagrees with the derivation is reported back in the response rather than silently obeyed or swallowed.
+
+`instructions` is accepted on the wire (`Request.Instructions`) but is deliberately **not** published in this schema, for the same reason `probe` isn't: the ingest sweep executes a matching instruction under a fixed grammar, and a field a model can see is one it will eventually fill from note content — an execution path for whatever that content says. It reaches this door only from operator-typed surfaces: the CLI's `agentmd capture -instructions`, and the phone clipper. See [How to capture from your phone](Capture-From-Your-Phone).
+
+Capture writes the file, then updates the index. No model call, no network, and it works offline — the mechanism that makes something exist and findable never waits on judgment. If the index write fails, the file is still on disk and the next reconcile pass picks it up; the response says so rather than inviting a retry that would write a duplicate. There used to be a second effect after the write — an eager enrichment pass fired out of band — and it is gone: capture no longer imports the enrichment package at all (`daemon/internal/capture/capture.go`), and the note waits `unfiled` for the nightly batch instead. See [Enrichment](#enrichment) below.
+
+`agentmd capture` mirrors this schema on the CLI: `-type`, `-summary`, `-why`, `-importance`, `-related`, `-project`, `-task`, `-instructions`, alongside the pre-existing `-title`, `-tags`, `-aliases`, `-source*`, `-space`. There is no `-status` flag (`daemon/cmd/agentmd/main.go:518-534`).
 
 ## Configuration
 
@@ -397,8 +408,11 @@ In every one of those cases it falls through to `daemon.shard`. The
 `capture.go` writes — a hardcoded literal; the Python writer below reads
 the contract's `default_lifecycle` instead — `filing_confidence: high` when the caller
 named the type, and `filing_confidence: low` when the contract's default
-type was used. The `status: unfiled` default predates this change. Filing
-v2's write path (task 5) adds a fourth stamp beside these three: `trust`,
+type was used. The `status: unfiled` default predates this change and no
+longer tells the whole story: the capture-writers plan replaced the flat
+default with a derivation — `active` when the writer named a type and gave
+a `why`, `unfiled` otherwise — see [`memory_capture`](#memory_capture)
+above. Filing v2's write path (task 5) adds a fourth stamp beside these three: `trust`,
 from the caller's `source` tag through the contract's `sources` map.
 `trustTier` (`capture.go`) reads `contract.Sources[source]` directly
 rather than through the `SourceTier` method below, and treats any
@@ -476,8 +490,30 @@ reported daily with a week-over-week trend.
 
 ## Enrichment
 
-`agentmd enrich` rewrites a note the writer filed unsure about into one
-it's judged: a title, tags, aliases, a confidence number, and — since
+`agentmd enrich` runs as a nightly batch only. It used to have a second
+trigger — eager, firing out of band just after a capture committed — and
+that retired with the capture-writers plan: capture no longer imports the
+`enrich` package at all, `Capturer.SetEnrichPass` and `Pass.Wait` are gone,
+and the trigger enum collapsed to the one value the batch always was
+(`Trigger`, `daemon/internal/enrich/pass.go:38-53`). `daemon.enrich_enabled`
+now gates only the standing nightly behaviour, never a per-capture model
+call. See [`templates/jobs/enrich-nightly.yaml`](#the-runner-and-a-refused-manifest)
+below for how the batch is scheduled.
+
+Eligibility no longer reads `status`: what used to refuse any note that
+wasn't `unfiled` is gone (`Eligibility.Statuses` removed; the check now at
+`daemon/internal/enrich/pregates.go:62-79`), because status says whether a
+note was judged, not whether it has been through this pass. What the pass
+reads instead is `PassDepth`, from the note's own `enriched_at` stamp:
+absent means the whole pass is owed (`DepthDeep`), present means the
+lighter pass a note that has moved since is owed (`DepthLight`) —
+`pregates.go:81-118`. A note genuinely unchanged since its last pass is
+caught for free by the separate fingerprint gate, keyed on the pass
+version, the rules hash, and the body together
+(`Fingerprint.Check`, `pregates.go:253-266`).
+
+What it does once it runs: rewrite a note the writer filed unsure about into
+one it's judged — a title, tags, aliases, a confidence number, and — since
 filing v2's write path — a categorical twin of that number every other
 writer already shares. `FilingConfidenceFor`
 (`daemon/internal/enrich/render.go`) stamps `filing_confidence: high` at
@@ -488,18 +524,32 @@ be a threshold nobody measured. The needs-review reading (see [Review
 flagged memories](Review-Flagged-Memories)) selects on this field without
 knowing what floor produced it.
 
-`CarryProvenance` (`daemon/internal/enrich/carry.go`) copies every
+`CarryProvenance` (`daemon/internal/enrich/carry.go:36`) copies every
 capture-record and review-mark field the rewritten note doesn't already
-set — `source`, `lifecycle`, `captured`, `via`, `source_url`,
+set — `source`, `lifecycle`, `captured`, `created`, `via`, `source_url`,
 `source_fetched`, `surface`, `instructions`, `review_flags`, `related`,
-`trust` — from the note as it stood before enrichment. `filing_confidence`
-is deliberately excluded from that list: the pass re-judges it, which is
-how an unfiled capture actually clears the needs-review reading rather
-than carrying its old low stamp forward unread. A note with no `lifecycle`
-of its own starts `active` — an enriched note is an auto-filed note
-either way, the same default a fresh write gets. `main.go`'s `cmdEnrich`
-is the one caller, threading the pre-rewrite note's text through
-`CarryProvenance` before the write applies.
+`trust`, `why`, `project`, `task`, `importance`, `importance_proposed`
+(`carriedFields`, `carry.go:13-17`) — from the note as it stood before
+enrichment. `filing_confidence` is deliberately excluded from that list:
+the pass re-judges it, which is how an unfiled capture actually clears the
+needs-review reading rather than carrying its old low stamp forward
+unread. `why` rides the carry list and is never written by the pass itself
+— no pass was in the room, so a `why` it invented would read exactly like
+a real one.
+
+Two guards sit beside the plain carry. `carryImportance` (`carry.go:74-85`)
+keeps an `importance` the operator edited: capture writes `importance` and
+`importance_proposed` equal, so a note where they *differ* is a note
+someone edited by hand, and that value survives a pass untouched — the
+pass's own reading lands in `importance_proposed` instead. `carryEvidence`
+(`carry.go:93-99`) restores the note's `## Evidence` block verbatim if the
+rewrite dropped it — the block quotes the note's source material, which
+the pass is not entitled to rewrite or drop.
+
+A note with no `lifecycle` of its own starts `active` — an enriched note is
+an auto-filed note either way, the same default a fresh write gets.
+`main.go`'s `cmdEnrich` is the one caller, threading the pre-rewrite note's
+text through `CarryProvenance` before the write applies.
 
 ## The dreaming binary, `agentmdream`
 

@@ -64,6 +64,11 @@ class JobTemplatesLoad(unittest.TestCase):
             (job,) = manifest.load_manifests(jobs)
         self.assertFalse(job.enabled)
         self.assertIn("agentmd enrich", job.command)
+        # No `--yes`. That flag bypasses `daemon.enrich_enabled` outright, so a
+        # scheduled command carrying it would spend every night with the
+        # operator's standing spend switch still off — which is the one thing
+        # that switch exists to prevent.
+        self.assertNotIn("--yes", job.command)
 
     def test_a_manifest_without_the_field_is_enabled(self):
         """Every manifest written before the field existed keeps running."""
