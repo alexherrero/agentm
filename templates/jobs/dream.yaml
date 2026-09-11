@@ -41,6 +41,12 @@
 schedule: weekly
 lookback: 14d
 
+# The night (agentm-vault plan 04): the four nightly steps start inside
+# 02:00-06:00 local and run in this order — enrichment, the binary, the Python
+# cycle, the scorecards — because each reads what the one before it wrote.
+window: "02:00-06:00"
+order: 3
+
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
 # Relies on MEMORY_VAULT_PATH already being set in the runner's own
 # environment, same as every other vault-reading script in this repo.

@@ -13,6 +13,12 @@
 schedule: daily
 lookback: 3d
 
+# The night (agentm-vault plan 04): the four nightly steps start inside
+# 02:00-06:00 local and run in this order — enrichment, the binary, the Python
+# cycle, the scorecards — because each reads what the one before it wrote.
+window: "02:00-06:00"
+order: 2
+
 # The runner runs from `scripts/`; the binary reads the kernel config for the
 # vault, and $AGENTM_STATE_DIR (or ~/.local/state/agentm) for its state,
 # journal and lock. Report-only: no `-apply` until the parity gate.

@@ -23,6 +23,12 @@
 schedule: daily
 lookback: 36h
 
+# The night (agentm-vault plan 04): the four nightly steps start inside
+# 02:00-06:00 local and run in this order — enrichment, the binary, the Python
+# cycle, the scorecards — because each reads what the one before it wrote.
+window: "02:00-06:00"
+order: 1
+
 # Registered and off. `enabled: false` is not `dry_run: true`: a dry run still
 # runs the command and asks it not to write, and this job's command has no
 # schedule, budget or prompt decided for it yet. The cycle skips it by name, so

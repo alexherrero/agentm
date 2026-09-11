@@ -79,6 +79,25 @@ class JobTemplatesLoad(unittest.TestCase):
             (job,) = manifest.load_manifests(jobs)
         self.assertTrue(job.enabled)
 
+    def test_the_four_nightly_steps_share_the_window_in_the_night_order(self):
+        """agentm-vault plan 04, task 1: enrichment, the binary, the Python
+        cycle, the scorecards — inside 02:00-06:00, in that order, because each
+        reads what the one before it wrote."""
+        night = ["enrich-nightly", "dreaming", "dream", "corpus-scorecard"]
+        with tempfile.TemporaryDirectory() as td:
+            jobs = Path(td) / "jobs"
+            jobs.mkdir()
+            for t in TEMPLATES.glob("*.yaml"):
+                shutil.copy(t, jobs / t.name)
+            loaded = {j.name: j for j in manifest.load_manifests(jobs)}
+        for name in night:
+            self.assertEqual(loaded[name].window_minutes, (120, 360), name)
+        self.assertEqual(sorted(night, key=lambda n: loaded[n].order), night)
+        # Nothing else is windowed yet: the hourly sweep and the shepherds are
+        # not night work, and a window on them would stall them all day.
+        others = [n for n, j in loaded.items() if j.window and n not in night]
+        self.assertEqual(others, [])
+
 
 if __name__ == "__main__":
     unittest.main()

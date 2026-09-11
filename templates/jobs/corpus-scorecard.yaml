@@ -26,6 +26,12 @@
 schedule: daily
 lookback: 24h
 
+# The night (agentm-vault plan 04): the four nightly steps start inside
+# 02:00-06:00 local and run in this order — enrichment, the binary, the Python
+# cycle, the scorecards — because each reads what the one before it wrote.
+window: "02:00-06:00"
+order: 4
+
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention). The
 # script resolves the memory root by asking the daemon — never the vault root,
 # which is a different directory and where an earlier version of this writer

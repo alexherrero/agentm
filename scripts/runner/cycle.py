@@ -19,6 +19,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -125,16 +126,88 @@ def _spend_so_far(state_root: Optional[Path]) -> float:
     return total
 
 
+def in_window(window: tuple[int, int], now: float) -> bool:
+    """Whether `now` falls inside a (start, end) window of local minutes.
+
+    Half-open: a job may start at 02:00 and may not start at 06:00. A window
+    whose end is before its start wraps midnight.
+    """
+    t = datetime.fromtimestamp(now)
+    minute = t.hour * 60 + t.minute
+    start, end = window
+    if start < end:
+        return start <= minute < end
+    return minute >= start or minute < end
+
+
+def window_opening_at_or_before(window: tuple[int, int], at: float) -> float:
+    """The epoch of the most recent opening of `window` at or before `at`.
+
+    Calendar arithmetic rather than `- 86400`, so a daylight-saving night lands
+    on the right wall-clock minute.
+    """
+    t = datetime.fromtimestamp(at)
+    opening = t.replace(hour=window[0] // 60, minute=window[0] % 60, second=0, microsecond=0)
+    if opening > t:
+        opening -= timedelta(days=1)
+    return opening.timestamp()
+
+
+def _next_due(job: manifest_mod.JobManifest, last_run: float) -> float:
+    """When a job is next due, with its window taken into account.
+
+    Without a window it is `last_run + interval`, as it always was. With one,
+    that moment is moved to where the job may actually start:
+
+    - If it falls outside the window, the job is due at the window's next
+      opening. A daily job last run at 13:07 is due at 02:00, and the hours it
+      waited are not lateness — the lookback counts from 02:00, so a job does
+      not skip its first night for having waited for it.
+    - If it falls inside, a job with an interval of a day or more is due at that
+      window's opening rather than at the minute it last happened to start.
+      Otherwise a night whose first step ran long would push every later night's
+      start later, until two nightly jobs no longer met in one cycle — and their
+      order is the point. A sub-day interval keeps its own clock: snapped to the
+      opening, an hourly job would be due again on every tick of the window.
+    """
+    raw = last_run + job.interval_seconds
+    window = job.window_minutes
+    if window is None:
+        return raw
+    if not in_window(window, raw):
+        return _next_opening(window, raw)
+    if job.interval_seconds < 86400:
+        return raw
+    return window_opening_at_or_before(window, raw)
+
+
+def _next_opening(window: tuple[int, int], at: float) -> float:
+    """The epoch of the first opening of `window` strictly after `at`."""
+    t = datetime.fromtimestamp(at)
+    opening = t.replace(hour=window[0] // 60, minute=window[0] % 60, second=0, microsecond=0)
+    if opening <= t:
+        opening += timedelta(days=1)
+    return opening.timestamp()
+
+
 def is_due(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[Path] = None):
     """(due: bool, reason: str). reason in {"never-run", "orphaned-start",
-    "due", "not-due", "missed-beyond-lookback"}."""
+    "due", "not-due", "missed-beyond-lookback", "outside-window <window>"}.
+
+    The window is checked first. A job waiting for its window is not late, so
+    nothing here touches its marker while it waits — the lookback re-anchor
+    below must never mistake "not yet 02:00" for "missed".
+    """
+    window = job.window_minutes
+    if window is not None and not in_window(window, now):
+        return False, f"outside-window {job.window}"
     marker = state_mod.read_marker(job.name, state_root=state_root)
     if state_mod.is_orphaned_start(marker):
         return True, "orphaned-start"
     last_run = state_mod.last_run_epoch(marker)
     if last_run is None:
         return True, "never-run"
-    next_due = last_run + job.interval_seconds
+    next_due = _next_due(job, last_run)
     if now < next_due:
         return False, "not-due"
     overdue_by = now - next_due
@@ -287,7 +360,10 @@ def run_cycle(
     spend = _spend_so_far(state_root)
 
     report = CycleReport(refused=refused, loaded=len(jobs))
-    for job in jobs:
+    # `order` first, name second: the loader's filename order is what a job
+    # without an `order` keeps, and the night's steps run in the order they
+    # declare.
+    for job in sorted(jobs, key=lambda j: (j.order, j.name)):
         if not job.enabled:
             # Registered and off. Reported by name rather than dropped at load
             # time, because a job nobody can see in the cycle report is a job
