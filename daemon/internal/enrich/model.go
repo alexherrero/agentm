@@ -128,6 +128,21 @@ var disallowedTools = []string{
 // error, which is why `command` asserts on it and a test asserts on `command`.
 const hookIsolation = `{"disableAllHooks":true}`
 
+// mcpIsolation is the third measure, and the one with a price on it.
+//
+// Claude Code loads every MCP server the operator has configured into each
+// call, and their tool definitions are part of the prompt. An enrichment call
+// has no business holding a door to the operator's mail, calendar or issue
+// tracker, for the same reason it holds no hooks: this pass reads one note and
+// writes one note.
+//
+// It is also most of what the night spends. Measured on this machine on
+// 2026-09-11, one trivial call carried 113,509 tokens of baseline context with
+// the servers loaded and 30,783 without — and the night's token line counts
+// every token a call processed, so the servers were four fifths of the budget
+// before the first note was read.
+const mcpIsolation = `{"mcpServers":{}}`
+
 // command builds the invocation.
 //
 // Split out from Call so a test can inspect what would run. Both isolation
@@ -140,6 +155,8 @@ func (c *Caller) command(ctx context.Context, prompt, cwd string) *exec.Cmd {
 		"--model", c.Model,
 		// Load-bearing. See hookIsolation.
 		"--settings", hookIsolation,
+		// Load-bearing, and the cheapest tokens in the night. See mcpIsolation.
+		"--strict-mcp-config", "--mcp-config", mcpIsolation,
 		"--system-prompt", c.SystemPrompt,
 		"--disallowed-tools", strings.Join(disallowedTools, ","),
 		"--max-turns", fmt.Sprint(c.MaxTurns),
@@ -157,7 +174,7 @@ func (c *Caller) command(ctx context.Context, prompt, cwd string) *exec.Cmd {
 	// set. The grace period gives a well-behaved process time to flush, then
 	// forces the pipes shut.
 	cmd.WaitDelay = 2 * time.Second
-	// The second load-bearing measure. Claude Code auto-loads any CLAUDE.md or
+	// The third load-bearing measure. Claude Code auto-loads any CLAUDE.md or
 	// AGENTS.md it finds above its working directory, so inheriting the daemon's
 	// cwd would feed this repository's own instructions into a generation that is
 	// supposed to be blind to them. The Python pass this is ported from ran two
