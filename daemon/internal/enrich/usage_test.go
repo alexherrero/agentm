@@ -128,6 +128,60 @@ func TestTheCallGuardCountsTheJudgesCallsToo(t *testing.T) {
 	}
 }
 
+// The line counts what a call adds, not the cached prefix it re-reads.
+//
+// Measured on the live corpus on 2026-09-11: every call re-read ~37,000 tokens
+// of Claude Code's own baseline, so a card cost ~107,000 tokens of which
+// ~74,000 were that same prefix twice. Counting it stopped the night after nine
+// cards of a hundred and eighty-one, and what the line measured was a constant
+// rather than the night's work.
+func TestTheLineCountsWhatACallAddsNotTheCachedPrefix(t *testing.T) {
+	u := Usage{InputTokens: 2, CacheCreationTokens: 16_000, CacheReadTokens: 36_892,
+		OutputTokens: 900}
+	if got, want := u.Tokens(), int64(53_794); got != want {
+		t.Errorf("Tokens() = %d, want %d — the report still says what the call processed", got, want)
+	}
+	if got, want := u.Added(), int64(16_902); got != want {
+		t.Errorf("Added() = %d, want %d — the line counts input, cache writes and output", got, want)
+	}
+	// Both numbers reach the reader, so a bill and the line can be reconciled.
+	if s := u.String(); !strings.Contains(s, "cache read 36892") ||
+		!strings.Contains(s, "16,902 against the line") {
+		t.Errorf("the per-call line hides one of the two numbers: %s", s)
+	}
+}
+
+// A night of calls that re-read a large cached prefix runs to the work it adds.
+//
+// The same fixture under the old accounting stopped on the first note: 40,000
+// tokens of cached prefix is already over a 1,000-token line, and the pass
+// would refuse a corpus it could afford.
+func TestACachedPrefixDoesNotSpendTheLine(t *testing.T) {
+	p, m := meteredPass(t, stubOpts{stdout: "enriched", inTokens: 300, outTokens: 100,
+		cacheReadTokens: 40_000})
+	write, written := collector()
+	rep, err := p.RunBatch(context.Background(), queue(fixture(10)), write, "",
+		Budget{MaxCalls: 250, PageSize: 4, Meter: m,
+			TokenLines: map[string]int64{TierStrong: 1000, TierCheap: 2000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 400 added a note, cached prefix aside: the line still stops the run after
+	// the third, and the report still carries every token that was processed.
+	if len(written()) != 3 {
+		t.Errorf("wrote %d notes; the line counts added tokens, so it should stop after the third",
+			len(written()))
+	}
+	if rep.Usage[TierStrong].Added() != 1200 {
+		t.Errorf("added %d tokens on the strong tier, want 1,200",
+			rep.Usage[TierStrong].Added())
+	}
+	// Three notes, one metered call each in this harness.
+	if rep.Tokens != 1200+3*40_000 {
+		t.Errorf("the report reads %d tokens; it must still say what the calls processed", rep.Tokens)
+	}
+}
+
 // The token line stops the run before the note that would start over it, and
 // says which tier's line it was.
 func TestTheTokenLineStopsTheRunAndSaysWhichTier(t *testing.T) {

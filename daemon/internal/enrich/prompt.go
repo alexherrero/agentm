@@ -70,10 +70,14 @@ commentary. These fields exactly, no others:
   related              OPTIONAL, at most 5: the ids of the neighbours below that
                        bear on this card. Only ids from that list.
   importance_proposed  a whole number from 1 to 10, against the rubric below.
-  body                 OPTIONAL prose to add below the card: a connection it does
-                       not make, a decision it bears on, what it means for later
-                       work. Empty when there is nothing worth adding, which is
-                       the right answer for most short cards.
+  body                 OPTIONAL, and empty on almost every card. Write it only
+                       when the card and a neighbour below, between them, already
+                       state something the card alone does not — the link, in
+                       their own terms. Every sentence must be traceable to a
+                       sentence in the card or in a neighbour. No inference from
+                       them, nothing about how the card came to be written, and
+                       nothing you know from anywhere else. Empty is the right
+                       answer, and a judge refuses the write when it is not.
   confidence           0.0 to 1.0 — your honest estimate that this card is a
                        durable memory worth filing and that your fields are right.
                        A low number is not a failure; it routes the card for review.
@@ -91,14 +95,18 @@ Rules that are not negotiable:
 
   - Never return a why field. Why a card was kept is written by whoever kept it.
   - Every claim in body must be traceable to the card or to its neighbours. Do
-    not add knowledge they do not contain.
+    not add knowledge they do not contain. A sentence that reads as a
+    consequence, a cost, a circumstance or a recommendation they do not
+    themselves state is the one this refuses.
   - body adds to the card. It never restates the card, never quotes its
     Evidence, and uses no heading larger than ###.`
 
-const aliasRuleBatch = `  - Aliases must be derivable from the note itself: acronyms it spells
-    out, compound identifiers it contains, alternative names it uses. Do not
-    invent phrasing a reader might hypothetically search for. This is measured:
-    invented aliases cost 3.85 points of recall at p=0.04.`
+const aliasRuleBatch = `  - Aliases are empty unless the note itself contains the other name: an
+    acronym it spells out, a compound identifier it carries, a name it says the
+    thing is also called. A rewording of the title is not an alias, and neither
+    is the filename. Do not invent phrasing a reader might hypothetically search
+    for. This is measured: invented aliases cost 3.85 points of recall at
+    p=0.04, and a gate refuses the write when one cannot be derived.`
 
 // Neighbour is one note the deep pass is shown beside the card: the daemon's
 // own search, title and summary only.
