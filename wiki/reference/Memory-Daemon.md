@@ -145,7 +145,7 @@ Four properties are load-bearing:
 
 `artifact` separates a note that states something durable from one that records a moment. A convention and a distilled meeting are both `type: workflow` and should not rank alike on a general question. When a question asks for the artifact shape, the dampening is **removed** rather than reversed into a boost. Every multiplier here is at or below 1.0 and the negative-IDF clamp depends on it, so a multiplier above 1.0 on a row whose score went negative would move that row up for being boosted.
 
-The design makes `artifact` the default so `canonical` has to be earned. That default lives in the enrichment pass, which assigns the field, rather than acting as a fallback here for its absence. No note in this corpus carries `altitude` yet, so reading an absent field as `artifact` would multiply all 15,824 rows. For the same clamp reason, that is not the no-op it looks like.
+The design makes `artifact` the default so `canonical` has to be earned. Capture writes that default on every new note (`DefaultAltitude`, `daemon/internal/capture/capture.go:140,416`) rather than leaving the field absent for this ranker to read as a fallback. The enrichment pass dropped `altitude` from its own response shape entirely (agentm-vault plan 04 — see [Enrichment](#enrichment) below) and no longer touches the field. No note in this corpus carries `altitude` yet, so reading an absent field as `artifact` would multiply all 15,824 rows. For the same clamp reason, that is not the no-op it looks like.
 
 `durable` carries no weight and is not a penalty. It is the record of a decision, read by decay where the weights are not.
 
@@ -240,7 +240,7 @@ Filing is asynchronous, so the queue is meant to be busy — what must never hap
 agentmd 0.1.0-dev · up 14h
 RED
   vault    /path/to/vault
-  queue    4411 unfiled · oldest 4d1h old            (red past 3d old, or 1000 items)
+  queue    4411 awaiting a judgment · oldest 4d1h old (red past 3d old, or 1000 items)
            of which 4349 inherited (captured before 2026-08-10, oldest 28d22h) — reported, not paged about
   index    9159 documents · last pass 41s ago        (red past 15m0s)
   git      degraded: not a repository
@@ -250,7 +250,7 @@ RED
 
 **The thresholds are age-dominant.** Under a standing daily ingest, fifty fresh unfiled items every morning is an ordinary Tuesday; the oldest unfiled item being three days old means filing stalled. The count threshold is a backstop at a thousand — at fifty a day it takes twenty dead days to reach, by which point age has been red for seventeen of them, so it fires on its own only when a producer wrote thousands of items at once.
 
-**The queue is `unfiled` and `inbox` only.** `superseded` and `expired` are rank-penalized for a different reason and are not waiting on anything. Counting them would put a note retired years ago at the head of the queue and leave the age threshold red permanently.
+**The queue is `unfiled` or `inbox` notes no enrichment has judged.** `confidence_set = 0` narrows it past status alone (`awaitingJudgment`, `daemon/internal/index/index.go:645`): a card enrichment judged and left below the floor keeps `status: unfiled`, but it has been through the pass and is listed for you in [needs review](Review-Flagged-Memories) rather than counted here — the same reason `superseded` and `expired` are excluded. Counting an already-judged card would put one retired years ago at the head of the queue and leave the age threshold red permanently.
 
 **The inherited backlog is reported and does not page.** The first status read against the real vault was 4,349 unfiled items, the oldest 29 days old. Both numbers are true and neither is news: the design already decided that pile is rank-penalized and drained by dreaming later, and their dates come from filesystem mtime, which a sync client can rewrite wholesale. So the daemon records a **queue baseline** on its first run — items captured before it are the backlog it inherited. The total, the inherited count, the backlog's own age, and the baseline date are on every status surface; only the part captured after the baseline is measured against the thresholds. A four-day-old item captured after the baseline pages even when the backlog is thousands deep, which is what keeps the split from being a mute button. Set `daemon.queue_baseline` to move the line by hand; delete `queue-baseline.json` in the state directory to re-record it.
 
@@ -502,15 +502,19 @@ below for how the batch is scheduled.
 
 Eligibility no longer reads `status`: what used to refuse any note that
 wasn't `unfiled` is gone (`Eligibility.Statuses` removed; the check now at
-`daemon/internal/enrich/pregates.go:62-79`), because status says whether a
+`daemon/internal/enrich/pregates.go:69-92`), because status says whether a
 note was judged, not whether it has been through this pass. What the pass
-reads instead is `PassDepth`, from the note's own `enriched_at` stamp:
-absent means the whole pass is owed (`DepthDeep`), present means the
-lighter pass a note that has moved since is owed (`DepthLight`) —
-`pregates.go:81-118`. A note genuinely unchanged since its last pass is
-caught for free by the separate fingerprint gate, keyed on the pass
-version, the rules hash, and the body together
-(`Fingerprint.Check`, `pregates.go:253-266`).
+reads instead is `PassDepth`, from the note's own `enriched_at` and
+`enriched_by` stamps (`pregates.go:133-141`): no `enriched_at` means the
+whole pass is owed (`DepthDeep`), and so does an `enriched_at` stamped by a
+pass version other than the current one — a prompt change re-owes the deep
+pass to every note (agentm-vault plan 04), because a stamp from an older
+prompt never answered what this one asks for: the neighbours, `related`,
+`importance_proposed`. Only a stamp naming the current pass version is owed
+the lighter pass a note that has moved since (`DepthLight`). A note
+genuinely unchanged since its last pass is caught for free by the separate
+fingerprint gate, keyed on the pass version, the rules hash, and the body
+together (`Fingerprint.Check`, `pregates.go:298-307`).
 
 ### The queue
 
@@ -607,20 +611,69 @@ by N. A steady-state night is under fifty notes, which one at a time
 finishes inside the 02:00-06:00 window with hours to spare; only a prompt
 change re-owes the whole corpus, and that batch runs by hand.
 
-What it does once it runs: rewrite a note the writer filed unsure about into
-one it's judged — a title, tags, aliases, a confidence number, and — since
-filing v2's write path — a categorical twin of that number every other
-writer already shares. `FilingConfidenceFor`
-(`daemon/internal/enrich/render.go`) stamps `filing_confidence: high` at
-or above the same 0.6 floor `StatusFor` uses to decide `active` vs
-`unfiled`, `low` below it — two bands on purpose, since the floor is the
-one judgment this pass makes about its own number and a third band would
-be a threshold nobody measured. The needs-review reading (see [Review
-flagged memories](Review-Flagged-Memories)) selects on this field without
-knowing what floor produced it.
+The prompt is one string with two shapes (agentm-vault § Dreaming), the
+shape named on the last line of the message. Besides the type enum and the
+voice specification, `BuildPrompt` (`daemon/internal/enrich/prompt.go:121-166`)
+renders two more inputs: the contract's importance rubric — the prose under
+`## Importance` in `standards/storage-rules.md`, read at call time via
+`Rules.ImportanceRubric` (`daemon/internal/rules/rules.go:153-159`,
+`proseSection`, `rules.go:168-190`) — and up to five neighbours, each an id,
+a title and a summary. Both are inputs like the card itself and sit outside
+the prompt hash: editing the rubric changes what the next deep pass proposes
+without re-owing a single already-judged card. The neighbours come from the
+daemon's own lexical search over the card's title and tags, top five,
+excluding the card itself, a derived class, a space no background model may
+read, and any neighbour whose title or summary carries a credential shape
+(`enrichNeighbours`, `daemon/cmd/agentmd/enrich_run.go:218-262`).
+
+What it does once it runs: add to a card rather than rewrite it. The card's
+own text is the evidence and stays exactly where the session left it; the
+deep pass's judgment lands in the frontmatter above it and, for prose worth
+adding, in a dated `## Added by dreaming (YYYY-MM-DD)` section below it
+(`Compose`, `daemon/internal/enrich/compose.go:134-180`) — any heading the
+model wrote inside that section steps down to `###`, so the section's own
+boundary stays the only `## ` it contains and a later deep pass can find and
+replace just its own section, keeping anything the operator wrote below it.
+Compose refuses to write a composition that would change one byte of what
+the session wrote.
+
+The response may carry `title`, `slug`, `type`, `summary`, `tags`,
+`aliases`, `related`, `importance_proposed`, `body` and `confidence`
+(`Response`, `daemon/internal/enrich/schema.go:33-64`). `altitude` is gone
+from the shape entirely — capture still writes the `artifact` default, but
+enrichment no longer reads or writes the field (see [the rank
+penalty](#the-rank-penalty) above). `why` is never asked for, and a response
+that offers one anyway has it stripped before the strict decode rather than
+failing the whole call over a field that was never going to land
+(`strippedFields`, `schema.go:66-76`). `related` may only name ids from the
+neighbours the prompt offered — Compose keeps only those
+(`relatedIDs`, `compose.go:102-122`) and renders them as the quoted wikilink
+flow list the capture door already writes; an id the model invented is
+silently dropped rather than refusing the note. An empty `body` is now a
+fine answer, not a failed call — most short cards need nothing added
+(`Schema.Validate`, `schema.go:157-177`). The light pass only ever moves
+`summary`, `tags`, `related` and `confidence`; it moves `title` and `type`
+at or above the floor and never proposes `importance`; and it leaves the
+body exactly as it was.
+
+`VerdictFor` (`daemon/internal/enrich/render.go:180-200`) is what a
+judgment decides about where a card stands. At or above the contract's
+floor a card lands `active` at `filing_confidence: high`. Below it the card
+stays `unfiled` — fully indexed, rank-penalized, and listed for you in
+[Review flagged memories](Review-Flagged-Memories) rather than dropped. A
+*second* verdict below the floor — a card that already carried an
+enrichment stamp and was already `unfiled` — sinks it to
+`lifecycle: dormant` with a `lifecycle_since` date, journaled and named in
+the morning note; a `pinned` card and the two rule types, `preference` and
+`convention`, never sink, and stay `unfiled` and listed instead.
+`FilingConfidenceFor` stamps the categorical twin of the confidence number
+every other writer already shares, two bands on purpose: the floor is the
+one judgment this pass makes about its own number, and a third band would
+be a threshold nobody measured. The needs-review reading selects on
+`filing_confidence` without knowing what floor produced it.
 
 `CarryProvenance` (`daemon/internal/enrich/carry.go:36`) copies every
-capture-record and review-mark field the rewritten note doesn't already
+capture-record and review-mark field the composed note doesn't already
 set — `source`, `lifecycle`, `captured`, `created`, `via`, `source_url`,
 `source_fetched`, `surface`, `instructions`, `review_flags`, `related`,
 `trust`, `why`, `project`, `task`, `importance`, `importance_proposed`
@@ -637,14 +690,31 @@ keeps an `importance` the operator edited: capture writes `importance` and
 `importance_proposed` equal, so a note where they *differ* is a note
 someone edited by hand, and that value survives a pass untouched — the
 pass's own reading lands in `importance_proposed` instead. `carryEvidence`
-(`carry.go:93-99`) restores the note's `## Evidence` block verbatim if the
-rewrite dropped it — the block quotes the note's source material, which
-the pass is not entitled to rewrite or drop.
+(`carry.go:93-99`) restores the note's `## Evidence` block verbatim on the
+rare composition that would otherwise drop it — insurance beside the
+byte-for-byte guarantee above, since the block quotes the note's source
+material and the pass was never entitled to rewrite or drop it.
 
 A note with no `lifecycle` of its own starts `active` — an enriched note is
 an auto-filed note either way, the same default a fresh write gets.
-`main.go`'s `cmdEnrich` is the one caller, threading the pre-rewrite note's
-text through `CarryProvenance` before the write applies.
+`main.go`'s `cmdEnrich` is the one caller: it reads the note as it stood,
+calls `Compose` with the response, the stamp, the pass depth and the
+neighbours offered, and `Compose` calls `CarryProvenance` on the
+frontmatter it renders before the write applies (`main.go:1477-1496`).
+
+Two gates retired with the rewrite they existed to check. The
+token-preservation post-gate (`tokens.go`) held a rewrite to keep every
+identifier its source had; the deep pass no longer rewrites, so Compose's
+byte-for-byte refusal above is the stronger form of what it checked. The
+faithfulness judge's completeness half — whether a rewrite left something
+out, sampled and scored for the scorecard — retired for the same reason:
+the card's own text is carried byte for byte now, so nothing of it can go
+missing. What the judge still checks, on every note, is the other
+direction: whether the title, the summary, or the added prose asserts
+anything the card and its neighbours did not (`Grounding`,
+`daemon/internal/enrich/grounding.go`). `daemon.enrich_sample_rate`, which
+governed how often the retired half sampled, is no longer read; a config
+that still carries the key is harmless.
 
 ## The dreaming binary, `agentmdream`
 

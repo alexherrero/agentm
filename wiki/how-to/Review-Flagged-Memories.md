@@ -39,7 +39,7 @@
    - Edit the note directly.
    - Supersede it.
 
-   You make no changes to the needs-review page itself.
+   You make no changes to the needs-review page itself. Leaving one alone is not neutral forever: a note already judged below the floor once, then judged below it again after its body, the enrichment prompt, or the filing contract changes, sinks to `lifecycle: dormant` on that second pass. A pinned note and the two rule types, `preference` and `convention`, are exempt and stay listed here instead of sinking. See [Memory daemon reference § Enrichment](Memory-Daemon#enrichment).
 
 5. **Re-run step 1 to confirm the count dropped.** An entry clears when you re-judge the note it points at:
 
