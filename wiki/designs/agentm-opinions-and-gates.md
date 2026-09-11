@@ -75,6 +75,9 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 ### How the supplement grows: the accumulate loop — built
 
+> [!NOTE]
+> **Retired; nothing runs it.** Stage 1's routing left reflection in agentm-vault plan 03, and Stages 2-3 — the dreaming stage, `opinion_supplement.py`, its console section and `verify-opinion-supplements.sh` — retired in plan 04. The summary below is the record of what was built; the primary home, the [Experience design](agentm-experience-and-dreaming.md#the-experience--opinions-accumulate-loop--built), carries the same note.
+
 **Condensed twin of the fuller section in the [Experience design](agentm-experience-and-dreaming.md#the-experience--opinions-accumulate-loop--built)** (spec landed 2026-07-07 from `ACCUMULATE-LOOP-SPEC-DRAFT.md`; Stage 1 built v9.1.0; Stages 2-3 designed to ten locked calls 2026-07-25 and built the same day, [PR #380](https://github.com/alexherrero/agentm/pull/380)). The one-sentence design: the accumulate loop is the style-learning loop generalized from voice to standards — the same edit-driven, operator-gated capture the wiki system already proved, with a recurrence gate in front and the coded base as an unoverridable floor behind.
 
 - **Route, don't invent** *(built)*. No new pipeline — a routing rule inside the existing capture paths targets an opinion supplement when a candidate is standard-shaped. `opinion_routing.py` classifies deterministically from the candidate's own text and writes to a per-opinion lane at `personal/_opinions/<name>/`; nothing is ever written into a coded `opinions/*.md`.
@@ -95,8 +98,8 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 - **The compose-and-serve path shipped 2026-07-06.** The coded bases are addressable opinions (`opinions/*.md` stubs), the stored supplement layer folds on request through `opinion_resolver.py` (a resolver pattern mirroring `governs_resolver.py` — pure, one-way, never-raise). That code is specified by, and governed by, the [opinion registry](agentm-opinion-registry) design; this pillar stays discipline/area-only. **What's left:** each hardwired consumer (`code-review` embedding *good*, etc.) still flips to calling `opinion_resolve` one at a time as its own slice builds — the registry existing doesn't retrofit every caller at once.
 - **Opinion versioning** — when a standard shifts (a new check joins the *done* battery), how do callers that cached the old standard adapt? Open.
-- **The accumulate loop is built end-to-end.** The routing rule is real code as of v9.1.0; the recurrence gate, contradiction detection, the provenance schema, composition, and the health check shipped 2026-07-25 ([PR #380](https://github.com/alexherrero/agentm/pull/380)), implemented against the ten locked calls (see the section above; full version in the [Experience design](agentm-experience-and-dreaming.md)). The signal → opinion map is retired — it keyed on sources that emit nothing machine-readable. Deliberately open: promotion stays confirm-gated until a fresh operator auto-apply ruling, and the 0.85 / ~20-entry calibration numbers are unmeasured — the lane is empty on the real vault today.
-- **Re-audit triggers:** flip the request-by-name API to as-built when the registry ships; re-audit the accumulate loop's calibration numbers once real lane volume exists, and record the `opinion_promote` auto-apply ruling in the [Experience design](agentm-experience-and-dreaming.md)'s amendment log when the operator makes it.
+- **The accumulate loop is retired.** Its routing left reflection in agentm-vault plan 03, and its dreaming stage, leaf module and health gate left in plan 04, after the vault series' session 1 retired the lanes it filled. The compose-and-serve path above is untouched.
+- **Re-audit triggers:** flip the request-by-name API to as-built when the registry ships.
 
 ## References
 
@@ -107,6 +110,8 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 - **The accumulate loop's full spec:** the [Experience design](agentm-experience-and-dreaming.md) § The Experience → Opinions accumulate loop; original source draft at vault `_harness/designs/architecture-governance/ACCUMULATE-LOOP-SPEC-DRAFT.md`
 
 ## Amendment log
+
+**2026-09-11 — the accumulate loop retires (agentm-vault plan 04, task 5).** Stages 2-3 leave with the dream cycle's shrink: `_stage_opinion_supplement()`, `opinion_supplement.py`, `console.section_opinion_supplements` and `scripts/verify-opinion-supplements.sh`, with its `check-all.sh` and CI steps. Stage 1's routing had already left reflection in plan 03. The section above gains a retired note and the risks say so; the [Experience design](agentm-experience-and-dreaming.md), the primary home, carries the matching entry. *Why not keep the stage for a future lane:* the vault design's session 1 retired the lanes it filled, and a stage with no lane to read has nothing to promote. *Re-audit trigger:* a proposal to learn standards from sessions again, which would start from a fresh design.
 
 **2026-09-03 — the supplement lanes moved to `memory/crystallized/<name>/` (filing-v2 part 3, v9.12.0).** The primary home ([Experience and dreaming](agentm-experience-and-dreaming), locked calls 6–7 and its amendment of the same date) carries the decision; this twin records the as-built pointer: `opinion_supplement.lane_base()` resolves the lane root, and the `_opinions/` dreaming exclusion the as-built note above names is now a kind-based exemption wherever a supplement sits. *Re-audit trigger:* the same as the primary's.
 

@@ -69,7 +69,7 @@
 
 - **`error: nothing to record: the text is empty`** — `--text` was blank or whitespace-only. Nothing is written.
 - **`... is closed; the register is corrected by a new dated entry, never by an edit into the past`** — you passed `append --day` naming a day before today. Use `correct` instead (step 6).
-- **`facet '...' is not registered; the register carries ...`** — the facet named isn't in the contract's registry. Adding one is an edit to `standards/storage-rules.md`, never a call-site improvisation — it happens automatically as a confirm-gated proposal once a diary label recurs on three or more distinct days in thirty (the dreaming cycle's facet-promotion stage; see [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar)).
+- **`facet '...' is not registered; the register carries ...`** — the facet named isn't in the contract's registry. Adding one is an edit to `standards/storage-rules.md`, never a call-site improvisation. Once a diary label recurs on three or more distinct days in thirty, the nightly dream cycle proposes it in the needs-review page's **Proposed facets** section, and registering it stays your edit (see [Review flagged memories](Review-Flagged-Memories) and [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar)).
 - **`no Calendar/ space beside <vault>: the register is discovered, never conjured`** — `Calendar/` doesn't exist yet at the vault root (or the vault root above a nested memory root). Create the directory once, by hand; nothing in this feature creates it for you.
 
 ## See also

@@ -743,7 +743,7 @@ agentmdream journal -tail 20                              # the mutation journal
 
 | Job | What it does |
 |---|---|
-| `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. A dormant memory past `archive_after_days` (1825) becomes an archive candidate — named for the confirm surface here, never moved by this job itself. |
+| `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. A dormant memory past `archive_after_days` (1825) becomes an archive candidate — named in the pass's report and never moved by this job. You archive one by hand with `lifecycle_transitions.py --vault <memory-root> set <rel> archived`. |
 | `copies` | Content-identical families collapse into the earliest note; every other copy is marked `lifecycle: superseded` + `superseded_by: <canonical>`, never deleted; `status` is untouched. |
 | `refile` | A memory whose `type:` the contract routes elsewhere moves under the same basename; a stale `near-duplicate` flag whose twin is gone gets cleared. |
 | `promote` | Reads every session trace's `## Captured` and `## Candidates` sections (agentm-vault plan 04, task 4); the recall hook's own `## Recalled` list is basenames, not judgments, and promote no longer reads it. A `## Candidates` line three or more distinct traces carry becomes a semantic candidate at `memory/semantic/candidate-<first-words>.md` — `status: unfiled`, no `why`, `derived_from` naming the traces — for the next enrichment batch to judge; capped at 10 new candidates a pass. A `## Captured` link three traces carry already has a card and is only reported. Nothing is ever written to `crystallized/`, which holds model syntheses made at a task's close or on request. |
@@ -755,7 +755,23 @@ Then three checks that write nothing: a vocabulary audit (every `type:`/`kind:` 
 
 ### The takeover (2026-09-05)
 
-The binary ran report-only beside the Python `dream.py` cycle through an overlap window, with a daily divergence review comparing the two. The one review agreed on every surface, and the operator flipped `-apply` in `templates/jobs/dreaming.yaml` the same day. Since then, `dream.py` no longer runs the suffix-backlog drain, the calendar rollups, or the lifecycle policy's own sinking and lifting — it reads the lifecycle axis and reports what it sees, stages archive proposals for the confirm surface, and runs the stages the binary doesn't carry: lint repair, compression, the artifact shelf, the needs-review MOC, insights, and the rest of the confirm-gated proposals. Rolling back is report-only mode — drop `-apply` — since the Python lanes it replaced are gone.
+The binary ran report-only beside the Python `dream.py` cycle through an overlap window, with a daily divergence review comparing the two. The one review agreed on every surface, and the operator flipped `-apply` in `templates/jobs/dreaming.yaml` the same day. Since then, `dream.py` no longer runs the suffix-backlog drain, the calendar rollups, or the lifecycle policy's own sinking and lifting. Since agentm-vault plan 04 it applies and stages nothing at all; what it still does is in [the Python cycle beside it](#the-python-cycle-beside-it) below. Rolling back is report-only mode — drop `-apply` — since the Python lanes it replaced are gone.
+
+### The Python cycle beside it
+
+`dream.py` is the third step of the night. It follows the enrichment batch and this binary (`templates/jobs/dream.yaml`: `schedule: daily`, window `02:00-06:00`, order 3, shipped `dry_run: true`). It reads, reports and proposes, and it changes no note.
+
+| | |
+|---|---|
+| Command | `python3 harness/skills/memory/scripts/dream.py [--vault-path <memory-root>] [--run-id <id>]`; `--batch-cap` and `--no-auto-apply` are accepted and ignored, so an older manifest still runs |
+| Stages, in order | the corpus meters (entries, connectivity, browse surface); the filing contract, fail-closed (a block that will not parse halts every stage after it, and the digest says "Filing is halted" and why); lint, as a report (`lint_repairable_count` counts the mis-cased links `/memory lint --apply` would repair); possible twins (dedup at 0.92 similarity); shared keys (contradiction triage: same `slug:`, different body); proposed facets (a diary label on three or more days in thirty); the enrichment breaker's status and the correction loop |
+| Findings file | `<engine state dir>/dreaming/review-proposals.json` — `twins`, `same_key`, `facets`, read by the needs-review map |
+| Cycle report | `<engine state dir>/dreaming/python-cycle.json`, beside this binary's `last-report.json`, for the morning note |
+| Run digest | `<engine state dir>/dream-runs/<run_id>/digest.md`, with the findings under "For you to judge" |
+| Regenerated | `memory/mocs/needs-review.md`, with the twins, shared keys and facets as sections of their own |
+| Model calls | none |
+
+Nothing applies a finding. You merge a twin or supersede one by hand, and you register a facet with an edit to the contract. See [Review flagged memories](Review-Flagged-Memories). The `verify-dreaming` gate guards the wiring (see [CI gates](CI-Gates)).
 
 ### Parity as a recording
 
@@ -835,8 +851,9 @@ equally specific candidates a link far more often means the sibling than the
 far-away file with the same name.
 
 **An unresolved target is recorded, not dropped.** A dangling link is a fact about
-the corpus, and it is what the stub synthesis reads later; a table that discarded
-them would make that pass blind.
+the corpus, and a table that discarded them would make any later pass over them
+blind. The stub-synthesis stage that read them retired in agentm-vault plan 04;
+the record stays, and `work_ledger.dangling_targets()` still reads it.
 
 Links inside fenced code are skipped. A link in a code block is a sample, and
 indexing it would connect a page to whatever its examples happen to mention.
@@ -846,9 +863,10 @@ indexing it would connect a page to whatever its examples happen to mention.
 Issue, qualified issue, repository, commit and changelist references are pulled
 out by regex and keyed by a namespaced URI, so `issue:owner/repo#123` can never
 collide with `repo:owner/repo`. This is what makes an entity timeline addressable
-today: every note mentioning something is one lookup away, and the rollup that
-eventually summarizes it is built from that set rather than from a directory scan.
-No type is registered, so the taxonomy's growth rule is untouched.
+today: every note mentioning something is one lookup away. The entity-rollup stage
+that summarized from that set retired in agentm-vault plan 04, and the lookup
+stands on its own. No type is registered, so the taxonomy's growth rule is
+untouched.
 
 Most of the work here is refusing false positives. `#1` is as often a list marker
 as a reference, so a bare issue needs two digits; `#todo` is a tag. `a/b` is a
@@ -979,7 +997,7 @@ that rewrites files.
 
 | Kind | Means | What may act on it |
 |---|---|---|
-| `duplicate` | every member shares a provenance unit | a merge, staged for a person |
+| `duplicate` | every member shares a provenance unit | a merge proposal in the nightly digest, applied by a person by hand |
 | `collapsed` | every member has provenance, no two share any | re-distillation from source |
 | `mixed` | some share, some do not | nothing |
 | `unknown` | a member records no provenance | nothing |
@@ -992,8 +1010,8 @@ again. An `unknown` cluster is a finding about metadata rather than about notes.
 **Provenance is compared exactly.** The live corpus's only two clusters are
 `DeepSeek-OCR` against `DeepSeek-OCR-2`, and `kimi-code` against `kimi-cli` — four
 upstream projects, two pairs. Any prefix or substring comparison calls each pair a
-single source, which makes them duplicates, which stages a merge, which supersedes
-one of two real memories. The cheaper-looking comparison is the one that deletes
+single source, which makes them duplicates, which proposes a merge that would
+supersede one of two real memories. The cheaper-looking comparison is the one that deletes
 things.
 
 Single linkage means A and C can land in one cluster through a B close to both,
@@ -1042,8 +1060,9 @@ question only one of them can answer.
 
 So the detector scores what is visible in the note: how much of it is boilerplate
 the template supplied, and how far its language sits from everything else. A low
-score is a note worth *looking at*, not a note to delete. The narrow auto-expire
-band stays confirm-gated.
+score is a note worth *looking at*, not a note to delete. The design's review band
+and narrow auto-expire band were never built, and the staging machinery they were
+meant to sit on retired in agentm-vault plan 04, so nothing acts on the score.
 
 The length floor is an AND-gate, never a rule on its own. A short note is not
 slop — this corpus is full of short dense references that are exactly what a

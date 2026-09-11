@@ -42,9 +42,9 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | [Enable the daily digest email](Enable-Email-Digest-Delivery) | Opt in to a daily email carrying the same digest the SessionStart brief shows. |
 | [Enable the on-device notification](Enable-On-Device-Notifications) | Opt in to a once-daily native notification with the brief's headline, for days you never open a session. |
 | [Persist a morning report to disk](Persist-A-Morning-Report) | Write an overnight run's morning report to a file, so it survives the terminal that produced it. |
-| [Review flagged memories](Review-Flagged-Memories) | Work through the needs-review page's duplicates, contradictions, unfiled captures, and low-confidence notes. |
+| [Review flagged memories](Review-Flagged-Memories) | Work through the needs-review page's duplicates, contradictions, unfiled captures, low-confidence notes, and the dream cycle's twins and proposed facets. |
 | [Find missing note links](Find-Missing-Note-Links) | Discover and add the missing note links. |
-| [Tune the archive](Tune-The-Archive) | Understand the tidying stage's floors and caps, and where to change them. |
+| [Tune the archive](Tune-The-Archive) | Understand what ages a memory, where the thresholds and the cap live, and how to archive or revive one. |
 | [Archive a finished project](Archive-A-Finished-Project) | Retire a finished project's vault directory without losing anything load-bearing. |
 | [Use the daily calendar](Use-The-Daily-Calendar) | Record a diary line or facet entry for today, and correct one logged wrong on a closed day. |
 

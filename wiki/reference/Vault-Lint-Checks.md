@@ -10,10 +10,10 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 | How do I see findings? | `python3 harness/skills/memory/scripts/vault_lint.py --format text` (or `--format json`). |
 | Which entries get linted? | Only agent-shaped entries (core frontmatter trio `kind`+`status`+`created`); free-form personal notes are skipped (DC-3). The bespoke idea-ledger shapes get [their own pass](#idea-ledger-checks-bespoke-shapes). |
 | How do I lint just the idea ledger? | `python3 harness/skills/memory/scripts/vault_lint.py --scope incubator`. |
-| Does the lint ever edit the vault? | `vault_lint.py` itself never does — read-only / surface-only (DC-1), reports + suggests only. The composed `/memory lint` engine layered on top (`lint.py`, auto-organization part 3 task 7) auto-corrects exactly one narrow, safe case — a mis-cased wikilink with a single unambiguous target — revert-logged; every other finding, from either layer, stays surfaced-only by design. |
+| Does the lint ever edit the vault? | `vault_lint.py` itself never does — read-only / surface-only (DC-1), reports + suggests only. The composed `/memory lint` engine layered on top (`lint.py`, auto-organization part 3 task 7) has one repair, for one narrow, safe case — a mis-cased wikilink with a single unambiguous target — and writes it only when you pass `--apply`. The nightly dream cycle counts those links and repairs none. Every other finding, from either layer, stays surfaced-only by design. |
 | Where does the schema come from? | `save.py` — the lint imports its validators + `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` so the two can't drift (DC-2). |
 | How do I run a full audit report? | See [Audit the vault](Audit-The-Vault). |
-| How do I also get orphans, contradictions, and a quality score? | `/memory lint` (`harness/skills/memory/scripts/lint.py`) composes this catalog's `supersede-cycle` / `supersede-fork` / `dangling-supersession` / `kind-taxonomy` checks with `graph_snapshot.orphans()` and a per-note quality score, on demand or via the weekly dreaming cycle — see the memory skill's `/memory lint` section. |
+| How do I also get orphans, contradictions, and a quality score? | `/memory lint` (`harness/skills/memory/scripts/lint.py`) composes this catalog's `supersede-cycle` / `supersede-fork` / `dangling-supersession` / `kind-taxonomy` checks with `graph_snapshot.orphans()` and a per-note quality score, on demand or via the nightly dream cycle — see the memory skill's `/memory lint` section. |
 | Related pages | [Audit the vault](Audit-The-Vault) |
 
 ## Checks
@@ -37,7 +37,7 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 | `kind-taxonomy` | warn | `kind` is not in `kind_registry.py`'s `KNOWN_KINDS` registry. | Use a registered kind, or add this one to `KNOWN_KINDS` if it's a genuine addition. |
 | `arc-registry` | error | `arc` (when present — most entries carry none) is kebab-case and a recognized slug in `arc_registry.py`'s `KNOWN_ARCS`. | Rename to kebab-case, or add the slug to `KNOWN_ARCS`. |
 
-Anchor files (`_index`, `_summary`) are exempt from the kebab `slug` check. The bespoke idea-ledger shapes — the incubator files and `Ideas.md` — are still skipped by *these* checks, because they are not `save.py`-shaped; they get their own catalog below. Scheduled / unattended runs of this raw check suite are deferred to V6; the weekly *composed* run (orphans + quality score + the four contradiction/taxonomy checks above + the mis-cased-wikilink auto-repair) already ships today via `dream.py`'s `_stage_lint()` — see `/memory lint`.
+Anchor files (`_index`, `_summary`) are exempt from the kebab `slug` check. The bespoke idea-ledger shapes — the incubator files and `Ideas.md` — are still skipped by *these* checks, because they are not `save.py`-shaped; they get their own catalog below. Scheduled / unattended runs of this raw check suite are deferred to V6; the nightly *composed* run (orphans + quality score + the four contradiction/taxonomy checks above + a count of the mis-cased links `--apply` would repair) ships today via `dream.py`'s `_stage_lint()`, as a report that applies nothing — see `/memory lint`.
 
 ## Idea-ledger checks (bespoke shapes)
 
