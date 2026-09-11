@@ -277,12 +277,12 @@ func TestRejectedResponsesDoNotBurnTheFuse(t *testing.T) {
 	}
 }
 
-// The shipped budget is the operator's: 250 calls, a million strong, two
-// million cheap.
+// The shipped budget is the operator's: 250 calls and two million tokens a
+// night, the same line on either tier since 2026-09-11.
 func TestTheDefaultBudgetIsTheOperatorsLine(t *testing.T) {
 	b := DefaultBudget()
-	if b.MaxCalls != 250 || b.TokenLines[TierStrong] != 1_000_000 ||
+	if b.MaxCalls != 250 || b.TokenLines[TierStrong] != 2_000_000 ||
 		b.TokenLines[TierCheap] != 2_000_000 {
-		t.Errorf("default budget %+v, want 250 calls, 1M strong, 2M cheap", b)
+		t.Errorf("default budget %+v, want 250 calls and 2M on both tiers", b)
 	}
 }

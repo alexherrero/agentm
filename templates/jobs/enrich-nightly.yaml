@@ -65,11 +65,11 @@ tier: T3
 
 # Declared so the runner knows this job spends: the fleet's daily dollar
 # ceiling (`.harness/budget.yaml`, $5 when unset) gates only jobs that declare
-# a budget, and reads the past day's reported cost. The number is the strong
-# tier's line; the binary enforces the line itself, per tier, from each call's
+# a budget, and reads the past day's reported cost. The number is the night's
+# line; the binary enforces the line itself, per tier, from each call's
 # own usage.
 budget:
-  tokens: 1000000
+  tokens: 2000000
 
 # Not a dry run when it is eventually turned on: the pass's whole job is to
 # write, and its own gates — eligibility by stamp, the fingerprint key, the

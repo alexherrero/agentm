@@ -250,7 +250,7 @@ class TheNote(_Night):
         text, *_ = self.build()
         # Counted the way the line counts: 700,000 in + 100,000 out, the
         # 12,334 cached tokens re-read aside, and those shown as processed.
-        self.assertIn("- Last night: 800,000 tokens against the line (strong 800,000 of 1,000,000) · "
+        self.assertIn("- Last night: 800,000 tokens against the line (strong 800,000 of 2,000,000) · "
                       "812,334 processed · 236 calls of the 250-call guard · $4.21", text)
         self.assertIn("- Seven days: 1,250,000 tokens against the line · 1,312,334 processed across "
                       "2 run(s) · $6.21", text)
@@ -271,7 +271,7 @@ class TheNote(_Night):
         # guard", which read as a fourfold overspend.
         self.runs(_run(TONIGHT, token_lines={"strong": 736407, "cheap": 2000000}, call_guard=237))
         text, *_ = self.build()
-        self.assertIn("(strong 800,000 of 1,000,000)", text)
+        self.assertIn("(strong 800,000 of 2,000,000)", text)
         self.assertIn("of the 250-call guard", text)
         self.assertNotIn("736,407", text)
         self.assertNotIn("237-call", text)

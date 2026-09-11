@@ -211,10 +211,18 @@ func (m *Meter) Tiers() []string {
 	return out
 }
 
-// The operator's nightly budget (agentm-vault § Dreaming, session 3, Q2).
+// The operator's nightly budget (agentm-vault § Dreaming, session 3, Q2;
+// raised to one line of 2,000,000 on 2026-09-11).
+//
+// The lines started apart — a million strong or two million cheap — because
+// the pair was written as one night's money at two prices. They are now the
+// same number, so the night's allowance is two million tokens whichever tier
+// spends them, and the tier decides what those tokens cost rather than how
+// many there are. Both constants stay, because a later ruling may part them
+// again and the metering reads a line per tier either way.
 const (
 	// StrongTokenLine is the most the strong tier may spend in one night.
-	StrongTokenLine int64 = 1_000_000
+	StrongTokenLine int64 = 2_000_000
 	// CheapTokenLine is the most the cheap tier may spend in one night.
 	CheapTokenLine int64 = 2_000_000
 	// CallGuard stops a run after this many model calls whatever the tokens

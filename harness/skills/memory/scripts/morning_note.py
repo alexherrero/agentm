@@ -84,7 +84,7 @@ COVERAGE_REREAD_PAUSE = 2.0
 # record carries the line it ran under, which a hand run may have lowered with
 # a flag, so the note compares the night against these rather than the last
 # run's flags.
-OPERATOR_LINES = {"strong": 1_000_000, "cheap": 2_000_000}
+OPERATOR_LINES = {"strong": 2_000_000, "cheap": 2_000_000}
 CALL_GUARD = 250
 
 ENRICH_RUNS = "enrich-runs.jsonl"

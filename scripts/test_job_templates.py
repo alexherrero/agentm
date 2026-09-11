@@ -76,8 +76,9 @@ class JobTemplatesLoad(unittest.TestCase):
         # nothing, every night, without an error (found 2026-09-11).
         self.assertTrue(job.command.startswith("env -u MEMORY_VAULT_PATH "), job.command)
         # It declares that it spends, so the fleet ceiling gates it (and only
-        # it); the number is the strong tier's line (plan 04, task 2).
-        self.assertEqual(job.budget_tokens, 1_000_000)
+        # it); the number is the night's line (plan 04, task 2; raised to
+        # 2,000,000 on 2026-09-11).
+        self.assertEqual(job.budget_tokens, 2_000_000)
 
     def test_a_manifest_without_the_field_is_enabled(self):
         """Every manifest written before the field existed keeps running."""
