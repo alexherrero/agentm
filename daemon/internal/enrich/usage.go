@@ -32,12 +32,26 @@ type Usage struct {
 	Calls               int     `json:"calls"`
 }
 
-// Tokens is what the token line counts: every token the call processed, cache
-// reads included. Cache reads are cheaper per token, but the line is a bound
-// on the operator's allowance, and counting them in errs towards stopping
-// early rather than towards spending more than was said.
+// Tokens is every token the call processed, cache reads included. It is what
+// the run reports and what a reader compares against a bill.
 func (u Usage) Tokens() int64 {
 	return u.InputTokens + u.CacheCreationTokens + u.CacheReadTokens + u.OutputTokens
+}
+
+// Added is what the token line counts: the tokens a call actually added, which
+// is everything except the cached prefix it re-read.
+//
+// The line used to count cache reads too, on the reasoning that counting them
+// in errs towards stopping early. Measured against the live corpus on
+// 2026-09-11, that reasoning inverted: every call re-reads the same ~37,000
+// tokens of Claude Code's own baseline, so a card cost ~107,000 tokens of which
+// ~74,000 were the same prefix twice. The line stopped the night after nine
+// cards while the corpus needed a hundred and eighty-one, and what it was
+// measuring was one constant, over and over, rather than the night's work. The
+// operator's number did not change; what it counts did (agentm-vault plan 04,
+// the first supervised batch).
+func (u Usage) Added() int64 {
+	return u.InputTokens + u.CacheCreationTokens + u.OutputTokens
 }
 
 // Add sums two readings.
@@ -52,11 +66,14 @@ func (u Usage) Add(o Usage) Usage {
 	}
 }
 
-// String is the one-line reading a person sees per call and per night.
+// String is the one-line reading a person sees per call and per night. It
+// carries both numbers: what the call processed, and the part of it the line
+// counts.
 func (u Usage) String() string {
-	return fmt.Sprintf("%s tokens (in %d · cache read %d · cache write %d · out %d) · $%.4f",
+	return fmt.Sprintf("%s tokens (in %d · cache read %d · cache write %d · out %d · "+
+		"%s against the line) · $%.4f",
 		commas(u.Tokens()), u.InputTokens, u.CacheReadTokens, u.CacheCreationTokens,
-		u.OutputTokens, u.CostUSD)
+		u.OutputTokens, commas(u.Added()), u.CostUSD)
 }
 
 // envelope is the part of `--output-format json` the pass reads.

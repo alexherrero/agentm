@@ -293,7 +293,7 @@ func (p *Pass) overLine(raw string, b Budget) bool {
 	}
 	tier := p.routeFor(raw).Tier
 	line, ok := b.TokenLines[tier]
-	return ok && line > 0 && b.Meter.Tier(tier).Tokens() >= line
+	return ok && line > 0 && b.Meter.Tier(tier).Added() >= line
 }
 
 // fillUsage copies the meter's readings into the report.

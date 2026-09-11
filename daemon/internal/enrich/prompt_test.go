@@ -22,6 +22,10 @@ func TestThePromptCarriesTheContractsTypes(t *testing.T) {
 
 // No contract is a different state from an empty list, and the prompt has to say
 // which. An empty enum reads to a model as "any string will do".
+// flat collapses the prompt's wrapping so an assertion can name a phrase the
+// instruction breaks across lines.
+func flat(s string) string { return strings.Join(strings.Fields(s), " ") }
+
 func TestAnUnresolvedContractSaysSoRatherThanOfferingNothing(t *testing.T) {
 	got := BuildPrompt(Request{Raw: "a note"}, nil, "")
 	if !strings.Contains(got, "did not resolve") {
@@ -36,8 +40,14 @@ func TestAnUnresolvedContractSaysSoRatherThanOfferingNothing(t *testing.T) {
 func TestTheAliasRuleRequiresDerivationAndSaysWhatItCosts(t *testing.T) {
 	got := BuildPrompt(Request{Raw: "n", Trigger: TriggerBatch}, []string{"fact"}, "")
 
-	if !strings.Contains(got, "derivable from the note itself") {
+	if !strings.Contains(got, "unless the note itself contains the other name") {
 		t.Error("the prompt does not require derivation")
+	}
+	// The bar the supervised batch's first sample forced (2026-09-11): the
+	// model offered the filename stem as an alias and the gate refused the
+	// write, so the rule now names that case.
+	if !strings.Contains(flat(got), "neither is the filename") {
+		t.Error("the prompt leaves the filename readable as an alias")
 	}
 	// A future reader loosening it should know what it costs.
 	if !strings.Contains(got, "3.85") {
@@ -48,6 +58,38 @@ func TestTheAliasRuleRequiresDerivationAndSaysWhatItCosts(t *testing.T) {
 	// leave the post-gate to refuse every one of them.
 	if strings.Contains(got, "phrasing the person actually used") {
 		t.Error("the prompt still permits asker phrasing, with no asker to take it from")
+	}
+}
+
+// The body field asks for what the grounding judge accepts, and no more.
+//
+// The first supervised batch (2026-09-11) refused three of four cards on body
+// sentences: a consequence, a cost and a circumstance the card and its
+// neighbours never stated. The prompt had asked for "a connection it does not
+// make ... what it means for later work", which is an invitation to infer, and
+// the judge refuses inference. The two have to ask for the same thing.
+func TestTheBodyFieldAsksOnlyForWhatTheJudgeAccepts(t *testing.T) {
+	got := BuildPrompt(Request{Raw: "n", Trigger: TriggerBatch}, []string{"fact"}, "")
+
+	for _, want := range []string{
+		"empty on almost every card",
+		"traceable to a sentence in the card or in a neighbour",
+		"No inference",
+	} {
+		if !strings.Contains(flat(got), want) {
+			t.Errorf("the body instruction does not say %q, so it invites what the "+
+				"judge refuses:\n%s", want, got[:min(900, len(got))])
+		}
+	}
+	// The retired invitation is gone rather than merely balanced by a rule
+	// below it: the model followed it and the night wrote nothing.
+	for _, gone := range []string{
+		"a connection it does not make",
+		"what it means for later work",
+	} {
+		if strings.Contains(flat(got), gone) {
+			t.Errorf("the prompt still invites inference: %q", gone)
+		}
 	}
 }
 

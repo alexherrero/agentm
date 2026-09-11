@@ -98,13 +98,14 @@ func main() {
 		if envelope && os.Getenv("ENRICH_STUB_RAW") == "" {
 			in, _ := strconv.Atoi(os.Getenv("ENRICH_STUB_IN_TOKENS"))
 			out, _ := strconv.Atoi(os.Getenv("ENRICH_STUB_OUT_TOKENS"))
+			cached, _ := strconv.Atoi(os.Getenv("ENRICH_STUB_CACHE_READ_TOKENS"))
 			isErr := os.Getenv("ENRICH_STUB_EXIT") != "" && os.Getenv("ENRICH_STUB_EXIT") != "0"
 			b, _ := json.Marshal(map[string]any{
 				"type": "result", "subtype": "success", "is_error": isErr,
 				"result": s, "total_cost_usd": float64(in+out) / 1e6,
 				"usage": map[string]any{
 					"input_tokens": in, "output_tokens": out,
-					"cache_creation_input_tokens": 0, "cache_read_input_tokens": 0,
+					"cache_creation_input_tokens": 0, "cache_read_input_tokens": cached,
 				},
 			})
 			s = string(b)
@@ -133,6 +134,9 @@ type stubOpts struct {
 	raw bool
 	// inTokens and outTokens are the usage the envelope reports.
 	inTokens, outTokens int
+	// cacheReadTokens is the cached prefix every real call re-reads — Claude
+	// Code's own baseline, identical on every call of a night.
+	cacheReadTokens int
 }
 
 // newStubCaller returns a Caller wired to the stub, configured by opts.
@@ -162,6 +166,7 @@ func newStubCaller(t *testing.T, o stubOpts) *Caller {
 	set("ENRICH_STUB_RAW", raw)
 	set("ENRICH_STUB_IN_TOKENS", strconv.Itoa(o.inTokens))
 	set("ENRICH_STUB_OUT_TOKENS", strconv.Itoa(o.outTokens))
+	set("ENRICH_STUB_CACHE_READ_TOKENS", strconv.Itoa(o.cacheReadTokens))
 	c := DefaultCaller("sonnet")
 	c.Bin = bin
 	return c
