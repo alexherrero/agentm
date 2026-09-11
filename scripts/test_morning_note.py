@@ -62,7 +62,7 @@ def _run(at: float, **over) -> dict:
 
 def _report() -> dict:
     return {
-        "run_id": "20260912-031500-abc", "mode": "apply", "outcome": "applied",
+        "run_id": "tonight-apply-pass", "mode": "apply", "outcome": "applied",
         "decision": {"due": True, "reason": "due"},
         "plan": {"demoted": [{"rel": "memory/semantic/quiet.md", "days": 400}], "revived": [],
                  "archive_candidates": [{"rel": "memory/semantic/ancient.md", "days": 1900}],

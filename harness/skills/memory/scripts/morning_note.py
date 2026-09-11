@@ -568,17 +568,6 @@ def build(vault: Path, *, now: Optional[float] = None, rel: Path = None,
     return dated, stable, head
 
 
-def diagnostics_dir() -> Path:
-    """Where the note goes, relative to the memory root: the configured
-    diagnostics space's `morning/`, or the shipped default layout."""
-    try:
-        spaces = (corpus_scorecard._agentmd(["status"]) or {}).get("spaces") or {}
-    except corpus_scorecard.DaemonUnavailable:
-        spaces = {}
-    configured = str(spaces.get("diagnostics") or "").strip("/")
-    return Path(configured) / "morning" if configured else DIAGNOSTICS_DIR
-
-
 def main(argv: list = None) -> int:
     ap = argparse.ArgumentParser(description="Write the morning note.")
     ap.add_argument("--vault-path", default=None, help="the memory root (overrides MEMORY_VAULT_PATH)")
@@ -588,7 +577,10 @@ def main(argv: list = None) -> int:
         print("morning-note: no memory root. Set $MEMORY_VAULT_PATH, or start the daemon "
               "so it can say which vault it is serving.", file=sys.stderr)
         return 2
-    dated, stable, head = build(Path(vault), rel=diagnostics_dir())
+    # Always the memory root's diagnostics/morning: the session brief and the
+    # email read that path without asking the daemon, so the note is written
+    # where they look rather than wherever a configured space would put it.
+    dated, stable, head = build(Path(vault))
     print(f"morning-note: wrote {dated} and {stable.name} — {head}")
     return 0
 
