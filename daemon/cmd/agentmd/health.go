@@ -112,7 +112,9 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 	fmt.Fprintf(&b, "%s\n", strings.ToUpper(rep.Level))
 	fmt.Fprintf(&b, "  vault    %s\n", cfg.VaultPath)
 
-	queue := fmt.Sprintf("%d unfiled", rep.Queue.Unfiled)
+	// The filing queue: unfiled notes no enrichment has judged yet. A card judged
+	// below the floor is listed for you in needs-review rather than counted here.
+	queue := fmt.Sprintf("%d awaiting a judgment", rep.Queue.Unfiled)
 	if rep.Queue.Since > 0 && rep.Queue.OldestAge > 0 {
 		queue += fmt.Sprintf(" · oldest %s old", rep.Queue.OldestAge)
 	}

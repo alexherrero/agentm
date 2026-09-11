@@ -79,29 +79,65 @@ type Stamp struct {
 // would show up as a diff in git and as a change to anything hashing the file,
 // which would make every review of the corpus's history noisier for no reason.
 func RenderNote(r Response, s Stamp) string {
+	return RenderFrontmatter(r, s, VerdictFor("", r, s.ConfidenceFloor)) + "\n" +
+		strings.TrimRight(r.Body, "\n") + "\n"
+}
+
+// RenderFrontmatter is the frontmatter block a judgment writes, both fences
+// included, ending in the closing `---` and its newline. The body is the
+// caller's: Compose puts the card's own text under it byte for byte.
+//
+// `altitude` is gone (agentm-vault § Dreaming: the deep pass drops it), and
+// `why` was never here — only a writer that knows writes it, and CarryProvenance
+// carries the one the card came with.
+func RenderFrontmatter(r Response, s Stamp, v FilingVerdict) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	writeScalar(&b, "title", r.Title)
 	writeScalar(&b, "type", r.Type)
-	writeScalar(&b, "altitude", r.Altitude)
-	writeScalar(&b, "status", StatusFor(r.Confidence, s.ConfidenceFloor))
+	writeScalar(&b, "status", v.Status)
+	// A second verdict below the floor sinks the card in place: it leaves the
+	// queue, stays on disk and in search at the dormant rank, and a genuine
+	// recall brings it back (agentm-vault § Capture, "the 'no' is a demotion").
+	when := s.At
+	if when.IsZero() {
+		when = time.Now()
+	}
+	if v.Sank {
+		writeScalar(&b, "lifecycle", "dormant")
+		writeScalar(&b, "lifecycle_since", when.UTC().Format("2006-01-02"))
+	}
 	fmt.Fprintf(&b, "confidence: %.2f\n", r.Confidence)
 	// The categorical twin of the number, in the vocabulary every writer
 	// shares (filing v2): the needs-review reading selects on it without
 	// knowing this pass's floor.
-	writeScalar(&b, "filing_confidence", FilingConfidenceFor(r.Confidence, s.ConfidenceFloor))
+	writeScalar(&b, "filing_confidence", v.FilingConfidence)
+	// Both halves from one proposal. `importance` is what the operator reads
+	// and edits; writing it equal to the proposal is what makes a later edit
+	// legible as theirs, and CarryProvenance puts back an `importance` that
+	// already differed. Zero means nothing was proposed — the light pass — and
+	// both are carried across as they stood.
+	if r.ImportanceProposed > 0 {
+		fmt.Fprintf(&b, "importance: %d\n", r.ImportanceProposed)
+		fmt.Fprintf(&b, "importance_proposed: %d\n", r.ImportanceProposed)
+	}
 	writeList(&b, "tags", r.Tags)
 	writeList(&b, "aliases", r.Aliases)
+	// Wikilinks in a quoted flow list, the shape the capture door writes: a
+	// bare `[[a]]` is a nested YAML sequence rather than a link.
+	if len(r.Related) > 0 {
+		links := make([]string, 0, len(r.Related))
+		for _, id := range r.Related {
+			links = append(links, `"[[`+id+`]]"`)
+		}
+		fmt.Fprintf(&b, "related: [%s]\n", strings.Join(links, ", "))
+	}
 	if r.Summary != "" {
 		writeScalar(&b, "summary", r.Summary)
 	}
 	// `updated` takes the stamp's moment when there is one, so the date the note
 	// claims and the timestamp the ledger holds describe the same event rather
 	// than two clock reads a few microseconds apart.
-	when := s.At
-	if when.IsZero() {
-		when = time.Now()
-	}
 	writeScalar(&b, "updated", when.UTC().Format("2006-01-02"))
 	version := s.Version
 	if version == "" {
@@ -112,10 +148,55 @@ func RenderNote(r Response, s Stamp) string {
 	if !s.At.IsZero() {
 		writeScalar(&b, "enriched_at", s.At.UTC().Format(StampFormat))
 	}
-	b.WriteString("---\n\n")
-	b.WriteString(strings.TrimRight(r.Body, "\n"))
-	b.WriteString("\n")
+	b.WriteString("---\n")
 	return b.String()
+}
+
+// FilingVerdict is what a judgment decides about where a card stands.
+type FilingVerdict struct {
+	// Status is `active` at or above the floor and `unfiled` below it.
+	Status string
+	// FilingConfidence is `high` or `low`, the categorical twin.
+	FilingConfidence string
+	// Sank is a second verdict below the floor: the card moves to
+	// `lifecycle: dormant`.
+	Sank bool
+}
+
+// VerdictFor is session 2's verdict, unchanged (agentm-vault § Dreaming): at or
+// above the floor a card lands `active` at `filing_confidence: high`; below it
+// stays `unfiled` and is listed; on a second verdict below the floor it sinks
+// to `dormant`.
+//
+// "A second verdict" is read from the note as it stood: it carries an
+// enrichment stamp and is `unfiled`, which a judged card only is when the last
+// judgment was below the floor. That happens only when the body, the prompt or
+// the contract changed, because an unchanged card is never judged twice.
+//
+// Three kinds never sink, because the lifecycle contract says so and a filing
+// verdict does not get to overrule it: a `pinned` card, and the two rule types,
+// `preference` and `convention` — a rule nobody has read in a while is still
+// the rule. They stay `unfiled` and listed for the operator instead.
+func VerdictFor(previous string, r Response, floor float64) FilingVerdict {
+	if r.Confidence >= Floor(floor) {
+		return FilingVerdict{Status: "active", FilingConfidence: "high"}
+	}
+	v := FilingVerdict{Status: "unfiled", FilingConfidence: "low"}
+	judgedBelow := strings.TrimSpace(frontmatterValue(previous, "enriched_at")) != "" &&
+		frontmatterValue(previous, "status") == "unfiled"
+	if !judgedBelow {
+		return v
+	}
+	if frontmatterValue(previous, "lifecycle") == "pinned" {
+		return v
+	}
+	for _, t := range []string{r.Type, frontmatterValue(previous, "type")} {
+		if t == "preference" || t == "convention" {
+			return v
+		}
+	}
+	v.Sank = true
+	return v
 }
 
 // StatusFor is the lifecycle status an enrichment earns.

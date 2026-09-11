@@ -183,10 +183,6 @@ type Config struct {
 	// comparison has ever been possible.
 	CheapModel string
 
-	// EnrichSampleRate is one-in-n for the sampled completeness half. The
-	// faithfulness half is per note and does not consult it.
-	EnrichSampleRate int
-
 	// EnrichConcurrency bounds simultaneous runs. Unbounded, a pass over many
 	// notes starts one subprocess per note, and the type-collapse migration
 	// rewrote 9,899 notes in an afternoon.
@@ -552,15 +548,9 @@ func Load(opts Options) (*Config, error) {
 	if f, ok := raw["daemon.enrich_concurrency"].(float64); ok && f >= 1 {
 		c.EnrichConcurrency = int(f)
 	}
-	if f, ok := raw["daemon.enrich_sample_rate"].(float64); ok && f >= 0 {
-		c.EnrichSampleRate = int(f)
-	}
-	if c.EnrichSampleRate == 0 {
-		// One in twenty. Enough to move a scorecard number over a batch, few
-		// enough that the sampled half is a rounding error against the per-note
-		// faithfulness call it rides alongside.
-		c.EnrichSampleRate = 20
-	}
+	// `daemon.enrich_sample_rate` is no longer read: it set how often the
+	// completeness half sampled, and that half retired with the rewrite
+	// (agentm-vault plan 04). A config that still carries the key is harmless.
 	if c.EnrichConcurrency == 0 {
 		// Two rather than one so a second capture during a slow call is not
 		// automatically deferred, and rather than many because each is a

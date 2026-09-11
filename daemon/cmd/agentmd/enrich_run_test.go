@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,6 +106,67 @@ func TestTheRunsLastLineCarriesTheSpendTheRunnerReads(t *testing.T) {
 	}
 	if back["total_cost_usd"] != 0.0421 || back["stopped_by"] != "the call guard (4 calls)" {
 		t.Errorf("the summary line reads %s", b)
+	}
+}
+
+// The neighbours go into a model's prompt, so what is offered is bounded: never
+// the card itself, never a derived class, never a space no background model
+// may read — and at most five, with a title and a summary each.
+func TestTheNeighboursNeverOfferWhatAModelMayNotRead(t *testing.T) {
+	vault := t.TempDir()
+	cfg := configOverRules(t, vault, "preference")
+	x, err := index.Open(filepath.Join(t.TempDir(), "index.db"), vault, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { x.Close() })
+	put := func(rel, body string) {
+		abs := filepath.Join(vault, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		n := note.Note{Rel: rel, Title: enrich.FrontmatterValue(body, "title"), Body: body,
+			Captured: time.Now().UTC(), CapturedSource: "mtime"}
+		if err := x.Upsert(n, 1, int64(len(body))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	card := "---\ntitle: Keep git out of Google Drive\ntags: [git, drive]\n---\n\nDrive corrupts git.\n"
+	put("Agent/memory/semantic/keep-git-out-of-drive.md", card)
+	put("Agent/memory/procedural/drive-churns-git.md",
+		"---\ntitle: Drive churns git index files\nsummary: Drive rewrites .git/index.\n---\n\ngit drive\n")
+	put("Agent/memory/mocs/moc-git.md", "---\ntitle: Git drive map\n---\n\ngit drive\n")
+	put("Personal/Home/git-drive-passwords.md", "---\ntitle: Git drive secrets\n---\n\ngit drive\n")
+	put("Agent/memory/semantic/leaky.md",
+		"---\ntitle: Git drive token\nsummary: token ghp_"+strings.Repeat("a", 36)+"\n---\n\ngit drive\n")
+	for i := 0; i < 8; i++ {
+		put(fmt.Sprintf("Agent/memory/semantic/git-drive-%d.md", i),
+			fmt.Sprintf("---\ntitle: Git and Drive note %d\n---\n\ngit drive %d\n", i, i))
+	}
+
+	mayRead := func(rel string) bool { return !strings.HasPrefix(rel, "Personal/") }
+	got := enrichNeighbours(cfg, x, mayRead)(context.Background(), enrich.Request{
+		Rel: "Agent/memory/semantic/keep-git-out-of-drive.md", Raw: card,
+	})
+	if len(got) == 0 || len(got) > enrich.MaxRelated {
+		t.Fatalf("offered %d neighbours, want between 1 and %d", len(got), enrich.MaxRelated)
+	}
+	for _, n := range got {
+		switch {
+		case n.Rel == "Agent/memory/semantic/keep-git-out-of-drive.md":
+			t.Error("the card was offered as its own neighbour")
+		case strings.Contains(n.Rel, "/mocs/"):
+			t.Errorf("a derived class was offered: %s", n.Rel)
+		case strings.HasPrefix(n.Rel, "Personal/"):
+			t.Errorf("a space no model may read was offered: %s", n.Rel)
+		case n.ID == "leaky":
+			t.Error("a neighbour carrying a credential shape was offered")
+		case n.Title == "" || n.Summary == "":
+			t.Errorf("a neighbour without a title or summary: %+v", n)
+		}
 	}
 }
 

@@ -65,7 +65,9 @@ func TestEligibilityRefusesWhatIsNotEnrichmentsBusiness(t *testing.T) {
 // happened. Status said nothing about it: a card is `active` because a writer
 // that knew said why, and `unfiled` because none did.
 func TestTheDepthComesFromTheStampNotTheStatus(t *testing.T) {
-	stamped := "---\ntitle: A note\nstatus: unfiled\nenriched_at: 2026-09-01T00:00:00Z\n---\n\nb\n"
+	// Stamped by this pass: the light pass is what a moved card is owed.
+	stamped := "---\ntitle: A note\nstatus: unfiled\nenriched_by: " + PassVersion +
+		"\nenriched_at: 2026-09-01T00:00:00Z\n---\n\nb\n"
 	for _, tc := range []struct {
 		name, body string
 		want       Depth
@@ -75,6 +77,12 @@ func TestTheDepthComesFromTheStampNotTheStatus(t *testing.T) {
 		{"no frontmatter", "just prose\n", DepthDeep},
 		{"stamped", stamped, DepthLight},
 		{"stamped and active", strings.Replace(stamped, "unfiled", "active", 1), DepthLight},
+		// A prompt change re-owes the deep pass (agentm-vault § Dreaming): a
+		// stamp from an older prompt is not this pass's judgment.
+		{"stamped by an older pass", strings.Replace(stamped, PassVersion,
+			"enrich/1+prompt/a73ff0f4f5dc", 1), DepthDeep},
+		{"stamped with no version", strings.Replace(stamped,
+			"enriched_by: "+PassVersion+"\n", "", 1), DepthDeep},
 		{"an empty stamp is no stamp", strings.Replace(stamped,
 			"enriched_at: 2026-09-01T00:00:00Z", "enriched_at:", 1), DepthDeep},
 	} {
@@ -108,7 +116,9 @@ func TestTheRequestsDepthIsOverwrittenByTheNote(t *testing.T) {
 		return nil
 	}))
 
-	stamped := "---\ntitle: A note\nstatus: unfiled\nenriched_at: 2026-09-01T00:00:00Z\n---\n\nb\n"
+	// Stamped by this pass — a stamp from an older one is owed the deep pass.
+	stamped := "---\ntitle: A note\nstatus: unfiled\nenriched_by: " + PassVersion +
+		"\nenriched_at: 2026-09-01T00:00:00Z\n---\n\nb\n"
 	if _, err := p.Run(context.Background(), Request{
 		Rel: "x.md", Raw: stamped, Depth: DepthDeep,
 	}); err != nil {

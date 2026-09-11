@@ -60,7 +60,7 @@ func writeNote(t *testing.T, vault, rel string, r enrich.Response, s enrich.Stam
 
 func response(title string, confidence float64) enrich.Response {
 	return enrich.Response{
-		Title: title, Type: "fact", Altitude: "artifact",
+		Title: title, Type: "fact",
 		Body: "the body of " + title, Confidence: confidence,
 	}
 }

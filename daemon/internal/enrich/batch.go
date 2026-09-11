@@ -43,9 +43,11 @@ type Candidate struct {
 type Lister func(ctx context.Context, after string, limit int) ([]Candidate, error)
 
 // Writer persists an enriched note. Separate from the pass because the pass's
-// job ends at "this body is good"; deciding where it goes and journalling the
-// write belong to the caller that owns the vault.
-type Writer func(ctx context.Context, rel, body string) error
+// job ends at "this response is good"; deciding where it goes and journalling
+// the write belong to the caller that owns the vault. It gets the whole
+// outcome — the response in Body, and beside it the depth the note was judged
+// in and the neighbours it was shown, which composing the note needs.
+type Writer func(ctx context.Context, rel string, out Outcome) error
 
 // BatchReport is what one run did, in the numbers someone would actually ask
 // for afterwards.
@@ -96,11 +98,15 @@ type BatchReport struct {
 	Pairs []Pair `json:"-"`
 }
 
-// Pair is one note's before and after.
+// Pair is one note's before and after: the note as it stood, and the model's
+// response. With the depth and the neighbours, the after can be composed
+// exactly as the write composed it.
 type Pair struct {
-	Rel    string
-	Source string
-	Result string
+	Rel        string
+	Source     string
+	Result     string
+	Depth      Depth
+	Neighbours []Neighbour
 }
 
 // Budget bounds one batch run.
@@ -253,7 +259,7 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 			case out.Skipped:
 				rep.Skipped++
 			case out.Enriched:
-				if err := write(ctx, cand.Rel, out.Body); err != nil {
+				if err := write(ctx, cand.Rel, out); err != nil {
 					rep.Failed++
 					if len(rep.Errors) < maxReportedErrors {
 						rep.Errors = append(rep.Errors,
@@ -264,6 +270,7 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 				rep.Enriched++
 				rep.Pairs = append(rep.Pairs, Pair{
 					Rel: cand.Rel, Source: cand.Raw, Result: out.Body,
+					Depth: out.Depth, Neighbours: out.Neighbours,
 				})
 			}
 		}

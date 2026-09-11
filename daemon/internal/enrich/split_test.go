@@ -9,7 +9,7 @@ import (
 func frag(slug, title, body string) SplitFragment {
 	return SplitFragment{
 		Response: Response{
-			Title: title, Type: "fact", Altitude: "artifact",
+			Title: title, Type: "fact",
 			Body: body, Confidence: 0.9, Slug: slug,
 		},
 		Slug: slug,

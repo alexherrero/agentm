@@ -150,6 +150,42 @@ type Rules struct {
 	// Hash identifies the contract a filing judgment was made under. It is the
 	// `rules_hash` a memory carries in its frontmatter.
 	Hash string `json:"hash"`
+	// ImportanceRubric is the paragraph under `## Importance`: what the deep
+	// pass proposes `importance_proposed` against. Prose rather than a key in
+	// the block, on the operator's ruling (agentm-vault § Dreaming, Q8) — a
+	// paragraph you can edit, read at call time. Outside the block, so editing
+	// it leaves the rules hash alone and re-owes the corpus nothing; the next
+	// deep pass simply proposes against the new words.
+	ImportanceRubric string `json:"importance_rubric,omitempty"`
+}
+
+// ImportanceHeading opens the contract's rubric for `importance`.
+const ImportanceHeading = "## Importance"
+
+// proseSection returns the text under a heading, up to the next heading of
+// level one or two or the next fence, trimmed. Empty when the heading is
+// absent.
+func proseSection(text, heading string) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.TrimRight(l, " \t") == heading {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	var out []string
+	for _, l := range lines[start:] {
+		if strings.HasPrefix(l, "# ") || strings.HasPrefix(l, "## ") ||
+			strings.HasPrefix(l, "```") {
+			break
+		}
+		out = append(out, l)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 // ObservationalClasses are the three classes filing may write into. The other
@@ -225,6 +261,7 @@ func parse(text, source string, embedded bool) (*Rules, error) {
 
 	r := &Rules{block: b, Source: source, IsPackagedDefault: embedded}
 	r.Hash = b.contentHash()
+	r.ImportanceRubric = proseSection(text, ImportanceHeading)
 	return r, nil
 }
 

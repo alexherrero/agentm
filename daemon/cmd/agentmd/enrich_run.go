@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -33,13 +34,19 @@ type enrichVerdicts struct {
 	SankNotes []string `json:"sank_notes,omitempty"`
 }
 
-// count reads one written note's verdict from its own frontmatter.
-func (v *enrichVerdicts) count(next string) {
-	if enrich.FrontmatterValue(next, "status") == "active" {
+// count adds one written note's verdict. A card that sank is also below the
+// floor; it is counted in both, and named, because the morning note lists
+// what quietly sank.
+func (v *enrichVerdicts) count(rel string, verdict enrich.FilingVerdict) {
+	if verdict.Status == "active" {
 		v.Active++
 		return
 	}
 	v.BelowFloor++
+	if verdict.Sank {
+		v.Sank++
+		v.SankNotes = append(v.SankNotes, rel)
+	}
 }
 
 // enrichRun is one line of the record.
@@ -194,6 +201,130 @@ func sampleQueue(queue []string, n int, seed int64) []string {
 	picked = picked[:n]
 	sort.Strings(picked)
 	return picked
+}
+
+// enrichNeighbours finds the notes the deep pass is shown beside a card: the
+// nearest five by the index's own ranker, title and summary only.
+//
+// Lexical fusion over the card's title and tags — the shipped ranker's
+// lexical arm, which needs no embedder in a one-shot process and tolerates a
+// long title where an all-terms match would return nothing. The dense arm is
+// the re-audit if `related` on enriched cards turns out thin.
+//
+// Three things are never offered, because the titles and summaries go into a
+// model's prompt: the card itself, a derived class, and any note in a space no
+// background model may read. A neighbour whose text carries a credential shape
+// is skipped for the same reason the privacy gate refuses a card.
+func enrichNeighbours(cfg *config.Config, idx *index.Index,
+	mayRead func(string) bool) func(context.Context, enrich.Request) []enrich.Neighbour {
+	privacy := enrich.DefaultPrivacy()
+	return func(_ context.Context, req enrich.Request) []enrich.Neighbour {
+		q := neighbourQuery(req.Raw)
+		if q == "" {
+			return nil
+		}
+		out, err := idx.Search(index.Query{Text: q, K: 20, Mode: index.ModeFusion})
+		if err != nil {
+			return nil
+		}
+		var ns []enrich.Neighbour
+		for _, res := range out.Results {
+			if res.Path == req.Rel || !strings.HasSuffix(res.Path, ".md") ||
+				!mayRead(res.Path) || underDerivedClass(res.Path) {
+				continue
+			}
+			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(res.Path)))
+			if err != nil {
+				continue
+			}
+			n := enrich.Neighbour{
+				ID:      strings.TrimSuffix(path.Base(res.Path), ".md"),
+				Rel:     res.Path,
+				Title:   enrich.FrontmatterValue(string(raw), "title"),
+				Summary: enrich.FrontmatterValue(string(raw), "summary"),
+			}
+			if n.Title == "" {
+				n.Title = n.ID
+			}
+			if n.Summary == "" {
+				n.Summary = leadOf(string(raw), 240)
+			}
+			if !privacy.Clean(n.Title + "\n" + n.Summary) {
+				continue
+			}
+			ns = append(ns, n)
+			if len(ns) == enrich.MaxRelated {
+				break
+			}
+		}
+		return ns
+	}
+}
+
+// neighbourQuery is a card's title and tags as search terms: lower-case words
+// of three letters or more, stopwords out, at most eight. Keywords rather than
+// the card's prose, because the ranker's cost tracks how common its terms are.
+func neighbourQuery(raw string) string {
+	text := enrich.FrontmatterValue(raw, "title") + " " +
+		strings.Trim(enrich.FrontmatterValue(raw, "tags"), "[]")
+	seen := map[string]bool{}
+	var terms []string
+	for _, w := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	}) {
+		if len(w) < 3 || neighbourStopwords[w] || seen[w] {
+			continue
+		}
+		seen[w] = true
+		terms = append(terms, w)
+		if len(terms) == 8 {
+			break
+		}
+	}
+	return strings.Join(terms, " ")
+}
+
+var neighbourStopwords = map[string]bool{
+	"the": true, "and": true, "for": true, "with": true, "that": true, "this": true,
+	"from": true, "into": true, "not": true, "are": true, "was": true, "its": true,
+	"you": true, "your": true, "can": true, "but": true, "how": true, "what": true,
+	"when": true, "why": true, "who": true, "one": true, "all": true, "has": true,
+}
+
+// underDerivedClass reports whether a path sits in a derived class directory.
+func underDerivedClass(rel string) bool {
+	for _, seg := range strings.Split(rel, "/") {
+		if enrich.DerivedClasses[strings.ToLower(seg)] {
+			return true
+		}
+	}
+	return false
+}
+
+// leadOf is the first n characters of a note's prose, flattened — a stand-in
+// summary for a neighbour that carries none.
+func leadOf(raw string, n int) string {
+	body := raw
+	if strings.HasPrefix(raw, "---") {
+		if i := strings.Index(raw[3:], "\n---"); i >= 0 {
+			body = raw[3+i+4:]
+		}
+	}
+	var keep []string
+	for _, l := range strings.Split(body, "\n") {
+		if t := strings.TrimSpace(l); t != "" && !strings.HasPrefix(t, "#") {
+			keep = append(keep, t)
+		}
+	}
+	s := strings.Join(keep, " ")
+	if len(s) > n {
+		s = s[:n]
+		if i := strings.LastIndexByte(s, ' '); i > n/2 {
+			s = s[:i]
+		}
+		s += "…"
+	}
+	return s
 }
 
 // lowerOnly applies a budget flag: zero keeps the operator's line, a smaller

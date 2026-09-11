@@ -635,6 +635,15 @@ func (x *Index) knownState() (map[string]fileState, error) {
 // for a different reason and nothing is waiting on them.
 var UnfiledStatuses = []string{"unfiled", "inbox"}
 
+// awaitingJudgment narrows the filing queue to the notes no enrichment has
+// judged (agentm-vault plan 04). A card enrichment judged and left below the
+// floor keeps `status: unfiled` — it is listed for the operator in
+// needs-review — but it is not waiting to be filed, and counting it would leave
+// the age threshold red forever, which is the same reason `superseded` and
+// `expired` are not counted. `confidence_set` is enrichment's numeric reading;
+// no other writer sets it.
+const awaitingJudgment = " AND confidence_set = 0"
+
 var (
 	unfiledPlaceholders = strings.TrimSuffix(strings.Repeat("?,", len(UnfiledStatuses)), ",")
 	unfiledArgs         = func() []any {
@@ -701,14 +710,14 @@ func (x *Index) UnfiledSince(baseline time.Time) (QueueSince, error) {
 	var out QueueSince
 	if err := x.db.QueryRow(
 		`SELECT count(*) FROM docmeta
-		  WHERE status IN (`+unfiledPlaceholders+`) AND captured >= ?`,
+		  WHERE status IN (`+unfiledPlaceholders+`)`+awaitingJudgment+` AND captured >= ?`,
 		args...).Scan(&out.Count); err != nil {
 		return out, err
 	}
 	var oldest sql.NullString
 	_ = x.db.QueryRow(
 		`SELECT min(captured) FROM docmeta
-		  WHERE status IN (`+unfiledPlaceholders+`) AND captured >= ?`,
+		  WHERE status IN (`+unfiledPlaceholders+`)`+awaitingJudgment+` AND captured >= ?`,
 		args...).Scan(&oldest)
 	if oldest.Valid {
 		if t, ok := parseCaptured(oldest.String); ok {
@@ -789,13 +798,13 @@ func (x *Index) Stats() (Stats, error) {
 	// of the queue and leave the age threshold red forever, which is a queue
 	// alert that has taught its reader to ignore it on day one.
 	if err := x.db.QueryRow(
-		`SELECT count(*) FROM docmeta WHERE status IN (`+unfiledPlaceholders+`)`,
+		`SELECT count(*) FROM docmeta WHERE status IN (`+unfiledPlaceholders+`)`+awaitingJudgment,
 		unfiledArgs...).Scan(&s.Unfiled); err != nil {
 		return s, err
 	}
 	var oldest sql.NullString
 	_ = x.db.QueryRow(
-		`SELECT min(captured) FROM docmeta WHERE status IN (`+unfiledPlaceholders+`)
+		`SELECT min(captured) FROM docmeta WHERE status IN (`+unfiledPlaceholders+`)`+awaitingJudgment+`
 		   AND captured <> ''`,
 		unfiledArgs...).Scan(&oldest)
 	if oldest.Valid {

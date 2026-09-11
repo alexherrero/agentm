@@ -123,8 +123,18 @@ func (d Depth) String() string {
 // costs zero model calls and a note whose *prompt* moved is correctly owed
 // another pass. Answering it twice, in two places, is how the two answers
 // start to disagree.
+//
+// A stamp from an older pass is owed the deep pass again, not the light one:
+// "a prompt change re-owes the deep pass to every note" (agentm-vault
+// § Dreaming). The version is the prompt's hash, so a stamp that names a
+// different version was judged by a different prompt, and what this prompt
+// asks for — the neighbours, `related`, `importance_proposed` — that judgment
+// never gave.
 func PassDepth(body string) Depth {
 	if strings.TrimSpace(frontmatterValue(body, "enriched_at")) == "" {
+		return DepthDeep
+	}
+	if strings.TrimSpace(frontmatterValue(body, "enriched_by")) != PassVersion {
 		return DepthDeep
 	}
 	return DepthLight
@@ -166,6 +176,18 @@ func DefaultPrivacy() *Privacy {
 }
 
 func (g *Privacy) Name() string { return "privacy" }
+
+// Clean reports whether text carries none of the credential shapes. For text
+// that is going into a prompt beside the card — a neighbour's title and
+// summary — where the answer to a match is to leave that text out.
+func (g *Privacy) Clean(text string) bool {
+	for _, re := range g.Patterns {
+		if re.MatchString(text) {
+			return false
+		}
+	}
+	return true
+}
 
 func (g *Privacy) Check(_ context.Context, req Request, body string) error {
 	for _, re := range g.Patterns {

@@ -1421,6 +1421,15 @@ func cmdEnrich(args []string) error {
 		}
 		return nil
 	})
+	// The contract's importance paragraph, read at call time like the types,
+	// so an edit to it reaches the next note rather than the next release.
+	pass.SetRubric(func() string {
+		if loaded, err := cfg.Rules.Get(); err == nil {
+			return loaded.ImportanceRubric
+		}
+		return ""
+	})
+	pass.SetNeighbours(enrichNeighbours(cfg, idx, modelMayRead(cfg)))
 	attachPreGates(pass, cfg, budget, led)
 
 	// The judge is a second caller rather than the same one. They want
@@ -1430,13 +1439,7 @@ func cmdEnrich(args []string) error {
 	judgeCaller := enrich.DefaultCaller(name)
 	judgeCaller.Meter, judgeCaller.Label = meter, "faithfulness judge"
 	judge := enrich.NewJudge(judgeCaller)
-	attachPostGates(pass, cfg, judge, func(rel string, missing []string) {
-		if len(missing) == 0 {
-			return
-		}
-		fmt.Fprintf(os.Stderr, "completeness: %s omits %s\n", rel,
-			strings.Join(missing, "; "))
-	})
+	attachPostGates(pass, cfg, judge)
 
 	// Writes go through the Applier, so class membership, the while-unlinked
 	// slug rule and the journal all engage. Writing bytes directly here would
@@ -1466,17 +1469,26 @@ func cmdEnrich(args []string) error {
 	keyer := enrichFingerprint(cfg, nil)
 
 	// What the night decided about the notes it wrote, for the report and the
-	// morning note: filed active, left below the floor.
+	// morning note: filed active, left below the floor, sank. And the bytes that
+	// landed, so --dump shows the note on disk rather than a re-rendering.
 	var verdicts enrichVerdicts
+	landed := map[string]string{}
 
-	write := func(ctx context.Context, rel, body string) error {
-		r, err := enrich.ParseResponse(body)
+	write := func(ctx context.Context, rel string, out enrich.Outcome) error {
+		r, err := enrich.ParseResponse(out.Body)
 		if err != nil {
 			return err
 		}
 		previous, _ := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
 		stamp := enrichStamp(cfg, time.Now())
-		next := enrich.CarryProvenance(string(previous), enrich.RenderNote(r, stamp))
+		// New frontmatter over the card's own text, byte for byte, and on a deep
+		// pass the dated section below it. Compose refuses a composition that
+		// would change a byte of what the session wrote.
+		next, verdict, err := enrich.Compose(string(previous), r, stamp, out.Depth,
+			out.Neighbours)
+		if err != nil {
+			return err
+		}
 		dest, err := applier.Apply(ctx, enrich.WriteRequest{
 			Rel: rel, Previous: string(previous), Next: next,
 			NewSlug: r.Slug, Trigger: enrich.TriggerBatch,
@@ -1494,7 +1506,8 @@ func cmdEnrich(args []string) error {
 			})
 			return err
 		}
-		verdicts.count(next)
+		verdicts.count(dest, verdict)
+		landed[rel] = next
 		// Against the destination rather than the source: a slug correction moves
 		// the note, and a row filed under the path it no longer has would leave
 		// the path it does have looking untouched.
@@ -1582,7 +1595,7 @@ func cmdEnrich(args []string) error {
 	}
 
 	if *dumpDir != "" {
-		if err := dumpPairs(*dumpDir, rep.Pairs); err != nil {
+		if err := dumpPairs(*dumpDir, rep.Pairs, landed); err != nil {
 			return err
 		}
 		fmt.Printf("wrote %d before/after pair(s) to %s\n", len(rep.Pairs), *dumpDir)
@@ -1632,19 +1645,7 @@ func cmdEnrich(args []string) error {
 // dependency hub.
 func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget,
 	led *ledger.Ledger) {
-	// The contract decides which spaces a model may read. When it will not
-	// parse, nothing is readable — the safe direction, and the same one
-	// `applyDampenedSpaces` takes: dampening too little is a leak the operator
-	// can see, and sending `personal/` to a model is not.
-	mayRead := func(rel string) bool {
-		loaded, err := cfg.Rules.Get()
-		if err != nil {
-			return false
-		}
-		return loaded.MayReadWithModel(rel)
-	}
-
-	eligibility := enrich.DefaultEligibility(mayRead)
+	eligibility := enrich.DefaultEligibility(modelMayRead(cfg))
 	eligibility.IsRecordKind = func(kind string) bool {
 		loaded, err := cfg.Rules.Get()
 		// No contract, no way to tell a record from a card: refuse, the same
@@ -1665,13 +1666,34 @@ func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget,
 	)
 }
 
+// modelMayRead is the contract's answer to "may a background model read this
+// path". When the contract will not parse, nothing is readable — the safe
+// direction, and the same one `applyDampenedSpaces` takes: dampening too
+// little is a leak the operator can see, and sending `personal/` to a model is
+// not. The eligibility gate reads it for the card, and the neighbour search for
+// every note it would put beside one.
+func modelMayRead(cfg *config.Config) func(string) bool {
+	return func(rel string) bool {
+		loaded, err := cfg.Rules.Get()
+		if err != nil {
+			return false
+		}
+		return loaded.MayReadWithModel(rel)
+	}
+}
+
 // attachPostGates registers the checks that run on what the model returned.
 //
 // Schema first, for the same reason eligibility is first among the pre-gates:
 // it is the cheapest and it rejects the most. Every later post-gate reads
 // fields, and a response that will not parse has no fields to read.
-func attachPostGates(pass *enrich.Pass, cfg *config.Config, judge enrich.Judge,
-	onCompleteness func(string, []string)) {
+//
+// The token-preservation gate is gone (agentm-vault plan 04). It held a
+// rewrite to keep every identifier its source had, and the deep pass no longer
+// rewrites: the card's text is carried byte for byte, and Compose refuses a
+// write that would change it — which is the stronger form of what that gate
+// checked.
+func attachPostGates(pass *enrich.Pass, cfg *config.Config, judge enrich.Judge) {
 	isType := func(v string) bool {
 		loaded, err := cfg.Rules.Get()
 		if err != nil {
@@ -1691,30 +1713,17 @@ func attachPostGates(pass *enrich.Pass, cfg *config.Config, judge enrich.Judge,
 		return nil
 	}
 	pass.AddPost(
+		// Schema also strips a `why` the model offers and never writes one.
 		enrich.DefaultSchema(isType, typesSorted),
-		// Second, and deterministic. It is the completeness floor: the cheapest
-		// gate that catches the most damaging failure, so it runs on every note
-		// rather than on a sample. A sampled version would let through exactly
-		// the note whose identifier was dropped.
-		enrich.DefaultTokens(),
-		// Also deterministic, and it runs before the judge for the same reason
-		// the token gate does: an alias the note cannot account for is a
-		// mechanical fact, and paying a model to notice it would be paying for
-		// arithmetic.
+		// Deterministic, and before the judge: an alias the note cannot account
+		// for is a mechanical fact, and paying a model to notice it would be
+		// paying for arithmetic. (It was registered twice until this plan; the
+		// second copy checked the same thing again.)
 		enrich.DefaultAliases(),
-		// Also deterministic, and it runs before the judge for the same reason
-		// the token gate does: an alias the note cannot account for is a
-		// mechanical fact, and paying a model to notice it would be paying for
-		// arithmetic.
-		enrich.DefaultAliases(),
-		// Third, and the only one that costs a model call. It runs last among
-		// the deterministic-first three for exactly that reason: a response that
-		// fails a mechanical check never reaches a judge.
-		&enrich.Grounding{
-			Judge:          judge,
-			Sample:         enrich.SampleEvery(cfg.EnrichSampleRate),
-			OnCompleteness: onCompleteness,
-		},
+		// Last, and the only one that costs a model call, so a response that
+		// fails a mechanical check never reaches a judge. Its source is the
+		// card and the neighbours it was shown.
+		&enrich.Grounding{Judge: judge},
 	)
 }
 
@@ -1723,7 +1732,7 @@ func attachPostGates(pass *enrich.Pass, cfg *config.Config, judge enrich.Judge,
 // For a person to read, not for a diff tool. The whole point of the bounded
 // batch is that somebody looks at the prose and says whether it hit the mark,
 // and that judgment is the one thing the dispersion number cannot make.
-func dumpPairs(dir string, pairs []enrich.Pair) error {
+func dumpPairs(dir string, pairs []enrich.Pair, landed map[string]string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -1732,20 +1741,19 @@ func dumpPairs(dir string, pairs []enrich.Pair) error {
 			strings.TrimSuffix(filepath.Base(p.Rel), ".md"))
 		var b strings.Builder
 		fmt.Fprintf(&b, "# %s\n\n", p.Rel)
-		b.WriteString("## BEFORE\n\n```markdown\n")
+		fmt.Fprintf(&b, "%s pass · %d neighbour(s) offered\n\n", p.Depth, len(p.Neighbours))
+		b.WriteString("## BEFORE\n\n````markdown\n")
 		b.WriteString(p.Source)
-		b.WriteString("\n```\n\n## AFTER\n\n```markdown\n")
-		// The rendered note rather than the raw JSON response: what the reader
-		// needs to judge is the note that landed, not the envelope it arrived in.
-		if r, err := enrich.ParseResponse(p.Result); err == nil {
-			// No stamp: this is a review artifact, not a note being filed, and
-			// stamping it would put a version and a timestamp on a file nothing
-			// ever reads back.
-			b.WriteString(enrich.RenderNote(r, enrich.Stamp{}))
+		b.WriteString("\n````\n\n## AFTER\n\n````markdown\n")
+		// The bytes that landed, byte for byte — what the reader judges is the
+		// note on disk, not the envelope it arrived in. Four backticks, because
+		// a card can carry a fenced block of its own.
+		if after, ok := landed[p.Rel]; ok {
+			b.WriteString(after)
 		} else {
 			b.WriteString(p.Result)
 		}
-		b.WriteString("\n```\n")
+		b.WriteString("\n````\n")
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(b.String()), 0o644); err != nil {
 			return err
 		}

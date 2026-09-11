@@ -23,7 +23,7 @@ a thought worth keeping
 func rendered(t *testing.T) string {
 	t.Helper()
 	return RenderNote(Response{
-		Title: "A thought worth keeping", Type: "preference", Altitude: "artifact",
+		Title: "A thought worth keeping", Type: "preference",
 		Confidence: 0.91, Body: "A thought worth keeping, distilled.",
 	}, Stamp{})
 }
