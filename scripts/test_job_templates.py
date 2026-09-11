@@ -46,7 +46,9 @@ class JobTemplatesLoad(unittest.TestCase):
             jobs.mkdir()
             shutil.copy(TEMPLATES / "dreaming.yaml", jobs / "dreaming.yaml")
             (job,) = manifest.load_manifests(jobs)
-        self.assertEqual(job.command, "$HOME/.local/bin/agentmdream run -every 168h -apply")
+        # Nightly (agentm-vault plan 04): the window makes it once a night, and
+        # twelve hours sits between a night's spread and the gap between nights.
+        self.assertEqual(job.command, "$HOME/.local/bin/agentmdream run -every 12h -apply")
         self.assertFalse(job.dry_run)
 
     def test_the_nightly_enrichment_job_is_registered_and_off(self):

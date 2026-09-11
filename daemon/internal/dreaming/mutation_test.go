@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,69 +220,153 @@ func TestRefileMovesAWrongClassNoteAndClearsAStaleFlag(t *testing.T) {
 	}
 }
 
-func TestPromoteNeedsThreeDistinctSourcesOutsideCodeAndNeverOverwrites(t *testing.T) {
+// trace is a session trace in the shape episodic_trace.py writes: the five
+// sections, the ones with nothing in them left out.
+func trace(session, captured, recalled, candidates string) string {
+	var b strings.Builder
+	b.WriteString("---\ntitle: " + session + "\nkind: session-trace\nstatus: active\nsession: " +
+		session + "\n---\n\n## Asked\n\nwork on the vault\n\n## Outcome\n\nDone.\n\n")
+	if captured != "" {
+		b.WriteString("## Captured\n\n" + captured + "\n\n")
+	}
+	if recalled != "" {
+		b.WriteString("## Recalled\n\n" + recalled + "\n\n")
+	}
+	if candidates != "" {
+		b.WriteString("## Candidates\n\n" + candidates + "\n")
+	}
+	return b.String()
+}
+
+// The five fixture traces (agentm-vault plan 04, task 4). Every one recalls
+// `zorbulax`, a test token that reached the recall index; three capture the
+// same card; three say the same thing in passing, in three spellings; two say
+// something else.
+func writeFixtureTraces(t *testing.T, root string) {
+	t.Helper()
+	recalled := "- [[zorbulax]]\n- [[talk]]\n- [[progress]]\n- [[roadmap]]"
+	say := []string{
+		"- preference (×2) — “Always run the full battery before a commit.”",
+		"- preference — “always run the full battery before a commit”",
+		"- correction (×3) — “Always run the FULL battery, before a commit!”",
+	}
+	for i := 1; i <= 5; i++ {
+		captured, candidates := "", ""
+		if i <= 3 {
+			captured = "- [[keep-git-out-of-drive]]"
+			candidates = say[i-1]
+		} else {
+			candidates = "- fix — “the daemon restarts on the old binary”"
+		}
+		writeRaw(t, root, fmt.Sprintf("memory/episodic/2026-09-0%d-session-%d.md", i, i),
+			trace(fmt.Sprintf("s%d", i), captured, recalled, candidates))
+	}
+	writeRaw(t, root, "memory/semantic/keep-git-out-of-drive.md",
+		"---\ntitle: Keep git out of Drive\ntype: preference\nstatus: active\n---\n\nbody\n")
+}
+
+func TestPromoteReadsCapturedAndCandidatesNeverRecalled(t *testing.T) {
 	root := t.TempDir()
-	writeRaw(t, root, "memory/episodic/e1.md", "---\ntitle: one\nkind: session-trace\nstatus: active\n---\n\nWorked on [[shared-target]] today.\n\n```\nA fenced [[fenced-target]] is not a link.\n```\n")
-	writeRaw(t, root, "memory/episodic/e2.md", "---\ntitle: two\nkind: session-trace\nstatus: active\n---\n\nBack to [[shared-target]] and a code span `[[code-target]]` that is not one either.\n")
-	writeRaw(t, root, "memory/episodic/e3.md", "---\ntitle: three\nkind: session-trace\nstatus: active\nsupersedes: [[sup-target]]\n---\n\nFinished [[shared-target|the target]]; see also [[other#section]] once. And [[shared-target]] again.\n")
-	writeRaw(t, root, "memory/semantic/not-episodic.md", "---\ntitle: s\nstatus: active\n---\n\n[[shared-target]] [[other]] [[other]]\n")
-	recurring, read, err := RecurringTargets(root, 0)
+	writeFixtureTraces(t, root)
+	plan, err := PlanPromote(root, nil, time.Date(2026, 9, 12, 2, 30, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if read != 3 {
-		t.Errorf("read %d episodic notes, want 3", read)
+	if plan.Sources != 5 {
+		t.Errorf("read %d traces, want the five", plan.Sources)
 	}
-	if len(recurring) != 1 || strings.Join(recurring["shared-target"], ",") != "memory/episodic/e1.md,memory/episodic/e2.md,memory/episodic/e3.md" {
-		t.Errorf("recurring = %v — three distinct sources, twice in one note counts once, fenced and code-span links never", recurring)
-	}
-	// A wikilinked frontmatter value is seen twice — once by the wikilink
-	// scan over the whole text, once by the frontmatter pass — exactly as
-	// graph.py sees it; recurrence counts distinct sources, so it is harmless.
-	got := Edges("---\nsupersedes: [[sup-target]]\nsuperseded_by: memory/x.md\n---\nbody\n")
-	seen := map[string]bool{}
-	for _, g := range got {
-		seen[g] = true
-	}
-	if !seen["sup-target"] || !seen["memory/x.md"] || len(seen) != 2 {
-		t.Errorf("frontmatter supersession edges = %v", got)
-	}
-	plan, err := PlanPromote(root, time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Promotions) != 1 || plan.Promotions[0].Rel != "memory/crystallized/consolidated-shared-target.md" {
-		t.Fatalf("promotions = %+v", plan.Promotions)
-	}
-	content := string(plan.Intents[0].After)
-	for _, want := range []string{
-		"kind: crystallized\n", "status: active\n", "altitude: artifact\n", "created: 2026-09-05\n", "updated: 2026-09-05\n",
-		"slug: consolidated-shared-target\n", "lifecycle_tier: durable\n",
-		"derived_from: [memory/episodic/e1.md, memory/episodic/e2.md, memory/episodic/e3.md]\n",
-		"consolidated_from: [memory/episodic/e1.md, memory/episodic/e2.md, memory/episodic/e3.md]\n",
-		"## Question\n\nWhat recurring reference to 'shared-target' appears across episodic entries?\n",
-		"## Investigation\n\n3 episodic entries reference 'shared-target':\n- memory/episodic/e1.md\n- memory/episodic/e2.md\n- memory/episodic/e3.md\n",
-		"## Findings\n\n'shared-target' recurs across 3 distinct entries (recurrence floor: 3), a deterministic signal that this is durable, not incidental.\n",
-		"## Open threads\n\n\n",
-	} {
-		if !strings.Contains(content, want) {
-			t.Errorf("the consolidated note lacks %q:\n%s", want, content)
+	// Nothing for `zorbulax`, or for anything else only `## Recalled` names —
+	// five traces carry it, and recurrence over a recall list is a popularity
+	// counter over what the hook happened to inject.
+	for _, in := range plan.Intents {
+		if strings.Contains(string(in.After), "zorbulax") || strings.Contains(in.Rel, "zorbulax") {
+			t.Errorf("promote wrote from the recall list: %s", in.Rel)
 		}
 	}
+	for _, p := range append(append([]Promotion{}, plan.Promotions...), plan.Existing...) {
+		if strings.Contains(p.Target, "zorbulax") || p.Target == "talk" || p.Target == "roadmap" {
+			t.Errorf("a recall-list target recurred: %+v", p)
+		}
+	}
+	// Nothing crystallized, ever.
+	for _, in := range plan.Intents {
+		if strings.Contains(in.Rel, "crystallized") {
+			t.Errorf("promote wrote into crystallized/: %s", in.Rel)
+		}
+	}
+	// One candidate: the thing said in three sessions, in three spellings.
+	if len(plan.Promotions) != 1 {
+		t.Fatalf("promotions = %+v, want the one recurring candidate", plan.Promotions)
+	}
+	got := plan.Promotions[0]
+	if got.Rel != "memory/semantic/candidate-always-run-the-full-battery-before-a-commit.md" ||
+		len(got.Sources) != 3 {
+		t.Errorf("the candidate = %+v", got)
+	}
+	// The card three sessions captured already exists: reported, not written.
+	if len(plan.Existing) != 1 || plan.Existing[0].Target != "keep-git-out-of-drive" {
+		t.Errorf("existing = %+v, want the captured card reported", plan.Existing)
+	}
+}
+
+// The candidate is unjudged, carries no why, and names the traces it came from.
+func TestAPromotedCandidateIsUnfiledWithNoWhyAndItsSources(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureTraces(t, root)
+	plan, err := PlanPromote(root, nil, time.Date(2026, 9, 12, 2, 30, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(plan.Intents[0].After)
+	fm, body := ParseFrontmatter(content)
+	if fm["status"] != "unfiled" || fm["kind"] != "" {
+		t.Errorf("a candidate is unfiled and not a record: %+v", fm)
+	}
+	if _, has := fm["why"]; has {
+		t.Error("promote wrote a why; only a writer that knows writes one")
+	}
+	for i := 1; i <= 3; i++ {
+		if !strings.Contains(fm["derived_from"], fmt.Sprintf("2026-09-0%d-session-%d", i, i)) {
+			t.Errorf("derived_from does not name trace %d: %q", i, fm["derived_from"])
+		}
+	}
+	if !strings.Contains(body, "## Evidence") || !strings.Contains(body, "Always run the full battery") {
+		t.Errorf("the candidate does not quote what was said:\n%s", body)
+	}
 	if plan.Intents[0].Before != nil {
-		t.Errorf("a promotion creates: Before must be nil")
+		t.Error("a promotion creates: Before must be nil")
 	}
-	// Already promoted: never overwritten, reported instead.
-	writeRaw(t, root, "memory/crystallized/consolidated-shared-target.md", "---\nkind: crystallized\nconsolidated_from: [x]\n---\n\nsomeone's edits\n")
-	again, _ := PlanPromote(root, time.Now())
-	if len(again.Promotions) != 0 || len(again.Existing) != 1 {
-		t.Errorf("existing entry: promotions=%v existing=%v", again.Promotions, again.Existing)
+
+	// A candidate written before is never overwritten.
+	writeRaw(t, root, plan.Promotions[0].Rel, "---\ntitle: edited\nstatus: active\n---\n\nmine\n")
+	again, _ := PlanPromote(root, nil, time.Now())
+	if len(again.Promotions) != 0 || len(again.Existing) != 2 {
+		t.Errorf("an existing candidate: promotions=%v existing=%v", again.Promotions, again.Existing)
 	}
-	if ConsolidatedSlug("Shared Target (v2).md") != "consolidated-shared-target-v2" {
-		t.Errorf("slug = %s", ConsolidatedSlug("Shared Target (v2).md"))
+}
+
+// Two sessions are not a recurrence; three are, and a line inside a fence or a
+// section that is not Captured or Candidates never counts.
+func TestPromoteNeedsThreeDistinctSessions(t *testing.T) {
+	root := t.TempDir()
+	line := "- preference — “keep the plan on disk”"
+	writeRaw(t, root, "memory/episodic/a.md", trace("a", "", "", line))
+	writeRaw(t, root, "memory/episodic/b.md", trace("b", "", "", line))
+	writeRaw(t, root, "memory/episodic/c.md",
+		trace("c", "", "", "```\n"+line+"\n```")+"\n## Outcome\n\n"+line+"\n")
+	writeRaw(t, root, "memory/semantic/not-a-trace.md",
+		"---\ntitle: x\nstatus: active\n---\n\n## Candidates\n\n"+line+"\n")
+	plan, err := PlanPromote(root, nil, time.Now())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if pyRepr("it's") != `"it's"` || pyRepr("plain") != "'plain'" {
-		t.Errorf("repr: %s %s", pyRepr("it's"), pyRepr("plain"))
+	if len(plan.Promotions) != 0 {
+		t.Errorf("two sessions promoted a candidate: %+v", plan.Promotions)
+	}
+	writeRaw(t, root, "memory/episodic/d.md", trace("d", "", "", line))
+	plan, _ = PlanPromote(root, nil, time.Now())
+	if len(plan.Promotions) != 1 || len(plan.Promotions[0].Sources) != 3 {
+		t.Errorf("three sessions did not promote it: %+v", plan.Promotions)
 	}
 }
 

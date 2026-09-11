@@ -389,7 +389,9 @@ func TestThePassCarriesTheChecksAndRemembersThem(t *testing.T) {
 	cfg.Rules = rules.NewHolder(root, time.Now())
 	now := time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC)
 	writeTyped(t, root, "memory/semantic/a.md", "fact", "2026-09-01", "a\n")
-	rep, err := Run(cfg, Options{Force: true, Now: now})
+	// Applying passes: only a pass that changed the corpus remembers what the
+	// next one is measured against (agentm-vault plan 04).
+	rep, err := Run(cfg, Options{Force: true, Now: now, Apply: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,11 +402,11 @@ func TestThePassCarriesTheChecksAndRemembersThem(t *testing.T) {
 	if st.ClassPopulations["semantic"] != 1 || st.LastPassVersion == "" {
 		t.Errorf("state remembers the populations and the version: %+v", st)
 	}
-	second, _ := Run(cfg, Options{Force: true, Now: now.Add(time.Hour)})
+	second, _ := Run(cfg, Options{Force: true, Now: now.Add(time.Hour), Apply: true})
 	if second.Reclassify.Ran {
 		t.Errorf("the same version does not re-run the diff: %+v", second.Reclassify)
 	}
-	forced, _ := Run(cfg, Options{Force: true, Now: now.Add(2 * time.Hour), Reclassify: true})
+	forced, _ := Run(cfg, Options{Force: true, Now: now.Add(2 * time.Hour), Reclassify: true, Apply: true})
 	if !forced.Reclassify.Ran {
 		t.Errorf("-reclassify forces it")
 	}

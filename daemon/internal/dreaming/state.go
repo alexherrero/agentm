@@ -13,7 +13,14 @@ import (
 // journal, so a resume after a crash reads both from one place.
 type State struct {
 	LastStarted time.Time `json:"last_started"`
-	LastDone    time.Time `json:"last_done"`
+	// LastDone is when the last *applying* pass finished, and it is the clock
+	// the gate reads. A report-only pass does not move it (agentm-vault plan
+	// 04): three hand-run diagnostics on 2026-09-05/06 each reset it, and the
+	// maps and the copy collapse sat frozen for a week behind them.
+	LastDone time.Time `json:"last_done"`
+	// LastReport is when the last report-only pass finished — its own stamp,
+	// so a diagnostic is still recorded without touching the clock.
+	LastReport  time.Time `json:"last_report,omitempty"`
 	LastRunID   string    `json:"last_run_id,omitempty"`
 	LastOutcome string    `json:"last_outcome,omitempty"`
 	Runs        int       `json:"runs"`

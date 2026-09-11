@@ -29,7 +29,18 @@ order: 2
 # One YAML scalar, quoted whole: a value that starts with a quote and keeps
 # going is a parse error, and one bad manifest stops every job the runner
 # has (it loads them all or none). The shell expands $HOME at run time.
-command: "$HOME/.local/bin/agentmdream run -every 168h -apply"
+#
+# Nightly (agentm-vault plan 04), so the maps and the copy collapse follow the
+# night's judgments instead of lagging a week. The runner's window is what
+# makes it once a night; `-every` only has to sit between the two gaps it could
+# be confused by. It runs after enrichment, which takes from minutes to its
+# three-and-a-half-hour limit, so two nights' passes can start as little as
+# about nineteen hours apart — a literal `-every 24h` would skip every night
+# that started earlier than the one before. Twelve hours is shorter than that
+# and longer than any one night, so a hand-run `-apply` in the afternoon is
+# still refused and no night is skipped. A report-only pass no longer moves
+# the clock, so a diagnostic run by hand costs the night nothing.
+command: "$HOME/.local/bin/agentmdream run -every 12h -apply"
 
 # T3: the agent's own memory maintenance, no model calls in this scaffold.
 tier: T3
