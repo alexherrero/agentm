@@ -512,6 +512,101 @@ caught for free by the separate fingerprint gate, keyed on the pass
 version, the rules hash, and the body together
 (`Fingerprint.Check`, `pregates.go:253-266`).
 
+### The queue
+
+The batch no longer asks for "every `unfiled` note." It walks the
+directories the filing contract routes a memory type into, less the
+derived classes it never owns — today `memory/semantic` and
+`memory/procedural` — read from the contract rather than listed in the
+binary (`enrichQueueDirs`, `daemon/cmd/agentmd/enrich_run.go:124-155`).
+`memory/episodic` is never walked: no memory type routes there, and its
+notes are session traces, not cards. Neither is `memory/_watchlist/`,
+whose entries are `forward_learning.py`'s pending-review records. The
+eligibility pre-gate adds a second refusal beside this: a note whose
+`kind` is one of the contract's `record_kinds` — a session trace, a
+directory index — is refused as a record rather than a card
+(`Eligibility.IsRecordKind`, `pregates.go:49-54,80-83`). The queue itself
+is a snapshot taken once per run (`enrichQueue`, `enrich_run.go:157-184`)
+— a note captured mid-night waits for the next run rather than moving the
+cursor underneath the one in progress. `--dry-run` sizes the night against
+this same queue: how many cards are owed the deep pass, the light pass,
+are unchanged at this pass, or unreadable, alongside the budget the run
+would run under. `--sample` draws from the same queue, and the coverage
+ledger's population (`pendingFor`) is the same queue too.
+
+### The budget, and what stops a run
+
+`DefaultBudget` (`daemon/internal/enrich/batch.go:106-144`) is the
+operator's line: 1,000,000 tokens on the strong tier and 2,000,000 on the
+cheap tier (`StrongTokenLine`, `CheapTokenLine`, `usage.go:198-207`), a
+250-call guard (`CallGuard`, `usage.go:206`) that counts every model call
+— the faithfulness judge's included — a 3h30m time limit sized to the
+02:00-06:00 window, and a fuse of five notes in a row whose model call
+itself failed (not a note a post-gate rejected, which is the model
+answering badly rather than not answering at all). All four are read
+before the next note (`stop`, `batch.go:180-205`); the first one a run
+hits ends it, and `BatchReport.StoppedBy` names which in words — "the
+call guard (250 calls)", "the strong-tier token line (1,000,000 tokens)",
+the time limit, or the fuse — alongside the `--after` cursor the next run
+resumes from. `--max-calls`, `--strong-tokens`, and `--cheap-tokens` may
+lower any of these lines and never raise them (`lowerOnly`,
+`enrich_run.go:199-212`) — nothing run by hand or by schedule is entitled
+to more than the operator said.
+
+### Usage, printed and recorded
+
+Every enrichment call now passes `--output-format json`
+(`Caller.command`, `model.go:147`), and `usage.go` reads the envelope it
+gets back: `usage` (input, cache read, cache write, output tokens) and
+`total_cost_usd`. Output that is not the envelope is refused rather than
+read as zero-cost text — a call the token line cannot count would
+otherwise turn the budget off silently (`parseEnvelope`,
+`usage.go:83-107`). An error envelope's `result` text — a lapsed login, an
+exhausted allowance — is what the failure reports. A shared `Meter` adds
+up every call by tier, the pass's and the faithfulness judge's alike
+(`Meter`, `usage.go:118-146`; wired in `cmdEnrich`, `main.go:1402-1414,
+1431`), and the batch prints one line per call as it finishes — `call N ·
+<rel · depth> · <model>/<tier> · <tokens> ...` (`main.go:1409`) —
+followed by a per-tier line and a night total once the run ends
+(`main.go:1606-1611`). The last line the command prints is a JSON object
+carrying `total_cost_usd` — the field the runner's spend line reads (see
+[AgentM Runner](agentm-runner)) — so the report above it and the spend
+line below it can never disagree. Each run also appends one line to
+`enrich-runs.jsonl` in the engine state directory
+(`newEnrichRun`/`appendEnrichRun`, `daemon/cmd/agentmd/enrich_run.go:68-122`),
+which is what the morning note reads for its enrichment row.
+
+### The tier table, and why it still routes everything strong
+
+Each depth routes through the same tier table `agentmd tiers` reads: the
+deep pass is the table's `classify-unfiled` job, the light pass is
+`summarize` (`enrichJobs`, `daemon/cmd/agentmd/tiers.go:116-120`) — names
+from when the table's jobs were first named for dreaming, not enrichment.
+`enrichRouter` reads the table once per run, so a qualification written
+mid-night takes effect from the next night rather than the next note; a
+table that will not load routes every depth strong, the table's own
+answer to an unknown (`enrichRouter`, `tiers.go:127-143`). Every job still
+routes strong today — no audit has yet qualified a cheap model for either
+job. The strong model defaults to `opus` when `daemon.enrich_model` names
+none (`DefaultStrongModel`, `model.go`; `strongModel`, `tiers.go:145-151`)
+— session 3 ruled the deep pass strong, Opus (agentm-vault § Dreaming,
+Q4). `agentmd tiers` itself still reports only the configured name rather
+than enrichment's default here, deliberately: reading "a strong model is
+named" as "a strong call can be made" would call a judge that raises
+spend by contract — an interim answer until the Python cycle's sampled
+audit retires (agentm-vault plan 04, task 5).
+
+### Sequential, decided
+
+`RunBatch` does not fan out, even though `daemon.enrich_concurrency` still
+bounds `Pass.Run` (`batch.go:146-156`). The cursor stays one answer — what
+a deferred run resumes with `--after` — and the token line and call guard
+are read before each note, so a sequential run overshoots the operator's
+line by at most the one note in flight, where N in flight would overshoot
+by N. A steady-state night is under fifty notes, which one at a time
+finishes inside the 02:00-06:00 window with hours to spare; only a prompt
+change re-owes the whole corpus, and that batch runs by hand.
+
 What it does once it runs: rewrite a note the writer filed unsure about into
 one it's judged — a title, tags, aliases, a confidence number, and — since
 filing v2's write path — a categorical twin of that number every other
