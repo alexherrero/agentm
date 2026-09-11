@@ -540,15 +540,15 @@ ledger's population (`pendingFor`) is the same queue too.
 
 ### The budget, and what stops a run
 
-`DefaultBudget` (`daemon/internal/enrich/batch.go:106-144`) is the
+`DefaultBudget` (`daemon/internal/enrich/batch.go:142-150`) is the
 operator's line: 1,000,000 tokens on the strong tier and 2,000,000 on the
-cheap tier (`StrongTokenLine`, `CheapTokenLine`, `usage.go:198-207`), a
-250-call guard (`CallGuard`, `usage.go:206`) that counts every model call
+cheap tier (`StrongTokenLine`, `CheapTokenLine`, `usage.go:216-219`), a
+250-call guard (`CallGuard`, `usage.go:220-224`) that counts every model call
 — the faithfulness judge's included — a 3h30m time limit sized to the
 02:00-06:00 window, and a fuse of five notes in a row whose model call
 itself failed (not a note a post-gate rejected, which is the model
 answering badly rather than not answering at all). All four are read
-before the next note (`stop`, `batch.go:180-205`); the first one a run
+before the next note (`stop`, `batch.go:187-211`); the first one a run
 hits ends it, and `BatchReport.StoppedBy` names which in words — "the
 call guard (250 calls)", "the strong-tier token line (1,000,000 tokens)",
 the time limit, or the fuse — alongside the `--after` cursor the next run
@@ -557,28 +557,75 @@ lower any of these lines and never raise them (`lowerOnly`,
 `enrich_run.go:199-212`) — nothing run by hand or by schedule is entitled
 to more than the operator said.
 
+The token line counts what a call adds: its input, its cache writes and
+its output (`Usage.Added`, `usage.go:41-55`, read by `overLine`,
+`batch.go:290-297`). The cached prefix a call re-reads is left out. That
+prefix is the same on every call, about 37,000 tokens of Claude Code's own
+baseline, and a card reads it twice: once for the pass, once for its
+faithfulness judge.
+
+Measured on 2026-09-11, a card processed about 107,000 tokens, 74,000 of
+them that prefix. When the line counted cache reads, it stopped a night
+after nine cards of 181, and most of what it counted was that one repeated
+prefix. The operator ruled that the line count what a call adds and kept
+the numbers above. At the measured steady state a card adds about 33,000
+tokens and costs about $0.39. The run's own totals still count every token
+processed; see [Usage, printed and recorded](#usage-printed-and-recorded).
+
+### What the call keeps out
+
+Each call is a `claude -p` subprocess, isolated three ways in
+`Caller.command` and `Caller.Call` (`daemon/internal/enrich/model.go:121-201`):
+
+| Measure | How | What it keeps out |
+|---|---|---|
+| Hooks | `--settings '{"disableAllHooks":true}'` | this project's recall hooks, which would query the daemon and put the vault into the prompt that is rewriting it |
+| MCP servers | `--strict-mcp-config --mcp-config '{"mcpServers":{}}'` | every MCP server the operator has configured, with its tool definitions |
+| Working directory | a fresh temporary directory per call (`agentm-neutral-cwd-*`) | any `CLAUDE.md` or `AGENTS.md` above the daemon's own directory |
+
+A missing measure fails silently, because the call still returns a
+well-formed answer, so `model_test.go` asserts each one on the command
+itself. The two MCP flags travel together: an empty `--mcp-config` on its
+own is merged with the configured servers and replaces none of them. The
+MCP measure also cut most of a call's baseline. Measured on 2026-09-11, one
+trivial call carried 113,509 input tokens with the operator's servers
+loaded and 30,783 without.
+
 ### Usage, printed and recorded
 
 Every enrichment call now passes `--output-format json`
-(`Caller.command`, `model.go:147`), and `usage.go` reads the envelope it
+(`Caller.command`, `model.go:164`), and `usage.go` reads the envelope it
 gets back: `usage` (input, cache read, cache write, output tokens) and
 `total_cost_usd`. Output that is not the envelope is refused rather than
 read as zero-cost text — a call the token line cannot count would
 otherwise turn the budget off silently (`parseEnvelope`,
-`usage.go:83-107`). An error envelope's `result` text — a lapsed login, an
+`usage.go:100-124`). An error envelope's `result` text — a lapsed login, an
 exhausted allowance — is what the failure reports. A shared `Meter` adds
 up every call by tier, the pass's and the faithfulness judge's alike
-(`Meter`, `usage.go:118-146`; wired in `cmdEnrich`, `main.go:1402-1414,
-1431`), and the batch prints one line per call as it finishes — `call N ·
-<rel · depth> · <model>/<tier> · <tokens> ...` (`main.go:1409`) —
-followed by a per-tier line and a night total once the run ends
-(`main.go:1606-1611`). The last line the command prints is a JSON object
-carrying `total_cost_usd` — the field the runner's spend line reads (see
-[AgentM Runner](agentm-runner)) — so the report above it and the spend
-line below it can never disagree. Each run also appends one line to
-`enrich-runs.jsonl` in the engine state directory
+(`Meter`, `usage.go:135-212`; wired in `cmdEnrich`, `main.go:1402-1414,
+1440`). The batch prints one line per call as it finishes
+(`main.go:1404-1411`):
+
+```text
+call N · <rel · depth> · <model>/<tier> · N tokens (in N · cache read N · cache write N · out N · N against the line) · $N.NNNN
+```
+
+The judge's call carries `faithfulness judge` in place of the note, and a
+call that failed ends with ` · failed`. `N tokens` is everything the call
+processed, cache reads included (`Usage.Tokens`, `usage.go:35-39`), and
+`N against the line` is the part the token line counts (`Usage.Added`).
+Once the run ends, the batch prints one line per tier,
+`<tier> tier: <reading> of the N-token line`, then
+`night: N model call(s) of the N-call guard · <reading>`, each reading
+carrying both figures (`main.go:1615-1628`). The last line the command
+prints is a JSON object carrying `total_cost_usd` — the field the runner's
+spend line reads (see [AgentM Runner](agentm-runner)) — so the report above
+it and the spend line below it can never disagree. Each run also appends
+one line to `enrich-runs.jsonl` in the engine state directory
 (`newEnrichRun`/`appendEnrichRun`, `daemon/cmd/agentmd/enrich_run.go:68-122`),
-which is what the morning note reads for its enrichment row.
+which is what the morning note reads for its enrichment row. The record's
+`tokens` counts cache reads too, and its per-tier `usage` keeps the four
+counts apart.
 
 ### The tier table, and why it still routes everything strong
 
@@ -613,7 +660,7 @@ change re-owes the whole corpus, and that batch runs by hand.
 
 The prompt is one string with two shapes (agentm-vault § Dreaming), the
 shape named on the last line of the message. Besides the type enum and the
-voice specification, `BuildPrompt` (`daemon/internal/enrich/prompt.go:121-166`)
+voice specification, `BuildPrompt` (`daemon/internal/enrich/prompt.go:129-174`)
 renders two more inputs: the contract's importance rubric — the prose under
 `## Importance` in `standards/storage-rules.md`, read at call time via
 `Rules.ImportanceRubric` (`daemon/internal/rules/rules.go:153-159`,
@@ -649,12 +696,29 @@ failing the whole call over a field that was never going to land
 neighbours the prompt offered — Compose keeps only those
 (`relatedIDs`, `compose.go:102-122`) and renders them as the quoted wikilink
 flow list the capture door already writes; an id the model invented is
-silently dropped rather than refusing the note. An empty `body` is now a
-fine answer, not a failed call — most short cards need nothing added
-(`Schema.Validate`, `schema.go:157-177`). The light pass only ever moves
-`summary`, `tags`, `related` and `confidence`; it moves `title` and `type`
-at or above the floor and never proposes `importance`; and it leaves the
-body exactly as it was.
+silently dropped rather than refusing the note. An empty `body` is a fine
+answer, and the usual one (`Schema.Validate`, `schema.go:157-177`). The
+light pass only ever moves `summary`, `tags`, `related` and `confidence`;
+it moves `title` and `type` at or above the floor and never proposes
+`importance`; and it leaves the body exactly as it was.
+
+The prompt asks for `body` only when the card and a neighbour, between
+them, already state something the card alone does not (`prompt.go:73-80`).
+Every sentence must be traceable to a sentence in one of them, with
+nothing inferred, which is the same bar the grounding judge below
+enforces. The first supervised batch (2026-09-11) ran under an earlier
+wording that asked for a connection the card does not make, and the judge
+refused three cards of four on sentences the model had been invited to
+write.
+
+`aliases` stay empty unless the note itself contains the other name: an
+acronym it spells out, a compound identifier it carries, or a name it says
+the thing is also called (`aliasRuleBatch`, `prompt.go:104-109`). The rule
+names two cases that do not count, a rewording of the title and the
+filename; the fourth card that first batch refused had offered its
+filename. The alias post-gate refuses a write whose alias the note cannot
+account for (`Aliases`, `daemon/internal/enrich/aliases.go:31`). Under the
+new wording the next three cards were all written, and none was refused.
 
 `VerdictFor` (`daemon/internal/enrich/render.go:180-200`) is what a
 judgment decides about where a card stands. At or above the contract's
@@ -813,13 +877,13 @@ Each section is left out when it has nothing to say. When *What ran*, *What need
 
 | Line | What it says | Read from |
 |---|---|---|
-| What ran · enrichment | `N judged · N filed active · N below the floor · N sank · N calls · N tokens · <model>`, then `N failed` and `Stopped by <reason>` when present; a note that sank also counts below the floor | `<engine state dir>/enrich-runs.jsonl`, the runs since the opening |
+| What ran · enrichment | `N judged · N filed active · N below the floor · N sank · N calls · N tokens against the line · <model>`, then `N failed` and `Stopped by <reason>` when present; a note that sank also counts below the floor | `<engine state dir>/enrich-runs.jsonl`, the runs since the opening |
 | What ran · the binary | the pass's mode, outcome and gate reason, then one table row per job (lifecycle, copies, refile, promote, calendar, mocs, dates); `ran, and its gate held; the last pass was N ago` when the runner started it and the gate held | `<engine state dir>/dreaming/last-report.json`, when written since the opening |
 | What ran · the Python cycle | possible twins, shared keys, proposed facets, and the orphan, contradiction and mis-cased-link counts from lint; `filing is halted` with the parse error when the contract did not parse | `<engine state dir>/dreaming/python-cycle.json`, when written since the opening |
 | What ran · did not run | `Did not run last night: <step> (<reason>)` for enrichment, the dreaming binary, the Python cycle or the corpus scorecard | the runner's per-job markers and `~/.cache/agentm/runner/last-cycle.json` |
 | What needs you | a count and the first five of: unfiled notes the batch judged below the floor (they carry `enriched_at`), possible twins, shared keys, proposed facets, the binary's archive candidates, and what sank in the last seven days; then a link to `[[needs-review]]` | the needs-review reading, `dreaming/review-proposals.json`, `last-report.json`, the lifecycle journal |
-| The corpus | one line: class populations, `N awaiting a judgment, the oldest <age>`, `coverage N of M stamped at this pass`, and a link to the day's corpus scorecard when it exists; `not measured (<reason>)` when the daemon does not answer | the class directories, `agentmd status`, `agentmd ledger --pending --limit 0`, `diagnostics/health/` |
-| Spend | `Last night:` tokens per tier against the run's token line, calls against its call guard, and dollars; `Seven days:` tokens and dollars across the week's runs; `Sessions, the last day:` when the rollup recorded any | `enrich-runs.jsonl`; `~/.cache/agentm/telemetry/rollup.db`, opened read-only |
+| The corpus | one line: class populations, `N awaiting a judgment, the oldest <age>`, `coverage N of M stamped at this pass`, and a link to the day's corpus scorecard when it exists; `not measured (<reason>)` when the daemon does not answer. When the ledger answers 0 eligible over a corpus that holds cards, the note reads coverage once more after a 2-second pause, since the first read can land while the daemon is still reconciling cards the batch just rewrote (`_coverage`, `COVERAGE_REREAD_PAUSE`); a second 0 prints `coverage not measured (the ledger answered 0 eligible twice over a corpus of N cards — read it again)`. An empty corpus reads `0 of 0`, once | the class directories, `agentmd status`, `agentmd ledger --pending --limit 0`, `diagnostics/health/` |
+| Spend | `Last night:` tokens added against the line, per tier as `<tier> N of <line>`, then tokens processed, calls against the 250-call guard, and dollars, always held to the operator's numbers whatever a run lowered; `Seven days:` tokens added and processed, and dollars, across the week's runs; `Sessions, the last day:` when the rollup recorded any | `enrich-runs.jsonl`; `~/.cache/agentm/telemetry/rollup.db`, opened read-only |
 
 A step counts as run when its runner marker finished since the opening, or when its own record is from tonight, so a batch run by hand inside the window reports as ran. For a step that did not run, the reason is the one its outcome carries in the runner's last cycle:
 

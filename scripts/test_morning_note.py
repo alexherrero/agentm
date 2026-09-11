@@ -157,7 +157,10 @@ class _Night(unittest.TestCase):
         conn.close()
 
     def full_night(self):
-        self.runs(_run(THREE_DAYS_AGO, tokens=500000, total_cost_usd=2.0), _run(TONIGHT))
+        older = {"strong": {"input_tokens": 400000, "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 50000, "output_tokens": 50000,
+                            "total_cost_usd": 2.0, "calls": 100}}
+        self.runs(_run(THREE_DAYS_AGO, tokens=500000, total_cost_usd=2.0, usage=older), _run(TONIGHT))
         self.binary()
         self.python()
         self.findings()
@@ -205,7 +208,7 @@ class TheNote(_Night):
         self.full_night()
         text, *_ = self.build()
         self.assertIn("- **Enrichment** — 118 judged · 97 filed active · 21 below the floor · 2 sank · "
-                      "236 calls · 812,334 tokens · opus.", text)
+                      "236 calls · 800,000 tokens against the line · opus.", text)
         self.assertIn("- **The dreaming binary** — apply pass, outcome applied; gate: due.", text)
         self.assertIn("| lifecycle | sank 1, revived 0, archive candidates 1, held by cap 0 |", text)
         self.assertIn("| copies | 1 families collapsed, 0 deferred |", text)
@@ -245,9 +248,12 @@ class TheNote(_Night):
     def test_spend(self):
         self.full_night()
         text, *_ = self.build()
-        self.assertIn("- Last night: 812,334 tokens (strong 812,334 of 1,000,000) · 236 calls of the "
-                      "250-call guard · $4.21", text)
-        self.assertIn("- Seven days: 1,312,334 tokens across 2 run(s) · $6.21", text)
+        # Counted the way the line counts: 700,000 in + 100,000 out, the
+        # 12,334 cached tokens re-read aside, and those shown as processed.
+        self.assertIn("- Last night: 800,000 tokens against the line (strong 800,000 of 1,000,000) · "
+                      "812,334 processed · 236 calls of the 250-call guard · $4.21", text)
+        self.assertIn("- Seven days: 1,250,000 tokens against the line · 1,312,334 processed across "
+                      "2 run(s) · $6.21", text)
         self.assertIn("- Sessions, the last day: $1.50 across 7 event(s)", text)
 
     def test_a_run_three_days_ago_is_not_last_night(self):
@@ -255,7 +261,34 @@ class TheNote(_Night):
         text, *_ = self.build()
         self.assertNotIn("**Enrichment**", text)
         self.assertNotIn("Last night:", text)
-        self.assertIn("- Seven days: 812,334 tokens across 1 run(s)", text)
+        self.assertIn("- Seven days: 800,000 tokens against the line · 812,334 processed across 1 run(s)",
+                      text)
+
+    def test_a_hand_lowered_line_is_not_the_line_the_night_is_held_to(self):
+        # A by-hand run may lower its line and guard with flags; the run record
+        # carries what it ran under. The note holds the night to the operator's
+        # numbers — on 2026-09-11 it printed "of 736,407" and "of the 237-call
+        # guard", which read as a fourfold overspend.
+        self.runs(_run(TONIGHT, token_lines={"strong": 736407, "cheap": 2000000}, call_guard=237))
+        text, *_ = self.build()
+        self.assertIn("(strong 800,000 of 1,000,000)", text)
+        self.assertIn("of the 250-call guard", text)
+        self.assertNotIn("736,407", text)
+        self.assertNotIn("237-call", text)
+
+    def test_the_operators_numbers_agree_with_the_enforcing_copy(self):
+        import re
+        go = (_HERE.parent / "daemon" / "internal" / "enrich" / "usage.go").read_text(encoding="utf-8")
+        go += (_HERE.parent / "daemon" / "internal" / "enrich" / "batch.go").read_text(encoding="utf-8")
+
+        def const(name):
+            m = re.search(rf"{name}\s+(?:int64\s+|int\s+)?=\s*([\d_]+)", go)
+            self.assertIsNotNone(m, f"{name} not found in the Go source")
+            return int(m.group(1).replace("_", ""))
+
+        self.assertEqual(mn.OPERATOR_LINES["strong"], const("StrongTokenLine"))
+        self.assertEqual(mn.OPERATOR_LINES["cheap"], const("CheapTokenLine"))
+        self.assertEqual(mn.CALL_GUARD, const("CallGuard"))
 
     def test_a_budget_stop_is_named(self):
         self.runs(_run(TONIGHT, stopped_by="the call guard (250 calls)"))
@@ -302,6 +335,51 @@ class TheNote(_Night):
         self.assertNotIn("## Spend", text)
         self.assertIn("the queue not measured (agentmd is not on PATH)", text)
         self.assertIn("coverage not measured (agentmd is not on PATH)", text)
+
+    def test_a_coverage_read_that_cannot_be_right_is_read_again(self):
+        # 2026-09-11 13:42: "coverage 0 of 0" straight after the batch, while
+        # the ledger held 18 of 183. The second read is the one reported.
+        _card(self.vault, "a-card")
+        answers = iter([{"eligible": 0, "current": 0}, {"eligible": 183, "current": 18}])
+
+        def ask(args):
+            if args[0] == "status":
+                return {"health": {"queue": {"unfiled": 15}}}
+            return next(answers)
+
+        night = mn.gather(self.vault, now=NOW, engine_dir=self.engine, runner_dir=self.runner,
+                          rollup=self.rollup, out_dir=self.vault / mn.DIAGNOSTICS_DIR, ask=ask, pause=0)
+        self.assertIn("coverage 18 of 183 stamped at this pass", mn.corpus_line(night)[0])
+
+    def test_a_coverage_zero_that_stays_is_not_printed_as_a_zero(self):
+        _card(self.vault, "a-card")
+
+        def ask(args):
+            if args[0] == "status":
+                return {"health": {"queue": {"unfiled": 15}}}
+            return {"eligible": 0, "current": 0}
+
+        night = mn.gather(self.vault, now=NOW, engine_dir=self.engine, runner_dir=self.runner,
+                          rollup=self.rollup, out_dir=self.vault / mn.DIAGNOSTICS_DIR, ask=ask, pause=0)
+        line = mn.corpus_line(night)[0]
+        self.assertNotIn("coverage 0 of 0", line)
+        self.assertIn("coverage not measured (the ledger answered 0 eligible twice over a corpus of 1 cards",
+                      line)
+
+    def test_an_empty_corpus_may_honestly_read_zero(self):
+        # No cards at all: zero eligible is the true answer, read once.
+        calls = []
+
+        def ask(args):
+            calls.append(args[0])
+            if args[0] == "status":
+                return {"health": {"queue": {"unfiled": 0}}}
+            return {"eligible": 0, "current": 0}
+
+        night = mn.gather(self.vault, now=NOW, engine_dir=self.engine, runner_dir=self.runner,
+                          rollup=self.rollup, out_dir=self.vault / mn.DIAGNOSTICS_DIR, ask=ask, pause=0)
+        self.assertIn("coverage 0 of 0 stamped at this pass", mn.corpus_line(night)[0])
+        self.assertEqual(calls.count("ledger"), 1)
 
     def test_the_night_opens_at_two(self):
         self.assertEqual(mn.night_start(datetime(2026, 9, 12, 5, 30).timestamp()),

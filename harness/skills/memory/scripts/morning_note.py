@@ -36,6 +36,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -70,6 +71,21 @@ NIGHT_JOBS = (
 
 # How many items each "what needs you" list shows before "and N more".
 FIRST = 5
+
+# How long to wait before reading coverage a second time, when the first answer
+# says nothing is eligible over a corpus that has cards. The note runs right
+# after the batch rewrites notes, and one read can land while the daemon is
+# still reconciling them.
+COVERAGE_REREAD_PAUSE = 2.0
+
+# The operator's budget (agentm-vault § Dreaming, Q2): a token line per night
+# per tier, and a call guard. The Go constants StrongTokenLine, CheapTokenLine
+# and CallGuard are the enforcing copy, and a test holds these equal. A run
+# record carries the line it ran under, which a hand run may have lowered with
+# a flag, so the note compares the night against these rather than the last
+# run's flags.
+OPERATOR_LINES = {"strong": 1_000_000, "cheap": 2_000_000}
+CALL_GUARD = 250
 
 ENRICH_RUNS = "enrich-runs.jsonl"
 LAST_REPORT = Path("dreaming") / "last-report.json"
@@ -247,8 +263,40 @@ def _skip_reason(job: str, outcomes: dict, registered: bool) -> str:
     return "not due"
 
 
+def _cards(populations: Optional[dict]) -> int:
+    return sum(flat for flat, _lanes in (populations or {}).values())
+
+
+def _coverage(ask: Ask, populations: Optional[dict], pause: float) -> tuple:
+    """The ledger's coverage, read twice when the first answer cannot be right.
+
+    Zero eligible over a corpus that holds cards is not a measurement: on
+    2026-09-11 the note read "0 of 0" straight after a batch while the ledger
+    held 18 of 183, and the same call a minute later answered correctly. So an
+    inconsistent answer is read once more after a pause, and one that stays
+    inconsistent is reported as not measured rather than printed as a zero."""
+    def read():
+        try:
+            return ask(["ledger", "--pending", "--limit", "0"]) or {}, ""
+        except corpus_scorecard.DaemonUnavailable as exc:
+            return None, str(exc)
+
+    cov, missing = read()
+    if cov is None:
+        return None, missing
+    if not cov.get("eligible") and _cards(populations):
+        time.sleep(pause)
+        cov, missing = read()
+        if cov is None:
+            return None, missing
+        if not cov.get("eligible"):
+            return None, (f"the ledger answered 0 eligible twice over a corpus of "
+                          f"{_cards(populations)} cards — read it again")
+    return cov, ""
+
+
 def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
-           rollup: Path, out_dir: Path, ask: Ask) -> Night:
+           rollup: Path, out_dir: Path, ask: Ask, pause: float = COVERAGE_REREAD_PAUSE) -> Night:
     start = night_start(now)
     night = Night(now=now, start=start)
 
@@ -299,10 +347,7 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
         night.queue = (status.get("health") or {}).get("queue") or {}
     except corpus_scorecard.DaemonUnavailable as exc:
         night.queue_missing = str(exc)
-    try:
-        night.coverage = ask(["ledger", "--pending", "--limit", "0"]) or {}
-    except corpus_scorecard.DaemonUnavailable as exc:
-        night.coverage_missing = str(exc)
+    night.coverage, night.coverage_missing = _coverage(ask, night.populations, pause)
     night.sessions = session_spend(rollup, now)
     return night
 
@@ -333,7 +378,8 @@ def _enrichment_line(runs: list) -> str:
             f"{_verdicts(runs, 'filed_active')} filed active · "
             f"{_verdicts(runs, 'below_floor')} below the floor · "
             f"{_verdicts(runs, 'sank')} sank · {_sum(runs, 'model_calls')} calls · "
-            f"{_sum(runs, 'tokens'):,} tokens · {', '.join(models) or 'no model recorded'}")
+            f"{sum(_tier_added(runs).values()):,} tokens against the line · "
+            f"{', '.join(models) or 'no model recorded'}")
     failed = _sum(runs, "failed")
     if failed:
         line += f" · {failed} failed"
@@ -453,15 +499,19 @@ def corpus_line(night: Night) -> list:
     return [" — ".join(parts)] if parts else []
 
 
-def _tier_tokens(runs: list) -> dict:
+def _tier_added(runs: list) -> dict:
+    """What the line counts, per tier: the tokens a call added — input, cache
+    writes, output — and not the cached prefix it re-read (the operator's
+    ruling, 2026-09-11). Every call re-reads the same ~37,000 tokens of Claude
+    Code's own baseline; counted, that constant was most of every card."""
     out: dict = {}
     for r in runs:
         for tier, u in (r.get("usage") or {}).items():
             if not isinstance(u, dict):
                 continue
-            tokens = sum(int(u.get(k) or 0) for k in (
-                "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
-            out[tier] = out.get(tier, 0) + tokens
+            n = sum(int(u.get(k) or 0) for k in (
+                "input_tokens", "cache_creation_input_tokens", "output_tokens"))
+            out[tier] = out.get(tier, 0) + n
     return out
 
 
@@ -469,21 +519,20 @@ def spend(night: Night) -> list:
     lines = []
     runs = night.tonight_runs
     if runs:
-        lines_by_tier = runs[-1].get("token_lines") or {}
-        tiers = _tier_tokens(runs)
+        added = _tier_added(runs)
         against = " · ".join(
-            f"{tier} {n:,} of {int(lines_by_tier[tier]):,}" if tier in lines_by_tier else f"{tier} {n:,}"
-            for tier, n in sorted(tiers.items()))
-        guard = runs[-1].get("call_guard")
+            f"{tier} {n:,} of {OPERATOR_LINES[tier]:,}" if tier in OPERATOR_LINES else f"{tier} {n:,}"
+            for tier, n in sorted(added.items()))
         calls = _sum(runs, "model_calls")
         cost = sum(float(r.get("total_cost_usd") or 0) for r in runs)
-        lines.append(f"- Last night: {_sum(runs, 'tokens'):,} tokens"
+        lines.append(f"- Last night: {sum(added.values()):,} tokens against the line"
                      + (f" ({against})" if against else "")
-                     + f" · {calls} calls" + (f" of the {guard}-call guard" if guard else "")
-                     + f" · ${cost:,.2f}")
+                     + f" · {_sum(runs, 'tokens'):,} processed"
+                     + f" · {calls} calls of the {CALL_GUARD}-call guard · ${cost:,.2f}")
     if night.week_runs:
         cost = sum(float(r.get("total_cost_usd") or 0) for r in night.week_runs)
-        lines.append(f"- Seven days: {_sum(night.week_runs, 'tokens'):,} tokens across "
+        lines.append(f"- Seven days: {sum(_tier_added(night.week_runs).values()):,} tokens against "
+                     f"the line · {_sum(night.week_runs, 'tokens'):,} processed across "
                      f"{len(night.week_runs)} run(s) · ${cost:,.2f}")
     if night.sessions and (night.sessions[0] > 0 or night.sessions[1] > 0):
         lines.append(f"- Sessions, the last day: ${night.sessions[0]:,.2f} across "
