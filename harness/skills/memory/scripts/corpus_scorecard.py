@@ -152,8 +152,15 @@ def _agentmd(args: list) -> Any:
         # daemon writes UTF-8 and its own messages carry em-dashes — the meters'
         # "no vectors to measure —" among them — so the default would mojibake
         # the reason a report is about to print.
+        # Without $MEMORY_VAULT_PATH. The runner exports it as the memory root,
+        # and agentmd reads it as the vault root: under it the ledger answered
+        # "0 eligible" over a corpus of 183 cards (2026-09-11), and this report
+        # and the morning note printed that as a measurement. The daemon's own
+        # config names the vault.
         proc = subprocess.run(argv, capture_output=True, text=True,
-                              encoding="utf-8", timeout=_TIMEOUT_SECONDS)
+                              encoding="utf-8", timeout=_TIMEOUT_SECONDS,
+                              env={k: v for k, v in os.environ.items()
+                                   if k != "MEMORY_VAULT_PATH"})
     except FileNotFoundError as exc:
         raise DaemonUnavailable(
             f"{DAEMON_BIN} is not on PATH; set $AGENTMD to a built binary") from exc

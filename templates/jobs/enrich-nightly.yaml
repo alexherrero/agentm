@@ -51,7 +51,13 @@ enabled: false
 # No budget flags either: the binary's defaults are the operator's line, and
 # a flag may only lower it. The last line the command prints is a JSON object
 # carrying `total_cost_usd`, which is what the runner's spend line reads.
-command: $HOME/.local/bin/agentmd enrich
+# The runner exports $MEMORY_VAULT_PATH as the memory root (agentm-runner.sh),
+# and agentmd reads that variable as the vault root; under it the batch builds
+# its queue from the wrong root and finds nothing to judge, every night, with
+# no error. The daemon's own config names the vault, so the command drops the
+# variable rather than trusting either reading of it (agentm-vault plan 04,
+# found by the first supervised batch).
+command: env -u MEMORY_VAULT_PATH $HOME/.local/bin/agentmd enrich
 
 # Spends model calls, over the operator's own corpus, unattended. The same tier
 # every other job that calls a model carries.

@@ -71,6 +71,10 @@ class JobTemplatesLoad(unittest.TestCase):
         # operator's standing spend switch still off — which is the one thing
         # that switch exists to prevent.
         self.assertNotIn("--yes", job.command)
+        # The runner's MEMORY_VAULT_PATH is the memory root and agentmd reads it
+        # as the vault root; under it the queue is empty and the job judges
+        # nothing, every night, without an error (found 2026-09-11).
+        self.assertTrue(job.command.startswith("env -u MEMORY_VAULT_PATH "), job.command)
         # It declares that it spends, so the fleet ceiling gates it (and only
         # it); the number is the strong tier's line (plan 04, task 2).
         self.assertEqual(job.budget_tokens, 1_000_000)
