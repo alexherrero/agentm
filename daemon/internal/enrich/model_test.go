@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-// The two isolation measures are asserted on the command rather than on a
+// The three isolation measures are asserted on the command rather than on a
 // result, and that is the whole point of this file.
 //
-// Both of them fail *silently*. A call that runs with hooks enabled returns a
+// All of them fail *silently*. A call that runs with hooks enabled returns a
 // perfectly well-formed enrichment — one that happens to have had the vault read
 // into the prompt that is rewriting the vault. A call that inherits the daemon's
 // working directory returns a perfectly well-formed enrichment that had this
@@ -45,6 +45,34 @@ func TestTheCommandDisablesHooks(t *testing.T) {
 		}
 	}
 	t.Errorf("no --settings flag at all: %v", cmd.Args)
+}
+
+func TestTheCommandLoadsNoMCPServers(t *testing.T) {
+	c := DefaultCaller("sonnet")
+	cmd := c.command(context.Background(), "a prompt", t.TempDir())
+
+	var strict bool
+	for i, a := range cmd.Args {
+		if a == "--strict-mcp-config" {
+			strict = true
+		}
+		if a == "--mcp-config" {
+			if i+1 >= len(cmd.Args) || cmd.Args[i+1] != mcpIsolation {
+				t.Errorf("--mcp-config is not followed by the empty server set: %v", cmd.Args)
+			}
+		}
+	}
+	if !strict {
+		t.Errorf("the call does not pass --strict-mcp-config, so the operator's own "+
+			"MCP servers load into an enrichment call — a door this pass has no use "+
+			"for, and four fifths of the night's token line.\nargs: %v", cmd.Args)
+	}
+	// Both flags or neither: an empty --mcp-config without --strict-mcp-config
+	// is merged with the configured servers rather than replacing them.
+	if strict != strings.Contains(strings.Join(cmd.Args, " "), mcpIsolation) {
+		t.Errorf("--strict-mcp-config and the empty server set must travel together: %v",
+			cmd.Args)
+	}
 }
 
 func TestTheCommandRunsFromANeutralDirectory(t *testing.T) {
