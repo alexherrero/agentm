@@ -243,7 +243,7 @@ var keyShapes = []struct {
 		return fmt.Sprintf("s%d:t%d", i, i)
 	}},
 	{"numbered inbox proposals", func(i int) string {
-		return fmt.Sprintf("desk/scratch/inbox-20260813-074616-16856bac/"+
+		return fmt.Sprintf("desk/scratch/inbox-20260813T074616Z-16856bac/"+
 			"%d-inbox_collapse-collapse.proposal.md", i)
 	}},
 	{"sequential note names", func(i int) string {
