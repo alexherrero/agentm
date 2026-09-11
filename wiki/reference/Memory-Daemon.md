@@ -718,23 +718,23 @@ that still carries the key is harmless.
 
 ## The dreaming binary, `agentmdream`
 
-The second Go binary the design names, built beside `agentmd` by `install.sh`. Where `agentmd` stays resident, `agentmdream` runs one pass and exits — under a dual gate: enough time has to have passed since the last pass (`-every`, 168h by default) **and** something has to have happened since (captures in the index, genuine recalls in the recall history). A second start while one is already running is refused (exit 3) by a lock compatible with `vault_lock.py` (mkdir + heartbeat + a stale window, pid takeover of a dead holder). Every mutation is journaled — intent, then applied, then skipped — fsynced before it happens, so a crash resumes from that journal by hash instead of losing or repeating work. Report-only by default; `-apply` makes the writes.
+The second Go binary the design names, built beside `agentmd` by `install.sh`. Where `agentmd` stays resident, `agentmdream` runs one pass and exits — under a dual gate: enough time has to have passed since the last *applying* pass (`-every`; the flag itself still defaults to 168h if left unset, but the scheduled job now passes `-every 12h` explicitly — see below) **and** something has to have happened since (captures in the index, genuine recalls in the recall history). Only an applying pass (`-apply`) moves that clock — plus the class populations the trend compares against and the pass version the re-classification diff keys on; a report-only pass records its own stamp instead and leaves all three where the last applying pass put them, so running one by hand never pushes the next real pass back (agentm-vault plan 04, task 4 — three hand-run report passes on 2026-09-05/06 had each reset the clock, and the maps and the copy collapse sat frozen for a week behind them). Twelve hours is the number the scheduled job actually passes; the design's own text still says twenty-four. The runner's own `02:00–06:00` window is what actually makes the pass run once a night, so `-every` only has to clear the two gaps a bare day could be confused by. The binary starts after the enrichment batch, which takes anywhere from minutes to its three-and-a-half-hour limit, so two nights' passes can start as little as about nineteen hours apart — a literal `-every 24h` would skip whichever night started earlier than the one before. Twelve hours is shorter than that gap and longer than any one night, so no night is skipped and a hand-run `-apply` in the afternoon is still refused. A second start while one is already running is refused (exit 3) by a lock compatible with `vault_lock.py` (mkdir + heartbeat + a stale window, pid takeover of a dead holder). Every mutation is journaled — intent, then applied, then skipped — fsynced before it happens, so a crash resumes from that journal by hash instead of losing or repeating work. Report-only by default; `-apply` makes the writes.
 
 | | |
 |---|---|
 | Binary | `agentmdream` — built beside `agentmd` by `install.sh` |
 | Subcommands | `run`, `status`, `journal`, `version` |
-| Gate | elapsed ≥ `-every` (168h default) **and** activity since the last pass |
+| Gate | elapsed ≥ `-every` since the last *applying* pass (flag default 168h; the scheduled job passes 12h) **and** activity since then |
 | Lock | mkdir + heartbeat, stale-window pid takeover; a second start exits 3 |
 | Journal | fsynced intent → applied → skipped, hash-checked resume after a crash |
-| Default mode | report-only (decides and prints); `-apply` writes |
+| Default mode | report-only (decides and prints, and records its own `LastReport` stamp without moving the gate's clock); `-apply` writes and moves the clock |
 | Triggered by | `templates/jobs/dreaming.yaml`, through the runner |
 | Last-pass report | `<engine state dir>/dreaming/last-report.json`, left by every completed pass; a refused or not-due start leaves the previous file — the scorecard's "The dreaming binary" section reads it |
 
 ```bash
-"$HOME/.local/bin/agentmdream" run -every 168h -apply   # the applying pass the runner schedules daily
-agentmdream status                                        # the last pass, the gate's answer now, the lock
-agentmdream journal -tail 20                               # the mutation journal, newest last
+"$HOME/.local/bin/agentmdream" run -every 12h -apply   # the applying pass the runner schedules nightly
+agentmdream status                                       # the last pass, the gate's answer now, the lock
+agentmdream journal -tail 20                              # the mutation journal, newest last
 ```
 
 `run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON). See [Read the nightly scorecards](Read-The-Nightly-Scorecards) for how to read the last-pass report on the scorecard.
@@ -746,7 +746,7 @@ agentmdream journal -tail 20                               # the mutation journa
 | `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. A dormant memory past `archive_after_days` (1825) becomes an archive candidate — named for the confirm surface here, never moved by this job itself. |
 | `copies` | Content-identical families collapse into the earliest note; every other copy is marked `lifecycle: superseded` + `superseded_by: <canonical>`, never deleted; `status` is untouched. |
 | `refile` | A memory whose `type:` the contract routes elsewhere moves under the same basename; a stale `near-duplicate` flag whose twin is gone gets cleared. |
-| `promote` | A target three or more distinct episodic notes link becomes `memory/crystallized/consolidated-<slug>.md`, carrying `consolidated_from` and `derived_from`. |
+| `promote` | Reads every session trace's `## Captured` and `## Candidates` sections (agentm-vault plan 04, task 4); the recall hook's own `## Recalled` list is basenames, not judgments, and promote no longer reads it. A `## Candidates` line three or more distinct traces carry becomes a semantic candidate at `memory/semantic/candidate-<first-words>.md` — `status: unfiled`, no `why`, `derived_from` naming the traces — for the next enrichment batch to judge; capped at 10 new candidates a pass. A `## Captured` link three traces carry already has a card and is only reported. Nothing is ever written to `crystallized/`, which holds model syntheses made at a task's close or on request. |
 | `calendar` | Writes the daily register's weekly and monthly reviews. |
 | `mocs` | One map of content per memory type, created at `moc_min_members` (5), split past `moc_split_at` (40), flagged `stale: true` past `moc_stale_after_days` (90). |
 | `dates` | Additive relative-date glosses (`last week (the week of 2026-08-24)`) in notes older than `date_gloss_after_days` (30) — never a rewrite, never inside a fence. |
@@ -760,6 +760,8 @@ The binary ran report-only beside the Python `dream.py` cycle through an overlap
 ### Parity as a recording
 
 `scripts/fixtures/dreaming-parity/expected.json` was recorded from the Python producers, clock pinned, before they retired. The Go tests reproduce it — including the calendar reviews, byte for byte — and [`scripts/check-dreaming-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-dreaming-parity.sh) guards it in the local battery and in CI (see [CI gates](CI-Gates)). The recording can't be re-recorded: the Python producers it was taken from are gone, so a changed decision from here is a deliberate edit to the recording, made on purpose.
+
+Promote's own half is one such deliberate edit (agentm-vault plan 04, task 4): the recording captured the retired Python pass's crystallized digest, and promote no longer writes one, so that half of the check is narrowed away — keeping it would mean checking against behavior the pass doesn't have any more. The recording's `promote` key is left as recorded, unread; the lifecycle and copies halves still check byte for byte against it.
 
 ## The runner, and a refused manifest
 
