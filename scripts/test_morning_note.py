@@ -421,6 +421,29 @@ class TheSeams(_Night):
         self.assertEqual(subject, f"AgentM morning — {head}")
         self.assertEqual(body, text.split("\n---\n", 1)[1].lstrip("\n"))
 
+    def test_the_daemon_is_asked_without_the_runners_memory_root(self):
+        # The runner exports MEMORY_VAULT_PATH as the memory root; agentmd reads
+        # it as the vault root and answers "0 eligible" over the whole corpus.
+        # The note and the corpus scorecard both ask through _agentmd, so the
+        # child it starts must not see the variable.
+        stub = self.root / "agentmd-stub.py"
+        stub.write_text("import json, os, sys\n"
+                        "print(json.dumps({'seen': os.environ.get('MEMORY_VAULT_PATH')}))\n",
+                        encoding="utf-8")
+        old_bin, old_env = corpus_scorecard.DAEMON_BIN, os.environ.get("MEMORY_VAULT_PATH")
+        os.environ["MEMORY_VAULT_PATH"] = str(self.vault)
+        corpus_scorecard.DAEMON_BIN = sys.executable
+        try:
+            # DAEMON_BIN is the interpreter here, so the "subcommand" is the stub.
+            got = corpus_scorecard._agentmd([str(stub)])
+        finally:
+            corpus_scorecard.DAEMON_BIN = old_bin
+            if old_env is None:
+                os.environ.pop("MEMORY_VAULT_PATH", None)
+            else:
+                os.environ["MEMORY_VAULT_PATH"] = old_env
+        self.assertEqual(got, {"seen": None})
+
     def test_the_job_is_the_nights_last_writer(self):
         template = _HERE.parent / "templates" / "jobs" / "morning-note.yaml"
         with tempfile.TemporaryDirectory() as td:
