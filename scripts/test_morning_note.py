@@ -316,9 +316,9 @@ class TheNote(_Night):
 
     def test_the_night_writes_nothing_else(self):
         self.full_night()
-        before = sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*") if p.is_file())
+        before = sorted(p.relative_to(self.root).as_posix() for p in self.root.rglob("*") if p.is_file())
         self.build()
-        after = sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*") if p.is_file())
+        after = sorted(p.relative_to(self.root).as_posix() for p in self.root.rglob("*") if p.is_file())
         self.assertEqual(sorted(set(after) - set(before)),
                          ["Agent/diagnostics/morning/2026-09-12.md",
                           "Agent/diagnostics/morning/latest_morning_note.md"])

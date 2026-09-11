@@ -377,9 +377,14 @@ class CycleIdempotencyTests(unittest.TestCase):
         its last line, and the runner's spend line reads that field."""
         with TemporaryDirectory() as td:
             jobs_dir, sr = Path(td) / "jobs", Path(td) / "state"
+            # A script rather than shell `echo`s: cmd.exe keeps single quotes
+            # and would print a line that is not JSON.
+            batch = Path(td) / "batch.py"
+            batch.write_text('print("call 1 - note - opus/strong")\n'
+                             'print(\'{"total_cost_usd": 0.4217, "tokens": 51200}\')\n',
+                             encoding="utf-8")
             _write_job(jobs_dir, "enrich-nightly", dry_run=False, budget={"tokens": 1000000},
-                       command="echo 'call 1 · note · opus/strong'; "
-                               "echo '{\"total_cost_usd\": 0.4217, \"tokens\": 51200}'")
+                       command=f'"{sys.executable}" "{batch}"')
             report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=sr)
             self.assertTrue(report.outcomes[0].ran)
             self.assertAlmostEqual(report.outcomes[0].cost_usd, 0.4217)
@@ -780,7 +785,11 @@ class WindowTests(unittest.TestCase):
             root = Path(td)
             jobs_dir, sr = root / "jobs", root / "state"
             ran = root / "ran.txt"
-            _write_job(jobs_dir, "enrich-nightly", command=f"echo x >> {ran}",
+            # A script rather than `echo x >> file`: cmd.exe writes the space
+            # before the redirect into the file.
+            append = root / "append.py"
+            append.write_text(f"open({str(ran)!r}, 'a').write('x\\n')\n", encoding="utf-8")
+            _write_job(jobs_dir, "enrich-nightly", command=f'"{sys.executable}" "{append}"',
                        dry_run=False, lookback="24h", window="02:00-06:00")
             # Last ran yesterday at 13:07, the hour every daily job had drifted to.
             state.mark_done("enrich-nightly", now=_local(2026, 9, 10, 13, 7), state_root=sr)
