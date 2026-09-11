@@ -8,7 +8,7 @@ area: agentm/memory
 author: alexherrero
 contributors: []
 created: 2026-08-18
-updated: 2026-08-19
+updated: 2026-09-11
 last_major_revision: 2026-08-18
 prd:
 project:
@@ -365,7 +365,7 @@ The rescope's five jobs, plus four that come from this arc and from AgentKV:
 8. Reconcile the contract — find existing files that violate it, fix what is safe, surface what is not. This is the automated half of the hand passes.
 9. Detect slop and drift.
 10. Maintain the coverage ledger and drain the pending-work queues under their caps.
-11. Write its own scorecard to `Agent/desk/diagnostics/` — the run's full record; see the nightly scorecards.
+11. Report the run in the morning note, under `diagnostics/morning/`; see the nightly scorecards.
 
 #### Model tiers, and the audit that assigns them
 
@@ -403,15 +403,22 @@ This is also where distill-and-discard closes cleanly: the raw source never ente
 
 #### The nightly scorecards
 
-Two reports land in `Agent/desk/diagnostics/` every night, date-marked — `2026-08-19_health_scorecard.md`, `2026-08-19_dreaming_scorecard.md` — and each is also written to a stable name, `latest_health_scorecard.md` and `latest_dreaming_scorecard.md`, so the current one is always the same path. They are vault files like any other: committed with attribution, searchable, and the dated series accumulates into its own trend history, aging under the same shelf convention as the rest of the desk.
+Two reports land under the memory root's `diagnostics/` every night, one file per day and a copy of the newest at a stable name, so the current one is always the same path: the health scorecard in `diagnostics/health/` (`YYYY-MM-DD-health-scorecard.md`, `latest_health_scorecard.md`) and the morning note in `diagnostics/morning/` (`YYYY-MM-DD.md`, `latest_morning_note.md`). They are vault files like any other: committed with attribution, searchable, and the dated series accumulates into its own trend history.
 
 **The health scorecard reports state** — what the system is tonight, whether or not anything ran. Its sections, in order: memory statistics (counts by status and by class, connected memories from the backlink index, corpus volume, and the completeness score — the sampled claim-coverage number, which is the line on this page that is allowed to go down); component health, a PASS/FAIL table with timings — the storage-rules block parses, index schema integrity, embedder reachability, the capture loop's measured milliseconds, MCP dispatch, entity-resolution accuracy against its benchmark; performance history, trended rows of search latency, gold-set R@5 and ingestion latency, which puts principle 3's own number on the page every night; the meters — diversity, drift, coverage, queue depth and age; and the memory context graph.
 
 **The memory context graph** is a force-directed render of the backlink index, laid out with an algorithm chosen to approximate Obsidian's own, so the picture reads like the graph view. Nothing in the vault is excluded from Obsidian's index — the operator's ruling is that the whole vault is one graph, in the viewer as everywhere else — so the render is a convenience rather than a replacement: the same picture in the nightly report, without opening Obsidian, and in the mail when delivery is configured. Colored by class, hubs sized by degree, deterministic and zero-token from data the index already holds.
 
-**The dreaming scorecard reports a run**, and its shape is different because a run is a different thing from a state. What ran: stages executed, durations, batch status. What it did, in numbers and links: drained, promoted, merged, expired; rollups refreshed; insights written; footers and stubs; corrections applied. Queue movement: drained, deferred, dead-lettered, and coverage before and after. Spend: calls and tokens against the budget, per tier. And its own health: breaker states, anomalies, failures and retries. The morning brief stays the human-facing digest and links here; the scorecard is the full record.
+**The morning note reports the run**, and its shape is different because a run is a different thing from a state. It is written as the night's last step and reports:
 
-Delivery is a detail, storage is the contract: the file in the vault is the artifact. Mailing the health scorecard rides the daemon's existing notify seam, and an unconfigured mail path is a skip, never a failure.
+- what ran and what did not
+- what needs you
+- the corpus in one line
+- spend against each tier's token line
+
+[AgentM Vault § Dreaming](agentm-vault.md#dreaming-session-3-decided) owns its sections.
+
+Delivery is a detail, storage is the contract: the file in the vault is the artifact. The daily email carries the morning note, and an unconfigured mail path skips quietly.
 
 #### Aliases split three ways, and the split is measured
 
@@ -558,7 +565,7 @@ Two measurements run before any of it, because either can kill a recommendation.
 
 ### Monitoring and Alerting
 
-The nightly scorecards are the monitoring surface — health for state, dreaming for the run — and every number with a red threshold lives on one of them. Queue thresholds stay age-dominant rather than size-dominant, because fifty fresh unfiled items on a Tuesday morning is ordinary and the oldest being three days old means the pipeline has stalled. Alongside them: per-stage coverage, enrichment failure and dead-letter counts, the completeness score and the diversity meters, per-cycle spend against budget, and the round-trip probe's own number, which is the one allowed to mark things done.
+The nightly reports are the monitoring surface — the health scorecard for state, the morning note for the run — and every number with a red threshold lives on one of them. Queue thresholds stay age-dominant rather than size-dominant, because fifty fresh unfiled items on a Tuesday morning is ordinary and the oldest being three days old means the pipeline has stalled. Alongside them: per-stage coverage, enrichment failure and dead-letter counts, the completeness score and the diversity meters, per-cycle spend against budget, and the round-trip probe's own number, which is the one allowed to mark things done.
 
 ### Logging Plan
 
@@ -572,6 +579,7 @@ The revert log covers every automated mutation that routes through it, and git c
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-09-11 | The dreaming scorecard retired, and the morning note reports the run in its place ([AgentM Vault](agentm-vault) plan 04, task 6). *The nightly scorecards* now names the health scorecard and the morning note with their current paths under `diagnostics/`, dreaming's step 11 and Monitoring follow, and the sentence about mailing the health scorecard gives way to the daily email, which carries the note. The health scorecard's own paragraphs are unchanged. *Why not keep a dreaming scorecard beside the note:* two pages about one night split what you read, and the scorecard had named a test fixture as last night's run. *Re-audit trigger:* if the health scorecard's own shape changes, reconcile its paragraph here in the same change. Prose pass: cross-model, fact-checked. | final |
 | 2026-09-01 | Idea routing superseded by [Filing v2](agentm-filing-v2): `idea` now routes to `memory/semantic/`, not staged in `Agent/desk/` as this design originally specified. Ideas are memories rather than in-flight work, and belong where the rest of what gets recalled sideways lives; desk stays for work still underway. *Re-audit trigger: if the idea-incubator's own read path changes.* | final |
 | 2026-08-25 | Part 6 (`meters-and-scorecards`) built, tasks 2, 3, 4, 6, 7, 8, 9. Two corrections taken during the build, both changing what this design's words mean in shipped code. **(a) The meters were measuring the wrong corpus.** § Detailed Design says the meters watch whether enrichment is flattening the memories; the first build passed `config.EmbedScope`, which is three spaces chosen so the vector arm reaches the retrieval gold set's answers — a fact about scoring retrieval rather than about which notes enrichment writes. Measured live, that window was 393 `_inbox`, 51 `_opinions`, 45 `desk/scratch` and four filed memories, so the meters were 79% a statement about raw captures enrichment has never touched. The bias had a direction, `_inbox` being full of near-identical mined clippings: corrected, the nearest-neighbour median moved 0.9770 → 0.7639 and the "recent" window went from a day and a half to four months. The population is now the memory space at `status: active`, excluding `_inbox`, `_archive`, `scratch`, `_shelf` and `_opinions` — two filters because neither suffices, and a blocklist only until the collapse migration makes the contract's six class directories usable as an allowlist. **(b) Labelling calibrates before it scales.** § Verification asks for precision and recall against a hand-labelled sample. Two rubrics failed their own pre-registered inter-labeller agreement — κ = 0.189 over 175 labels, then κ = 0.349 over 15 — and both were withdrawn under the rule they wrote for themselves. The process is amended: a rubric now calibrates on fifteen notes both parties label independently, and proceeds only at κ ≥ 0.60, so a failed instrument costs fifteen labels rather than a hundred and seventy-five. Tasks 1 and 5 are deferred rather than attempted a third time — v2's failure found that `reflect._excerpt_around` had been cutting 2,318 note bodies part-way through a word, and a slop detector calibrated on a corpus mid-repair measures the defect rather than the corpus. Resume condition recorded in the plan. | final |
 | 2026-08-20 | Part 3 (`search-and-lifecycle`), decay: **the curve is built and ships turned off**, and the design's "a decay score governs rank" is amended to "…once the corpus can carry one." Three findings, all measured. **(a) Decay was never live.** `lifecycle.compute_decay_score` runs only inside `recall.query`, the in-process fallback for when the daemon is absent — and the stepped curve this design specifies had never been promoted even there, sitting behind a shadow-mode comment awaiting exactly this eval. The port into `daemon/internal/note/decay.go` is the first time either curve has reached the ranker anyone actually queries. **(b) It costs retrieval today.** Scored against the frozen gold set with decay as the only variable, one corpus, one moment, verified deterministic: R@5 0.781 → 0.750, two questions flipped to a miss and none to a hit. The mechanism is not at fault — 89% of the corpus is under a month old and the oldest note in the memory layer is 93 days, against a first band at 182, so exactly **five notes of 15,824** cross any band. **(c) Age is signal for temporal questions.** Two of those five are the expected answers to *"when did I switch from Antigravity to Claude?"* — decay demoted the right answer out of the top five *because it was old*, on the one question class where being old is what makes a note correct. Recorded as a precondition on ever enabling decay rather than patched here: a fix aimed at one gold-set question is tuning, and this deserves its own measured pass. `daemon.decay_enabled` defaults false; the shipped ranking is byte-identical to before the change (0 flips in either direction against the pinned baseline). Turn it on when the corpus has age spread and the eval says it helps. | final |

@@ -16,7 +16,7 @@ A note moves through six stages between the moment it's noticed and the moment i
 3. **Recall** — every prompt searches the vault by meaning and by keyword, on top of a small always-load floor of standing rules that never has to be searched for.
 4. **Heat** — notes that keep getting used float up toward that always-load floor; notes nobody's touched cool back down. Forgetting is a managed policy here, not an accident.
 5. **Sleep** — each night, the dreaming binary sinks notes nobody has recalled in a year, collapses exact copies, refiles, and redraws the maps, journaling every change it makes. A Python pass runs after it and writes no note: it lists possible twins, notes that share a key, and proposed facets on the needs-review page, where the call is yours. See [Experience & Dreaming](agentm-experience-and-dreaming).
-6. **Watch** — `/console`, the session-start digest (see [Auto-orchestration](Auto-Orchestration)), and the nightly [health score](Health-Scorecard) keep the collection's shape visible, so drift shows up before it becomes a problem.
+6. **Watch** — `/console`, the morning note the night leaves behind (see [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards)), the session-start briefing (see [Auto-orchestration](Auto-Orchestration)), and the nightly [health score](Health-Scorecard) keep the collection's shape visible, so drift shows up before it becomes a problem.
 
 ## What's here
 

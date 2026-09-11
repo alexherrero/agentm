@@ -65,7 +65,7 @@
 
 ## Related
 
-- [Read the nightly scorecards](Read-The-Nightly-Scorecards) — the scorecard's "needs review" line tracks this same count on a nightly schedule.
+- [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) — the morning note's *What needs you* shows counts and the first five items of several of these lists every morning, and the scorecard's "needs review" line tracks the same count.
 - [Memory daemon reference](Memory-Daemon) — the enrichment pass, and the `filing_confidence` / `lifecycle` fields these flags read.
 - [Memory daemon reference § the Python cycle](Memory-Daemon#the-python-cycle-beside-it) — what the nightly `dream.py` run checks and where it leaves its findings.
 - [Vault write protocol](Vault-Write-Protocol) — what a write stamps by default, and the baseline trust level for a plain capture.

@@ -224,7 +224,7 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 | `daemon.health_every` | `15m` | How often thresholds are evaluated and the probe runs if due. |
 | `daemon.probe_every` | `24h` | How often the self-probe runs. |
 | `daemon.probe_budget` | `10s` | How long one round trip may take before it counts as failed. |
-| `plugins.autonomy.email_to` | — | Where alerts go. Shared with the daily digest email. |
+| `plugins.autonomy.email_to` | — | Where alerts go. Shared with the daily email that carries the morning note. |
 | `plugins.autonomy.email_smtp_url` | — | `smtp://[user[:password]@]host[:port]`. Both keys required, or the channel skips. |
 | `plugins.autonomy.email_from` | `email_to` | For relays that need a domain-verified sender. |
 
@@ -729,7 +729,7 @@ The second Go binary the design names, built beside `agentmd` by `install.sh`. W
 | Journal | fsynced intent → applied → skipped, hash-checked resume after a crash |
 | Default mode | report-only (decides and prints, and records its own `LastReport` stamp without moving the gate's clock); `-apply` writes and moves the clock |
 | Triggered by | `templates/jobs/dreaming.yaml`, through the runner |
-| Last-pass report | `<engine state dir>/dreaming/last-report.json`, left by every completed pass; a refused or not-due start leaves the previous file — the scorecard's "The dreaming binary" section reads it |
+| Last-pass report | `<engine state dir>/dreaming/last-report.json`, left by every completed pass; a refused or not-due start leaves the previous file — the [morning note](#the-morning-note)'s *What ran* section reads it |
 
 ```bash
 "$HOME/.local/bin/agentmdream" run -every 12h -apply   # the applying pass the runner schedules nightly
@@ -737,7 +737,7 @@ agentmdream status                                       # the last pass, the ga
 agentmdream journal -tail 20                              # the mutation journal, newest last
 ```
 
-`run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON). See [Read the nightly scorecards](Read-The-Nightly-Scorecards) for how to read the last-pass report on the scorecard.
+`run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON). The morning note shows a pass written since the night window opened as a table, one row per job; see [the morning note](#the-morning-note).
 
 ### Its jobs, in order
 
@@ -783,15 +783,68 @@ Promote's own half is one such deliberate edit (agentm-vault plan 04, task 4): t
 
 The local scheduler (`scripts/agentm-runner.sh` → `scripts/runner/cli.py`; design: [AgentM Runner](agentm-runner)) that fires `agentmdream` and every other `.harness/jobs/*.yaml` manifest on its own cadence. One malformed manifest used to stop every job in the cycle, with a launchd-log traceback as the only trace. `load_manifests_lenient` (`scripts/runner/manifest.py`) now keeps every manifest that loads and names each one it refuses, and the cycle runs whatever loaded rather than aborting.
 
-The cycle's own account — what loaded, what was refused and why, what ran — lands at `~/.cache/agentm/runner/last-cycle.json` after every run. Three surfaces read it:
+The cycle's own account — what loaded, what was refused and why, what ran — lands at `~/.cache/agentm/runner/last-cycle.json` after every run. Four surfaces read it:
 
 | Surface | What it shows |
 |---|---|
 | Session brief | `⚠ runner refused N manifest(s): <name>, <name>, … (every other job still runs; see ~/.cache/agentm/runner/last-cycle.json)` |
+| Morning note | `Did not run last night: <step> (<reason>)`, the reason taken from that step's outcome in the last cycle (see [the morning note](#the-morning-note)) |
 | Doctor | A `runner-cycle` row — `FAIL` naming the refused files when the last cycle refused any (even though the other jobs in that cycle still ran), `OK` with the loaded/ran counts otherwise, `UNVERIFIED` when no cycle has run yet |
 | `agentm-runner run --strict` | The old all-or-nothing load, on demand: exits 3 on the first refused manifest and runs nothing |
 
 A plain (non-`--strict`) cycle exits 3 only when nothing loaded at all; refusing some manifests while the rest load and run is exit 0.
+
+## The morning note
+
+The last step of the night, and the page you read the next morning. `morning_note.py` reads what the other nightly steps left behind and writes one note. The daily email sends it, and the session-start line shows its first section. See [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) for how to read it.
+
+| | |
+|---|---|
+| Command | `python3 harness/skills/memory/scripts/morning_note.py [--vault-path <memory-root>]`; without the flag, `$MEMORY_VAULT_PATH`, then the memory root the daemon reports |
+| Scheduled by | `templates/jobs/morning-note.yaml`: `schedule: daily`, `lookback: 3d`, window `02:00-06:00`, order 5 (after the corpus scorecard at 4), `tier: T2`, `dry_run: false` |
+| Writes | `<memory-root>/diagnostics/morning/YYYY-MM-DD.md`, dated by local time, and a copy at `latest_morning_note.md` beside it; a `diagnostics` space the daemon reports takes the place of `diagnostics/` |
+| Frontmatter | `title`, `kind: report`, `date`, `headline` (*What ran* in one line with a count of the lists that need you, JSON-quoted), `generated_by: morning_note.py` |
+| Last night | everything since the most recent opening of the night window, 02:00 local, at or before the run |
+| Model calls | none |
+
+### What it carries
+
+Each section is left out when it has nothing to say. When *What ran*, *What needs you* and *Spend* are all empty, the note says `Nothing ran last night and nothing needs you.` instead. Line by line:
+
+| Line | What it says | Read from |
+|---|---|---|
+| What ran · enrichment | `N judged · N filed active · N below the floor · N sank · N calls · N tokens · <model>`, then `N failed` and `Stopped by <reason>` when present; a note that sank also counts below the floor | `<engine state dir>/enrich-runs.jsonl`, the runs since the opening |
+| What ran · the binary | the pass's mode, outcome and gate reason, then one table row per job (lifecycle, copies, refile, promote, calendar, mocs, dates); `ran, and its gate held; the last pass was N ago` when the runner started it and the gate held | `<engine state dir>/dreaming/last-report.json`, when written since the opening |
+| What ran · the Python cycle | possible twins, shared keys, proposed facets, and the orphan, contradiction and mis-cased-link counts from lint; `filing is halted` with the parse error when the contract did not parse | `<engine state dir>/dreaming/python-cycle.json`, when written since the opening |
+| What ran · did not run | `Did not run last night: <step> (<reason>)` for enrichment, the dreaming binary, the Python cycle or the corpus scorecard | the runner's per-job markers and `~/.cache/agentm/runner/last-cycle.json` |
+| What needs you | a count and the first five of: unfiled notes the batch judged below the floor (they carry `enriched_at`), possible twins, shared keys, proposed facets, the binary's archive candidates, and what sank in the last seven days; then a link to `[[needs-review]]` | the needs-review reading, `dreaming/review-proposals.json`, `last-report.json`, the lifecycle journal |
+| The corpus | one line: class populations, `N awaiting a judgment, the oldest <age>`, `coverage N of M stamped at this pass`, and a link to the day's corpus scorecard when it exists; `not measured (<reason>)` when the daemon does not answer | the class directories, `agentmd status`, `agentmd ledger --pending --limit 0`, `diagnostics/health/` |
+| Spend | `Last night:` tokens per tier against the run's token line, calls against its call guard, and dollars; `Seven days:` tokens and dollars across the week's runs; `Sessions, the last day:` when the rollup recorded any | `enrich-runs.jsonl`; `~/.cache/agentm/telemetry/rollup.db`, opened read-only |
+
+A step counts as run when its runner marker finished since the opening, or when its own record is from tonight, so a batch run by hand inside the window reports as ran. For a step that did not run, the reason is the one its outcome carries in the runner's last cycle:
+
+- `disabled`
+- `dry run`
+- `outside-window 02:00-06:00`
+- `not-due`
+- `missed-beyond-lookback`
+- `watchdog-stop`
+- `budget-ceiling`
+- `exited N`
+
+A step missing from the last cycle reads `not registered` when the runner has no marker for it. It reads `no cycle has reported it` when it has one.
+
+### Who reads it
+
+Three surfaces read the note:
+
+| Reader | What it shows |
+|---|---|
+| Session-start line | `[agentm] Morning — <headline> (written <age>)`; once the newest note is two days old (`--deadman-days` or `$AGENTM_DIGEST_DEADMAN_DAYS` changes the two), `[agentm] ⚠ Morning note — none in N days (last: <date>); the night has stopped finishing — see runner.` It reads `latest_morning_note.md`, or the newest dated note when the copy is missing, and reads the digest ladder only when no morning note exists |
+| Daily email | the whole note, frontmatter aside, under the subject `AgentM morning — <headline>`, when this morning's or yesterday's note exists; the newest digest otherwise. `templates/jobs/observability-email-daily.yaml` runs at order 6, after the note |
+| On-device notification | the session-start line without its `[agentm] ` prefix |
+
+The session-start hook passes no path, so `resolve_vault()` (`scripts/health/session_brief.py`) reads the config. It joins `plugins.obsidian-vault.memory_root` onto `plugins.obsidian-vault.vault_path` when that directory exists. That is how the line finds `Agent/diagnostics/morning/` on a nested layout.
 
 ## The derived indexes
 
@@ -1156,4 +1209,5 @@ There is no bearer token, on purpose. It would gate other processes running as t
 - [AgentM Hybrid Retrieval](agentm-hybrid-retrieval) — the recall ladder that added the embedder child, the search modes, and their measurements.
 - [Vault write protocol](Vault-Write-Protocol) — the caller-facing shape of the same write-time stamps and gate refusal.
 - [Review flagged memories](Review-Flagged-Memories) — working the needs-review page this page's enrichment stamps feed.
+- [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) — reading the note the morning-note section above describes.
 - [CI gates](CI-Gates) — `check-daemon` runs the battery below.

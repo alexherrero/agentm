@@ -1,25 +1,42 @@
-# How to read the two nightly scorecards
+# How to read the morning note and the nightly scorecard
 
 > [!NOTE]
-> **Goal:** Find the corpus-health and dreaming scorecards, read the numbers in the order that makes them mean something, and know which ones are safe to ignore.
-> **Prereqs:** a running daemon (`agentmd status` answers), and at least one nightly cycle since install. Both scorecards are written into the vault, not the repo.
+> **Goal:** Read what last night did in the morning note, then read the corpus scorecard's numbers in the order that makes them mean something, and know which ones are safe to ignore.
+> **Prereqs:** a running daemon (`agentmd status` answers), and at least one night since the `morning-note` and `corpus-scorecard` jobs were registered. Both reports are written into the vault.
 
 ## Where they are
 
-Both land under `diagnostics/` in the vault, one file per day plus a stable
-pointer at the newest — the corpus card under `diagnostics/health/`, the
-dreaming card under `diagnostics/dreaming/`. Diagnostics became a first-class
-vault space in filing-v2 part 2a; the old `desk/diagnostics/` location is gone.
+Both land under `diagnostics/` in the vault, one file per day plus a copy of the newest at a stable name. The morning note is `diagnostics/morning/YYYY-MM-DD.md`, and the corpus scorecard is `diagnostics/health/YYYY-MM-DD-health-scorecard.md`. Diagnostics has been its own vault space since filing-v2 part 2a; the old `desk/diagnostics/` location is gone.
 
 ```bash
-ls ~/Vault/Agent/diagnostics/{health,dreaming}/latest_*_scorecard.md
+ls ~/Vault/Agent/diagnostics/morning/latest_morning_note.md ~/Vault/Agent/diagnostics/health/latest_health_scorecard.md
 ```
 
-`latest_health_scorecard.md` is about the corpus — what is in it and whether it is
-degrading. `latest_dreaming_scorecard.md` is about the pass that maintains it —
-what ran, what it cost, and what it could not finish.
+`latest_morning_note.md` is about last night: what ran, what needs you, and what it cost. `latest_health_scorecard.md` is about the corpus: what is in it and whether it is degrading. The dreaming scorecard is gone, and the morning note carries what it used to report.
 
 ## Steps
+
+### The morning note
+
+The `morning-note` job writes it as the last step of the night, order 5 in the `02:00-06:00` window, after enrichment, the dreaming binary, the Python cycle and the corpus scorecard. Each of its four sections appears only when it has something to say.
+
+1. **Read the last line of *What ran* first.** `Did not run last night:` names each nightly step that did not run, with the reason from the runner's last cycle: `disabled`, `dry run`, `not registered`, `outside-window 02:00-06:00`, `budget-ceiling`, and the rest. A step you ran by hand inside the window counts as having run. When the line is missing, every step ran.
+
+2. **Read the enrichment line left to right.** The format is `N judged · N filed active · N below the floor · N sank · N calls · N tokens · <model>`. Judged is how many notes the batch sent to the model, and the next three counts are what their verdicts decided. A note that sank is counted below the floor as well. `N failed` and `Stopped by <reason>` follow when a run had failures or reached one of its limits.
+
+3. **Check the dreaming binary's gate before its table.** The binary's line names the pass's mode, its outcome and the gate's reason, and a table gives one row per job: lifecycle, copies, refile, promote, calendar, mocs, dates. When the runner started the binary and its gate held, the line reads `ran, and its gate held; the last pass was N ago` and there is no table. Nothing was due that night: too little time had passed since the last applying pass, or nothing had happened since.
+
+4. **Fix `filing is halted` before anything else.** The Python cycle's line counts possible twins, shared keys, proposed facets, and three lint findings. When it reads `filing is halted` instead, the filing contract did not parse and every stage after that check stopped. The line carries the parse error.
+
+5. **Work *What needs you* from the top.** Each list gives a count and its first five items: unfiled notes the batch judged below the floor, possible twins with their similarity, shared keys, proposed facets, the binary's archive candidates, and what sank in the last seven days. The last line links the needs-review map, which holds the full lists. See [Review flagged memories](Review-Flagged-Memories) for working it.
+
+6. **Read *The corpus* as one sentence, then follow its link.** It gives the class populations, `N awaiting a judgment, the oldest <age>`, and `coverage N of M stamped at this pass`, then links the day's corpus scorecard. When the daemon does not answer, the line says `not measured` and why. It never prints a zero for a number it could not read.
+
+7. **Check *Spend* against the lines the run carried.** `Last night:` gives tokens per tier against that tier's token line (1,000,000 strong and 2,000,000 cheap unless a run lowered them), calls against the call guard (250 unless a run lowered it), and dollars. `Seven days:` totals the week's enrichment runs. `Sessions, the last day:` appears when the observability rollup recorded session spend.
+
+8. **If the session-start line warns that notes stopped, look at the runner.** The line normally reads `[agentm] Morning — <headline> (written <age>)`. The headline is *What ran* in one line, with a count of the lists that need you. Once the newest note is two days old, the line reads `⚠ Morning note — none in N days (last: <date>); the night has stopped finishing — see runner.` Set `AGENTM_DIGEST_DEADMAN_DAYS` to change the two-day threshold.
+
+### The corpus scorecard
 
 1. **Read the corpus scorecard top to bottom, not by hunting for red.** The sections
    are ordered so each one gives the next its context: how much is in the corpus,
@@ -83,31 +100,17 @@ what ran, what it cost, and what it could not finish.
    missing embedder returning zero would report either "everything is fine" or
    "the corpus has collapsed" depending which row you read.
 
-7. **Read the dreaming scorecard for what did *not* happen.** The useful rows are
-   the deferred work and the dead-lettered items, not the completed count. A cycle
-   that finished everything and a cycle that ran out of budget both look busy; only
-   the deferral count distinguishes them.
-
-8. **Read "The dreaming binary" for the binary's own pass.** This section is
-   `agentmdream`'s last completed pass, reported separately from the
-   deferred/dead-lettered rows above: the run id, its mode and outcome, the gate's
-   reason, how long ago it finished, one row per job (lifecycle, copies, refile,
-   promote, calendar, mocs, dates, vocabulary, trends, reclassify) naming what each
-   did, and an applied/skipped count. It comes from
-   `<engine state dir>/dreaming/last-report.json`, left by every completed pass; a
-   refused or not-due start leaves the previous file in place, so the section always
-   describes the last pass that actually ran.
-
-   **"No pass recorded" is not a row of zeros.** It means no pass has completed on
-   this machine yet, or that the engine state dir moved.
-
-9. **Regenerate on demand** rather than waiting for the next cycle:
+7. **Regenerate either report on demand** rather than waiting for the next night:
 
    ```bash
+   python3 harness/skills/memory/scripts/morning_note.py
    python3 harness/skills/memory/scripts/corpus_scorecard.py
    ```
 
-## What these scorecards will not tell you
+   A morning note run by hand covers everything since the most recent 02:00, and
+   it replaces that day's note and the `latest_morning_note.md` copy.
+
+## What these reports will not tell you
 
 **Whether a specific note is good.** Every number here is over a sample or the
 whole corpus. To ask about one note, read it.
@@ -123,7 +126,9 @@ reading a change as a trend, check whether anything ran between the two cards.
 
 ## Related
 
+- [Memory daemon reference § the morning note](Memory-Daemon#the-morning-note) — every line the note can carry, where each is read from, and who reads the note.
 - [Memory daemon reference](Memory-Daemon) — the subcommands each section reads from, and what the meters refuse to do.
+- [Enable the daily email](Enable-Email-Digest-Delivery) — get the morning note by mail.
 - [Review flagged memories](Review-Flagged-Memories) — working the needs-review page this scorecard's line counts.
 - [CI gates reference](CI-Gates) — the deterministic checks, including the pinned retrieval evaluation these cards deliberately say nothing about.
 - [Audit the vault](Audit-The-Vault) — the per-note lint, which asks the opposite question to a corpus-wide meter.
