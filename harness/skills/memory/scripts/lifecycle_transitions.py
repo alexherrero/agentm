@@ -186,8 +186,8 @@ def transition(vault: "Path | str", rel: str, to: str, *, actor: str, reason: st
         raise ValueError(f"unknown actor {actor!r} (one of {', '.join(ACTORS)})")
     if to == "archived" and actor not in CONFIRMED_ACTORS:
         raise ConfirmationRequired(
-            f"{rel}: entering `archived` needs a confirm surface — a dream proposal the operator confirms, "
-            f"or the operator's own `set` — not {actor!r}. Policy may sink a memory to `dormant`; it never archives one.")
+            f"{rel}: entering `archived` needs a confirm surface — the operator's own `set` — "
+            f"not {actor!r}. Policy may sink a memory to `dormant`; it never archives one.")
     p = vault / rel
     text = p.read_text(encoding="utf-8")
     frm = lifecycle_of(text)

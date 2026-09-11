@@ -32,10 +32,9 @@ error finding, never auto-resolved.
 
 Read-only by itself: `run_lint()` never writes anything. Repairs come
 back as `(entry, old_raw, new_raw)` triples — proposed content, not yet
-applied — so both callers (this module's own CLI `main()` and `dream.py`'s
-`_stage_lint()`) can route them through the identical revert-logged
-apply path every other auto-apply stage uses, rather than this module
-writing directly.
+applied. This module's CLI applies them on `--apply`; `dream.py`'s
+`_stage_lint()` only counts them, since the nightly cycle's repair lane
+retired in agentm-vault plan 04.
 
 Public surface:
 
@@ -46,9 +45,7 @@ Public surface:
         scores + the vault-wide mean.
 
 CLI: `python3 lint.py [--vault-path PATH] [--apply]`. `--apply` writes the
-repairs directly (CLI-only convenience, NOT how the weekly cycle applies
-them — see `dream.py::_stage_lint`, which routes through
-`revert_log.record_and_apply` like every other auto-apply stage).
+repairs directly; it is the only path that applies one.
 """
 from __future__ import annotations
 
@@ -405,8 +402,8 @@ def main(argv: "list | None" = None) -> int:
     parser.add_argument("--vault-path", help="MemoryVault root (overrides MEMORY_VAULT_PATH env var)")
     parser.add_argument(
         "--apply", action="store_true",
-        help="write auto-repairable mis-cased-wikilink fixes directly (CLI-only convenience; "
-             "the weekly cycle applies through the revert log instead — see dream.py::_stage_lint)",
+        help="write auto-repairable mis-cased-wikilink fixes directly (the nightly cycle "
+             "only counts them)",
     )
     args = parser.parse_args(argv)
 

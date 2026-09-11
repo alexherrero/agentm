@@ -7,7 +7,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -218,6 +218,30 @@ class RunDigestEndToEndTests(unittest.TestCase):
         target = idg.run_digest("daily", self.tmp / "nope.db", self.vault, now=_NOW, history_path=self.history_path)
         self.assertIsNone(target)
 
+    def test_an_empty_window_writes_no_note_and_no_history(self):
+        # agentm-vault plan 04: a digest that would say "$0 · 0 events" is
+        # never written. Only the out-of-range window exists, so the 3-day
+        # slice at _NOW is empty.
+        _make_rollup(self.db_path, window_rows=[("2026-06-01T10:00:00Z", 4.0, 2)])
+        for cadence in ("daily", "3day", "weekly"):
+            self.assertIsNone(idg.run_digest(cadence, self.db_path, self.vault, now=_NOW,
+                                             history_path=self.history_path), cadence)
+        self.assertFalse((self.vault / "diagnostics/digests").exists()
+                         and list((self.vault / "diagnostics/digests").glob("*.md")))
+        self.assertEqual(idg.read_all_history(self.history_path), [])
+
+    def test_an_empty_month_with_no_history_writes_no_monthly_note(self):
+        _make_rollup(self.db_path, window_rows=[])
+        self.assertIsNone(idg.run_digest("monthly", self.db_path, self.vault, now=_NOW,
+                                         history_path=self.history_path))
+
+    def test_events_without_spend_still_write(self):
+        # Zero dollars is not nothing when something happened.
+        _make_rollup(self.db_path, window_rows=[("2026-07-07T10:00:00Z", 0.0, 3)])
+        target = idg.run_digest("daily", self.db_path, self.vault, now=_NOW, history_path=self.history_path)
+        self.assertIsNotNone(target)
+        self.assertIn("- Events: 3", target.read_text(encoding="utf-8"))
+
 
 class MainCliTests(unittest.TestCase):
     def setUp(self):
@@ -226,7 +250,10 @@ class MainCliTests(unittest.TestCase):
         self.vault = self.tmp / "vault"
         self.vault.mkdir()
         self.db_path = self.tmp / "rollup.db"
-        _make_rollup(self.db_path, window_rows=[("2026-07-07T10:00:00Z", 1.0, 1)])
+        # An hour before the real clock: the CLI takes no `now`, and an empty
+        # window writes no note (agentm-vault plan 04).
+        recent = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _make_rollup(self.db_path, window_rows=[(recent, 1.0, 1)])
 
     def tearDown(self):
         self._tmp.cleanup()

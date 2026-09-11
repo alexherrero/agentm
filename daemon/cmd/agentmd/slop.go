@@ -23,9 +23,10 @@ import (
 // this one reads whether a memory says anything.
 //
 // It prints numbers. The design puts a review band and a narrow auto-expire band
-// on top of them, and both stay confirm-gated for a supervised pass — that lives
-// with the staging machinery, so a scoring change cannot alter what gets deleted
-// without somebody reviewing the band.
+// on top of them, and both stay confirm-gated for a supervised pass. They live
+// outside this command, with whatever confirm surface reviews them (the Python
+// staging machinery retired in agentm-vault plan 04), so a scoring change
+// cannot alter what gets deleted without somebody reviewing the band.
 //
 // # Why there is no threshold flag here yet
 //
@@ -218,7 +219,7 @@ func printSlop(rep slopReport) {
 			s.Novelty, s.TemplateResidual, s.Words, s.Rel, s.NearestRel)
 	}
 	fmt.Println("\n  No verdict here. The band is a labelled judgement, and the " +
-		"design puts it\n  with the staging machinery rather than in this report.")
+		"design keeps it\n  out of this report.")
 }
 
 func min(a, b int) int {

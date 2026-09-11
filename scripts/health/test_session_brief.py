@@ -41,6 +41,16 @@ def _write_digest(briefs: Path, date: str, cadence: str, *, spend=None, events=N
     return p
 
 
+def _write_morning(vault: Path, date: str, headline: str, *, mirror: bool = True):
+    d = vault / "diagnostics" / "morning"
+    d.mkdir(parents=True, exist_ok=True)
+    text = ("---\ntitle: Morning\nkind: report\n" f"date: {date}\n"
+            f"headline: {json.dumps(headline)}\n---\n\n# Morning — {date}\n")
+    (d / f"{date}.md").write_text(text, encoding="utf-8")
+    if mirror:
+        (d / "latest_morning_note.md").write_text(text, encoding="utf-8")
+
+
 class LatestDigestTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -168,6 +178,35 @@ class BuildBriefTests(unittest.TestCase):
 
     def test_quiet_when_ladder_never_ran(self):
         self.assertIsNone(self._brief())
+
+    def test_the_morning_note_headline_is_the_line(self):
+        # agentm-vault plan 04: the line reads the morning note's first
+        # section, and a digest beside it is the fallback, not the headline.
+        _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=284.82, events=25)
+        _write_morning(self.vault, "2026-07-17", "enrichment judged 118 (97 active, 2 sank) · 3 list(s) need you")
+        b = self._brief()
+        self.assertTrue(b["line"].startswith(
+            "[agentm] Morning — enrichment judged 118 (97 active, 2 sank) · 3 list(s) need you (written "))
+        self.assertNotIn("digest", b["line"])
+        self.assertTrue(b["signature"].startswith("morning|2026-07-17|"))
+
+    def test_the_newest_dated_note_serves_when_the_mirror_is_missing(self):
+        _write_morning(self.vault, "2026-07-16", "an older night", mirror=False)
+        _write_morning(self.vault, "2026-07-17", "last night", mirror=False)
+        self.assertIn("Morning — last night", self._brief()["line"])
+
+    def test_a_morning_note_that_stopped_arriving_is_the_deadman(self):
+        _write_morning(self.vault, "2026-07-13", "a night four days ago")
+        b = self._brief()
+        self.assertIn("⚠ Morning note — none in 4 days (last: 2026-07-13)", b["line"])
+        self.assertTrue(b["signature"].startswith("morning-deadman|2026-07-13|4|"))
+
+    def test_the_crystallization_count_never_rides_the_morning_line(self):
+        _write_morning(self.vault, "2026-07-17", "last night")
+        staging = sb._engine_state_dir() / "crystallize-staging"
+        staging.mkdir(parents=True)
+        (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
+        self.assertNotIn("crystalliz", self._brief()["line"])
 
     def test_fresh_digest_shows_headline_no_warning(self):
         _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=284.82, events=25)
@@ -299,6 +338,54 @@ class EmitEndToEndTests(unittest.TestCase):
     def test_quiet_ladder_emits_nothing(self):
         self.assertEqual(self._emit(_NOW), "")
         self.assertFalse(self.state.is_file())  # no fire recorded
+
+
+class ResolveMemoryRootTests(unittest.TestCase):
+    """The hook passes no path, so the config decides. The config names the
+    vault root; what the brief reads lives under the memory root."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.prefix = self.tmp / "prefix"
+        self.prefix.mkdir()
+        self.vault = self.tmp / "Vault"
+        (self.vault / "Agent").mkdir(parents=True)
+        self._env = {k: os.environ.get(k) for k in ("MEMORY_VAULT_PATH", "AGENTM_INSTALL_PREFIX")}
+        os.environ.pop("MEMORY_VAULT_PATH", None)
+        os.environ["AGENTM_INSTALL_PREFIX"] = str(self.prefix)
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        self._tmp.cleanup()
+
+    def _config(self, **fields):
+        (self.prefix / ".agentm-config.json").write_text(json.dumps(fields), encoding="utf-8")
+
+    def test_the_configured_memory_root_is_joined(self):
+        self._config(**{"plugins.obsidian-vault.vault_path": str(self.vault),
+                        "plugins.obsidian-vault.memory_root": "Agent"})
+        self.assertEqual(sb.resolve_vault(None), self.vault / "Agent")
+
+    def test_no_memory_root_keeps_the_vault(self):
+        self._config(**{"plugins.obsidian-vault.vault_path": str(self.vault)})
+        self.assertEqual(sb.resolve_vault(None), self.vault)
+
+    def test_a_memory_root_that_is_not_there_keeps_the_vault(self):
+        self._config(**{"plugins.obsidian-vault.vault_path": str(self.vault),
+                        "plugins.obsidian-vault.memory_root": "Gone"})
+        self.assertEqual(sb.resolve_vault(None), self.vault)
+
+    def test_the_hook_finds_a_morning_note_under_the_memory_root(self):
+        self._config(**{"plugins.obsidian-vault.vault_path": str(self.vault),
+                        "plugins.obsidian-vault.memory_root": "Agent"})
+        _write_morning(self.vault / "Agent", "2026-07-17", "last night")
+        vault = sb.resolve_vault(None)
+        self.assertIsNotNone(sb.latest_morning_note(vault))
 
 
 class ResolveVaultTests(unittest.TestCase):

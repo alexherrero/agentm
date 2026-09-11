@@ -1,6 +1,8 @@
-# observability-email-daily.yaml — the opt-in daily digest email channel
+# observability-email-daily.yaml — the opt-in daily email channel
 # (`wiki/designs/agentm-autonomy.md`'s "Delivery" subsection, PLAN-proactive-
-# delivery task 5).
+# delivery task 5). Its body is the morning note (agentm-vault plan 04), so
+# it runs inside the night's window after the note is written: order 6, one
+# past morning-note.yaml.
 #
 # Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
 # .harness/jobs/ is gitignored; register by copying this template to
@@ -14,10 +16,12 @@
 # gate IS the safety gate.
 schedule: daily
 lookback: 24h
+window: "02:00-06:00"
+order: 6
 command: python3 -m health.session_email
 
-# Sends an email (T2, operator-facing, opt-in) — same tier as the digest
-# jobs it reads from.
+# Sends an email (T2, operator-facing, opt-in) — same tier as the note it
+# carries.
 tier: T2
 
 dry_run: false

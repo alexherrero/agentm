@@ -1,0 +1,27 @@
+# morning-note.yaml — the morning note, the last step of the night
+# (agentm-vault plan 04, task 6).
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored; register by copying this template to
+# .harness/jobs/morning-note.yaml.
+#
+# One note a morning at <memory root>/diagnostics/morning/YYYY-MM-DD.md, with
+# a latest_morning_note.md mirror: what ran, what needs you, the corpus in one
+# line, and spend. It reads what the night's other steps left behind, so it
+# runs after them — order 5, inside the same window. The daily email carries
+# it (observability-email-daily.yaml, order 6), and the session brief shows
+# its first section.
+schedule: daily
+lookback: 3d
+window: "02:00-06:00"
+order: 5
+
+# Runs from `scripts/` as cwd; MEMORY_VAULT_PATH is the memory root in the
+# runner's environment (scripts/agentm-runner.sh resolves it).
+command: python3 ../harness/skills/memory/scripts/morning_note.py
+
+# Writes one diagnostics note into the vault — T2, the same tier as the
+# corpus scorecard it links. No model call, so no budget.
+tier: T2
+
+dry_run: false

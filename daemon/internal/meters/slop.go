@@ -31,8 +31,9 @@ import (
 // # What this file does not decide
 //
 // Bands. The design puts a review band and a narrow auto-expire band on top of
-// these numbers, and both are confirm-gated for a supervised pass. That belongs
-// with the staging machinery in Python, and putting it here would let a scoring
+// these numbers, and both are confirm-gated for a supervised pass. They belong
+// with a confirm surface — the Python staging machinery was one until it
+// retired in agentm-vault plan 04 — and putting them here would let a scoring
 // change alter what gets deleted without anyone reviewing the band.
 
 // Signals is what one note scores, before any threshold is applied.

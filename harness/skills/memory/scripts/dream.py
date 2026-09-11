@@ -15,7 +15,8 @@ it reports, and it proposes; it changes no note.
     both titles;
   - **proposed facets**: a diary label recurring on three or more days;
   - the part-5 stages that still have a reader — the enrichment breaker's
-    status, the backlink footers, the correction loop;
+    status and the correction loop (the backlink-footer stage runs only when
+    a caller hands it targets, and this cycle hands it none);
   - the needs-review map, regenerated with the twins and the facets as
     sections of their own.
 

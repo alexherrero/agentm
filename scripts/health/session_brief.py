@@ -15,6 +15,11 @@ line there is emitted into context but never *seen*. #320 added the deadman
 *logic* (`orchestration_briefing.py`'s `digest_stale_days` signal) but on that
 same invisible surface.
 
+Since agentm-vault plan 04 the line reads the morning note first: its headline
+is the note's first section, what ran last night, in one line, and a note that
+stops arriving is the deadman. The digest ladder is the fallback for an install
+that runs no morning note.
+
 This module is the visible half: a tight one-liner emitted by the ALREADY-VISIBLE
 `harness-context-session-start` hook (the "[agentm] Project state" line the
 operator does see), reading the digest ladder's own delivered artifacts —
@@ -175,7 +180,14 @@ def resolve_vault(arg_path: "str | None" = None) -> "Path | None":
     Mirrors `memory-recall-session-start.sh`'s own resolver: the host does not
     inject MEMORY_VAULT_PATH into the hook environment, so fall back to the
     config's dual key (the V5-8 `plugins.obsidian-vault.vault_path`, then the
-    legacy flat `vault_path`)."""
+    legacy flat `vault_path`).
+
+    What every reader here wants is the memory root — the directory holding
+    `diagnostics/` — which is what `$MEMORY_VAULT_PATH` names. The config's
+    vault path is the vault root, so the fallback joins the configured
+    `plugins.obsidian-vault.memory_root` onto it when there is one. Without the
+    join the hook looked for `<vault>/diagnostics/` beside `Agent/` and reported
+    "no digest note delivered" over a ladder that was delivering fine."""
     if arg_path:
         p = Path(arg_path).expanduser()
         return p if p.is_dir() else None
@@ -192,6 +204,9 @@ def resolve_vault(arg_path: "str | None" = None) -> "Path | None":
             v = (d.get("plugins.obsidian-vault.vault_path") or d.get("vault_path") or "").strip()
             if v:
                 p = Path(v).expanduser()
+                sub = str(d.get("plugins.obsidian-vault.memory_root") or "").strip().strip("/")
+                if sub and not Path(sub).is_absolute() and (p / sub).is_dir():
+                    p = p / sub
                 return p if p.is_dir() else None
         except (OSError, ValueError, AttributeError):
             return None
@@ -263,6 +278,52 @@ def latest_digest(vault: Path) -> "dict | None":
         "date": dt, "cadence": cadence, "slug": path.stem, "path": path,
         "mtime": mtime, "spend": spend, "events": events, "headline": headline,
     }
+
+
+MORNING_DIR = Path("diagnostics") / "morning"
+MORNING_STABLE = "latest_morning_note.md"
+_MORNING_DATED_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+_FM_LINE_RE = re.compile(r"^(date|headline):\s*(.*)$")
+
+
+def latest_morning_note(vault: Path) -> "dict | None":
+    """The morning note's mirror (else the newest dated note), or None.
+
+    Returns {date, headline, path, mtime}; `date` is the note's own date line,
+    `headline` its first section in one line (morning_note.py writes both)."""
+    d = Path(vault) / MORNING_DIR
+    path = d / MORNING_STABLE
+    if not path.is_file():
+        try:
+            dated = sorted(p for p in d.glob("*.md") if _MORNING_DATED_RE.match(p.stem))
+        except OSError:
+            dated = []
+        if not dated:
+            return None
+        path = dated[-1]
+    text = _safe_read(path)
+    if not text.startswith("---"):
+        return None
+    fields = {}
+    for line in text.split("\n---", 1)[0].splitlines()[1:]:
+        m = _FM_LINE_RE.match(line)
+        if m:
+            fields[m.group(1)] = m.group(2).strip()
+    headline = fields.get("headline", "")
+    if headline.startswith('"'):
+        try:
+            headline = json.loads(headline)
+        except ValueError:
+            headline = headline.strip('"')
+    dm = _MORNING_DATED_RE.match(fields.get("date", ""))
+    if not dm or not headline:
+        return None
+    try:
+        date = datetime(int(dm.group(1)), int(dm.group(2)), int(dm.group(3)), tzinfo=timezone.utc)
+        mtime = path.stat().st_mtime
+    except (ValueError, OSError):
+        return None
+    return {"date": date, "headline": headline, "path": path, "mtime": mtime}
 
 
 def _to_float(s: str) -> "float | None":
@@ -363,10 +424,11 @@ def build_brief(
     park_dir = Path(park_dir) if park_dir is not None else default_park_dir()
     history_path = Path(history_path) if history_path is not None else default_history_path()
 
+    morning = latest_morning_note(vault)
     digest = latest_digest(vault)
     hist_latest = history_latest_date(history_path)
     refused = runner_refusals(runner_cycle_path)
-    if digest is None and hist_latest is None:
+    if morning is None and digest is None and hist_latest is None:
         parked_by_watchdog = parked_jobs()
         if parked_by_watchdog and not refused:
             n = len(parked_by_watchdog)
@@ -393,6 +455,22 @@ def build_brief(
     refusal_sig = f"|refused={len(refused)}|parked={len(parked_by_watchdog)}"
 
     hist_str = hist_latest.strftime("%Y-%m-%d") if hist_latest is not None else None
+
+    if morning is not None:
+        stale_days = _days_between(now, morning["date"])
+        last = morning["date"].strftime("%Y-%m-%d")
+        if stale_days < deadman_days:
+            # The morning note's first section, in one line, and how long ago
+            # the note was written.
+            age = _age_phrase(now.timestamp() - morning["mtime"])
+            line = f"[agentm] Morning — {morning['headline']} (written {age}){parked_clause}."
+            return {"line": line, "signature": f"morning|{last}|{parked}{refusal_sig}"}
+        # Deadman — the note stopped arriving, so the night stopped finishing.
+        line = (
+            f"[agentm] ⚠ Morning note — none in {stale_days} days (last: {last}); "
+            f"the night has stopped finishing — see runner.{parked_clause}"
+        )
+        return {"line": line, "signature": f"morning-deadman|{last}|{stale_days}|{parked}{refusal_sig}"}
 
     if digest is not None:
         stale_days = _days_between(now, digest["date"])

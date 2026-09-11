@@ -84,11 +84,13 @@ class JobTemplatesLoad(unittest.TestCase):
             (job,) = manifest.load_manifests(jobs)
         self.assertTrue(job.enabled)
 
-    def test_the_four_nightly_steps_share_the_window_in_the_night_order(self):
-        """agentm-vault plan 04, task 1: enrichment, the binary, the Python
-        cycle, the scorecards — inside 02:00-06:00, in that order, because each
-        reads what the one before it wrote."""
-        night = ["enrich-nightly", "dreaming", "dream", "corpus-scorecard"]
+    def test_the_nightly_steps_share_the_window_in_the_night_order(self):
+        """agentm-vault plan 04, tasks 1 and 6: enrichment, the binary, the
+        Python cycle, the scorecards, then the morning note and the email that
+        carries it — inside 02:00-06:00, in that order, because each reads what
+        the one before it wrote."""
+        night = ["enrich-nightly", "dreaming", "dream", "corpus-scorecard",
+                 "morning-note", "observability-email-daily"]
         with tempfile.TemporaryDirectory() as td:
             jobs = Path(td) / "jobs"
             jobs.mkdir()
