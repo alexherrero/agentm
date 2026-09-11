@@ -15,6 +15,13 @@ re-judged — the enrichment pass raises it to `active` at high confidence, the
 operator edits the stamp, a later note supersedes it — and the next
 regeneration simply does not list it. Nothing here writes to any note.
 
+The dream cycle adds three sections below the notes' own (agentm-vault plan
+04): *Possible twins* (bodies at least 0.92 alike), *Shared keys, different
+bodies* (contradiction triage), and *Proposed facets* (a diary label recurring
+on three or more days). The cycle writes those findings to
+`<engine state>/dreaming/review-proposals.json` and this page reads them; it
+never merges, supersedes or registers anything. You act on them by hand.
+
 Usage:
     needs_review.py --vault <memory-root> [--write] [--json]
 """
@@ -24,7 +31,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 
@@ -33,6 +40,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import drive_artifacts  # noqa: E402  (same skill dir)
+import engine_state  # noqa: E402  (same skill dir)
 
 from filing_engine import _frontmatter  # noqa: E402  (same skill dir)
 
@@ -50,6 +58,10 @@ REASON_ORDER = ("near-duplicate", "update-candidate", "unfiled", "low-confidence
 _REVIEW_FLAGS = ("near-duplicate", "update-candidate")
 _SETTLED_LIFECYCLES = ("superseded", "archived")
 
+# Where the dream cycle leaves its twins, shared keys and facets. The name is
+# dream.REVIEW_PROPOSALS_NAME; a test holds the two equal.
+REVIEW_PROPOSALS_NAME = "review-proposals.json"
+
 
 @dataclass
 class Entry:
@@ -61,6 +73,7 @@ class Entry:
     related: str = ""
     when: str = ""
     source: str = ""
+    judged: str = ""
 
     @property
     def primary(self) -> str:
@@ -79,7 +92,12 @@ class Entry:
                 parts.append(f"same key as {twin}, different body — filed beside it")
             elif reason == "unfiled":
                 since = f" since {self.when}" if self.when else ""
-                parts.append(f"unfiled{since} — awaiting enrichment")
+                if self.judged:
+                    # The batch read it and scored it under the floor: a
+                    # judgment is on record, and the next move is yours.
+                    parts.append(f"unfiled{since} — judged below the floor on {self.judged}")
+                else:
+                    parts.append(f"unfiled{since} — awaiting the batch")
             elif reason == "low-confidence":
                 via = f" via {self.source}" if self.source else ""
                 parts.append(f"filed as {self.type or 'an untyped note'} at low confidence{via}")
@@ -129,21 +147,42 @@ def collect(vault: "Path | str") -> list:
                 rel=p.relative_to(vault).as_posix(), slug=fm.get("slug") or p.stem,
                 title=fm.get("title") or p.stem.replace("-", " "), type=fm.get("type", ""),
                 reasons=reasons, related=fm.get("related", ""), when=when,
-                source=fm.get("source", ""),
+                source=fm.get("source", ""), judged=(fm.get("enriched_at") or "")[:10],
             ))
     out.sort(key=lambda e: (e.when, e.rel), reverse=True)
     return out
 
 
-def summary(vault: "Path | str") -> dict:
+def read_proposals(state_dir: "Path | str | None" = None) -> dict:
+    """The dream cycle's last twins, shared keys and facets. Missing or
+    unreadable reads as none: the page still renders the notes' own marks."""
+    base = Path(state_dir) if state_dir is not None else engine_state.engine_state_dir()
+    empty = {"at": None, "twins": [], "same_key": [], "facets": []}
+    try:
+        data = json.loads((base / "dreaming" / REVIEW_PROPOSALS_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return empty
+    if not isinstance(data, dict):
+        return empty
+    out = {"at": data.get("at")}
+    for key in ("twins", "same_key", "facets"):
+        items = data.get(key)
+        out[key] = [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []
+    return out
+
+
+def summary(vault: "Path | str", *, proposals: "dict | None" = None) -> dict:
     """Counts for the scorecard: one note counts once in `total`, and once
-    under each reason it carries in `by_reason`."""
+    under each reason it carries in `by_reason`. The dream cycle's findings
+    count separately — they are pairs and labels, not notes."""
     entries = collect(vault)
     by_reason = {r: 0 for r in REASON_ORDER}
     for e in entries:
         for r in e.reasons:
             by_reason[r] += 1
-    return {"total": len(entries), "by_reason": by_reason}
+    proposals = read_proposals() if proposals is None else proposals
+    return {"total": len(entries), "by_reason": by_reason,
+            "dreaming": {k: len(proposals.get(k) or []) for k in ("twins", "same_key", "facets")}}
 
 
 _SECTION_TITLES = {
@@ -154,7 +193,44 @@ _SECTION_TITLES = {
 }
 
 
-def render(entries: list, *, created: str, today: str) -> str:
+def _link(rel: str) -> str:
+    return f"[[{Path(str(rel)).stem}]]"
+
+
+def _proposal_lines(proposals: dict) -> list:
+    """The three dream sections. Each line names what to do, because the page
+    is where the decision gets made."""
+    lines = []
+    twins = proposals.get("twins") or []
+    if twins:
+        lines += [f"## Possible twins ({len(twins)})", ""]
+        for t in twins:
+            sim = t.get("similarity")
+            alike = f"{sim:.0%} alike" if isinstance(sim, (int, float)) else "alike"
+            lines.append(f"- {_link(t.get('a', ''))} and {_link(t.get('b', ''))} — {alike} · "
+                         "merge by hand, or write `superseded_by` on the one that should go")
+        lines.append("")
+    same = proposals.get("same_key") or []
+    if same:
+        lines += [f"## Shared keys, different bodies ({len(same)})", ""]
+        for c in same:
+            links = ", ".join(_link(p) for p in c.get("paths") or [])
+            lines.append(f"- key `{c.get('slug', '?')}`: {links} — two notes claiming to be one "
+                         "memory and saying different things")
+        lines.append("")
+    facets = proposals.get("facets") or []
+    if facets:
+        lines += [f"## Proposed facets ({len(facets)})", ""]
+        for f in facets:
+            lines.append(f"- `{f.get('label', '?')}` on {f.get('days', '?')} days "
+                         f"({f.get('first', '?')} … {f.get('last', '?')}) — register it under "
+                         "`facets:` in standards/storage-rules.md if it is a facet")
+        lines.append("")
+    return lines
+
+
+def render(entries: list, *, created: str, today: str, proposals: "dict | None" = None) -> str:
+    proposals = proposals or {}
     lines = [
         "---",
         "title: needs review",
@@ -178,6 +254,7 @@ def render(entries: list, *, created: str, today: str) -> str:
         "regenerates without it.",
         "",
     ]
+    dream_lines = _proposal_lines(proposals)
     for reason in REASON_ORDER:
         group = [e for e in entries if e.primary == reason]
         if not group:
@@ -186,12 +263,22 @@ def render(entries: list, *, created: str, today: str) -> str:
         for e in group:
             lines.append(f"- [[{e.slug}]] — {e.title} · {e.phrase()}")
         lines.append("")
+    if dream_lines:
+        at = proposals.get("at")
+        when = ""
+        if isinstance(at, (int, float)):
+            when = f" of {datetime.fromtimestamp(at, tz=timezone.utc).date().isoformat()}"
+        lines += [f"The sections below come from the dream cycle{when}. Nothing acts on them "
+                  "but you.", ""]
+        lines += dream_lines
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
-def write(vault: "Path | str", *, today: "str | None" = None) -> Path:
+def write(vault: "Path | str", *, today: "str | None" = None,
+          proposals: "dict | None" = None) -> Path:
     """Regenerate the MOC. `created` survives regeneration (the page is one
-    page, not a page a day); `updated` is today."""
+    page, not a page a day); `updated` is today. The dream sections come from
+    the engine state unless `proposals` is handed in."""
     vault = Path(vault)
     today = today or date.today().isoformat()
     target = vault / MOC_REL
@@ -202,7 +289,8 @@ def write(vault: "Path | str", *, today: "str | None" = None) -> Path:
         except (OSError, UnicodeDecodeError):
             pass
     target.parent.mkdir(parents=True, exist_ok=True)
-    text = render(collect(vault), created=created, today=today)
+    text = render(collect(vault), created=created, today=today,
+                  proposals=read_proposals() if proposals is None else proposals)
     if not target.exists() or target.read_text(encoding="utf-8") != text:
         target.write_text(text, encoding="utf-8")
     return target
@@ -229,7 +317,8 @@ def main(argv: "list | None" = None) -> int:
         print(json.dumps(s, indent=2))
     else:
         parts = ", ".join(f"{k} {v}" for k, v in s["by_reason"].items() if v) or "nothing waiting"
-        print(f"needs review: {s['total']} — {parts}")
+        dream = ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in s["dreaming"].items() if v)
+        print(f"needs review: {s['total']} — {parts}" + (f"; from dreaming: {dream}" if dream else ""))
     return 0
 
 

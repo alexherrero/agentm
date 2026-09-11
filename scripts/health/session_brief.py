@@ -4,8 +4,8 @@
 workhorse channel).
 
 The autonomy design's delivery layer rests on one line at every session open:
-the day's digest headline, how long ago the last cycle ran, a crystallization
-count, and — the point — a **deadman** variant that says so when the digest
+the day's digest headline, how long ago the last cycle ran, and — the point —
+a **deadman** variant that says so when the digest
 ladder has gone quiet ("no digest in N days — ladder stalled"). The 2026-07-17
 diagnosis found the line had never actually appeared: the only session-start
 briefing (`harness/skills/memory/scripts/orchestration_briefing.py`) is
@@ -303,23 +303,6 @@ def count_parked(park_dir: Path) -> int:
         return 0
 
 
-def count_crystallize_candidates(vault: Path) -> int:
-    """Sessions staged by crystallization's phase-close trigger (agentm-
-    experience-and-dreaming.md § Crystallization's phase-close trigger, call
-    6), awaiting a five-field digest or an explicit dismissal. A bare
-    directory glob, and its own file rather than a list something else
-    overwrites wholesale — an appended item must not be lost by another
-    writer's next cycle. Best-effort zero on any edge — never raises (the
-    hook contract)."""
-    staging_dir = _engine_state_dir() / "crystallize-staging"
-    if not staging_dir.is_dir():
-        return 0
-    try:
-        return sum(1 for p in staging_dir.glob("*.json") if p.is_file())
-    except OSError:
-        return 0
-
-
 def history_latest_date(history_path: Path) -> "datetime | None":
     """The newest `date` recorded in the digest-history ledger — evidence the
     ladder *computed* a digest even when no note reached `_briefs/`. The gap
@@ -404,12 +387,6 @@ def build_brief(
     parked_clause = ""
     if parked > 0:
         parked_clause = f" · {parked} run{'s' if parked != 1 else ''} parked, awaiting resume"
-    crystallize_pending = count_crystallize_candidates(vault)
-    if crystallize_pending > 0:
-        parked_clause += (
-            f" · {crystallize_pending} session{'s' if crystallize_pending != 1 else ''} "
-            f"awaiting crystallization"
-        )
     parked_clause += _refusal_clause(refused)
     parked_by_watchdog = parked_jobs()
     parked_clause += _parked_clause(parked_by_watchdog)
@@ -426,7 +403,7 @@ def build_brief(
             else:
                 age = f"{stale_days}d ago" if stale_days else "today"
             line = f"[agentm] Observability — {digest['headline']} (last cycle {age}){parked_clause}."
-            signature = f"fresh|{digest['slug']}|{parked}|{crystallize_pending}{refusal_sig}"
+            signature = f"fresh|{digest['slug']}|{parked}{refusal_sig}"
             return {"line": line, "signature": signature}
         # Deadman — a note exists but the ladder has gone quiet.
         extra = ""

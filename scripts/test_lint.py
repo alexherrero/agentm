@@ -330,73 +330,54 @@ class AliasedCollisionFindingTests(_LintFixtureTestBase):
 
 
 class CliAndWeeklyStageParityTests(_LintFixtureTestBase):
-    """The plan's own parity requirement: `/memory lint` run manually
-    against a fixture matches `dream._stage_lint()`'s output exactly."""
+    """The plan's own parity requirement, narrowed in agentm-vault plan 04:
+    `/memory lint` run by hand and the nightly cycle's lint stage read the
+    same engine and report the same counts. The cycle's repair lane retired,
+    so it counts what it would repair and repairs nothing."""
 
     def test_stage_lint_and_cli_report_agree(self) -> None:
         self._seed_rot()
 
         cli_report = lint.run_lint(self.vault)
-        proposals, stats = dream._stage_lint(self.vault)
+        stats = dream._stage_lint(self.vault)
 
-        self.assertEqual(len(proposals), len(cli_report.repairs))
-        self.assertEqual(proposals[0].stage, "lint")
-        self.assertEqual(proposals[0].kind, "wikilink_repair")
-        self.assertEqual(proposals[0].paths, ["memory/reference/miscased-source.md"])
-
+        self.assertEqual(stats["lint_repairable_count"], len(cli_report.repairs))
+        self.assertEqual(stats["lint_repairable_count"], 1)
         self.assertEqual(stats["lint_orphan_count"], len(cli_report.orphans))
         self.assertEqual(stats["lint_contradiction_count"], cli_report.contradiction_count)
         self.assertEqual(stats["lint_mean_quality_score"], cli_report.mean_quality_score)
 
-    def test_cli_apply_writes_the_identical_content_the_stage_would_propose(self) -> None:
-        self._seed_rot()
-        proposals, _stats = dream._stage_lint(self.vault)
-        expected_path, expected_content = proposals[0].mutations[0]
-
-        rc = lint.main(["--vault-path", str(self.vault), "--apply"])
-        self.assertEqual(rc, 0)
-        self.assertEqual(expected_path.read_text(encoding="utf-8"), expected_content)
-
-
-class WeeklyAutoApplyIntegrationTests(_LintFixtureTestBase):
-    """The lint stage's mis-cased-wikilink repair auto-applies through the
-    real `run_dream_and_auto_apply()` pipeline, revert-logged like every
-    other auto-apply stage; everything else it reports stays advisory."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        from revert_log import RevertLog  # noqa: E402
-
-        self.scratch = Path(self._tmp.name) / "scratch"
-        self.revert_log = RevertLog(
-            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
-        )
-
-    def test_miscased_repair_auto_applies_and_reverts(self) -> None:
+    def test_the_repair_is_still_yours_to_apply_by_hand(self) -> None:
         self._seed_rot()
         source_path = self.vault / "memory" / "reference" / "miscased-source.md"
-
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-lint-1", revert_log=self.revert_log,
-        )
-
-        lint_items = [i for i in batch.items if i["stage"] == "lint"]
-        self.assertEqual(len(lint_items), 1)
+        rc = lint.main(["--vault-path", str(self.vault), "--apply"])
+        self.assertEqual(rc, 0)
         self.assertIn("[[correct-target]]", source_path.read_text(encoding="utf-8"))
         self.assertNotIn("[[Correct-Target]]", source_path.read_text(encoding="utf-8"))
 
-        self.revert_log.revert("run-lint-1", entry_id=lint_items[0]["entry_id"])
-        self.assertIn("[[Correct-Target]]", source_path.read_text(encoding="utf-8"))
+
+class NightlyCycleRepairsNothingTests(_LintFixtureTestBase):
+    """The mis-cased-wikilink repair was the lint engine's one auto-applied
+    lane; it retired with every other lane that applied anything (plan 04).
+    The cycle reports it and leaves the note alone."""
+
+    def test_the_cycle_leaves_a_miscased_link_alone(self) -> None:
+        self._seed_rot()
+        source_path = self.vault / "memory" / "reference" / "miscased-source.md"
+        before = source_path.read_bytes()
+        digest = dream.run_dream(self.vault, run_id="run-lint-1")
+        self.assertEqual(source_path.read_bytes(), before)
+        self.assertEqual([p for p in digest.proposals if p.stage == "lint"], [])
 
     def test_digest_renders_lint_summary_line(self) -> None:
         self._seed_rot()
-        digest, _batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-lint-2", revert_log=self.revert_log,
-        )
+        digest = dream.run_dream(self.vault, run_id="run-lint-2")
         digest_text = digest.digest_path.read_text(encoding="utf-8")
         self.assertIn("Lint:", digest_text)
         self.assertIn("orphan(s)", digest_text)
         self.assertIn("contradiction(s)", digest_text)
+        self.assertIn("1 mis-cased link(s) it would repair", digest_text)
+        self.assertIn("a report, nothing applied", digest_text)
         self.assertIn("mean quality score", digest_text)
 
 

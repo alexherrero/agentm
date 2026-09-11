@@ -107,11 +107,10 @@ gate "verify-idle-chain (non-dry-run chain + post-release dispatch, real mutatio
 gate "verify-hook-resolution (dual-key vault_path read, 4 hooks)" bash scripts/verify-hook-resolution.sh
 gate "verify-state-routing (backend x project-mode matrix, never-demote)" bash scripts/verify-state-routing.sh
 gate "verify-reflection (tri-lane routing, machine-source filter)" bash scripts/verify-reflection.sh
-gate "verify-dreaming (stage->confirm->revert-log e2e, no-silent-apply-on-timeout)" bash scripts/verify-dreaming.sh
+gate "verify-dreaming (a twin found, no note changed, the pair on the needs-review map)" bash scripts/verify-dreaming.sh
 gate "check-dreaming-parity (the dreaming binary reproduces the recorded Python pass)" bash scripts/check-dreaming-parity.sh
-gate "verify-declare-a-type (contract edit -> coverage falls -> queue -> climbs, real binary)" bash scripts/verify-declare-a-type.sh
+gate "verify-declare-a-type (contract edit -> coverage falls -> the batch queue offers it -> climbs, real binary)" bash scripts/verify-declare-a-type.sh
 gate "verify-auto-org-meters (connectivity + browse-surface e2e)" bash scripts/verify-auto-org-meters.sh
-gate "verify-opinion-supplements (accumulate loop Stages 2-3: recurrence gate, contradiction, confirm-gated compose e2e)" bash scripts/verify-opinion-supplements.sh
 gate "health-score-determinism (scorecard byte-identical across two runs)" "$PY" scripts/health/health_score.py --check-determinism --path scripts/health/fixtures/sample-records.jsonl
 gate "validate-audit-coverage (4 in-scope mythos-readiness blockers detectable)" bash scripts/health/validate-audit-coverage.sh
 gate "run-ablation-baseline (mechanical uplift, on/off per subsystem)" bash scripts/health/run-ablation-baseline.sh

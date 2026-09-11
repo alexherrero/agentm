@@ -11,10 +11,11 @@ is to undo:
   next genuine recall access — the only thing that resets the clock — lifts
   it back to `active` on the next cycle. Capped per cycle and watched by the
   same anomaly breaker the other automatic lanes use.
-* **→ archived** happens only through a confirm surface: a dream proposal
-  the operator confirms (`archive_proposals` stages it; `dream_confirm`
-  applies it) or an explicit operator act (`transition(..., actor="operator")`,
-  the CLI's `set`). `transition` refuses the state for any other actor —
+* **→ archived** happens only through a confirm surface: an explicit
+  operator act (`transition(..., actor="operator")`, the CLI's `set`). The
+  dreaming binary names the candidates in its report; the dream cycle's
+  archive proposal and its confirm step retired in agentm-vault plan 04.
+  `transition` refuses the state for any actor outside `CONFIRMED_ACTORS` —
   that refusal is the guarantee the plan asked for by test.
 * **purge** is not on this axis at all — see `purge.py`: operator-initiated,
   manifest first, never a policy outcome.
@@ -310,24 +311,6 @@ def policy_pass(vault: "Path | str", *, now=None, rules=None, cap: int = DEMOTIO
             elif days > archive_after * PREVIEW_FRACTION:
                 res.previews.append((rel, days))
     return res
-
-
-# ── the confirm surface: an archive proposal ──────────────────────────────────
-
-def archive_proposal_text(text: str, *, since: str) -> str:
-    """The mutation a dream proposal carries: the note as it will read once
-    the operator confirms — `lifecycle: archived`, the body untouched."""
-    return set_lifecycle_text(text, "archived", since=since)
-
-
-def journal_confirmed_archive(vault: "Path | str", rel: str, *, run_id: str, entry_id: str,
-                              now=None, journal: "Path | str | None" = None) -> dict:
-    """Called by `dream_confirm` after an archive proposal applied: the
-    journal line for a transition the confirm surface made."""
-    entry = {"ts": _now_iso(now), "rel": rel, "from": "dormant", "to": "archived", "actor": "dream-confirm",
-             "reason": f"archive proposal confirmed (revert entry {entry_id})", "run_id": run_id}
-    journal_append(entry, path=journal)
-    return entry
 
 
 # ── the reading: what quietly sank ────────────────────────────────────────────

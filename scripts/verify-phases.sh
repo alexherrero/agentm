@@ -215,101 +215,35 @@ assert_contains "bridge: 2 markers → ambiguous-session"             "$PW_SM2" 
 PR_SM="$(sm_hm phase-dispatch post-release --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
 assert_contains "bridge: post-release runs discover-skills"         "$PR_SM"  'discover_skills.py'
 
-# ── crystallization staging: the sibling-step phase-close trigger ───────────
-# (agentm-experience-and-dreaming.md § Crystallization's phase-close trigger).
-# Distinct from the bridge scenarios above, which use a fictional /tmp
-# transcript to test REFLECT's own dry-run plan rendering (unaffected either
-# way, since dry-run never touches the filesystem). Staging's tolerant
-# resolver DOES check the transcript exists (call 9's live-transcript filter),
-# so these scenarios use real files under $SCRATCH and drive the real
-# (non-dry-run) CLI end-to-end — the sibling-step wiring, idempotence, both
-# phases, and the dead/live filter are what's uniquely worth proving here
-# beyond the Python-level unit tests.
-echo "verify-phases: ── crystallization staging (phase-close trigger) ──"
+# ── crystallization staging: retired ────────────────────────────────────────
+# The sibling step that staged a marker per session at post-work and
+# post-release retired in agentm-vault plan 04 (52 markers, none ever
+# composed; crystallize is a weekly dreaming phase and an on-request synthesis
+# now, never a session's act). Narrowed to the one thing still worth proving
+# end to end: a real, non-dry-run dispatch with a live session marker stages
+# nothing and reports no crystallization key.
+echo "verify-phases: ── crystallization staging (retired) ──"
 CZ_PROJ="$SCRATCH/cz-proj"; mkdir -p "$CZ_PROJ/.harness"
 CZ_VAULT="$SCRATCH/cz-vault"; mkdir -p "$CZ_VAULT"
 cz_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_VAULT_PATH="$CZ_VAULT" HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
-# cz_field <json> <dotted.path> — a nested "status" appears at both the
-# top level (reflect/release's own) and under "crystallization" (staging's),
-# so a plain substring grep could match either; pull the exact field instead.
-cz_field() {
-  printf '%s' "$1" | "$PY" -c "
-import json, sys
-d = json.load(sys.stdin)
-for k in '$2'.split('.'):
-    d = d.get(k) if isinstance(d, dict) else None
-print(d if d is not None else '')
-"
-}
-
 CZ_T1="$SCRATCH/cz-transcript-1.jsonl"; : > "$CZ_T1"
-
-# No marker at all → staging reports no-session alongside reflect's own.
-CZ_R0="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
-assert_equals "crystallize: no marker -> no-session" \
-  "$(cz_field "$CZ_R0" crystallization.status)" "no-session"
-
-# One live marker, real transcript on disk -> staged.
 printf 'session_id: cz-s1\nstarted_at: 2026-01-01T00:00:00Z\ntranscript: %s\n' "$CZ_T1" \
   > "$CZ_PROJ/.harness/session-id-cz-s1.start"
 CZ_R1="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
-assert_equals "crystallize: single live marker -> staged" \
-  "$(cz_field "$CZ_R1" crystallization.status)" "staged"
-assert_exists "crystallize: candidate file written" \
-  "$AGENTM_STATE_DIR/crystallize-staging/post-work-cz-s1.json"
-
-# Staging runs BEFORE reflect, so that first dispatch staged while the .start
-# marker still existed — and reflect then renamed it. Confirm the ordering
-# actually held end-to-end: the marker is now .reflected, and the candidate
-# exists anyway.
-assert_exists "crystallize: reflect renamed the marker after staging ran" \
-  "$CZ_PROJ/.harness/session-id-cz-s1.reflected"
-
-# Every LATER task commit in the same session finds no .start and skips. That
-# is intended: the candidate is already there from the first commit, and
-# .reflected markers are deliberately NOT resolved — they accumulate for 30
-# days, so counting them made ambiguous-session the permanent steady state and
-# the trigger never fired at all (found by dry-running the shipped trigger
-# against a repo carrying 111 of them).
-CZ_R2="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
-assert_equals "crystallize: later task commits skip (no .start left)" \
-  "$(cz_field "$CZ_R2" crystallization.status)" "no-session"
-assert_equals "crystallize: still exactly one candidate for the session" \
-  "$(ls "$AGENTM_STATE_DIR/crystallize-staging/" | wc -l | tr -d ' ')" "1"
-
-# The regression test for the defect that shipped: a realistic repo carries
-# many .reflected markers from past sessions, every one with a live transcript.
-# The one session in progress has a .start. Resolution must find it and ignore
-# all the history.
-for i in 1 2 3 4 5 6 7 8 9 10; do
-  : > "$SCRATCH/cz-past-$i.jsonl"
-  printf 'session_id: cz-past-%s\ntranscript: %s/cz-past-%s.jsonl\n' "$i" "$SCRATCH" "$i" \
-    > "$CZ_PROJ/.harness/session-id-cz-past-$i.reflected"
+CZ_R2="$(cz_hm phase-dispatch post-release --project-root "$CZ_PROJ" 2>/dev/null)"
+# Both dispatches really ran (a status came back), so the absences below are
+# not the vacuous result of a CLI that failed to start.
+assert_contains "crystallize: post-work dispatch ran" "$CZ_R1" '"status"'
+assert_contains "crystallize: post-release dispatch ran" "$CZ_R2" '"status"'
+for CZ_R in "$CZ_R1" "$CZ_R2"; do
+  if printf '%s' "$CZ_R" | grep -qF '"crystallization"'; then
+    fail "crystallize: dispatch reports no crystallization key" "got: $(printf '%s' "$CZ_R" | tr '\n' '~' | cut -c1-140)"
+  else
+    pass "crystallize: dispatch reports no crystallization key"
+  fi
 done
-CZ_T2="$SCRATCH/cz-transcript-2.jsonl"; : > "$CZ_T2"
-printf 'session_id: cz-s2\nstarted_at: 2026-01-01T00:00:00Z\ntranscript: %s\n' "$CZ_T2" \
-  > "$CZ_PROJ/.harness/session-id-cz-s2.start"
-CZ_R3="$(cz_hm phase-dispatch post-release --project-root "$CZ_PROJ" 2>/dev/null)"
-assert_equals "crystallize: post-release stages too (call 1 — both events)" \
-  "$(cz_field "$CZ_R3" crystallization.status)" "staged"
-assert_equals "crystallize: 11 .reflected markers do not block the live session" \
-  "$(cz_field "$CZ_R3" crystallization.session_id)" "cz-s2"
-assert_exists "crystallize: post-release candidate lands under its own name" \
-  "$AGENTM_STATE_DIR/crystallize-staging/post-release-cz-s2.json"
-
-# A dead .start marker (transcript gone) beside a live one must not manufacture
-# false ambiguity (call 9's live-transcript filter), end-to-end through the CLI.
-printf 'session_id: cz-dead\nstarted_at: 2026-01-01T00:00:00Z\ntranscript: %s/gone.jsonl\n' "$SCRATCH" \
-  > "$CZ_PROJ/.harness/session-id-cz-dead.start"
-CZ_R4="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
-assert_equals "crystallize: dead marker beside a live one still resolves the live one" \
-  "$(cz_field "$CZ_R4" crystallization.session_id)" "cz-s2"
-
-# dry-run stages nothing.
-CZ_BEFORE="$(ls "$AGENTM_STATE_DIR/crystallize-staging/" | wc -l | tr -d ' ')"
-cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" --dry-run >/dev/null 2>&1
-CZ_AFTER="$(ls "$AGENTM_STATE_DIR/crystallize-staging/" | wc -l | tr -d ' ')"
-assert_equals "crystallize: dry-run stages nothing" "$CZ_AFTER" "$CZ_BEFORE"
+assert_absent "crystallize: no staging directory after either dispatch" \
+  "$AGENTM_STATE_DIR/crystallize-staging"
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo

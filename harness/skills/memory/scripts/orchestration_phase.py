@@ -32,7 +32,6 @@ touching state. Never raises (phase-spec-invoked; must not wedge a phase).
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -40,7 +39,6 @@ from pathlib import Path
 
 # sibling imports (same scripts dir)
 import auto_orchestration as ao
-import crystallize
 
 _REFLECT_CHAIN = "phase_reflect"
 _RELEASE_CHAIN = "phase_release"
@@ -404,131 +402,11 @@ def post_release_refresh(
         return result
 
 
-# ── crystallization staging (agentm-experience-and-dreaming.md § Crystallization's
-# phase-close trigger, locked calls 1-2-3-5-9) ───────────────────────────────
-#
-# A SIBLING step, not a step inside post_work_reflect() (call 2): post-work
-# fires after every task commit, and reflect renames the session's `.start`
-# marker to `.reflected` on its first success, so every commit after the
-# first takes post_work_reflect()'s `already-reflected` early return. Staging
-# placed inside that function would never fire on what is, after the first
-# commit, the common path. _main() below calls this as a separate step for
-# both post-work and post-release, merging the outcome under a new
-# "crystallization" result key so the existing top-level "status" values
-# verify-phases.sh already asserts on stay untouched.
-
-_MARKER_RE = re.compile(r"^session-id-(.+)\.(start|reflected)$")
-
-
-def _session_id_from_marker(marker: Path) -> str | None:
-    m = _MARKER_RE.match(marker.name)
-    return m.group(1) if m else None
-
-
-def _resolve_transcript_for_staging(harness_dir: Path) -> tuple[str | None, str | None, str | None]:
-    """Resolve the one session to stage a candidate for. Returns
-    `(session_id, transcript, reason)`; `reason` is `None` on success, else
-    `"no-session"` or `"ambiguous-session"`.
-
-    **`.start` markers only, deliberately** — and this is why staging runs
-    BEFORE reflect in `_main()` rather than after. Reflect renames a session's
-    `.start` to `.reflected` on its first success, so ordering staging second
-    left it with no `.start` to read; the original fix was to glob `.reflected`
-    too. That was wrong in a way no test caught, because `.reflected` markers
-    legitimately accumulate for 30 days (their GC threshold): two reflected
-    sessions in a month is enough to make every later resolution look like two
-    competing live sessions, so `ambiguous-session` became the permanent steady
-    state and the trigger never fired at all. Found by dry-running the shipped
-    trigger against this repo, which had 111 `.reflected` markers.
-
-    Reordering instead of widening the glob costs only `fire_count`: the first
-    task commit of a session stages while its `.start` still exists, and later
-    commits find none and skip — harmless, since `stage_candidate` is
-    idempotent and the candidate is already there. What it buys is a resolver
-    that ignores accumulated history entirely.
-
-    Filters to markers whose transcript still resolves BEFORE counting (call
-    9's live-transcript filter), so a pile of dead pointers cannot manufacture
-    false ambiguity either. Genuine ambiguity — two concurrent live sessions in
-    one repo — still refuses rather than guessing.
-    """
-    if not harness_dir.is_dir():
-        return None, None, "no-session"
-    try:
-        markers = [p for p in harness_dir.glob("session-id-*.start") if p.is_file()]
-    except OSError:
-        return None, None, "no-session"
-
-    live: dict[str, str] = {}  # session_id -> transcript, dead pointers filtered first
-    for marker in markers:
-        sid = _session_id_from_marker(marker)
-        if sid is None:
-            continue
-        transcript = _marker_transcript(marker)
-        if not transcript or not Path(transcript).is_file():
-            continue
-        live[sid] = transcript
-
-    if not live:
-        return None, None, "no-session"
-    if len(live) > 1:
-        return None, None, "ambiguous-session"
-    (sid, transcript), = live.items()
-    return sid, transcript, None
-
-
-def stage_crystallization_candidate(
-    vault: Path,
-    project_root: Path,
-    phase: str,
-    config: dict | None = None,
-    now: datetime | None = None,
-    *,
-    dry_run: bool = False,
-) -> dict:
-    """Stage a crystallization candidate for the session this phase-dispatch
-    fired from. Returns a result dict; never raises (invoked from a
-    non-blocking phase dispatch — see `phase_dispatch()`'s own contract).
-    Status: `disabled | no-session | ambiguous-session | dry-run | staged |
-    refreshed | capped | error`.
-
-    Deliberately no cooldown (call 5): idempotence on `(phase, session_id)`
-    already prevents duplicate candidates, and gating this write on a shared
-    clock would silently drop whole sessions rather than just skip a
-    redundant write.
-    """
-    vault = Path(vault)
-    project_root = Path(project_root)
-    result: dict = {"dispatch": "crystallization", "phase": phase, "dry_run": dry_run}
-    try:
-        if config is None:
-            config = ao.load_config(vault)
-        if not config.get("enable_crystallization_staging", True):
-            result["status"] = "disabled"
-            return result
-
-        sid, transcript, reason = _resolve_transcript_for_staging(project_root / ".harness")
-        if reason is not None:
-            result["status"] = reason
-            return result
-        result["session_id"] = sid
-        result["transcript"] = transcript
-
-        if dry_run:
-            result["status"] = "dry-run"
-            return result
-
-        # crystallize.stage_candidate takes an ISO string (its own on-disk
-        # field shape); this function's `now` is a datetime for consistency
-        # with post_work_reflect/post_release_refresh's testable-clock shape.
-        now_iso = now.isoformat() if now is not None else None
-        staged = crystallize.stage_candidate(vault, phase, sid, transcript, now=now_iso)
-        result.update(staged)
-        return result
-    except Exception as e:  # phase-dispatch-invoked — must not wedge the phase.
-        result["status"] = "error"
-        result["error"] = str(e)
-        return result
+# Crystallization staging retired (agentm-vault plan 04). It staged a marker
+# per session at post-work and post-release for a digest nobody composed — 52
+# of them by 2026-09-06 — and the design has since ruled that crystallize is
+# never a session's act: it is a weekly dreaming phase reading closed work for
+# recurrence (plan 11), and a synthesis on request (`crystallize.py write`).
 
 
 def _main(argv: list[str]) -> int:
@@ -554,19 +432,6 @@ def _main(argv: list[str]) -> int:
     except ValueError:
         return 0  # no vault → silent, non-blocking
 
-    # Sibling step (call 2) — not nested inside either dispatch, so it still
-    # fires on the paths where reflect early-returns.
-    #
-    # Runs FIRST, and the order is load-bearing: `post_work_reflect` renames the
-    # session's `.start` marker to `.reflected` on success, and staging resolves
-    # from `.start` only (see `_resolve_transcript_for_staging` for why widening
-    # that glob instead made the trigger permanently inert). Staging after
-    # reflect would find no `.start` on the very first task commit — the one
-    # commit that needs to stage.
-    crystallization = stage_crystallization_candidate(
-        vault, Path(args.project_root), args.cmd, dry_run=args.dry_run,
-    )
-
     if args.cmd == "post-work":
         result = post_work_reflect(
             vault, Path(args.project_root),
@@ -576,10 +441,6 @@ def _main(argv: list[str]) -> int:
         result = post_release_refresh(vault, dry_run=args.dry_run)
     else:  # pragma: no cover
         return 2
-
-    # Merged under a new key so the dispatches' existing top-level "status"
-    # values stay untouched.
-    result["crystallization"] = crystallization
 
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

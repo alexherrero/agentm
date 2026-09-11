@@ -382,10 +382,10 @@ class BatchTests(Case):
                       (self.vault / f"m/n{i}.md").read_text(encoding="utf-8"))
         self.assertEqual(expired, 3)
 
-    def test_the_cap_matches_the_dreaming_one(self):
-        import dream_confirm
-        self.assertEqual(rc.DEFAULT_BATCH,
-                         dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP)
+    def test_the_cap_is_twenty_five(self):
+        # Held to the dream cycle's auto-apply cap until that retired in
+        # agentm-vault plan 04.
+        self.assertEqual(rc.DEFAULT_BATCH, 25)
 
     def test_scanning_writes_nothing(self):
         p = self.excerpt_note("m/a.md", INJECTED, session="proj/gone")

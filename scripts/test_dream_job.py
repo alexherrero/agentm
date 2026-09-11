@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Tests for the dreaming pipeline's scheduled runner job (AG Wave E
-dreaming plan, task 4): `templates/jobs/dream.yaml` + its wiring through
-`scripts/runner/`.
+"""Tests for the Python cycle's scheduled runner job: `templates/jobs/dream.yaml`
+and its wiring through `scripts/runner/` (AG Wave E dreaming plan, task 4;
+reshaped in agentm-vault plan 04).
 
 `.harness/jobs/` is gitignored (per-project runtime state, same as every
 other `.harness/*` file) — `templates/jobs/dream.yaml` is the tracked,
@@ -9,31 +9,27 @@ shipped source; a repo registers the job by copying it in. These tests load
 that tracked template directly rather than assuming a `.harness/jobs/`
 exists in this checkout.
 
-Covers (plan task 4 verification):
-  - the manifest parses per `scripts/runner/manifest.py`'s schema
+Covers:
+  - the manifest parses per `scripts/runner/manifest.py`'s schema, nightly,
+    inside the night's window, third in its order, with no batch cap;
   - the shipped template's `dry_run: true` means a due cycle reports
-    `ran=False, dry_run=True` and the command NEVER executes — no
-    `_dream-staging/` directory is created (proves "stays in dry-run, no
-    live promotion")
-  - a cycle where the SAME command is actually run (dry_run overridden to
-    False for this test only, proving the wiring — not the shipped
-    manifest's own posture) against a seeded fixture corpus produces a
-    digest with the SAME shape (section headers, proposal stage/kind lines)
-    as calling `dream.run_dream()` directly (task 2's manual run)
+    `ran=False, dry_run=True` and the command never executes;
+  - a cycle where the same command is actually run (dry_run overridden to
+    False for this test only, proving the wiring rather than the shipped
+    posture) produces the same digest as calling `dream.run_dream()` by hand.
+
+Every cycle here runs at 03:00 local time: the template carries the night's
+`window:`, and a clock outside it would leave the job not due and the test
+reading an empty outcome list.
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
-import os
 import tempfile
 import unittest
-
-
-def dj_engine():
-    import os as _o
-    from pathlib import Path as _P
-    return _P(_o.environ["AGENTM_STATE_DIR"])  # conftest guarantees it
+from datetime import datetime
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -49,15 +45,24 @@ from runner import cycle, manifest  # noqa: E402
 _TEMPLATE_PATH = _HERE.parent / "templates" / "jobs" / "dream.yaml"
 _DREAM_PY = _SKILL_SCRIPTS / "dream.py"
 
+# 03:00 local on an ordinary night, inside the template's 02:00-06:00 window
+# whatever the machine's time zone.
+_IN_WINDOW = datetime(2026, 9, 11, 3, 0).timestamp()
+
+
+def _engine() -> Path:
+    return Path(os.environ["AGENTM_STATE_DIR"])
+
 
 def _shape(digest_text: str) -> list:
-    """Strip run-id/timestamp-specific text, keep the structural markers
-    (section headers, `### N. stage — kind` lines) so two digests from
-    different run_ids can be compared for "same shape"."""
+    """The digest's structure without the run id or the vault path: its
+    section headers and each finding's stage, kind and summary."""
     lines = []
     for line in digest_text.splitlines():
-        if line.startswith("## ") or line.startswith("### "):
-            lines.append(re.sub(r"\d+\.\s", "N. ", line.split(" — ")[0] if " — " not in line else line))
+        if line.startswith("## ") or line.startswith("# Dream digest"):
+            lines.append(re.sub(r"run \S+", "run <id>", line))
+        elif line.startswith("- ") and " · " in line:
+            lines.append(line.split(" (", 1)[0])
     return lines
 
 
@@ -71,53 +76,38 @@ class ManifestParsesTests(unittest.TestCase):
         self.assertEqual(len(jobs), 1)
         job = jobs[0]
         self.assertEqual(job.name, "dream")
-        self.assertEqual(job.schedule, "weekly")
+        self.assertEqual(job.schedule, "daily")
+        self.assertEqual(job.window, "02:00-06:00")
+        self.assertEqual(job.order, 3)
         self.assertEqual(job.tier, "T3")
-        self.assertTrue(job.dry_run, "shipped manifest must stay in dry-run (plan Constraints)")
+        self.assertNotIn("--batch-cap", job.command)
+        self.assertTrue(job.dry_run, "the shipped manifest stays in dry-run")
 
 
 class StaysInDryRunTests(unittest.TestCase):
-    """The plan's constraint: 'the job stays in dry-run (no live promotion)
-    until task 2's calibration evidence... is explicitly recorded as
-    sufficient'."""
-
     def test_due_dry_run_job_never_executes_the_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            vault = root / "vault"
-            vault.mkdir()
-            (vault / "solo.md").write_text("---\nkind: workflow\n---\nOnly one entry.\n", encoding="utf-8")
-
             jobs_dir = root / "jobs"
             jobs_dir.mkdir()
             (jobs_dir / "dream.yaml").write_text(_TEMPLATE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
 
             os.environ["AGENTM_STATE_DIR"] = str(root / "job-state")
-            report = cycle.run_cycle(jobs_dir, now=1_000_000.0, state_root=root / "state", report_path=root / "digest.jsonl")
+            report = cycle.run_cycle(jobs_dir, now=_IN_WINDOW, state_root=root / "state",
+                                     report_path=root / "digest.jsonl")
 
             self.assertEqual(len(report.outcomes), 1)
             outcome = report.outcomes[0]
             self.assertTrue(outcome.dry_run)
             self.assertFalse(outcome.ran)
-            # The command was never executed at all — proves dry_run truly
-            # short-circuits before subprocess.run, not just "ran quietly".
-            self.assertFalse(any(dj_engine().glob("dream-runs/*")))
+            # The command was never executed at all: dry_run short-circuits
+            # before subprocess.run, not just "ran quietly".
+            self.assertFalse(any(_engine().glob("dream-runs/*")))
 
 
 class SameShapeAsManualRunTests(unittest.TestCase):
-    """Proves the job-command wiring is correct: WHEN the job does run
-    (dry_run overridden False for this test — the shipped template itself
-    stays dry_run: true per StaysInDryRunTests above), it produces the same
-    digest shape as task 2's manual-run surface.
-
-    The manual-run reference is `dream.run_dream_and_auto_apply()`, not the
-    older bare `dream.run_dream()` — the job's shipped `command:` invokes
-    `dream.py`'s CLI, and that CLI's default entry point auto-applies
-    compression ("expire") proposals as of the 2026-07-11 operator ruling
-    (`--no-auto-apply` opts back into the old propose-only shape). Both
-    sides use a scratch `RevertLog` (via `--log-root`/`--lock-root` on the
-    job side, `revert_log=` on the manual side) so neither ever touches the
-    real `~/.cache` during the test."""
+    """When the job does run (dry_run overridden for this test only), it
+    produces the same digest as the manual `run_dream()`."""
 
     def _seed_fixture_corpus(self, vault: Path) -> None:
         (vault / "a.md").write_text(
@@ -128,68 +118,54 @@ class SameShapeAsManualRunTests(unittest.TestCase):
         )
 
     def test_job_invoked_command_matches_manual_run_shape(self) -> None:
-        from revert_log import RevertLog  # noqa: E402  (same cross-dir import pattern as test_dream_confirm.py)
-
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
 
-            # Manual run (task 2's surface, now via the auto-apply wrapper
-            # dream.py's CLI itself calls by default) — the reference shape.
             manual_vault = root / "manual-vault"
             manual_vault.mkdir()
             self._seed_fixture_corpus(manual_vault)
-            manual_revert_log = RevertLog(
-                manual_vault, log_root=root / "manual-scratch" / "revert-log",
-                lock_root=root / "manual-scratch" / "locks",
-            )
-            # The two halves used to isolate by vault; staging is engine-side
-            # now (filing-v2 2a), so each half gets its own state dir.
             os.environ["AGENTM_STATE_DIR"] = str(root / "manual-state")
-            manual_digest, _manual_batch = dream.run_dream_and_auto_apply(
-                manual_vault, run_id="manual-run", revert_log=manual_revert_log,
-            )
+            manual_digest = dream.run_dream(manual_vault, run_id="manual-run")
             manual_shape = _shape(manual_digest.digest_path.read_text(encoding="utf-8"))
+            self.assertIn("- dedup · possible-twin: a.md and b.md are 98% alike — merge by hand, "
+                          "or write `superseded_by` on the one that should go", manual_shape)
 
-            # Job-invoked run — same corpus shape, executed via the runner's
-            # subprocess command (not a direct Python call), with dry_run
-            # forced False purely to prove the wiring for this test.
             job_vault = root / "job-vault"
             job_vault.mkdir()
             self._seed_fixture_corpus(job_vault)
-
             jobs_dir = root / "jobs"
             jobs_dir.mkdir()
             template = _TEMPLATE_PATH.read_text(encoding="utf-8")
-            job_scratch = root / "job-scratch"
+            shipped = "command: python3 ../harness/skills/memory/scripts/dream.py\n"
+            self.assertIn(shipped, template)
             live_manifest = template.replace("dry_run: true", "dry_run: false").replace(
-                "command: python3 ../harness/skills/memory/scripts/dream.py --batch-cap 25",
-                f'command: python3 "{_DREAM_PY}" --vault-path "{job_vault}" --batch-cap 25 '
-                f'--log-root "{job_scratch / "revert-log"}" --lock-root "{job_scratch / "locks"}"',
-            )
+                shipped, f'command: python3 "{_DREAM_PY}" --vault-path "{job_vault}"\n')
             (jobs_dir / "dream.yaml").write_text(live_manifest, encoding="utf-8")
 
             os.environ["AGENTM_STATE_DIR"] = str(root / "job-state")
-            report = cycle.run_cycle(jobs_dir, now=1_000_000.0, state_root=root / "state", report_path=root / "digest.jsonl")
+            report = cycle.run_cycle(jobs_dir, now=_IN_WINDOW, state_root=root / "state",
+                                     report_path=root / "digest.jsonl")
 
             self.assertEqual(len(report.outcomes), 1)
             outcome = report.outcomes[0]
             self.assertTrue(outcome.ran)
             self.assertEqual(outcome.exit_code, 0)
 
-            staging_runs = list((dj_engine() / "dream-runs").iterdir())
-            # A weekly cycle now stages TWO runs -- dream's own plus the
-            # folded inbox-triage sub-run (auto-org part 3 task 4). This
-            # test's intent is the DREAM digest's shape parity; select it
-            # by its own header rather than assuming it's alone.
-            dream_runs = [
-                d for d in staging_runs
-                if (d / "digest.md").read_text(encoding="utf-8").startswith("# Dream digest")
-            ]
-            self.assertEqual(len(dream_runs), 1)
-            job_digest_text = (dream_runs[0] / "digest.md").read_text(encoding="utf-8")
-            job_shape = _shape(job_digest_text)
-
+            runs = list((_engine() / "dream-runs").iterdir())
+            self.assertEqual(len(runs), 1)
+            job_shape = _shape((runs[0] / "digest.md").read_text(encoding="utf-8"))
             self.assertEqual(job_shape, manual_shape)
+
+
+# Every test here gets its own engine state dir.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
 
 
 if __name__ == "__main__":

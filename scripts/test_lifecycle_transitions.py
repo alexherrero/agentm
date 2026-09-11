@@ -4,9 +4,9 @@
 A transition edits `lifecycle:` in place and journals who moved it; the
 policy sinks the silent to `dormant` and lifts the recalled back, under a
 cap; `archived` is unreachable except through a confirm surface — the
-proposal the dream cycle stages and the operator confirms, or the
-operator's own hand; pinned and superseded never move by policy; the
-digest says what quietly sank; the scorecard carries the line.
+operator's own hand, since the dream cycle's archive proposal retired in
+agentm-vault plan 04; pinned and superseded never move by policy; the
+scorecard carries the line.
 """
 from __future__ import annotations
 
@@ -26,10 +26,8 @@ if str(_SCRIPTS) not in sys.path:
 
 import corpus_scorecard  # noqa: E402
 import dream  # noqa: E402
-import dream_confirm  # noqa: E402
 import lifecycle  # noqa: E402
 import lifecycle_transitions as lt  # noqa: E402
-from revert_log import RevertLog  # noqa: E402
 
 TODAY = "2026-09-05"
 NOW = TODAY + "T09:00:00+00:00"
@@ -218,39 +216,6 @@ class ThePolicy(_Vault):
         self.assertEqual(lt.thresholds(_Old()), (lt.DEFAULT_DORMANT_AFTER_DAYS, 1825.0))
 
 
-class TheConfirmSurface(_Vault):
-    def test_the_dream_stage_proposes_an_in_place_edit_and_applies_nothing(self):
-        rel = self._note("cold", lifecycle="dormant", created=_ago(2000))
-        near = self._note("nearly", lifecycle="dormant", created=_ago(1700))
-        proposals, previews = dream._stage_lifecycle(self.vault, now=TODAY, rules=self.rules)
-        self.assertEqual(len(proposals), 1)
-        p = proposals[0]
-        self.assertEqual((p.stage, p.kind, p.paths), ("lifecycle", "archive", [rel]))
-        (path, content), = p.mutations
-        self.assertEqual(Path(path), self.vault / rel)
-        self.assertEqual(content, lt.archive_proposal_text((self.vault / rel).read_text(encoding="utf-8"), since=TODAY))
-        self.assertIn("lifecycle: archived", content)
-        self.assertEqual(self._state(rel), "dormant", "a proposal applies nothing")
-        self.assertEqual(len(previews), 1)
-        self.assertIn(near, previews[0])
-        self.assertNotIn("lifecycle", dream_confirm.AUTO_APPLY_STAGES)
-        self.assertIn("lifecycle", dream._ANOMALY_WATCHED_STAGES)
-
-    def test_a_confirmed_archive_lands_in_place_and_is_journaled_by_the_confirm_surface(self):
-        rel = self._note("cold", lifecycle="dormant", created=_ago(2000))
-        proposals, _ = dream._stage_lifecycle(self.vault, now=TODAY, rules=self.rules)
-        digest = dream.DreamDigest(run_id="run-archive", corpus_stats=dream._stage_corpus_stats([]), proposals=proposals, insight_candidates=[])
-        dream._stage_digest_and_staging(self.vault, digest)
-        rl = RevertLog(self.vault, log_root=self.top / "revert", lock_root=self.top / "locks")
-        entry_id = dream_confirm.confirm(self.vault, "run-archive", 1, rl, lock_root=self.top / "locks")
-        self.assertEqual(self._state(rel), "archived")
-        self.assertTrue((self.vault / rel).exists())
-        j = self._journal()
-        self.assertEqual(len(j), 1)
-        self.assertEqual((j[0]["rel"], j[0]["to"], j[0]["actor"], j[0]["run_id"]), (rel, "archived", "dream-confirm", "run-archive"))
-        self.assertIn(entry_id, j[0]["reason"])
-
-
 class TheReading(_Vault):
     def test_summary_counts_states_and_the_weeks_moves(self):
         self._note("p", lifecycle="pinned"); self._note("a1"); self._note("a2", lifecycle="active")
@@ -267,16 +232,6 @@ class TheReading(_Vault):
         self.assertIn("sank 1", lt.describe(s))
         self.assertEqual(self._state(old), "dormant")
 
-    def test_the_digest_reads_the_axis_and_points_at_the_binary(self):
-        proposal = dream.Proposal(stage="lifecycle", kind="archive", paths=["memory/semantic/cold.md"], summary="cold")
-        digest = dream.DreamDigest(run_id="run-x", corpus_stats=dream._stage_corpus_stats([]), proposals=[proposal],
-                                   insight_candidates=[], lifecycle={"summary": "active 3 · dormant 1 · sank 1 this week"})
-        text = dream._render_digest(digest)
-        self.assertIn("1 archive proposal", text)
-        self.assertIn("active 3", text)
-        self.assertIn("dreaming binary", text)
-        self.assertNotIn("What quietly sank", text)
-
     def test_the_scorecard_carries_the_line(self):
         self._note("a"); self._note("d", lifecycle="dormant", created=_ago(500))
         reading = corpus_scorecard._lifecycle_reading(self.vault, today=TODAY)
@@ -287,16 +242,16 @@ class TheReading(_Vault):
 
 
 class TheCycle(_Vault):
-    def test_the_cycle_reads_the_axis_and_never_sinks(self):
+    def test_the_cycle_never_moves_the_axis(self):
+        # Sinking, lifting and naming archive candidates are the dreaming
+        # binary's. The Python cycle neither moves a memory nor proposes an
+        # archive (its lifecycle stage retired in agentm-vault plan 04).
         old = self._note("old", lifecycle="active", created=_ago(500))
-        digest, _batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-cycle", log_root=self.top / "revert", lock_root=self.top / "locks")
+        cold = self._note("cold", lifecycle="dormant", created=_ago(2000))
+        digest = dream.run_dream(self.vault, run_id="run-cycle")
         self.assertEqual(self._state(old), "active", "sinking is the dreaming binary's, not this cycle's")
-        self.assertIsNotNone(digest.lifecycle)
-        self.assertIn("active", digest.lifecycle["summary"])
-        text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("dreaming binary", text)
-        self.assertNotIn("What quietly sank", text)
+        self.assertEqual(self._state(cold), "dormant")
+        self.assertEqual([p for p in digest.proposals if p.stage == "lifecycle"], [])
         self.assertEqual(self._journal(), [])
 
 

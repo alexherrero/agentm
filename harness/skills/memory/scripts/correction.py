@@ -18,12 +18,11 @@ point — the loudest action is the one that needs a person.
 
 ## What each arm may do
 
-**Duplicates stage a proposal and change nothing.** `dream_confirm` deliberately
-keeps `dedup`/`promote` out of `AUTO_APPLY_STAGES`, and its docstring says the
-set must never grow to include them "without a fresh, separate operator ruling".
-This module is not that ruling. A duplicate cluster produces a proposal in the
-same shape `dream.py`'s own dedup stage produces, staged for a human to confirm,
-and the mutation it describes stays undone until somebody confirms it.
+**Duplicates stage a proposal and change nothing.** A duplicate cluster produces
+a proposal describing the merge, and the nightly digest reports it; nothing
+applies it. The confirm step that could apply one (`dream_confirm`) retired in
+agentm-vault plan 04, and a merge is now a person's act by hand, with git as the
+undo. This module never grew an apply path of its own.
 
 **Collapsed clusters re-distill, behind the revert log.** This is the only arm
 that writes, and every write goes through `RevertLog.record_and_apply` so the
@@ -186,11 +185,10 @@ def _reason_for(cluster: dict, arm: str) -> str:
 def build_merge_proposal(vault_path, cluster: dict) -> dict:
     """The mutation set a merge would make, described and not applied.
 
-    Shaped exactly like `dream.py`'s dedup proposal — `stage`, `kind`, `paths`,
-    `summary`, `mutations` — so `dream_confirm.confirm()` applies it through the
-    same path a human already uses. The value of that is not tidiness: it means
-    an auto-staged merge and a hand-staged one are indistinguishable in the
-    revert log, so there is one thing to audit rather than two.
+    Shaped as the retired confirm step expected — `stage`, `kind`, `paths`,
+    `summary`, `mutations` — and kept that way so the mutations say exactly what
+    a hand merge would write. Nothing applies it (agentm-vault plan 04 retired
+    the confirm step); the digest reports it for a person.
 
     The first member survives and the rest are superseded. First by path order,
     which is arbitrary but stated — this module does not know which copy anything

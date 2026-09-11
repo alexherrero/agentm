@@ -22,7 +22,6 @@ if str(_SCRIPTS) not in sys.path:
 import calendar_facets as cf  # noqa: E402
 import calendar_promotion as cp  # noqa: E402
 import dream  # noqa: E402
-import dream_confirm  # noqa: E402
 
 TODAY = date(2026, 9, 10)
 CONTRACT = ("# Storage rules\n\n```storage-rules\nclasses:\n  semantic: x\n\nfacets:\n  - meetings\n  - correspondence\n"
@@ -116,20 +115,21 @@ class TheProposal(_Nested):
 
 
 class TheDreamStage(_Nested):
-    def test_the_stage_is_a_proposal_and_never_auto_applies(self):
-        self.assertNotIn("facet_promotion", dream_confirm.AUTO_APPLY_STAGES)
+    def test_the_stage_is_a_proposed_facet_and_registers_nothing(self):
+        # Plan 04: a proposed facet is a section of the needs-review map. It
+        # carries what the section renders and no edit to apply — the agent
+        # never widens its own contract.
         for i in (1, 3, 5):
             self._diary(TODAY - __import__("datetime").timedelta(days=i), "gym: 40 minutes")
         props = dream._stage_facet_promotion(self.vault, today=TODAY, rules=self.rules)
         self.assertEqual(len(props), 1)
         p = props[0]
-        self.assertEqual((p.stage, p.kind), ("facet_promotion", "promote-facet"))
+        self.assertEqual((p.stage, p.kind), ("facet_promotion", "proposed-facet"))
         self.assertIn("gym", p.summary)
         self.assertIn("3 days", p.summary)
         self.assertEqual(p.paths, [str(self.contract)])
-        (path, content), = p.mutations
-        self.assertEqual(Path(path), self.contract)
-        self.assertIn("  - gym\n", content)
+        self.assertEqual((p.detail["label"], p.detail["days"]), ("gym", 3))
+        self.assertFalse(hasattr(p, "mutations"))
         self.assertEqual(self.contract.read_text(encoding="utf-8"), CONTRACT)
 
 

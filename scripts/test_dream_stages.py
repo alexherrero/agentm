@@ -1,8 +1,11 @@
-"""The four stages part 5 adds to the nightly pass.
+"""The part-5 stages the nightly pass still runs: the breaker's status, the
+backlink footers and the correction loop.
 
-Every one of them is exercised against a fake ledger rather than a live daemon,
-because what is being tested is what the stage decides — which gaps it finds,
-what it enqueues, and what it writes — and not whether a subprocess starts.
+Each is exercised against a fake ledger rather than a live daemon, because what
+is being tested is what the stage decides — what it writes, and what it leaves
+alone — and not whether a subprocess starts. Entity rollups, stub synthesis and
+the unfiled drain retired in agentm-vault plan 04; the last test here holds
+that a pass over a ledger full of their old work enqueues nothing.
 """
 
 import sys
@@ -63,75 +66,6 @@ class StageTestCase(unittest.TestCase):
             setattr(work_ledger, name, getattr(fake, name))
             self.addCleanup(setattr, work_ledger, name, original)
         return fake
-
-
-class EntityRollupTests(StageTestCase):
-    def test_an_entity_with_no_file_is_enqueued(self):
-        fake = self.install(FakeLedger(entities=[
-            {"uri": "person:ada-lovelace", "mentions": 40},
-            {"uri": "repo:agentm", "mentions": 12, "file": "memory/entities/agentm.md"},
-        ]))
-        res = dream_stages.stage_entity_rollups()
-
-        self.assertEqual(res.considered, 2)
-        self.assertEqual(res.enqueued, 1)
-        self.assertEqual(res.skipped, 1)
-        owner, target, reason = fake.enqueued[0]
-        self.assertEqual(owner, dream_stages.OWNER_ROLLUP)
-        self.assertEqual(target, "person:ada-lovelace")
-        # The reason carries the number, because "needs a rollup" tells whoever
-        # reads the queue nothing about whether it is worth draining.
-        self.assertIn("40", reason)
-
-    def test_an_entity_that_already_has_a_file_is_not_enqueued(self):
-        fake = self.install(FakeLedger(entities=[
-            {"uri": "repo:agentm", "mentions": 99, "file": "memory/entities/agentm.md"},
-        ]))
-        dream_stages.stage_entity_rollups()
-        self.assertEqual(fake.enqueued, [])
-
-    def test_the_threshold_is_applied(self):
-        """Below the floor a rollup would mostly restate its own title."""
-        fake = self.install(FakeLedger(entities=[
-            {"uri": "person:mentioned-once", "mentions": 1},
-            {"uri": "person:mentioned-often", "mentions": 40},
-        ]))
-        dream_stages.stage_entity_rollups()
-        targets = [t for _, t, _ in fake.enqueued]
-        self.assertEqual(targets, ["person:mentioned-often"])
-
-    def test_an_unavailable_daemon_is_reported_rather_than_guessed(self):
-        """A cycle that ran without the ledger did not do the work badly — it
-        did not do the work, and the digest should say which."""
-        self.install(FakeLedger(fail=True))
-        res = dream_stages.stage_entity_rollups()
-        self.assertTrue(res.unavailable)
-        self.assertEqual(res.enqueued, 0)
-
-
-class StubSynthesisTests(StageTestCase):
-    def test_a_target_several_notes_expect_is_enqueued(self):
-        fake = self.install(FakeLedger(dangling=[
-            {"target": "the-median-decision",
-             "sources": ["a.md", "b.md", "c.md"]},
-        ]))
-        res = dream_stages.stage_stub_synthesis()
-
-        self.assertEqual(res.enqueued, 1)
-        owner, target, reason = fake.enqueued[0]
-        self.assertEqual(owner, dream_stages.OWNER_STUB)
-        self.assertEqual(target, "the-median-decision")
-        self.assertIn("3", reason)
-
-    def test_a_single_source_target_is_left_alone(self):
-        """One note linking to something that does not exist is as likely a typo
-        as a gap, and a stub for a typo resolves the link and hides the
-        mistake."""
-        fake = self.install(FakeLedger(dangling=[
-            {"target": "probably-a-typo", "sources": ["a.md"]},
-        ]))
-        dream_stages.stage_stub_synthesis()
-        self.assertEqual(fake.enqueued, [])
 
 
 class FooterTests(StageTestCase):
@@ -255,46 +189,6 @@ class FooterTests(StageTestCase):
         return root
 
 
-class UnfiledDrainTests(StageTestCase):
-    def test_it_reports_coverage_without_acting_when_off(self):
-        """Part 4 deferred the drain over the standing queue. Nothing here
-        changes that; the stage reports the number and spends nothing."""
-        fake = self.install(FakeLedger(pending={
-            "eligible": 8765, "current": 25,
-            "pending": [{"target": "memory/a.md", "reason": "never"}],
-        }))
-        res = dream_stages.stage_unfiled_drain(enabled=False)
-
-        self.assertEqual(res.considered, 1)
-        self.assertEqual(res.enqueued, 0)
-        self.assertEqual(fake.enqueued, [])
-        self.assertTrue(any("8765" in n for n in res.notes))
-        self.assertTrue(any("off" in n for n in res.notes))
-
-    def test_it_enqueues_when_turned_on(self):
-        fake = self.install(FakeLedger(pending={
-            "eligible": 3, "current": 1,
-            "pending": [{"target": "memory/a.md", "reason": "stale"},
-                        {"target": "memory/b.md", "reason": "never"}],
-        }))
-        res = dream_stages.stage_unfiled_drain(enabled=True)
-
-        self.assertEqual(res.enqueued, 2)
-        self.assertEqual([t for _, t, _ in fake.enqueued],
-                         ["memory/a.md", "memory/b.md"])
-        # The reason travels with it, so the owner knows why it is being asked.
-        self.assertIn("stale", fake.enqueued[0][2])
-
-    def test_a_budget_bounds_what_one_cycle_enqueues(self):
-        fake = self.install(FakeLedger(pending={
-            "eligible": 100, "current": 0,
-            "pending": [{"target": f"memory/{i}.md", "reason": "never"}
-                        for i in range(50)],
-        }))
-        dream_stages.stage_unfiled_drain(enabled=True, budget=5)
-        self.assertEqual(len(fake.enqueued), 5)
-
-
 class ReportingTests(StageTestCase):
     def test_every_stage_reports_itself(self):
         self.install(FakeLedger(pending={"eligible": 0, "current": 0, "pending": []}))
@@ -304,22 +198,34 @@ class ReportingTests(StageTestCase):
         # cycle rather than only when it is open, so it belongs here with the
         # rest — a stage that only appeared on the bad nights would leave the
         # reader unable to tell "auto-apply is running" from "nobody checked".
-        # `correction` joined it at task 4, last and after the drain: it reads
-        # what the corpus currently looks like, so it should see the state this
-        # cycle leaves rather than the state it started from.
-        self.assertEqual(names,
-                         ["breaker", "entity_rollups", "stub_synthesis",
-                          "unfiled_drain", "correction"])
+        # `correction` joined it at task 4, and runs last: it reads what the
+        # corpus currently looks like, so it should see the state this cycle
+        # leaves rather than the state it started from.
+        self.assertEqual(names, ["breaker", "correction"])
         for r in results:
             self.assertIn("stage", r.as_dict())
 
-    def test_correction_runs_after_the_drain(self):
-        # Stated as an ordering rather than left to the list above, because the
-        # list would still pass with the two swapped and the reason it is last is
-        # substantive: correction measures the corpus, and the drain changes it.
+    def test_correction_runs_after_the_footers(self):
+        # Stated as an ordering, because the reason it is last is substantive:
+        # correction measures the corpus, and a footer changes a note.
         self.install(FakeLedger(pending={"eligible": 0, "current": 0, "pending": []}))
-        names = [r.stage for r in dream_stages.run_new_stages(Path("/nonexistent"))]
-        self.assertLess(names.index("unfiled_drain"), names.index("correction"))
+        names = [r.stage for r in dream_stages.run_new_stages(
+            Path("/nonexistent"), footer_targets=["memory/semantic/a.md"])]
+        self.assertEqual(names, ["breaker", "backlink_footers", "correction"])
+
+    def test_a_ledger_full_of_the_retired_stages_work_enqueues_nothing(self):
+        # Plan 04: entity rollups, stub synthesis and the unfiled drain
+        # retired. Each would have enqueued something from this ledger — an
+        # entity with no file, a target three notes expect, an unfiled note
+        # owed a pass. The pass must enqueue none of it.
+        fake = self.install(FakeLedger(
+            entities=[{"name": "commit:a73ff0f4f5dc", "mentions": 9}],
+            dangling=[{"target": "stop", "sources": ["a.md", "b.md", "c.md"]}],
+            pending={"eligible": 4, "current": 0,
+                     "pending": [{"path": "memory/semantic/x.md"}]},
+        ))
+        dream_stages.run_new_stages(Path("/nonexistent"), enrich_enabled=True)
+        self.assertEqual(fake.enqueued, [])
 
     def test_the_correction_stage_is_wired_in_and_not_merely_callable(self):
         # The hole task 3 paid for: a test that calls a stage directly stays

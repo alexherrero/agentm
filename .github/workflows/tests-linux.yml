@@ -168,7 +168,7 @@ jobs:
         # contributes to the vault even carrying the same still-HIGH pattern,
         # across all three --route-mode values.
         run: bash scripts/verify-reflection.sh
-      - name: verify-dreaming (stage->confirm->revert-log e2e, no-silent-apply-on-timeout)
+      - name: verify-dreaming (a twin found, no note changed, the pair on the needs-review map)
         # PLAN-wave-e-dreaming task 4: a manual /dream run against a seeded
         # corpus stages a dedup proposal without mutating any source file;
         # confirm() applies it through revert_log and the same RevertLog can
@@ -184,7 +184,7 @@ jobs:
         # The recording is the contract — a changed decision is a deliberate
         # edit to it.
         run: bash scripts/check-dreaming-parity.sh
-      - name: verify-declare-a-type (contract edit -> coverage falls -> queue -> climbs)
+      - name: verify-declare-a-type (contract edit -> coverage falls -> the batch queue offers it -> climbs)
         # PLAN-dreaming-ledger-and-sources task 9, across the seam rather than
         # inside it: a corpus enriched under one filing contract reads as fully
         # covered; declaring a type changes the contract hash; coverage falls
@@ -203,16 +203,6 @@ jobs:
         # in corpus_stats and rendered in the digest; the archived note's
         # content stays readable on disk (the plan's own acceptance test).
         run: bash scripts/verify-auto-org-meters.sh
-      - name: verify-opinion-supplements (accumulate loop Stages 2-3 e2e)
-        # wiki/designs/agentm-experience-and-dreaming.md's accumulate-loop
-        # section, ten locked calls: a two-distinct-session lane stages a
-        # confirm-gated opinion_promote proposal (never auto-applied);
-        # confirming it applies through revert_log and opinion_resolver
-        # reads the served supplement back; a direct base contradiction on
-        # a shared anchor never gets served and is recorded in
-        # _meta/opinion-base-proposals.json; the health pointer and
-        # console.section_opinion_supplements render it.
-        run: bash scripts/verify-opinion-supplements.sh
       - name: health-score-determinism (scorecard byte-identical across two runs)
         # R1.8 Task 1: the health scorecard aggregator must be deterministic —
         # two runs against the same fixture input produce byte-identical markdown.

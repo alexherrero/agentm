@@ -118,29 +118,6 @@ class CountParkedTests(unittest.TestCase):
         self.assertEqual(sb.count_parked(self.park), 2)
 
 
-class CountCrystallizeCandidatesTests(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.vault = Path(self._tmp.name) / "vault"
-
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def test_zero_when_missing(self):
-        self.assertEqual(sb.count_crystallize_candidates(self.vault), 0)
-
-    def test_counts_staged_candidates(self):
-        # Staging left the vault for the engine state dir (filing-v2 2a), so the
-        # reader and this fixture meet at $AGENTM_STATE_DIR, which setUp points
-        # at a tmp dir.
-        staging = sb._engine_state_dir() / "crystallize-staging"
-        staging.mkdir(parents=True)
-        (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
-        (staging / "post-release-b.json").write_text("{}", encoding="utf-8")
-        (staging / "not-a-candidate.txt").write_text("x", encoding="utf-8")
-        self.assertEqual(sb.count_crystallize_candidates(self.vault), 2)
-
-
 class HistoryLatestDateTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -172,9 +149,8 @@ class BuildBriefTests(unittest.TestCase):
         self.vault.mkdir()
         self.park = self.tmp / "park"
         self.hist = self.tmp / "digest-history.jsonl"
-        # The crystallize clause reads staging out of the engine state dir, which
-        # is the operator's real one unless this says otherwise — see the note in
-        # CountCrystallizeCandidatesTests.
+        # Pin the engine state dir to a tmp one so a fixture that writes there
+        # (the leftover-staging test below) never touches the operator's real one.
         self._state = os.environ.get("AGENTM_STATE_DIR")
         os.environ["AGENTM_STATE_DIR"] = str(self.tmp / "state")
 
@@ -233,13 +209,17 @@ class BuildBriefTests(unittest.TestCase):
         b = self._brief()
         self.assertIn("1 run parked, awaiting resume", b["line"])
 
-    def test_crystallize_clause_appended(self):
+    def test_leftover_crystallize_staging_says_nothing(self):
+        # Crystallization staging retired in agentm-vault plan 04: nothing
+        # writes markers any more, and the ones left on disk are not work
+        # awaiting anyone. A leftover directory must not put a count back on
+        # the line.
         _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=1.0, events=1)
         staging = sb._engine_state_dir() / "crystallize-staging"
         staging.mkdir(parents=True)
         (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
         b = self._brief()
-        self.assertIn("1 session awaiting crystallization", b["line"])
+        self.assertNotIn("crystalliz", b["line"])
 
     def test_deadman_threshold_is_configurable(self):
         _write_digest(self.vault / "diagnostics/digests", "20260716", "daily", spend=1.0, events=1)  # 1 day old

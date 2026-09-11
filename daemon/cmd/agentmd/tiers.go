@@ -66,12 +66,11 @@ func cmdTiers(args []string) error {
 	// The models default to what the daemon is configured with, so a stage can
 	// ask the plain question and get an answer about the run that would happen.
 	if *strong == "" {
-		// The configured name only, not enrichment's default: the Python
-		// cycle's sampled audit reads "a strong model is named" as "a strong
-		// call can be made" and would call a judge that raises by contract.
-		// That audit retires in the night's task 5; until then this answers
-		// exactly what the config says.
-		*strong = cfg.EnrichModel
+		// The strong tier's model as the batch resolves it, the shipped default
+		// included. It answered with the configured name only while the Python
+		// cycle's sampled audit read "a strong model is named" as "call the
+		// judge"; that audit retired in agentm-vault plan 04.
+		*strong = strongModel(cfg)
 	}
 	if *cheap == "" {
 		*cheap = cfg.CheapModel

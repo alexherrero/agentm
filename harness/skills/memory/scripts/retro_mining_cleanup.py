@@ -68,9 +68,8 @@ STATUS_FM = re.compile(r"^status:\s*(\S+)", re.M)
 # The frontmatter line a retired note carries, so the reason survives the run.
 REASON_KEY = "retired_because"
 
-# How many notes one run may touch. 25, matching
-# `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP` and `repair_excerpts`, for the
-# reason those give: a mistake caught after twenty-five rather than after two
+# How many notes one run may touch. 25, read from `repair_excerpts` for the
+# reason it gives: a mistake caught after twenty-five rather than after two
 # thousand.
 DEFAULT_BATCH = rx.DEFAULT_BATCH
 

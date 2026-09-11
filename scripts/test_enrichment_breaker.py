@@ -245,37 +245,9 @@ class WiringTests(unittest.TestCase):
             self.addCleanup(setattr, self.work_ledger, name, original)
         return fake
 
-    def test_an_open_breaker_stops_the_drain_enqueuing_anything(self):
-        fake = self.tds.FakeLedger(pending={
-            "eligible": 10, "current": 0,
-            "pending": [{"target": f"memory/{i}.md", "reason": "never"}
-                        for i in range(10)]})
-        with tempfile.TemporaryDirectory() as d:
-            vault = Path(d)
-            eb.consider(vault, "enrich", rising(0.71), now=AT)
-            self.install(fake)
-            res = self.dream_stages.stage_unfiled_drain(
-                enabled=True, budget=5, vault_path=vault)
-
-        self.assertEqual(fake.enqueued, [],
-                         "a paused pass enqueued work anyway")
-        self.assertTrue(any("paused" in n for n in res.notes),
-                        f"the drain did not say why it did nothing: {res.notes}")
-
-    def test_a_closed_breaker_lets_the_drain_run(self):
-        """Otherwise the test above would pass over a drain that never enqueues."""
-        fake = self.tds.FakeLedger(pending={
-            "eligible": 10, "current": 0,
-            "pending": [{"target": f"memory/{i}.md", "reason": "never"}
-                        for i in range(10)]})
-        with tempfile.TemporaryDirectory() as d:
-            vault = Path(d)
-            self.install(fake)
-            self.dream_stages.stage_unfiled_drain(
-                enabled=True, budget=5, vault_path=vault)
-
-        self.assertEqual(len(fake.enqueued), 5,
-                         "the drain did nothing even with the breaker closed")
+    # The two drain tests retired with the unfiled drain (agentm-vault plan 04):
+    # the drain was the one stage the latch paused, and the unfiled queue is
+    # the enrichment batch's own work now.
 
     def test_the_breaker_reaches_the_digest_through_the_stage_list(self):
         """Through `run_new_stages`, not by calling the stage directly.

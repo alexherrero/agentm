@@ -1,45 +1,32 @@
-# dream.yaml — the dreaming pipeline's scheduled job manifest
-# (AG Wave E, PLAN-wave-e-dreaming task 4).
+# dream.yaml — the Python half of the night (AG Wave E, PLAN-wave-e-dreaming
+# task 4; reshaped in agentm-vault plan 04).
 #
 # Per agentm-runner.md's job-manifest contract — the as-built schema is
-# scripts/runner/manifest.py, which this file follows (the design doc's own
-# illustrative schema sketch uses slightly different field names, e.g.
-# `run:`/`output:`/a bare `budget: <int>`; the as-built loader is the
-# canonical contract, so this manifest matches manifest.py, not the sketch).
+# scripts/runner/manifest.py, which this file follows.
 #
 # .harness/jobs/ is gitignored (per-project runtime state, same as every
 # other .harness/* file — see .gitignore), so this templates/ copy is the
 # tracked, shipped source. Register it by copying to .harness/jobs/dream.yaml
-# in a repo that runs the agentm runner (scripts/agentm-runner.sh). No
-# capability has an install-time auto-seeding step for runner jobs yet —
-# this is the first one shipped; wiring `install.sh` to copy it
-# automatically is a separate, not-yet-decided follow-up.
+# in a repo that runs the agentm runner (scripts/agentm-runner.sh). A repo
+# that already has a live copy edits it in place rather than recopying this
+# one over it.
 #
-# Cadence: "activity-gated (~weekly)" per the design's consumer table
-# (agentm-runner.md — "Dreaming: whole-corpus consolidation... the heaviest
-# job"). The runner's `gate:` field is parsed by manifest.py but not yet
-# evaluated by scripts/runner/cycle.py (as-built) — no real activity-gating
-# exists yet — so `schedule: weekly` + a two-cycle `lookback` is the
-# calibration-era substitute until the runner grows real gate evaluation.
+# What it runs (agentm-vault plan 04): the step of the night that reads,
+# reports and proposes, and changes no note. The filing contract, read first
+# and fail-closed; the corpus meters; lint as a report; possible twins (dedup
+# at 0.92) and shared keys (contradiction triage); proposed facets; the
+# enrichment breaker's status and the correction loop. The twins, the shared
+# keys and the facets become sections of the needs-review map, and the cycle
+# report feeds the morning note. Everything that applied or staged anything —
+# lifecycle, compression, tidying, lint repair, the opinion supplement,
+# insights and qualification, the sampled audit, entity rollups, stub
+# synthesis, the unfiled drain, the confirm-and-revert path — retired in
+# plan 04; the dreaming binary carries the lanes that write.
 #
-# Cadence review (2026-07-11, Consolidation-arc follow-up, paired with the
-# expire auto-apply flip below): the arc's proving window ran this pass
-# more often (an alternate-day cadence) with a temporary <=100-note batch
-# cap for fast calibration feedback -- that was explicitly a proving-window
-# artifact, not a decided standing config. Reviewed against the real vault:
-# `_inbox/` (upstream of this corpus) holds ~1,565 notes growing at a noisy
-# ~13/day baseline (one-time bulk-mining spike aside); the corpus this job
-# actually scans (the whole vault minus `_inbox`/`_meta`/`_harness`/etc.,
-# per dream.py's own _EXCLUDE_DIRS) is far smaller at 366 entries, only 2
-# of which carry a `supersedes:` link -- nowhere near the >=3-chain floor
-# `compression` (the auto-applying "expire" stage) requires, so real
-# auto-apply volume is ~0/cycle today. Weekly stays the standing cadence:
-# there is no organic pressure for anything tighter, and a slower cadence
-# than the proving window's is fine now that dream.py auto-applies the low-
-# risk "expire" stage on its own instead of waiting on an operator's batch
-# review. See `--batch-cap` below for the batch bound this review also set.
-schedule: weekly
-lookback: 14d
+# Nightly, because the needs-review map and the morning note read what it
+# leaves, and a weekly cycle left them a week stale.
+schedule: daily
+lookback: 3d
 
 # The night (agentm-vault plan 04): the four nightly steps start inside
 # 02:00-06:00 local and run in this order — enrichment, the binary, the Python
@@ -49,45 +36,20 @@ order: 3
 
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
 # Relies on MEMORY_VAULT_PATH already being set in the runner's own
-# environment, same as every other vault-reading script in this repo.
-# `--batch-cap 25` (explicit, not just the script's own default, so a
-# future default change doesn't silently alter this manifest's committed
-# behavior) bounds compression-stage ("expire") auto-apply to at most 25
-# notes per cycle -- generous headroom over today's ~0/cycle real volume,
-# while capping worst-case blast radius well under 10% of the 366-entry
-# corpus this job scans (the proving window's temporary <=100 cap would
-# have been over a quarter of it). dedup and contradiction-triage
-# proposals are UNCHANGED -- they still stage to `_dream-staging/` and
-# wait on an explicit `dream_confirm.confirm()` call; only the
-# compression/"expire" stage auto-applies, per the operator's 2026-07-11
-# ruling (wiki/designs/agentm-experience-and-dreaming.md's amendment log).
-# Filing v2 part 6: the lanes the dreaming binary carries — the lifecycle
-# policy, copies, refile, promote, the calendar reviews, the MOCs, the date
-# glosses — left this cycle with the takeover (2026-09-05; dreaming.yaml).
-# What runs here is what the binary does not carry: lint repair, compression,
-# the artifact shelf, inbox triage, the needs-review MOC, insights, the
-# confirm-gated proposals (the archive proposals among them).
-command: python3 ../harness/skills/memory/scripts/dream.py --batch-cap 25
+# environment, same as every other vault-reading script in this repo. No
+# `--batch-cap`: the cycle applies nothing, so there is nothing to cap (the
+# flag is still accepted, so a live copy that passes it keeps running).
+command: python3 ../harness/skills/memory/scripts/dream.py
 
-# Insight-candidate writes land under _dream/insights/ — new, agent-
-# generated derived content, i.e. T3 (the agent's own memory), not T2
-# (operator-curated). Dedup and contradiction-triage remain proposal-only
-# (never write to an existing entry without an operator's confirm());
-# compression is the one stage that now writes on its own (the auto-
-# applying "expire" action above) — still T3, since every write it makes
-# still lands through revert_log.record_and_apply, the same auditable,
-# revertible path every other T3 write in this job already used.
+# T3: what it writes is the agent's own — the needs-review map, and its
+# findings and report under the engine state dir. No note is written.
 tier: T3
 
-# No `budget:` — the thin v1 pipeline (dream.py, dream_confirm.py) makes
-# zero LLM calls; it's stdlib-only deterministic heuristics (difflib
-# similarity, frontmatter pattern matching). A token budget will matter once
-# qualification/insight-generation graduate to an LLM-backed pass (the
-# vault design's v2 graduation horizon) — add one then, not speculatively.
+# No `budget:` — the cycle makes zero model calls; it is stdlib-only
+# deterministic heuristics (difflib similarity, frontmatter matching).
 
-# Stays true until task 2's calibration evidence (the vault design's locked
-# call #6 — the dogfood evidence a later autonomy-graduation decision needs)
-# is explicitly recorded as sufficient in PLAN-wave-e-dreaming's close-out.
-# Promoting to false is a separate, explicit decision — never an automatic
-# consequence of this manifest existing (the plan's own Constraints).
+# The shipped posture stays dry-run: a repo that copies this in turns it on
+# by flipping this to false, on its own decision. It writes no note either
+# way, so the flip only decides whether the map and the morning note get the
+# cycle's findings.
 dry_run: true
