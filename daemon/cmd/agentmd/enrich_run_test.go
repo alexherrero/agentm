@@ -178,7 +178,7 @@ func TestABudgetFlagLowersTheLineAndNeverRaisesIt(t *testing.T) {
 	if got, err := lowerOnly("max-calls", 6, 250); err != nil || got != 6 {
 		t.Errorf("--max-calls 6 gave %d, %v; want it lowered", got, err)
 	}
-	if _, err := lowerOnly("strong-tokens", 2_000_000, 1_000_000); err == nil ||
+	if _, err := lowerOnly("strong-tokens", 4_000_000, 2_000_000); err == nil ||
 		!strings.Contains(err.Error(), "not raise") {
 		t.Errorf("a flag over the line was accepted: %v", err)
 	}

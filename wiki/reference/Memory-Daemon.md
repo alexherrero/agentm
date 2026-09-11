@@ -541,8 +541,8 @@ ledger's population (`pendingFor`) is the same queue too.
 ### The budget, and what stops a run
 
 `DefaultBudget` (`daemon/internal/enrich/batch.go:142-150`) is the
-operator's line: 1,000,000 tokens on the strong tier and 2,000,000 on the
-cheap tier (`StrongTokenLine`, `CheapTokenLine`, `usage.go:216-219`), a
+operator's line: 2,000,000 tokens a night on either tier
+(raised from 1,000,000 strong on 2026-09-11) (`StrongTokenLine`, `CheapTokenLine`, `usage.go:216-219`), a
 250-call guard (`CallGuard`, `usage.go:220-224`) that counts every model call
 — the faithfulness judge's included — a 3h30m time limit sized to the
 02:00-06:00 window, and a fuse of five notes in a row whose model call
@@ -550,7 +550,7 @@ itself failed (not a note a post-gate rejected, which is the model
 answering badly rather than not answering at all). All four are read
 before the next note (`stop`, `batch.go:187-211`); the first one a run
 hits ends it, and `BatchReport.StoppedBy` names which in words — "the
-call guard (250 calls)", "the strong-tier token line (1,000,000 tokens)",
+call guard (250 calls)", "the strong-tier token line (2,000,000 tokens)",
 the time limit, or the fuse — alongside the `--after` cursor the next run
 resumes from. `--max-calls`, `--strong-tokens`, and `--cheap-tokens` may
 lower any of these lines and never raise them (`lowerOnly`,
