@@ -23,7 +23,6 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 import correction  # noqa: E402
-import dream_confirm  # noqa: E402
 from revert_log import RevertLog  # noqa: E402
 
 
@@ -197,19 +196,9 @@ class MergeProposalTests(VaultCase):
                              f"{rel} changed; a proposal describes a mutation "
                              f"and must not perform it")
 
-    def test_the_merge_stage_is_not_auto_appliable(self):
-        # `dream_confirm.AUTO_APPLY_STAGES`'s own docstring says dedup/promote
-        # must never be added "without a fresh, separate operator ruling". This
-        # module is not that ruling, so its proposals must carry a stage name
-        # that is not in the set.
-        self.assertNotIn(correction.MERGE_STAGE, dream_confirm.AUTO_APPLY_STAGES)
-
-    def test_no_correction_stage_name_is_auto_appliable(self):
-        # Stated over every stage name this module writes, not just the merge
-        # one, so a later arm cannot become auto-applied by being named after a
-        # stage that already is.
-        for name in (correction.MERGE_STAGE, "correction_redistill", "correction"):
-            self.assertNotIn(name, dream_confirm.AUTO_APPLY_STAGES, name)
+    # The two auto-apply-set guards retired with the set itself: agentm-vault
+    # plan 04 removed the confirm-and-revert path, so no stage name can be
+    # auto-applied. The test above still holds that a proposal changes nothing.
 
     def test_the_proposal_keeps_one_note_and_supersedes_the_rest(self):
         for rel in ("m/a.md", "m/b.md", "m/c.md"):

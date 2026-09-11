@@ -1,6 +1,6 @@
 # observability-digest-weekly.yaml — the weekly rung of the observability
 # ledger's digest ladder (PLAN-observability-console task 2). See
-# observability-digest-daily.yaml's own header note for the shared
+# observability-digest-3day.yaml's own header note for the shared
 # registration/tier/dry-run rationale.
 schedule: weekly
 lookback: 48h

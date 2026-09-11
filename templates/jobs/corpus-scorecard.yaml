@@ -2,7 +2,7 @@
 # (agentm-vault plan 01, task 4).
 #
 # What the memory *is*, as opposed to what last night's run *did*. Its sibling
-# report is the dreaming scorecard; the capability scorecard `health-pass`
+# report is the morning note, which links it; the capability scorecard `health-pass`
 # runs is a third, different subject (are the designed capabilities built and
 # passing) with its own destination.
 #
@@ -25,6 +25,12 @@
 # that runs the agentm runner (scripts/agentm-runner.sh).
 schedule: daily
 lookback: 24h
+
+# The night (agentm-vault plan 04): the four nightly steps start inside
+# 02:00-06:00 local and run in this order — enrichment, the binary, the Python
+# cycle, the scorecards — because each reads what the one before it wrote.
+window: "02:00-06:00"
+order: 4
 
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention). The
 # script resolves the memory root by asking the daemon — never the vault root,

@@ -117,7 +117,10 @@ class HaltTests(_Base):
         self._seed_a_mergeable_pair()
         digest = dream.run_dream(self.vault, run_id="halted")
         self.assertEqual(digest.proposals, [])
-        self.assertEqual(digest.insight_candidates, [])
+        # The halted run also leaves no findings for the needs-review map to
+        # read: the file is written only when the rules parse.
+        found = dream.engine_state.engine_state_dir() / "dreaming" / dream.REVIEW_PROPOSALS_NAME
+        self.assertFalse(found.exists())
 
     def test_the_same_corpus_does_propose_when_the_rules_parse(self) -> None:
         """The control. Without it, "proposed nothing" proves nothing — an empty

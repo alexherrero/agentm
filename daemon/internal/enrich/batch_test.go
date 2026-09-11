@@ -35,7 +35,7 @@ func fixture(n int) []Candidate {
 func collector() (Writer, func() []string) {
 	var mu sync.Mutex
 	var got []string
-	w := func(_ context.Context, rel, _ string) error {
+	w := func(_ context.Context, rel string, _ Outcome) error {
 		mu.Lock()
 		got = append(got, rel)
 		mu.Unlock()
@@ -207,7 +207,7 @@ func TestATimeBudgetStopsTheRun(t *testing.T) {
 // look drained while the notes were untouched.
 func TestAWriteFailureCountsAsAFailure(t *testing.T) {
 	p := passWith(t, "enriched")
-	refuse := func(context.Context, string, string) error {
+	refuse := func(context.Context, string, Outcome) error {
 		return fmt.Errorf("read-only vault")
 	}
 

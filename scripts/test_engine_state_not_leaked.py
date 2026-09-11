@@ -3,8 +3,9 @@
 
 On 2026-09-05 at 20:59 a suite ran without the hermetic guard and left ~200
 directories under `~/.local/state/agentm/dream-runs/`, each recording a
-`/var/folders/.../tmp...` vault path. `dreaming_scorecard.py` reads the newest
-directory as "last night's run", so the 2026-09-05 edition reported on a
+`/var/folders/.../tmp...` vault path. `dreaming_scorecard.py` (retired in
+agentm-vault plan 04) read the newest directory as "last night's run", so the
+2026-09-05 edition reported on a
 fixture — a diagnostic surface describing a test's tmpdir as the state of the
 memory.
 

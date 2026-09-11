@@ -1,15 +1,15 @@
-# How to enable the daily digest email
+# How to enable the daily email
 
 > [!NOTE]
 > **Status: implemented** — shipped by `PLAN-proactive-delivery.md#task-4` (FRIDAY ladder feature 1, task 4 of 5); the runner-job manifest referenced in step 6 shipped in task 5 of the same plan.
-> **Goal:** Opt in to a daily email with the same digest the SessionStart brief displays, so you can read it away from your machine.
-> **Prereqs:** You need a first-party SMTP relay or on-device mail agent you control. This channel never communicates with third-party push services. You also need a resolvable vault with at least one digest-ladder cycle already run (see [Persist a morning report](Persist-A-Morning-Report)).
+> **Goal:** Opt in to a daily email that carries the morning note, so you can read what the night did away from your machine.
+> **Prereqs:** You need a first-party SMTP relay or on-device mail agent you control. This channel never communicates with third-party push services. You also need a resolvable vault with the `morning-note` job registered (see [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards)); without a recent note, the email sends the newest digest instead.
 
-`scripts/health/session_email.py` is the daily email delivery channel. It implements the design described in [Delivery](agentm-autonomy#delivery--getting-it-in-front-of-you). The channel reads the same digest ladder as the SessionStart line and on-device notifications. This ensures the email content matches what you see elsewhere.
+`scripts/health/session_email.py` is the daily email delivery channel. It implements the design described in [Delivery](agentm-autonomy#delivery--getting-it-in-front-of-you). The email body is the morning note. This is the same page whose first section the session-start line shows.
 
 ## Steps
 
-Configure and run the daily digest email by following these steps:
+Configure and run the daily email by following these steps:
 
 1. **Set both config keys.** The channel requires both keys to function. If you configure only one key, the channel silently disables itself:
 
@@ -38,7 +38,7 @@ Configure and run the daily digest email by following these steps:
 
    The script verifies both config keys, resolves your vault, and exits silently if any requirement is missing.
 
-3. **Understand the message content.** The email contains the latest delivered digest note from the most recent cycle. Unlike on-device notifications, the email does not check for staleness. It always sends the newest digest. The script builds the message using the Python standard library and sends it directly to your configured SMTP host.
+3. **Understand the message content.** When this morning's or yesterday's morning note is on disk, the email is that note with its frontmatter removed, under the subject `AgentM morning — <headline>`. A note older than yesterday is never sent. Without a recent note, the email carries the newest delivered digest, stale or not; staleness warnings stay with the session-start line. The script builds the message using the Python standard library and sends it directly to your configured SMTP host.
 
 4. **Observe the daily limit.** The script tracks delivery in `~/.cache/agentm/telemetry/email-state.json`. It will only send one email per calendar day. Subsequent invocations on the same day do not trigger another email. If the SMTP send fails, the script does not record the attempt, and the next run will retry.
 
@@ -48,13 +48,14 @@ Configure and run the daily digest email by following these steps:
    python3 scripts/agentm_config.py --unset plugins.autonomy.email_to
    ```
 
-6. **Automate delivery with the runner.** You can schedule the email using the provided job manifest. Copy the template to your local harness directory:
+6. **Automate delivery with the runner.** Copy both job templates to your local harness directory:
 
    ```bash
+   cp templates/jobs/morning-note.yaml .harness/jobs/morning-note.yaml
    cp templates/jobs/observability-email-daily.yaml .harness/jobs/observability-email-daily.yaml
    ```
 
-   The local runner picks up the job on its next daily tick. The runner will not send any emails until you set both configuration keys.
+   Both run inside the night's `02:00-06:00` window: the note at order 5, the email at order 6, so the email carries the note the night just wrote. The runner will not send any emails until you set both configuration keys.
 
 ## Verify
 
@@ -63,7 +64,9 @@ Run these tests in `scripts/health/test_session_email.py` to confirm the behavio
 - `test_unconfigured_never_sends` and `test_configured_sends` verify that the channel requires both configuration keys.
 - `test_same_day_rerun_does_not_resend` and `test_new_day_resends` verify the calendar-day delivery limit.
 - `test_smtp_failure_does_not_record_sent` verifies that a failed send does not consume the attempt.
-- `test_subject_and_body_from_latest_digest` verifies that the email body matches the latest digest.
+- `test_the_morning_note_is_the_body` verifies that the email sends the morning note, frontmatter removed, under the `AgentM morning — <headline>` subject.
+- `test_a_stale_morning_note_is_not_resent_as_news` verifies that a note older than yesterday gives way to the newest digest.
+- `test_subject_and_body_from_latest_digest` verifies the digest fallback: with no morning note, the email body matches the latest digest.
 - `test_login_called_when_password_present`, `test_starttls_attempted_on_non_465_port`, `test_ssl_used_on_port_465_no_starttls`, and `test_false_on_auth_failure` verify the authenticated-relay path: login is attempted when the URL carries a password, TLS is negotiated per port, and a rejected login returns `False` rather than raising.
 - `test_from_addr_used_as_sender_when_given` and `test_from_addr_falls_back_to_to_addr_when_absent` verify the `--email-from` precedence.
 
@@ -81,6 +84,8 @@ Refer to these solutions when troubleshooting email delivery:
 Refer to these related topics for more details:
 
 - [Autonomy — Delivery](agentm-autonomy#delivery--getting-it-in-front-of-you) — the design this channel implements, and the amendment log entry with the full build detail.
+- [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) — what the email carries, section by section.
+- [Memory daemon reference § the morning note](Memory-Daemon#the-morning-note) — the note's sections, its schedule, and every surface that reads it.
 - [Installer CLI](Installer-CLI) — the `--notify-enabled` / `--email-to` / `--email-smtp-url` / `--email-from` config-key reference row.
 - [Enable on-device notifications](Enable-On-Device-Notifications) — the sibling opt-in delivery channel, same plan.
-- [Persist a morning report](Persist-A-Morning-Report) — the sibling `scripts/health/` recipe for the overnight-run report this same digest ladder feeds.
+- [Persist a morning report](Persist-A-Morning-Report) — the sibling `scripts/health/` recipe for the overnight-run report the observability rollup feeds, a different page from the morning note.

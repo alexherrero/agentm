@@ -2,7 +2,7 @@
 """The nightly corpus health scorecard.
 
 What the memory *is*, as opposed to what last night's run *did* — that second
-report is the dreaming scorecard and lives beside this one. This is memory
+report is the morning note (`morning_note.py`), which links this one. This is memory
 statistics, the diversity meters, the retrieval numbers, component health, and
 the memory context graph, written date-marked to `<vault>/desk/diagnostics/`
 along with a stable `latest_health_scorecard.md` that a brief can link.

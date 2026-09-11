@@ -383,7 +383,7 @@ func Evaluate(in Input) Report {
 		r.Queue.OldestAt = in.OldestUnfiledSince.UTC().Format(time.RFC3339)
 		if in.Thresholds.UnfiledAge > 0 && age > in.Thresholds.UnfiledAge {
 			r.add(AlertQueueAge, fmt.Sprintf(
-				"the oldest unfiled item is %s old, past the %s threshold — filing has "+
+				"the oldest item awaiting a judgment is %s old, past the %s threshold — filing has "+
 					"stalled, and a queue that stops draining is how the last inbox reached 4,933",
 				short(age), short(in.Thresholds.UnfiledAge)))
 		}

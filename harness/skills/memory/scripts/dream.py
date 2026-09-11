@@ -1,57 +1,40 @@
 #!/usr/bin/env python3
-"""dream.py — the thin manual `/dream` pass (AG Wave E dreaming plan task 2).
+"""dream.py — the Python half of the night: what has no Go owner and a reader.
 
-A one-shot, operator-invoked run of the full dream pipeline — corpus stats
-(deterministic) → dedup → contradiction triage → compression →
-crystallization → insight-generation → qualification → digest+staging —
-against a vault (or, in tests, a seeded fixture corpus).
+The third step of the night (agentm-vault § Dreaming, plan 04), after the
+enrichment batch and the dreaming binary and before the scorecards. It reads,
+it reports, and it proposes; it changes no note.
 
-Per the vault design's v1 locked call #1 ("stage ALL source-touching
-dispositions in v1; auto-write only the additive derived layer"), this
-module is deliberately split by write behavior:
+  - the filing contract, read first and fail-closed: a block that will not
+    parse halts every proposal below, and the digest says why;
+  - the corpus meters (connectivity, browse surface);
+  - lint, as a report — its auto-repair lane retired with every other lane
+    that applied anything;
+  - **possible twins**: dedup at the shipped 0.92 similarity and contradiction
+    triage (same key, different body), each a pair with its similarity and
+    both titles;
+  - **proposed facets**: a diary label recurring on three or more days;
+  - the part-5 stages that still have a reader — the enrichment breaker's
+    status and the correction loop (the backlink-footer stage runs only when
+    a caller hands it targets, and this cycle hands it none);
+  - the needs-review map, regenerated with the twins and the facets as
+    sections of their own.
 
-  - dedup / contradiction-triage / compression PROPOSE dispositions
-    (`Proposal` — a stage, a kind, the paths touched, and the mutations that
-    WOULD apply) but never write them. Task 1's revert-log
-    (`revert_log.RevertLog`) is not invoked here — this task's own
-    boundary stops at "propose"; task 3 (`_dream-staging/` inbox contract)
-    is what formalizes operator-confirm → `RevertLog.record_and_apply`.
-    The digest names each proposal's prospective revert pointer (the
-    `run_id`/`stage` it will journal under once confirmed) so an operator —
-    or task 3's confirm flow — knows exactly where a later revert would
-    reach.
-  - insight-generation is the one additive, non-source-touching stage —
-    it writes new `status: candidate` files directly (no staging needed;
-    "candidate" never becomes authoritative until separately accepted).
-  - digest+staging writes the run's digest (every proposal + its revert
-    pointer) and each mutation-bearing proposal's raw proposed content to
-    `_dream-staging/<run_id>/` — read-only material for a human, or a later
-    task 3 confirm step, to act on.
+The twins and the facets land in the needs-review map, where you act on them
+in Obsidian by merging or by writing `superseded_by`. There is no staging
+directory and no confirm step: 167 dedup proposals drew 11 confirmations in two
+months, and a proposal you act on by hand is the same act with git as the undo.
 
-Deliberately thin (v1 locked call #6: "dogfoods the passes, calibrates
-thresholds"): dedup uses stdlib `difflib` text-similarity rather than an
-embedding model (keeps this pass dependency-light and independent of
-whichever V6-index/embedding work lands separately); contradiction-triage
-and compression use simple frontmatter conventions (`slug`, `supersedes`)
-rather than a semantic engine; qualification defaults every insight
-candidate's rung to "retrieval" (this pass only re-surfaces relationships
-already present in the corpus — it does not attempt the "a V6-3 pass over
-the pre-pass snapshot can't reproduce it" discovery test). These are
-calibration-era simplifications, not the v2 engine-graduated shape — see
-`wiki/designs/agentm-experience-and-dreaming.md` and the vault's
-`research-dream-mode-design.md`.
+Retired in plan 04, each with its reason and its last night's count in the
+plan's progress: the lifecycle stage and the calendar rollups (the binary owns
+both), tidying (it moved your kind-less documents), compression (it proposed
+nothing on any run), the opinion supplement (its lanes retired), insight
+generation and qualification (no surface read what they wrote), the sampled
+audit (it audited a stage that makes no model call), entity rollups, stub
+synthesis and the unfiled drain (the class folded; the drain is the batch),
+and the confirm-and-revert path.
 
-Public surface:
-
-    run_dream(vault_path, *, run_id=None) -> DreamDigest
-        Runs the full pass once against `vault_path`. Never mutates an
-        existing entry. Returns the digest (proposals, insight candidates,
-        corpus stats, the written digest file's path).
-
-    Proposal / InsightCandidate / DreamDigest
-        The pass's result types (see each dataclass's docstring).
-
-CLI: `python3 dream.py --vault-path <path> [--run-id <id>]`.
+CLI: `python3 dream.py [--vault-path <memory root>] [--run-id <id>]`.
 """
 from __future__ import annotations
 
@@ -63,52 +46,43 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 # Bootstrap this directory before any sibling import: a foreign loader
 # (crickets' bridges file-path-load memory-skill modules) has none of it on
 # sys.path, and a bare sibling import only ever worked when the hooks ran the
 # file as a script. Pinned by scripts/test_skill_modules_file_loadable.py.
-import sys
-from pathlib import Path
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-import engine_state  # noqa: E402
-from typing import Optional
-
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from vault_lock import atomic_write  # noqa: E402
+import engine_state  # noqa: E402
 import storage_rules  # noqa: E402
+from vault_lock import atomic_write  # noqa: E402
 
 __all__ = [
     "run_dream",
-    "run_dream_and_auto_apply",
     "Proposal",
-    "InsightCandidate",
     "DreamDigest",
+    "REVIEW_PROPOSALS_NAME",
+    "CYCLE_REPORT_NAME",
     "main",
 ]
 
-# Calibration-era thresholds (v1 locked call #6) — expected to move once
-# task 2's dogfood evidence exists (vault design v2 graduation table).
+# The shipped dedup threshold (agentm-vault § Dreaming keeps it at 0.92).
 DEDUP_SIMILARITY_THRESHOLD = 0.92
-COMPRESSION_CHAIN_MIN_LENGTH = 3
+
+# Where the cycle leaves what it found, under the engine state dir's
+# `dreaming/` — beside the binary's own `last-report.json`. The needs-review
+# map reads the first; the morning note reads the second.
+REVIEW_PROPOSALS_NAME = "review-proposals.json"
+CYCLE_REPORT_NAME = "python-cycle.json"
 
 # Reserved top-level vault dirs a dream pass never reads as source entries —
 # mirrors vault_lint.py's _EXCLUDE_DIRS (parity pinned by test_vault_lint.py)
 # plus dreaming's own extras: `_dream` (a pass must not dream about its own
-# prior output) and `.obsidian` (editor config, not notes).
-#
-# "_opinions" (accumulate loop, Stages 2-3, locked call 6): a live hazard
-# until this exclusion landed -- the directory sat in the general corpus,
-# so `_stage_link_improvement` would write **Related:** wikilinks into a
-# served supplement (changing text the agent reads as its own standards),
-# `_stage_tidying` would shelve a year-old standard, and the general
-# `_stage_dedup` would merge across opinions at the wrong threshold.
-# `_stage_opinion_supplement()` owns this directory exclusively, mirroring
-# `_inbox`'s own exclusion + dedicated-owner pattern above.
+# prior output), `.obsidian` (editor config, not notes), and the retired
+# opinion lanes and crystallize staging, which no stage may read as corpus.
 _EXCLUDE_DIRS = frozenset(
     # Matched per path SEGMENT, so this holds the scratch space's last
     # component ("scratch"), not its "desk/scratch" spelling.
@@ -123,25 +97,18 @@ _EXCLUDE_DIRS = frozenset(
 
 @dataclass
 class Proposal:
-    """One proposed, NOT-YET-APPLIED disposition from a source-touching
-    stage. `mutations` is `[(path, new_content_or_None), ...]` in the exact
-    shape `revert_log.RevertLog.record_and_apply` accepts — task 3's confirm
-    flow is expected to pass it straight through once the operator accepts."""
+    """One finding for you to judge. Nothing here is applied: a twin is merged
+    by hand, a facet is registered by an edit to the contract.
 
-    stage: str  # "dedup" | "contradiction_triage" | "compression"
-    kind: str  # "merge" | "keep_both" | "compress"
+    `stage` is `dedup`, `contradiction_triage` or `facet_promotion`; `detail`
+    carries what the needs-review section renders (the similarity and both
+    titles for a twin; the label, its days and a sample for a facet)."""
+
+    stage: str
+    kind: str
     paths: list
     summary: str
-    mutations: list = field(default_factory=list)
-
-
-@dataclass
-class InsightCandidate:
-    """One additively-written derived insight — always `status: candidate`,
-    never authoritative until a separate, later acceptance."""
-
-    path: Path
-    content: str
+    detail: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -149,30 +116,14 @@ class DreamDigest:
     run_id: str
     corpus_stats: dict
     proposals: list
-    insight_candidates: list
     digest_path: Optional[Path] = None
-    tidying_previews: list = field(default_factory=list)
-    # The sampled higher-tier audit's result (task 9): populated by
-    # `run_dream_and_auto_apply` only — a bare `run_dream()` has nothing
-    # applied yet to sample, so this stays `None` there. The same convention
-    # the folded inbox-triage sub-run used before it was retired
-    # (2026-09-06): a field only the applying wrapper fills.
-    sampled_audit: Optional[dict] = None
-    # The needs-review reading (filing v2, the write path, task 3): populated
-    # by `run_dream_and_auto_apply`, which regenerates the MOC after the
-    # folded sub-runs have applied. None on a bare `run_dream()`.
+    # The needs-review reading, after the map regenerated with this cycle's
+    # twins and facets. None when filing is halted.
     needs_review: Optional[dict] = None
-    # The lifecycle axis's reading (filing v2 part 6): the populations and the
-    # week's moves, as the summary line. The moves themselves are the dreaming
-    # binary's. None on a bare `run_dream()`.
-    lifecycle: Optional[dict] = None
 
 
 # -----------------------------------------------------------------------------
-# Minimal frontmatter helpers (mirrors the repo's existing per-script idiom —
-# see heat_policy.py / recall.py's own `_parse_frontmatter`; not centralized
-# anywhere in this codebase today, so this module follows the same pattern
-# rather than introducing a new shared dependency).
+# Corpus reading
 # -----------------------------------------------------------------------------
 
 def _parse_frontmatter(content: str) -> tuple[dict, str]:
@@ -196,48 +147,14 @@ def _parse_frontmatter(content: str) -> tuple[dict, str]:
     return fm, body
 
 
-def _patch_frontmatter(content: str, updates: dict) -> str:
-    if not content.startswith("---\n"):
-        lines = ["---"] + [f"{k}: {v}" for k, v in updates.items()] + ["---"]
-        return "\n".join(lines) + "\n" + content
-
-    end = content.find("\n---\n", 4)
-    if end == -1:
-        return content
-
-    fm_text = content[4:end]
-    body = content[end + 5:]
-    lines = fm_text.split("\n")
-    remaining = dict(updates)
-    new_lines = []
-    for line in lines:
-        if ":" in line:
-            key = line.partition(":")[0].strip()
-            if key in remaining:
-                new_lines.append(f"{key}: {remaining.pop(key)}")
-                continue
-        new_lines.append(line)
-    for k, v in remaining.items():
-        new_lines.append(f"{k}: {v}")
-    return "---\n" + "\n".join(new_lines) + "\n---\n" + body
-
-
-# -----------------------------------------------------------------------------
-# Corpus reading
-# -----------------------------------------------------------------------------
-
 _CRYSTALLIZED_PARTS = ("memory", "crystallized")
 _SUPPLEMENT_KIND_LINE = "kind: opinion-supplement"
 
 
 def _is_supplement_home(p: Path, rel_parts: tuple) -> bool:
-    """Filing-v2 part 3 folds the accumulate loop's lanes into
-    `memory/crystallized/`: each opinion's lane is a subdirectory there and
-    its served supplement sits beside the crystallized memories. The hazard
-    `_opinions`'s exclusion answers (locked call 6) follows them — the lane
-    stage owns them, and no general stage may merge, shelve or annotate a
-    supplement. A lane is any subdirectory of the class; a served file is
-    told by its kind, read from the head of the file for notes directly there."""
+    """A retired opinion lane under `memory/crystallized/`, or a served
+    supplement beside the crystallized memories. The lanes retired, and any
+    left on disk are nobody's corpus: no stage may call a standard a twin."""
     if tuple(rel_parts[:2]) != _CRYSTALLIZED_PARTS:
         return False
     if len(rel_parts) > 2:
@@ -272,36 +189,13 @@ def _load(entries: list) -> dict:
     return loaded
 
 
-# -----------------------------------------------------------------------------
-# Stage 0 — corpus stats (deterministic)
-# -----------------------------------------------------------------------------
+def _title(p: Path, fm: dict) -> str:
+    return fm.get("title") or p.stem.replace("-", " ")
 
-def _stage_facet_promotion(vault_path, *, today=None, rules=None) -> list:
-    """Filing v2 part 5, task 5: a diary label recurring on three or more
-    distinct days is a standing facet the registry is missing. Each one is a
-    proposal — the contract file with one line added under `facets:` — that
-    waits on the operator's confirm like dedup and contradiction triage do.
-    Never in AUTO_APPLY_STAGES: the agent does not widen its own registry.
-    Best-effort: a vault without a register proposes nothing."""
-    try:
-        import calendar_promotion  # function-local: keeps dream's import graph flat
-        found = calendar_promotion.proposals(vault_path, today=today, rules=rules)
-    except Exception as e:  # pragma: no cover
-        print(f"warning: facet-promotion detector failed: {e}", file=sys.stderr)
-        return []
-    out = []
-    for label, s, path, new_text in found:
-        out.append(Proposal(
-            stage="facet_promotion",
-            kind="promote-facet",
-            paths=[str(path)],
-            summary=(f"the diary carries `{label}` on {s.days} days ({s.first} … {s.last}, {s.entries} entries; "
-                     f"e.g. {s.sample!r}) — propose registering it as a facet in standards/storage-rules.md; "
-                     "confirm to apply the one-line rules edit"),
-            mutations=[(path, new_text)],
-        ))
-    return out
 
+# -----------------------------------------------------------------------------
+# The meters and the contract (deterministic, zero-token)
+# -----------------------------------------------------------------------------
 
 def _stage_corpus_stats(entries: list) -> dict:
     return {
@@ -310,24 +204,15 @@ def _stage_corpus_stats(entries: list) -> dict:
     }
 
 
-# -----------------------------------------------------------------------------
-# Stage 0b — the filing contract (deterministic, zero-token)
-#
-# `standards/storage-rules.md` is authoritative for filing, and it is read at
-# runtime rather than compiled in. That makes it the one file whose corruption
-# would otherwise be silent: a model handed a malformed rule does not stop, it
-# improvises. So the pass reads the rules first and **fails closed** — a block
-# that will not parse halts every stage that would re-file a note, the digest
-# names the parse failure, and nothing files anywhere until the file parses
-# again. This is the digest half of the halt; the gate and the doctor row are
-# the other two readers.
-# -----------------------------------------------------------------------------
-
 def _stage_storage_rules(vault_path: Path, loaded: dict) -> dict:
     """Read the filing contract. Returns stats; never raises.
 
-    On a parse failure the returned dict carries `storage_rules_ok: False` and
-    the failure text, and `run_dream` proposes nothing for the cycle.
+    `standards/storage-rules.md` is read at runtime rather than compiled in,
+    which makes it the one file whose corruption would otherwise be silent: a
+    model handed a malformed rule does not stop, it improvises. So the pass
+    reads it first and fails closed — on a parse failure the returned dict
+    carries `storage_rules_ok: False` and the failure text, and `run_dream`
+    proposes nothing for the cycle.
     """
     try:
         rules = storage_rules.load()
@@ -362,30 +247,13 @@ def _stage_storage_rules(vault_path: Path, loaded: dict) -> dict:
 
 
 def _connectivity_meter(loaded: dict) -> dict:
-    """The connectivity meter (auto-org part 2 task 7). Two numbers,
-    counted independently — the design is explicit they must be separate
-    so the linker can't inflate its own success number:
-
-      - `organic_connectivity` (+ `organically_linked_count`): the share
-        of notes with >= 1 real, NON-generated link — a wikilink (or a
-        `supersedes:` frontmatter edge) that survives after stripping
-        every `**Related:**` line, the only place the linker ever writes.
-        Detection reuses `graph.extract_edges` on the stripped content, so
-        fenced code blocks and inline code spans are excluded exactly the
-        way the typed-edge graph itself excludes them — a fenced
-        `[[example]]` never counts as connectivity here either.
-      - `generated_link_count`: the total wikilinks sitting on (non-
-        fenced) `**Related:**` lines across the corpus — the linker's own
-        additions, tracked as their own number.
-
-    A note whose ONLY link is a generated Related-line link does NOT count
-    toward organic connectivity. Ingest batches' reading-order nav +
-    doc-backlink wikilinks DO count as organic — they're structural links
-    ingest itself authored, not the linker's additions, and the meter's
-    job is specifically to keep the LINKER's contribution out of the
-    number it's judged by.
-    """
-    import graph  # noqa: E402  (lazy — same convention as the stages below)
+    """The connectivity meter (auto-org part 2 task 7). Two numbers, counted
+    independently so the linker cannot inflate its own success number:
+    `organic_connectivity` (the share of notes with at least one real,
+    non-generated link — detected by `graph.extract_edges` on the content with
+    every `**Related:**` line stripped, so fenced and inline code never count)
+    and `generated_link_count` (the wikilinks on those Related lines)."""
+    import graph  # noqa: E402  (lazy)
     import markdown_spans  # noqa: E402
 
     total = 0
@@ -410,17 +278,8 @@ def _connectivity_meter(loaded: dict) -> dict:
 
 def _browse_surface_counts(vault_path: Path, entries: list) -> dict:
     """The three-state browse-surface meter (task 8): live / shelved /
-    archived. The acceptance test is the operator's own sentence:
-    browsing the vault shows live, current notes, and aged material sits
-    in the archive, still there on request — this meter is what makes
-    that testable rather than just felt.
-
-    `entries` (this module's own corpus scan) already excludes
-    `_archive` but NOT `_shelf` (see `_EXCLUDE_DIRS`) — so live vs.
-    shelved is a free split of the list already in hand, using the exact
-    `"_shelf" in path.parts` test `_stage_tidying`'s own shelf logic
-    already relies on. Archived notes need a second, separate walk since
-    `_archive` is deliberately excluded from every other stage's corpus."""
+    archived. Nothing shelves any more — tidying retired — but a `_shelf/`
+    left on disk is still counted rather than read as live."""
     live = sum(1 for p in entries if "_shelf" not in p.parts)
     shelved = sum(1 for p in entries if "_shelf" in p.parts)
     archived = sum(
@@ -434,55 +293,78 @@ def _browse_surface_counts(vault_path: Path, entries: list) -> dict:
     }
 
 
+# Contradiction check_ids (vault_lint.py, task 7) that count toward the lint
+# report's own "contradiction" summary — distinct from ordinary schema and
+# wikilink findings.
+_LINT_CONTRADICTION_CHECK_IDS = frozenset(
+    {"supersede-cycle", "supersede-fork", "dangling-supersession"}
+)
+
+
+def _stage_lint(vault_path: Path) -> dict:
+    """The lint report. `lint.run_lint(vault_path)` is the identical engine
+    `/memory lint` calls on demand; its findings are counted for the morning
+    note and nothing is repaired — the mis-cased-wikilink repair was the lint
+    engine's one auto-applied lane, and it retired with the rest. What it
+    would repair is counted too, so the report still says so."""
+    import lint as lint_module  # noqa: E402  (lazy)
+
+    report = lint_module.run_lint(vault_path)
+    return {
+        "lint_orphan_count": len(report.orphans),
+        "lint_contradiction_count": sum(
+            1 for f in report.findings if f.check_id in _LINT_CONTRADICTION_CHECK_IDS
+        ),
+        "lint_mean_quality_score": report.mean_quality_score,
+        "lint_graph_snapshot_mismatch_count": report.graph_snapshot_mismatch_count,
+        "lint_repairable_count": len(report.repairs),
+    }
+
+
 # -----------------------------------------------------------------------------
-# Stage 1 — dedup
+# Possible twins and proposed facets
 # -----------------------------------------------------------------------------
 
 def _is_live(fm: dict) -> bool:
-    """A note the mutation stages may still act on: not a tombstone by
-    `status`, not settled by the lifecycle axis (`superseded`, `archived`)."""
+    """A note still in play: not a tombstone by `status`, not settled by the
+    lifecycle axis (`superseded`, `archived`)."""
     status = str(fm.get("status") or "").strip().strip("'\"").lower()
     lifecycle = str(fm.get("lifecycle") or "").strip().strip("'\"").lower()
     return status not in ("superseded", "expired", "deleted") and lifecycle not in ("superseded", "archived")
 
 
-def _stage_dedup(entries: list, loaded: dict) -> list:
+def _stage_dedup(entries: list, loaded: dict, vault_path: Path) -> list:
+    """Pairs whose bodies are at least 0.92 alike. Each note joins at most one
+    pair, so a family of copies reads as a chain of pairs rather than every
+    combination of them."""
     proposals = []
     matched = set()
     for i, a in enumerate(entries):
         if a in matched or not _is_live(loaded[a][0]):
             continue
-        _, body_a, raw_a = loaded[a]
+        fm_a, body_a, _ = loaded[a]
         for b in entries[i + 1:]:
             if b in matched or not _is_live(loaded[b][0]):
                 continue
-            _, body_b, raw_b = loaded[b]
+            fm_b, body_b, _ = loaded[b]
             ratio = difflib.SequenceMatcher(None, body_a, body_b).ratio()
             if ratio < DEDUP_SIMILARITY_THRESHOLD:
                 continue
-            merged_body = body_a.rstrip("\n") + "\n" + body_b.rstrip("\n") + "\n"
-            merged_content = raw_a[: raw_a.rfind(body_a)] + merged_body if body_a in raw_a else merged_body
-            # The contract's shape for the relation (PLAN-superseded-vocabulary):
-            # the loser names its successor; `supersedes:` is the winner's.
-            superseded_content = _patch_frontmatter(raw_b, {"status": "active", "lifecycle": "superseded", "superseded_by": str(a)})
-            proposals.append(
-                Proposal(
-                    stage="dedup",
-                    kind="merge",
-                    paths=[str(a), str(b)],
-                    summary=f"{a.name} and {b.name} are {ratio:.0%} similar (>= {DEDUP_SIMILARITY_THRESHOLD:.0%}) — propose merge",
-                    mutations=[(a, merged_content), (b, superseded_content)],
-                )
-            )
+            ra, rb = _rel(a, vault_path), _rel(b, vault_path)
+            proposals.append(Proposal(
+                stage="dedup", kind="possible-twin", paths=[ra, rb],
+                summary=f"{a.name} and {b.name} are {ratio:.0%} alike — merge by hand, or "
+                        "write `superseded_by` on the one that should go",
+                detail={"similarity": round(ratio, 3), "a": ra, "b": rb,
+                        "a_title": _title(a, fm_a), "b_title": _title(b, fm_b)},
+            ))
             matched.add(b)
     return proposals
 
 
-# -----------------------------------------------------------------------------
-# Stage 2 — contradiction triage
-# -----------------------------------------------------------------------------
-
-def _stage_contradiction_triage(entries: list, loaded: dict) -> list:
+def _stage_contradiction_triage(entries: list, loaded: dict, vault_path: Path) -> list:
+    """Notes that share a key and differ in body: two notes claiming to be the
+    same memory and saying different things."""
     by_slug: dict = {}
     for p in entries:
         fm, _, _ = loaded[p]
@@ -492,814 +374,60 @@ def _stage_contradiction_triage(entries: list, loaded: dict) -> list:
         by_slug.setdefault(slug, []).append(p)
 
     proposals = []
-    for slug, paths in by_slug.items():
+    for slug, paths in sorted(by_slug.items()):
         if len(paths) < 2:
             continue
         bodies = {p: loaded[p][1] for p in paths}
         if len(set(bodies.values())) < 2:
             continue  # identical bodies — dedup's job, not a contradiction
-        proposals.append(
-            Proposal(
-                stage="contradiction_triage",
-                kind="keep_both",
-                paths=[str(p) for p in paths],
-                summary=(
-                    f"{len(paths)} entries share slug {slug!r} with differing content — "
-                    "flagged for operator triage, no auto-resolution in v1"
-                ),
-                mutations=[],  # advisory only — v1 never auto-resolves a contradiction
-            )
-        )
-    return proposals
-
-
-# -----------------------------------------------------------------------------
-# Stage 3 — compression (supersession-chain compaction)
-# -----------------------------------------------------------------------------
-
-def _find_supersession_chains(entries: list, loaded: dict) -> list:
-    """A chain is entries linked head<-...<-tail via `supersedes:` back-links
-    (each entry's `supersedes:` names the path it replaces). Returns chains
-    of length >= COMPRESSION_CHAIN_MIN_LENGTH, head-first."""
-    supersedes_of = {}
-    for p in entries:
-        fm, _, _ = loaded[p]
-        target = fm.get("supersedes")
-        if target:
-            supersedes_of[p] = Path(target)
-
-    superseded_targets = set(supersedes_of.values())
-    heads = [p for p in supersedes_of if p not in superseded_targets]
-
-    chains = []
-    for head in heads:
-        chain = [head]
-        cur = supersedes_of.get(head)
-        while cur is not None:
-            match = next((e for e in entries if e == cur or str(e) == str(cur)), None)
-            if match is None or match in chain:
-                break
-            chain.append(match)
-            cur = supersedes_of.get(match)
-        if len(chain) >= COMPRESSION_CHAIN_MIN_LENGTH:
-            chains.append(chain)
-    return chains
-
-
-def _stage_compression(entries: list, loaded: dict) -> list:
-    proposals = []
-    for chain in _find_supersession_chains(entries, loaded):
-        head = chain[0]
-        rest = chain[1:]
-        _, head_body, head_raw = loaded[head]
-        derived_from = ", ".join(str(p) for p in rest)
-        compacted_body = head_body.rstrip("\n") + f"\nderived_from: [{derived_from}]\n"
-        compacted_content = (
-            head_raw[: head_raw.rfind(head_body)] + compacted_body if head_body in head_raw else compacted_body
-        )
-        mutations = [(head, compacted_content)]
-        for p in rest:
-            # Never-delete-sources (the vault design's own invariant): mark
-            # compacted-into rather than removing the file.
-            _, _, raw = loaded[p]
-            mutations.append((p, _patch_frontmatter(raw, {"compacted_into": str(head)})))
-        proposals.append(
-            Proposal(
-                stage="compression",
-                kind="compress",
-                paths=[str(p) for p in chain],
-                summary=f"supersession chain of {len(chain)} entries headed by {head.name} — propose compaction",
-                mutations=mutations,
-            )
-        )
-    return proposals
-
-
-# -----------------------------------------------------------------------------
-# Stage — tidying (auto-organization part 1, task 3): a non-exempt entry
-# past 5 years without a genuine recall access stages a move to its tier's
-# `_archive/` — never a delete, both the old and new path are captured in
-# one mutation pair (record_and_apply journals a pre-image of each), so
-# reverting a tidying entry restores the original file and removes the
-# archived copy. An entry crossing 4.5 years gets a one-cycle preview line
-# in the digest (informational only, no mutation) before the actual move —
-# a heads-up, not a gate. A genuine recall resets the clock to zero: this
-# reads the exact same `.lifecycle.json` anchor `lifecycle.py`'s own decay
-# scoring uses, via the shared `lifecycle.days_since_last_genuine_access`
-# seam, so "cold" here means exactly what "decayed" means everywhere else
-# in the memory engine, never a second, independently-drifting notion of
-# staleness. Task 4 (the artifact shelf) extends this same stage with a
-# second, non-memory lane rather than adding a separate one.
-# -----------------------------------------------------------------------------
-
-# The memory-archive thresholds used to live here; since filing v2 part 6 they
-# are the contract's (`archive_after_days`, read by lifecycle_transitions).
-
-
-
-# -----------------------------------------------------------------------------
-# The artifact shelf (task 4) — the tidying stage's second lane, for
-# "the other non-memory documents" the design names: any entry this same
-# corpus walk finds with no `kind:` frontmatter field at all, i.e. never
-# written through save.py's locked memory-entry contract (REQUIRED
-# FRONTMATTER_FIELD_ORDER makes `kind` mandatory for a real memory — its
-# absence IS the signal, not a second, invented classification).
-#
-# Operator ruling (2026-07-18, this plan's own task 4): "touch" for an
-# artifact reuses the EXACT SAME mechanism task 3 already reuses for
-# memories — a genuine recall.py hit, tracked via
-# lifecycle.days_since_last_genuine_access — rather than a new "any
-# injection into a conversation" tracker (which nothing in this codebase
-# implements yet, and would need cross-repo instrumentation spanning
-# skills/hooks living in the separate crickets repo — disproportionate to
-# one task). Same mechanism, narrower population, shorter threshold,
-# `_shelf/` destination instead of `_archive/`.
-#
-# Unlike the archive lane, the shelf is bidirectional: `_shelf/` is NOT in
-# `_EXCLUDE_DIRS` (unlike `_archive/`), so a previously-shelved artifact is
-# re-walked every cycle — if it's been touched since shelving (elapsed
-# drops back below the threshold), this stage proposes moving it back to
-# its original folder on the very next cycle, exactly as the design's own
-# "one use brings it back" line specifies.
-# -----------------------------------------------------------------------------
-
-_SHELF_THRESHOLD_DAYS = 365.0  # 1 year
-
-
-def _shelved_path(rel_path: Path) -> Path:
-    """Tier-root insertion (the retired memory-archive lane used the same rule), using `_shelf`
-    instead of `_archive` — same two real tier-root conventions, same
-    bare-root fallback."""
-    parts = rel_path.parts
-    if len(parts) >= 2 and parts[0] == "memory":
-        tier_len = 1
-    elif len(parts) >= 4 and parts[:2] == ("desk", "projects"):
-        # The projects space gained a level at the stage-2 migration
-        # (`projects/<slug>/` -> `desk/projects/<slug>/`), so the tier prefix
-        # that must stay in front of the inserted directory is three segments
-        # rather than two.
-        tier_len = 3
-    else:
-        tier_len = 0
-    return Path(*parts[:tier_len], "_shelf", *parts[tier_len:])
-
-
-def _unshelved_path(rel_path: Path) -> Path:
-    """Inverse of `_shelved_path` — strips the (single, by construction)
-    `_shelf` segment, restoring the artifact to its original tier-relative
-    location."""
-    parts = list(rel_path.parts)
-    parts.remove("_shelf")
-    return Path(*parts)
-
-
-def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | None = None) -> tuple:
-    """Returns (proposals, preview_lines). See module section docstrings
-    above (memory archive, then the artifact shelf). `now` is injectable
-    for tests (ISO date string YYYY-MM-DD)."""
-    import lifecycle  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
-
-    if now is None:
-        import datetime
-        now = datetime.date.today().isoformat()
-
-    proposals = []
-    preview_lines = []
-
-    for path in entries:
-        fm, _body, raw = loaded[path]
-        rel = path.relative_to(vault_path)
-        slug = fm.get("slug") or path.stem
-        is_artifact = "kind" not in fm
-
-        elapsed = lifecycle.days_since_last_genuine_access(vault_path, slug, fm, rel, now=now)
-        if elapsed is None:
-            continue  # decay-exempt, or no basis to compute — never tidied
-
-        if is_artifact:
-            currently_shelved = "_shelf" in rel.parts
-            if currently_shelved:
-                if elapsed < _SHELF_THRESHOLD_DAYS:
-                    dest_rel = _unshelved_path(rel)
-                    proposals.append(
-                        Proposal(
-                            stage="tidying",
-                            kind="unshelve",
-                            paths=[str(rel)],
-                            summary=(
-                                f"{rel} — touched {elapsed:.0f} days ago, since being shelved — "
-                                f"propose return to {dest_rel}"
-                            ),
-                            mutations=[(path, None), (vault_path / dest_rel, raw)],
-                        )
-                    )
-                # else: still cold — stays on the shelf, no action.
-            elif elapsed > _SHELF_THRESHOLD_DAYS:
-                dest_rel = _shelved_path(rel)
-                proposals.append(
-                    Proposal(
-                        stage="tidying",
-                        kind="shelve",
-                        paths=[str(rel)],
-                        summary=(
-                            f"{rel} — {elapsed:.0f} days untouched, past the 1y shelf threshold — "
-                            f"propose move to {dest_rel}"
-                        ),
-                        mutations=[(path, None), (vault_path / dest_rel, raw)],
-                    )
-                )
-            continue
-        # A memory (a note with a `kind`) never moves for lifecycle reasons.
-        # Its aging is the lifecycle axis's — `_stage_lifecycle` proposes
-        # `lifecycle: archived` in place, and the automatic lane in
-        # `run_dream_and_auto_apply` sinks it to dormant first (filing v2
-        # part 6). This stage keeps only the artifact shelf above.
-    return proposals, preview_lines
-
-
-# -----------------------------------------------------------------------------
-# Stage — the lifecycle axis's confirm surface (filing v2 part 6, task 2). A
-# dormant memory silent past the contract's `archive_after_days` is proposed
-# for `lifecycle: archived` — an in-place frontmatter edit the operator
-# confirms through the flow dedup and contradiction triage already use. The
-# note stays where it is, keeps its links, and answers the explicit archive
-# query; nothing here moves a file or applies anything. Never in
-# AUTO_APPLY_STAGES: entering `archived` is the operator's, by design.
-# -----------------------------------------------------------------------------
-def _stage_lifecycle(vault_path: Path, *, now: str | None = None, rules=None) -> tuple:
-    """Returns (proposals, preview_lines) — the archive proposals and the
-    one-cycle heads-up for dormant notes nearing the line."""
-    import lifecycle_transitions  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
-    if now is None:
-        import datetime
-        now = datetime.date.today().isoformat()
-    report = lifecycle_transitions.policy_pass(vault_path, now=now, rules=rules)
-    _dormant_after, archive_after = lifecycle_transitions.thresholds(rules)
-    proposals = []
-    for rel, days in report.archive_candidates:
-        path = Path(vault_path) / rel
-        raw = path.read_text(encoding="utf-8")
-        proposals.append(
-            Proposal(
-                stage="lifecycle",
-                kind="archive",
-                paths=[rel],
-                summary=(
-                    f"{rel} — {days:.0f} days ({days / 365.25:.1f}y) since last genuine recall, dormant past "
-                    f"the archive line ({archive_after:.0f} days) — propose `lifecycle: archived` in place; "
-                    "the note stays where it is and answers the explicit archive query"
-                ),
-                mutations=[(path, lifecycle_transitions.archive_proposal_text(raw, since=now[:10]))],
-            )
-        )
-    previews = [
-        f"{rel} — {days:.0f} days ({days / 365.25:.1f}y) silent and dormant, crosses the archive line "
-        f"({archive_after:.0f} days) within roughly the next cycle"
-        for rel, days in report.previews
-    ]
-    return proposals, previews
-
-
-# -----------------------------------------------------------------------------
-# Stage — weekly link-improvement sweep (auto-org part 2 task 4). Connects
-# notes that arrived or changed since the last cycle to older related
-# content, using task 1's vector index + task 2's persisted graph snapshot.
-# -----------------------------------------------------------------------------
-
-# Cap on proposals this stage generates per cycle — bounds worst-case blast
-# radius the same way tidying/compression already do (plan constraint:
-# "capped"). Matches dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP's own
-# number, the standing precedent for a per-cycle auto-org action bound.
-_LINK_IMPROVEMENT_BATCH_CAP = 25
-
-
-_LINK_SWEEP_CURSOR_NAME = "link-sweep-cursor.json"  # under the engine state dir
-
-# The backfill's per-cycle batch bound (task 6): each weekly cycle attempts
-# at most this many of the vault's unlinked (orphan) notes — 25, matching
-# dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP (the existing compression cap
-# the plan names as the precedent). Continues cycle over cycle until the
-# pool drains.
-_LINK_BACKFILL_BATCH_CAP = 25
-
-_LINK_BACKFILL_STATE_NAME = "link-backfill-state.json"  # under the engine state dir
-
-
-def _read_backfill_attempted(vault_path: Path) -> set:
-    """The set of orphan paths already attempted in the current pass over
-    the backfill pool. Persisted so an orphan that found no qualifying
-    neighbor doesn't permanently occupy one of the 25 batch slots every
-    cycle, starving the rest of the pool — attempted notes are skipped
-    until the whole pool has had a turn, then the pass resets and everyone
-    (including previously-unmatched notes, which may match newer content
-    by then) gets a fresh chance."""
-    try:
-        data = json.loads((engine_state.engine_state_dir() / _LINK_BACKFILL_STATE_NAME).read_text(encoding="utf-8"))
-        return set(data.get("attempted", []))
-    except (OSError, ValueError, TypeError):
-        return set()
-
-
-def _write_backfill_attempted(vault_path: Path, attempted: set) -> None:
-    atomic_write(
-        engine_state.engine_state_dir() / _LINK_BACKFILL_STATE_NAME,
-        json.dumps({"attempted": sorted(attempted)}),
-    )
-
-
-def cheap_model_tier_available(job: str = "slop-borderline") -> bool:
-    """Whether the cheap tier is qualified for `job`.
-
-    The default names the weekly sweep's ambiguous middle band, which is
-    the caller this seam was written for.
-
-    Confirmed by research before this stage was built: no synchronous
-    "ask a cheap model X, get yes/no back, capped by a budget" primitive
-    exists anywhere in this codebase. The job-manifest schema has a
-    `budget_tokens` field, but it's parsed and never consumed (zero
-    callers). The only place this codebase shells out to `claude`
-    programmatically spawns full async background sessions — the wrong
-    shape for a synchronous per-candidate call. Every prior instance of
-    this exact problem (a cron/hook context needing LLM judgment) —
-    `adapt_skills.py`'s deterministic-Pass-1/sub-agent-Pass-2 split,
-    `orchestration_idle.py`'s explicit "a hook fires outside the agent
-    loop and cannot dispatch a sub-agent", `forward_learning.py`'s
-    deliberately-deterministic-only v1 — resolved it by staying
-    deterministic and deferring the LLM-judged pass, never by building a
-    new primitive this codebase has consistently avoided.
-
-    That primitive now exists. The daemon's enrichment layer shells out
-    to `claude -p` synchronously, and a qualification table committed to
-    the vault decides which jobs may use the cheap tier. So this is no
-    longer unconditionally False — it is the question the table answers.
-
-    It is answered per job rather than globally, which is the correction
-    the original stub could not make: a cheap tier is not available or
-    unavailable in general. It is qualified for the jobs whose sampled
-    audit earned it, refused for the rest, and refused outright for the
-    three the design pins to the strong tier.
-
-    False when the daemon cannot be reached, which is the same fallback
-    the callers already handle — the ambiguous candidate is left
-    unlinked rather than judged by something nothing measured.
-    """
-    from model_tiers import TierUnavailable, cheap_tier_qualified
-
-    try:
-        return cheap_tier_qualified(job)
-    except TierUnavailable:
-        return False
-
-
-
-# Contradiction check_ids (vault_lint.py, task 7) that count toward the
-# lint stage's own "contradiction" summary — distinct from ordinary
-# schema/wikilink findings.
-_LINT_CONTRADICTION_CHECK_IDS = frozenset(
-    {"supersede-cycle", "supersede-fork", "dangling-supersession"}
-)
-
-
-def _stage_lint(vault_path: Path) -> tuple:
-    """Returns `(proposals, stats)` (task 7). `proposals` wraps the lint
-    engine's auto-repairable mis-cased-wikilink fixes (`stage="lint"`,
-    `kind="wikilink_repair"`), one per entry with >=1 repair, carrying the
-    full raw-content mutation the same way every other stage's `Proposal`
-    does. `stats` is merged into `corpus_stats` (`lint_orphan_count`,
-    `lint_contradiction_count`, `lint_mean_quality_score`) for the digest
-    and task 8's meters.
-
-    Calls `lint.run_lint(vault_path)` — a genuinely standalone scan (the
-    identical engine `/memory lint` calls on demand), not threaded through
-    this module's own `entries`/`loaded` snapshot. The plan's own
-    verification requires the weekly stage and the on-demand CLI to match
-    exactly; sharing the identical code path end to end is simpler and
-    more trustworthy than keeping two independently-fed call sites in
-    sync. Findings (orphans, contradictions, broken links, kind-taxonomy
-    warnings, ...) are surfaced-only here — only the mis-cased-wikilink
-    repair ever mutates anything, matching the plan's "surfaced only,
-    never auto-resolved" rule for everything else the engine reports."""
-    import lint as lint_module  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
-
-    report = lint_module.run_lint(vault_path)
-
-    proposals: list = []
-    for entry, _old_raw, new_raw in report.repairs:
+        rels = [_rel(p, vault_path) for p in paths]
         proposals.append(Proposal(
-            stage="lint", kind="wikilink_repair",
-            paths=[entry.rel],
-            summary=f"{entry.rel} — auto-corrected mis-cased wikilink(s)",
-            mutations=[(entry.path, new_raw)],
+            stage="contradiction_triage", kind="same-key", paths=rels,
+            summary=f"{len(paths)} notes share the key {slug!r} with different bodies",
+            detail={"slug": slug, "titles": [_title(p, loaded[p][0]) for p in paths]},
         ))
-
-    stats = {
-        "lint_orphan_count": len(report.orphans),
-        "lint_contradiction_count": sum(
-            1 for f in report.findings if f.check_id in _LINT_CONTRADICTION_CHECK_IDS
-        ),
-        "lint_mean_quality_score": report.mean_quality_score,
-        "lint_graph_snapshot_mismatch_count": report.graph_snapshot_mismatch_count,
-    }
-    return proposals, stats
-
-
-# -----------------------------------------------------------------------------
-# Stage — opinion supplement (accumulate loop, Stages 2-3;
-# wiki/designs/agentm-experience-and-dreaming.md's accumulate-loop section,
-# ten locked calls, 2026-07-25).
-# -----------------------------------------------------------------------------
-
-# The health snapshot's own "-latest.json" pointer (locked call 10) —
-# overwritten every cycle, same convention as `dream-auto-expired-latest.
-# json` / `sampled-audit-latest.json`. Kept as a plain filename constant
-# here (not in opinion_supplement.py) since writing it is this stage's own
-# I/O, not that leaf module's pure-function surface.
-_OPINION_SUPPLEMENT_HEALTH_LATEST_NAME = "opinion-supplement-health-latest.json"
-
-
-def _stage_opinion_supplement(vault_path: Path, *, now: str | None = None) -> list:
-    """Runs the recurrence gate, contradiction check, and composition
-    (`opinion_supplement.py`, a leaf module — no model call anywhere in it,
-    matching this pass's own deterministic-only constraint) for every
-    opinion currently holding a lane under
-    `<vault>/personal/_opinions/<name>/`. Owns that directory exclusively
-    (excluded from the general corpus above — see `_EXCLUDE_DIRS`), so it
-    does its own separate walk rather than taking `entries`/`loaded`.
-
-    Deliberately confirm-gated (locked call 9): every non-empty result
-    becomes an ordinary PENDING `stage="opinion_promote"` proposal —
-    `opinion_promote` is NOT in `dream_confirm.AUTO_APPLY_STAGES` and must
-    not be added to it without a fresh, separate operator ruling recorded
-    as an amendment to the design (at which point it also joins
-    `_ANOMALY_WATCHED_STAGES` in that same change, per the design's own
-    text). One opinion's whole cycle bundles into ONE proposal — see
-    `opinion_supplement.LaneCycleResult`'s own docstring for why a
-    per-lesson-group proposal could race the served file.
-
-    Also writes two `_meta/` pointer files, unconditionally, every cycle —
-    observability about the corpus, not vault content served to the agent,
-    so (like the connectivity meter and the sampled-audit pointer) they are
-    never gated behind confirm:
-
-      - `_meta/opinion-base-proposals.json` (locked call 3's second
-        channel) — every currently-suspected supplement/base contradiction,
-        recomputed fresh each cycle so a resolved one drops out on its own.
-      - `_meta/opinion-supplement-health-latest.json` (locked call 10) —
-        per-opinion lane depth / promoted / parked / provenance-coverage /
-        base-proposal counts, for `console.section_opinion_supplements`.
-    """
-    import opinion_supplement  # noqa: E402  (lazy — same convention as lifecycle above)
-
-    proposals: list = []
-    all_base_proposals: list = []
-    health_by_opinion: dict = {}
-
-    for lane_dir in opinion_supplement.lane_dirs(vault_path):
-        opinion = lane_dir.name
-        result = opinion_supplement.process_lane(vault_path, opinion, now=now)
-        if result is not None:
-            if result.mutations:
-                proposals.append(Proposal(
-                    stage="opinion_promote", kind="promote",
-                    paths=[str(p) for p, _ in result.mutations],
-                    summary=result.summary,
-                    mutations=result.mutations,
-                ))
-            all_base_proposals.extend(result.base_change_proposals)
-        health_by_opinion[opinion] = opinion_supplement.lane_health(vault_path, opinion)
-
-    atomic_write(
-        engine_state.engine_state_dir() / opinion_supplement.BASE_PROPOSALS_FILENAME,
-        json.dumps(all_base_proposals, indent=2),
-    )
-    atomic_write(
-        engine_state.engine_state_dir() / _OPINION_SUPPLEMENT_HEALTH_LATEST_NAME,
-        json.dumps({"opinions": health_by_opinion}, indent=2),
-    )
     return proposals
 
 
-# -----------------------------------------------------------------------------
-# Stage 4 — crystallization (thin: a textual summary folded into the digest,
-# not a new file — phase-close crystallization is a separate, out-of-scope
-# [PENDING-IMPL] elsewhere in the Experience design).
-# -----------------------------------------------------------------------------
+def _stage_facet_promotion(vault_path, *, today=None, rules=None) -> list:
+    """A diary label recurring on three or more distinct days is a standing
+    facet the registry is missing. Proposed, never registered: the agent does
+    not widen its own contract. Best-effort: a vault without a register
+    proposes nothing."""
+    try:
+        import calendar_promotion  # function-local: keeps dream's import graph flat
+        found = calendar_promotion.proposals(vault_path, today=today, rules=rules)
+    except Exception as e:  # pragma: no cover
+        print(f"warning: facet-promotion detector failed: {e}", file=sys.stderr)
+        return []
+    out = []
+    for label, s, path, _new_text in found:
+        out.append(Proposal(
+            stage="facet_promotion", kind="proposed-facet", paths=[str(path)],
+            summary=(f"the diary carries `{label}` on {s.days} days ({s.first} … {s.last}, "
+                     f"{s.entries} entries; e.g. {s.sample!r}) — register it under `facets:` "
+                     "in standards/storage-rules.md if it is a facet"),
+            detail={"label": label, "days": s.days, "first": s.first, "last": s.last,
+                    "entries": s.entries, "sample": s.sample},
+        ))
+    return out
 
-def _stage_crystallization(corpus_stats: dict, proposals: list) -> str:
-    by_stage: dict = {}
-    for p in proposals:
-        by_stage[p.stage] = by_stage.get(p.stage, 0) + 1
-    parts = [
-        f"{corpus_stats['entry_count']} entries scanned ({corpus_stats['total_bytes']} bytes)."
-    ]
-    if by_stage:
-        parts.append(
-            "Proposed: " + ", ".join(f"{n} {stage}" for stage, n in sorted(by_stage.items())) + "."
-        )
-    else:
-        parts.append("No dispositions proposed this run.")
-    return " ".join(parts)
 
-
-# -----------------------------------------------------------------------------
-# Stage 5 — insight generation (additive, auto-written, always candidate)
-# -----------------------------------------------------------------------------
-
-def _stage_insight_generation(
-    vault_path: Path, run_id: str, crystallized_summary: str, proposals: list
-) -> list:
-    if not proposals:
-        return []  # nothing worth an insight over — v1 stays conservative
-
-    derived_from = sorted({p for prop in proposals for p in prop.paths})
-    content = (
-        "---\n"
-        "kind: insight\n"
-        "status: candidate\n"
-        f"dream_run: {run_id}\n"
-        f"derived_from: [{', '.join(derived_from)}]\n"
-        "---\n"
-        f"# Dream insight — run {run_id}\n\n"
-        f"{crystallized_summary}\n"
-    )
-    path = vault_path / "_dream" / "insights" / f"{run_id}.md"
-    return [InsightCandidate(path=path, content=content)]
+def _rel(p: Path, vault_path: Path) -> str:
+    try:
+        return p.relative_to(vault_path).as_posix()
+    except ValueError:
+        return str(p)
 
 
 # -----------------------------------------------------------------------------
-# Stage 6 — qualification (thin default; see module docstring)
-# -----------------------------------------------------------------------------
-
-def _stage_qualification(insight_candidates: list) -> None:
-    for candidate in insight_candidates:
-        candidate.content = _patch_frontmatter(candidate.content, {"rung": "retrieval"})
-
-
-# -----------------------------------------------------------------------------
-# Stage 7 — digest + staging
-# -----------------------------------------------------------------------------
-
-def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) -> str:
-    """`auto_applied` (an optional `dream_confirm.AutoAppliedBatch`) marks
-    which proposals this run already applied automatically — the
-    dreaming pipeline's confirm-free "expire" action (2026-07-11 operator
-    ruling: compression-stage proposals only; dedup/contradiction-triage
-    always still show as staged, awaiting an explicit
-    `dream_confirm.confirm()` call). `run_dream()` itself calls this with
-    `auto_applied=None` (nothing has auto-applied yet at that point in the
-    pipeline); `run_dream_and_auto_apply()` re-renders with the real batch
-    once it's known, so the on-disk `digest.md` never misreports an
-    already-applied item as still awaiting confirmation.
-
-    `anomalies` (an optional `dict[str, dream_confirm.AnomalyCheckResult]`,
-    task 6 initially scoped to tidying only, generalized to any stage by
-    task 9's `check_stage_anomaly`) flags every TRIPPED stage this cycle:
-    that stage's proposal count was several times the recent usual, so
-    none of it auto-applied (it stays pending, exactly like dedup/
-    contradiction-triage) — surfaced here as the digest's "console" line
-    for the operator, one section per tripped stage. A stage absent from
-    the dict, or present but not tripped, renders nothing."""
-    lines = [
-        f"# Dream digest — run {digest.run_id}",
-        "",
-        f"Corpus: {digest.corpus_stats['entry_count']} entries, {digest.corpus_stats['total_bytes']} bytes.",
-    ]
-    # The filing contract. Rendered before every other meter, because when it
-    # fails nothing else in this digest describes work that happened.
-    if digest.corpus_stats.get("storage_rules_ok") is False:
-        lines.append("")
-        lines.append(
-            "**Filing is halted.** The storage-rules block does not parse, so nothing "
-            "filed this cycle and every note stays where it was:"
-        )
-        lines.append("")
-        lines.append(f"> {digest.corpus_stats.get('storage_rules_error', 'unknown parse failure')}")
-        lines.append("")
-        lines.append(
-            "Fix the block and the next cycle picks up where this one stopped. Notes "
-            "wait as `unfiled`; none of them was filed under a guess."
-        )
-    elif "storage_rules_hash" in digest.corpus_stats:
-        source = ("the packaged default" if digest.corpus_stats.get("storage_rules_is_default")
-                  else digest.corpus_stats.get("storage_rules_source", "the vault"))
-        line = (f"Filing rules: hash `{digest.corpus_stats['storage_rules_hash']}` "
-                f"from {source}")
-        if digest.corpus_stats.get("storage_rules_hash_changed"):
-            line += (f" — **changed** since the last cycle (was "
-                     f"`{digest.corpus_stats.get('storage_rules_previous_hash')}`); "
-                     f"{digest.corpus_stats.get('storage_rules_stale_count', 0)} memory(ies) "
-                     f"now carry a stale `rules_hash`")
-        else:
-            line += f" · {digest.corpus_stats.get('storage_rules_stale_count', 0)} stale"
-        line += (f", {digest.corpus_stats.get('storage_rules_unjudged_count', 0)} never "
-                 f"judged.")
-        lines.append(line)
-    # The connectivity meter (task 7) — rendered defensively via .get() so
-    # a digest re-render against an older run's stats (pre-meter) never
-    # crashes; both numbers land every cycle on any current run.
-    if "organic_connectivity" in digest.corpus_stats:
-        lines.append(
-            f"Connectivity: {digest.corpus_stats['organic_connectivity']:.1%} organic "
-            f"({digest.corpus_stats['organically_linked_count']} of "
-            f"{digest.corpus_stats['entry_count']} notes with ≥1 real, non-generated link) · "
-            f"{digest.corpus_stats['generated_link_count']} generated link(s) (counted separately)."
-        )
-    # The browse-surface meter (task 8) — same defensive .get() convention.
-    if "browse_live_count" in digest.corpus_stats:
-        lines.append(
-            f"Browse surface: {digest.corpus_stats['browse_live_count']} live, "
-            f"{digest.corpus_stats['browse_shelved_count']} shelved, "
-            f"{digest.corpus_stats['browse_archived_count']} archived."
-        )
-    # The lint engine (task 7) — same defensive .get() convention as the
-    # connectivity meter above, for the identical reason.
-    if "lint_orphan_count" in digest.corpus_stats:
-        lines.append(
-            f"Lint: {digest.corpus_stats['lint_orphan_count']} orphan(s), "
-            f"{digest.corpus_stats['lint_contradiction_count']} contradiction(s), "
-            f"{digest.corpus_stats.get('lint_graph_snapshot_mismatch_count', 0)} graph-snapshot "
-            "mismatch(es), "
-            f"mean quality score {digest.corpus_stats['lint_mean_quality_score']:.2f} "
-            "· full report via `/memory lint`."
-        )
-    if digest.needs_review is not None:
-        n = digest.needs_review
-        reasons = ", ".join(f"{k} {v}" for k, v in (n.get("by_reason") or {}).items()) or "nothing waiting"
-        lines.append(f"Needs review: {n['total']} note(s) — {reasons} · MOC {n['moc']}")
-    if digest.lifecycle is not None:
-        lc = digest.lifecycle
-        n_prop = sum(1 for p in digest.proposals if p.stage == "lifecycle")
-        lines.append(
-            f"Lifecycle: {n_prop} archive proposal{'' if n_prop == 1 else 's'} waiting on confirm"
-            + (f" · {lc['summary']}" if lc.get("summary") else "")
-            + " · sinking and lifting are the dreaming binary's (`agentmdream status`)"
-        )
-    if digest.sampled_audit is not None:
-        a = digest.sampled_audit
-        if a["sampled_count"] == 0:
-            lines.append("Sampled audit: nothing sampled this cycle (higher-tier model tier unavailable).")
-        else:
-            lines.append(
-                f"Sampled audit: {a['sampled_count']} applied link/merge(s) reviewed — "
-                f"{a['disagree_count']} disagreement(s) ({a['disagreement_rate']:.1%})"
-                + (" · ⚠ ambiguous bands narrowed this cycle" if a["narrowed"] else "")
-            )
-    lines.append("")
-    if digest.insight_candidates:
-        lines.append("## Insight candidates (written, status: candidate)")
-        for c in digest.insight_candidates:
-            lines.append(f"- `{c.path}`")
-        lines.append("")
-
-    if digest.tidying_previews:
-        lines.append("## Archive preview (crosses the archive line next cycle — no action yet)")
-        lines.append("")
-        for line in digest.tidying_previews:
-            lines.append(f"- {line}")
-        lines.append("")
-
-    tripped_anomalies = {stage: r for stage, r in (anomalies or {}).items() if r.tripped}
-    for stage, r in sorted(tripped_anomalies.items()):
-        lines.append(f"## ⚠ ANOMALY BREAKER TRIPPED — {stage} auto-apply suppressed this cycle")
-        lines.append("")
-        lines.append(
-            f"{r.current_count} {stage}-stage proposal(s) this run, "
-            f"vs. a recent baseline of {r.baseline:.1f} "
-            f"(threshold {r.threshold:.1f}) — applying nothing from this "
-            f"stage this cycle rather than an abnormal batch. Every {stage} proposal "
-            "stays pending; review the run's proposals.json and confirm manually if "
-            "the volume is genuinely expected, or investigate before the next cycle."
-        )
-        lines.append("")
-
-    auto_applied_by_index = {}
-    if auto_applied is not None:
-        auto_applied_by_index = {item["index"]: item for item in auto_applied.items}
-        lines.append("## Auto-expired this run (applied automatically — no confirm required)")
-        lines.append("")
-        if not auto_applied.items:
-            lines.append(
-                f"None this run (stages watched: {', '.join(sorted(auto_applied.stages)) or 'none'}; "
-                f"batch cap {auto_applied.batch_cap})."
-            )
-        else:
-            lines.append(
-                f"{len(auto_applied.items)} proposal(s) auto-applied "
-                f"(batch cap {auto_applied.batch_cap}; stages: {', '.join(sorted(auto_applied.stages))}):"
-            )
-            lines.append("")
-            for item in auto_applied.items:
-                lines.append(f"- #{item['index']} {item['stage']}/{item['kind']}: {item['summary']}")
-                lines.append(
-                    f"  revert: `RevertLog(vault_path).revert({digest.run_id!r}, {item['entry_id']!r})` "
-                    f"— entry `{item['entry_id']}`"
-                )
-            lines.append("")
-            lines.append(
-                f"Full record: `_dream-staging/{digest.run_id}/auto-expired.json` "
-                "(also mirrored at `_meta/dream-auto-expired-latest.json`)."
-            )
-        lines.append("")
-
-    if not digest.proposals:
-        lines.append("## Proposals")
-        lines.append("")
-        lines.append("None this run.")
-        return "\n".join(lines) + "\n"
-
-    lines.append("## Proposals")
-    lines.append("")
-    for i, p in enumerate(digest.proposals, start=1):
-        lines.append(f"### {i}. {p.stage} — {p.kind}")
-        lines.append(f"- paths: {', '.join(p.paths)}")
-        lines.append(f"- {p.summary}")
-        if i in auto_applied_by_index:
-            item = auto_applied_by_index[i]
-            lines.append(
-                f"- **AUTO-APPLIED** (expire — no confirm required): entry `{item['entry_id']}`; "
-                f"undo via `RevertLog.revert({digest.run_id!r}, {item['entry_id']!r})`"
-            )
-        elif p.mutations:
-            lines.append(
-                "- staged — NOT applied; operator confirmation required "
-                f"(`dream_confirm.confirm(vault_path, {digest.run_id!r}, {i}, revert_log)`)"
-            )
-            lines.append(
-                f"- revert pointer (on confirm): run `{digest.run_id}`, stage `{p.stage}` "
-                f"— apply via `revert_log.RevertLog.record_and_apply({digest.run_id!r}, {p.stage!r}, mutations)`, "
-                f"undo via `RevertLog.revert({digest.run_id!r}, entry_id)`"
-            )
-            lines.append(f"- proposal file: `{i:02d}-{p.stage}-{p.kind}.proposal.md`")
-        else:
-            lines.append("- advisory only — no mutation proposed")
-        lines.append("")
-    return "\n".join(lines) + "\n"
-
-
-def _render_proposal_file(index: int, p: Proposal) -> str:
-    lines = [f"# Proposal {index}: {p.stage} / {p.kind}", "", p.summary, ""]
-    for path, new_content in p.mutations:
-        lines.append(f"## {path}")
-        lines.append("```")
-        lines.append("<deleted>" if new_content is None else new_content)
-        lines.append("```")
-        lines.append("")
-    return "\n".join(lines)
-
-
-def _render_manifest(digest: DreamDigest, staged_at: float) -> str:
-    """The machine-readable sibling of digest.md — task 3's confirm flow
-    reads this (not the human-facing digest/proposal markdown, which embeds
-    content in prose/code-fences and is not reliably re-parseable) to get
-    each proposal's exact mutation data back out."""
-    return json.dumps(
-        {
-            "run_id": digest.run_id,
-            "staged_at": staged_at,
-            "proposals": [
-                {
-                    "index": i,
-                    "stage": p.stage,
-                    "kind": p.kind,
-                    "paths": p.paths,
-                    "summary": p.summary,
-                    "mutations": [[str(path), content] for path, content in p.mutations],
-                }
-                for i, p in enumerate(digest.proposals, start=1)
-            ],
-        },
-        indent=2,
-    )
-
-
-def _stage_digest_and_staging(vault_path: Path, digest: DreamDigest) -> Path:
-    # Per-run staging left the vault (filing-v2 part 2a) — engine working
-    # files until the operator confirms, not corpus.
-    staging_dir = engine_state.engine_state_dir() / "dream-runs" / digest.run_id
-    digest_path = staging_dir / "digest.md"
-    atomic_write(digest_path, _render_digest(digest))
-    atomic_write(staging_dir / "proposals.json", _render_manifest(digest, time.time()))
-    for i, p in enumerate(digest.proposals, start=1):
-        if not p.mutations:
-            continue
-        proposal_path = staging_dir / f"{i:02d}-{p.stage}-{p.kind}.proposal.md"
-        atomic_write(proposal_path, _render_proposal_file(i, p))
-    return digest_path
-
-
-# -----------------------------------------------------------------------------
-# The pass
+# The part-5 stages that still have a reader
 # -----------------------------------------------------------------------------
 
 def _stage_part5_jobs(vault_path: Path) -> list:
-    """The filing contract's remaining job list, run through the daemon's
-    ledger and queues.
-
-    Wrapped so a daemon that cannot be reached costs this pass nothing. The
-    stages each report their own unavailability, and this catches the case
-    where the module itself will not import — an install without the daemon
-    half, which is a supported shape rather than a broken one.
-    """
+    """The enrichment breaker's status, the backlink footers and the
+    correction loop, through `dream_stages`. Wrapped so a daemon that cannot
+    be reached costs this pass nothing."""
     try:
         import dream_stages
     except ImportError:  # pragma: no cover - install-shape dependent
@@ -1307,19 +435,145 @@ def _stage_part5_jobs(vault_path: Path) -> list:
     try:
         return dream_stages.run_new_stages(vault_path)
     except Exception as exc:  # pragma: no cover - defensive
-        # Reported, never raised. These stages are additive; a failure in one
-        # must not cost the twelve that ran before it their digest.
         return [dream_stages.StageResult(
             stage="part5_jobs", unavailable=f"{type(exc).__name__}: {exc}")]
 
 
+# -----------------------------------------------------------------------------
+# What the cycle leaves behind
+# -----------------------------------------------------------------------------
+
+def _dreaming_dir() -> Path:
+    return engine_state.engine_state_dir() / "dreaming"
+
+
+def _write_review_proposals(run_id: str, proposals: list, now: float) -> Path:
+    """The twins and the facets, for the needs-review map. The map regenerates
+    from whatever wrote it last, so the findings live here rather than in the
+    map: any caller that regenerates it reads the same night's pairs."""
+    path = _dreaming_dir() / REVIEW_PROPOSALS_NAME
+    by_kind = {"possible-twin": [], "same-key": [], "proposed-facet": []}
+    for p in proposals:
+        if p.kind in by_kind:
+            by_kind[p.kind].append({"paths": p.paths, "summary": p.summary, **p.detail})
+    atomic_write(path, json.dumps({
+        "run_id": run_id, "at": now,
+        "twins": by_kind["possible-twin"], "same_key": by_kind["same-key"],
+        "facets": by_kind["proposed-facet"],
+    }, indent=2) + "\n")
+    return path
+
+
+def _write_cycle_report(digest: DreamDigest, part5: list, now: float) -> Path:
+    """The cycle in numbers, for the morning note's "What ran"."""
+    counts = {}
+    for p in digest.proposals:
+        counts[p.kind] = counts.get(p.kind, 0) + 1
+    stats = digest.corpus_stats
+    report = {
+        "run_id": digest.run_id,
+        "at": now,
+        "storage_rules_ok": stats.get("storage_rules_ok", True),
+        "storage_rules_error": stats.get("storage_rules_error"),
+        "entries": stats.get("entry_count", 0),
+        "lint": {k[len("lint_"):]: v for k, v in stats.items() if k.startswith("lint_")},
+        "possible_twins": counts.get("possible-twin", 0),
+        "same_key": counts.get("same-key", 0),
+        "proposed_facets": counts.get("proposed-facet", 0),
+        "needs_review": digest.needs_review,
+        "part5": part5,
+    }
+    path = _dreaming_dir() / CYCLE_REPORT_NAME
+    atomic_write(path, json.dumps(report, indent=2, default=str) + "\n")
+    return path
+
+
+def _render_digest(digest: DreamDigest) -> str:
+    stats = digest.corpus_stats
+    lines = [
+        f"# Dream digest — run {digest.run_id}",
+        "",
+        f"Corpus: {stats['entry_count']} entries, {stats['total_bytes']} bytes.",
+    ]
+    # The filing contract, before every other line: when it fails, nothing
+    # else in this digest describes work that happened.
+    if stats.get("storage_rules_ok") is False:
+        lines += [
+            "",
+            "**Filing is halted.** The storage-rules block does not parse, so nothing "
+            "filed this cycle and every note stays where it was:",
+            "",
+            f"> {stats.get('storage_rules_error', 'unknown parse failure')}",
+            "",
+            "Fix the block and the next cycle picks up where this one stopped. Notes "
+            "wait as `unfiled`; none of them was filed under a guess.",
+        ]
+    elif "storage_rules_hash" in stats:
+        source = ("the packaged default" if stats.get("storage_rules_is_default")
+                  else stats.get("storage_rules_source", "the vault"))
+        line = f"Filing rules: hash `{stats['storage_rules_hash']}` from {source}"
+        if stats.get("storage_rules_hash_changed"):
+            line += (f" — **changed** since the last cycle (was "
+                     f"`{stats.get('storage_rules_previous_hash')}`); "
+                     f"{stats.get('storage_rules_stale_count', 0)} memory(ies) "
+                     f"now carry a stale `rules_hash`")
+        else:
+            line += f" · {stats.get('storage_rules_stale_count', 0)} stale"
+        line += f", {stats.get('storage_rules_unjudged_count', 0)} never judged."
+        lines.append(line)
+    if "organic_connectivity" in stats:
+        lines.append(
+            f"Connectivity: {stats['organic_connectivity']:.1%} organic "
+            f"({stats['organically_linked_count']} of {stats['entry_count']} notes with ≥1 "
+            f"real, non-generated link) · {stats['generated_link_count']} generated link(s) "
+            "(counted separately)."
+        )
+    if "browse_live_count" in stats:
+        lines.append(
+            f"Browse surface: {stats['browse_live_count']} live, "
+            f"{stats['browse_shelved_count']} shelved, {stats['browse_archived_count']} archived."
+        )
+    if "lint_orphan_count" in stats:
+        lines.append(
+            f"Lint: {stats['lint_orphan_count']} orphan(s), "
+            f"{stats['lint_contradiction_count']} contradiction(s), "
+            f"{stats.get('lint_graph_snapshot_mismatch_count', 0)} graph-snapshot mismatch(es), "
+            f"{stats.get('lint_repairable_count', 0)} mis-cased link(s) it would repair, "
+            f"mean quality score {stats['lint_mean_quality_score']:.2f} · a report, nothing "
+            "applied · full report via `/memory lint`."
+        )
+    if digest.needs_review is not None:
+        n = digest.needs_review
+        reasons = ", ".join(f"{k} {v}" for k, v in (n.get("by_reason") or {}).items() if v) \
+            or "nothing waiting"
+        lines.append(f"Needs review: {n['total']} note(s) — {reasons} · MOC {n.get('moc', '')}")
+    lines += ["", "## For you to judge", ""]
+    if not digest.proposals:
+        lines.append("Nothing this run.")
+    for p in digest.proposals:
+        lines.append(f"- {p.stage} · {p.kind}: {p.summary} ({', '.join(p.paths)})")
+    return "\n".join(lines) + "\n"
+
+
+def _write_digest(digest: DreamDigest) -> Path:
+    # The run's digest, a record in the engine state dir — one file, no
+    # staged proposals beside it.
+    path = engine_state.engine_state_dir() / "dream-runs" / digest.run_id / "digest.md"
+    atomic_write(path, _render_digest(digest))
+    return path
+
+
+# -----------------------------------------------------------------------------
+# The pass
+# -----------------------------------------------------------------------------
+
 def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
-    """Run the full thin `/dream` pass once against `vault_path`. Never
-    mutates an existing entry — dedup/contradiction/compression stages only
-    PROPOSE (see module docstring). Insight candidates are the one
-    exception: written for real, immediately, always `status: candidate`."""
+    """Run the cycle once against `vault_path` (the memory root). Changes no
+    note; writes the needs-review map, the review proposals, the cycle report
+    and the run's digest."""
     vault_path = Path(vault_path)
     run_id = run_id or f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    now = time.time()
 
     entries = _iter_entries(vault_path)
     loaded = _load(entries)
@@ -1328,176 +582,31 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     corpus_stats.update(_connectivity_meter(loaded))
     corpus_stats.update(_browse_surface_counts(vault_path, entries))
     corpus_stats.update(_stage_storage_rules(vault_path, loaded))
-    proposals = []
 
-    # Fail closed. Every stage below re-files something — a merge, an expiry, a
-    # shelving, a frontmatter repair — and every one of them decides *where* by
-    # the rules that just failed to parse. Running them anyway would file under
-    # a guess. The read-only meters above already ran, so the digest still
-    # reports the state of the corpus; it simply proposes nothing about it.
+    # Fail closed. Every finding below is judged by the rules that just failed
+    # to parse. The read-only meters above already ran, so the digest still
+    # reports the corpus; it simply proposes nothing about it.
     if not corpus_stats.get("storage_rules_ok", True):
-        digest = DreamDigest(
-            run_id=run_id,
-            corpus_stats=corpus_stats,
-            proposals=[],
-            insight_candidates=[],
-            tidying_previews=[],
-        )
-        digest.digest_path = _stage_digest_and_staging(vault_path, digest)
+        digest = DreamDigest(run_id=run_id, corpus_stats=corpus_stats, proposals=[])
+        digest.digest_path = _write_digest(digest)
+        _write_cycle_report(digest, [], now)
         return digest
 
-    # `_stage_lint` runs FIRST, before anything else in this pass touches
-    # the graph snapshot: its own graph-snapshot cross-check (task 9) must
-    # see whatever's persisted from BEFORE this cycle to catch genuine
-    # drift accumulated since the last rebuild. The weekly link-improvement
-    # sweep used to rebuild the snapshot in full-vault mode right after this
-    # point, which is what made the ordering load-bearing; it was removed
-    # with the vector stack it ranked candidates with, but lint still runs
-    # first so nothing later reintroduces the same self-comparison (see
-    # `lint._graph_snapshot_cross_check`'s own docstring).
-    lint_proposals, lint_stats = _stage_lint(vault_path)
-    proposals.extend(lint_proposals)
-    corpus_stats.update(lint_stats)
-    proposals.extend(_stage_dedup(entries, loaded))
-    proposals.extend(_stage_contradiction_triage(entries, loaded))
-    proposals.extend(_stage_compression(entries, loaded))
-    tidying_proposals, tidying_previews = _stage_tidying(vault_path, entries, loaded)
-    proposals.extend(tidying_proposals)
-    lifecycle_proposals, lifecycle_previews = _stage_lifecycle(vault_path)
-    proposals.extend(lifecycle_proposals)
-    tidying_previews = list(tidying_previews) + list(lifecycle_previews)
-    proposals.extend(_stage_opinion_supplement(vault_path))
+    # Lint first, before anything touches the graph snapshot: its own
+    # snapshot cross-check must see what persisted from before this cycle.
+    corpus_stats.update(_stage_lint(vault_path))
+    proposals = []
+    proposals.extend(_stage_dedup(entries, loaded, vault_path))
+    proposals.extend(_stage_contradiction_triage(entries, loaded, vault_path))
     proposals.extend(_stage_facet_promotion(vault_path))
+    part5 = [r.as_dict() for r in _stage_part5_jobs(vault_path)]
+    corpus_stats["part5_stages"] = part5
 
-    # The four stages part 5 adds: entity rollups, stub synthesis, backlink
-    # footers and the unfiled drain. Discovery-only apart from the footer, and
-    # each records what it did into the same digest as everything above.
-    #
-    # After the proposal stages so the queues they fill reflect this cycle's
-    # work, and before crystallization so the digest reports them together.
-    corpus_stats["part5_stages"] = [
-        r.as_dict() for r in _stage_part5_jobs(vault_path)
-    ]
+    digest = DreamDigest(run_id=run_id, corpus_stats=corpus_stats, proposals=proposals)
+    _write_review_proposals(run_id, proposals, now)
 
-    crystallized_summary = _stage_crystallization(corpus_stats, proposals)
-    insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
-    _stage_qualification(insight_candidates)
-
-    for candidate in insight_candidates:
-        atomic_write(candidate.path, candidate.content)
-
-    digest = DreamDigest(
-        run_id=run_id,
-        corpus_stats=corpus_stats,
-        proposals=proposals,
-        insight_candidates=insight_candidates,
-        tidying_previews=tidying_previews,
-    )
-    digest.digest_path = _stage_digest_and_staging(vault_path, digest)
-    return digest
-
-
-# -----------------------------------------------------------------------------
-# Auto-apply — the "expire" action's confirm-free apply path (2026-07-11
-# operator ruling: see wiki/designs/agentm-experience-and-dreaming.md's
-# amendment log). `run_dream()` above is untouched — it still only ever
-# proposes; this wrapper is the additive layer that immediately confirms
-# the compression-stage proposals through `dream_confirm.auto_apply_batch`
-# once `run_dream()` has staged them. `dedup` and `contradiction_triage`
-# proposals are left exactly as `run_dream()` staged them — pending,
-# awaiting an explicit operator `dream_confirm.confirm()` call.
-# -----------------------------------------------------------------------------
-
-# Stages the anomaly breaker watches (task 9, part 3, generalizing task 6's
-# tidying-only breaker): `link_improvement` is a KNOWN, DELIBERATELY
-# DEFERRED gap — it has its own fixed per-cycle batch cap but no anomaly
-# breaker of its own yet (see wiki/designs/agentm-auto-organization.md's
-# "Guarding the automation" section) — task 9's own plan text scopes the
-# extension to "this part's own dedup/lint mutations," not part 2's.
-_ANOMALY_WATCHED_STAGES = ("tidying", "lint", "lifecycle")
-
-
-def run_dream_and_auto_apply(
-    vault_path: Path,
-    *,
-    run_id: str | None = None,
-    revert_log=None,
-    batch_cap: int | None = None,
-    log_root: Path | str | None = None,
-    lock_root: Path | str | None = None,
-):
-    """Run `run_dream()` (unchanged), then auto-apply its compression-stage,
-    tidying-stage, and link-improvement-stage proposals through
-    `dream_confirm.auto_apply_batch` — no operator confirm required for
-    those (see `dream_confirm.AUTO_APPLY_STAGES`'s own docstring for each
-    stage's justification). Dedup and contradiction-triage proposals stay
-    staged in `_dream-staging/<run_id>/`, exactly as `run_dream()` left
-    them.
-
-    Before applying, EVERY stage in `_ANOMALY_WATCHED_STAGES` (tidying —
-    task 6, part 1 — plus `suffix_backlog_drain`/`lint` — task 9, part 3,
-    generalizing the same breaker via `dream_confirm.check_stage_anomaly`)
-    has its own proposal count run through its own anomaly check, each
-    against its own trailing history (`_meta/<stage>-cycle-history.json`)
-    so one stage's spike can never trip or poison another's baseline. A
-    tripped stage is excluded from this cycle's auto-apply stages
-    (every other stage is unaffected); every proposal from that stage
-    stays pending instead, and the digest carries a visible flag per
-    tripped stage.
-
-    Re-renders `digest.md` with the auto-applied batch (and any tripped
-    anomalies) reflected (see `_render_digest`'s `auto_applied`/
-    `anomalies` params), and writes the machine-readable per-run
-    `_dream-staging/<run_id>/auto-expired.json` plus the stable, run-id-
-    free `_meta/dream-auto-expired-latest.json` pointer — the latter is
-    what a later reader (e.g. a console/dashboard surface) reads without
-    needing to already know the run id, and it is overwritten every cycle
-    (including a zero-item one) so it never goes stale.
-
-    `revert_log` defaults to a fresh `RevertLog(vault_path, log_root=
-    log_root, lock_root=lock_root)` (the CLI's own default; `log_root`/
-    `lock_root` default to `None`, i.e. `RevertLog`'s own real
-    `~/.cache/agentm/dream/revert-log/` — a test passes a scratch dir for
-    either, or injects a whole `revert_log` instance directly, exactly
-    like `dream_confirm`'s own existing tests do). Ignored if `revert_log`
-    is given explicitly. `batch_cap` defaults to
-    `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP` — the global mutation
-    budget the design names, which already applies across every auto-
-    apply stage combined (compression + tidying), on top of this per-
-    stage anomaly check; no separate cap needed for task 6.
-
-    Returns `(digest, auto_applied_batch)`.
-    """
-    import dream_confirm  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
-    from revert_log import RevertLog  # noqa: E402
-
-    vault_path = Path(vault_path)
-    digest = run_dream(vault_path, run_id=run_id)
-
-    if revert_log is None:
-        revert_log = RevertLog(vault_path, log_root=log_root, lock_root=lock_root)
-    cap = batch_cap if batch_cap is not None else dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP
-
-    proposal_counts_by_stage: dict = {}
-    for p in digest.proposals:
-        proposal_counts_by_stage[p.stage] = proposal_counts_by_stage.get(p.stage, 0) + 1
-
-    anomalies = {}
-    stages = dream_confirm.AUTO_APPLY_STAGES
-    for watched_stage in _ANOMALY_WATCHED_STAGES:
-        result = dream_confirm.check_stage_anomaly(
-            vault_path, watched_stage, proposal_counts_by_stage.get(watched_stage, 0)
-        )
-        anomalies[watched_stage] = result
-        if result.tripped:
-            stages = frozenset(stages - {watched_stage})
-
-    batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap, stages=stages)
-
-    # Filing v2, the write path (task 3): the review queue is a reading over
-    # metadata now, and this cycle is the nightly pass the design names, so
-    # the needs-review MOC regenerates here — after the folded sub-runs have
-    # applied, best-effort like them.
+    # The needs-review map regenerates here, with this cycle's twins and
+    # facets now on disk for it to read. Best-effort.
     try:
         import needs_review  # function-local: keeps dream's import graph flat
         moc_path = needs_review.write(vault_path)
@@ -1505,71 +614,9 @@ def run_dream_and_auto_apply(
     except Exception as e:  # pragma: no cover
         print(f"warning: needs-review MOC regeneration failed: {e}", file=sys.stderr)
 
-
-    # The lifecycle axis (filing v2 part 6): sinking a silent memory to
-    # dormant and lifting a recalled one back are the dreaming binary's
-    # (`agentmdream`, journaled to the same lifecycle journal); this cycle
-    # reads the axis and says what it sees. The archive lane stays here — a
-    # proposal run_dream staged above, waiting on the operator's confirm.
-    try:
-        import lifecycle_transitions  # function-local: keeps dream's import graph flat
-        digest.lifecycle = {"summary": lifecycle_transitions.describe(lifecycle_transitions.summarize(vault_path))}
-    except Exception as e:  # pragma: no cover
-        print(f"warning: lifecycle reading failed: {e}", file=sys.stderr)
-
-    # The sampled higher-tier audit (task 9): this cycle's applied
-    # link_improvement mutations. It used to take the folded inbox-triage
-    # sub-run's applied merges too; that engine was retired on 2026-09-06
-    # when the directory it walked stopped existing. Always sampled_count=0
-    # today (see dream_confirm.run_sampled_audit's own header comment — the
-    # higher-tier model tier doesn't exist yet).
-    audit_items = [i for i in batch.items if i["stage"] == "link_improvement"]
-    sampled_audit = dream_confirm.run_sampled_audit(vault_path, audit_items)
-    digest.sampled_audit = {
-        "sampled_count": sampled_audit.sampled_count,
-        "agree_count": sampled_audit.agree_count,
-        "disagree_count": sampled_audit.disagree_count,
-        "disagreement_rate": sampled_audit.disagreement_rate,
-        "narrowed": sampled_audit.narrowed,
-    }
-    # Overwritten every cycle (including a zero-sample one), the same
-    # "never goes stale" convention as dream-auto-expired-latest.json —
-    # what a console/dashboard surface reads without knowing the run id.
-    atomic_write(
-        engine_state.engine_state_dir() / "sampled-audit-latest.json",
-        json.dumps({"run_id": digest.run_id, **digest.sampled_audit}, indent=2),
-    )
-
-    # Per-run staging left the vault with the rest of the machine state
-    # (filing-v2 part 2a): a run's digest and revert bundle are engine
-    # working files until the operator confirms them, not corpus.
-    staging_dir = engine_state.engine_state_dir() / "dream-runs" / digest.run_id
-    atomic_write(
-        staging_dir / "digest.md",
-        _render_digest(digest, auto_applied=batch, anomalies=anomalies),
-    )
-
-    payload = dream_confirm.render_auto_applied_json(batch)
-    atomic_write(staging_dir / "auto-expired.json", payload)
-    atomic_write(engine_state.engine_state_dir() / "dream-auto-expired-latest.json", payload)
-
-    tripped_stages = sorted(stage for stage, r in anomalies.items() if r.tripped)
-    if tripped_stages:
-        atomic_write(
-            engine_state.engine_state_dir() / "dream-anomaly-latest.json",
-            json.dumps([
-                {
-                    "run_id": digest.run_id,
-                    "stage": stage,
-                    "current_count": anomalies[stage].current_count,
-                    "baseline": anomalies[stage].baseline,
-                    "threshold": anomalies[stage].threshold,
-                }
-                for stage in tripped_stages
-            ], indent=2),
-        )
-
-    return digest, batch
+    digest.digest_path = _write_digest(digest)
+    _write_cycle_report(digest, part5, now)
+    return digest
 
 
 # -----------------------------------------------------------------------------
@@ -1586,31 +633,13 @@ def _resolve_vault_path(arg_vault_path: str | None) -> Path | None:
 
 
 def main(argv: list | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the thin manual /dream pass.")
-    parser.add_argument("--vault-path", help="MemoryVault root (overrides MEMORY_VAULT_PATH env var)")
-    parser.add_argument("--run-id", help="Override the generated run id")
-    parser.add_argument(
-        "--batch-cap", type=int, default=None,
-        help="max compression-stage ('expire') proposals to auto-apply this run "
-             "(default: dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP)",
-    )
-    parser.add_argument(
-        "--no-auto-apply", action="store_true",
-        help="propose only (run_dream's old behavior) -- skip the confirm-free "
-             "expire auto-apply step entirely; every proposal, including "
-             "compression, stays pending for a manual dream_confirm.confirm() call",
-    )
-    parser.add_argument(
-        "--log-root", default=None,
-        help="override RevertLog's journal directory (default: "
-             "~/.cache/agentm/dream/revert-log/, XDG_CACHE_HOME-honoring). "
-             "Mainly for tests -- never needed in normal use.",
-    )
-    parser.add_argument(
-        "--lock-root", default=None,
-        help="override the revert-log's lock directory (default: vault_lock's "
-             "own default). Mainly for tests -- never needed in normal use.",
-    )
+    parser = argparse.ArgumentParser(description="Run the Python half of the night once.")
+    parser.add_argument("--vault-path", help="the memory root (overrides MEMORY_VAULT_PATH)")
+    parser.add_argument("--run-id", help="override the generated run id")
+    # Accepted and ignored, so a manifest written before plan 04 still runs:
+    # the cycle applies nothing, so there is nothing to cap or to skip.
+    parser.add_argument("--batch-cap", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--no-auto-apply", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     vault = _resolve_vault_path(args.vault_path)
@@ -1618,24 +647,12 @@ def main(argv: list | None = None) -> int:
         print("ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)", file=sys.stderr)
         return 1
 
-    if args.no_auto_apply:
-        digest = run_dream(vault, run_id=args.run_id)
-        print(
-            f"dream run {digest.run_id}: {len(digest.proposals)} proposal(s), "
-            f"{len(digest.insight_candidates)} insight candidate(s) — digest at {digest.digest_path} "
-            "(--no-auto-apply: nothing auto-applied, all proposals pending)"
-        )
-        return 0
-
-    digest, batch = run_dream_and_auto_apply(
-        vault, run_id=args.run_id, batch_cap=args.batch_cap,
-        log_root=args.log_root, lock_root=args.lock_root,
-    )
-    print(
-        f"dream run {digest.run_id}: {len(digest.proposals)} proposal(s), "
-        f"{len(digest.insight_candidates)} insight candidate(s), "
-        f"{len(batch.items)} auto-applied (expire) — digest at {digest.digest_path}"
-    )
+    digest = run_dream(vault, run_id=args.run_id)
+    kinds = {}
+    for p in digest.proposals:
+        kinds[p.kind] = kinds.get(p.kind, 0) + 1
+    found = ", ".join(f"{v} {k}" for k, v in sorted(kinds.items())) or "nothing to judge"
+    print(f"dream run {digest.run_id}: {found} — digest at {digest.digest_path}")
     return 0
 
 

@@ -46,7 +46,9 @@ class JobTemplatesLoad(unittest.TestCase):
             jobs.mkdir()
             shutil.copy(TEMPLATES / "dreaming.yaml", jobs / "dreaming.yaml")
             (job,) = manifest.load_manifests(jobs)
-        self.assertEqual(job.command, "$HOME/.local/bin/agentmdream run -every 168h -apply")
+        # Nightly (agentm-vault plan 04): the window makes it once a night, and
+        # twelve hours sits between a night's spread and the gap between nights.
+        self.assertEqual(job.command, "$HOME/.local/bin/agentmdream run -every 12h -apply")
         self.assertFalse(job.dry_run)
 
     def test_the_nightly_enrichment_job_is_registered_and_off(self):
@@ -69,6 +71,9 @@ class JobTemplatesLoad(unittest.TestCase):
         # operator's standing spend switch still off — which is the one thing
         # that switch exists to prevent.
         self.assertNotIn("--yes", job.command)
+        # It declares that it spends, so the fleet ceiling gates it (and only
+        # it); the number is the strong tier's line (plan 04, task 2).
+        self.assertEqual(job.budget_tokens, 1_000_000)
 
     def test_a_manifest_without_the_field_is_enabled(self):
         """Every manifest written before the field existed keeps running."""
@@ -78,6 +83,27 @@ class JobTemplatesLoad(unittest.TestCase):
             shutil.copy(TEMPLATES / "dreaming.yaml", jobs / "dreaming.yaml")
             (job,) = manifest.load_manifests(jobs)
         self.assertTrue(job.enabled)
+
+    def test_the_nightly_steps_share_the_window_in_the_night_order(self):
+        """agentm-vault plan 04, tasks 1 and 6: enrichment, the binary, the
+        Python cycle, the scorecards, then the morning note and the email that
+        carries it — inside 02:00-06:00, in that order, because each reads what
+        the one before it wrote."""
+        night = ["enrich-nightly", "dreaming", "dream", "corpus-scorecard",
+                 "morning-note", "observability-email-daily"]
+        with tempfile.TemporaryDirectory() as td:
+            jobs = Path(td) / "jobs"
+            jobs.mkdir()
+            for t in TEMPLATES.glob("*.yaml"):
+                shutil.copy(t, jobs / t.name)
+            loaded = {j.name: j for j in manifest.load_manifests(jobs)}
+        for name in night:
+            self.assertEqual(loaded[name].window_minutes, (120, 360), name)
+        self.assertEqual(sorted(night, key=lambda n: loaded[n].order), night)
+        # Nothing else is windowed yet: the hourly sweep and the shepherds are
+        # not night work, and a window on them would stall them all day.
+        others = [n for n, j in loaded.items() if j.window and n not in night]
+        self.assertEqual(others, [])
 
 
 if __name__ == "__main__":

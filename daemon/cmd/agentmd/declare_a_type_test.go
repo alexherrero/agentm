@@ -97,7 +97,7 @@ func (a *arc) coverage(t *testing.T) ledger.Report {
 // TestDeclaringATypeFallsThroughTheWholeArc is the part's own worked example.
 func TestDeclaringATypeFallsThroughTheWholeArc(t *testing.T) {
 	ctx := context.Background()
-	a := newArc(t, []string{"memory/a.md", "memory/b.md", "memory/c.md"},
+	a := newArc(t, []string{"memory/semantic/a.md", "memory/semantic/b.md", "memory/semantic/c.md"},
 		"preference", "convention")
 
 	// 1. Coverage is complete, and over a population that exists. Without the
@@ -158,7 +158,7 @@ func TestDeclaringATypeFallsThroughTheWholeArc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(order, ","); got != "memory/a.md,memory/b.md" {
+	if got := strings.Join(order, ","); got != "memory/semantic/a.md,memory/semantic/b.md" {
 		t.Errorf("the drain took %s, want the two oldest in order", got)
 	}
 	if !first.Deferred {
@@ -185,7 +185,7 @@ func TestDeclaringATypeFallsThroughTheWholeArc(t *testing.T) {
 	if _, err := a.queue.Drain(ctx, "enrich", 2, handled); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(order, ","); got != "memory/c.md" {
+	if got := strings.Join(order, ","); got != "memory/semantic/c.md" {
 		t.Errorf("the second drain took %s, want the item the first one deferred", got)
 	}
 
@@ -226,7 +226,7 @@ func (a *arc) reenrich(t *testing.T, rel string) {
 // corpus. Prose in the rules file is for people; re-enriching eight thousand
 // notes because somebody fixed a typo in a heading is a real bill.
 func TestEditingProseAroundTheContractDoesNotRequeue(t *testing.T) {
-	a := newArc(t, []string{"memory/a.md"}, "preference", "convention")
+	a := newArc(t, []string{"memory/semantic/a.md"}, "preference", "convention")
 	if got := a.coverage(t); got.Current != 1 {
 		t.Fatalf("coverage starts at %d/%d, want 1/1", got.Current, got.Eligible)
 	}

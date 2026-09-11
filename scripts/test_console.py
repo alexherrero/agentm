@@ -580,115 +580,33 @@ class BriefSectionTests(unittest.TestCase):
         self.assertIn("Observability digest", out)
 
 
-class DreamExpireSectionTests(unittest.TestCase):
+class RetiredSectionsTests(unittest.TestCase):
+    """Four sections retired in agentm-vault plan 04 with the stages that fed
+    them: dreaming auto-expire, the sampled audit, the opinion supplements and
+    the crystallize candidates. The pointer files they read may still sit in
+    the engine state; a console run must not bring a section back from them."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name)
-        c._engine_state_dir().mkdir(parents=True, exist_ok=True)
+        state = c._engine_state_dir()
+        state.mkdir(parents=True, exist_ok=True)
+        (state / "dream-auto-expired-latest.json").write_text(
+            json.dumps({"run_id": "x", "count": 3, "at": 1.0}), encoding="utf-8")
+        (state / "opinion-supplement-health-latest.json").write_text("{}", encoding="utf-8")
+        (state / "crystallize-staging").mkdir(exist_ok=True)
+        (state / "crystallize-staging" / "post-work-a.json").write_text("{}", encoding="utf-8")
 
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _write_pointer(self, **fields):
-        (c._engine_state_dir() / "dream-auto-expired-latest.json").write_text(json.dumps(fields), encoding="utf-8")
-
-    def test_none_vault(self):
-        self.assertIn("n/a", c.section_dream_expire(None))
-
-    def test_dark_when_pointer_absent(self):
-        out = c.section_dream_expire(self.vault)
-        self.assertIn("dark", out)
-        self.assertIn("dream.yaml", out)
-
-    def test_present_with_items_includes_count_and_revert(self):
-        now = time.time()
-        self._write_pointer(
-            run_id="20260711-abcd1234", applied_at=now - 3600, stages=["compression"], batch_cap=25, count=2,
-            items=[{"index": 1, "entry_id": "e1"}],
-            revert={"how": "RevertLog(vault_path).revert('20260711-abcd1234', entry_id)", "run_id": "20260711-abcd1234"},
-        )
-        out = c.section_dream_expire(self.vault, now=now)
-        self.assertIn("20260711-abcd1234", out)
-        self.assertIn("2 item(s)", out)
-        self.assertIn("revert:", out)
-        self.assertIn("RevertLog", out)
-
-    def test_empty_batch_reports_zero_not_dark(self):
-        now = time.time()
-        self._write_pointer(
-            run_id="run-empty", applied_at=now, stages=["compression"], batch_cap=25, count=0, items=[],
-            revert={"how": "n/a", "run_id": "run-empty"},
-        )
-        out = c.section_dream_expire(self.vault, now=now)
-        self.assertIn("0 item(s)", out)
-        self.assertNotIn("dark", out)
-
-    def test_malformed_pointer_degrades_gracefully(self):
-        (c._engine_state_dir() / "dream-auto-expired-latest.json").write_text("not json", encoding="utf-8")
-        out = c.section_dream_expire(self.vault)
-        self.assertIn("n/a", out)
-
-
-class OpinionSupplementsSectionTests(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.vault = Path(self._tmp.name)
-        c._engine_state_dir().mkdir(parents=True, exist_ok=True)
-
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def _write_pointer(self, opinions: dict) -> None:
-        (c._engine_state_dir() / "opinion-supplement-health-latest.json").write_text(
-            json.dumps({"opinions": opinions}), encoding="utf-8"
-        )
-
-    def test_none_vault(self):
-        self.assertIn("n/a", c.section_opinion_supplements(None))
-
-    def test_dark_when_pointer_absent(self):
-        out = c.section_opinion_supplements(self.vault)
-        self.assertIn("dark", out)
-
-    def test_no_opinions_tracked_yet(self):
-        self._write_pointer({})
-        out = c.section_opinion_supplements(self.vault)
-        self.assertIn("no opinion has an active lane yet", out)
-
-    def test_present_reports_per_opinion_counts(self):
-        self._write_pointer({
-            "good": {"lane_depth": 3, "promoted_count": 2, "parked_count": 1,
-                      "provenance_coverage": 0.5, "base_proposal_count": 0},
-        })
-        out = c.section_opinion_supplements(self.vault)
-        self.assertIn("good:", out)
-        self.assertIn("2 promoted", out)
-        self.assertIn("1 parked", out)
-        self.assertIn("50%", out)
-
-    def test_deep_lane_gets_flagged(self):
-        self._write_pointer({
-            "done": {"lane_depth": 25, "promoted_count": 0, "parked_count": 25,
-                      "provenance_coverage": 0.0, "base_proposal_count": 0},
-        })
-        out = c.section_opinion_supplements(self.vault)
-        self.assertIn("⚠", out)
-        self.assertIn("recurrence threshold may be too loose", out)
-
-    def test_shallow_lane_is_not_flagged(self):
-        self._write_pointer({
-            "done": {"lane_depth": 3, "promoted_count": 0, "parked_count": 3,
-                      "provenance_coverage": 0.0, "base_proposal_count": 0},
-        })
-        out = c.section_opinion_supplements(self.vault)
-        self.assertNotIn("⚠", out)
-
-    def test_malformed_pointer_degrades_gracefully(self):
-        (c._engine_state_dir() / "opinion-supplement-health-latest.json").write_text(
-            "not json", encoding="utf-8"
-        )
-        out = c.section_opinion_supplements(self.vault)
-        self.assertIn("n/a", out)
+    def test_no_retired_section_is_gathered_or_rendered(self):
+        report = c.gather_report(None, self.vault, runner=_fake_runner())
+        for key in ("dream_expire", "sampled_audit", "opinion_supplements", "crystallize_candidates"):
+            self.assertNotIn(key, report)
+        text = c.render_terminal(report)
+        self.assertNotIn("auto-expire", text)
+        self.assertNotIn("crystalliz", text.lower())
 
 
 class RichViewLineTests(unittest.TestCase):
@@ -719,14 +637,13 @@ class RenderTests(unittest.TestCase):
             "machinery": "Machinery: 3 OK, 0 WARN, 0 FAIL, 0 UNVERIFIED",
             "vault_doctor": "Vault doctor (live check, now):\n  [OK] vault-path fine",
             "vault_lint": "Vault lint: 0 error · 0 warn · 0 info (report: vault-lint-2026-07-10.md, rendered now)",
-            "dream_expire": "Dreaming auto-expire: last cycle (run x, now) auto-expired 0 item(s) -- nothing to revert",
         }
 
     def test_render_terminal_contains_all_sections(self):
         text = c.render_terminal(self._report())
         for heading in (
             "Health", "Plans", "Board drift", "Spend", "Memory activity",
-            "Machinery", "Vault doctor", "Vault lint", "Dreaming",
+            "Machinery", "Vault doctor", "Vault lint",
         ):
             self.assertIn(heading, text)
         for value in self._report().values():
@@ -744,7 +661,7 @@ class RenderTests(unittest.TestCase):
         self.assertIn("<title>AgentM Console</title>", html)
         for heading in (
             "Health", "Plans", "Board drift", "Spend", "Memory activity",
-            "Machinery", "Vault doctor", "Vault lint", "Dreaming",
+            "Machinery", "Vault doctor", "Vault lint",
         ):
             self.assertIn(f"<h2>{heading}</h2>", html)
         self.assertIn("Health Index: 90.00", html)

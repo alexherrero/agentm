@@ -13,7 +13,14 @@ import (
 // journal, so a resume after a crash reads both from one place.
 type State struct {
 	LastStarted time.Time `json:"last_started"`
-	LastDone    time.Time `json:"last_done"`
+	// LastDone is when the last *applying* pass finished, and it is the clock
+	// the gate reads. A report-only pass does not move it (agentm-vault plan
+	// 04): three hand-run diagnostics on 2026-09-05/06 each reset it, and the
+	// maps and the copy collapse sat frozen for a week behind them.
+	LastDone time.Time `json:"last_done"`
+	// LastReport is when the last report-only pass finished — its own stamp,
+	// so a diagnostic is still recorded without touching the clock.
+	LastReport  time.Time `json:"last_report,omitempty"`
 	LastRunID   string    `json:"last_run_id,omitempty"`
 	LastOutcome string    `json:"last_outcome,omitempty"`
 	Runs        int       `json:"runs"`
@@ -31,8 +38,8 @@ func Dir(engineStateDir string) string { return filepath.Join(engineStateDir, "d
 func statePath(engineStateDir string) string { return filepath.Join(Dir(engineStateDir), "state.json") }
 
 // LastReportPath is where a completed pass leaves the report it rendered —
-// the same JSON `agentmdream run -json` prints — for the dreaming scorecard
-// to read (filing-v2 remainders task 4). A start that was refused or not due
+// the same JSON `agentmdream run -json` prints — for the morning note to read
+// (filing-v2 remainders task 4; the dreaming scorecard read it until plan 04). A start that was refused or not due
 // leaves the previous report where it was: the file describes the last pass
 // that happened, never a pass that did not.
 func LastReportPath(engineStateDir string) string {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/tiers"
 )
 
@@ -65,7 +66,11 @@ func cmdTiers(args []string) error {
 	// The models default to what the daemon is configured with, so a stage can
 	// ask the plain question and get an answer about the run that would happen.
 	if *strong == "" {
-		*strong = cfg.EnrichModel
+		// The strong tier's model as the batch resolves it, the shipped default
+		// included. It answered with the configured name only while the Python
+		// cycle's sampled audit read "a strong model is named" as "call the
+		// judge"; that audit retired in agentm-vault plan 04.
+		*strong = strongModel(cfg)
 	}
 	if *cheap == "" {
 		*cheap = cfg.CheapModel
@@ -96,6 +101,51 @@ func cmdTiers(args []string) error {
 		tiers.MinAgreement*100, tiers.MinSamples)
 	fmt.Printf("table: %s\n", tiers.TablePath(dir))
 	return nil
+}
+
+// enrichJobs is which of the tier table's jobs each enrichment depth is.
+//
+// The table names eight token-bearing jobs and enrichment is two of them, so
+// the wiring invents none (agentm-vault plan 04). The deep pass decides what a
+// note is — its type, its title, its importance — which is the table's
+// `classify-unfiled`, a name from when only unfiled notes were offered. The
+// light pass may move a note's summary, tags, related and confidence and
+// nothing it ranks by, which is `summarize`, and it is the job the first
+// batch's own answers audit for a cheap tier.
+var enrichJobs = map[enrich.Depth]tiers.Job{
+	enrich.DepthDeep:  tiers.ClassifyUnfiled,
+	enrich.DepthLight: tiers.Summarize,
+}
+
+// enrichRouter asks the tier table where each depth runs.
+//
+// The table is read once per run: a qualification written mid-night should
+// take effect from the next night, not from the next note. A table that will
+// not load routes everything strong, which is the table's own answer to every
+// unknown — the cost is money, never correctness.
+func enrichRouter(cfg *config.Config, strong string) func(enrich.Depth) enrich.Route {
+	table, err := tiers.Load(tierMetaDir(cfg))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tiers: %v — every depth runs strong\n", err)
+		table = &tiers.Table{}
+	}
+	return func(d enrich.Depth) enrich.Route {
+		job, ok := enrichJobs[d]
+		if !ok {
+			return enrich.Route{Model: strong, Tier: enrich.TierStrong}
+		}
+		r := table.Route(job, cfg.CheapModel, strong, enrich.PassVersion)
+		return enrich.Route{Model: r.Model, Tier: string(r.Tier), Job: string(r.Job), Why: r.Why}
+	}
+}
+
+// strongModel is the strong tier's model: the kernel config's
+// `daemon.enrich_model` when it names one, else the shipped default.
+func strongModel(cfg *config.Config) string {
+	if cfg.EnrichModel != "" {
+		return cfg.EnrichModel
+	}
+	return enrich.DefaultStrongModel
 }
 
 // tierMetaDir is where the durable tier table lives — the engine state

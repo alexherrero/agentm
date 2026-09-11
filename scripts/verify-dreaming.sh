@@ -6,26 +6,24 @@
 # Until this script existed, dreaming's only scorecard presence was a static
 # "designed, not built" row in scripts/health/dark-checks.jsonl — a
 # placeholder that never scores, only flags a known gap. This script is the
-# real, scored replacement: it drives the actual CLIs (dream.py,
-# dream_confirm.py, revert_log.py, the templates/jobs/dream.yaml manifest)
-# against a scratch vault and asserts genuine end-to-end behavior, the same
-# way verify-hook-resolution.sh / verify-reflection.sh do for their own
-# axes. Unit-level coverage of every stage's logic already lives in
-# scripts/test_dream.py / test_dream_confirm.py / test_revert_log.py /
+# real, scored replacement: it drives the actual CLI (dream.py and the
+# templates/jobs/dream.yaml manifest) against a scratch vault and asserts
+# genuine end-to-end behavior, the same way verify-hook-resolution.sh /
+# verify-reflection.sh do for their own axes. Unit-level coverage of every
+# stage's logic lives in scripts/test_dream.py / test_needs_review.py /
 # test_dream_job.py — this script proves the WIRING, not every branch.
 #
-# Checks:
+# Checks (narrowed in agentm-vault plan 04, when the cycle stopped applying
+# anything):
 #   A. a manual `/dream` run against a seeded fixture corpus (a near-
-#      duplicate pair) stages a dedup proposal with a revert pointer
-#   B. no source file is mutated by the run itself (byte-identical corpus)
-#   C. the derived-insight write is status: candidate
-#   D. confirming the staged proposal applies it through revert_log, and
-#      reverting via the SAME RevertLog undoes it (round-trip proof that
-#      apply routes through the journal, not a direct write)
-#   E. an expired proposal's confirm() raises and never applies (no silent
-#      apply on timeout)
-#   F. the shipped job manifest (templates/jobs/dream.yaml) parses and
-#      stays dry_run: true
+#      duplicate pair) finds it as a possible twin
+#   B. no source file is mutated by the run (byte-identical corpus)
+#   C. the twin reaches the needs-review map as a section of its own
+#   F. the shipped job manifest (templates/jobs/dream.yaml) parses, runs
+#      inside the night's window in its order, and stays dry_run: true
+#
+# Retired with the stages they exercised: the derived-insight write (C), the
+# confirm-and-revert round trip (D) and the expired-proposal refusal (E).
 #
 # Usage:   bash scripts/verify-dreaming.sh
 # Exit:    0 iff every check passes.
@@ -57,8 +55,7 @@ assert_eq() {
   if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "want '$3'  got '$2'"; fi
 }
 
-# ── scratch vault + a sibling scratch dir for revert-log state and byte-exact
-#    pre-image backups (isolated; auto-removed) ─────────────────────────────
+# ── scratch vault (isolated; auto-removed) ─────────────────────────────────
 SCRATCH="$(mktemp -d)"
 # Hermetic engine state (filing-v2 part 2a): machine state lives at
 # $AGENTM_STATE_DIR now, so the scratch run gets its own.
@@ -66,8 +63,7 @@ export AGENTM_STATE_DIR="$SCRATCH/engine-state"
 mkdir -p "$AGENTM_STATE_DIR"
 
 SV="$SCRATCH/vault"
-BACKUPS="$SCRATCH/backups"
-mkdir -p "$SV" "$BACKUPS"
+mkdir -p "$SV"
 cleanup() { rm -rf "$SCRATCH"; }
 trap cleanup EXIT
 echo "verify-dreaming: scratch vault=$SV"
@@ -76,81 +72,32 @@ printf -- '---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog toda
 printf -- '---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n' > "$SV/b.md"
 PRE_A="$(cat "$SV/a.md")"
 PRE_B="$(cat "$SV/b.md")"
-# Byte-exact backups for the Python round-trip check below — command
-# substitution ($(...)) strips trailing newlines, so PRE_A/PRE_B above are
-# fine for grep-style substring assertions but NOT safe to re-embed into a
-# Python string literal for an exact-equality check (D.).
-cp "$SV/a.md" "$BACKUPS/a-orig.md"
 
-# ── A/B/C. a manual /dream run stages a dedup proposal, mutates nothing,
-#          and writes a status: candidate insight ─────────────────────────
+# ── A/B/C. a manual /dream run finds the twin, mutates nothing, and puts
+#          the pair on the needs-review map ────────────────────────────────
 DREAM_OUT="$("$PY" "$S/dream.py" --vault-path "$SV" --run-id verify-run 2>&1)"
 DIGEST="$AGENTM_STATE_DIR/dream-runs/verify-run/digest.md"
 
-assert_eq "A. dream run exits describing the dedup proposal" \
-  "$(printf '%s' "$DREAM_OUT" | grep -c 'proposal(s)')" "1"
-assert_contains "A. digest carries a revert pointer" "$(cat "$DIGEST" 2>/dev/null)" "revert pointer"
+assert_contains "A. dream run reports the twin" "$DREAM_OUT" "1 possible-twin"
+assert_contains "A. digest lists it for you to judge" "$(cat "$DIGEST" 2>/dev/null)" \
+  "dedup · possible-twin: a.md and b.md"
 
 POST_A="$(cat "$SV/a.md")"
 POST_B="$(cat "$SV/b.md")"
 assert_eq "B. source entry a.md untouched by the run itself" "$POST_A" "$PRE_A"
 assert_eq "B. source entry b.md untouched by the run itself" "$POST_B" "$PRE_B"
 
-INSIGHT="$SV/_dream/insights/verify-run.md"
-if [ -f "$INSIGHT" ]; then
-  assert_contains "C. insight candidate is status: candidate" "$(cat "$INSIGHT")" "status: candidate"
+MOC="$SV/memory/mocs/needs-review.md"
+assert_contains "C. the needs-review map carries a Possible twins section" \
+  "$(cat "$MOC" 2>/dev/null)" "## Possible twins (1)"
+assert_contains "C. the section names both notes" "$(cat "$MOC" 2>/dev/null)" "[[a]] and [[b]]"
+if [ -e "$AGENTM_STATE_DIR/dream-staging" ] || [ -e "$SV/_dream" ]; then
+  fail "C. nothing staged, no insight written" "found dream-staging or _dream/ after the run"
 else
-  fail "C. insight candidate is status: candidate" "no insight file at $INSIGHT"
+  pass "C. nothing staged, no insight written"
 fi
 
-# ── D. confirm applies through revert_log; the SAME RevertLog can undo it ──
-CONFIRM_OUT="$("$PY" -c "
-import sys
-sys.path.insert(0, '$S')
-from revert_log import RevertLog
-import dream_confirm as dc
-
-vault = '$SV'
-pre_a = open('$BACKUPS/a-orig.md', 'rb').read()
-rl = RevertLog(vault, log_root='$SCRATCH/rl-log', lock_root='$SCRATCH/rl-lock')
-entry_id = dc.confirm(vault, 'verify-run', 1, rl)
-mutated = open('$SV/a.md', 'rb').read()
-rl.revert('verify-run', entry_id=entry_id)
-reverted = open('$SV/a.md', 'rb').read()
-print('MUTATED_DIFFERS=' + str(mutated != pre_a))
-print('REVERTED_MATCHES=' + str(reverted == pre_a))
-" 2>&1)"
-assert_contains "D. confirm() actually applied the mutation" "$CONFIRM_OUT" "MUTATED_DIFFERS=True"
-assert_contains "D. RevertLog.revert() undid the confirmed apply (routed through the journal)" "$CONFIRM_OUT" "REVERTED_MATCHES=True"
-
-# ── E. an expired proposal's confirm() raises and never applies ────────────
-printf -- '---\nkind: fix\n---\nCompletely unrelated content, entry one.\n' > "$SV/e1.md"
-printf -- '---\nkind: fix\n---\nCompletely unrelated content, entry one!\n' > "$SV/e2.md"
-PRE_E1="$(cat "$SV/e1.md")"
-"$PY" "$S/dream.py" --vault-path "$SV" --run-id verify-expire >/dev/null 2>&1
-
-EXPIRE_OUT="$("$PY" -c "
-import sys
-sys.path.insert(0, '$S')
-from revert_log import RevertLog
-import dream_confirm as dc
-
-vault = '$SV'
-rl = RevertLog(vault, log_root='$SCRATCH/rl-log2', lock_root='$SCRATCH/rl-lock2')
-staged_at = __import__('json').load(open(__import__('os').environ['AGENTM_STATE_DIR'] + '/dream-runs/verify-expire/proposals.json'))['staged_at']
-far_future = staged_at + (dc.DEFAULT_TTL_DAYS + 1) * 86400
-try:
-    dc.confirm(vault, 'verify-expire', 1, rl, now=far_future)
-    print('RAISED=False')
-except dc.ExpiredProposalError:
-    print('RAISED=True')
-" 2>&1)"
-assert_contains "E. confirm() on an expired proposal raises ExpiredProposalError" "$EXPIRE_OUT" "RAISED=True"
-
-POST_E1="$(cat "$SV/e1.md")"
-assert_eq "E. expired proposal's source entry stays untouched (no silent apply on timeout)" "$POST_E1" "$PRE_E1"
-
-# ── F. the shipped job manifest parses and stays dry_run: true ─────────────
+# ── F. the shipped job manifest parses, sits in the night, stays dry_run ───
 MANIFEST_OUT="$("$PY" -c "
 import sys
 sys.path.insert(0, '$REPO/scripts')
@@ -164,9 +111,13 @@ job = jobs[0]
 print('NAME=' + job.name)
 print('DRY_RUN=' + str(job.dry_run))
 print('TIER=' + job.tier)
+print('WINDOW=' + str(job.window))
+print('ORDER=' + str(job.order))
 " 2>&1)"
 assert_contains "F. templates/jobs/dream.yaml parses per the runner's manifest schema" "$MANIFEST_OUT" "NAME=dream"
 assert_contains "F. shipped manifest stays dry_run: true (no live promotion)" "$MANIFEST_OUT" "DRY_RUN=True"
+assert_contains "F. it starts inside the night's window" "$MANIFEST_OUT" "WINDOW=02:00-06:00"
+assert_contains "F. third in the night's order" "$MANIFEST_OUT" "ORDER=3"
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo

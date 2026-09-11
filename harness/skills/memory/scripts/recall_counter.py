@@ -123,9 +123,10 @@ def _maybe_prune(path: Path, *, now: datetime) -> None:
     above: nothing here may raise into the recall pipeline.
 
     Enforcement lives on the write path deliberately, not on a scheduler.
-    `dream.py`'s job template is weekly, ships `dry_run: true`, and is not
-    seeded at install; `dream_confirm.cleanup_applied_batches()` -- this
-    repo's only other retention routine -- has no production caller at all.
+    `dream.py`'s job template ships `dry_run: true` and is not seeded at
+    install, and this repo's only other retention routine
+    (`dream_confirm.cleanup_applied_batches()`) never had a production caller
+    before it retired in agentm-vault plan 04.
     A policy hung off a scheduler that may never run is a policy that
     silently isn't enforced, and this codebase has shipped that failure
     twice (session reflection dead 57 days under green CI; the

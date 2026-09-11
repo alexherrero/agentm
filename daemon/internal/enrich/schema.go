@@ -25,7 +25,11 @@ import (
 // one until somebody shipped a binary, which is the exact arrangement part 1
 // existed to end.
 
-// Response is the shape enrichment asks for.
+// Response is the shape enrichment asks for (agentm-vault § Dreaming: one
+// prompt, two shapes).
+//
+// It no longer carries `altitude`: the deep pass drops it. And it never
+// carries `why` — see strippedFields.
 type Response struct {
 	// Title is the note's title. Corrected, not invented — a note that already
 	// has a good one gets it back unchanged.
@@ -35,26 +39,78 @@ type Response struct {
 	Slug string `json:"slug,omitempty"`
 	// Type is one of the contract's memory types.
 	Type string `json:"type"`
-	// Altitude is `canonical` or `artifact`.
-	Altitude string `json:"altitude"`
 	// Tags and Aliases are retrieval surface.
 	Tags    []string `json:"tags,omitempty"`
 	Aliases []string `json:"aliases,omitempty"`
-	// Summary is present when the note is long enough to want one.
+	// Summary is one sentence saying what the card is for.
 	Summary string `json:"summary,omitempty"`
-	// Body is the distilled prose. The product.
+	// Related are neighbours the model judged to bear on the card, by id —
+	// chosen from the five the prompt offered and never from anywhere else.
+	// Compose keeps only ids that were offered, so a link cannot be invented.
+	Related []string `json:"related,omitempty"`
+	// ImportanceProposed is the model's 1–10 against the contract's rubric.
+	// Zero means none was proposed, which is what a light pass returns.
+	ImportanceProposed int `json:"importance_proposed,omitempty"`
+	// Body is prose to add below what the session wrote, under a dated
+	// `## Added by dreaming` heading. Empty when there is nothing worth adding.
+	// It is never a rewrite: the captured text is the evidence and is kept
+	// byte for byte (compose.go).
 	Body string `json:"body"`
-	// Confidence is the model's own account of how sure it is, and it is the
-	// field the review queue is a query over. Low confidence does not fail the
-	// write — it lands the note `unfiled` with the number in frontmatter, which
-	// is what "the review queue is a query" means in practice.
+	// Confidence is the model's own account of whether the card is a durable
+	// memory worth filing and its fields right, and it is the field the review
+	// queue is a query over. Below the floor the card stays `unfiled`, listed
+	// for the operator; a second verdict below it sinks the card to `dormant`.
 	Confidence float64 `json:"confidence"`
 }
 
-// Altitudes are the two values, and there are exactly two on purpose: the axis
-// is "does this state something durable, or record a moment", and a third value
-// would be a way to avoid answering.
-var Altitudes = map[string]bool{"canonical": true, "artifact": true}
+// strippedFields are fields a model may return out of habit and the pass
+// never writes. They are removed before the strict decode rather than failing
+// it, so a response that is otherwise good is not thrown away over a field that
+// was never going to land.
+//
+//   - `why` is what was happening when a card was kept, written by whoever
+//     kept it. No pass was there, and a reason guessed from the note reads
+//     exactly like a real one. The prompt never asks for it; this is the gate
+//     that holds when the model offers one anyway.
+//   - `altitude` is the axis the deep pass dropped (agentm-vault § Dreaming).
+var strippedFields = []string{"why", "altitude"}
+
+// decodeResponse extracts the response object, strips what the pass never
+// writes, and decodes the rest strictly. The second value names what was
+// stripped, for a caller that reports it.
+func decodeResponse(raw string) (Response, []string, error) {
+	var r Response
+	obj, err := extractJSON(raw)
+	if err != nil {
+		return r, nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(obj), &fields); err != nil {
+		return r, nil, fmt.Errorf("enrich: the response is not a JSON object: %w", err)
+	}
+	var stripped []string
+	for k := range fields {
+		for _, s := range strippedFields {
+			if strings.EqualFold(k, s) {
+				delete(fields, k)
+				stripped = append(stripped, k)
+			}
+		}
+	}
+	clean, err := json.Marshal(fields)
+	if err != nil {
+		return r, nil, err
+	}
+	// Unknown fields are refused rather than ignored. A model that invents a
+	// field is a model that misunderstood the task, and silently dropping it
+	// hides the misunderstanding until it shows up as a missing one.
+	dec := json.NewDecoder(strings.NewReader(string(clean)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&r); err != nil {
+		return r, stripped, fmt.Errorf("enrich: response is not the expected shape: %w", err)
+	}
+	return r, stripped, nil
+}
 
 // Schema is the post-gate that holds the model to the contract.
 type Schema struct {
@@ -89,19 +145,9 @@ func (g *Schema) Name() string { return "schema" }
 var slugRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 func (g *Schema) Check(_ context.Context, _ Request, body string) error {
-	var r Response
-	obj, err := extractJSON(body)
+	r, _, err := decodeResponse(body)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrNotEligible, err)
-	}
-	// Unknown fields are refused rather than ignored. A model that invents a
-	// field is a model that misunderstood the task, and silently dropping it
-	// hides the misunderstanding until it shows up as a missing one.
-	dec := json.NewDecoder(strings.NewReader(obj))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&r); err != nil {
-		return fmt.Errorf("%w: the response is not the expected shape: %v",
-			ErrNotEligible, err)
 	}
 	return g.Validate(r)
 }
@@ -112,11 +158,8 @@ func (g *Schema) Validate(r Response) error {
 	if strings.TrimSpace(r.Title) == "" {
 		return fmt.Errorf("%w: no title", ErrNotEligible)
 	}
-	if strings.TrimSpace(r.Body) == "" {
-		return fmt.Errorf("%w: no body — enrichment's product is the note, and a "+
-			"response with nothing in it is a failed call rather than a short one",
-			ErrNotEligible)
-	}
+	// An empty body is a fine answer now: it is what the pass adds below the
+	// card, and most short cards need nothing added.
 	if g.IsType != nil && !g.IsType(r.Type) {
 		known := ""
 		if g.TypesSorted != nil {
@@ -124,9 +167,13 @@ func (g *Schema) Validate(r Response) error {
 		}
 		return fmt.Errorf("%w: %q is not a memory type%s", ErrNotEligible, r.Type, known)
 	}
-	if !Altitudes[strings.ToLower(r.Altitude)] {
-		return fmt.Errorf("%w: altitude %q is neither canonical nor artifact",
-			ErrNotEligible, r.Altitude)
+	if r.ImportanceProposed != 0 && (r.ImportanceProposed < 1 || r.ImportanceProposed > 10) {
+		return fmt.Errorf("%w: importance_proposed %d is outside 1 to 10",
+			ErrNotEligible, r.ImportanceProposed)
+	}
+	if len(r.Related) > MaxRelated {
+		return fmt.Errorf("%w: %d related, over the %d neighbours offered",
+			ErrNotEligible, len(r.Related), MaxRelated)
 	}
 	if r.Slug != "" && !slugRe.MatchString(r.Slug) {
 		return fmt.Errorf("%w: slug %q is not a lower-case hyphenated stem",
@@ -156,17 +203,12 @@ func (g *Schema) Validate(r Response) error {
 }
 
 // ParseResponse decodes a model response into the struct, with the same
-// strictness the gate applies.
+// strictness the gate applies and the same fields stripped.
 func ParseResponse(raw string) (Response, error) {
-	var r Response
-	obj, err := extractJSON(raw)
-	if err != nil {
-		return r, err
-	}
-	dec := json.NewDecoder(strings.NewReader(obj))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&r); err != nil {
-		return r, fmt.Errorf("enrich: response is not the expected shape: %w", err)
-	}
-	return r, nil
+	r, _, err := decodeResponse(raw)
+	return r, err
 }
+
+// MaxRelated is how many neighbours the deep pass is offered, and so the most
+// `related` it may return.
+const MaxRelated = 5

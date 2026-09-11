@@ -20,6 +20,13 @@ Cadence -> lookback:
 Idempotent per day: a same-day rerun of the same cadence returns the
 already-written note's path without creating a second file or re-appending
 a duplicate history row for that (cadence, date) pair.
+
+An empty digest is never written (agentm-vault plan 04): a window with no
+spend and no events writes no note and appends no history row, the same rule
+the calendar's empty reviews follow. A page that says "$0 · 0 events" is a
+page you open for nothing. The daily rung's job retired in the same plan —
+the morning note carries the day's spend — though the cadence stays here for
+a hand run.
 """
 from __future__ import annotations
 
@@ -212,11 +219,17 @@ def write_digest_note(vault_path: "str | Path", cadence: str, body: str, *, now:
     return target
 
 
+def is_empty(slice_data: "dict | None") -> bool:
+    """A window with no spend and no events: nothing a digest could report."""
+    return not slice_data or (not slice_data.get("cost_usd") and not slice_data.get("event_count"))
+
+
 def run_digest(cadence: str, db_path: "str | Path", vault_path: "str | Path", *,
                now: "datetime | None" = None, history_path: "Path | None" = None) -> "Path | None":
     """End-to-end: compute the cadence's slice (or trend, for monthly), append
     to history (non-monthly cadences), and write the vault note. Returns the
-    written (or already-existing) note path, or None on graceful-skip."""
+    written (or already-existing) note path, or None on graceful-skip —
+    including an empty window, which writes nothing at all."""
     now = now if now is not None else datetime.now(timezone.utc)
 
     # Local import to avoid a hard dependency at module-import time for
@@ -232,10 +245,14 @@ def run_digest(cadence: str, db_path: "str | Path", vault_path: "str | Path", *,
     if cadence == "monthly":
         trend_rows = read_recent_history(history_path, now=now, lookback_seconds=30 * 86400)
         total_slice = compute_window_slice(rollup["by_window"], now=now, lookback_seconds=30 * 86400)
+        if is_empty(total_slice) and not trend_rows:
+            return None
         body = render_digest_body(cadence, None, now=now, trend_rows=trend_rows, total_slice=total_slice)
     else:
         lookback = _CADENCE_LOOKBACK_SECONDS[cadence]
         slice_data = compute_window_slice(rollup["by_window"], now=now, lookback_seconds=lookback)
+        if is_empty(slice_data):
+            return None
         append_digest_history(cadence, slice_data, now=now, history_path=history_path)
         body = render_digest_body(cadence, slice_data, now=now)
 
@@ -253,7 +270,7 @@ def main(argv: "list[str] | None" = None) -> int:
     history_path = Path(args.history_path) if args.history_path else None
     target = run_digest(args.cadence, args.db_path, args.vault_path, history_path=history_path)
     if target is None:
-        print("inbox_digest: no-op (missing rollup or vault)", file=sys.stderr)
+        print("inbox_digest: no note (missing rollup or vault, or nothing to report)", file=sys.stderr)
         return 0
     print(json.dumps({"total_cost_usd": 0.0}))
     print(f"inbox_digest: wrote {target}", file=sys.stderr)

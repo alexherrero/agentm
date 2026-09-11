@@ -65,6 +65,13 @@ type Request struct {
 	// cannot ask for a deep pass over a note that has already had one — the
 	// note's own frontmatter decides, and it is the only thing that does.
 	Depth Depth
+	// Route is the model and tier the tier table chose for this depth. Set by
+	// the pass beside Depth, for the same reason.
+	Route Route
+	// Neighbours are the notes the prompt offers beside the card — the only
+	// ids `related` may name. Set by the pass once the pre-gates agree the note
+	// is worth a call, so a skipped note costs no search.
+	Neighbours []Neighbour
 }
 
 // Outcome is what one run did, and it distinguishes three things a caller would
@@ -86,6 +93,15 @@ type Outcome struct {
 	// Calls is how many model calls this run spent. Zero on a skip, and the
 	// idempotency property is stated in exactly this number.
 	Calls int
+	// CallFailed is true when the enrichment call itself failed — the model
+	// did not answer — as distinct from answering and being rejected by a
+	// post-gate. The batch's fuse counts only these.
+	CallFailed bool
+	// Neighbours are what the prompt offered, carried to the write path so it
+	// keeps only `related` ids from this list.
+	Neighbours []Neighbour
+	// Depth is the shape the note was judged in.
+	Depth Depth
 	// Elapsed is wall time for the run.
 	Elapsed time.Duration
 }
@@ -152,6 +168,43 @@ type Pass struct {
 	// cannot start is skipped and the note keeps waiting, which is what the
 	// next night exists to collect.
 	inflight chan struct{}
+
+	// router asks the tier table where a note of this depth runs. Nil keeps
+	// the caller's own model on the strong tier.
+	router func(Depth) Route
+
+	// neighbours finds the notes to offer beside a card, and rubric reads the
+	// contract's importance paragraph. Both supplied, for the same reason the
+	// type enum is: this package has no business opening the index or the
+	// rules file.
+	neighbours func(context.Context, Request) []Neighbour
+	rubric     func() string
+}
+
+// SetNeighbours supplies the search the deep pass reads beside a card.
+func (p *Pass) SetNeighbours(f func(context.Context, Request) []Neighbour) { p.neighbours = f }
+
+// SetRubric supplies the contract's importance rubric for the prompt.
+func (p *Pass) SetRubric(f func() string) { p.rubric = f }
+
+// SetRouter supplies the tier table's answer for each depth: the deep pass
+// and the light pass may run on different tiers, and the table decides which.
+func (p *Pass) SetRouter(f func(Depth) Route) { p.router = f }
+
+// routeFor is where a note with these bytes would run.
+func (p *Pass) routeFor(raw string) Route {
+	if p.router == nil {
+		model := ""
+		if p.caller != nil {
+			model = p.caller.Model
+		}
+		return Route{Model: model, Tier: TierStrong}
+	}
+	r := p.router(PassDepth(raw))
+	if r.Tier == "" {
+		r.Tier = TierStrong
+	}
+	return r
 }
 
 // NewPass builds the pass. `concurrency` bounds simultaneous runs.
@@ -228,8 +281,11 @@ func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 		return out, nil
 	}
 
-	// What this note is owed, from its own stamp rather than from the caller.
+	// What this note is owed, from its own stamp rather than from the caller,
+	// and where the tier table says that depth runs.
 	req.Depth = PassDepth(req.Raw)
+	req.Route = p.routeFor(req.Raw)
+	out.Depth = req.Depth
 
 	// The concurrency bound, taken here rather than at a fan-out helper. It
 	// used to sit in the eager trigger, which is where the fan-out was; with
@@ -259,6 +315,15 @@ func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 		}
 	}
 
+	// The neighbours, once every free gate has agreed: a search is cheap, but
+	// it is not free, and a skipped note should cost nothing at all. Set on the
+	// request so the post-gates and the write path see the same list the model
+	// was shown.
+	if p.neighbours != nil {
+		req.Neighbours = p.neighbours(ctx, req)
+	}
+	out.Neighbours = req.Neighbours
+
 	body, err := p.call(ctx, req)
 	out.Calls = 1
 	p.calls.Add(1)
@@ -266,6 +331,7 @@ func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 		p.failures.Add(1)
 		out.Elapsed = time.Since(started)
 		out.Reason = err.Error()
+		out.CallFailed = true
 		return out, err
 	}
 
@@ -297,7 +363,12 @@ func (p *Pass) call(ctx context.Context, req Request) (string, error) {
 	if p.types != nil {
 		types = p.types()
 	}
-	return p.caller.Call(ctx, BuildPrompt(req, types))
+	rubric := ""
+	if p.rubric != nil {
+		rubric = p.rubric()
+	}
+	c := p.caller.With(req.Route, req.Rel+" · "+req.Depth.String())
+	return c.Call(ctx, BuildPrompt(req, types, rubric))
 }
 
 // unwrapReason strips the sentinel so a log line reads as a sentence rather than

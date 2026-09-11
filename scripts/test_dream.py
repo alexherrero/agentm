@@ -1,25 +1,19 @@
 #!/usr/bin/env python3
-"""Unit tests for `dream.py` — the thin manual `/dream` pass (AG Wave E
-dreaming plan, task 2).
+"""Unit tests for `dream.py` — the Python half of the night (agentm-vault
+plan 04, task 5).
 
-`dream.py` lives in `harness/skills/memory/scripts/` (same cross-dir import
-pattern as `test_revert_log.py` / `test_memory_write_concurrency.py`).
-
-Covers (plan task 2 verification):
-  - a manual run against a seeded fixture corpus (dedup pair + contradiction
-    pair + a supersession chain + one untouched control entry) produces a
-    digest listing every proposed disposition, each with a revert pointer
-  - NO source file is mutated by the run itself — every original entry is
-    byte-identical after `run_dream()` returns (proposals are staged data,
-    never applied)
-  - the derived-insights layer's writes are all `status: candidate`
-  - dedup only fires above the similarity threshold; an unrelated entry is
-    never proposed
-  - contradiction triage is advisory-only (no mutations) — v1 never
-    auto-resolves
-  - compression never deletes a source file (never-delete-sources)
-  - a dispositionless run writes no insight candidate and an explicit
-    "None this run" digest
+The cycle reads, reports and proposes; it changes no note. What these tests
+hold:
+  - a full pass over a seeded corpus finds the twins (dedup at 0.92) and the
+    shared keys (contradiction triage), and every source note is
+    byte-identical afterwards;
+  - each finding is a pair a reviewer can act on — both paths, the
+    similarity, both titles — and it lands in the needs-review map, the
+    review-proposals file and the cycle report the morning note reads;
+  - a settled note (superseded, archived) is never matched again;
+  - the retired stages leave no trace: no staging, no insights, no
+    auto-expired record, no opinion pointers;
+  - the CLI still accepts the flags a pre-plan-04 manifest passes.
 """
 from __future__ import annotations
 
@@ -70,79 +64,89 @@ class _DreamTestBase(unittest.TestCase):
 
 
 class FullPassFixtureTests(_DreamTestBase):
-    """The plan's own scenario: a seeded fixture corpus exercising every
-    source-touching stage in one run."""
+    """A seeded corpus with a twin pair, a shared-key pair, a supersession
+    chain and one control note, run through the whole cycle once."""
 
     def setUp(self) -> None:
         super().setUp()
-        # Dedup pair — near-identical bodies.
         self.dup_a = self._write(
             "dup-a.md", "---\nslug: dup\nkind: fix\n---\nThe server retries three times on timeout.\n"
         )
         self.dup_b = self._write(
             "dup-b.md", "---\nslug: dup-b\nkind: fix\n---\nThe server retries three times on timeout!\n"
         )
-        # Contradiction pair — same slug, differing content.
         self.con_a = self._write(
             "con-a.md", "---\nslug: contradiction\nkind: preference\n---\nUse tabs for indentation.\n"
         )
         self.con_b = self._write(
             "con-b.md", "---\nslug: contradiction\nkind: preference\n---\nUse spaces for indentation.\n"
         )
-        # Supersession chain of 3 — c3 <- c2 <- c1 (c1 supersedes c2 supersedes c3).
+        # The chain compression used to collapse. It retired; the chain must
+        # come through untouched and unproposed.
         self.chain_1 = self._write("chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md"))
         self.chain_2 = self._write("chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md"))
         self.chain_3 = self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
-        # Control entry — should trigger nothing.
         self.control = self._write("control.md", "---\nkind: workflow\n---\nCompletely unrelated content about cats.\n")
-
         self.all_paths = [
             self.dup_a, self.dup_b, self.con_a, self.con_b,
             self.chain_1, self.chain_2, self.chain_3, self.control,
         ]
         self.pre_snapshot = self._snapshot(self.all_paths)
 
-    def test_digest_lists_every_proposed_disposition_with_revert_pointer(self) -> None:
+    def test_the_twins_and_the_shared_key_are_found(self) -> None:
         digest = dream.run_dream(self.vault, run_id="run-fixture")
+        kinds = sorted(p.kind for p in digest.proposals)
+        self.assertEqual(kinds, ["possible-twin", "same-key"])
+        twin = next(p for p in digest.proposals if p.kind == "possible-twin")
+        self.assertEqual(twin.paths, ["dup-a.md", "dup-b.md"])
+        self.assertGreaterEqual(twin.detail["similarity"], dream.DEDUP_SIMILARITY_THRESHOLD)
+        self.assertEqual((twin.detail["a_title"], twin.detail["b_title"]), ("dup a", "dup b"))
+        same = next(p for p in digest.proposals if p.kind == "same-key")
+        self.assertEqual(same.detail["slug"], "contradiction")
+        self.assertEqual(sorted(same.paths), ["con-a.md", "con-b.md"])
 
-        stages = {p.stage for p in digest.proposals}
-        self.assertIn("dedup", stages)
-        self.assertIn("contradiction_triage", stages)
-        self.assertIn("compression", stages)
-
-        self.assertTrue(digest.digest_path.exists())
-        digest_text = digest.digest_path.read_text(encoding="utf-8")
-        for p in digest.proposals:
-            if p.mutations:
-                self.assertIn("revert pointer", digest_text)
-                self.assertIn("run-fixture", digest_text)
-                self.assertIn(p.stage, digest_text)
-
-    def test_no_source_file_mutated_until_operator_confirms(self) -> None:
+    def test_no_note_changes(self) -> None:
         dream.run_dream(self.vault, run_id="run-fixture-2")
-        post_snapshot = self._snapshot(self.all_paths)
-        self.assertEqual(post_snapshot, self.pre_snapshot)
+        self.assertEqual(self._snapshot(self.all_paths), self.pre_snapshot)
 
-    def test_insight_candidate_writes_are_all_status_candidate(self) -> None:
+    def test_the_control_and_the_chain_appear_in_no_finding(self) -> None:
         digest = dream.run_dream(self.vault, run_id="run-fixture-3")
-        self.assertTrue(digest.insight_candidates, "fixture has dispositions — expected an insight candidate")
-        for c in digest.insight_candidates:
-            self.assertTrue(c.path.exists())
-            fm, _ = dream._parse_frontmatter(c.path.read_text(encoding="utf-8"))
-            self.assertEqual(fm.get("status"), "candidate")
-            self.assertEqual(fm.get("kind"), "insight")
+        touched = {path for prop in digest.proposals for path in prop.paths}
+        for untouched in ("control.md", "chain-1.md", "chain-2.md", "chain-3.md"):
+            self.assertNotIn(untouched, touched)
 
-    def test_compression_never_deletes_a_source_file(self) -> None:
-        dream.run_dream(self.vault, run_id="run-fixture-4")
-        # never-delete-sources: every chain member still exists on disk.
-        self.assertTrue(self.chain_1.exists())
-        self.assertTrue(self.chain_2.exists())
-        self.assertTrue(self.chain_3.exists())
+    def test_the_digest_lists_every_finding_for_you_to_judge(self) -> None:
+        digest = dream.run_dream(self.vault, run_id="run-fixture-4")
+        text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("## For you to judge", text)
+        for p in digest.proposals:
+            self.assertIn(f"- {p.stage} · {p.kind}: {p.summary}", text)
+        self.assertEqual(digest.digest_path.parent.name, "run-fixture-4")
 
-    def test_control_entry_never_appears_in_any_proposal(self) -> None:
+    def test_the_findings_reach_the_needs_review_map(self) -> None:
         digest = dream.run_dream(self.vault, run_id="run-fixture-5")
-        touched = {p for prop in digest.proposals for p in prop.paths}
-        self.assertNotIn(str(self.control), touched)
+        state = dream.engine_state.engine_state_dir() / "dreaming"
+        found = json.loads((state / dream.REVIEW_PROPOSALS_NAME).read_text(encoding="utf-8"))
+        self.assertEqual(found["run_id"], "run-fixture-5")
+        self.assertEqual(len(found["twins"]), 1)
+        self.assertEqual(len(found["same_key"]), 1)
+        self.assertEqual(found["facets"], [])
+        moc = (self.vault / "memory" / "mocs" / "needs-review.md").read_text(encoding="utf-8")
+        self.assertIn("## Possible twins (1)", moc)
+        self.assertIn("[[dup-a]] and [[dup-b]]", moc)
+        self.assertIn("## Shared keys, different bodies (1)", moc)
+        self.assertEqual(digest.needs_review["dreaming"], {"twins": 1, "same_key": 1, "facets": 0})
+
+    def test_the_cycle_report_counts_what_ran(self) -> None:
+        dream.run_dream(self.vault, run_id="run-fixture-6")
+        report = json.loads((dream.engine_state.engine_state_dir() / "dreaming"
+                             / dream.CYCLE_REPORT_NAME).read_text(encoding="utf-8"))
+        self.assertEqual(report["run_id"], "run-fixture-6")
+        self.assertTrue(report["storage_rules_ok"])
+        self.assertEqual(report["entries"], 8)
+        self.assertEqual((report["possible_twins"], report["same_key"], report["proposed_facets"]),
+                         (1, 1, 0))
+        self.assertIn("orphan_count", report["lint"])
 
 
 class DedupThresholdTests(_DreamTestBase):
@@ -152,32 +156,45 @@ class DedupThresholdTests(_DreamTestBase):
         digest = dream.run_dream(self.vault, run_id="run-below")
         self.assertEqual([p for p in digest.proposals if p.stage == "dedup"], [])
 
-    def test_above_threshold_is_proposed_as_merge(self) -> None:
+    def test_above_threshold_is_a_possible_twin_with_nothing_to_apply(self) -> None:
         self._write("a.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n")
         self._write("b.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n")
         digest = dream.run_dream(self.vault, run_id="run-above")
-        dedup_proposals = [p for p in digest.proposals if p.stage == "dedup"]
-        self.assertEqual(len(dedup_proposals), 1)
-        self.assertEqual(dedup_proposals[0].kind, "merge")
-        self.assertEqual(len(dedup_proposals[0].mutations), 2)
+        twins = [p for p in digest.proposals if p.stage == "dedup"]
+        self.assertEqual(len(twins), 1)
+        self.assertEqual(twins[0].kind, "possible-twin")
+        # A finding, never a staged edit: the proposal type has no field that
+        # could carry one.
+        self.assertFalse(hasattr(twins[0], "mutations"))
+
+    def test_the_threshold_is_the_shipped_one(self) -> None:
+        self.assertEqual(dream.DEDUP_SIMILARITY_THRESHOLD, 0.92)
+
+    def test_three_copies_are_two_pairs_not_three(self) -> None:
+        # Each note joins at most one pair as the second half, so a family of
+        # copies reads as the first copy paired with each of the others.
+        for name in ("a", "b", "c"):
+            self._write(f"{name}.md", "---\nkind: fix\n---\nThe same sentence, copied three times over.\n")
+        digest = dream.run_dream(self.vault, run_id="run-family")
+        pairs = sorted(tuple(p.paths) for p in digest.proposals if p.kind == "possible-twin")
+        self.assertEqual(pairs, [("a.md", "b.md"), ("a.md", "c.md")])
 
 
-class ContradictionAdvisoryOnlyTests(_DreamTestBase):
-    def test_contradiction_proposal_carries_no_mutations(self) -> None:
+class ContradictionTriageTests(_DreamTestBase):
+    def test_a_shared_key_with_different_bodies_is_found(self) -> None:
         self._write("a.md", "---\nslug: x\n---\nOption A.\n")
         self._write("b.md", "---\nslug: x\n---\nOption B.\n")
         digest = dream.run_dream(self.vault, run_id="run-contra")
         contra = [p for p in digest.proposals if p.stage == "contradiction_triage"]
         self.assertEqual(len(contra), 1)
-        self.assertEqual(contra[0].kind, "keep_both")
-        self.assertEqual(contra[0].mutations, [])
+        self.assertEqual(contra[0].kind, "same-key")
+        self.assertEqual(contra[0].detail["slug"], "x")
 
     def test_same_slug_identical_body_is_not_a_contradiction(self) -> None:
         self._write("a.md", "---\nslug: x\n---\nSame content.\n")
         self._write("b.md", "---\nslug: x\n---\nSame content.\n")
         digest = dream.run_dream(self.vault, run_id="run-identical")
-        contra = [p for p in digest.proposals if p.stage == "contradiction_triage"]
-        self.assertEqual(contra, [])
+        self.assertEqual([p for p in digest.proposals if p.stage == "contradiction_triage"], [])
 
 
 class OpinionsDirExclusionTests(_DreamTestBase):
@@ -208,106 +225,63 @@ class OpinionsDirExclusionTests(_DreamTestBase):
         rels = {p.relative_to(self.vault) for p in entries}
         self.assertEqual(rels, {Path("memory/crystallized/distilled.md")})
 
-    def test_run_dream_never_proposes_a_general_stage_merge_inside_the_opinions_lane(self) -> None:
+    def test_a_near_verbatim_pair_inside_a_retired_lane_is_no_twin(self) -> None:
+        # The lanes retired with the opinion supplement. Whatever is left on
+        # disk is nobody's corpus, and a standard is never called a twin.
         (self.vault / "memory" / "_opinions" / "done").mkdir(parents=True)
-        # A near-verbatim pair that would trip dedup's own 0.92 threshold if
-        # the general corpus still walked this directory. The dedicated
-        # opinion_promote stage (Stages 2-3) is EXPECTED to process this
-        # lane on its own similarity threshold — what must never happen is
-        # a GENERAL-corpus stage (dedup/tidying/link_improvement/lint/
-        # suffix_backlog_drain/compression/contradiction_triage) reaching
-        # in here, since general dedup's own merge shape would concatenate
-        # bodies and write **Related:** lines a served supplement was never
-        # meant to carry.
         self._write("memory/_opinions/done/a.md", "---\nkind: opinion-supplement\n---\nAlways run the gates first.\n")
         self._write("memory/_opinions/done/b.md", "---\nkind: opinion-supplement\n---\nAlways run the gates first!\n")
         digest = dream.run_dream(self.vault, run_id="run-opinions-exclusion")
-        general_stages = {
-            "dedup", "contradiction_triage", "compression", "tidying",
-            "link_improvement", "lint",
-        }
-        offenders = [p for p in digest.proposals if p.stage in general_stages]
-        self.assertEqual(offenders, [], "no general-corpus stage may touch _opinions/ content")
+        self.assertEqual(digest.proposals, [])
 
 
-class OpinionSupplementStageTests(_DreamTestBase):
-    """Accumulate loop, Stages 2-3 — `_stage_opinion_supplement()` joining
-    `run_dream()`'s own hand-wired sequence (locked calls 4, 5, 7, 9)."""
+class RetiredStagesLeaveNoTrace(_DreamTestBase):
+    """Plan 04 retired every stage that applied or staged anything. A pass
+    over a corpus that would have fed each of them must write none of their
+    files."""
 
-    def _write_lane_pair(self, opinion="good"):
-        lane = self.vault / "memory" / "_opinions" / opinion
-        lane.mkdir(parents=True)
-        for slug, session, created in (("a1", "proj/s1", "2026-01-01T00:00:00+00:00"),
-                                        ("a2", "proj/s2", "2026-01-02T00:00:00+00:00")):
-            self._write(
-                f"memory/_opinions/{opinion}/{slug}.md",
-                "---\nkind: opinion-supplement\nstatus: proposed\n"
-                f"created: {created}\nslug: {slug}\nopinion: {opinion}\n"
-                f"sessions: [{session}]\n---\n\n"
-                "## Always run the linter before committing\n\n"
-                "Run the linter first, always.\n",
-            )
-        return lane
+    def test_nothing_the_retired_stages_wrote_appears(self) -> None:
+        self._write("dup-a.md", "---\nkind: fix\n---\nThe server retries three times on timeout.\n")
+        self._write("dup-b.md", "---\nkind: fix\n---\nThe server retries three times on timeout!\n")
+        self._write("chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-2.md"))
+        self._write("chain-2.md", "---\nkind: fix\n---\nFix v1.\n")
+        (self.vault / "memory" / "_opinions" / "good").mkdir(parents=True)
+        self._write("memory/_opinions/good/a1.md",
+                    "---\nkind: opinion-supplement\nstatus: proposed\nsessions: [p/s1]\n---\nLint first.\n")
+        dream.run_dream(self.vault, run_id="run-retired")
+        state = dream.engine_state.engine_state_dir()
+        for gone in ("dream-staging", "dream-auto-expired-latest.json",
+                     "opinion-base-proposals.json", "opinion-supplement-health-latest.json",
+                     "crystallize-staging"):
+            self.assertFalse((state / gone).exists(), gone)
+        run_dir = state / "dream-runs" / "run-retired"
+        self.assertEqual(sorted(p.name for p in run_dir.iterdir()), ["digest.md"])
+        self.assertFalse((self.vault / "_dream").exists())
+        self.assertFalse((self.vault / "memory" / "_opinions" / "good.md").exists())
 
-    def test_two_session_lane_stages_an_opinion_promote_proposal(self) -> None:
-        self._write_lane_pair()
-        digest = dream.run_dream(self.vault, run_id="run-opinion-stage")
-        op_proposals = [p for p in digest.proposals if p.stage == "opinion_promote"]
-        self.assertEqual(len(op_proposals), 1)
 
-    def test_run_dream_never_applies_the_opinion_promote_proposal(self) -> None:
-        self._write_lane_pair()
-        dream.run_dream(self.vault, run_id="run-opinion-propose-only")
-        served = self.vault / "memory" / "_opinions" / "good.md"
-        self.assertFalse(served.exists(), "run_dream must be propose-only")
-
-    def test_opinion_promote_is_confirm_gated_not_auto_applied(self) -> None:
-        import dream_confirm
-        self.assertNotIn("opinion_promote", dream_confirm.AUTO_APPLY_STAGES)
-        self._write_lane_pair()
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-opinion-auto-apply",
-            log_root=self.vault.parent / "revert-log", lock_root=self.vault.parent / "locks",
-        )
-        served = self.vault / "memory" / "_opinions" / "good.md"
-        self.assertFalse(served.exists(), "opinion_promote must never auto-apply")
-        self.assertNotIn("opinion_promote", batch.stages)
-        pending = [p for p in digest.proposals if p.stage == "opinion_promote"]
-        self.assertEqual(len(pending), 1, "the proposal must survive, still pending")
-
-    def test_confirming_the_proposal_serves_the_supplement(self) -> None:
-        import dream_confirm
-        from revert_log import RevertLog
-        self._write_lane_pair()
-        digest = dream.run_dream(self.vault, run_id="run-opinion-confirm")
-        idx = next(i for i, p in enumerate(digest.proposals, start=1) if p.stage == "opinion_promote")
-        rl = RevertLog(self.vault, log_root=self.vault.parent / "revert-log")
-        dream_confirm.confirm(self.vault, digest.run_id, idx, rl)
-        served = self.vault / "memory" / "_opinions" / "good.md"
-        self.assertTrue(served.is_file())
-        self.assertIn("Run the linter first, always.", served.read_text(encoding="utf-8"))
-
-    def test_meta_pointer_files_written_every_cycle(self) -> None:
-        self._write_lane_pair()
-        dream.run_dream(self.vault, run_id="run-opinion-meta")
-        self.assertTrue((dream.engine_state.engine_state_dir() / "opinion-base-proposals.json").is_file())
-        self.assertTrue((dream.engine_state.engine_state_dir() / "opinion-supplement-health-latest.json").is_file())
-
-    def test_no_opinions_dir_at_all_proposes_nothing_and_still_writes_pointers(self) -> None:
-        # A vault where Stage 1 has never mined a single standard yet.
-        self._write("ordinary.md", "---\nkind: workflow\n---\nUnrelated.\n")
-        digest = dream.run_dream(self.vault, run_id="run-no-opinions")
-        self.assertEqual([p for p in digest.proposals if p.stage == "opinion_promote"], [])
-        self.assertTrue((dream.engine_state.engine_state_dir() / "opinion-base-proposals.json").is_file())
+class HaltedFilingProposesNothing(_DreamTestBase):
+    def test_a_broken_contract_halts_the_findings_and_says_why(self) -> None:
+        self._write("a.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n")
+        self._write("b.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n")
+        err = dream.storage_rules.StorageRulesError("routing: line 3: not a mapping")
+        with unittest.mock.patch.object(dream.storage_rules, "load", side_effect=err):
+            digest = dream.run_dream(self.vault, run_id="run-halted")
+        self.assertEqual(digest.proposals, [])
+        text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("**Filing is halted.**", text)
+        self.assertIn("routing: line 3: not a mapping", text)
+        report = json.loads((dream.engine_state.engine_state_dir() / "dreaming"
+                             / dream.CYCLE_REPORT_NAME).read_text(encoding="utf-8"))
+        self.assertFalse(report["storage_rules_ok"])
 
 
 class EmptyRunTests(_DreamTestBase):
-    def test_no_dispositions_writes_no_insight_and_digest_says_none(self) -> None:
+    def test_a_corpus_with_nothing_to_judge_says_so(self) -> None:
         self._write("solo.md", "---\nkind: workflow\n---\nNothing to dedup, no slug, no chain.\n")
         digest = dream.run_dream(self.vault, run_id="run-empty")
         self.assertEqual(digest.proposals, [])
-        self.assertEqual(digest.insight_candidates, [])
-        self.assertIn("None this run", digest.digest_path.read_text(encoding="utf-8"))
+        self.assertIn("Nothing this run.", digest.digest_path.read_text(encoding="utf-8"))
 
 
 class CliTests(_DreamTestBase):
@@ -318,8 +292,6 @@ class CliTests(_DreamTestBase):
         self.assertTrue((dream.engine_state.engine_state_dir() / "dream-runs" / "cli-run" / "digest.md").exists())
 
     def test_main_no_vault_path_errors(self) -> None:
-        import os
-
         prev = os.environ.pop("MEMORY_VAULT_PATH", None)
         try:
             rc = dream.main([])
@@ -328,623 +300,16 @@ class CliTests(_DreamTestBase):
                 os.environ["MEMORY_VAULT_PATH"] = prev
         self.assertEqual(rc, 1)
 
-    def test_main_auto_applies_compression_via_log_root_override(self) -> None:
-        """CLI end-to-end: a compression ('expire') proposal auto-applies
-        with no confirm call, using --log-root/--lock-root to keep the
-        revert log off the real ~/.cache during the test."""
-        self._write(
-            "chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md")
-        )
-        self._write(
-            "chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md")
-        )
-        self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
-
-        scratch = Path(self._tmp.name) / "scratch"
-        rc = dream.main([
-            "--vault-path", str(self.vault), "--run-id", "cli-auto-run",
-            "--log-root", str(scratch / "revert-log"),
-            "--lock-root", str(scratch / "locks"),
-        ])
+    def test_a_pre_plan_04_manifest_still_runs(self) -> None:
+        # The live dream.yaml passed `--batch-cap 25`, and a hand run might
+        # pass `--no-auto-apply`. Both are accepted and change nothing: there
+        # is nothing left to cap or to hold back.
+        self._write("a.md", "---\nkind: workflow\n---\nJust one file.\n")
+        before = (self.vault / "a.md").read_bytes()
+        rc = dream.main(["--vault-path", str(self.vault), "--run-id", "cli-legacy",
+                         "--batch-cap", "25", "--no-auto-apply"])
         self.assertEqual(rc, 0)
-
-        digest_text = (dream.engine_state.engine_state_dir() / "dream-runs" / "cli-auto-run" / "digest.md").read_text(encoding="utf-8")
-        self.assertIn("Auto-expired this run", digest_text)
-        self.assertIn("AUTO-APPLIED", digest_text)
-
-        auto_expired = json.loads(
-            (dream.engine_state.engine_state_dir() / "dream-runs" / "cli-auto-run" / "auto-expired.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(auto_expired["count"], 1)
-        # "stages" reports the full AUTO_APPLY_STAGES watched set for this
-        # call, not just the stages with an item this run -- tidying joined
-        # compression in that set (auto-organization part 1, task 3),
-        # link_improvement joined both (auto-organization part 2, task 4),
-        # lint joined (task 7, wikilink_repair only); the suffix-backlog drain
-        # left with filing v2 part 6 — the dreaming binary's copies job.
-        self.assertEqual(
-            auto_expired["stages"],
-            ["compression", "link_improvement", "lint", "tidying"],
-        )
-
-        latest = json.loads(
-            (dream.engine_state.engine_state_dir() / "dream-auto-expired-latest.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(latest, auto_expired)
-
-    def test_main_no_auto_apply_flag_leaves_everything_pending(self) -> None:
-        self._write(
-            "chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md")
-        )
-        self._write(
-            "chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md")
-        )
-        self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
-
-        rc = dream.main([
-            "--vault-path", str(self.vault), "--run-id", "cli-no-auto-run", "--no-auto-apply",
-        ])
-        self.assertEqual(rc, 0)
-        self.assertFalse((dream.engine_state.engine_state_dir() / "dream-runs" / "cli-no-auto-run" / "auto-expired.json").exists())
-        digest_text = (dream.engine_state.engine_state_dir() / "dream-runs" / "cli-no-auto-run" / "digest.md").read_text(encoding="utf-8")
-        self.assertNotIn("AUTO-APPLIED", digest_text)
-        self.assertIn("staged — NOT applied; operator confirmation required", digest_text)
-
-
-class RunDreamAndAutoApplyTests(_DreamTestBase):
-    """`run_dream_and_auto_apply` -- the additive wrapper around the
-    unchanged `run_dream()` that auto-applies the compression ('expire')
-    stage per the 2026-07-11 operator ruling. Injects a scratch RevertLog
-    so nothing touches the real ~/.cache during tests."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        from revert_log import RevertLog  # noqa: E402  (sibling script, same import pattern as test_dream_confirm.py)
-
-        self.scratch = Path(self._tmp.name) / "scratch"
-        self.revert_log = RevertLog(
-            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
-        )
-
-    def test_compression_auto_applies_dedup_and_contradiction_stay_pending(self) -> None:
-        import sys as _sys
-
-        _sys.path.insert(0, str(_SKILL_SCRIPTS))
-        import dream_confirm as dc  # noqa: E402
-
-        dup_a = self._write("dup-a.md", "---\nslug: dup\nkind: fix\n---\nThe server retries three times on timeout.\n")
-        dup_b = self._write("dup-b.md", "---\nslug: dup-b\nkind: fix\n---\nThe server retries three times on timeout!\n")
-        self._write("chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md"))
-        self._write("chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md"))
-        self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
-        pre_dup_a, pre_dup_b = dup_a.read_bytes(), dup_b.read_bytes()
-
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-wrapper", revert_log=self.revert_log,
-        )
-
-        self.assertEqual(len(batch.items), 1)
-        self.assertEqual(batch.items[0]["stage"], "compression")
-
-        # Dedup ("promote") is completely untouched by the wrapper.
-        self.assertEqual(dup_a.read_bytes(), pre_dup_a)
-        self.assertEqual(dup_b.read_bytes(), pre_dup_b)
-        pending = dc.list_pending(self.vault, "run-wrapper")
-        dedup_status = [p.status for p in pending if p.stage == "dedup"][0]
-        self.assertEqual(dedup_status, "pending")
-
-    def test_batch_cap_is_threaded_through(self) -> None:
-        self._write("a1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix a3.\n".format(self.vault / "a2.md"))
-        self._write("a2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix a2.\n".format(self.vault / "a3.md"))
-        self._write("a3.md", "---\nkind: fix\n---\nFix a1.\n")
-        self._write("b1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix b3.\n".format(self.vault / "b2.md"))
-        self._write("b2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix b2.\n".format(self.vault / "b3.md"))
-        self._write("b3.md", "---\nkind: fix\n---\nFix b1.\n")
-
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-wrapper-cap", revert_log=self.revert_log, batch_cap=1,
-        )
-        self.assertEqual(len(batch.items), 1)
-
-    def test_zero_dispositions_still_writes_a_current_auto_expired_record(self) -> None:
-        self._write("solo.md", "---\nkind: workflow\n---\nNothing to dedup, no slug, no chain.\n")
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-wrapper-empty", revert_log=self.revert_log,
-        )
-        self.assertEqual(batch.items, [])
-        latest_path = dream.engine_state.engine_state_dir() / "dream-auto-expired-latest.json"
-        self.assertTrue(latest_path.exists())
-        payload = json.loads(latest_path.read_text(encoding="utf-8"))
-        self.assertEqual(payload["run_id"], "run-wrapper-empty")
-        self.assertEqual(payload["count"], 0)
-        digest_text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("Auto-expired this run", digest_text)
-        self.assertIn("None this run", digest_text)
-
-
-class _LifecycleRules:
-    def thresholds(self):
-        return {"dormant_after_days": 365, "archive_after_days": 1825}
-
-    def lifecycles(self):
-        return ["pinned", "active", "dormant", "archived", "superseded"]
-
-
-class LifecycleStageBandTests(_DreamTestBase):
-    """Task 3's bands, on the lifecycle axis (filing v2 part 6): dormant
-    fixture entries at 4.4y/4.6y/5.1y silence produce, respectively, no
-    action / a digest preview line / a staged in-place archive proposal —
-    never a move. Calls `_stage_lifecycle` directly with an injected `now`
-    for exact, deterministic band boundaries."""
-    _NOW = "2026-01-01"
-
-    def _write_aged(self, name: str, days_silent: int, *, lifecycle: str = "dormant", kind: str = "fix") -> Path:
-        import datetime
-        created = (
-            datetime.date.fromisoformat(self._NOW) - datetime.timedelta(days=days_silent)
-        ).isoformat()
-        (self.vault / "memory" / "semantic").mkdir(parents=True, exist_ok=True)
-        return self._write(
-            f"memory/semantic/{name}",
-            f"---\nkind: {kind}\nslug: {Path(name).stem}\nlifecycle: {lifecycle}\ncreated: {created}\n---\nBody.\n",
-        )
-
-    def _run_stage(self):
-        return dream._stage_lifecycle(self.vault, now=self._NOW, rules=_LifecycleRules())
-
-    def test_4_4_years_silent_no_action(self) -> None:
-        self._write_aged("recent.md", 1607)  # ~4.4y, below the 0.9 × archive line
-        proposals, previews = self._run_stage()
-        self.assertEqual(proposals, [])
-        self.assertEqual(previews, [])
-
-    def test_4_6_years_silent_preview_only(self) -> None:
-        self._write_aged("aging.md", 1680)  # ~4.6y, between 0.9 × the line and the line
-        proposals, previews = self._run_stage()
-        self.assertEqual(proposals, [])
-        self.assertEqual(len(previews), 1)
-        self.assertIn("aging.md", previews[0])
-
-    def test_5_1_years_silent_stages_an_in_place_archive_proposal(self) -> None:
-        path = self._write_aged("cold.md", 1863)  # ~5.1y, past the line
-        before = path.read_text(encoding="utf-8")
-        proposals, previews = self._run_stage()
-        self.assertEqual(previews, [])
-        self.assertEqual(len(proposals), 1)
-        p = proposals[0]
-        self.assertEqual((p.stage, p.kind, p.paths), ("lifecycle", "archive", ["memory/semantic/cold.md"]))
-        # One mutation: the same path, the note with `lifecycle: archived`. No
-        # deletion, no second path — a memory never moves for lifecycle.
-        (mpath, content), = p.mutations
-        self.assertEqual(mpath, path)
-        self.assertIn("lifecycle: archived", content)
-        self.assertTrue(content.endswith("---\nBody.\n"))
-        self.assertEqual(path.read_text(encoding="utf-8"), before, "a proposal applies nothing")
-        self.assertEqual(sorted(q.name for q in path.parent.iterdir()), ["cold.md"])
-
-    def test_an_active_note_is_the_policys_before_it_is_this_stages(self) -> None:
-        # Silent for 5.1y but still `active`: the automatic lane sinks it to
-        # dormant first; only a dormant note is proposed for the archive.
-        self._write_aged("still-active.md", 1863, lifecycle="active")
-        proposals, previews = self._run_stage()
-        self.assertEqual((proposals, previews), ([], []))
-
-    def test_decay_exempt_entry_never_proposed_or_previewed(self) -> None:
-        self._write_aged("incident.md", 5000, kind="failure-incident")
-        proposals, previews = self._run_stage()
-        self.assertEqual(proposals, [])
-        self.assertEqual(previews, [])
-
-class ArtifactShelfBandTests(_DreamTestBase):
-    """Task 4 verification: a fixture artifact untouched for 370 days
-    stages a shelf move; the same artifact "used" (touched) mid-cycle does
-    not shelve; a previously-shelved artifact that gets touched is
-    confirmed to return on the next cycle's pass. An "artifact" here is
-    any entry with no `kind:` frontmatter field at all — the operator's
-    2026-07-18 ruling reusing recall.py's existing touch mechanism rather
-    than inventing a new one."""
-
-    _NOW = "2026-01-01"
-
-    def _write_artifact(self, name: str, days_untouched: int) -> Path:
-        import datetime
-        created = (
-            datetime.date.fromisoformat(self._NOW) - datetime.timedelta(days=days_untouched)
-        ).isoformat()
-        # Deliberately NO `kind:` field -- that absence is what makes this
-        # an "artifact" rather than a memory.
-        return self._write(name, f"---\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
-
-    def _run_stage(self):
-        entries = dream._iter_entries(self.vault)
-        loaded = dream._load(entries)
-        return dream._stage_tidying(self.vault, entries, loaded, now=self._NOW)
-
-    def test_kind_tagged_entry_never_enters_the_artifact_lane(self) -> None:
-        # A memory (has `kind:`) untouched 370 days should archive-preview
-        # or no-op via the memory lane, never shelve, regardless of age.
-        self._write(
-            "memory.md",
-            "---\nkind: fix\nslug: memory\ncreated: 2020-01-01\n---\nBody.\n",
-        )
-        proposals, _ = self._run_stage()
-        kinds = {p.kind for p in proposals}
-        self.assertNotIn("shelve", kinds)
-
-    def test_370_days_untouched_stages_a_shelf_move(self) -> None:
-        path = self._write_artifact("plan-notes.md", 370)
-        proposals, _ = self._run_stage()
-        self.assertEqual(len(proposals), 1)
-        p = proposals[0]
-        self.assertEqual(p.stage, "tidying")
-        self.assertEqual(p.kind, "shelve")
-        dest = self.vault / "_shelf" / "plan-notes.md"
-        mutated_paths = {str(m[0]) for m in p.mutations}
-        self.assertIn(str(path), mutated_paths)
-        self.assertIn(str(dest), mutated_paths)
-
-    def test_recently_used_artifact_does_not_shelve(self) -> None:
-        self._write_artifact("fresh-notes.md", 10)
-        proposals, _ = self._run_stage()
-        self.assertEqual(proposals, [])
-
-    def test_364_days_is_not_yet_past_the_threshold(self) -> None:
-        self._write_artifact("almost.md", 364)
-        proposals, _ = self._run_stage()
-        self.assertEqual(proposals, [])
-
-    def test_shelved_artifact_untouched_stays_shelved_no_action(self) -> None:
-        (self.vault / "_shelf").mkdir()
-        self._write_artifact("_shelf/old-plan.md", 400)
-        proposals, _ = self._run_stage()
-        self.assertEqual(proposals, [])
-
-    def test_shelved_artifact_touched_since_shelving_proposes_return(self) -> None:
-        (self.vault / "_shelf").mkdir()
-        path = self._write_artifact("_shelf/came-back.md", 400)
-
-        import lifecycle  # noqa: E402
-        fm, _ = dream._parse_frontmatter(path.read_text(encoding="utf-8"))
-        # A genuine recall access on the shelved copy, shortly before "now".
-        lifecycle.record_recall_access(self.vault, "came-back", fm, "_shelf/came-back.md", today="2025-12-30")
-
-        proposals, _ = self._run_stage()
-        self.assertEqual(len(proposals), 1)
-        p = proposals[0]
-        self.assertEqual(p.kind, "unshelve")
-        dest = self.vault / "came-back.md"
-        mutated_paths = {str(m[0]) for m in p.mutations}
-        self.assertIn(str(path), mutated_paths)
-        self.assertIn(str(dest), mutated_paths)
-
-    def test_personal_and_projects_tier_shelf_insertion(self) -> None:
-        self.assertEqual(dream._shelved_path(Path("memory/foo.md")), Path("memory/_shelf/foo.md"))
-        self.assertEqual(
-            dream._shelved_path(Path("desk/projects/agentm/notes/foo.md")),
-            Path("desk/projects/agentm/_shelf/notes/foo.md"),
-        )
-
-    def test_unshelved_path_is_the_exact_inverse(self) -> None:
-        for original in (Path("memory/foo.md"), Path("desk/projects/agentm/notes/foo.md"), Path("bare.md")):
-            shelved = dream._shelved_path(original)
-            self.assertEqual(dream._unshelved_path(shelved), original)
-
-
-class TidyingDigestAndAutoApplyIntegrationTests(_DreamTestBase):
-    """The full `run_dream()` / `run_dream_and_auto_apply()` pipeline, using
-    REAL relative dates (today - N days) rather than an injected `now` —
-    exercises the actual wiring (stage inclusion, digest rendering,
-    auto-apply, revert), not just the isolated band function above."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        from revert_log import RevertLog  # noqa: E402
-
-        self.scratch = Path(self._tmp.name) / "scratch"
-        self.revert_log = RevertLog(
-            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
-        )
-
-    def _write_aged(self, name: str, days_silent: int) -> Path:
-        # No `kind`: an operational artifact — the population the tidying
-        # stage still moves (to `_shelf/`, past a year). A memory never
-        # moves for lifecycle since filing v2 part 6.
-        import datetime
-        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
-        return self._write(name, f"---\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
-
-    def _write_dormant(self, name: str, days_silent: int) -> Path:
-        import datetime
-        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
-        (self.vault / "memory" / "semantic").mkdir(parents=True, exist_ok=True)
-        return self._write(f"memory/semantic/{name}",
-                           f"---\nkind: fix\nslug: {Path(name).stem}\nlifecycle: dormant\ncreated: {created}\n---\nBody.\n")
-
-    def _write_aged_artifact(self, name: str, days_silent: int) -> Path:
-        # No `kind`: an operational artifact, the one population the shelf
-        # lane still moves (a memory never moves for lifecycle — part 6).
-        import datetime
-        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
-        return self._write(name, f"---\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
-
-    def test_lifecycle_archive_proposal_appears_in_run_dream_digest(self) -> None:
-        self._write_dormant("very-cold.md", 1900)  # well past the archive line, and dormant
-        digest = dream.run_dream(self.vault, run_id="run-tidy-1")
-        lifecycle = [p for p in digest.proposals if p.stage == "lifecycle"]
-        self.assertEqual(len(lifecycle), 1)
-        self.assertEqual(lifecycle[0].kind, "archive")
-        digest_text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("lifecycle", digest_text)
-
-    def test_preview_section_renders_in_digest(self) -> None:
-        self._write_dormant("getting-old.md", 1680)  # ~4.6y, dormant
-        digest = dream.run_dream(self.vault, run_id="run-tidy-2")
-        self.assertEqual(len(digest.tidying_previews), 1)
-        self.assertIn("getting-old.md", digest.tidying_previews[0])
-        digest_text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("Archive preview", digest_text)
-        self.assertIn("getting-old.md", digest_text)
-
-    def test_tidying_auto_applies_no_confirm_required(self) -> None:
-        old_path = self._write_aged("ancient.md", 1900)
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-tidy-3", revert_log=self.revert_log,
-        )
-        tidying_items = [i for i in batch.items if i["stage"] == "tidying"]
-        self.assertEqual(len(tidying_items), 1)
-
-        self.assertFalse(old_path.exists())
-        new_path = self.vault / "_shelf" / "ancient.md"
-        self.assertTrue(new_path.exists())
-        self.assertIn("Body.", new_path.read_text(encoding="utf-8"))
-
-    def test_tidying_move_reverts_cleanly(self) -> None:
-        # The shelf lane: an artifact silent past a year moves to `_shelf/`,
-        # and the revert log puts it back byte for byte.
-        old_path = self._write_aged_artifact("revertme.md", 1900)
-        original_content = old_path.read_text(encoding="utf-8")
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-tidy-4", revert_log=self.revert_log,
-        )
-        entry_id = batch.items[0]["entry_id"]
-        new_path = self.vault / "_shelf" / "revertme.md"
-        self.assertTrue(new_path.exists())
-
-        self.revert_log.revert("run-tidy-4", entry_id)
-
-        self.assertTrue(old_path.exists())
-        self.assertEqual(old_path.read_text(encoding="utf-8"), original_content)
-        self.assertFalse(new_path.exists())
-
-
-class CrossStageAutoApplyCollisionTests(_DreamTestBase):
-    """Adversarial-review regression (auto-organization part 3 task 6): a
-    note that's simultaneously tidying-eligible (aged past the 5y archive
-    threshold) AND suffix_backlog_drain-eligible (a fingerprint-exact
-    duplicate of an older active note) must not get corrupted by both
-    stages auto-applying in the same `run_dream_and_auto_apply()` cycle.
-
-    Before the fix in `dream_confirm.auto_apply_batch`: tidying's move
-    (delete the old path, write `_archive/<name>.md`) applied first, then
-    suffix_backlog_drain's independently-captured, now-stale mutation
-    unconditionally rewrote the just-deleted old path back into
-    existence — a resurrected ghost file with stale content, while the
-    real archived survivor was left un-superseded. The fix tracks paths
-    touched earlier in the same batch and skips (leaves pending) any
-    later proposal that targets one of them."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        from revert_log import RevertLog  # noqa: E402
-
-        self.scratch = Path(self._tmp.name) / "scratch"
-        self.revert_log = RevertLog(
-            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
-        )
-
-    def _write_aged_active(self, name: str, days_silent: int, body: str) -> Path:
-        import datetime
-        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
-        return self._write(
-            name,
-            f"---\nkind: fix\nslug: {Path(name).stem}\nstatus: active\ncreated: {created}\n---\n{body}",
-        )
-
-    def test_a_move_and_a_rewrite_of_the_same_path_never_collide(self) -> None:
-        # The guard itself, on two synthetic proposals: a tidying move of a
-        # path (delete the old, write the shelved copy) and a later
-        # later auto-applied rewrite of the same old path (lint here; the
-        # drain that first raced it left with filing v2 part 6). The move wins
-        # (lower index); the rewrite is skipped and stays pending; no ghost
-        # file is resurrected at the old path. The memory-archive lane that
-        # first produced this collision retired with part 6, but the guard
-        # protects every stage pair that can target one path in one batch.
-        import dream_confirm as dc  # noqa: E402
-        old_path = self.vault / "copy.md"
-        old_path.write_text("---\nslug: copy\nstatus: active\n---\nDuplicate legacy content.\n", encoding="utf-8")
-        raw = old_path.read_text(encoding="utf-8")
-        dest = self.vault / "_shelf" / "copy.md"
-        proposals = [
-            dream.Proposal(stage="tidying", kind="shelve", paths=["copy.md"], summary="move",
-                           mutations=[(old_path, None), (dest, raw)]),
-            dream.Proposal(stage="lint", kind="supersede", paths=["copy.md"], summary="rewrite",
-                           mutations=[(old_path, raw.replace("status: active", "status: superseded"))]),
-        ]
-        digest = dream.DreamDigest(run_id="run-collide", corpus_stats=dream._stage_corpus_stats([]),
-                                   proposals=proposals, insight_candidates=[])
-        dream._stage_digest_and_staging(self.vault, digest)
-        batch = dc.auto_apply_batch(self.vault, "run-collide", self.revert_log, batch_cap=25)
-        self.assertEqual([i["stage"] for i in batch.items], ["tidying"])
-        self.assertFalse(old_path.exists(), "no ghost resurrected at the old path")
-        self.assertTrue(dest.exists())
-        self.assertIn("status: active", dest.read_text(encoding="utf-8"))
-        pending = dc.list_pending(self.vault, "run-collide")
-        skipped = [p for p in pending if p.stage == "lint"]
-        self.assertEqual(len(skipped), 1)
-        self.assertEqual(skipped[0].status, "pending")
-
-
-class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
-    """Task 6 verification: a fixture cycle with an artificially inflated
-    proposal count is confirmed to apply nothing and flag the console,
-    rather than applying an abnormal batch — exercised through the real
-    `run_dream_and_auto_apply()` pipeline, not just the isolated
-    `check_tidying_anomaly` unit above."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        from revert_log import RevertLog  # noqa: E402
-        import dream_confirm  # noqa: E402
-
-        self.dc = dream_confirm
-        self.scratch = Path(self._tmp.name) / "scratch"
-        self.revert_log = RevertLog(
-            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
-        )
-
-    def _write_aged(self, name: str, days_silent: int) -> Path:
-        # No `kind`: an operational artifact — the population the tidying
-        # stage still moves (to `_shelf/`, past a year). A memory never
-        # moves for lifecycle since filing v2 part 6.
-        import datetime
-        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
-        return self._write(name, f"---\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
-
-    def test_inflated_batch_applies_nothing_and_flags_the_digest(self) -> None:
-        # Seed a "usual" baseline of small tidying cycles.
-        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
-            self.dc.check_tidying_anomaly(self.vault, 1)
-
-        # A cycle with a way-past-baseline number of cold entries.
-        n = 20
-        for i in range(n):
-            self._write_aged(f"cold-{i}.md", 1900)
-
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-anomaly", revert_log=self.revert_log,
-        )
-        tidying_in_digest = [p for p in digest.proposals if p.stage == "tidying"]
-        self.assertEqual(len(tidying_in_digest), n)
-
-        tidying_applied = [i for i in batch.items if i["stage"] == "tidying"]
-        self.assertEqual(tidying_applied, [], "nothing should auto-apply from the tripped stage")
-
-        # Every tidying proposal must still exist as ordinary pending state.
-        pending = self.dc.list_pending(self.vault, "run-anomaly")
-        tidying_pending = [p for p in pending if p.stage == "tidying"]
-        self.assertEqual(len(tidying_pending), n)
-        self.assertTrue(all(p.status == "pending" for p in tidying_pending))
-
-        digest_text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("ANOMALY BREAKER TRIPPED", digest_text)
-
-        # dream-anomaly-latest.json is now a LIST of tripped stages (task 9
-        # generalized the breaker beyond tidying-only) -- exactly one
-        # entry here since only tidying tripped this cycle.
-        anomaly_flag_path = dream.engine_state.engine_state_dir() / "dream-anomaly-latest.json"
-        self.assertTrue(anomaly_flag_path.exists())
-        payload = json.loads(anomaly_flag_path.read_text(encoding="utf-8"))
-        self.assertEqual(len(payload), 1)
-        self.assertEqual(payload[0]["run_id"], "run-anomaly")
-        self.assertEqual(payload[0]["stage"], "tidying")
-        self.assertEqual(payload[0]["current_count"], n)
-
-    def test_normal_batch_after_seeded_history_applies_as_usual(self) -> None:
-        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
-            self.dc.check_tidying_anomaly(self.vault, 2)
-
-        self._write_aged("cold-a.md", 1900)
-        self._write_aged("cold-b.md", 1900)
-
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-normal", revert_log=self.revert_log,
-        )
-        tidying_applied = [i for i in batch.items if i["stage"] == "tidying"]
-        self.assertEqual(len(tidying_applied), 2)
-
-        digest_text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertNotIn("ANOMALY BREAKER TRIPPED", digest_text)
-        self.assertFalse((dream.engine_state.engine_state_dir() / "dream-anomaly-latest.json").exists())
-
-    def test_compression_still_auto_applies_when_tidying_is_suppressed(self) -> None:
-        # Each watched stage's breaker is independent -- compression isn't
-        # even watched by the breaker at all, and a tidying-side trip must
-        # never affect it either way.
-        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
-            self.dc.check_tidying_anomaly(self.vault, 1)
-
-        for i in range(10):
-            self._write_aged(f"cold-{i}.md", 1900)
-        self._write("chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md"))
-        self._write("chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md"))
-        self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
-
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-mixed", revert_log=self.revert_log,
-        )
-        stages_applied = {i["stage"] for i in batch.items}
-        self.assertIn("compression", stages_applied)
-        self.assertNotIn("tidying", stages_applied)
-
-
-class MultiStageAnomalyBreakerIntegrationTests(_DreamTestBase):
-    """Task 9 verification: the anomaly breaker generalized beyond tidying
-    (part 1) watches `lint` and `lifecycle` too -- each with its OWN
-    independent history, so a spike in one watched stage never trips or
-    suppresses another. (The suffix-backlog drain it once watched left the
-    cycle with filing v2 part 6; the dreaming binary's copies job owns it.)"""
-
-    def setUp(self) -> None:
-        super().setUp()
-        from revert_log import RevertLog  # noqa: E402
-        import dream_confirm  # noqa: E402
-
-        self.dc = dream_confirm
-        self.scratch = Path(self._tmp.name) / "scratch"
-        self.revert_log = RevertLog(
-            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
-        )
-
-    def _write_aged_artifact(self, index: int) -> None:
-        # No `kind`: an operational artifact past a year -- the population the
-        # tidying stage shelves.
-        import datetime
-        created = (datetime.date.today() - datetime.timedelta(days=1900)).isoformat()
-        self._write(f"artifact-{index:02d}.md", f"---\nslug: artifact-{index:02d}\ncreated: {created}\n---\nBody.\n")
-
-    def test_a_tidying_spike_trips_independently_of_lint(self) -> None:
-        # Seed a "usual" baseline of 1 per cycle for both watched stages.
-        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
-            self.dc.check_stage_anomaly(self.vault, "tidying", 1)
-            self.dc.check_stage_anomaly(self.vault, "lint", 1)
-
-        # 6 shelvable artifacts this cycle -- past baseline(1) * multiplier(3.0);
-        # nothing at all for lint.
-        for i in range(6):
-            self._write_aged_artifact(i)
-
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="run-tidying-anomaly", revert_log=self.revert_log,
-        )
-
-        tidying_applied = [i for i in batch.items if i["stage"] == "tidying"]
-        self.assertEqual(tidying_applied, [], "nothing should auto-apply from the tripped stage")
-
-        pending = self.dc.list_pending(self.vault, "run-tidying-anomaly")
-        tidying_pending = [p for p in pending if p.stage == "tidying"]
-        self.assertEqual(len(tidying_pending), 6)
-        self.assertTrue(all(p.status == "pending" for p in tidying_pending))
-
-        digest_text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("ANOMALY BREAKER TRIPPED — tidying", digest_text)
-
-        payload = json.loads((dream.engine_state.engine_state_dir() / "dream-anomaly-latest.json").read_text(encoding="utf-8"))
-        self.assertEqual([entry["stage"] for entry in payload], ["tidying"])
-        self.assertEqual(payload[0]["current_count"], 6)
-
-        # lint keeps its own history: a quiet cycle for it never trips,
-        # regardless of tidying's spike.
-        self.assertFalse(any(entry["stage"] == "lint" for entry in payload))
+        self.assertEqual((self.vault / "a.md").read_bytes(), before)
 
 
 class ConnectivityMeterTests(_DreamTestBase):
@@ -1070,9 +435,10 @@ class BrowseSurfaceCountsTests(_DreamTestBase):
         self.assertEqual(digest.corpus_stats["browse_archived_count"], 1)
 
 
+
 class SupersededNotesStayOutOfTheStages(_DreamTestBase):
     """PLAN-superseded-vocabulary: a note the axis already settled is not a
-    dedup candidate against its own successor, and never proposed again."""
+    twin of its own successor, and never proposed again."""
 
     def test_a_superseded_note_is_never_matched_against_its_successor(self) -> None:
         body = "The server retries three times on timeout.\n"
@@ -1081,17 +447,11 @@ class SupersededNotesStayOutOfTheStages(_DreamTestBase):
         digest = dream.run_dream(self.vault, run_id="run-superseded-skip")
         self.assertEqual([p for p in digest.proposals if p.stage == "dedup"], [])
 
-    def test_the_merge_writes_the_contracts_shape(self) -> None:
-        self._write("a.md", "---\nslug: a\nkind: fix\nstatus: active\n---\nThe server retries three times on timeout.\n")
-        self._write("b.md", "---\nslug: b\nkind: fix\nstatus: active\n---\nThe server retries three times on timeout!\n")
-        digest = dream.run_dream(self.vault, run_id="run-merge-shape")
-        merges = [p for p in digest.proposals if p.stage == "dedup"]
-        self.assertEqual(len(merges), 1)
-        (_, _merged), (_, superseded) = merges[0].mutations
-        self.assertIn("lifecycle: superseded", superseded)
-        self.assertIn("superseded_by: ", superseded)
-        self.assertNotIn("status: superseded", superseded)
-        self.assertNotIn("supersedes:", superseded)
+    def test_an_archived_note_shares_no_key(self) -> None:
+        self._write("a.md", "---\nslug: x\nlifecycle: archived\n---\nOption A.\n")
+        self._write("b.md", "---\nslug: x\n---\nOption B.\n")
+        digest = dream.run_dream(self.vault, run_id="run-archived-key")
+        self.assertEqual([p for p in digest.proposals if p.stage == "contradiction_triage"], [])
 
 
 if __name__ == "__main__":

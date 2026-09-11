@@ -124,12 +124,16 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
     """The suites the plan named must actually carry the helper. A list in a
     plan is a claim; this is the check that it stayed true."""
 
+    # Four suites left the list with their subjects in agentm-vault plan 04:
+    # the crystallize staging and its console section, the opinion supplement,
+    # and the sampled audit's console surface. The needs-review suite joined
+    # it, because the map now reads the dream cycle's findings from here.
     NAMED = (
         "test_backfill_reference_bodies", "test_calendar_promotion", "test_console",
-        "test_console_crystallize_section", "test_correction", "test_dream_storage_rules",
+        "test_correction", "test_dream_storage_rules",
         "test_incubator_lint", "test_lint", "test_notes_link_discovery",
-        "test_opinion_supplement", "test_orchestration_briefing", "test_orchestration_idle",
-        "test_repair_excerpts", "test_retro_mining_cleanup", "test_sampled_audit_surface",
+        "test_orchestration_briefing", "test_orchestration_idle",
+        "test_repair_excerpts", "test_retro_mining_cleanup", "test_needs_review",
         "test_skill_modules_file_loadable", "test_storage_rules", "test_vault_lint",
         # Derived by running every state-mentioning suite against a scratch
         # state directory and watching what it wrote or read, rather than by
@@ -139,7 +143,7 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         # hand run while the battery's own per-test rotation kept it green.
         # The health suite appends to `health/history.jsonl`, which the
         # scorecard reads. The last two carried a by-hand copy of this helper.
-        "test_enrichment_breaker", "test_health_score", "test_crystallize_staging",
+        "test_enrichment_breaker", "test_health_score",
         "health/test_session_brief",
     )
 

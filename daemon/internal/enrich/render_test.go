@@ -17,32 +17,32 @@ func TestARenderedNoteParsesAsYAML(t *testing.T) {
 		r    Response
 	}{
 		{"ordinary", Response{
-			Title: "The staging gate", Type: "convention", Altitude: "canonical",
+			Title: "The staging gate", Type: "convention",
 			Body: "It runs first.", Confidence: 0.9,
 			Tags: []string{"ci", "deploy"}, Aliases: []string{"staging gate"},
 		}},
 		{"a title that is a mapping", Response{
-			Title: "recall: how it ranks", Type: "fact", Altitude: "artifact",
+			Title: "recall: how it ranks", Type: "fact",
 			Body: "b", Confidence: 0.9,
 		}},
 		{"a title that is a comment", Response{
-			Title: "#hashtag conventions", Type: "fact", Altitude: "artifact",
+			Title: "#hashtag conventions", Type: "fact",
 			Body: "b", Confidence: 0.9,
 		}},
 		{"a title that reads as a bool", Response{
-			Title: "true", Type: "fact", Altitude: "artifact",
+			Title: "true", Type: "fact",
 			Body: "b", Confidence: 0.9,
 		}},
 		{"a title that reads as a number", Response{
-			Title: "2026", Type: "fact", Altitude: "artifact",
+			Title: "2026", Type: "fact",
 			Body: "b", Confidence: 0.9,
 		}},
 		{"a summary with a colon", Response{
-			Title: "T", Type: "fact", Altitude: "artifact", Body: "b",
+			Title: "T", Type: "fact", Body: "b",
 			Confidence: 0.9, Summary: "the rule: nothing moves",
 		}},
 		{"an alias with a quote", Response{
-			Title: "T", Type: "fact", Altitude: "artifact", Body: "b",
+			Title: "T", Type: "fact", Body: "b",
 			Confidence: 0.9, Aliases: []string{`the "gate"`},
 		}},
 	} {
@@ -68,7 +68,7 @@ func TestARenderedNoteParsesAsYAML(t *testing.T) {
 // of the file, making every review of the corpus's history noisier for nothing.
 func TestFieldOrderIsStable(t *testing.T) {
 	r := Response{
-		Title: "T", Type: "fact", Altitude: "artifact", Body: "b",
+		Title: "T", Type: "fact", Body: "b",
 		Confidence: 0.9, Tags: []string{"a", "b"}, Aliases: []string{"c"},
 	}
 	first := RenderNote(r, Stamp{})
@@ -79,7 +79,8 @@ func TestFieldOrderIsStable(t *testing.T) {
 	}
 	// And the order is the one declared, not whatever happened to come out.
 	head := first[:strings.Index(first, "---\n\n")]
-	want := []string{"title:", "type:", "altitude:", "status:", "confidence:"}
+	// No `altitude:` — the deep pass drops it (agentm-vault plan 04).
+	want := []string{"title:", "type:", "status:", "confidence:", "filing_confidence:"}
 	last := -1
 	for _, k := range want {
 		i := strings.Index(head, k)
@@ -97,7 +98,7 @@ func TestFieldOrderIsStable(t *testing.T) {
 // lands in its class folder carrying the number that made it low.
 func TestLowConfidenceLandsUnfiledWithItsNumber(t *testing.T) {
 	low := RenderNote(Response{
-		Title: "T", Type: "fact", Altitude: "artifact", Body: "b", Confidence: 0.2,
+		Title: "T", Type: "fact", Body: "b", Confidence: 0.2,
 	}, Stamp{})
 	if !strings.Contains(low, "status: unfiled") {
 		t.Errorf("a low-confidence note was not filed for review:\n%s", low)
@@ -107,7 +108,7 @@ func TestLowConfidenceLandsUnfiledWithItsNumber(t *testing.T) {
 	}
 
 	high := RenderNote(Response{
-		Title: "T", Type: "fact", Altitude: "artifact", Body: "b", Confidence: 0.95,
+		Title: "T", Type: "fact", Body: "b", Confidence: 0.95,
 	}, Stamp{})
 	if !strings.Contains(high, "status: active") {
 		t.Errorf("a confident enrichment was queued for review anyway:\n%s", high)
@@ -127,7 +128,7 @@ func TestStatusForStraddlesTheFloor(t *testing.T) {
 // prompt versions is indistinguishable from one enriched consistently.
 func TestTheNoteRecordsWhichPassWroteIt(t *testing.T) {
 	out := RenderNote(Response{
-		Title: "T", Type: "fact", Altitude: "artifact", Body: "b", Confidence: 0.9,
+		Title: "T", Type: "fact", Body: "b", Confidence: 0.9,
 	}, Stamp{})
 	if !strings.Contains(out, PassVersion) {
 		t.Errorf("the note does not record the pass version:\n%s", out)

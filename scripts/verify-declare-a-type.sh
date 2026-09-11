@@ -20,11 +20,15 @@
 #      not change, so anything else is the report blaming the corpus
 #   D. the reason text names the filing contract, which is what tells a person
 #      reading the digest that one edit did this rather than forty
-#   E. the discovery stage enqueues that work through the real seam, and the
-#      queue the daemon reports holds it
+#   E. the enrichment batch's own queue offers every stale card, read through
+#      the built binary's dry run
 #   F. re-enriching under the new contract brings coverage back
-#   G. the rollup stage enqueues its own owner's work off the same corpus, so
-#      the cycle's queue holds both kinds the criterion names
+#   G. and the batch's queue then skips them as unchanged at this pass
+#
+# E and G were narrowed in agentm-vault plan 04. They used to drive the unfiled
+# drain and the entity-rollup stage through work_ledger; both stages retired
+# (the drain is the batch now, and the entity class folded), so the seam worth
+# proving is the one the batch reads.
 #
 # Usage:   bash scripts/verify-declare-a-type.sh
 # Exit:    0 iff every check passes.
@@ -81,7 +85,7 @@ repo = pathlib.Path(os.environ["REPO"])
 
 vault = work / "vault"
 (vault / "standards").mkdir(parents=True, exist_ok=True)
-(vault / "memory").mkdir(parents=True, exist_ok=True)
+(vault / "memory" / "semantic").mkdir(parents=True, exist_ok=True)
 binary = os.environ["AGENTMD"]
 
 results = []
@@ -146,11 +150,13 @@ write_rules("preference", "convention")
 # version bump does not quietly turn this into a test of nothing.
 version = json.loads(agentmd("ledger", "--pending", "--json"))["version"]
 first = contract_hash()
-# Six, not three: the rollup floor is five mentions, and a corpus below it would
-# leave check G passing because the stage had nothing to find.
+# Six notes, so a queue that dropped or doubled one reads as a wrong count.
 CORPUS = ("a", "b", "c", "d", "e", "f")
+# In the class directory the contract routes `preference` to: the batch's queue
+# (and so the coverage population) is the cards in the contract's class
+# directories, not every unfiled note (agentm-vault plan 04, task 2).
 for name in CORPUS:
-    write_note(f"memory/{name}.md", first, "written under the first contract")
+    write_note(f"memory/semantic/{name}.md", first, "written under the first contract")
 
 agentmd("reindex")
 agentmd("ledger", "--rebuild")
@@ -193,23 +199,16 @@ check("D. the report carries the contract it was taken against",
       after.get("rules_hash") == second,
       f'rules_hash: {after.get("rules_hash")}')
 
-# ── E. the discovery stage enqueues it, through the real seam ───────────────
-sys.path.insert(0, str(repo / "harness/skills/memory/scripts"))
-import dream_stages  # noqa: E402
-
-res = dream_stages.stage_unfiled_drain(enabled=True, budget=2)
-check("E. the discovery stage enqueues under its budget",
-      not res.unavailable and res.enqueued == 2,
-      f"enqueued {res.enqueued}, unavailable={res.unavailable}")
-
-queues = json.loads(agentmd("queue", "--owner", "enrich", "--json"))
-depth = queues[0]["depth"] if queues else 0
-check("E. the daemon's own queue holds that work", depth == 2,
-      f"depth {depth}")
+# ── E. the batch's own queue offers it, through the real binary ─────────────
+dry = agentmd("enrich", "--dry-run")
+check("E. the batch's queue holds every card under the contract's class directory",
+      f"dry run: {len(CORPUS)} card(s) under memory/semantic" in dry, dry.splitlines()[:1])
+check("E. none of them reads as unchanged at this pass",
+      "unchanged at this pass 0 " in dry, [l for l in dry.splitlines() if "owed" in l])
 
 # ── F. re-enrichment brings coverage back ───────────────────────────────────
 for name in CORPUS:
-    write_note(f"memory/{name}.md", second, "re-enriched under the second contract")
+    write_note(f"memory/semantic/{name}.md", second, "re-enriched under the second contract")
 agentmd("reindex")
 agentmd("ledger", "--rebuild")
 
@@ -218,18 +217,11 @@ check("F. coverage climbs back over the same population",
       back["current"] == len(CORPUS) and back["eligible"] == len(CORPUS),
       f'coverage {back["current"]}/{back["eligible"]}')
 
-# ── G. and the rollup half of the same cycle ────────────────────────────────
-roll = dream_stages.stage_entity_rollups()
-check("G. the rollup stage enqueues work off the same corpus",
-      not roll.unavailable and roll.enqueued >= 1,
-      f"considered {roll.considered}, enqueued {roll.enqueued}, "
-      f"unavailable={roll.unavailable}")
-
-owners = {q["owner"]: q["depth"]
-          for q in json.loads(agentmd("queue", "--json")) or []}
-check("G. the cycle's queue holds both kinds of work the criterion names",
-      owners.get("enrich", 0) >= 1 and owners.get("entity-rollup", 0) >= 1,
-      f"owners: {owners}")
+# ── G. and the batch then skips them ────────────────────────────────────────
+dry = agentmd("enrich", "--dry-run")
+check("G. the batch reads every re-enriched card as unchanged at this pass",
+      f"unchanged at this pass {len(CORPUS)} " in dry,
+      [l for l in dry.splitlines() if "owed" in l])
 
 for label, good, detail in results:
     print(("  ok   " if good else "  FAIL ") + label +

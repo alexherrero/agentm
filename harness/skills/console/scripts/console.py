@@ -19,15 +19,12 @@ surface that already exists and is independently invocable on its own --
     Vault doctor    -> crickets' src/obsidian-vault/scripts/doctor_vault.py
     Vault lint      -> harness/skills/memory/scripts/vault_lint.py's --audit
                        report under <vault>/_meta/ (piece 1's scheduled job)
-    Dreaming        -> <vault>/_meta/dream-auto-expired-latest.json, the
-                       stable pointer dream.py's auto-apply wrapper writes
-                       every cycle (piece 5)
 
 Read-only report: never mutates repo, vault, or board state. Every section
 degrades to a one-line "n/a: <reason>" instead of raising whenever a dev-only
 surface (health/spend/board-drift) is absent -- e.g. this isn't agentm's own
 dev checkout, or a crickets sibling isn't reachable. Freshness-bearing
-sections (health, vault doctor, vault lint, dreaming) follow an
+sections (health, vault doctor, vault lint) follow an
 honest-dark convention -- a check that has genuinely never run says so
 plainly ("dark" / "never run") rather than being omitted, matching
 scripts/health/dark-checks.jsonl's own verified-live / explicit-dark /
@@ -683,158 +680,11 @@ def section_brief(vault: "Path | None", *, now: "float | None" = None) -> str:
     return f"Latest brief: {title} (file: {latest.name}, {when})"
 
 
-# ── section: dreaming auto-expire (Consolidation follow-ups batch, piece 5) ─
-def section_dream_expire(vault: "Path | None", *, now: "float | None" = None) -> str:
-    """Reads the stable, always-overwritten pointer `dream.py`'s auto-apply
-    wrapper writes every cycle (`_meta/dream-auto-expired-latest.json`).
-    Honest-dark on every edge: no vault, no pointer file (job never run),
-    or an unreadable/malformed pointer all say so plainly rather than
-    omitting the line or raising."""
-    if vault is None:
-        return "Dreaming auto-expire: n/a (no vault resolved)"
-    pointer = _engine_state_dir() / "dream-auto-expired-latest.json"
-    if not pointer.is_file():
-        return (
-            "Dreaming auto-expire: dark -- no dream-auto-expired-latest.json in the engine state dir yet "
-            "(the dreaming job may not be registered on this machine or has never fired; "
-            "see templates/jobs/dream.yaml)"
-        )
-    try:
-        data = json.loads(pointer.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
-        return f"Dreaming auto-expire: n/a (unreadable pointer at {pointer}: {e})"
-    if not isinstance(data, dict):
-        return f"Dreaming auto-expire: n/a (pointer at {pointer} is not a JSON object)"
-    run_id = data.get("run_id", "?")
-    count = data.get("count", 0)
-    applied_at = data.get("applied_at")
-    when = _format_age(applied_at, now=now) if isinstance(applied_at, (int, float)) else "unknown"
-    revert = data.get("revert", {}) if isinstance(data.get("revert"), dict) else {}
-    how = revert.get("how", "see revert_log.py (no CLI) with this pointer's run_id")
-    if not count:
-        return f"Dreaming auto-expire: last cycle (run {run_id}, {when}) auto-expired 0 item(s) -- nothing to revert"
-    return (
-        f"Dreaming auto-expire: last cycle (run {run_id}, {when}) auto-expired {count} item(s) "
-        f"-- revert: {how}"
-    )
-
-
-def section_crystallize_candidates(vault: "Path | None") -> str:
-    """Crystallization's phase-close trigger (agentm-experience-and-dreaming.md
-    § Crystallization's phase-close trigger, call 6): a bare count of sessions
-    staged from a completed `/work` or `/release`, awaiting a five-field
-    digest or an explicit dismissal. Globbed directly from the staging
-    directory, and from its own file rather than a list another writer
-    overwrites wholesale every cycle, where an appended item would be
-    silently lost. Honest-dark on every edge, same convention as every
-    section here."""
-    if vault is None:
-        return "Crystallization candidates: n/a (no vault resolved)"
-    staging_dir = _engine_state_dir() / "crystallize-staging"
-    if not staging_dir.is_dir():
-        return "Crystallization candidates: none staged (no crystallize-staging/ in the engine state dir yet)"
-    try:
-        count = sum(1 for p in staging_dir.glob("*.json") if p.is_file())
-    except OSError as e:
-        return f"Crystallization candidates: n/a (unreadable {staging_dir}: {e})"
-    if count == 0:
-        return "Crystallization candidates: none staged"
-    return (
-        f"Crystallization candidates: {count} session(s) staged from a completed "
-        "/work or /release, awaiting a five-field digest or dismissal"
-    )
-
-
-def section_sampled_audit(vault: "Path | None") -> str:
-    """The sampled higher-tier audit (auto-org part 3, task 9): the most
-    recent cycle's applied-link/merge review, read from the one pointer
-    file (`_meta/sampled-audit-latest.json`, overwritten every cycle —
-    same convention as `dream-auto-expired-latest.json`). Honest-dark on
-    every edge, same convention as every section here. `sampled_count:
-    0` is the expected, permanent state until the higher-tier model tier
-    ships (see `dream_confirm.higher_tier_model_available`'s own
-    docstring) — reported as "nothing sampled," not an error."""
-    if vault is None:
-        return "Sampled audit: n/a (no vault resolved)"
-    pointer = vault / "_meta" / "sampled-audit-latest.json"
-    if not pointer.is_file():
-        return (
-            "Sampled audit: dark -- no _meta/sampled-audit-latest.json yet "
-            "(the weekly dreaming cycle hasn't run on this machine since the audit shipped)"
-        )
-    try:
-        data = json.loads(pointer.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
-        return f"Sampled audit: n/a (unreadable pointer at {pointer}: {e})"
-    if not isinstance(data, dict):
-        return f"Sampled audit: n/a (pointer at {pointer} is not the expected shape)"
-    sampled_count = data.get("sampled_count", 0)
-    if not sampled_count:
-        return "Sampled audit: nothing sampled this cycle (higher-tier model tier unavailable)"
-    rate = data.get("disagreement_rate")
-    line = (
-        f"Sampled audit: {sampled_count} applied link/merge(s) reviewed — "
-        f"{data.get('disagree_count', 0)} disagreement(s)"
-        + (f" ({rate:.1%})" if isinstance(rate, (int, float)) else "")
-    )
-    if data.get("narrowed"):
-        line += " -- ⚠ ambiguous bands narrowed this cycle"
-    return line
-
-
-# ── section: opinion supplements (accumulate loop, Stages 2-3, locked call
-#    10) -- the per-opinion lane-depth / promoted / provenance snapshot
-#    `dream.py`'s `_stage_opinion_supplement()` writes every cycle ─────────
-def section_opinion_supplements(vault: "Path | None") -> str:
-    """Reads the stable, always-overwritten pointer `_stage_opinion_
-    supplement()` writes every dreaming cycle (`_meta/opinion-supplement-
-    health-latest.json`) -- never recomputes the snapshot itself, the same
-    "read the pointer, don't re-derive" convention `section_sampled_audit`
-    already uses. Honest-dark on every edge."""
-    if vault is None:
-        return "Opinion supplements: n/a (no vault resolved)"
-    pointer = _engine_state_dir() / "opinion-supplement-health-latest.json"
-    if not pointer.is_file():
-        return (
-            "Opinion supplements: dark -- no opinion-supplement-health-latest.json in the engine state dir "
-            "yet (the weekly dreaming cycle hasn't run on this machine since Stages 2-3 shipped, "
-            "or no standard has been mined into an opinion lane yet)"
-        )
-    try:
-        data = json.loads(pointer.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
-        return f"Opinion supplements: n/a (unreadable pointer at {pointer}: {e})"
-    opinions = data.get("opinions") if isinstance(data, dict) else None
-    if not isinstance(opinions, dict):
-        return f"Opinion supplements: n/a (pointer at {pointer} is not the expected shape)"
-    if not opinions:
-        return "Opinion supplements: no opinion has an active lane yet"
-
-    warn_threshold = None
-    mem_dir = _memory_scripts_dir()
-    if mem_dir is not None:
-        if str(mem_dir) not in sys.path:
-            sys.path.insert(0, str(mem_dir))
-        try:
-            import opinion_supplement as osup  # type: ignore
-
-            warn_threshold = osup.LANE_DEPTH_WARNING_THRESHOLD
-        except ImportError:
-            pass
-
-    lines = [f"Opinion supplements: {len(opinions)} opinion(s) with an active lane"]
-    for name in sorted(opinions):
-        h = opinions[name]
-        depth = h.get("lane_depth", 0)
-        flag = ""
-        if warn_threshold is not None and depth > warn_threshold:
-            flag = f" ⚠ exceeds {warn_threshold} — the recurrence threshold may be too loose"
-        lines.append(
-            f"  {name}: {h.get('promoted_count', 0)} promoted, {h.get('parked_count', 0)} parked, "
-            f"{depth} lane-depth{flag}, {h.get('provenance_coverage', 0.0):.0%} provenance, "
-            f"{h.get('base_proposal_count', 0)} base-change proposal(s)"
-        )
-    return "\n".join(lines)
+# The dreaming auto-expire, sampled-audit, opinion-supplement and
+# crystallize-candidate sections retired with what they reported on
+# (agentm-vault plan 04): the Python cycle applies nothing, the sampled audit
+# and the opinion lanes are gone, and a session no longer stages a
+# crystallization marker. The night's account is the morning note.
 
 
 # ── section: rich (HTML) view pointer (Consolidation follow-ups batch,
@@ -890,10 +740,6 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
         "machinery": section_machinery(repo_root, runner=runner),
         "vault_doctor": section_vault_doctor(vault, runner=runner),
         "vault_lint": section_vault_lint(vault),
-        "dream_expire": section_dream_expire(vault),
-        "sampled_audit": section_sampled_audit(vault),
-        "opinion_supplements": section_opinion_supplements(vault),
-        "crystallize_candidates": section_crystallize_candidates(vault),
     }
 
 
@@ -906,10 +752,6 @@ def render_terminal(report: dict, *, html_path: "Path | None" = None, repo_root:
         ("Runner jobs", "runner_jobs"),
         ("Memory activity", "memory"), ("Machinery", "machinery"),
         ("Vault doctor", "vault_doctor"), ("Vault lint", "vault_lint"),
-        ("Dreaming", "dream_expire"),
-        ("Sampled audit", "sampled_audit"),
-        ("Opinion supplements", "opinion_supplements"),
-        ("Crystallization candidates", "crystallize_candidates"),
     ):
         if key not in report:
             continue
@@ -979,7 +821,6 @@ def render_html_report(report: dict, repo_root: "Path | None", *, runner=subproc
 <section><h2>Machinery</h2><pre>{esc(report.get('machinery', ''))}</pre></section>
 <section><h2>Vault doctor</h2><pre>{esc(report.get('vault_doctor', ''))}</pre></section>
 <section><h2>Vault lint</h2><pre>{esc(report.get('vault_lint', ''))}</pre></section>
-<section><h2>Dreaming</h2><pre>{esc(report.get('dream_expire', ''))}</pre></section>
 <section><h2>Scorecard</h2><pre>{esc(scorecard_html_line(repo_root))}</pre></section>
 
 </body>

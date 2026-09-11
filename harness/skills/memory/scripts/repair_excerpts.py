@@ -95,10 +95,11 @@ MARKER = "excerpt_edges_unverified"
 
 # How many notes one run may touch without being told otherwise.
 #
-# 25, matching `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP` — the same reasoning
-# applies and a second number would be a second thing to keep in step. A pass over
-# two thousand notes is several runs, deliberately, so a mistake is caught after
-# twenty-five of them rather than all of them.
+# 25. It once matched the dream cycle's auto-apply cap, which retired with the
+# confirm-and-revert path in agentm-vault plan 04; it is now the number the
+# one-shot repair passes share (`retro_mining_cleanup` reads it from here). A pass
+# over two thousand notes is several runs, deliberately, so a mistake is caught
+# after twenty-five of them rather than all of them.
 DEFAULT_BATCH = 25
 
 

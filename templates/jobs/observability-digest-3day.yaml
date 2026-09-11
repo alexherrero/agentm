@@ -1,7 +1,18 @@
 # observability-digest-3day.yaml — the every-3-days rung of the
 # observability ledger's digest ladder (PLAN-observability-console task 2).
-# See observability-digest-daily.yaml's own header note for the shared
-# registration/tier/dry-run rationale.
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored; register by copying this template to
+# .harness/jobs/observability-digest-3day.yaml.
+#
+# Siblings: observability-digest-weekly.yaml (7d) and observability-digest-
+# monthly.yaml (trend-only, reads the digest-history ledger rather than the
+# rollup directly). The daily rung retired in agentm-vault plan 04: the
+# morning note carries the day's spend now (templates/jobs/morning-note.yaml).
+# A rung whose window holds no spend and no events writes no note at all.
+#
+# Writes a vault diagnostics note — T2 (operator-curated surface). Stays
+# dry_run: true until the operator confirms a real digest reads well.
 schedule: 3d
 lookback: 24h
 command: >-

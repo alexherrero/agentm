@@ -21,6 +21,10 @@ except ImportError:  # pragma: no cover - PyYAML is a repo-wide dependency alrea
 _DURATION_RE = re.compile(r"^(\d+)([smhdw])$")
 _DURATION_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 _NAMED_SCHEDULE_SECONDS = {"hourly": 3600, "daily": 86400, "weekly": 604800}
+# `02:00-06:00`, local time. The dash may be a hyphen or the en dash the design
+# writes, because a manifest copied out of the design should not fail to load
+# over a typographic choice.
+_WINDOW_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)\s*[-–]\s*([01]\d|2[0-3]):([0-5]\d)$")
 
 # T1 (the operator's personal space) is never a job target — that takes the
 # separate, explicit, operator-authorized seam call a scheduled job never
@@ -50,6 +54,23 @@ def schedule_interval_seconds(schedule: str) -> int:
     return parse_duration(schedule)
 
 
+def parse_window(value: str) -> tuple[int, int]:
+    """"02:00-06:00" -> (120, 360), minutes after local midnight.
+
+    A window whose end is before its start wraps midnight (`22:00-02:00`). One
+    whose start and end are equal is refused: it would mean either "never" or
+    "always", and a manifest should not have to be read twice to know which.
+    """
+    m = _WINDOW_RE.match(str(value).strip())
+    if not m:
+        raise ManifestError(f"malformed window: {value!r} (expected e.g. '02:00-06:00')")
+    h1, m1, h2, m2 = (int(g) for g in m.groups())
+    start, end = h1 * 60 + m1, h2 * 60 + m2
+    if start == end:
+        raise ManifestError(f"window {value!r} opens and closes at the same minute")
+    return start, end
+
+
 @dataclass(frozen=True)
 class JobManifest:
     name: str
@@ -69,11 +90,27 @@ class JobManifest:
     # Distinct from `dry_run`, which still runs the command and asks it not to
     # write. A disabled job does not run at all.
     enabled: bool = True
+    # The hours a job may start in, local time, as written (`"02:00-06:00"`).
+    # A job due outside its window waits for it rather than running at whatever
+    # hour its interval happened to land on — without this, every `daily` job on
+    # the machine drifted to the hour the runner first saw it (13:07 on
+    # 2026-09-06), which is the middle of the working day. None means any hour.
+    window: Optional[str] = None
+    # Position within one cycle: lower runs first, ties by name. The night's
+    # steps read each other's output — the binary refiles by the `type` the
+    # batch just wrote — so the order they run in is part of what they mean,
+    # and sorting by filename would have put the scorecard before the thing it
+    # scores.
+    order: int = 0
     path: Optional[Path] = None
 
     @property
     def interval_seconds(self) -> int:
         return schedule_interval_seconds(self.schedule)
+
+    @property
+    def window_minutes(self) -> Optional[tuple[int, int]]:
+        return parse_window(self.window) if self.window else None
 
     @property
     def lookback_seconds(self) -> int:
@@ -96,6 +133,15 @@ def _validate(name: str, data: dict, path: Path) -> JobManifest:
     schedule_interval_seconds(str(data["schedule"]))
     parse_duration(str(data["lookback"]))
 
+    window = data.get("window")
+    if window is not None:
+        parse_window(str(window))
+        window = str(window).strip()
+
+    order = data.get("order", 0)
+    if isinstance(order, bool) or not isinstance(order, int):
+        raise ManifestError(f"{path}: order {order!r} is not an integer")
+
     budget = data.get("budget")
     budget_tokens = budget.get("tokens") if isinstance(budget, dict) else None
 
@@ -109,6 +155,8 @@ def _validate(name: str, data: dict, path: Path) -> JobManifest:
         budget_tokens=budget_tokens,
         dry_run=bool(data.get("dry_run", True)),
         enabled=bool(data.get("enabled", True)),
+        window=window,
+        order=order,
         path=path,
     )
 

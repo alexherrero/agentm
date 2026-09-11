@@ -10,7 +10,7 @@ import (
 func withAliases(t *testing.T, body string, aliases ...string) string {
 	t.Helper()
 	r := Response{
-		Title: "A note", Type: "fact", Altitude: "artifact",
+		Title: "A note", Type: "fact",
 		Body: body, Confidence: 0.9, Aliases: aliases,
 	}
 	b, err := json.Marshal(r)

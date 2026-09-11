@@ -425,7 +425,10 @@ Captured four days ago and never filed.
 	if !strings.Contains(out, "queue-age") {
 		t.Errorf("`agentmd status` did not report the stalled queue:\n%s", out)
 	}
-	if !strings.Contains(out, "unfiled") {
+	// The queue line reads "N awaiting a judgment · oldest Xd old" since the
+	// night's plan narrowed it to unjudged notes (agentm-vault plan 04): the
+	// count and the age are the two numbers.
+	if !strings.Contains(out, "awaiting a judgment") || !strings.Contains(out, "oldest 4d") {
 		t.Errorf("`agentmd status` did not report the queue's two numbers:\n%s", out)
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
 	"time"
 )
@@ -35,11 +34,6 @@ type parityRecording struct {
 		Summary   string            `json:"summary"`
 		After     map[string]string `json:"after"`
 	} `json:"copies"`
-	Promote map[string]struct {
-		Sources []string `json:"sources"`
-		Slug    string   `json:"slug"`
-		Body    string   `json:"body"`
-	} `json:"promote"`
 }
 
 func parityFixture(t *testing.T) (root string, rec parityRecording) {
@@ -154,37 +148,8 @@ func TestParityWithTheRecordedPythonPass(t *testing.T) {
 		}
 	}
 
-	// The promotion: the recurring targets, their sources, the slug, and the
-	// digest body byte for byte.
-	recurring, _, err := RecurringTargets(root, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var gotTargets, pyTargets []string
-	for k := range recurring {
-		gotTargets = append(gotTargets, k)
-	}
-	for k := range rec.Promote {
-		pyTargets = append(pyTargets, k)
-	}
-	sort.Strings(gotTargets)
-	sort.Strings(pyTargets)
-	if !reflect.DeepEqual(gotTargets, pyTargets) {
-		t.Fatalf("recurring targets: go %v, python %v", gotTargets, pyTargets)
-	}
-	for target, py := range rec.Promote {
-		if !reflect.DeepEqual(recurring[target], py.Sources) {
-			t.Errorf("%s sources: go %v, python %v", target, recurring[target], py.Sources)
-		}
-		rel, content := RenderConsolidated(target, recurring[target], parityPin)
-		if !strings.HasSuffix(rel, "/"+py.Slug+".md") {
-			t.Errorf("%s slug: go %s, python %s", target, rel, py.Slug)
-		}
-		// The body follows the frontmatter block and a blank line.
-		_, body := ParseFrontmatter(content)
-		body = strings.TrimPrefix(body, "\n")
-		if body != py.Body {
-			t.Errorf("%s body:\n go %q\n py %q", target, body, py.Body)
-		}
-	}
+	// The promotion half retired with the job it checked (agentm-vault plan
+	// 04): promote no longer counts wikilinks across episodic notes into
+	// crystallized digests, so there is no Python pass left for it to match.
+	// The recording's `promote` key is left as it was recorded and unread.
 }

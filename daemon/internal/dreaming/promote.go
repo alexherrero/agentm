@@ -9,216 +9,207 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
-// Job "promote" — the port of consolidate.py: recurrence-gated promotion
-// into `crystallized/`. Typed edges are read off every episodic note the
-// way graph.py reads them — a `[[wikilink]]` outside a fenced block and
-// outside an inline code span, plus a `supersedes:` / `superseded_by:`
-// frontmatter value — and grouped by target. A target that three or more
-// DISTINCT episodic notes reference is durable, not incidental, and earns a
-// consolidated entry: `kind: crystallized`, `lifecycle_tier: durable`, the
-// sources named in `derived_from` and `consolidated_from` — the provenance
-// the contract requires of every derived-class note and the CI gate checks.
-// The sources are never touched; an entry that already exists is never
-// overwritten. Deterministic: no model, no randomness, sorted everywhere.
+// Job "promote" — recurrence across the sessions' own records, into semantic
+// candidates (agentm-vault § Dreaming, sessions 3 and 4).
+//
+// It reads two sections of every session trace: `## Captured`, the cards the
+// session wrote down, and `## Candidates`, what it said in passing that the
+// miner judged below HIGH — one line each, the rule that fired and the words it
+// fired on. A candidate whose words three distinct sessions carry is a real
+// recurrence: the same thing said three times. It becomes a semantic
+// candidate — `status: unfiled`, no `why`, `derived_from` naming the traces —
+// for the next enrichment batch to judge like any other card. A `## Captured`
+// link three sessions carry names a card that already exists; it is reported,
+// and nothing is written.
+//
+// What it no longer does, and why. It read every `[[wikilink]]` in an episodic
+// note, which in a trace is mostly `## Recalled` — forty basenames the recall
+// hook injected — so recurrence over it counted what recall happened to show,
+// and on 2026-09-06 it would have promoted `zorbulax`, a test token. And it
+// wrote `crystallized/`, which holds syntheses a model writes at a task's close
+// or on request, never a counter's output. Deterministic: no model, no
+// randomness, sorted everywhere; sources are never touched and an existing
+// note is never overwritten.
 
 const (
 	JobPromote    = "promote"
-	MinRecurrence = 3 // consolidate.MIN_RECURRENCE
-	DigestKind    = "crystallized"
+	MinRecurrence = 3
+	// DefaultPromoteCap bounds the candidates one pass writes. A recurrence
+	// storm — a hook that pasted the same line into every trace — should cost
+	// a page of candidates for the batch to judge, not a class folder.
+	DefaultPromoteCap = 10
 )
 
 var (
 	wikilinkRe   = regexp.MustCompile(`\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]`)
 	inlineCodeRe = regexp.MustCompile("`[^`\n]*`")
 	fenceRe      = regexp.MustCompile("^```")
+	// candidateRe is one `## Candidates` bullet as episodic_trace.py writes
+	// it: `- <rule> (×N) — “<excerpt>”`, the count and the excerpt optional.
+	candidateRe = regexp.MustCompile(`^-\s+(.+?)(?:\s+\(×\d+\))?(?:\s+—\s+[“"](.*)[”"])?\s*$`)
 )
 
-// Promotion is one consolidated entry the pass would (or did) write.
+// Promotion is one recurring item the pass found.
 type Promotion struct {
+	// Target is what recurred: a candidate's words, or a captured card's link.
 	Target  string   `json:"target"`
 	Sources []string `json:"sources"`
 	Rel     string   `json:"rel"`
 	Summary string   `json:"summary"`
 }
 
-// PromotePlan is what one pass would (or did) promote.
+// PromotePlan is what one pass would (or did) write.
 type PromotePlan struct {
-	Intents    []Intent    `json:"-"`
+	Intents []Intent `json:"-"`
+	// Promotions are the semantic candidates written.
 	Promotions []Promotion `json:"promotions"`
-	// Existing names the recurring targets already promoted (never rewritten).
+	// Existing are recurring items that already have a note: a captured card,
+	// or a candidate a previous pass wrote. Never rewritten.
 	Existing []Promotion `json:"existing"`
-	// Sources is how many episodic notes were read.
+	// Deferred are candidates past the cap, for the next pass.
+	Deferred int `json:"deferred,omitempty"`
+	// Sources is how many session traces were read.
 	Sources int `json:"sources"`
 }
 
-// Edges is graph.extract_edges: the targets one note references, in order.
-func Edges(content string) []string {
-	var targets []string
-	lines := strings.Split(content, "\n")
+// traceSections returns the bullet lines under `## Captured` and
+// `## Candidates` in one trace, outside fenced blocks.
+func traceSections(content string) (captured, candidates []string) {
+	var section string
 	inFence := false
-	fenced := map[int]bool{}
-	starts := make([]int, len(lines))
-	offset := 0
-	for i, line := range lines {
-		starts[i] = offset
-		if fenceRe.MatchString(strings.TrimSpace(line)) {
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if fenceRe.MatchString(trimmed) {
 			inFence = !inFence
-			fenced[i] = true
-		} else if inFence {
-			fenced[i] = true
-		}
-		offset += len(line) + 1
-	}
-	for _, m := range wikilinkRe.FindAllStringSubmatchIndex(content, -1) {
-		lineIdx := 0
-		for i := len(starts) - 1; i >= 0; i-- {
-			if starts[i] <= m[0] {
-				lineIdx = i
-				break
-			}
-		}
-		if fenced[lineIdx] {
 			continue
 		}
-		col := m[0] - starts[lineIdx]
-		inCode := false
-		for _, span := range inlineCodeRe.FindAllStringIndex(lines[lineIdx], -1) {
-			if span[0] <= col && col < span[1] {
-				inCode = true
-				break
-			}
-		}
-		if inCode {
+		if inFence {
 			continue
 		}
-		targets = append(targets, strings.TrimSpace(content[m[2]:m[3]]))
-	}
-	if strings.HasPrefix(content, "---\n") {
-		if end := strings.Index(content[4:], "\n---\n"); end >= 0 {
-			for _, line := range strings.Split(content[4:end+4], "\n") {
-				key, value, ok := strings.Cut(line, ":")
-				if !ok {
-					continue
-				}
-				k := strings.TrimSpace(key)
-				if k != "supersedes" && k != "superseded_by" {
-					continue
-				}
-				v := strings.TrimSpace(value)
-				v = strings.Trim(v, `"`)
-				v = strings.Trim(v, `'`)
-				if m := wikilinkRe.FindStringSubmatch(v); m != nil && strings.HasPrefix(v, "[[") {
-					v = strings.TrimSpace(m[1])
-				}
-				if v != "" {
-					targets = append(targets, v)
-				}
-			}
+		if strings.HasPrefix(line, "## ") {
+			section = strings.TrimSpace(strings.TrimPrefix(line, "## "))
+			continue
+		}
+		if strings.HasPrefix(line, "# ") {
+			section = ""
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "- ") {
+			continue
+		}
+		switch section {
+		case "Captured":
+			captured = append(captured, trimmed)
+		case "Candidates":
+			candidates = append(candidates, trimmed)
 		}
 	}
-	return targets
+	return captured, candidates
 }
 
-// ConsolidatedSlug is consolidate._consolidated_slug: `consolidated-<stem>`
-// with every non-alphanumeric, non-dash character folded to a dash and the
-// dashes collapsed.
-func ConsolidatedSlug(target string) string {
-	stem := strings.TrimSuffix(filepath.Base(target), filepath.Ext(target))
+// capturedTargets are the card links a `## Captured` section names.
+func capturedTargets(lines []string) []string {
+	var out []string
+	for _, l := range lines {
+		l = inlineCodeRe.ReplaceAllString(l, "")
+		for _, m := range wikilinkRe.FindAllStringSubmatch(l, -1) {
+			out = append(out, strings.TrimSpace(m[1]))
+		}
+	}
+	return out
+}
+
+// candidateKey is what makes two sessions' candidates the same candidate: the
+// words, lower-cased, with punctuation and runs of space folded. Not the rule —
+// two rules can fire on one sentence — and not the count, which is how often it
+// was said within one session.
+func candidateKey(excerpt string) string {
 	var b strings.Builder
-	for _, r := range strings.ToLower(stem) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' {
+	space := false
+	for _, r := range strings.ToLower(excerpt) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(r)
-		} else {
-			b.WriteRune('-')
+			space = false
+		} else if !space && b.Len() > 0 {
+			b.WriteByte(' ')
+			space = true
 		}
 	}
-	var parts []string
-	for _, p := range strings.Split(b.String(), "-") {
-		if p != "" {
-			parts = append(parts, p)
-		}
-	}
-	return "consolidated-" + strings.Join(parts, "-")
+	return strings.TrimSpace(b.String())
 }
 
-// pyRepr renders a string the way Python's repr does for the plain case:
-// single quotes unless the text holds a single quote and no double quote.
-func pyRepr(s string) string {
-	q := "'"
-	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
-		q = `"`
+// candidateSlug is a candidate's filename stem: its first words, hyphenated.
+func candidateSlug(key string) string {
+	words := strings.Fields(key)
+	if len(words) > 8 {
+		words = words[:8]
 	}
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	if q == "'" {
-		s = strings.ReplaceAll(s, "'", `\'`)
-	}
-	return q + s + q
+	return "candidate-" + strings.Join(words, "-")
 }
 
-// RenderConsolidated is consolidate_target's note: the locked-order
-// frontmatter save._build_frontmatter emits, the five-section digest body
-// crystallize._render_body renders, and the provenance the contract names.
-func RenderConsolidated(target string, sources []string, today string) (rel, content string) {
-	slug := ConsolidatedSlug(target)
-	n := len(sources)
-	var inv strings.Builder
-	fmt.Fprintf(&inv, "%d episodic entries reference %s:\n", n, pyRepr(target))
-	for i, p := range sources {
-		if i > 0 {
-			inv.WriteString("\n")
-		}
-		inv.WriteString("- " + p)
+// RenderCandidate is the semantic candidate a recurrence becomes: unjudged,
+// with no `why` — no writer that knows wrote it — and the traces it came from
+// in `derived_from`. The excerpt is quoted in an Evidence block, because it is
+// what was said and the batch will keep it that way.
+func RenderCandidate(excerpt string, sources []string, defaultType, today string) string {
+	title := excerpt
+	if r := []rune(title); len(r) > 80 {
+		title = strings.TrimSpace(string(r[:80])) + "…"
 	}
-	sections := []struct{ title, value string }{
-		{"Question", fmt.Sprintf("What recurring reference to %s appears across episodic entries?", pyRepr(target))},
-		{"Investigation", inv.String()},
-		{"Findings", fmt.Sprintf("%s recurs across %d distinct entries (recurrence floor: %d), a deterministic signal that this is durable, not incidental.", pyRepr(target), n, MinRecurrence)},
-		{"Lessons", fmt.Sprintf("Promoted episodic -> semantic (V6-4). The consolidated entry is durable (decay-exempt) and carries a derived_from provenance edge back to its %d sources; none of those sources were deleted or modified.", n)},
-		{"Open threads", ""},
+	links := make([]string, len(sources))
+	for i, s := range sources {
+		links[i] = `"[[` + strings.TrimSuffix(filepath.Base(s), ".md") + `]]"`
 	}
-	var body []string
-	for _, s := range sections {
-		body = append(body, fmt.Sprintf("## %s\n\n%s\n", s.title, strings.TrimSpace(s.value)))
+	var b strings.Builder
+	b.WriteString("---\n")
+	fmt.Fprintf(&b, "title: %s\n", yamlQuote(title))
+	if defaultType != "" {
+		fmt.Fprintf(&b, "type: %s\n", defaultType)
 	}
-	list := "[" + strings.Join(sources, ", ") + "]"
-	fm := strings.Join([]string{
-		"---",
-		"kind: " + DigestKind,
-		"status: active",
-		"altitude: artifact",
-		"created: " + today,
-		"updated: " + today,
-		"tags: []",
-		"group: memory",
-		"slug: " + slug,
-		"always_load: false",
-		"lifecycle_tier: durable",
-		"derived_from: " + list,
-		"consolidated_from: " + list,
-		"---",
-	}, "\n") + "\n"
-	text := strings.Join(body, "\n")
-	if !strings.HasSuffix(text, "\n") {
-		text += "\n"
-	}
-	return "memory/" + DigestKind + "/" + slug + ".md", fm + "\n" + text
+	b.WriteString("status: unfiled\n")
+	b.WriteString("lifecycle: active\n")
+	b.WriteString("source: conversation\n")
+	b.WriteString("trust: trusted\n")
+	fmt.Fprintf(&b, "created: %s\n", today)
+	fmt.Fprintf(&b, "updated: %s\n", today)
+	fmt.Fprintf(&b, "derived_from: [%s]\n", strings.Join(links, ", "))
+	b.WriteString("---\n\n")
+	fmt.Fprintf(&b, "Said in passing in %d sessions, and promoted for a judgment.\n\n", len(sources))
+	b.WriteString("## Evidence\n\n")
+	fmt.Fprintf(&b, "> %s\n", excerpt)
+	return b.String()
 }
 
-// RecurringTargets is consolidate.find_recurring_targets over the episodic
-// notes under `root`: {target: sorted distinct sources} for targets at or
-// past the floor. Returns the episodic paths read, for the report.
-func RecurringTargets(root string, minRecurrence int) (map[string][]string, int, error) {
-	if minRecurrence <= 0 {
-		minRecurrence = MinRecurrence
-	}
+func yamlQuote(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", " ").Replace(s) + `"`
+}
+
+// noteExists reports whether a note with this stem lives anywhere under the
+// memory root — Obsidian resolves a link by its basename, so a card is found
+// wherever it was filed.
+func noteExists(stems map[string]bool, target string) bool {
+	return stems[strings.ToLower(strings.TrimSuffix(filepath.Base(target), ".md"))]
+}
+
+// PlanPromote decides the promotions. It writes nothing.
+func PlanPromote(root string, contract *rules.Rules, now time.Time) (PromotePlan, error) {
+	var plan PromotePlan
 	rels, err := MemoryNotes(root)
 	if err != nil {
-		return nil, 0, err
+		return plan, err
 	}
-	byTarget := map[string]map[string]bool{}
-	read := 0
+	stems := map[string]bool{}
+	for _, rel := range rels {
+		stems[strings.ToLower(strings.TrimSuffix(filepath.Base(rel), ".md"))] = true
+	}
+
+	captured := map[string]map[string]bool{}
+	candidates := map[string]map[string]bool{}
+	excerpts := map[string]string{}
 	for _, rel := range rels {
 		if classOf(rel) != "episodic" {
 			continue
@@ -227,55 +218,83 @@ func RecurringTargets(root string, minRecurrence int) (map[string][]string, int,
 		if err != nil {
 			continue
 		}
-		read++
-		for _, target := range Edges(string(raw)) {
-			if byTarget[target] == nil {
-				byTarget[target] = map[string]bool{}
-			}
-			byTarget[target][rel] = true
-		}
-	}
-	out := map[string][]string{}
-	for target, sources := range byTarget {
-		if len(sources) < minRecurrence {
+		fm, _ := ParseFrontmatter(string(raw))
+		if fm["kind"] != "session-trace" {
 			continue
 		}
-		var list []string
-		for s := range sources {
-			list = append(list, s)
+		plan.Sources++
+		capLines, candLines := traceSections(string(raw))
+		for _, t := range capturedTargets(capLines) {
+			if captured[t] == nil {
+				captured[t] = map[string]bool{}
+			}
+			captured[t][rel] = true
 		}
-		sort.Strings(list)
-		out[target] = list
+		for _, l := range candLines {
+			m := candidateRe.FindStringSubmatch(l)
+			if m == nil || strings.TrimSpace(m[2]) == "" {
+				continue
+			}
+			key := candidateKey(m[2])
+			if key == "" {
+				continue
+			}
+			if candidates[key] == nil {
+				candidates[key] = map[string]bool{}
+				excerpts[key] = strings.TrimSpace(m[2])
+			}
+			candidates[key][rel] = true
+		}
 	}
-	return out, read, nil
-}
 
-// PlanPromote decides the promotions. It writes nothing.
-func PlanPromote(root string, now time.Time) (PromotePlan, error) {
-	var plan PromotePlan
-	recurring, read, err := RecurringTargets(root, MinRecurrence)
-	if err != nil {
-		return plan, err
+	// A card three sessions captured already exists; it is reported.
+	for _, t := range sortedKeys(captured) {
+		if len(captured[t]) < MinRecurrence {
+			continue
+		}
+		sources := sortedKeys(captured[t])
+		item := Promotion{Target: t, Sources: sources,
+			Summary: fmt.Sprintf("[[%s]] was captured in %d sessions — already a card; nothing written", t, len(sources))}
+		plan.Existing = append(plan.Existing, item)
 	}
-	plan.Sources = read
-	var targets []string
-	for t := range recurring {
-		targets = append(targets, t)
+
+	defaultType := ""
+	if contract != nil {
+		defaultType = contract.DefaultType
 	}
-	sort.Strings(targets)
 	today := now.UTC().Format("2006-01-02")
-	for _, target := range targets {
-		sources := recurring[target]
-		rel, content := RenderConsolidated(target, sources, today)
-		item := Promotion{Target: target, Sources: sources, Rel: rel,
-			Summary: fmt.Sprintf("%s recurs across %d episodic entries — promote to %s with its provenance", target, len(sources), rel)}
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
-			item.Summary = fmt.Sprintf("%s recurs across %d episodic entries — already promoted at %s; not overwriting", target, len(sources), rel)
+	for _, key := range sortedKeys(candidates) {
+		if len(candidates[key]) < MinRecurrence {
+			continue
+		}
+		sources := sortedKeys(candidates[key])
+		slug := candidateSlug(key)
+		rel := "memory/semantic/" + slug + ".md"
+		item := Promotion{Target: excerpts[key], Sources: sources, Rel: rel}
+		if noteExists(stems, slug) {
+			item.Summary = fmt.Sprintf("%q recurs across %d sessions — already a candidate at %s; not overwriting",
+				excerpts[key], len(sources), rel)
 			plan.Existing = append(plan.Existing, item)
 			continue
 		}
+		if len(plan.Promotions) >= DefaultPromoteCap {
+			plan.Deferred++
+			continue
+		}
+		item.Summary = fmt.Sprintf("%q recurs across %d sessions — a semantic candidate at %s for the batch to judge",
+			excerpts[key], len(sources), rel)
 		plan.Promotions = append(plan.Promotions, item)
-		plan.Intents = append(plan.Intents, Intent{Job: JobPromote, Rel: rel, Before: nil, After: []byte(content), Summary: item.Summary})
+		plan.Intents = append(plan.Intents, Intent{Job: JobPromote, Rel: rel, Before: nil,
+			After: []byte(RenderCandidate(excerpts[key], sources, defaultType, today)), Summary: item.Summary})
 	}
 	return plan, nil
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

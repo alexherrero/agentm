@@ -209,7 +209,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		}
 		intents = nil
 	}
-	promote, err := PlanPromote(root, now)
+	promote, err := PlanPromote(root, contract, now)
 	if err != nil {
 		return rep, err
 	}
@@ -259,12 +259,23 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	if rep.Reclassify, err = Reclassify(root, contract, version, st.LastPassVersion, ReclassifySample(contract), 0, opt.Reclassify); err != nil {
 		return rep, err
 	}
-	st.ClassPopulations = rep.Trends.Flat()
-	st.LastPassVersion = version
 	if err := journal.Append(Entry{Kind: KindRunDone, RunID: runID, TS: now, Outcome: rep.Outcome}); err != nil {
 		return rep, err
 	}
-	st.LastDone, st.LastOutcome = now, rep.Outcome
+	st.LastOutcome = rep.Outcome
+	if opt.Apply {
+		// Only a pass that changed the corpus moves what the next pass is
+		// measured from: the clock the gate reads, the populations the trend
+		// compares against, and the pass version the re-classification diff
+		// keys on. A report-only pass is a diagnostic — it records its own
+		// stamp and leaves all three where the last applying pass put them, so
+		// running one by hand never pushes the next real pass back.
+		st.LastDone = now
+		st.ClassPopulations = rep.Trends.Flat()
+		st.LastPassVersion = version
+	} else {
+		st.LastReport = now
+	}
 	if err := SaveState(cfg.EngineStateDir, st); err != nil {
 		return rep, err
 	}

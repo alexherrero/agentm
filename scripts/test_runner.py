@@ -337,8 +337,10 @@ class CycleIdempotencyTests(unittest.TestCase):
             harness_dir = Path(td) / "harness"
             harness_dir.mkdir()
             (harness_dir / "budget.yaml").write_text("daily_usd_ceiling: 0.0\n", encoding="utf-8")
+            # A spending job says so with a `budget:` (plan 04, task 2): the
+            # fleet ceiling gates the jobs that spend.
             _write_job(jobs_dir, "expensive", schedule="daily", lookback="6h",
-                       command="true", tier="T3", dry_run=False)
+                       command="true", tier="T3", dry_run=False, budget={"tokens": 1000})
 
             report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=state_root, harness_dir=harness_dir)
             self.assertTrue(report.budget_ceiling_hit)
@@ -357,17 +359,69 @@ class CycleIdempotencyTests(unittest.TestCase):
             harness_dir = Path(td) / "harness"
             harness_dir.mkdir()  # exists, but no budget.yaml inside it
             _write_job(jobs_dir, "expensive", schedule="daily", lookback="6h",
-                       command="true", tier="T3", dry_run=False)
+                       command="true", tier="T3", dry_run=False, budget={"tokens": 1000})
             # Seed prior spend directly (no real subprocess needed) well
-            # above any sane default ceiling.
-            state.mark_done("expensive", now=500.0, cost_usd=100.0, state_root=state_root)
+            # above any sane default ceiling — today's, from another spending
+            # job, since the ceiling is a daily one and reads the past day.
+            state.mark_done("other-spender", now=90000.0 - 3600, cost_usd=100.0,
+                            state_root=state_root)
 
-            # 90000s later: past the daily (86400s) interval, still inside
-            # the 6h lookback window -- squarely "due", not "missed".
+            # "expensive" has never run, so it is squarely "due".
             report = cycle.run_cycle(jobs_dir, now=90000.0, state_root=state_root, harness_dir=harness_dir)
             self.assertTrue(report.budget_ceiling_hit)
             self.assertFalse(report.outcomes[0].ran)
             self.assertEqual(report.outcomes[0].skipped_reason, "budget-ceiling")
+
+    def test_the_spend_line_reads_the_cost_a_job_reports(self):
+        """agentm-vault plan 04, task 2: the batch prints `total_cost_usd` on
+        its last line, and the runner's spend line reads that field."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr = Path(td) / "jobs", Path(td) / "state"
+            # A script rather than shell `echo`s: cmd.exe keeps single quotes
+            # and would print a line that is not JSON.
+            batch = Path(td) / "batch.py"
+            batch.write_text('print("call 1 - note - opus/strong")\n'
+                             'print(\'{"total_cost_usd": 0.4217, "tokens": 51200}\')\n',
+                             encoding="utf-8")
+            _write_job(jobs_dir, "enrich-nightly", dry_run=False, budget={"tokens": 1000000},
+                       command=f'"{sys.executable}" "{batch}"')
+            report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=sr)
+            self.assertTrue(report.outcomes[0].ran)
+            self.assertAlmostEqual(report.outcomes[0].cost_usd, 0.4217)
+            summary = json.loads(state.cycle_summary_path(sr).read_text())
+            self.assertAlmostEqual(summary["outcomes"][0]["cost_usd"], 0.4217)
+            self.assertAlmostEqual(state.last_cost_usd(state.read_marker("enrich-nightly", state_root=sr)), 0.4217)
+
+    def test_a_job_that_spends_nothing_is_never_held_by_the_fleet_ceiling(self):
+        """The hourly sweep and the shepherds declare no budget; holding them
+        back because the batch spent would save nothing."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
+            hd.mkdir()
+            (hd / "budget.yaml").write_text("daily_usd_ceiling: 0.0\n", encoding="utf-8")
+            _write_job(jobs_dir, "capture-ingest-sweep", schedule="hourly", dry_run=False)
+            _write_job(jobs_dir, "enrich-nightly", dry_run=False, budget={"tokens": 1000})
+            report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=sr, harness_dir=hd)
+            by = {o.name: o for o in report.outcomes}
+            self.assertTrue(by["capture-ingest-sweep"].ran)
+            self.assertEqual(by["enrich-nightly"].skipped_reason, "budget-ceiling")
+
+    def test_spend_older_than_a_day_does_not_hold_the_ceiling(self):
+        """A cost summed forever is a deadlock: the job that spent could never
+        run again to replace its own number."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
+            hd.mkdir()
+            (hd / "budget.yaml").write_text("daily_usd_ceiling: 5.0\n", encoding="utf-8")
+            _write_job(jobs_dir, "enrich-nightly", dry_run=False, lookback="3d",
+                       budget={"tokens": 1000})
+            state.mark_done("enrich-nightly", now=1000.0, cost_usd=9.0, state_root=sr)
+            # Two days on: yesterday's $9 night has aged out of the daily ceiling.
+            report = cycle.run_cycle(jobs_dir, now=1000.0 + 2 * 86400, state_root=sr, harness_dir=hd)
+            self.assertTrue(report.outcomes[0].ran, report.outcomes[0].skipped_reason)
+            # Within the day it still holds.
+            state.mark_done("enrich-nightly", now=1000.0 + 2 * 86400, cost_usd=9.0, state_root=sr)
+            self.assertAlmostEqual(cycle._spend_so_far(sr, 1000.0 + 2 * 86400 + 3600), 9.0)
 
     def test_t2_report_survives_concurrent_style_append(self):
         # T2 reports route through vault_lock.atomic_write; two sequential
@@ -662,6 +716,171 @@ class LenientLoadingTests(unittest.TestCase):
                 rc = cli.main(["run", "--jobs-dir", str(jobs_dir), "--strict"] + common)
             self.assertEqual(rc, 3)
             self.assertIn("agentm-runner:", err.getvalue())
+
+
+def _local(y, mo, d, h, mi) -> float:
+    """An epoch for a local wall-clock minute, so a test about 13:07 means 13:07
+    on whatever machine runs it."""
+    import time as _time
+    return _time.mktime((y, mo, d, h, mi, 0, 0, 0, -1))
+
+
+class WindowTests(unittest.TestCase):
+    """The night window (agentm-vault plan 04, task 1): a job due outside its
+    window waits for it, and the report says so."""
+
+    NIGHT = "02:00-06:00"
+
+    def _job(self, **overrides) -> manifest.JobManifest:
+        fields = dict(name="night", schedule="daily", lookback="24h", command="true",
+                      tier="T3", dry_run=False, window=self.NIGHT)
+        fields.update(overrides)
+        return manifest.JobManifest(**fields)
+
+    def test_parse_window(self):
+        self.assertEqual(manifest.parse_window("02:00-06:00"), (120, 360))
+        self.assertEqual(manifest.parse_window("02:00–06:00"), (120, 360))
+        self.assertEqual(manifest.parse_window("22:30-01:15"), (1350, 75))
+        for bad in ("2:00-6:00", "02:00", "25:00-06:00", "02:00-02:00", "night"):
+            with self.assertRaises(manifest.ManifestError, msg=bad):
+                manifest.parse_window(bad)
+
+    def test_window_and_order_load_and_are_validated(self):
+        with TemporaryDirectory() as td:
+            jobs_dir = Path(td) / "jobs"
+            _write_job(jobs_dir, "batch", window="02:00-06:00", order=1)
+            job, = manifest.load_manifests(jobs_dir)
+            self.assertEqual(job.window, "02:00-06:00")
+            self.assertEqual(job.window_minutes, (120, 360))
+            self.assertEqual(job.order, 1)
+            _write_job(jobs_dir, "batch", window="2am")
+            with self.assertRaises(manifest.ManifestError):
+                manifest.load_manifests(jobs_dir)
+            _write_job(jobs_dir, "batch", order="first")
+            with self.assertRaises(manifest.ManifestError):
+                manifest.load_manifests(jobs_dir)
+
+    def test_a_manifest_without_a_window_runs_at_any_hour(self):
+        with TemporaryDirectory() as td:
+            job = self._job(window=None)
+            state.mark_done(job.name, now=_local(2026, 9, 10, 13, 7), state_root=Path(td))
+            due, reason = cycle.is_due(job, now=_local(2026, 9, 11, 13, 7), state_root=Path(td))
+            self.assertEqual((due, reason), (True, "due"))
+
+    def test_the_half_open_window_and_one_that_wraps_midnight(self):
+        night, late = (120, 360), (1350, 75)
+        self.assertTrue(cycle.in_window(night, _local(2026, 9, 11, 2, 0)))
+        self.assertTrue(cycle.in_window(night, _local(2026, 9, 11, 5, 59)))
+        self.assertFalse(cycle.in_window(night, _local(2026, 9, 11, 6, 0)))
+        self.assertFalse(cycle.in_window(night, _local(2026, 9, 11, 1, 59)))
+        self.assertTrue(cycle.in_window(late, _local(2026, 9, 11, 23, 0)))
+        self.assertTrue(cycle.in_window(late, _local(2026, 9, 12, 1, 0)))
+        self.assertFalse(cycle.in_window(late, _local(2026, 9, 11, 12, 0)))
+
+    def test_a_job_due_at_1307_waits_and_starts_inside_the_window(self):
+        """The part file's criterion, end to end through the cycle: the command
+        does not run at 13:07, the report names the window as the reason, and
+        the next cycle inside the window runs it."""
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            jobs_dir, sr = root / "jobs", root / "state"
+            ran = root / "ran.txt"
+            # A script rather than `echo x >> file`: cmd.exe writes the space
+            # before the redirect into the file.
+            append = root / "append.py"
+            append.write_text(f"open({str(ran)!r}, 'a').write('x\\n')\n", encoding="utf-8")
+            _write_job(jobs_dir, "enrich-nightly", command=f'"{sys.executable}" "{append}"',
+                       dry_run=False, lookback="24h", window="02:00-06:00")
+            # Last ran yesterday at 13:07, the hour every daily job had drifted to.
+            state.mark_done("enrich-nightly", now=_local(2026, 9, 10, 13, 7), state_root=sr)
+
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 9, 11, 13, 7), state_root=sr)
+            outcome, = report.outcomes
+            self.assertFalse(outcome.ran)
+            self.assertEqual(outcome.skipped_reason, "outside-window 02:00-06:00")
+            self.assertFalse(ran.exists())
+            summary = json.loads(state.cycle_summary_path(sr).read_text())
+            self.assertEqual(summary["outcomes"][0]["skipped_reason"],
+                             "outside-window 02:00-06:00")
+
+            # Still waiting just before the window opens.
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 9, 12, 1, 37), state_root=sr)
+            self.assertEqual(report.outcomes[0].skipped_reason, "outside-window 02:00-06:00")
+            self.assertFalse(ran.exists())
+
+            # The first tick inside the window runs it — thirteen hours after it
+            # fell due, which is waiting rather than lateness, so a 24h lookback
+            # does not re-anchor it past its first night.
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 9, 12, 2, 7), state_root=sr)
+            self.assertTrue(report.outcomes[0].ran)
+            self.assertEqual(ran.read_text(), "x\n")
+
+            # Once a night, not once a tick.
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 9, 12, 2, 37), state_root=sr)
+            self.assertEqual(report.outcomes[0].skipped_reason, "not-due")
+
+    def test_a_late_start_does_not_push_the_next_night_later(self):
+        """A night whose first step ran long started this job at 05:37. It is
+        due again at tomorrow's opening, not at 05:37 — otherwise nightly jobs
+        drift apart and stop meeting in one cycle."""
+        with TemporaryDirectory() as td:
+            job = self._job()
+            state.mark_done(job.name, now=_local(2026, 9, 11, 5, 37), state_root=Path(td))
+            due, reason = cycle.is_due(job, now=_local(2026, 9, 12, 2, 7), state_root=Path(td))
+            self.assertEqual((due, reason), (True, "due"))
+
+    def test_waiting_for_the_window_never_reanchors_the_schedule(self):
+        with TemporaryDirectory() as td:
+            job = self._job(lookback="1h")
+            state.mark_done(job.name, now=_local(2026, 9, 10, 13, 7), state_root=Path(td))
+            before = state.read_marker(job.name, state_root=Path(td))
+            due, reason = cycle.is_due(job, now=_local(2026, 9, 11, 22, 0), state_root=Path(td))
+            self.assertFalse(due)
+            self.assertTrue(reason.startswith("outside-window"))
+            self.assertEqual(state.read_marker(job.name, state_root=Path(td)), before)
+            due, reason = cycle.is_due(job, now=_local(2026, 9, 12, 2, 7), state_root=Path(td))
+            self.assertEqual((due, reason), (True, "due"))
+
+    def test_a_night_slept_through_is_not_caught_up_past_the_lookback(self):
+        with TemporaryDirectory() as td:
+            job = self._job(lookback="24h")
+            state.mark_done(job.name, now=_local(2026, 9, 10, 2, 7), state_root=Path(td))
+            due, reason = cycle.is_due(job, now=_local(2026, 9, 13, 2, 30), state_root=Path(td))
+            self.assertEqual((due, reason), (False, "missed-beyond-lookback"))
+            due, reason = cycle.is_due(job, now=_local(2026, 9, 14, 2, 7), state_root=Path(td))
+            self.assertEqual((due, reason), (True, "due"))
+
+    def test_a_sub_day_interval_keeps_its_own_clock_inside_the_window(self):
+        with TemporaryDirectory() as td:
+            job = self._job(schedule="hourly", lookback="3h")
+            state.mark_done(job.name, now=_local(2026, 9, 11, 3, 7), state_root=Path(td))
+            due, _ = cycle.is_due(job, now=_local(2026, 9, 11, 3, 37), state_root=Path(td))
+            self.assertFalse(due)
+            due, _ = cycle.is_due(job, now=_local(2026, 9, 11, 4, 7), state_root=Path(td))
+            self.assertTrue(due)
+
+    def test_an_orphaned_start_waits_for_the_window_too(self):
+        with TemporaryDirectory() as td:
+            job = self._job()
+            state.mark_start(job.name, now=_local(2026, 9, 11, 3, 0), state_root=Path(td))
+            due, reason = cycle.is_due(job, now=_local(2026, 9, 11, 13, 7), state_root=Path(td))
+            self.assertFalse(due)
+            due, reason = cycle.is_due(job, now=_local(2026, 9, 12, 2, 7), state_root=Path(td))
+            self.assertEqual((due, reason), (True, "orphaned-start"))
+
+    def test_the_night_runs_in_declared_order_not_filename_order(self):
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            jobs_dir, sr, log = root / "jobs", root / "state", root / "order.txt"
+            for name, order in (("corpus-scorecard", 4), ("dream", 3),
+                                ("dreaming", 2), ("enrich-nightly", 1)):
+                _write_job(jobs_dir, name, command=f"echo {name} >> {log}",
+                           dry_run=False, window="02:00-06:00", order=order)
+            _write_job(jobs_dir, "capture-ingest-sweep", command=f"echo sweep >> {log}",
+                       dry_run=False, schedule="hourly")
+            cycle.run_cycle(jobs_dir, now=_local(2026, 9, 12, 2, 7), state_root=sr)
+            self.assertEqual(log.read_text().split(),
+                             ["sweep", "enrich-nightly", "dreaming", "dream", "corpus-scorecard"])
 
 
 if __name__ == "__main__":

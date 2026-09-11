@@ -10,7 +10,7 @@ import (
 
 func stampedResponse() Response {
 	return Response{
-		Title: "T", Type: "fact", Altitude: "artifact", Body: "b", Confidence: 0.9,
+		Title: "T", Type: "fact", Body: "b", Confidence: 0.9,
 	}
 }
 

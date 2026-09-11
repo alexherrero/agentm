@@ -11,6 +11,8 @@ keeps its own shape, an always-load rule never ages.
 """
 from __future__ import annotations
 
+import json
+import os
 import shutil
 import sys
 import tempfile
@@ -25,6 +27,7 @@ if str(_SCRIPTS) not in sys.path:
 
 import capture as cap  # noqa: E402
 import corpus_scorecard  # noqa: E402
+import dream  # noqa: E402
 import filing_engine as fe  # noqa: E402
 import needs_review  # noqa: E402
 import save  # noqa: E402
@@ -49,7 +52,10 @@ class _Vault(unittest.TestCase):
         (self.root / "memory").mkdir(parents=True)
 
     def _moc(self) -> str:
-        return needs_review.write(self.root, today="2026-09-04").read_text(encoding="utf-8")
+        # No dream findings: these tests read the notes' own marks, and must
+        # not pick up whatever a real cycle left in the engine state.
+        return needs_review.write(self.root, today="2026-09-04",
+                                  proposals={}).read_text(encoding="utf-8")
 
 
 class TheReading(_Vault):
@@ -78,16 +84,28 @@ class TheReading(_Vault):
         self.assertIn("## Filed at low confidence (1)", text)
         self.assertIn("- [[legacy-note]] — legacy note · filed as preference at low confidence via conversation", text)
 
-    def test_an_unfiled_capture_is_awaiting_enrichment(self):
+    def test_an_unfiled_capture_is_awaiting_the_batch(self):
         r = cap.capture(self.root, "a thought worth keeping", now=_NOW)
         text = self._moc()
         self.assertIn("## Unfiled captures (1)", text)
         self.assertIn(f"- [[{r.slug}]] — ", text)
-        self.assertIn("unfiled since 2026-09-04 — awaiting enrichment", text)
+        self.assertIn("unfiled since 2026-09-04 — awaiting the batch", text)
         # A capture is also low confidence; it is listed once, under its
         # primary reason, with both reasons in the phrase.
         self.assertEqual(text.count(f"[[{r.slug}]]"), 1)
         self.assertIn("at low confidence via operator-direct", text)
+
+    def test_an_unfiled_note_the_batch_judged_says_so(self):
+        # Plan 04: the batch scores a note and leaves it unfiled when it lands
+        # under the floor. That note is not waiting for the batch any more; a
+        # judgment is on record and the move is the reviewer's. The two must
+        # read differently, or the page tells you to wait for something that
+        # already happened.
+        r = cap.capture(self.root, "a thought worth keeping", now=_NOW)
+        _flip(r.path, "status: unfiled\n", "status: unfiled\nenriched_at: 2026-09-10T02:14:00Z\n")
+        text = self._moc()
+        self.assertIn("unfiled since 2026-09-04 — judged below the floor on 2026-09-10", text)
+        self.assertNotIn("awaiting the batch", text)
 
     def test_a_flagged_duplicate_names_its_twin(self):
         save.save_entry(self.root, "preference", "vault-root-outside",
@@ -150,6 +168,9 @@ class TheReading(_Vault):
         self.assertEqual(needs_review.summary(self.root)["total"], 0)
         self.assertEqual((self.root / needs_review.MOC_REL).parent.name, "mocs")
 
+    def test_the_proposals_file_name_agrees_with_the_cycle(self):
+        self.assertEqual(needs_review.REVIEW_PROPOSALS_NAME, dream.REVIEW_PROPOSALS_NAME)
+
     def test_the_class_list_agrees_with_the_scorecard(self):
         self.assertEqual(needs_review.CLASS_DIRS, corpus_scorecard.CLASS_DIRS)
 
@@ -165,6 +186,85 @@ class TheReading(_Vault):
         self.assertIn("unfiled 2", reading.note)
         self.assertIn(needs_review.MOC_REL, reading.note)
 
+
+
+class TheDreamSections(_Vault):
+    """Plan 04: dedup at 0.92, contradiction triage and facet promotion stay in
+    the cycle, but as sections of this page. The cycle writes its findings to
+    the engine state; the page reads them and acts on none of them."""
+
+    def setUp(self):
+        super().setUp()
+        self.state = self.root / "state"
+        old = os.environ.get("AGENTM_STATE_DIR")
+        os.environ["AGENTM_STATE_DIR"] = str(self.state)
+        self.addCleanup(lambda: os.environ.__setitem__("AGENTM_STATE_DIR", old)
+                        if old is not None else os.environ.pop("AGENTM_STATE_DIR", None))
+
+    def _cycle_writes(self, proposals):
+        # The real writer, so the page is tested against what the cycle
+        # actually leaves rather than a hand-made copy of its shape.
+        return dream._write_review_proposals("dream-test", proposals, 1788998400.0)
+
+    def _proposals(self):
+        return [
+            dream.Proposal(stage="dedup", kind="possible-twin",
+                           paths=["memory/semantic/port-a.md", "memory/semantic/port-b.md"],
+                           summary="port-a.md and port-b.md are 94% alike",
+                           detail={"similarity": 0.94, "a": "memory/semantic/port-a.md",
+                                   "b": "memory/semantic/port-b.md", "a_title": "a", "b_title": "b"}),
+            dream.Proposal(stage="contradiction_triage", kind="same-key",
+                           paths=["memory/semantic/editor.md", "memory/procedural/editor.md"],
+                           summary="2 notes share the key 'editor' with different bodies",
+                           detail={"slug": "editor", "titles": ["editor", "editor"]}),
+            dream.Proposal(stage="facet_promotion", kind="proposed-facet",
+                           paths=["standards/storage-rules.md"],
+                           summary="the diary carries `garden` on 3 days",
+                           detail={"label": "garden", "days": 3, "first": "2026-09-01",
+                                   "last": "2026-09-08", "entries": 4, "sample": "tomatoes"}),
+        ]
+
+    def test_twins_shared_keys_and_facets_each_get_a_section(self):
+        self._cycle_writes(self._proposals())
+        text = needs_review.write(self.root, today="2026-09-10").read_text(encoding="utf-8")
+        self.assertIn("## Possible twins (1)", text)
+        self.assertIn("- [[port-a]] and [[port-b]] — 94% alike · merge by hand", text)
+        self.assertIn("## Shared keys, different bodies (1)", text)
+        self.assertIn("- key `editor`: [[editor]], [[editor]]", text)
+        self.assertIn("## Proposed facets (1)", text)
+        self.assertIn("- `garden` on 3 days (2026-09-01 … 2026-09-08)", text)
+        self.assertIn("from the dream cycle of 2026-09-10", text)
+
+    def test_the_summary_counts_the_findings_apart_from_the_notes(self):
+        self._cycle_writes(self._proposals())
+        s = needs_review.summary(self.root)
+        self.assertEqual(s["total"], 0)
+        self.assertEqual(s["dreaming"], {"twins": 1, "same_key": 1, "facets": 1})
+
+    def test_no_findings_file_means_no_dream_sections(self):
+        text = needs_review.write(self.root, today="2026-09-10").read_text(encoding="utf-8")
+        self.assertNotIn("dream cycle", text)
+        self.assertNotIn("## Possible twins", text)
+        self.assertEqual(needs_review.summary(self.root)["dreaming"],
+                         {"twins": 0, "same_key": 0, "facets": 0})
+
+    def test_a_malformed_findings_file_reads_as_none(self):
+        target = self.state / "dreaming" / needs_review.REVIEW_PROPOSALS_NAME
+        target.parent.mkdir(parents=True)
+        target.write_text("{not json", encoding="utf-8")
+        self.assertEqual(needs_review.read_proposals()["twins"], [])
+        target.write_text(json.dumps({"twins": "not a list", "facets": [1, {"label": "x"}]}),
+                          encoding="utf-8")
+        got = needs_review.read_proposals()
+        self.assertEqual(got["twins"], [])
+        self.assertEqual(got["facets"], [{"label": "x"}])
+
+    def test_the_page_writes_to_no_note(self):
+        p = save.save_entry(self.root, "preference", "port-a", "The port is 8901.")
+        before = p.read_bytes()
+        self._cycle_writes(self._proposals())
+        needs_review.write(self.root, today="2026-09-10")
+        self.assertEqual(p.read_bytes(), before)
 
 class TheStampsOnEveryWriter(_Vault):
     def test_a_named_type_is_filed_active_at_high_confidence_by_conversation(self):
@@ -201,6 +301,18 @@ class TheStampsOnEveryWriter(_Vault):
         keys = [line.split(":", 1)[0] for line in p.read_text(encoding="utf-8").split("\n---\n", 1)[0].splitlines()[1:]]
         self.assertLess(keys.index("via"), keys.index("review_flags"))
         self.assertLess(keys.index("review_flags"), keys.index("related"))
+
+
+# Every test here gets its own engine state dir: the map reads the dream
+# cycle's findings from it, and a hand run must not read the operator's.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
 
 
 if __name__ == "__main__":

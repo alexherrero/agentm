@@ -22,7 +22,7 @@ func testSchema() *Schema {
 
 func good() Response {
 	return Response{
-		Title: "The staging gate", Type: "convention", Altitude: "canonical",
+		Title: "The staging gate", Type: "convention",
 		Body:       "The staging gate runs before the deployment finishes.",
 		Confidence: 0.9,
 	}
@@ -81,11 +81,15 @@ func TestTheShapeIsEnforcedFieldByField(t *testing.T) {
 	}{
 		{"no title", func(r *Response) { r.Title = "" }, "title"},
 		{"blank title", func(r *Response) { r.Title = "   " }, "title"},
-		{"no body", func(r *Response) { r.Body = "" }, "body"},
 		{"unknown type", func(r *Response) { r.Type = "invented" }, "memory type"},
 		{"empty type", func(r *Response) { r.Type = "" }, "memory type"},
-		{"bad altitude", func(r *Response) { r.Altitude = "medium" }, "altitude"},
-		{"empty altitude", func(r *Response) { r.Altitude = "" }, "altitude"},
+		// `altitude` retired with the two-shape prompt (agentm-vault plan 04);
+		// what the schema holds instead is the rubric's range and the offer.
+		{"importance over 10", func(r *Response) { r.ImportanceProposed = 11 }, "importance_proposed"},
+		{"importance under 1", func(r *Response) { r.ImportanceProposed = -2 }, "importance_proposed"},
+		{"more related than offered", func(r *Response) {
+			r.Related = []string{"a", "b", "c", "d", "e", "f"}
+		}, "related"},
 		{"slug with spaces", func(r *Response) { r.Slug = "not a slug" }, "slug"},
 		{"slug in caps", func(r *Response) { r.Slug = "Not-A-Slug" }, "slug"},
 		{"slug with a trailing hyphen", func(r *Response) { r.Slug = "trailing-" }, "slug"},

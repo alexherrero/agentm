@@ -328,8 +328,8 @@ func recordEnrich(ctx context.Context, led *ledger.Ledger, e ledger.Entry) {
 // population.
 //
 // The population comes from the index, because "eligible" is the stage's
-// business: for enrichment it is the unfiled queue, which is exactly what the
-// batch drain walks. Handing the ledger a different population than the drain
+// business: for enrichment it is the cards in the contract's class
+// directories, which is exactly what the batch drain walks. Handing the ledger a different population than the drain
 // uses would produce a coverage number about a set nothing works on.
 func pendingFor(ctx context.Context, stage string, cfg *config.Config,
 	idx *index.Index, led *ledger.Ledger) (ledger.Report, error) {
@@ -340,30 +340,24 @@ func pendingFor(ctx context.Context, stage string, cfg *config.Config,
 	}
 
 	fp := enrichFingerprint(cfg, nil)
+	dirs, err := enrichQueueDirs(cfg)
+	if err != nil {
+		return ledger.Report{}, err
+	}
+	queue, err := enrichQueue(idx, dirs)
+	if err != nil {
+		return ledger.Report{}, err
+	}
 	var targets []ledger.Target
-	cursor := ""
-	for {
-		page, err := idx.UnfiledPage(ctx, cursor, 500)
+	for _, rel := range queue {
+		raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
 		if err != nil {
-			return ledger.Report{}, err
+			// In the index and not on disk: a drifted index, which the
+			// reconcile pass fixes. Counting it as eligible would put a
+			// permanent pending item in a queue nothing can drain.
+			continue
 		}
-		if len(page) == 0 {
-			break
-		}
-		for _, rel := range page {
-			cursor = rel
-			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
-			if err != nil {
-				// In the index and not on disk: a drifted index, which the
-				// reconcile pass fixes. Counting it as eligible would put a
-				// permanent pending item in a queue nothing can drain.
-				continue
-			}
-			targets = append(targets, ledger.Target{Rel: rel, Key: fp.Key(string(raw))})
-		}
-		if len(page) < 500 {
-			break
-		}
+		targets = append(targets, ledger.Target{Rel: rel, Key: fp.Key(string(raw))})
 	}
 	// Both halves of the version, because the contract is part of it: a rules
 	// edit makes every enriched note re-enrichment eligible, and it should read

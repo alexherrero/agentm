@@ -589,11 +589,11 @@ class BatchTests(Case):
                          encoding="utf-8"))
         self.assertEqual(marked, 3)
 
-    def test_the_default_cap_matches_the_dreaming_one(self):
-        # A second number would be a second thing to keep in step.
-        import dream_confirm
-        self.assertEqual(rx.DEFAULT_BATCH,
-                         dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP)
+    def test_the_default_cap_is_twenty_five(self):
+        # It matched the dream cycle's auto-apply cap until that retired in
+        # agentm-vault plan 04. Twenty-five is the number: a mistake is caught
+        # after twenty-five notes rather than after two thousand.
+        self.assertEqual(rx.DEFAULT_BATCH, 25)
 
     def test_scanning_writes_nothing(self):
         p = self.note("m/a.md", f"User stated: {MANGLED}", mining=True)

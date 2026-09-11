@@ -3,10 +3,10 @@
 from the Python cycle (filing v2 part 6, the takeover of 2026-09-05).
 
 The suffix-backlog drain, the calendar rollups and the lifecycle policy's
-sinking and lifting left `dream.py`; the cycle reads the lifecycle axis,
-stages the archive proposals for the confirm surface, and runs the stages the
-binary does not carry. A full cycle over a copies family, a register with
-closed weeks and a silent memory must touch none of them.
+sinking and lifting left `dream.py`; agentm-vault plan 04 then retired what
+was left of the lifecycle stage (the axis reading and the archive proposals),
+so the cycle touches the axis not at all. A full cycle over a copies family, a
+register with closed weeks and a silent memory must touch none of them.
 """
 from __future__ import annotations
 
@@ -67,9 +67,7 @@ class RetiredLanesTests(unittest.TestCase):
         return next(l.split(":", 1)[1].strip() for l in text.splitlines() if l.startswith(key + ":"))
 
     def test_a_full_cycle_leaves_the_binarys_lanes_alone(self) -> None:
-        digest, batch = dream.run_dream_and_auto_apply(
-            self.vault, run_id="retired", log_root=self.vault.parent / "revert-log", lock_root=self.vault.parent / "locks",
-        )
+        digest = dream.run_dream(self.vault, run_id="retired")
         # The drain: no proposal, no collapse.
         self.assertEqual([p for p in digest.proposals if p.stage == "suffix_backlog_drain"], [])
         for name in _FAMILY:
@@ -80,10 +78,8 @@ class RetiredLanesTests(unittest.TestCase):
         self.assertEqual(self._field(self.silent, "lifecycle"), "active")
         import lifecycle_transitions as lt
         self.assertEqual(lt.journal_entries(), [])
-        # The cycle still reads the axis and says whose the moves are.
-        self.assertIn("active", digest.lifecycle["summary"])
+        self.assertEqual([p for p in digest.proposals if p.stage == "lifecycle"], [])
         text = digest.digest_path.read_text(encoding="utf-8")
-        self.assertIn("sinking and lifting are the dreaming binary's", text)
         self.assertNotIn("Calendar rollups:", text)
 
     def test_the_retirement_switch_is_gone(self) -> None:

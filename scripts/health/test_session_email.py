@@ -210,6 +210,15 @@ class SendSmtpTests(unittest.TestCase):
         self.assertFalse(ok)
 
 
+def _write_morning(vault: Path, date: str, headline: str, body: str = "## What ran\n\n- a line\n"):
+    d = vault / "diagnostics" / "morning"
+    d.mkdir(parents=True, exist_ok=True)
+    text = ("---\ntitle: Morning\nkind: report\n" f"date: {date}\n"
+            f"headline: {json.dumps(headline)}\n---\n\n# Morning — {date}\n\n" + body)
+    (d / f"{date}.md").write_text(text, encoding="utf-8")
+    (d / "latest_morning_note.md").write_text(text, encoding="utf-8")
+
+
 class EmailBodyTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -223,11 +232,29 @@ class EmailBodyTests(unittest.TestCase):
 
     def test_subject_and_body_from_latest_digest(self):
         _write_digest(self.vault, "20260717", "daily", spend=12.5, events=3)
-        built = se.email_body(self.vault)
+        built = se.email_body(self.vault, now=_NOW)
         self.assertIsNotNone(built)
         subject, body = built
         self.assertIn("$12.50", subject)
         self.assertIn("Observability digest", body)
+
+    def test_the_morning_note_is_the_body(self):
+        # agentm-vault plan 04: the note is the email. The digest on disk
+        # beside it is not what gets sent.
+        _write_digest(self.vault, "20260717", "daily", spend=12.5, events=3)
+        _write_morning(self.vault, "2026-07-17", "enrichment judged 3 (3 active, 0 sank) · nothing needs you")
+        subject, body = se.email_body(self.vault, now=_NOW)
+        self.assertEqual(subject, "AgentM morning — enrichment judged 3 (3 active, 0 sank) · nothing needs you")
+        self.assertTrue(body.startswith("# Morning — 2026-07-17"))
+        self.assertIn("## What ran", body)
+        self.assertNotIn("headline:", body)
+        self.assertNotIn("Observability digest", body)
+
+    def test_a_stale_morning_note_is_not_resent_as_news(self):
+        _write_digest(self.vault, "20260717", "daily", spend=12.5, events=3)
+        _write_morning(self.vault, "2026-07-10", "an old night")
+        subject, _body = se.email_body(self.vault, now=_NOW)
+        self.assertIn("$12.50", subject)
 
 
 class RunEndToEndTests(unittest.TestCase):

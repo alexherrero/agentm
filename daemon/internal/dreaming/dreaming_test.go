@@ -419,8 +419,12 @@ func TestReportOnlyDecidesAndWritesNothing(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cfg.EngineStateDir, LifecycleJournalName)); !os.IsNotExist(err) {
 		t.Errorf("report-only must not write the lifecycle journal")
 	}
+	// A report-only pass records its own stamp and leaves the clock where it
+	// was (agentm-vault plan 04): it used to set LastDone, and three diagnostic
+	// runs froze the maps and the copy collapse for a week.
 	st, _ := LoadState(cfg.EngineStateDir)
-	if !st.LastDone.Equal(now) || st.Runs != 1 || st.LastOutcome != OutcomeReported {
+	if !st.LastDone.IsZero() || !st.LastReport.Equal(now) || st.Runs != 1 ||
+		st.LastOutcome != OutcomeReported {
 		t.Errorf("state after the run = %+v", st)
 	}
 }
@@ -539,7 +543,9 @@ func TestACompletedPassLeavesItsReportAndANotDueStartKeepsIt(t *testing.T) {
 	if _, err := os.Stat(LastReportPath(cfg.EngineStateDir)); !os.IsNotExist(err) {
 		t.Fatalf("no report before any pass, got %v", err)
 	}
-	rep, err := Run(cfg, Options{Now: now, Force: true})
+	// An applying pass, because only an applying pass moves the clock the next
+	// start's "not due" is read from (agentm-vault plan 04).
+	rep, err := Run(cfg, Options{Now: now, Force: true, Apply: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,7 +557,7 @@ func TestACompletedPassLeavesItsReportAndANotDueStartKeepsIt(t *testing.T) {
 	if err := json.Unmarshal(blob, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.RunID != rep.RunID || got.Outcome != OutcomeReported || got.Plan.Considered != 1 {
+	if got.RunID != rep.RunID || got.Outcome != OutcomeApplied || got.Plan.Considered != 1 {
 		t.Fatalf("the file is the pass's own report: run %q outcome %q considered %d", got.RunID, got.Outcome, got.Plan.Considered)
 	}
 	again, err := Run(cfg, Options{Now: now.Add(time.Hour), Every: 7 * 24 * time.Hour})

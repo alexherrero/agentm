@@ -2,6 +2,7 @@ package enrich
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -38,6 +39,17 @@ func (j *stubJudge) asked() int {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return len(j.prompts)
+}
+
+// respond is a model response carrying this body — moved here from the
+// retired token gate's tests.
+func respond(t *testing.T, body string) string {
+	t.Helper()
+	b, err := json.Marshal(Response{Title: "A note", Type: "fact", Body: body, Confidence: 0.9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 func TestAGroundedRewritePasses(t *testing.T) {
@@ -125,7 +137,7 @@ func TestAJudgeThatCannotAnswerIsNotAVerdict(t *testing.T) {
 // precisely because the queue drain is deferred.
 func TestFaithfulnessRunsOnEveryNote(t *testing.T) {
 	j := &stubJudge{}
-	g := &Grounding{Judge: j, Sample: func(string) bool { return false }}
+	g := &Grounding{Judge: j}
 
 	for i := 0; i < 5; i++ {
 		if err := g.Check(context.Background(),
@@ -137,59 +149,6 @@ func TestFaithfulnessRunsOnEveryNote(t *testing.T) {
 	if j.asked() != 5 {
 		t.Errorf("the judge was asked %d times for 5 notes; faithfulness is per "+
 			"note, not sampled", j.asked())
-	}
-}
-
-// Completeness is the sampled half, and it reports rather than gates — its
-// failure mode is what the deterministic token gate already refuses.
-func TestCompletenessIsSampledAndReportsRatherThanGates(t *testing.T) {
-	var reported []string
-	j := &stubJudge{verdicts: []Verdict{
-		{Grounded: true}, // faithfulness
-		{Grounded: false, Unsupported: []string{"the caveat about X"}}, // completeness
-	}}
-	g := &Grounding{
-		Judge:  j,
-		Sample: func(string) bool { return true },
-		OnCompleteness: func(_ string, missing []string) {
-			reported = append(reported, missing...)
-		},
-	}
-
-	err := g.Check(context.Background(),
-		Request{Rel: "x.md", Raw: "The gate runs first, unless X."},
-		respond(t, "The gate runs first."))
-	if err != nil {
-		t.Errorf("a completeness finding blocked the write; it is measured, not "+
-			"enforced: %v", err)
-	}
-	if len(reported) != 1 || reported[0] != "the caveat about X" {
-		t.Errorf("the completeness finding did not reach the scorecard: %v", reported)
-	}
-	if j.asked() != 2 {
-		t.Errorf("the judge was asked %d times; a sampled note gets both halves",
-			j.asked())
-	}
-}
-
-func TestAnUnsampledNoteSkipsTheCompletenessHalf(t *testing.T) {
-	j := &stubJudge{}
-	called := false
-	g := &Grounding{
-		Judge:          j,
-		Sample:         func(string) bool { return false },
-		OnCompleteness: func(string, []string) { called = true },
-	}
-	if err := g.Check(context.Background(),
-		Request{Rel: "x.md", Raw: "The gate runs first."},
-		respond(t, "The gate runs first.")); err != nil {
-		t.Fatal(err)
-	}
-	if j.asked() != 1 {
-		t.Errorf("an unsampled note cost %d judgments, want 1", j.asked())
-	}
-	if called {
-		t.Error("the completeness callback fired for an unsampled note")
 	}
 }
 
@@ -206,8 +165,8 @@ func TestTheJudgeIsAskedANarrowQuestion(t *testing.T) {
 	p := j.prompts[0]
 	for _, want := range []string{
 		"does every factual claim",
-		"Not whether the rewrite is good",
-		"Dropping something is NOT your concern",
+		"Not whether the proposal is good",
+		"Leaving something out is NOT your concern",
 	} {
 		if !strings.Contains(strings.Join(strings.Fields(p), " "),
 			strings.Join(strings.Fields(want), " ")) {
@@ -216,8 +175,26 @@ func TestTheJudgeIsAskedANarrowQuestion(t *testing.T) {
 		}
 	}
 	// And both texts are in there, or the judge is answering about nothing.
-	if !strings.Contains(p, "SOURCE:") || !strings.Contains(p, "REWRITE:") {
+	if !strings.Contains(p, "SOURCE — the card:") || !strings.Contains(p, "PROPOSAL:") {
 		t.Error("the prompt does not carry both texts")
+	}
+}
+
+// The neighbours the pass was shown are part of the source: drawing on them is
+// what the deep pass is for, so a claim that comes from one is grounded.
+func TestTheNeighboursAreInTheJudgesSource(t *testing.T) {
+	j := &stubJudge{}
+	g := &Grounding{Judge: j}
+	req := Request{Rel: "x.md", Raw: "The gate runs first.", Neighbours: []Neighbour{
+		{ID: "staging-gate", Title: "The staging gate", Summary: "It refuses a push with secrets."},
+	}}
+	if err := g.Check(context.Background(), req, respond(t, "It pairs with the staging gate.")); err != nil {
+		t.Fatal(err)
+	}
+	p := j.prompts[0]
+	src := p[strings.Index(p, "SOURCE — the card:"):strings.Index(p, "PROPOSAL:")]
+	if !strings.Contains(src, "The staging gate: It refuses a push with secrets.") {
+		t.Errorf("the neighbour is not in the judge's source:\n%s", src)
 	}
 }
 
@@ -266,7 +243,7 @@ var keyShapes = []struct {
 		return fmt.Sprintf("s%d:t%d", i, i)
 	}},
 	{"numbered inbox proposals", func(i int) string {
-		return fmt.Sprintf("desk/scratch/inbox-20260813-074616-16856bac/"+
+		return fmt.Sprintf("desk/scratch/inbox-20260813T074616Z-16856bac/"+
 			"%d-inbox_collapse-collapse.proposal.md", i)
 	}},
 	{"sequential note names", func(i int) string {

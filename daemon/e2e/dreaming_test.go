@@ -307,9 +307,12 @@ func TestReportOnlyEmitsDecisionsWithoutWrites(t *testing.T) {
 			t.Errorf("report-only journaled an intent: %v", e)
 		}
 	}
-	// Not due without -force: the pass just reported, so the interval holds.
+	// A report-only pass leaves the clock alone (agentm-vault plan 04): it is a
+	// diagnostic, and it used to start the interval — three hand-run reports
+	// froze the maps and the copy collapse for a week. So a second run without
+	// -force is still due, from the clock no applying pass has started.
 	blob, err = env.command(bin).CombinedOutput()
-	if err != nil || !strings.Contains(string(blob), "not due") {
-		t.Errorf("a second run inside the interval should say not due: err=%v\n%s", err, blob)
+	if err != nil || strings.Contains(string(blob), "not due") || !strings.Contains(string(blob), "never run") {
+		t.Errorf("a report-only pass should leave the next run due: err=%v\n%s", err, blob)
 	}
 }

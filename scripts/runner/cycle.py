@@ -19,6 +19,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -113,28 +114,126 @@ def _read_daily_ceiling(harness_dir: Optional[Path]) -> float:
     return float(daily) if daily is not None else _DEFAULT_DAILY_USD_CEILING
 
 
-def _spend_so_far(state_root: Optional[Path]) -> float:
-    """Sum of every job's last-recorded cost — a coarse fleet-spend proxy
-    (each marker holds only its own last run, not a rolling window; good
-    enough for a hard stop-loss, not a precise daily ledger)."""
+_SPEND_WINDOW_SECONDS = 86400
+
+
+def _spend_so_far(state_root: Optional[Path], now: Optional[float] = None) -> float:
+    """Sum of the last-recorded cost of every job that ran in the past day —
+    a coarse fleet-spend proxy for a daily ceiling (each marker holds only its
+    own last run; good enough for a hard stop-loss, not a precise ledger).
+
+    Only the past day, because the ceiling is a daily one and a cost that
+    never ages out is a deadlock rather than a ceiling. Until a job reported a
+    real cost this never mattered; the nightly enrichment batch reports one
+    (agentm-vault plan 04), and summed forever, one heavy night would have
+    held every job past the ceiling for good — the batch included, which
+    could then never run again to replace its own number.
+    """
+    now = now if now is not None else time.time()
     d = state_mod._state_dir(state_root)
     total = 0.0
     for p in d.glob("*.json"):
         marker = state_mod.read_marker(p.stem, state_root=state_root)
+        last = state_mod.last_run_epoch(marker)
+        if last is None or now - last > _SPEND_WINDOW_SECONDS:
+            continue
         total += state_mod.last_cost_usd(marker)
     return total
 
 
+def _spends(job: manifest_mod.JobManifest) -> bool:
+    """Whether a job spends model tokens: it says so with a `budget:`.
+
+    The fleet ceiling gates only these. A job with no budget makes no model
+    call — every such manifest says as much in its own comments — and holding
+    the hourly sweep or a shepherd back because the enrichment batch spent
+    would save nothing and stop the machine's upkeep for a day.
+    """
+    return job.budget_tokens is not None
+
+
+def in_window(window: tuple[int, int], now: float) -> bool:
+    """Whether `now` falls inside a (start, end) window of local minutes.
+
+    Half-open: a job may start at 02:00 and may not start at 06:00. A window
+    whose end is before its start wraps midnight.
+    """
+    t = datetime.fromtimestamp(now)
+    minute = t.hour * 60 + t.minute
+    start, end = window
+    if start < end:
+        return start <= minute < end
+    return minute >= start or minute < end
+
+
+def window_opening_at_or_before(window: tuple[int, int], at: float) -> float:
+    """The epoch of the most recent opening of `window` at or before `at`.
+
+    Calendar arithmetic rather than `- 86400`, so a daylight-saving night lands
+    on the right wall-clock minute.
+    """
+    t = datetime.fromtimestamp(at)
+    opening = t.replace(hour=window[0] // 60, minute=window[0] % 60, second=0, microsecond=0)
+    if opening > t:
+        opening -= timedelta(days=1)
+    return opening.timestamp()
+
+
+def _next_due(job: manifest_mod.JobManifest, last_run: float) -> float:
+    """When a job is next due, with its window taken into account.
+
+    Without a window it is `last_run + interval`, as it always was. With one,
+    that moment is moved to where the job may actually start:
+
+    - If it falls outside the window, the job is due at the window's next
+      opening. A daily job last run at 13:07 is due at 02:00, and the hours it
+      waited are not lateness — the lookback counts from 02:00, so a job does
+      not skip its first night for having waited for it.
+    - If it falls inside, a job with an interval of a day or more is due at that
+      window's opening rather than at the minute it last happened to start.
+      Otherwise a night whose first step ran long would push every later night's
+      start later, until two nightly jobs no longer met in one cycle — and their
+      order is the point. A sub-day interval keeps its own clock: snapped to the
+      opening, an hourly job would be due again on every tick of the window.
+    """
+    raw = last_run + job.interval_seconds
+    window = job.window_minutes
+    if window is None:
+        return raw
+    if not in_window(window, raw):
+        return _next_opening(window, raw)
+    if job.interval_seconds < 86400:
+        return raw
+    return window_opening_at_or_before(window, raw)
+
+
+def _next_opening(window: tuple[int, int], at: float) -> float:
+    """The epoch of the first opening of `window` strictly after `at`."""
+    t = datetime.fromtimestamp(at)
+    opening = t.replace(hour=window[0] // 60, minute=window[0] % 60, second=0, microsecond=0)
+    if opening <= t:
+        opening += timedelta(days=1)
+    return opening.timestamp()
+
+
 def is_due(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[Path] = None):
     """(due: bool, reason: str). reason in {"never-run", "orphaned-start",
-    "due", "not-due", "missed-beyond-lookback"}."""
+    "due", "not-due", "missed-beyond-lookback", "outside-window <window>"}.
+
+    The window is checked first. A job waiting for its window is not late, so
+    nothing here touches its marker while it waits — the lookback re-anchor
+    below must never mistake "not yet 02:00" for "missed".
+    """
+    window = job.window_minutes
+    if window is not None and not in_window(window, now):
+        return False, f"outside-window {job.window}"
     marker = state_mod.read_marker(job.name, state_root=state_root)
     if state_mod.is_orphaned_start(marker):
         return True, "orphaned-start"
     last_run = state_mod.last_run_epoch(marker)
     if last_run is None:
         return True, "never-run"
-    next_due = last_run + job.interval_seconds
+    next_due = _next_due(job, last_run)
     if now < next_due:
         return False, "not-due"
     overdue_by = now - next_due
@@ -284,10 +383,13 @@ def run_cycle(
         refused = [{"file": r.path.name, "reason": r.reason} for r in refusals]
     # ceiling is never None (fail-CLOSED default) -- spend is always tracked.
     ceiling = _read_daily_ceiling(harness_dir)
-    spend = _spend_so_far(state_root)
+    spend = _spend_so_far(state_root, now)
 
     report = CycleReport(refused=refused, loaded=len(jobs))
-    for job in jobs:
+    # `order` first, name second: the loader's filename order is what a job
+    # without an `order` keeps, and the night's steps run in the order they
+    # declare.
+    for job in sorted(jobs, key=lambda j: (j.order, j.name)):
         if not job.enabled:
             # Registered and off. Reported by name rather than dropped at load
             # time, because a job nobody can see in the cycle report is a job
@@ -309,9 +411,10 @@ def run_cycle(
         if not due:
             report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason=reason))
             continue
-        if spend >= ceiling and not job.dry_run:
+        if spend >= ceiling and not job.dry_run and _spends(job):
             # Pre-flight check the fleet ceiling before a real (non-dry-run)
-            # run starts — an over-budget run never starts (throttle rung).
+            # run of a spending job starts — an over-budget run never starts
+            # (throttle rung). A job that spends nothing is never over budget.
             report.budget_ceiling_hit = True
             report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason="budget-ceiling"))
             continue

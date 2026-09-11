@@ -47,12 +47,49 @@ type Caller struct {
 	MaxTurns int
 	// SystemPrompt is prepended to every call.
 	SystemPrompt string
+	// Tier is the budget line this caller's calls spend from — `strong` or
+	// `cheap`, as the tier table routed them. Empty reads as strong: the tier
+	// doctrine routes every unaudited job strong, and an unlabelled call must
+	// not escape the stricter line.
+	Tier string
+	// Label names the call in the per-call line, so a reader can tell the
+	// note's call from its judge's.
+	Label string
+	// Meter, when set, is told what every call spent.
+	Meter *Meter
+}
+
+// Route is where one call runs: the model the tier table chose and the tier
+// whose line it spends.
+type Route struct {
+	Model string `json:"model"`
+	Tier  string `json:"tier"`
+	// Job is the tier-table job the route was decided for, and Why is the
+	// table's reason. Both are for the per-call line; neither changes the call.
+	Job string `json:"job,omitempty"`
+	Why string `json:"why,omitempty"`
+}
+
+// With returns a copy of the caller routed to one model and tier. The copy
+// shares the meter, so every route a night takes adds up in one place.
+func (c *Caller) With(r Route, label string) *Caller {
+	cp := *c
+	if r.Model != "" {
+		cp.Model = r.Model
+	}
+	if r.Tier != "" {
+		cp.Tier = r.Tier
+	}
+	if label != "" {
+		cp.Label = label
+	}
+	return &cp
 }
 
 // DefaultCaller is the shipped configuration.
 func DefaultCaller(model string) *Caller {
 	if model == "" {
-		model = "sonnet"
+		model = DefaultStrongModel
 	}
 	return &Caller{
 		Bin:          "claude",
@@ -60,8 +97,15 @@ func DefaultCaller(model string) *Caller {
 		Timeout:      120 * time.Second,
 		MaxTurns:     4,
 		SystemPrompt: defaultSystemPrompt,
+		Tier:         TierStrong,
 	}
 }
+
+// DefaultStrongModel is the strong tier when the kernel config names none: Opus
+// through `claude -p`, as session 3 ruled for the deep pass (agentm-vault
+// § Dreaming, Q4). It sets `importance_proposed` and `related`, the two fields
+// the operator reads and the daemon ranks by.
+const DefaultStrongModel = "opus"
 
 const defaultSystemPrompt = "You rewrite notes in a personal memory vault. " +
 	"You reply with JSON and nothing else — no preamble, no code fence, no commentary."
@@ -99,6 +143,8 @@ func (c *Caller) command(ctx context.Context, prompt, cwd string) *exec.Cmd {
 		"--system-prompt", c.SystemPrompt,
 		"--disallowed-tools", strings.Join(disallowedTools, ","),
 		"--max-turns", fmt.Sprint(c.MaxTurns),
+		// The envelope carries the call's usage beside its text; see usage.go.
+		"--output-format", "json",
 	}
 	cmd := exec.CommandContext(ctx, c.Bin, args...)
 	// Killing the process is not enough to unblock the read.
@@ -145,28 +191,68 @@ func (c *Caller) Call(ctx context.Context, prompt string) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return "", fmt.Errorf("enrich: call timed out after %s: %w", c.Timeout, ctx.Err())
-		}
+	runErr := cmd.Run()
+	if runErr != nil && ctx.Err() != nil {
+		c.record(Usage{Calls: 1}, runErr)
+		return "", fmt.Errorf("enrich: call timed out after %s: %w", c.Timeout, ctx.Err())
+	}
+
+	// The envelope is read even on a non-zero exit: an authentication failure
+	// or a usage limit comes back as an envelope with `is_error` set, and its
+	// `result` is the only place the reason is written.
+	text, usage, perr := parseEnvelope(stdout.String())
+	if runErr != nil {
 		// A non-zero exit with an empty stderr is common enough here — usage
 		// limits come back that way — that reporting only stderr produced 132
 		// journal lines reading "failed: " and nothing else in the Python pass.
-		detail := strings.TrimSpace(stderr.String())
+		detail := envelopeReason(stdout.String())
+		if detail == "" {
+			detail = strings.TrimSpace(stderr.String())
+		}
 		if detail == "" {
 			detail = strings.TrimSpace(stdout.String())
 		}
 		if detail == "" {
 			detail = "(no output)"
 		}
-		return "", fmt.Errorf("enrich: %s exited %w: %s", c.Bin, err, truncate(detail, 400))
+		usage.Calls = 1
+		err := fmt.Errorf("enrich: %s exited %w: %s", c.Bin, runErr, truncate(detail, 400))
+		c.record(usage, err)
+		return "", err
 	}
+	if perr != nil {
+		usage.Calls = 1
+		c.record(usage, perr)
+		return "", perr
+	}
+	c.record(usage, nil)
 
-	out := strings.TrimSpace(stdout.String())
+	out := strings.TrimSpace(text)
 	if out == "" {
 		return "", ErrNoResponse
 	}
 	return out, nil
+}
+
+// record tells the meter what one call spent.
+func (c *Caller) record(u Usage, err error) {
+	if c.Meter == nil {
+		return
+	}
+	tier := c.Tier
+	if tier == "" {
+		tier = TierStrong
+	}
+	c.Meter.Record(CallRecord{Label: c.Label, Model: c.Model, Tier: tier, Usage: u, Err: err})
+}
+
+// envelopeReason is the `result` text of an error envelope, when there is one.
+func envelopeReason(stdout string) string {
+	var e envelope
+	if json.Unmarshal([]byte(strings.TrimSpace(stdout)), &e) != nil || e.Result == nil {
+		return ""
+	}
+	return strings.TrimSpace(*e.Result)
 }
 
 // CallJSON runs one call and unmarshals the response into v.

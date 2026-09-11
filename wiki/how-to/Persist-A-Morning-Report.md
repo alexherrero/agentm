@@ -23,5 +23,6 @@
 ## See also
 
 - [Health scorecard](Health-Scorecard) — the sibling `scripts/health/` surface, explains where the scorecard lives and how it's produced.
+- [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) — the morning note, the nightly memory report, which is a different page from this overnight-run report.
 - [CI gates](CI-Gates) § The nightly health tier — the reference page for the tier this script's data comes from.
 - `wiki/designs/agentm-autonomy.md` § When the window runs out — the design line this flag closes out ("The morning report names why the run ended... with the spend attached").

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""session_email.py — the opt-in daily digest email
+"""session_email.py — the opt-in daily email
 (`wiki/designs/agentm-autonomy.md`'s "Delivery" subsection, third channel).
 
-A once-daily email carrying the daily digest, for a read away from the
-machine. Rides a first-party mail path the operator configures — their own
+A once-daily email carrying the morning note (agentm-vault plan 04; the daily
+digest before it, still the fallback), for a read away from the machine. Rides a first-party mail path the operator configures — their own
 SMTP relay or an on-device mail agent — never a third-party push service.
 Absent that configuration, the channel graceful-skips and the other two
 channels (the SessionStart line, the on-device notification) carry
@@ -110,12 +110,27 @@ def _record_sent(state_path: Path, today: str) -> None:
         pass
 
 
-def email_body(vault: Path) -> "tuple[str, str] | None":
-    """Build (subject, body) from the same digest reader session_brief uses
-    (`latest_digest()` — the newest delivered note, regardless of staleness;
-    staleness/deadman handling is the SessionStart line's job, not email's).
-    Returns None when there is honestly nothing to say (ladder never ran on
-    this vault)."""
+def email_body(vault: Path, *, now: "datetime | None" = None) -> "tuple[str, str] | None":
+    """Build (subject, body). The morning note is the body (agentm-vault plan
+    04) when this morning's or yesterday's is on disk — the whole note, its
+    frontmatter aside. An older note is not re-sent as if it were news: the
+    email falls back to the digest reader session_brief uses (`latest_digest()`
+    — the newest delivered note, regardless of staleness; staleness/deadman
+    handling is the SessionStart line's job, not email's). Returns None when
+    there is honestly nothing to say."""
+    now = now or datetime.now(timezone.utc)
+    morning = session_brief.latest_morning_note(vault)
+    if morning is not None and (now.date() - morning["date"].date()).days <= 1:
+        try:
+            text = morning["path"].read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        if text:
+            if text.startswith("---"):
+                end = text.find("\n---", 3)
+                if end != -1:
+                    text = text[end + 4:].lstrip("\n")
+            return f"AgentM morning — {morning['headline']}", text
     digest = session_brief.latest_digest(vault)
     if digest is None:
         return None
@@ -214,7 +229,7 @@ def run(
         state_path = Path(state_path) if state_path is not None else default_state_path()
         if _already_sent_today(state_path, today):
             return False
-        built = email_body(vault)
+        built = email_body(vault, now=now)
         if built is None:
             return False
         subject, body = built

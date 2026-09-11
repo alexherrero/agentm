@@ -7,21 +7,15 @@ import (
 	"strings"
 )
 
-// Two-way grounding: faithfulness per note, completeness sampled.
+// Grounding: faithfulness, per note.
 //
-// The two directions fail differently, which is why they are checked
-// differently. **Faithfulness** asks whether the rewrite added anything the
-// source did not contain — the model filling a gap with something plausible, an
-// invented date, a inferred reason. That failure is silent and permanent: the
-// note now asserts something nobody wrote, and the raw text it came from is one
-// commit back where nobody looks. **Completeness** asks whether the rewrite left
-// something out, and that failure is loud by comparison, because the
-// deterministic token gate already catches the part of it that matters most.
-//
-// So faithfulness runs on every note and completeness runs on a sample. That is
-// the operator's ruling, taken with the queue drain deferred: per-note is
-// affordable because it lands on a handful of eager captures a day rather than
-// on 8,407.
+// **Faithfulness** asks whether what the pass proposes — a title, a summary, a
+// paragraph added below the card — asserts anything the card and its
+// neighbours did not contain: the model filling a gap with something
+// plausible, an invented date, an inferred reason. That failure is silent and
+// permanent, which is why it is checked on every note. Its twin, completeness —
+// whether a rewrite left something out — retired with the rewrite: the card's
+// own text is carried byte for byte now, so nothing of it can go missing.
 //
 // # A model judging a model
 //
@@ -78,24 +72,25 @@ func (j *callerJudge) Judge(ctx context.Context, prompt string) (Verdict, error)
 	return v, nil
 }
 
-const faithfulnessPrompt = `You are checking one rewrite of a note against its source.
+const faithfulnessPrompt = `You are checking what a pass proposes to write onto one card of a
+personal memory vault, against the card and the neighbouring notes it was shown.
 
-Answer exactly one question: does every factual claim in the REWRITE appear in
+Answer exactly one question: does every factual claim in the PROPOSAL appear in
 the SOURCE?
 
-Not whether the rewrite is good. Not whether it is complete. Not whether you
+Not whether the proposal is good. Not whether it is complete. Not whether you
 would have written it differently. Only whether it asserts anything the source
 does not contain — an added date, an inferred reason, a filled-in gap, a
 plausible detail that is not there.
 
-Rephrasing is fine. Reordering is fine. Condensing is fine. Dropping something
-is NOT your concern here.
+Rephrasing is fine. Connecting two things the source says is fine. Leaving
+something out is NOT your concern here.
 
 Return a single JSON object and nothing else:
 
   {"grounded": true}
 
-or, when the rewrite asserts something the source does not:
+or, when the proposal asserts something the source does not:
 
   {"grounded": false, "unsupported": ["the exact claim", "another one"]}
 
@@ -103,18 +98,18 @@ If grounded is false you must list the claims. A rejection with no claims is not
 an answer.`
 
 // Grounding is the post-gate.
+//
+// One direction only now. It used to check completeness on a sample too — what
+// a rewrite left out — and that half retired with the rewrite (agentm-vault
+// plan 04): the card's own text is carried byte for byte, so nothing of it can
+// be left out. What can still go wrong is the other direction, and it is the
+// silent one: a summary or an added paragraph asserting something neither the
+// card nor its neighbours said.
 type Grounding struct {
 	// Judge is the model asked the question. Nil disables the gate, which is
 	// what a caller with no second model configured gets — the note is written
 	// and the deterministic gates are what stood between it and the corpus.
 	Judge Judge
-	// Sample decides whether this note also gets the completeness half. Nil
-	// means never. Faithfulness does not consult it: that half is per note.
-	Sample func(rel string) bool
-	// OnCompleteness receives a sampled completeness result for the scorecard.
-	// Reporting rather than gating, because dropping something is what the
-	// deterministic token gate already refuses.
-	OnCompleteness func(rel string, missing []string)
 }
 
 func (g *Grounding) Name() string { return "grounding" }
@@ -127,8 +122,7 @@ func (g *Grounding) Check(ctx context.Context, req Request, body string) error {
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrNotEligible, err)
 	}
-
-	v, err := g.Judge.Judge(ctx, faithfulnessQuestion(sourceBody(req.Raw), r))
+	v, err := g.Judge.Judge(ctx, faithfulnessQuestion(req, r))
 	if err != nil {
 		// A judge that could not answer is not a verdict of "unfaithful". Failing
 		// the note here would make every usage-limit hour look like a corpus full
@@ -138,67 +132,48 @@ func (g *Grounding) Check(ctx context.Context, req Request, body string) error {
 	}
 	if !v.Grounded {
 		if len(v.Unsupported) == 0 {
-			// A rejection with no claims is a judge that disliked the rewrite
+			// A rejection with no claims is a judge that disliked the proposal
 			// rather than one that found a problem. Those are the rejections
 			// worth ignoring, and treating them as findings is how an LLM gate
 			// becomes a coin flip with a veto.
-			return fmt.Errorf("enrich: the judge rejected the rewrite without "+
-				"naming a claim, which is not an answer; %s left unfiled", req.Rel)
+			return fmt.Errorf("enrich: the judge rejected the proposal without "+
+				"naming a claim, which is not an answer; %s left as it was", req.Rel)
 		}
-		return fmt.Errorf("%w: the rewrite asserts what the source does not: %s",
-			ErrNotEligible, strings.Join(quoteAll(v.Unsupported), ", "))
-	}
-
-	if g.Sample != nil && g.Sample(req.Rel) && g.OnCompleteness != nil {
-		// Completeness is measured, not enforced. Its failure mode is already
-		// covered mechanically by the token gate; what a sample adds is a number
-		// for the scorecard about the part a regex cannot see.
-		if cv, err := g.Judge.Judge(ctx, completenessQuestion(sourceBody(req.Raw), r)); err == nil {
-			g.OnCompleteness(req.Rel, cv.Unsupported)
-		}
+		return fmt.Errorf("%w: the proposal asserts what the card and its "+
+			"neighbours do not: %s", ErrNotEligible, strings.Join(quoteAll(v.Unsupported), ", "))
 	}
 	return nil
 }
 
-func faithfulnessQuestion(source string, r Response) string {
+// faithfulnessQuestion is the source — the card's own text and the neighbours
+// it was shown — and the proposal: the title, the summary, and any prose the
+// deep pass would add. The neighbours are part of the source because drawing on
+// them is what the deep pass is for.
+func faithfulnessQuestion(req Request, r Response) string {
 	var b strings.Builder
 	b.WriteString(faithfulnessPrompt)
-	b.WriteString("\n\nSOURCE:\n\n")
-	b.WriteString(source)
-	b.WriteString("\n\nREWRITE:\n\n")
+	b.WriteString("\n\nSOURCE — the card:\n\n")
+	b.WriteString(sourceBody(req.Raw))
+	if len(req.Neighbours) > 0 {
+		b.WriteString("\n\nSOURCE — its neighbours:\n\n")
+		for _, n := range req.Neighbours {
+			fmt.Fprintf(&b, "- %s", oneLine(n.Title))
+			if n.Summary != "" {
+				fmt.Fprintf(&b, ": %s", oneLine(n.Summary))
+			}
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("\n\nPROPOSAL:\n\n")
 	b.WriteString(r.Title)
-	b.WriteString("\n\n")
-	b.WriteString(r.Body)
 	if r.Summary != "" {
 		b.WriteString("\n\nSummary: ")
 		b.WriteString(r.Summary)
 	}
-	return b.String()
-}
-
-const completenessPrompt = `You are checking one rewrite of a note against its source.
-
-Answer exactly one question: what does the SOURCE say that the REWRITE leaves
-out entirely?
-
-Only substantive omissions — a fact, a caveat, a reason, a consequence. Not
-wording, not length, not style. Condensing is expected and is not an omission.
-
-Return a single JSON object and nothing else:
-
-  {"grounded": true}
-
-when nothing substantive was lost, or:
-
-  {"grounded": false, "unsupported": ["what was left out", "and this"]}`
-
-func completenessQuestion(source string, r Response) string {
-	var b strings.Builder
-	b.WriteString(completenessPrompt)
-	b.WriteString("\n\nSOURCE:\n\n")
-	b.WriteString(source)
-	b.WriteString("\n\nREWRITE:\n\n")
-	b.WriteString(r.Body)
+	if strings.TrimSpace(r.Body) != "" {
+		b.WriteString("\n\nAdded below the card:\n\n")
+		b.WriteString(r.Body)
+	}
 	return b.String()
 }
 

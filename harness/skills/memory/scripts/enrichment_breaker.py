@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """The breaker that pauses enrichment's auto-apply when a meter crosses its line.
 
-`dream_confirm.check_stage_anomaly` already decides whether *this cycle* is
-anomalous, against a rolling trailing history, refusing to judge on a cold start
-and never recording an anomalous count into the baseline it is judged against.
-That is the detector and it is not changed here.
+The per-cycle detector this latched on top of (`dream_confirm.check_stage_anomaly`)
+retired with the confirm-and-revert path in agentm-vault plan 04, and so did the
+unfiled drain, the one stage the latch paused. What is left is the latch and the
+status line the nightly pass prints from it.
 
-What it does not do is *stay* tripped. It recomputes every cycle, so a corpus
+A per-cycle detector does not *stay* tripped. It recomputes every cycle, so a corpus
 that spiked on Tuesday and looked ordinary on Wednesday resumes on Wednesday with
 nobody having looked at Tuesday. This module is the latch on top: once a meter
 crosses its line, enrichment's auto-apply stays paused until a person clears it.

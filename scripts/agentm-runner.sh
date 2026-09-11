@@ -22,7 +22,7 @@ cd "$HERE"
 # A launchd LaunchAgent gets no shell profile and no environment beyond what
 # the plist's own EnvironmentVariables block sets (PATH only, on this
 # machine) -- MEMORY_VAULT_PATH is never one of them. A job manifest's own
-# command (e.g. observability-digest-daily.yaml's `--vault-path
+# command (e.g. observability-digest-3day.yaml's `--vault-path
 # "$MEMORY_VAULT_PATH"`) then silently expands to an empty string, which
 # Path("") resolves to cwd (scripts/, per the cd above) -- inbox_digest.py's
 # own is_dir() check passes on that and writes a real note into

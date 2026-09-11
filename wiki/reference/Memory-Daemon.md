@@ -145,7 +145,7 @@ Four properties are load-bearing:
 
 `artifact` separates a note that states something durable from one that records a moment. A convention and a distilled meeting are both `type: workflow` and should not rank alike on a general question. When a question asks for the artifact shape, the dampening is **removed** rather than reversed into a boost. Every multiplier here is at or below 1.0 and the negative-IDF clamp depends on it, so a multiplier above 1.0 on a row whose score went negative would move that row up for being boosted.
 
-The design makes `artifact` the default so `canonical` has to be earned. That default lives in the enrichment pass, which assigns the field, rather than acting as a fallback here for its absence. No note in this corpus carries `altitude` yet, so reading an absent field as `artifact` would multiply all 15,824 rows. For the same clamp reason, that is not the no-op it looks like.
+The design makes `artifact` the default so `canonical` has to be earned. Capture writes that default on every new note (`DefaultAltitude`, `daemon/internal/capture/capture.go:140,416`) rather than leaving the field absent for this ranker to read as a fallback. The enrichment pass dropped `altitude` from its own response shape entirely (agentm-vault plan 04 — see [Enrichment](#enrichment) below) and no longer touches the field. No note in this corpus carries `altitude` yet, so reading an absent field as `artifact` would multiply all 15,824 rows. For the same clamp reason, that is not the no-op it looks like.
 
 `durable` carries no weight and is not a penalty. It is the record of a decision, read by decay where the weights are not.
 
@@ -224,7 +224,7 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 | `daemon.health_every` | `15m` | How often thresholds are evaluated and the probe runs if due. |
 | `daemon.probe_every` | `24h` | How often the self-probe runs. |
 | `daemon.probe_budget` | `10s` | How long one round trip may take before it counts as failed. |
-| `plugins.autonomy.email_to` | — | Where alerts go. Shared with the daily digest email. |
+| `plugins.autonomy.email_to` | — | Where alerts go. Shared with the daily email that carries the morning note. |
 | `plugins.autonomy.email_smtp_url` | — | `smtp://[user[:password]@]host[:port]`. Both keys required, or the channel skips. |
 | `plugins.autonomy.email_from` | `email_to` | For relays that need a domain-verified sender. |
 
@@ -240,7 +240,7 @@ Filing is asynchronous, so the queue is meant to be busy — what must never hap
 agentmd 0.1.0-dev · up 14h
 RED
   vault    /path/to/vault
-  queue    4411 unfiled · oldest 4d1h old            (red past 3d old, or 1000 items)
+  queue    4411 awaiting a judgment · oldest 4d1h old (red past 3d old, or 1000 items)
            of which 4349 inherited (captured before 2026-08-10, oldest 28d22h) — reported, not paged about
   index    9159 documents · last pass 41s ago        (red past 15m0s)
   git      degraded: not a repository
@@ -250,7 +250,7 @@ RED
 
 **The thresholds are age-dominant.** Under a standing daily ingest, fifty fresh unfiled items every morning is an ordinary Tuesday; the oldest unfiled item being three days old means filing stalled. The count threshold is a backstop at a thousand — at fifty a day it takes twenty dead days to reach, by which point age has been red for seventeen of them, so it fires on its own only when a producer wrote thousands of items at once.
 
-**The queue is `unfiled` and `inbox` only.** `superseded` and `expired` are rank-penalized for a different reason and are not waiting on anything. Counting them would put a note retired years ago at the head of the queue and leave the age threshold red permanently.
+**The queue is `unfiled` or `inbox` notes no enrichment has judged.** `confidence_set = 0` narrows it past status alone (`awaitingJudgment`, `daemon/internal/index/index.go:645`): a card enrichment judged and left below the floor keeps `status: unfiled`, but it has been through the pass and is listed for you in [needs review](Review-Flagged-Memories) rather than counted here — the same reason `superseded` and `expired` are excluded. Counting an already-judged card would put one retired years ago at the head of the queue and leave the age threshold red permanently.
 
 **The inherited backlog is reported and does not page.** The first status read against the real vault was 4,349 unfiled items, the oldest 29 days old. Both numbers are true and neither is news: the design already decided that pile is rank-penalized and drained by dreaming later, and their dates come from filesystem mtime, which a sync client can rewrite wholesale. So the daemon records a **queue baseline** on its first run — items captured before it are the backlog it inherited. The total, the inherited count, the backlog's own age, and the baseline date are on every status surface; only the part captured after the baseline is measured against the thresholds. A four-day-old item captured after the baseline pages even when the backlog is thousands deep, which is what keeps the split from being a mute button. Set `daemon.queue_baseline` to move the line by hand; delete `queue-baseline.json` in the state directory to re-record it.
 
@@ -502,30 +502,178 @@ below for how the batch is scheduled.
 
 Eligibility no longer reads `status`: what used to refuse any note that
 wasn't `unfiled` is gone (`Eligibility.Statuses` removed; the check now at
-`daemon/internal/enrich/pregates.go:62-79`), because status says whether a
+`daemon/internal/enrich/pregates.go:69-92`), because status says whether a
 note was judged, not whether it has been through this pass. What the pass
-reads instead is `PassDepth`, from the note's own `enriched_at` stamp:
-absent means the whole pass is owed (`DepthDeep`), present means the
-lighter pass a note that has moved since is owed (`DepthLight`) —
-`pregates.go:81-118`. A note genuinely unchanged since its last pass is
-caught for free by the separate fingerprint gate, keyed on the pass
-version, the rules hash, and the body together
-(`Fingerprint.Check`, `pregates.go:253-266`).
+reads instead is `PassDepth`, from the note's own `enriched_at` and
+`enriched_by` stamps (`pregates.go:133-141`): no `enriched_at` means the
+whole pass is owed (`DepthDeep`), and so does an `enriched_at` stamped by a
+pass version other than the current one — a prompt change re-owes the deep
+pass to every note (agentm-vault plan 04), because a stamp from an older
+prompt never answered what this one asks for: the neighbours, `related`,
+`importance_proposed`. Only a stamp naming the current pass version is owed
+the lighter pass a note that has moved since (`DepthLight`). A note
+genuinely unchanged since its last pass is caught for free by the separate
+fingerprint gate, keyed on the pass version, the rules hash, and the body
+together (`Fingerprint.Check`, `pregates.go:298-307`).
 
-What it does once it runs: rewrite a note the writer filed unsure about into
-one it's judged — a title, tags, aliases, a confidence number, and — since
-filing v2's write path — a categorical twin of that number every other
-writer already shares. `FilingConfidenceFor`
-(`daemon/internal/enrich/render.go`) stamps `filing_confidence: high` at
-or above the same 0.6 floor `StatusFor` uses to decide `active` vs
-`unfiled`, `low` below it — two bands on purpose, since the floor is the
-one judgment this pass makes about its own number and a third band would
-be a threshold nobody measured. The needs-review reading (see [Review
-flagged memories](Review-Flagged-Memories)) selects on this field without
-knowing what floor produced it.
+### The queue
+
+The batch no longer asks for "every `unfiled` note." It walks the
+directories the filing contract routes a memory type into, less the
+derived classes it never owns — today `memory/semantic` and
+`memory/procedural` — read from the contract rather than listed in the
+binary (`enrichQueueDirs`, `daemon/cmd/agentmd/enrich_run.go:124-155`).
+`memory/episodic` is never walked: no memory type routes there, and its
+notes are session traces, not cards. Neither is `memory/_watchlist/`,
+whose entries are `forward_learning.py`'s pending-review records. The
+eligibility pre-gate adds a second refusal beside this: a note whose
+`kind` is one of the contract's `record_kinds` — a session trace, a
+directory index — is refused as a record rather than a card
+(`Eligibility.IsRecordKind`, `pregates.go:49-54,80-83`). The queue itself
+is a snapshot taken once per run (`enrichQueue`, `enrich_run.go:157-184`)
+— a note captured mid-night waits for the next run rather than moving the
+cursor underneath the one in progress. `--dry-run` sizes the night against
+this same queue: how many cards are owed the deep pass, the light pass,
+are unchanged at this pass, or unreadable, alongside the budget the run
+would run under. `--sample` draws from the same queue, and the coverage
+ledger's population (`pendingFor`) is the same queue too.
+
+### The budget, and what stops a run
+
+`DefaultBudget` (`daemon/internal/enrich/batch.go:106-144`) is the
+operator's line: 1,000,000 tokens on the strong tier and 2,000,000 on the
+cheap tier (`StrongTokenLine`, `CheapTokenLine`, `usage.go:198-207`), a
+250-call guard (`CallGuard`, `usage.go:206`) that counts every model call
+— the faithfulness judge's included — a 3h30m time limit sized to the
+02:00-06:00 window, and a fuse of five notes in a row whose model call
+itself failed (not a note a post-gate rejected, which is the model
+answering badly rather than not answering at all). All four are read
+before the next note (`stop`, `batch.go:180-205`); the first one a run
+hits ends it, and `BatchReport.StoppedBy` names which in words — "the
+call guard (250 calls)", "the strong-tier token line (1,000,000 tokens)",
+the time limit, or the fuse — alongside the `--after` cursor the next run
+resumes from. `--max-calls`, `--strong-tokens`, and `--cheap-tokens` may
+lower any of these lines and never raise them (`lowerOnly`,
+`enrich_run.go:199-212`) — nothing run by hand or by schedule is entitled
+to more than the operator said.
+
+### Usage, printed and recorded
+
+Every enrichment call now passes `--output-format json`
+(`Caller.command`, `model.go:147`), and `usage.go` reads the envelope it
+gets back: `usage` (input, cache read, cache write, output tokens) and
+`total_cost_usd`. Output that is not the envelope is refused rather than
+read as zero-cost text — a call the token line cannot count would
+otherwise turn the budget off silently (`parseEnvelope`,
+`usage.go:83-107`). An error envelope's `result` text — a lapsed login, an
+exhausted allowance — is what the failure reports. A shared `Meter` adds
+up every call by tier, the pass's and the faithfulness judge's alike
+(`Meter`, `usage.go:118-146`; wired in `cmdEnrich`, `main.go:1402-1414,
+1431`), and the batch prints one line per call as it finishes — `call N ·
+<rel · depth> · <model>/<tier> · <tokens> ...` (`main.go:1409`) —
+followed by a per-tier line and a night total once the run ends
+(`main.go:1606-1611`). The last line the command prints is a JSON object
+carrying `total_cost_usd` — the field the runner's spend line reads (see
+[AgentM Runner](agentm-runner)) — so the report above it and the spend
+line below it can never disagree. Each run also appends one line to
+`enrich-runs.jsonl` in the engine state directory
+(`newEnrichRun`/`appendEnrichRun`, `daemon/cmd/agentmd/enrich_run.go:68-122`),
+which is what the morning note reads for its enrichment row.
+
+### The tier table, and why it still routes everything strong
+
+Each depth routes through the same tier table `agentmd tiers` reads: the
+deep pass is the table's `classify-unfiled` job, the light pass is
+`summarize` (`enrichJobs`, `daemon/cmd/agentmd/tiers.go:116-120`) — names
+from when the table's jobs were first named for dreaming, not enrichment.
+`enrichRouter` reads the table once per run, so a qualification written
+mid-night takes effect from the next night rather than the next note; a
+table that will not load routes every depth strong, the table's own
+answer to an unknown (`enrichRouter`, `tiers.go:127-143`). Every job still
+routes strong today — no audit has yet qualified a cheap model for either
+job. The strong model defaults to `opus` when `daemon.enrich_model` names
+none (`DefaultStrongModel`, `model.go`; `strongModel`, `tiers.go:145-151`)
+— session 3 ruled the deep pass strong, Opus (agentm-vault § Dreaming,
+Q4). `agentmd tiers` itself still reports only the configured name rather
+than enrichment's default here, deliberately: reading "a strong model is
+named" as "a strong call can be made" would call a judge that raises
+spend by contract — an interim answer until the Python cycle's sampled
+audit retires (agentm-vault plan 04, task 5).
+
+### Sequential, decided
+
+`RunBatch` does not fan out, even though `daemon.enrich_concurrency` still
+bounds `Pass.Run` (`batch.go:146-156`). The cursor stays one answer — what
+a deferred run resumes with `--after` — and the token line and call guard
+are read before each note, so a sequential run overshoots the operator's
+line by at most the one note in flight, where N in flight would overshoot
+by N. A steady-state night is under fifty notes, which one at a time
+finishes inside the 02:00-06:00 window with hours to spare; only a prompt
+change re-owes the whole corpus, and that batch runs by hand.
+
+The prompt is one string with two shapes (agentm-vault § Dreaming), the
+shape named on the last line of the message. Besides the type enum and the
+voice specification, `BuildPrompt` (`daemon/internal/enrich/prompt.go:121-166`)
+renders two more inputs: the contract's importance rubric — the prose under
+`## Importance` in `standards/storage-rules.md`, read at call time via
+`Rules.ImportanceRubric` (`daemon/internal/rules/rules.go:153-159`,
+`proseSection`, `rules.go:168-190`) — and up to five neighbours, each an id,
+a title and a summary. Both are inputs like the card itself and sit outside
+the prompt hash: editing the rubric changes what the next deep pass proposes
+without re-owing a single already-judged card. The neighbours come from the
+daemon's own lexical search over the card's title and tags, top five,
+excluding the card itself, a derived class, a space no background model may
+read, and any neighbour whose title or summary carries a credential shape
+(`enrichNeighbours`, `daemon/cmd/agentmd/enrich_run.go:218-262`).
+
+What it does once it runs: add to a card rather than rewrite it. The card's
+own text is the evidence and stays exactly where the session left it; the
+deep pass's judgment lands in the frontmatter above it and, for prose worth
+adding, in a dated `## Added by dreaming (YYYY-MM-DD)` section below it
+(`Compose`, `daemon/internal/enrich/compose.go:134-180`) — any heading the
+model wrote inside that section steps down to `###`, so the section's own
+boundary stays the only `## ` it contains and a later deep pass can find and
+replace just its own section, keeping anything the operator wrote below it.
+Compose refuses to write a composition that would change one byte of what
+the session wrote.
+
+The response may carry `title`, `slug`, `type`, `summary`, `tags`,
+`aliases`, `related`, `importance_proposed`, `body` and `confidence`
+(`Response`, `daemon/internal/enrich/schema.go:33-64`). `altitude` is gone
+from the shape entirely — capture still writes the `artifact` default, but
+enrichment no longer reads or writes the field (see [the rank
+penalty](#the-rank-penalty) above). `why` is never asked for, and a response
+that offers one anyway has it stripped before the strict decode rather than
+failing the whole call over a field that was never going to land
+(`strippedFields`, `schema.go:66-76`). `related` may only name ids from the
+neighbours the prompt offered — Compose keeps only those
+(`relatedIDs`, `compose.go:102-122`) and renders them as the quoted wikilink
+flow list the capture door already writes; an id the model invented is
+silently dropped rather than refusing the note. An empty `body` is now a
+fine answer, not a failed call — most short cards need nothing added
+(`Schema.Validate`, `schema.go:157-177`). The light pass only ever moves
+`summary`, `tags`, `related` and `confidence`; it moves `title` and `type`
+at or above the floor and never proposes `importance`; and it leaves the
+body exactly as it was.
+
+`VerdictFor` (`daemon/internal/enrich/render.go:180-200`) is what a
+judgment decides about where a card stands. At or above the contract's
+floor a card lands `active` at `filing_confidence: high`. Below it the card
+stays `unfiled` — fully indexed, rank-penalized, and listed for you in
+[Review flagged memories](Review-Flagged-Memories) rather than dropped. A
+*second* verdict below the floor — a card that already carried an
+enrichment stamp and was already `unfiled` — sinks it to
+`lifecycle: dormant` with a `lifecycle_since` date, journaled and named in
+the morning note; a `pinned` card and the two rule types, `preference` and
+`convention`, never sink, and stay `unfiled` and listed instead.
+`FilingConfidenceFor` stamps the categorical twin of the confidence number
+every other writer already shares, two bands on purpose: the floor is the
+one judgment this pass makes about its own number, and a third band would
+be a threshold nobody measured. The needs-review reading selects on
+`filing_confidence` without knowing what floor produced it.
 
 `CarryProvenance` (`daemon/internal/enrich/carry.go:36`) copies every
-capture-record and review-mark field the rewritten note doesn't already
+capture-record and review-mark field the composed note doesn't already
 set — `source`, `lifecycle`, `captured`, `created`, `via`, `source_url`,
 `source_fetched`, `surface`, `instructions`, `review_flags`, `related`,
 `trust`, `why`, `project`, `task`, `importance`, `importance_proposed`
@@ -542,46 +690,63 @@ keeps an `importance` the operator edited: capture writes `importance` and
 `importance_proposed` equal, so a note where they *differ* is a note
 someone edited by hand, and that value survives a pass untouched — the
 pass's own reading lands in `importance_proposed` instead. `carryEvidence`
-(`carry.go:93-99`) restores the note's `## Evidence` block verbatim if the
-rewrite dropped it — the block quotes the note's source material, which
-the pass is not entitled to rewrite or drop.
+(`carry.go:93-99`) restores the note's `## Evidence` block verbatim on the
+rare composition that would otherwise drop it — insurance beside the
+byte-for-byte guarantee above, since the block quotes the note's source
+material and the pass was never entitled to rewrite or drop it.
 
 A note with no `lifecycle` of its own starts `active` — an enriched note is
 an auto-filed note either way, the same default a fresh write gets.
-`main.go`'s `cmdEnrich` is the one caller, threading the pre-rewrite note's
-text through `CarryProvenance` before the write applies.
+`main.go`'s `cmdEnrich` is the one caller: it reads the note as it stood,
+calls `Compose` with the response, the stamp, the pass depth and the
+neighbours offered, and `Compose` calls `CarryProvenance` on the
+frontmatter it renders before the write applies (`main.go:1477-1496`).
+
+Two gates retired with the rewrite they existed to check. The
+token-preservation post-gate (`tokens.go`) held a rewrite to keep every
+identifier its source had; the deep pass no longer rewrites, so Compose's
+byte-for-byte refusal above is the stronger form of what it checked. The
+faithfulness judge's completeness half — whether a rewrite left something
+out, sampled and scored for the scorecard — retired for the same reason:
+the card's own text is carried byte for byte now, so nothing of it can go
+missing. What the judge still checks, on every note, is the other
+direction: whether the title, the summary, or the added prose asserts
+anything the card and its neighbours did not (`Grounding`,
+`daemon/internal/enrich/grounding.go`). `daemon.enrich_sample_rate`, which
+governed how often the retired half sampled, is no longer read; a config
+that still carries the key is harmless.
 
 ## The dreaming binary, `agentmdream`
 
-The second Go binary the design names, built beside `agentmd` by `install.sh`. Where `agentmd` stays resident, `agentmdream` runs one pass and exits — under a dual gate: enough time has to have passed since the last pass (`-every`, 168h by default) **and** something has to have happened since (captures in the index, genuine recalls in the recall history). A second start while one is already running is refused (exit 3) by a lock compatible with `vault_lock.py` (mkdir + heartbeat + a stale window, pid takeover of a dead holder). Every mutation is journaled — intent, then applied, then skipped — fsynced before it happens, so a crash resumes from that journal by hash instead of losing or repeating work. Report-only by default; `-apply` makes the writes.
+The second Go binary the design names, built beside `agentmd` by `install.sh`. Where `agentmd` stays resident, `agentmdream` runs one pass and exits — under a dual gate: enough time has to have passed since the last *applying* pass (`-every`; the flag itself still defaults to 168h if left unset, but the scheduled job now passes `-every 12h` explicitly — see below) **and** something has to have happened since (captures in the index, genuine recalls in the recall history). Only an applying pass (`-apply`) moves that clock — plus the class populations the trend compares against and the pass version the re-classification diff keys on; a report-only pass records its own stamp instead and leaves all three where the last applying pass put them, so running one by hand never pushes the next real pass back (agentm-vault plan 04, task 4 — three hand-run report passes on 2026-09-05/06 had each reset the clock, and the maps and the copy collapse sat frozen for a week behind them). Twelve hours is the number the scheduled job actually passes; the design's own text still says twenty-four. The runner's own `02:00–06:00` window is what actually makes the pass run once a night, so `-every` only has to clear the two gaps a bare day could be confused by. The binary starts after the enrichment batch, which takes anywhere from minutes to its three-and-a-half-hour limit, so two nights' passes can start as little as about nineteen hours apart — a literal `-every 24h` would skip whichever night started earlier than the one before. Twelve hours is shorter than that gap and longer than any one night, so no night is skipped and a hand-run `-apply` in the afternoon is still refused. A second start while one is already running is refused (exit 3) by a lock compatible with `vault_lock.py` (mkdir + heartbeat + a stale window, pid takeover of a dead holder). Every mutation is journaled — intent, then applied, then skipped — fsynced before it happens, so a crash resumes from that journal by hash instead of losing or repeating work. Report-only by default; `-apply` makes the writes.
 
 | | |
 |---|---|
 | Binary | `agentmdream` — built beside `agentmd` by `install.sh` |
 | Subcommands | `run`, `status`, `journal`, `version` |
-| Gate | elapsed ≥ `-every` (168h default) **and** activity since the last pass |
+| Gate | elapsed ≥ `-every` since the last *applying* pass (flag default 168h; the scheduled job passes 12h) **and** activity since then |
 | Lock | mkdir + heartbeat, stale-window pid takeover; a second start exits 3 |
 | Journal | fsynced intent → applied → skipped, hash-checked resume after a crash |
-| Default mode | report-only (decides and prints); `-apply` writes |
+| Default mode | report-only (decides and prints, and records its own `LastReport` stamp without moving the gate's clock); `-apply` writes and moves the clock |
 | Triggered by | `templates/jobs/dreaming.yaml`, through the runner |
-| Last-pass report | `<engine state dir>/dreaming/last-report.json`, left by every completed pass; a refused or not-due start leaves the previous file — the scorecard's "The dreaming binary" section reads it |
+| Last-pass report | `<engine state dir>/dreaming/last-report.json`, left by every completed pass; a refused or not-due start leaves the previous file — the [morning note](#the-morning-note)'s *What ran* section reads it |
 
 ```bash
-"$HOME/.local/bin/agentmdream" run -every 168h -apply   # the applying pass the runner schedules daily
-agentmdream status                                        # the last pass, the gate's answer now, the lock
-agentmdream journal -tail 20                               # the mutation journal, newest last
+"$HOME/.local/bin/agentmdream" run -every 12h -apply   # the applying pass the runner schedules nightly
+agentmdream status                                       # the last pass, the gate's answer now, the lock
+agentmdream journal -tail 20                              # the mutation journal, newest last
 ```
 
-`run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON). See [Read the nightly scorecards](Read-The-Nightly-Scorecards) for how to read the last-pass report on the scorecard.
+`run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON). The morning note shows a pass written since the night window opened as a table, one row per job; see [the morning note](#the-morning-note).
 
 ### Its jobs, in order
 
 | Job | What it does |
 |---|---|
-| `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. A dormant memory past `archive_after_days` (1825) becomes an archive candidate — named for the confirm surface here, never moved by this job itself. |
+| `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. A dormant memory past `archive_after_days` (1825) becomes an archive candidate — named in the pass's report and never moved by this job. You archive one by hand with `lifecycle_transitions.py --vault <memory-root> set <rel> archived`. |
 | `copies` | Content-identical families collapse into the earliest note; every other copy is marked `lifecycle: superseded` + `superseded_by: <canonical>`, never deleted; `status` is untouched. |
 | `refile` | A memory whose `type:` the contract routes elsewhere moves under the same basename; a stale `near-duplicate` flag whose twin is gone gets cleared. |
-| `promote` | A target three or more distinct episodic notes link becomes `memory/crystallized/consolidated-<slug>.md`, carrying `consolidated_from` and `derived_from`. |
+| `promote` | Reads every session trace's `## Captured` and `## Candidates` sections (agentm-vault plan 04, task 4); the recall hook's own `## Recalled` list is basenames, not judgments, and promote no longer reads it. A `## Candidates` line three or more distinct traces carry becomes a semantic candidate at `memory/semantic/candidate-<first-words>.md` — `status: unfiled`, no `why`, `derived_from` naming the traces — for the next enrichment batch to judge; capped at 10 new candidates a pass. A `## Captured` link three traces carry already has a card and is only reported. Nothing is ever written to `crystallized/`, which holds model syntheses made at a task's close or on request. |
 | `calendar` | Writes the daily register's weekly and monthly reviews. |
 | `mocs` | One map of content per memory type, created at `moc_min_members` (5), split past `moc_split_at` (40), flagged `stale: true` past `moc_stale_after_days` (90). |
 | `dates` | Additive relative-date glosses (`last week (the week of 2026-08-24)`) in notes older than `date_gloss_after_days` (30) — never a rewrite, never inside a fence. |
@@ -590,25 +755,96 @@ Then three checks that write nothing: a vocabulary audit (every `type:`/`kind:` 
 
 ### The takeover (2026-09-05)
 
-The binary ran report-only beside the Python `dream.py` cycle through an overlap window, with a daily divergence review comparing the two. The one review agreed on every surface, and the operator flipped `-apply` in `templates/jobs/dreaming.yaml` the same day. Since then, `dream.py` no longer runs the suffix-backlog drain, the calendar rollups, or the lifecycle policy's own sinking and lifting — it reads the lifecycle axis and reports what it sees, stages archive proposals for the confirm surface, and runs the stages the binary doesn't carry: lint repair, compression, the artifact shelf, the needs-review MOC, insights, and the rest of the confirm-gated proposals. Rolling back is report-only mode — drop `-apply` — since the Python lanes it replaced are gone.
+The binary ran report-only beside the Python `dream.py` cycle through an overlap window, with a daily divergence review comparing the two. The one review agreed on every surface, and the operator flipped `-apply` in `templates/jobs/dreaming.yaml` the same day. Since then, `dream.py` no longer runs the suffix-backlog drain, the calendar rollups, or the lifecycle policy's own sinking and lifting. Since agentm-vault plan 04 it applies and stages nothing at all; what it still does is in [the Python cycle beside it](#the-python-cycle-beside-it) below. Rolling back is report-only mode — drop `-apply` — since the Python lanes it replaced are gone.
+
+### The Python cycle beside it
+
+`dream.py` is the third step of the night. It follows the enrichment batch and this binary (`templates/jobs/dream.yaml`: `schedule: daily`, window `02:00-06:00`, order 3, shipped `dry_run: true`). It reads, reports and proposes, and it changes no note.
+
+| | |
+|---|---|
+| Command | `python3 harness/skills/memory/scripts/dream.py [--vault-path <memory-root>] [--run-id <id>]`; `--batch-cap` and `--no-auto-apply` are accepted and ignored, so an older manifest still runs |
+| Stages, in order | the corpus meters (entries, connectivity, browse surface); the filing contract, fail-closed (a block that will not parse halts every stage after it, and the digest says "Filing is halted" and why); lint, as a report (`lint_repairable_count` counts the mis-cased links `/memory lint --apply` would repair); possible twins (dedup at 0.92 similarity); shared keys (contradiction triage: same `slug:`, different body); proposed facets (a diary label on three or more days in thirty); the enrichment breaker's status and the correction loop |
+| Findings file | `<engine state dir>/dreaming/review-proposals.json` — `twins`, `same_key`, `facets`, read by the needs-review map |
+| Cycle report | `<engine state dir>/dreaming/python-cycle.json`, beside this binary's `last-report.json`, for the morning note |
+| Run digest | `<engine state dir>/dream-runs/<run_id>/digest.md`, with the findings under "For you to judge" |
+| Regenerated | `memory/mocs/needs-review.md`, with the twins, shared keys and facets as sections of their own |
+| Model calls | none |
+
+Nothing applies a finding. You merge a twin or supersede one by hand, and you register a facet with an edit to the contract. See [Review flagged memories](Review-Flagged-Memories). The `verify-dreaming` gate guards the wiring (see [CI gates](CI-Gates)).
 
 ### Parity as a recording
 
 `scripts/fixtures/dreaming-parity/expected.json` was recorded from the Python producers, clock pinned, before they retired. The Go tests reproduce it — including the calendar reviews, byte for byte — and [`scripts/check-dreaming-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-dreaming-parity.sh) guards it in the local battery and in CI (see [CI gates](CI-Gates)). The recording can't be re-recorded: the Python producers it was taken from are gone, so a changed decision from here is a deliberate edit to the recording, made on purpose.
 
+Promote's own half is one such deliberate edit (agentm-vault plan 04, task 4): the recording captured the retired Python pass's crystallized digest, and promote no longer writes one, so that half of the check is narrowed away — keeping it would mean checking against behavior the pass doesn't have any more. The recording's `promote` key is left as recorded, unread; the lifecycle and copies halves still check byte for byte against it.
+
 ## The runner, and a refused manifest
 
 The local scheduler (`scripts/agentm-runner.sh` → `scripts/runner/cli.py`; design: [AgentM Runner](agentm-runner)) that fires `agentmdream` and every other `.harness/jobs/*.yaml` manifest on its own cadence. One malformed manifest used to stop every job in the cycle, with a launchd-log traceback as the only trace. `load_manifests_lenient` (`scripts/runner/manifest.py`) now keeps every manifest that loads and names each one it refuses, and the cycle runs whatever loaded rather than aborting.
 
-The cycle's own account — what loaded, what was refused and why, what ran — lands at `~/.cache/agentm/runner/last-cycle.json` after every run. Three surfaces read it:
+The cycle's own account — what loaded, what was refused and why, what ran — lands at `~/.cache/agentm/runner/last-cycle.json` after every run. Four surfaces read it:
 
 | Surface | What it shows |
 |---|---|
 | Session brief | `⚠ runner refused N manifest(s): <name>, <name>, … (every other job still runs; see ~/.cache/agentm/runner/last-cycle.json)` |
+| Morning note | `Did not run last night: <step> (<reason>)`, the reason taken from that step's outcome in the last cycle (see [the morning note](#the-morning-note)) |
 | Doctor | A `runner-cycle` row — `FAIL` naming the refused files when the last cycle refused any (even though the other jobs in that cycle still ran), `OK` with the loaded/ran counts otherwise, `UNVERIFIED` when no cycle has run yet |
 | `agentm-runner run --strict` | The old all-or-nothing load, on demand: exits 3 on the first refused manifest and runs nothing |
 
 A plain (non-`--strict`) cycle exits 3 only when nothing loaded at all; refusing some manifests while the rest load and run is exit 0.
+
+## The morning note
+
+The last step of the night, and the page you read the next morning. `morning_note.py` reads what the other nightly steps left behind and writes one note. The daily email sends it, and the session-start line shows its first section. See [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) for how to read it.
+
+| | |
+|---|---|
+| Command | `python3 harness/skills/memory/scripts/morning_note.py [--vault-path <memory-root>]`; without the flag, `$MEMORY_VAULT_PATH`, then the memory root the daemon reports |
+| Scheduled by | `templates/jobs/morning-note.yaml`: `schedule: daily`, `lookback: 3d`, window `02:00-06:00`, order 5 (after the corpus scorecard at 4), `tier: T2`, `dry_run: false` |
+| Writes | `<memory-root>/diagnostics/morning/YYYY-MM-DD.md`, dated by local time, and a copy at `latest_morning_note.md` beside it; a `diagnostics` space the daemon reports takes the place of `diagnostics/` |
+| Frontmatter | `title`, `kind: report`, `date`, `headline` (*What ran* in one line with a count of the lists that need you, JSON-quoted), `generated_by: morning_note.py` |
+| Last night | everything since the most recent opening of the night window, 02:00 local, at or before the run |
+| Model calls | none |
+
+### What it carries
+
+Each section is left out when it has nothing to say. When *What ran*, *What needs you* and *Spend* are all empty, the note says `Nothing ran last night and nothing needs you.` instead. Line by line:
+
+| Line | What it says | Read from |
+|---|---|---|
+| What ran · enrichment | `N judged · N filed active · N below the floor · N sank · N calls · N tokens · <model>`, then `N failed` and `Stopped by <reason>` when present; a note that sank also counts below the floor | `<engine state dir>/enrich-runs.jsonl`, the runs since the opening |
+| What ran · the binary | the pass's mode, outcome and gate reason, then one table row per job (lifecycle, copies, refile, promote, calendar, mocs, dates); `ran, and its gate held; the last pass was N ago` when the runner started it and the gate held | `<engine state dir>/dreaming/last-report.json`, when written since the opening |
+| What ran · the Python cycle | possible twins, shared keys, proposed facets, and the orphan, contradiction and mis-cased-link counts from lint; `filing is halted` with the parse error when the contract did not parse | `<engine state dir>/dreaming/python-cycle.json`, when written since the opening |
+| What ran · did not run | `Did not run last night: <step> (<reason>)` for enrichment, the dreaming binary, the Python cycle or the corpus scorecard | the runner's per-job markers and `~/.cache/agentm/runner/last-cycle.json` |
+| What needs you | a count and the first five of: unfiled notes the batch judged below the floor (they carry `enriched_at`), possible twins, shared keys, proposed facets, the binary's archive candidates, and what sank in the last seven days; then a link to `[[needs-review]]` | the needs-review reading, `dreaming/review-proposals.json`, `last-report.json`, the lifecycle journal |
+| The corpus | one line: class populations, `N awaiting a judgment, the oldest <age>`, `coverage N of M stamped at this pass`, and a link to the day's corpus scorecard when it exists; `not measured (<reason>)` when the daemon does not answer | the class directories, `agentmd status`, `agentmd ledger --pending --limit 0`, `diagnostics/health/` |
+| Spend | `Last night:` tokens per tier against the run's token line, calls against its call guard, and dollars; `Seven days:` tokens and dollars across the week's runs; `Sessions, the last day:` when the rollup recorded any | `enrich-runs.jsonl`; `~/.cache/agentm/telemetry/rollup.db`, opened read-only |
+
+A step counts as run when its runner marker finished since the opening, or when its own record is from tonight, so a batch run by hand inside the window reports as ran. For a step that did not run, the reason is the one its outcome carries in the runner's last cycle:
+
+- `disabled`
+- `dry run`
+- `outside-window 02:00-06:00`
+- `not-due`
+- `missed-beyond-lookback`
+- `watchdog-stop`
+- `budget-ceiling`
+- `exited N`
+
+A step missing from the last cycle reads `not registered` when the runner has no marker for it. It reads `no cycle has reported it` when it has one.
+
+### Who reads it
+
+Three surfaces read the note:
+
+| Reader | What it shows |
+|---|---|
+| Session-start line | `[agentm] Morning — <headline> (written <age>)`; once the newest note is two days old (`--deadman-days` or `$AGENTM_DIGEST_DEADMAN_DAYS` changes the two), `[agentm] ⚠ Morning note — none in N days (last: <date>); the night has stopped finishing — see runner.` It reads `latest_morning_note.md`, or the newest dated note when the copy is missing, and reads the digest ladder only when no morning note exists |
+| Daily email | the whole note, frontmatter aside, under the subject `AgentM morning — <headline>`, when this morning's or yesterday's note exists; the newest digest otherwise. `templates/jobs/observability-email-daily.yaml` runs at order 6, after the note |
+| On-device notification | the session-start line without its `[agentm] ` prefix |
+
+The session-start hook passes no path, so `resolve_vault()` (`scripts/health/session_brief.py`) reads the config. It joins `plugins.obsidian-vault.memory_root` onto `plugins.obsidian-vault.vault_path` when that directory exists. That is how the line finds `Agent/diagnostics/morning/` on a nested layout.
 
 ## The derived indexes
 
@@ -668,8 +904,9 @@ equally specific candidates a link far more often means the sibling than the
 far-away file with the same name.
 
 **An unresolved target is recorded, not dropped.** A dangling link is a fact about
-the corpus, and it is what the stub synthesis reads later; a table that discarded
-them would make that pass blind.
+the corpus, and a table that discarded them would make any later pass over them
+blind. The stub-synthesis stage that read them retired in agentm-vault plan 04;
+the record stays, and `work_ledger.dangling_targets()` still reads it.
 
 Links inside fenced code are skipped. A link in a code block is a sample, and
 indexing it would connect a page to whatever its examples happen to mention.
@@ -679,9 +916,10 @@ indexing it would connect a page to whatever its examples happen to mention.
 Issue, qualified issue, repository, commit and changelist references are pulled
 out by regex and keyed by a namespaced URI, so `issue:owner/repo#123` can never
 collide with `repo:owner/repo`. This is what makes an entity timeline addressable
-today: every note mentioning something is one lookup away, and the rollup that
-eventually summarizes it is built from that set rather than from a directory scan.
-No type is registered, so the taxonomy's growth rule is untouched.
+today: every note mentioning something is one lookup away. The entity-rollup stage
+that summarized from that set retired in agentm-vault plan 04, and the lookup
+stands on its own. No type is registered, so the taxonomy's growth rule is
+untouched.
 
 Most of the work here is refusing false positives. `#1` is as often a list marker
 as a reference, so a bare issue needs two digits; `#todo` is a tag. `a/b` is a
@@ -812,7 +1050,7 @@ that rewrites files.
 
 | Kind | Means | What may act on it |
 |---|---|---|
-| `duplicate` | every member shares a provenance unit | a merge, staged for a person |
+| `duplicate` | every member shares a provenance unit | a merge proposal in the nightly digest, applied by a person by hand |
 | `collapsed` | every member has provenance, no two share any | re-distillation from source |
 | `mixed` | some share, some do not | nothing |
 | `unknown` | a member records no provenance | nothing |
@@ -825,8 +1063,8 @@ again. An `unknown` cluster is a finding about metadata rather than about notes.
 **Provenance is compared exactly.** The live corpus's only two clusters are
 `DeepSeek-OCR` against `DeepSeek-OCR-2`, and `kimi-code` against `kimi-cli` — four
 upstream projects, two pairs. Any prefix or substring comparison calls each pair a
-single source, which makes them duplicates, which stages a merge, which supersedes
-one of two real memories. The cheaper-looking comparison is the one that deletes
+single source, which makes them duplicates, which proposes a merge that would
+supersede one of two real memories. The cheaper-looking comparison is the one that deletes
 things.
 
 Single linkage means A and C can land in one cluster through a B close to both,
@@ -875,8 +1113,9 @@ question only one of them can answer.
 
 So the detector scores what is visible in the note: how much of it is boilerplate
 the template supplied, and how far its language sits from everything else. A low
-score is a note worth *looking at*, not a note to delete. The narrow auto-expire
-band stays confirm-gated.
+score is a note worth *looking at*, not a note to delete. The design's review band
+and narrow auto-expire band were never built, and the staging machinery they were
+meant to sit on retired in agentm-vault plan 04, so nothing acts on the score.
 
 The length floor is an AND-gate, never a rule on its own. A short note is not
 slop — this corpus is full of short dense references that are exactly what a
@@ -970,4 +1209,5 @@ There is no bearer token, on purpose. It would gate other processes running as t
 - [AgentM Hybrid Retrieval](agentm-hybrid-retrieval) — the recall ladder that added the embedder child, the search modes, and their measurements.
 - [Vault write protocol](Vault-Write-Protocol) — the caller-facing shape of the same write-time stamps and gate refusal.
 - [Review flagged memories](Review-Flagged-Memories) — working the needs-review page this page's enrichment stamps feed.
+- [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) — reading the note the morning-note section above describes.
 - [CI gates](CI-Gates) — `check-daemon` runs the battery below.

@@ -168,14 +168,13 @@ jobs:
         # contributes to the vault even carrying the same still-HIGH pattern,
         # across all three --route-mode values.
         run: bash scripts/verify-reflection.sh
-      - name: verify-dreaming (stage->confirm->revert-log e2e, no-silent-apply-on-timeout)
-        # PLAN-wave-e-dreaming task 4: a manual /dream run against a seeded
-        # corpus stages a dedup proposal without mutating any source file;
-        # confirm() applies it through revert_log and the same RevertLog can
-        # undo it (proves apply routes through the journal, not a direct
-        # write); an expired proposal's confirm() raises and never applies
-        # (no silent apply on timeout); the shipped job manifest
-        # (templates/jobs/dream.yaml) parses and stays dry_run: true.
+      - name: verify-dreaming (a twin found, no note changed, the pair on the needs-review map)
+        # PLAN-wave-e-dreaming task 4, narrowed in agentm-vault plan 04: a
+        # manual /dream run against a seeded corpus finds the near-duplicate
+        # pair as a possible twin, changes no note, and puts the pair on the
+        # needs-review map with nothing staged; the shipped job manifest
+        # (templates/jobs/dream.yaml) parses, sits in the night's window at
+        # order 3, and stays dry_run: true.
         run: bash scripts/verify-dreaming.sh
       - name: check-dreaming-parity (the dreaming binary reproduces the recorded Python pass)
         # Filing v2 part 6: scripts/fixtures/dreaming-parity/expected.json was
@@ -184,14 +183,15 @@ jobs:
         # The recording is the contract — a changed decision is a deliberate
         # edit to it.
         run: bash scripts/check-dreaming-parity.sh
-      - name: verify-declare-a-type (contract edit -> coverage falls -> queue -> climbs)
+      - name: verify-declare-a-type (contract edit -> coverage falls -> the batch queue offers it -> climbs)
         # PLAN-dreaming-ledger-and-sources task 9, across the seam rather than
         # inside it: a corpus enriched under one filing contract reads as fully
         # covered; declaring a type changes the contract hash; coverage falls
         # to zero over the same population with every item reading `stale`
-        # rather than `changed` and naming the contract; the discovery stages
-        # enqueue both re-enrichment and rollup work into the daemon's own
-        # queue under their budgets; and re-enrichment brings coverage back.
+        # rather than `changed` and naming the contract; the enrichment batch's
+        # own queue (`agentmd enrich --dry-run`) offers every stale card; and
+        # re-enrichment brings coverage back, after which the batch reads them
+        # as unchanged at this pass.
         # Drives the built binary and the shipped harness scripts — a flag or
         # JSON-field change breaks the harness without breaking a Go test.
         run: bash scripts/verify-declare-a-type.sh
@@ -203,16 +203,6 @@ jobs:
         # in corpus_stats and rendered in the digest; the archived note's
         # content stays readable on disk (the plan's own acceptance test).
         run: bash scripts/verify-auto-org-meters.sh
-      - name: verify-opinion-supplements (accumulate loop Stages 2-3 e2e)
-        # wiki/designs/agentm-experience-and-dreaming.md's accumulate-loop
-        # section, ten locked calls: a two-distinct-session lane stages a
-        # confirm-gated opinion_promote proposal (never auto-applied);
-        # confirming it applies through revert_log and opinion_resolver
-        # reads the served supplement back; a direct base contradiction on
-        # a shared anchor never gets served and is recorded in
-        # _meta/opinion-base-proposals.json; the health pointer and
-        # console.section_opinion_supplements render it.
-        run: bash scripts/verify-opinion-supplements.sh
       - name: health-score-determinism (scorecard byte-identical across two runs)
         # R1.8 Task 1: the health scorecard aggregator must be deterministic —
         # two runs against the same fixture input produce byte-identical markdown.

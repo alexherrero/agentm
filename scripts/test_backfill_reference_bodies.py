@@ -221,9 +221,10 @@ class BatchTests(Case):
                          "applying rewrote the count of what was found")
 
     def test_the_cap_matches_the_other_passes(self):
-        import dream_confirm
-        self.assertEqual(bb.DEFAULT_BATCH,
-                         dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP)
+        # The dream cycle's cap this was held to retired in agentm-vault plan
+        # 04; the repair passes' shared number is the one left to match.
+        import repair_excerpts
+        self.assertEqual(bb.DEFAULT_BATCH, repair_excerpts.DEFAULT_BATCH)
 
     def test_scanning_writes_nothing(self):
         p = self.note("m/a.md")

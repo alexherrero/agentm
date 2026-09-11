@@ -2,10 +2,10 @@
 
 > [!NOTE]
 > **Status: implemented** — shipped by `PLAN-proactive-delivery.md#task-3` (FRIDAY ladder feature 1, task 3 of 5); the runner-job manifest referenced in step 6 shipped in task 5 of the same plan.
-> **Goal:** Opt in to a once-daily native notification carrying the same headline the SessionStart brief line shows, so a stalled or notable digest reaches you even on a day you never open a session.
-> **Prereqs:** macOS — the channel fires via `osascript`; a non-macOS host silently no-ops. A resolvable vault with at least one digest-ladder cycle already run (see [Persist a morning report](Persist-A-Morning-Report) for the sibling `scripts/health/` family). To have the runner fire this daily, copy `templates/jobs/observability-notify-daily.yaml` into `.harness/jobs/` (step 6 below) — until then, invoke it yourself.
+> **Goal:** Opt in to a once-daily native notification carrying the line the SessionStart brief shows, so the morning note's headline, or a night that stopped finishing, reaches you even on a day you never open a session.
+> **Prereqs:** macOS — the channel fires via `osascript`; a non-macOS host silently no-ops. A resolvable vault with a morning note already written, or at least one digest-ladder cycle already run (see [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards)). To have the runner fire this daily, copy `templates/jobs/observability-notify-daily.yaml` into `.harness/jobs/` (step 6 below) — until then, invoke it yourself.
 
-`scripts/health/session_notify.py` is the opt-in, once-daily on-device notification channel from `wiki/designs/agentm-autonomy.md`'s [Delivery subsection](agentm-autonomy#delivery--getting-it-in-front-of-you). It reads the same digest ladder the SessionStart line already reads, so what you see in the notification matches what you'd see at the top of your next session.
+`scripts/health/session_notify.py` is the opt-in, once-daily on-device notification channel from `wiki/designs/agentm-autonomy.md`'s [Delivery subsection](agentm-autonomy#delivery--getting-it-in-front-of-you). It relays the line the SessionStart hook shows — the morning note's headline, or the digest ladder's when no morning note exists — so what you see in the notification matches what you'd see at the top of your next session.
 
 ## Steps
 
@@ -23,9 +23,9 @@
    python3 scripts/health/session_notify.py
    ```
 
-   `main()` (`session_notify.py:169`) calls `run()` (`session_notify.py:138`), which checks the opt-in first (`notify_enabled()`, `session_notify.py:146`), resolves the vault via `session_brief.resolve_vault()` (`session_notify.py:149`), and no-ops silently on any missing piece — disabled, no vault, or no digest ever run.
+   `main()` (`session_notify.py:169`) calls `run()` (`session_notify.py:138`), which checks the opt-in first (`notify_enabled()`, `session_notify.py:146`), resolves the vault via `session_brief.resolve_vault()` (`session_notify.py:149`), and no-ops silently on any missing piece — disabled, no vault, or nothing to say (no morning note and no digest ever written).
 
-3. **What fires.** `notify_body()` (`session_notify.py:120-135`) calls `session_brief.build_brief()` — the exact digest reader the existing SessionStart line uses, not a second parser — and strips the leading `"[agentm] "` the SessionStart line carries, since a native notification banner already has its own title. `_fire_osascript()` (`session_notify.py:99-110`) shells to `osascript -e 'display notification "<body>" with title "AgentM"'`.
+3. **What fires.** `notify_body()` (`session_notify.py:120-135`) calls `session_brief.build_brief()` — the same reader the SessionStart line uses, which reads the morning note first and the digest ladder after it — and strips the leading `"[agentm] "` the SessionStart line carries, since a native notification banner already has its own title. `_fire_osascript()` (`session_notify.py:99-110`) shells to `osascript -e 'display notification "<body>" with title "AgentM"'`.
 
 4. **Once-a-day, not once-per-hours.** A calendar-day state file at `~/.cache/agentm/telemetry/notify-state.json` (`default_state_path()`, `session_notify.py:70-71`) records `last_fired_date`. A second call the same day is a no-op (`_already_fired_today()`, `session_notify.py:80-85`) no matter how many times you (or the runner job below) invoke the script — this is deliberately calendar-day anti-fatigue rather than `session_brief.py`'s hours-based cooldown, because a runner-scheduled job doesn't have "once per session boot" semantics.
 
@@ -60,5 +60,5 @@
 
 - [Autonomy — Delivery](agentm-autonomy#delivery--getting-it-in-front-of-you) — the design this channel implements, and the amendment log entry with the full build detail.
 - [Installer CLI](Installer-CLI) — the `--notify-enabled` / `--email-to` / `--email-smtp-url` config-key reference row.
-- [Enable email digest delivery](Enable-Email-Digest-Delivery) — the sibling opt-in delivery channel, same plan.
-- [Persist a morning report](Persist-A-Morning-Report) — the sibling `scripts/health/` recipe for the overnight-run report this same digest ladder feeds.
+- [Enable the daily email](Enable-Email-Digest-Delivery) — the sibling opt-in delivery channel, same plan; it sends the whole morning note.
+- [Persist a morning report](Persist-A-Morning-Report) — the sibling `scripts/health/` recipe for the overnight-run report the same observability rollup feeds.
