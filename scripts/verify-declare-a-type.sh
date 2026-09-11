@@ -81,7 +81,7 @@ repo = pathlib.Path(os.environ["REPO"])
 
 vault = work / "vault"
 (vault / "standards").mkdir(parents=True, exist_ok=True)
-(vault / "memory").mkdir(parents=True, exist_ok=True)
+(vault / "memory" / "semantic").mkdir(parents=True, exist_ok=True)
 binary = os.environ["AGENTMD"]
 
 results = []
@@ -149,8 +149,11 @@ first = contract_hash()
 # Six, not three: the rollup floor is five mentions, and a corpus below it would
 # leave check G passing because the stage had nothing to find.
 CORPUS = ("a", "b", "c", "d", "e", "f")
+# In the class directory the contract routes `preference` to: the batch's queue
+# (and so the coverage population) is the cards in the contract's class
+# directories, not every unfiled note (agentm-vault plan 04, task 2).
 for name in CORPUS:
-    write_note(f"memory/{name}.md", first, "written under the first contract")
+    write_note(f"memory/semantic/{name}.md", first, "written under the first contract")
 
 agentmd("reindex")
 agentmd("ledger", "--rebuild")
@@ -209,7 +212,7 @@ check("E. the daemon's own queue holds that work", depth == 2,
 
 # ── F. re-enrichment brings coverage back ───────────────────────────────────
 for name in CORPUS:
-    write_note(f"memory/{name}.md", second, "re-enriched under the second contract")
+    write_note(f"memory/semantic/{name}.md", second, "re-enriched under the second contract")
 agentmd("reindex")
 agentmd("ledger", "--rebuild")
 

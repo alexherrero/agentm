@@ -58,8 +58,24 @@ type BatchReport struct {
 	Skipped int `json:"skipped"`
 	// Failed is how many were asked about and answered badly, or errored.
 	Failed int `json:"failed"`
-	// Calls is the model spend.
+	// Calls is how many notes were sent to the model — one enrichment call
+	// each.
 	Calls int `json:"calls"`
+	// ModelCalls is every call the night made, the faithfulness judge's
+	// included. It is what the call guard counts.
+	ModelCalls int `json:"model_calls"`
+	// Usage is what each tier spent, from the calls' own envelopes.
+	Usage map[string]Usage `json:"usage,omitempty"`
+	// Tokens is the night's total across tiers.
+	Tokens int64 `json:"tokens"`
+	// TotalCostUSD is the night's cost as the calls reported it. The field
+	// name is the one the runner reads from a job's last line of output, so
+	// the runner's spend line and this report read the same number.
+	TotalCostUSD float64 `json:"total_cost_usd"`
+	// StoppedBy says what ended the run early, in words: the call guard, a
+	// tier's token line, the time limit, a run of failed calls. Empty when the
+	// queue ran out first.
+	StoppedBy string `json:"stopped_by,omitempty"`
 	// Cursor is the last note this run finished. The next run starts after it.
 	Cursor string `json:"cursor,omitempty"`
 	// Deferred says the budget stopped this run before the queue ran out. It is
@@ -89,34 +105,62 @@ type Pair struct {
 
 // Budget bounds one batch run.
 type Budget struct {
-	// MaxCalls stops the run after this many model calls. Zero means unbounded,
-	// which no scheduled caller should pass.
+	// MaxCalls is the call guard: the run stops after this many model calls.
+	// Zero means unbounded, which no scheduled caller should pass. With a
+	// Meter it counts every call the meter saw, the judge's included; without
+	// one, the notes sent.
 	MaxCalls int
 	// MaxDuration stops the run after this long. Zero means unbounded.
 	MaxDuration time.Duration
 	// PageSize is how many candidates to fetch at a time.
 	PageSize int
+	// TokenLines is the most each tier may spend, in tokens. A tier with no
+	// line is unbounded by tokens. Read from Meter.
+	TokenLines map[string]int64
+	// Meter is where every call's spend is added up. Without one, the token
+	// lines cannot be read and do nothing.
+	Meter *Meter
+	// MaxFailuresInARow stops the run after this many notes in a row whose
+	// model call failed. A lapsed login or an exhausted allowance fails every
+	// call the same way, and a run that kept going would spend its whole
+	// window producing the same error. Zero means never.
+	MaxFailuresInARow int
 }
 
-// DefaultBudget is what the nightly run uses when nothing says otherwise.
+// DefaultBudget is what the nightly run uses when nothing says otherwise: the
+// operator's line (usage.go), a window-sized time limit, and a short fuse on a
+// model that has stopped answering.
 //
-// Deliberately small. The queue took months to accumulate and does not have to
-// drain in one night; a run that is cheap enough to be boring is a run nobody
-// switches off.
+// The time limit is three and a half hours so a run the runner starts at the
+// window's opening ends inside it; the window is 02:00-06:00.
 func DefaultBudget() Budget {
-	return Budget{MaxCalls: 50, MaxDuration: 15 * time.Minute, PageSize: 25}
+	return Budget{
+		MaxCalls:          CallGuard,
+		MaxDuration:       210 * time.Minute,
+		PageSize:          25,
+		TokenLines:        DefaultTokenLines(),
+		MaxFailuresInARow: 5,
+	}
 }
 
 // RunBatch works the queue until the budget is spent or the queue is empty.
 //
-// Sequential on purpose. The concurrency limit on the eager path exists to
-// survive a burst; here there is no burst to survive, and running one note at a
-// time keeps the cursor meaningful — with several in flight, "where this run got
-// to" stops being a single answer.
+// Sequential, and that is decided rather than inherited (agentm-vault plan 04).
+// `daemon.enrich_concurrency` still bounds `Pass.Run`, but the batch does not
+// fan out, for three reasons. The cursor stays one answer — "where this run got
+// to" — which is what makes a deferred run resumable with `--after`. The token
+// line and the call guard are read before each note, so a sequential run
+// overshoots the operator's line by at most the note in flight, where N in
+// flight would overshoot by N. And a steady-state night is under fifty notes,
+// which one at a time finishes inside the window with hours to spare; only a
+// prompt change re-owes the whole corpus, and that batch is run by hand.
 func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
-	after string, b Budget) (BatchReport, error) {
+	after string, b Budget) (rep BatchReport, err error) {
 	started := time.Now()
-	rep := BatchReport{Cursor: after}
+	rep = BatchReport{Cursor: after}
+	// On every return, so a run that failed half way still reports what it
+	// spent getting there.
+	defer func() { rep.fillUsage(b.Meter) }()
 
 	if b.PageSize < 1 {
 		b.PageSize = 25
@@ -130,18 +174,38 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 	if b.MaxDuration > 0 {
 		deadline = started.Add(b.MaxDuration)
 	}
+	failedInARow := 0
+
+	// stop says whether the budget ends the run before the note whose raw
+	// bytes are given, and records why. Read before every note.
+	stop := func(raw string) bool {
+		calls := rep.Calls
+		if b.Meter != nil {
+			calls = b.Meter.Total().Calls
+		}
+		switch {
+		case b.MaxCalls > 0 && calls >= b.MaxCalls:
+			rep.StoppedBy = fmt.Sprintf("the call guard (%d calls)", b.MaxCalls)
+		case raw != "" && p.overLine(raw, b):
+			tier := p.routeFor(raw).Tier
+			rep.StoppedBy = fmt.Sprintf("the %s-tier token line (%s tokens)",
+				tier, commas(b.TokenLines[tier]))
+		case !deadline.IsZero() && time.Now().After(deadline):
+			rep.StoppedBy = fmt.Sprintf("the time limit (%s)", b.MaxDuration)
+		case ctx.Err() != nil:
+			rep.StoppedBy = "cancelled"
+		case b.MaxFailuresInARow > 0 && failedInARow >= b.MaxFailuresInARow:
+			rep.StoppedBy = fmt.Sprintf("%d notes in a row whose model call failed — "+
+				"the model is not answering; the last error is below", failedInARow)
+		default:
+			return false
+		}
+		rep.Deferred = true
+		return true
+	}
 
 	for {
-		if b.MaxCalls > 0 && rep.Calls >= b.MaxCalls {
-			rep.Deferred = true
-			break
-		}
-		if !deadline.IsZero() && time.Now().After(deadline) {
-			rep.Deferred = true
-			break
-		}
-		if ctx.Err() != nil {
-			rep.Deferred = true
+		if stop("") {
 			break
 		}
 
@@ -155,12 +219,7 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 		}
 
 		for _, cand := range page {
-			if b.MaxCalls > 0 && rep.Calls >= b.MaxCalls {
-				rep.Deferred = true
-				break
-			}
-			if !deadline.IsZero() && time.Now().After(deadline) {
-				rep.Deferred = true
+			if stop(cand.Raw) {
 				break
 			}
 
@@ -174,6 +233,16 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 			// reliably fails the permanent head of the queue, and every later run
 			// would spend its whole budget on it.
 			rep.Cursor = cand.Rel
+
+			// A failure counts towards the fuse only when the model call itself
+			// failed. A response a post-gate rejected is the model answering
+			// badly, which is information about the note rather than a sign the
+			// model has stopped answering at all.
+			if err != nil && out.Calls > 0 && out.CallFailed {
+				failedInARow++
+			} else {
+				failedInARow = 0
+			}
 
 			switch {
 			case err != nil:
@@ -208,6 +277,28 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 
 	rep.Elapsed = time.Since(started)
 	return rep, nil
+}
+
+// overLine reports whether the tier the next note routes to has spent its line.
+func (p *Pass) overLine(raw string, b Budget) bool {
+	if b.Meter == nil || len(b.TokenLines) == 0 {
+		return false
+	}
+	tier := p.routeFor(raw).Tier
+	line, ok := b.TokenLines[tier]
+	return ok && line > 0 && b.Meter.Tier(tier).Tokens() >= line
+}
+
+// fillUsage copies the meter's readings into the report.
+func (r *BatchReport) fillUsage(m *Meter) {
+	if m == nil {
+		return
+	}
+	r.Usage = m.ByTier()
+	total := m.Total()
+	r.ModelCalls = total.Calls
+	r.Tokens = total.Tokens()
+	r.TotalCostUSD = total.CostUSD
 }
 
 // maxReportedErrors bounds the failures a report carries.

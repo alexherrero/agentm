@@ -337,8 +337,10 @@ class CycleIdempotencyTests(unittest.TestCase):
             harness_dir = Path(td) / "harness"
             harness_dir.mkdir()
             (harness_dir / "budget.yaml").write_text("daily_usd_ceiling: 0.0\n", encoding="utf-8")
+            # A spending job says so with a `budget:` (plan 04, task 2): the
+            # fleet ceiling gates the jobs that spend.
             _write_job(jobs_dir, "expensive", schedule="daily", lookback="6h",
-                       command="true", tier="T3", dry_run=False)
+                       command="true", tier="T3", dry_run=False, budget={"tokens": 1000})
 
             report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=state_root, harness_dir=harness_dir)
             self.assertTrue(report.budget_ceiling_hit)
@@ -357,17 +359,64 @@ class CycleIdempotencyTests(unittest.TestCase):
             harness_dir = Path(td) / "harness"
             harness_dir.mkdir()  # exists, but no budget.yaml inside it
             _write_job(jobs_dir, "expensive", schedule="daily", lookback="6h",
-                       command="true", tier="T3", dry_run=False)
+                       command="true", tier="T3", dry_run=False, budget={"tokens": 1000})
             # Seed prior spend directly (no real subprocess needed) well
-            # above any sane default ceiling.
-            state.mark_done("expensive", now=500.0, cost_usd=100.0, state_root=state_root)
+            # above any sane default ceiling — today's, from another spending
+            # job, since the ceiling is a daily one and reads the past day.
+            state.mark_done("other-spender", now=90000.0 - 3600, cost_usd=100.0,
+                            state_root=state_root)
 
-            # 90000s later: past the daily (86400s) interval, still inside
-            # the 6h lookback window -- squarely "due", not "missed".
+            # "expensive" has never run, so it is squarely "due".
             report = cycle.run_cycle(jobs_dir, now=90000.0, state_root=state_root, harness_dir=harness_dir)
             self.assertTrue(report.budget_ceiling_hit)
             self.assertFalse(report.outcomes[0].ran)
             self.assertEqual(report.outcomes[0].skipped_reason, "budget-ceiling")
+
+    def test_the_spend_line_reads_the_cost_a_job_reports(self):
+        """agentm-vault plan 04, task 2: the batch prints `total_cost_usd` on
+        its last line, and the runner's spend line reads that field."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr = Path(td) / "jobs", Path(td) / "state"
+            _write_job(jobs_dir, "enrich-nightly", dry_run=False, budget={"tokens": 1000000},
+                       command="echo 'call 1 · note · opus/strong'; "
+                               "echo '{\"total_cost_usd\": 0.4217, \"tokens\": 51200}'")
+            report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=sr)
+            self.assertTrue(report.outcomes[0].ran)
+            self.assertAlmostEqual(report.outcomes[0].cost_usd, 0.4217)
+            summary = json.loads(state.cycle_summary_path(sr).read_text())
+            self.assertAlmostEqual(summary["outcomes"][0]["cost_usd"], 0.4217)
+            self.assertAlmostEqual(state.last_cost_usd(state.read_marker("enrich-nightly", state_root=sr)), 0.4217)
+
+    def test_a_job_that_spends_nothing_is_never_held_by_the_fleet_ceiling(self):
+        """The hourly sweep and the shepherds declare no budget; holding them
+        back because the batch spent would save nothing."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
+            hd.mkdir()
+            (hd / "budget.yaml").write_text("daily_usd_ceiling: 0.0\n", encoding="utf-8")
+            _write_job(jobs_dir, "capture-ingest-sweep", schedule="hourly", dry_run=False)
+            _write_job(jobs_dir, "enrich-nightly", dry_run=False, budget={"tokens": 1000})
+            report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=sr, harness_dir=hd)
+            by = {o.name: o for o in report.outcomes}
+            self.assertTrue(by["capture-ingest-sweep"].ran)
+            self.assertEqual(by["enrich-nightly"].skipped_reason, "budget-ceiling")
+
+    def test_spend_older_than_a_day_does_not_hold_the_ceiling(self):
+        """A cost summed forever is a deadlock: the job that spent could never
+        run again to replace its own number."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
+            hd.mkdir()
+            (hd / "budget.yaml").write_text("daily_usd_ceiling: 5.0\n", encoding="utf-8")
+            _write_job(jobs_dir, "enrich-nightly", dry_run=False, lookback="3d",
+                       budget={"tokens": 1000})
+            state.mark_done("enrich-nightly", now=1000.0, cost_usd=9.0, state_root=sr)
+            # Two days on: yesterday's $9 night has aged out of the daily ceiling.
+            report = cycle.run_cycle(jobs_dir, now=1000.0 + 2 * 86400, state_root=sr, harness_dir=hd)
+            self.assertTrue(report.outcomes[0].ran, report.outcomes[0].skipped_reason)
+            # Within the day it still holds.
+            state.mark_done("enrich-nightly", now=1000.0 + 2 * 86400, cost_usd=9.0, state_root=sr)
+            self.assertAlmostEqual(cycle._spend_so_far(sr, 1000.0 + 2 * 86400 + 3600), 9.0)
 
     def test_t2_report_survives_concurrent_style_append(self):
         # T2 reports route through vault_lock.atomic_write; two sequential

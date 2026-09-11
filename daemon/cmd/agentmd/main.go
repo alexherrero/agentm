@@ -1215,7 +1215,11 @@ func cmdEnrich(args []string) error {
 	fs := newFlagSet("enrich")
 	opts := bindCommon(fs)
 	maxCalls := fs.Int("max-calls", 0,
-		"stop after this many model calls (0 uses the default budget)")
+		fmt.Sprintf("lower the call guard below %d model calls (0 keeps it)", enrich.CallGuard))
+	strongTokens := fs.Int64("strong-tokens", 0,
+		fmt.Sprintf("lower the strong tier's token line below %d (0 keeps it)", enrich.StrongTokenLine))
+	cheapTokens := fs.Int64("cheap-tokens", 0,
+		fmt.Sprintf("lower the cheap tier's token line below %d (0 keeps it)", enrich.CheapTokenLine))
 	maxMinutes := fs.Int("max-minutes", 0,
 		"stop after this many minutes (0 uses the default budget)")
 	pageSize := fs.Int("page-size", 0, "how many notes to fetch at a time")
@@ -1257,9 +1261,23 @@ func cmdEnrich(args []string) error {
 		return err
 	}
 
+	// The operator's budget, which a flag may lower and never raise: a by-hand
+	// run measuring the first few notes wants a smaller slice, and nothing run
+	// by hand or by schedule is entitled to a bigger one than was said.
 	budget := enrich.DefaultBudget()
-	if *maxCalls > 0 {
-		budget.MaxCalls = *maxCalls
+	lower := lowerOnly
+	calls, err := lower("max-calls", int64(*maxCalls), int64(budget.MaxCalls))
+	if err != nil {
+		return err
+	}
+	budget.MaxCalls = int(calls)
+	if budget.TokenLines[enrich.TierStrong], err = lower("strong-tokens", *strongTokens,
+		budget.TokenLines[enrich.TierStrong]); err != nil {
+		return err
+	}
+	if budget.TokenLines[enrich.TierCheap], err = lower("cheap-tokens", *cheapTokens,
+		budget.TokenLines[enrich.TierCheap]); err != nil {
+		return err
 	}
 	if *maxMinutes > 0 {
 		budget.MaxDuration = time.Duration(*maxMinutes) * time.Minute
@@ -1268,44 +1286,42 @@ func cmdEnrich(args []string) error {
 		budget.PageSize = *pageSize
 	}
 
+	// The queue is the cards in the contract's class directories, taken once.
+	// It used to be every `unfiled` note, which stopped being the question when
+	// eligibility moved from status to stamp: an `active` card nothing ever
+	// judged is owed the deep pass as much as an unfiled one.
+	dirs, err := enrichQueueDirs(cfg)
+	if err != nil {
+		return err
+	}
+	queue, err := enrichQueue(idx, dirs)
+	if err != nil {
+		return err
+	}
+
 	// A random sample is drawn once, up front, and then served page by page.
 	//
 	// Drawn once rather than per page because a sample re-drawn on every call is
 	// not a sample of anything — the cursor would walk through a different
 	// population each time and the dispersion number would be over a set that
 	// never existed.
-	var sampled []string
 	if *sample > 0 {
 		if *seed == 0 {
 			*seed = time.Now().UnixNano()
 		}
-		var err error
-		sampled, err = idx.UnfiledSample(context.Background(), *sample, *seed)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("sampled %d of the unfiled queue at random (seed %d — pass "+
-			"--seed %d to draw the same notes again)\n", len(sampled), *seed, *seed)
+		queue = sampleQueue(queue, *sample, *seed)
+		fmt.Printf("sampled %d of the queue at random (seed %d — pass "+
+			"--seed %d to draw the same notes again)\n", len(queue), *seed, *seed)
 	}
 
-	// The lister reads the index for identity and the disk for content. The
+	// The lister reads the snapshot for identity and the disk for content. The
 	// index holds a cache of the frontmatter; the pass needs the bytes.
 	list := func(ctx context.Context, cursor string, limit int) ([]enrich.Candidate, error) {
 		var paths []string
-		var err error
-		if sampled != nil {
-			// Serve the fixed sample in the same cursor-ordered way the queue is
-			// served, so resuming and deferring behave identically either way.
-			for _, p := range sampled {
-				if p > cursor && len(paths) < limit {
-					paths = append(paths, p)
-				}
+		for _, p := range queue {
+			if p > cursor && len(paths) < limit {
+				paths = append(paths, p)
 			}
-		} else {
-			paths, err = idx.UnfiledPage(ctx, cursor, limit)
-		}
-		if err != nil {
-			return nil, err
 		}
 		out := make([]enrich.Candidate, 0, len(paths))
 		for _, rel := range paths {
@@ -1323,14 +1339,41 @@ func cmdEnrich(args []string) error {
 	}
 
 	if *dryRun {
+		// The night sized before anything is spent: what each card is owed,
+		// read the same way the pass will read it, and the line it runs under.
+		fp := enrichFingerprint(cfg, led)
+		var deep, light, unchanged, unreadable int
+		for _, rel := range queue {
+			if rel <= *after {
+				continue
+			}
+			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
+			if err != nil {
+				unreadable++
+				continue
+			}
+			switch {
+			case fp.Seen != nil && fp.Seen(rel, fp.Key(string(raw))):
+				unchanged++
+			case enrich.PassDepth(string(raw)) == enrich.DepthDeep:
+				deep++
+			default:
+				light++
+			}
+		}
+		fmt.Printf("dry run: %d card(s) under %s\n", len(queue), strings.Join(dirs, ", "))
+		fmt.Printf("  owed the deep pass %d · the light pass %d · unchanged at this "+
+			"pass %d · unreadable %d\n", deep, light, unchanged, unreadable)
+		fmt.Printf("  budget: the %d-call guard · strong %s tokens · cheap %s tokens · %s\n",
+			budget.MaxCalls, commasInt(budget.TokenLines[enrich.TierStrong]),
+			commasInt(budget.TokenLines[enrich.TierCheap]), budget.MaxDuration)
 		page, err := list(context.Background(), *after, budget.PageSize)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("dry run: %d note(s) the queue would offer next, budget %d call(s)\n",
-			len(page), budget.MaxCalls)
+		fmt.Printf("  the next %d the queue would offer:\n", len(page))
 		for _, c := range page {
-			fmt.Println("  ", c.Rel)
+			fmt.Println("    ", c.Rel)
 		}
 		return nil
 	}
@@ -1349,12 +1392,29 @@ func cmdEnrich(args []string) error {
 			"(this refuses rather than doing nothing quietly)")
 	}
 
-	name := cfg.EnrichModel
+	name := strongModel(cfg)
 	if *model != "" {
 		name = *model
 	}
-	pass := enrich.NewPass(enrich.DefaultCaller(name), cfg.EnrichConcurrency)
+
+	// Every call the night makes adds up here, the judge's included, and each
+	// one prints a line as it finishes — the per-call half of "usage printed".
+	meter := enrich.NewMeter()
+	budget.Meter = meter
+	meter.OnCall = func(r enrich.CallRecord) {
+		status := ""
+		if r.Err != nil {
+			status = " · failed"
+		}
+		fmt.Printf("call %d · %s · %s/%s · %s%s\n", meter.Total().Calls, r.Label,
+			r.Model, r.Tier, r.Usage, status)
+	}
+
+	caller := enrich.DefaultCaller(name)
+	caller.Meter = meter
+	pass := enrich.NewPass(caller, cfg.EnrichConcurrency)
 	pass.SetEnabled(true)
+	pass.SetRouter(enrichRouter(cfg, name))
 	pass.SetTypes(func() []string {
 		if loaded, err := cfg.Rules.Get(); err == nil {
 			return loaded.TypesSorted()
@@ -1367,7 +1427,9 @@ func cmdEnrich(args []string) error {
 	// different things: enrichment wants prose and a long answer is fine, while
 	// a judge wants a verdict and anything long is a sign it is reasoning its
 	// way out of a clear answer.
-	judge := enrich.NewJudge(enrich.DefaultCaller(name))
+	judgeCaller := enrich.DefaultCaller(name)
+	judgeCaller.Meter, judgeCaller.Label = meter, "faithfulness judge"
+	judge := enrich.NewJudge(judgeCaller)
 	attachPostGates(pass, cfg, judge, func(rel string, missing []string) {
 		if len(missing) == 0 {
 			return
@@ -1403,6 +1465,10 @@ func cmdEnrich(args []string) error {
 	// silently never matches.
 	keyer := enrichFingerprint(cfg, nil)
 
+	// What the night decided about the notes it wrote, for the report and the
+	// morning note: filed active, left below the floor.
+	var verdicts enrichVerdicts
+
 	write := func(ctx context.Context, rel, body string) error {
 		r, err := enrich.ParseResponse(body)
 		if err != nil {
@@ -1428,6 +1494,7 @@ func cmdEnrich(args []string) error {
 			})
 			return err
 		}
+		verdicts.count(next)
 		// Against the destination rather than the source: a slug correction moves
 		// the note, and a row filed under the path it no longer has would leave
 		// the path it does have looking untouched.
@@ -1521,20 +1588,39 @@ func cmdEnrich(args []string) error {
 		fmt.Printf("wrote %d before/after pair(s) to %s\n", len(rep.Pairs), *dumpDir)
 	}
 
-	if *asJSON {
-		return json.NewEncoder(os.Stdout).Encode(rep)
+	// The night's own record, for the morning note's enrichment row and its
+	// spend line. Written before anything is printed, so a run whose output
+	// nobody captured still left its numbers somewhere.
+	run := newEnrichRun(rep, verdicts, name, budget)
+	if err := appendEnrichRun(cfg, run); err != nil {
+		fmt.Fprintf(os.Stderr, "enrich: recording the run: %v\n", err)
 	}
-	fmt.Printf("considered %d · enriched %d · skipped %d · failed %d · %d call(s) in %s\n",
-		rep.Considered, rep.Enriched, rep.Skipped, rep.Failed, rep.Calls,
-		rep.Elapsed.Round(time.Millisecond))
-	if rep.Deferred {
-		fmt.Printf("deferred: the budget stopped this run at %s — resume with "+
-			"--after %q\n", rep.Cursor, rep.Cursor)
+
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(run)
+	}
+	fmt.Printf("considered %d · enriched %d (filed active %d · below the floor %d) · "+
+		"skipped %d · failed %d · %d note(s) sent in %s\n",
+		rep.Considered, rep.Enriched, verdicts.Active, verdicts.BelowFloor,
+		rep.Skipped, rep.Failed, rep.Calls, rep.Elapsed.Round(time.Millisecond))
+	for _, tier := range meter.Tiers() {
+		fmt.Printf("%s tier: %s of the %s-token line\n", tier, meter.Tier(tier),
+			commasInt(budget.TokenLines[tier]))
+	}
+	fmt.Printf("night: %d model call(s) of the %d-call guard · %s\n",
+		rep.ModelCalls, budget.MaxCalls, meter.Total())
+	if rep.StoppedBy != "" {
+		fmt.Printf("stopped by %s at %s — resume with --after %q\n",
+			rep.StoppedBy, rep.Cursor, rep.Cursor)
 	}
 	for _, e := range rep.Errors {
 		fmt.Println("error:", e)
 	}
-	return nil
+	// Last, and on a line of its own: the runner reads a job's cost from the
+	// last line it prints, as a JSON object with `total_cost_usd`. This is the
+	// same number the lines above print, so the spend line and the report
+	// cannot disagree.
+	return json.NewEncoder(os.Stdout).Encode(run.summary())
 }
 
 // attachPreGates registers the five deterministic checks, in order.
@@ -1558,8 +1644,15 @@ func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget,
 		return loaded.MayReadWithModel(rel)
 	}
 
+	eligibility := enrich.DefaultEligibility(mayRead)
+	eligibility.IsRecordKind = func(kind string) bool {
+		loaded, err := cfg.Rules.Get()
+		// No contract, no way to tell a record from a card: refuse, the same
+		// direction mayRead takes.
+		return err != nil || loaded.IsRecordKind(kind)
+	}
 	pass.AddPre(
-		enrich.DefaultEligibility(mayRead),
+		eligibility,
 		enrich.DefaultPrivacy(),
 		enrich.DefaultSize(),
 		// The fingerprint gate reads the coverage ledger, which is what turns

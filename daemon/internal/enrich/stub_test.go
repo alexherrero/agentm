@@ -67,6 +67,7 @@ func stubBinary(t *testing.T) string {
 const stubSource = `package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -79,12 +80,35 @@ func main() {
 			time.Sleep(time.Duration(n) * time.Millisecond)
 		}
 	}
+	s := os.Getenv("ENRICH_STUB_STDOUT")
 	if os.Getenv("ENRICH_STUB_PRINT_CWD") != "" {
 		wd, _ := os.Getwd()
-		fmt.Printf(` + "`" + `{"cwd":%q}` + "`" + `, wd)
-		return
+		s = fmt.Sprintf(` + "`" + `{"cwd":%q}` + "`" + `, wd)
 	}
-	if s := os.Getenv("ENRICH_STUB_STDOUT"); s != "" {
+	if s != "" {
+		// The real CLI, asked for --output-format json, wraps its text in an
+		// envelope that carries the call's usage. So does the stub, unless a
+		// test asks for the raw text to prove the Caller refuses it.
+		envelope := false
+		for i, a := range os.Args {
+			if a == "--output-format" && i+1 < len(os.Args) && os.Args[i+1] == "json" {
+				envelope = true
+			}
+		}
+		if envelope && os.Getenv("ENRICH_STUB_RAW") == "" {
+			in, _ := strconv.Atoi(os.Getenv("ENRICH_STUB_IN_TOKENS"))
+			out, _ := strconv.Atoi(os.Getenv("ENRICH_STUB_OUT_TOKENS"))
+			isErr := os.Getenv("ENRICH_STUB_EXIT") != "" && os.Getenv("ENRICH_STUB_EXIT") != "0"
+			b, _ := json.Marshal(map[string]any{
+				"type": "result", "subtype": "success", "is_error": isErr,
+				"result": s, "total_cost_usd": float64(in+out) / 1e6,
+				"usage": map[string]any{
+					"input_tokens": in, "output_tokens": out,
+					"cache_creation_input_tokens": 0, "cache_read_input_tokens": 0,
+				},
+			})
+			s = string(b)
+		}
 		fmt.Print(s)
 	}
 	if s := os.Getenv("ENRICH_STUB_STDERR"); s != "" {
@@ -105,6 +129,10 @@ type stubOpts struct {
 	exit   int
 	sleep  time.Duration
 	cwd    bool
+	// raw makes the stub print its text without the envelope.
+	raw bool
+	// inTokens and outTokens are the usage the envelope reports.
+	inTokens, outTokens int
 }
 
 // newStubCaller returns a Caller wired to the stub, configured by opts.
@@ -127,6 +155,13 @@ func newStubCaller(t *testing.T, o stubOpts) *Caller {
 	} else {
 		set("ENRICH_STUB_PRINT_CWD", "")
 	}
+	raw := ""
+	if o.raw {
+		raw = "1"
+	}
+	set("ENRICH_STUB_RAW", raw)
+	set("ENRICH_STUB_IN_TOKENS", strconv.Itoa(o.inTokens))
+	set("ENRICH_STUB_OUT_TOKENS", strconv.Itoa(o.outTokens))
 	c := DefaultCaller("sonnet")
 	c.Bin = bin
 	return c

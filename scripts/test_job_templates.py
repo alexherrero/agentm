@@ -69,6 +69,9 @@ class JobTemplatesLoad(unittest.TestCase):
         # operator's standing spend switch still off — which is the one thing
         # that switch exists to prevent.
         self.assertNotIn("--yes", job.command)
+        # It declares that it spends, so the fleet ceiling gates it (and only
+        # it); the number is the strong tier's line (plan 04, task 2).
+        self.assertEqual(job.budget_tokens, 1_000_000)
 
     def test_a_manifest_without_the_field_is_enabled(self):
         """Every manifest written before the field existed keeps running."""

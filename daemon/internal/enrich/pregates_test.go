@@ -19,6 +19,10 @@ func TestEligibilityRefusesWhatIsNotEnrichmentsBusiness(t *testing.T) {
 	// model pass. Stated here rather than imported so the test says what it tests.
 	mayRead := func(rel string) bool { return !strings.HasPrefix(rel, "Personal/") }
 	g := DefaultEligibility(mayRead)
+	// The contract's `record_kinds` register, as the command wires it.
+	g.IsRecordKind = func(k string) bool { return k == "session-trace" || k == "dir-index" }
+	trace := "---\ntitle: a session\nkind: session-trace\nstatus: active\n---\n\n## Asked\n"
+	card := "---\ntitle: a card\nkind: preference\nstatus: active\n---\n\nb\n"
 
 	for _, tc := range []struct {
 		name, rel, body string
@@ -36,6 +40,10 @@ func TestEligibilityRefusesWhatIsNotEnrichmentsBusiness(t *testing.T) {
 		{"a derived class — entities", "Agent/memory/entities/x.md", note("unfiled", "b"), false},
 		{"a derived class — crystallized", "Agent/memory/crystallized/x.md", note("unfiled", "b"), false},
 		{"a derived class — mocs", "Agent/memory/mocs/x.md", note("unfiled", "b"), false},
+		// A record is its writer's shape, not a card: a pass that re-rendered a
+		// trace's frontmatter would drop its session, day and touched fields.
+		{"a session trace (a record kind)", "Agent/memory/episodic/t.md", trace, false},
+		{"a card whose kind is not a record", "Agent/memory/semantic/c.md", card, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := g.Check(context.Background(), Request{Rel: tc.rel}, tc.body)

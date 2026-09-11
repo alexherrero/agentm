@@ -114,16 +114,42 @@ def _read_daily_ceiling(harness_dir: Optional[Path]) -> float:
     return float(daily) if daily is not None else _DEFAULT_DAILY_USD_CEILING
 
 
-def _spend_so_far(state_root: Optional[Path]) -> float:
-    """Sum of every job's last-recorded cost — a coarse fleet-spend proxy
-    (each marker holds only its own last run, not a rolling window; good
-    enough for a hard stop-loss, not a precise daily ledger)."""
+_SPEND_WINDOW_SECONDS = 86400
+
+
+def _spend_so_far(state_root: Optional[Path], now: Optional[float] = None) -> float:
+    """Sum of the last-recorded cost of every job that ran in the past day —
+    a coarse fleet-spend proxy for a daily ceiling (each marker holds only its
+    own last run; good enough for a hard stop-loss, not a precise ledger).
+
+    Only the past day, because the ceiling is a daily one and a cost that
+    never ages out is a deadlock rather than a ceiling. Until a job reported a
+    real cost this never mattered; the nightly enrichment batch reports one
+    (agentm-vault plan 04), and summed forever, one heavy night would have
+    held every job past the ceiling for good — the batch included, which
+    could then never run again to replace its own number.
+    """
+    now = now if now is not None else time.time()
     d = state_mod._state_dir(state_root)
     total = 0.0
     for p in d.glob("*.json"):
         marker = state_mod.read_marker(p.stem, state_root=state_root)
+        last = state_mod.last_run_epoch(marker)
+        if last is None or now - last > _SPEND_WINDOW_SECONDS:
+            continue
         total += state_mod.last_cost_usd(marker)
     return total
+
+
+def _spends(job: manifest_mod.JobManifest) -> bool:
+    """Whether a job spends model tokens: it says so with a `budget:`.
+
+    The fleet ceiling gates only these. A job with no budget makes no model
+    call — every such manifest says as much in its own comments — and holding
+    the hourly sweep or a shepherd back because the enrichment batch spent
+    would save nothing and stop the machine's upkeep for a day.
+    """
+    return job.budget_tokens is not None
 
 
 def in_window(window: tuple[int, int], now: float) -> bool:
@@ -357,7 +383,7 @@ def run_cycle(
         refused = [{"file": r.path.name, "reason": r.reason} for r in refusals]
     # ceiling is never None (fail-CLOSED default) -- spend is always tracked.
     ceiling = _read_daily_ceiling(harness_dir)
-    spend = _spend_so_far(state_root)
+    spend = _spend_so_far(state_root, now)
 
     report = CycleReport(refused=refused, loaded=len(jobs))
     # `order` first, name second: the loader's filename order is what a job
@@ -385,9 +411,10 @@ def run_cycle(
         if not due:
             report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason=reason))
             continue
-        if spend >= ceiling and not job.dry_run:
+        if spend >= ceiling and not job.dry_run and _spends(job):
             # Pre-flight check the fleet ceiling before a real (non-dry-run)
-            # run starts — an over-budget run never starts (throttle rung).
+            # run of a spending job starts — an over-budget run never starts
+            # (throttle rung). A job that spends nothing is never over budget.
             report.budget_ceiling_hit = True
             report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason="budget-ceiling"))
             continue

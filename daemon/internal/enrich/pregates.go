@@ -46,6 +46,12 @@ type Eligibility struct {
 	// produced by other passes from notes enrichment already touched, so
 	// enriching them would feed the output of one pass back into its own input.
 	ForbiddenDirs map[string]bool
+	// IsRecordKind is the contract's `record_kinds` register — supplied rather
+	// than imported, like MayRead. A note whose `kind` is a record kind is a
+	// record (a session trace, a directory index, a digest), not a card: its
+	// shape is its writer's, and a pass that re-rendered its frontmatter would
+	// drop the fields that shape is made of.
+	IsRecordKind func(string) bool
 }
 
 // DefaultEligibility is the shipped rule set.
@@ -70,6 +76,10 @@ func (g *Eligibility) Check(_ context.Context, req Request, body string) error {
 			return fmt.Errorf("%w: %s is a derived class enrichment may not write",
 				ErrNotEligible, seg)
 		}
+	}
+	if kind := strings.TrimSpace(frontmatterValue(body, "kind")); kind != "" &&
+		g.IsRecordKind != nil && g.IsRecordKind(kind) {
+		return fmt.Errorf("%w: kind %q is a record, not a card", ErrNotEligible, kind)
 	}
 	// No status check. Eligibility is a question about the stamp, not about
 	// the verdict — see PassDepth. What this replaces refused any note that

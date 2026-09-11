@@ -415,8 +415,10 @@ func TestEditingTheFilingContractRequeuesWhatItJudged(t *testing.T) {
 	cfg := configOverRules(t, vault, "preference", "convention")
 	first := currentRulesHash(cfg)
 
-	// A note, enriched and recorded under that contract.
-	rel := "memory/a.md"
+	// A note, enriched and recorded under that contract — in the class
+	// directory the contract routes its type to, which is where the batch's
+	// queue looks.
+	rel := "memory/semantic/a.md"
 	body := writeNote(t, vault, rel, response("a", 0.8),
 		enrich.Stamp{Version: enrich.PassVersion, RulesHash: first})
 	idx := indexOverVault(t, vault, rel, body)
