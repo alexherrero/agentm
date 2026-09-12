@@ -87,7 +87,8 @@ _CORE_TRIO = ("kind", "status", "created")
 # check; they're anchors, not regular save.py-created entries.
 _ANCHOR_SLUGS = frozenset({"_index", "_summary"})
 
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# A day, or an ISO timestamp on that day (the capture door writes the instant).
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$")
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 # `aliases: [a, b]` — the only form present in the live vault (56 files use
 # it; the YAML block-list form appears in none). Read straight off the raw
@@ -448,10 +449,12 @@ def check_dates(entry: Entry, model: VaultModel) -> list:
         if val and not _DATE_RE.match(val):
             out.append(Finding(
                 "date-format", "error", entry.rel,
-                f"`{fname}: {val}` is not a YYYY-MM-DD date",
+                f"`{fname}: {val}` is not a YYYY-MM-DD date or an ISO timestamp",
                 f"set `{fname}` to a YYYY-MM-DD date",
             ))
-    if _DATE_RE.match(created) and _DATE_RE.match(updated) and updated < created:
+    # Compared by day: `created` carries the capture instant where a writer knew
+    # it (`captured` folded into it with the card backfill, agentm-vault plan 06).
+    if _DATE_RE.match(created) and _DATE_RE.match(updated) and updated[:10] < created[:10]:
         out.append(Finding(
             "date-format", "warn", entry.rel,
             f"`updated` ({updated}) is before `created` ({created})",

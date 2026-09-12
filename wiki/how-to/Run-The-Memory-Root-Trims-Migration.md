@@ -87,7 +87,7 @@ Code that ships with plan 05 already resolves these files through `vault_layout.
 ## Troubleshooting
 
 - **`check-memory-root-shape` reports `mixed`.** Read each named finding. It's either a retired location the migration left because of a `left:` collision — resolve the collision, re-run `--apply` — or a writer that recreated a retired path: a binary or script that wasn't rebuilt from the post-trims source. Re-check step 6.
-- **A promotion or a pin silently does nothing.** `save --always-load` and `heat-policy pin` write into the entry's own class now, not into a directory. Check the entry's frontmatter for `always_load: true` or `heat_pin: true` rather than looking for a file under a `_always-load/` folder that no longer exists. Neither one recreates the retired pen.
+- **A promotion or a pin silently does nothing.** `save --always-load` and `heat-policy pin` write into the entry's own class now, not into a directory. Check the entry's frontmatter for `lifecycle: pinned` (what `save --always-load` stamps since the card backfill, agentm-vault plan 06 — `always_load` itself is a retired field and is never written) or `heat_pin: true` rather than looking for a file under a `_always-load/` folder that no longer exists. Neither one recreates the retired pen.
 - **The registry looks empty after the move.** `scripts/repo_registry.py`'s registry now lives at `<engine state dir>/repos.json`. A script or shell alias still pointed at `<vault>/_meta/repos.json` is reading (or writing) the retired copy. `check-registry-hygiene` and `scripts/check-memory-root-shape.py` both catch this.
 
 ## Related

@@ -22,11 +22,11 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 
 | Check ID | Severity | What it checks | Suggested-fix shape |
 |---|---|---|---|
-| `required-field` | error | A required frontmatter field (every field except the optional ones — `source_url`, `source_fetched`, `fingerprint`, `occurrences`, `supersedes`, `lifecycle_tier`, `derived_from`, `heat_pin`, `arc`) is missing. | Add the missing field in the locked order. |
+| `required-field` | error | A required frontmatter field is missing: `kind`, `status`, `created`, `updated` or `slug` (`save.REQUIRED_FRONTMATTER_FIELDS`). Every other field in the locked order is optional; `tags` became optional with the card backfill (agentm-vault plan 06), which omits an empty list. | Add the missing field in the locked order. |
 | `kebab-case` | error | `kind` / `slug` / `group` path segments / each `tag` are kebab-case (`^[a-z0-9-]+$`; `group` is `/`-joined kebab segments). | Rename the offending value to kebab-case. |
-| `field-order` | warn | The present frontmatter fields appear in the locked order (`kind, status, created, updated, tags, arc, group, slug, source_url, source_fetched, fingerprint, occurrences, always_load, supersedes, lifecycle_tier, derived_from, heat_pin`). | Reorder frontmatter to the locked order. |
+| `field-order` | warn | The present frontmatter fields appear in the locked order — the card's order (agentm-vault § The card, the read block then the machine block): `title, kind, summary, why, importance, status, lifecycle, lifecycle_since, filing_confidence, source, source_url, source_id, source_fetched, trust, created, updated, tags, related, supersedes, superseded_by, project, task, arc, group, lifecycle_tier, heat_pin, slug, fingerprint, occurrences, derived_from, via, surface, instructions, review_flags`, read straight from `save.FRONTMATTER_FIELD_ORDER` so the two can't drift. The card backfill (agentm-vault plan 06) brought the corpus to this order. | Reorder frontmatter to the locked order. |
 | `slug-filename` | warn | The `slug` value matches the filename stem. | Rename the file to `<slug>.md`, or fix the `slug` field. |
-| `date-format` | error / warn | `created` / `updated` are `YYYY-MM-DD` (error if malformed); `updated` is on or after `created` (warn if earlier). | Set a valid date / make `updated` ≥ `created`. |
+| `date-format` | error / warn | `created` / `updated` are a `YYYY-MM-DD` date or an ISO timestamp on that day — the capture door writes the instant (error if neither); `updated` is on or after `created`, compared by day (warn if earlier). | Set a valid date or timestamp / make `updated`'s day ≥ `created`'s day. |
 | `placeholder-value` | warn | A frontmatter value still holds an unfilled template option-list (`a \| b \| c`). | Replace with the single chosen value. |
 | `schema-drift` | warn | A frontmatter key is not in the locked schema (unknown key). | Remove the key, or confirm an intentional schema addition. |
 | `wikilink-resolution` | error | Every `[[link]]` in the body resolves to a file in the enclosing Obsidian vault — by filename stem, by relative path, or by an `aliases:` entry, vault-wide. | Fix the target, create the note, or remove the link. |
@@ -52,7 +52,7 @@ The ledger has four file roles, keyed off the filename, each with its own `kind`
 | `research-*.md` | `idea-incubator-research` |
 | `runbook-*.md` | `idea-incubator-runbook` |
 
-All four carry the same five-field core — `kind`, `status`, `slug`, `created`, `updated`. Notably **absent**: `tags` and `group`, which `save.py` requires and most ledger files don't have. `slug` holds the *incubator's* slug, not the filename stem, so `_summary.md` correctly carries `slug: home-server-cluster`.
+All four carry the same five-field core — `kind`, `status`, `slug`, `created`, `updated`. Notably **absent**: `tags` and `group` — both optional on any `save.py`-written note since the card backfill (agentm-vault plan 06) retired them from the required set; `group` in particular is now written only for a project-space entry, never a memory card. `slug` holds the *incubator's* slug, not the filename stem, so `_summary.md` correctly carries `slug: home-server-cluster`.
 
 | Check ID | Severity | What it checks | Suggested-fix shape |
 |---|---|---|---|

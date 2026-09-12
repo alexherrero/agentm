@@ -15,6 +15,8 @@
 package capture
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -26,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/extract"
 	"github.com/alexherrero/agentm/daemon/internal/index"
@@ -132,12 +135,6 @@ type Result struct {
 }
 
 var slugScrubRe = regexp.MustCompile(`[^a-z0-9]+`)
-
-// Altitude is the axis ranking dampens on: `canonical` states something durable —
-// a convention, a decided rule, a reference fact — while `artifact` records a
-// moment. Capture always writes the default, because a note earns `canonical`
-// from a later judgment rather than by asserting it about itself.
-const DefaultAltitude = "artifact"
 
 // Statuses capture may land in. `unfiled` means no judgment has been made;
 // `active` means one has. That is the whole vocabulary, and it means the same
@@ -395,7 +392,7 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		base = strings.Trim(base[:72], "-")
 	}
 
-	rel, slug, err := c.reserve(dir, base)
+	rel, slug, err := c.reserve(dir, base, strings.Split(slugify(title+" "+text), "-"), text)
 	if err != nil {
 		return Result{}, err
 	}
@@ -413,7 +410,6 @@ func (c *Capturer) Do(req Request) (Result, error) {
 
 	body := renderNote(noteData{
 		Type:             noteType,
-		Altitude:         DefaultAltitude,
 		Status:           status,
 		Lifecycle:        "active",
 		FilingConfidence: filingConfidence,
@@ -478,22 +474,59 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	return res, nil
 }
 
-// reserve picks a free path for `base` in `dir`, creating the directory. The
-// suffix loop is what keeps two captures in the same minute from silently
-// overwriting each other.
-func (c *Capturer) reserve(dir, base string) (rel, slug string, err error) {
+// reserve picks a free path for `base` in `dir`, creating the directory. It is
+// what keeps two captures in the same minute from silently overwriting each
+// other.
+//
+// A name another note already holds grows by the next words of this note's own
+// title and text (agentm-vault § The card: the collision rule produces a
+// meaningful word, never a counter). A word that is only digits, shorter than
+// three characters or a stopword is skipped (cardshape.Meaningful), so a grown
+// name never reads as `-2` or `-a`. When no word frees the name, it ends in six
+// characters of the text's hash, then twelve.
+func (c *Capturer) reserve(dir, base string, words []string, text string) (rel, slug string, err error) {
 	absDir := filepath.Join(c.cfg.VaultPath, filepath.FromSlash(dir))
 	if err := os.MkdirAll(absDir, 0o755); err != nil {
 		return "", "", fmt.Errorf("creating %s: %w", dir, err)
 	}
-	for i := 1; i <= 500; i++ {
-		slug = base
-		if i > 1 {
-			slug = fmt.Sprintf("%s-%d", base, i)
+	taken := func(name string) bool {
+		_, err := os.Stat(filepath.Join(absDir, name+".md"))
+		return !errors.Is(err, os.ErrNotExist)
+	}
+	at := func(name string) (string, string, error) {
+		return filepath.ToSlash(filepath.Join(dir, name+".md")), name, nil
+	}
+	if !taken(base) {
+		return at(base)
+	}
+	held := map[string]bool{}
+	for _, w := range strings.Split(base, "-") {
+		held[w] = true
+	}
+	grown := base
+	for _, w := range words {
+		if held[w] || !cardshape.Meaningful(w) {
+			continue
 		}
-		rel = filepath.ToSlash(filepath.Join(dir, slug+".md"))
-		if _, err := os.Stat(filepath.Join(c.cfg.VaultPath, filepath.FromSlash(rel))); errors.Is(err, os.ErrNotExist) {
-			return rel, slug, nil
+		cand := grown + "-" + w
+		if len(cand) > 72 {
+			break
+		}
+		held[w] = true
+		grown = cand
+		if !taken(grown) {
+			return at(grown)
+		}
+	}
+	sum := sha256.Sum256([]byte(text))
+	digest := hex.EncodeToString(sum[:])
+	stem := base
+	if len(stem) > 58 {
+		stem = strings.Trim(stem[:58], "-")
+	}
+	for _, n := range []int{6, 12} {
+		if cand := stem + "-" + digest[:n]; !taken(cand) {
+			return at(cand)
 		}
 	}
 	return "", "", fmt.Errorf("could not find a free slug for %q in %s", base, dir)
@@ -531,9 +564,8 @@ func writeAtomic(abs, body string) error {
 }
 
 type noteData struct {
-	Type     string
-	Altitude string
-	Status   string
+	Type   string
+	Status string
 	// Lifecycle and FilingConfidence are the write-time stamps the filing
 	// contract added with the write path: `active` until a later note
 	// supersedes this one, and how far the writer trusted its own typing.
@@ -586,11 +618,8 @@ func renderNote(d noteData) string {
 	if d.Lifecycle != "" {
 		fmt.Fprintf(&b, "lifecycle: %s\n", d.Lifecycle)
 	}
-	// Written rather than left implied. `artifact` is what a note is until
-	// something judges otherwise, and a field that is present and default is a
-	// field a later pass can change in place — an absent one has to be
-	// distinguished from a deliberate one first.
-	fmt.Fprintf(&b, "altitude: %s\n", d.Altitude)
+	// No `altitude`: the design retired it from the card (agentm-vault § The
+	// card), and the card backfill removed it from the corpus.
 	// `created`, not `captured`. One field names the day a memory came into
 	// existence, and the corpus carried two spellings of it — 30% one, 26% the
 	// other. Readers stay tolerant of both while the backfill runs; this
@@ -676,7 +705,9 @@ func renderNote(d noteData) string {
 	if !strings.HasSuffix(d.Text, "\n") {
 		b.WriteString("\n")
 	}
-	return b.String()
+	// Written in the order the fields are known, then put in the card's order
+	// (agentm-vault § The card), so a capture lands the way every card reads.
+	return cardshape.Reorder(b.String())
 }
 
 func cleanList(in []string) []string {

@@ -111,24 +111,29 @@ class Trace:
         # `touched:`, not `entities:`. The old name promised named things and
         # held note basenames, which is what the field always was.
         touched = sorted({_stem(t) for t in self.touched})
+        # A record keeps the card's order for the fields it shares with a card
+        # and adds its own after the read block (agentm-vault § The card): the
+        # shared read fields, then the trace's own, then the machine block.
         lines = [
             "---",
             f"title: {_yaml_scalar(self.title)}",
             f"kind: {KIND}",
             "status: active",
             "lifecycle: active",
-            f"slug: {self.slug}",
-            f"day: {self.when:%Y-%m-%d}",
-            f"created: {self.when:%Y-%m-%d}",
-            f"session: {_yaml_scalar(self.session_id)}",
             "source: conversation",
+            f"created: {self.when:%Y-%m-%d}",
         ]
         if self.project:
             lines.append(f"project: {_yaml_scalar(self.project)}")
-        if self.surface:
-            lines.append(f"surface: {_yaml_scalar(self.surface)}")
+        lines += [
+            f"day: {self.when:%Y-%m-%d}",
+            f"session: {_yaml_scalar(self.session_id)}",
+        ]
         if touched:
             lines.append("touched: [" + ", ".join(_yaml_scalar(t) for t in touched) + "]")
+        lines.append(f"slug: {self.slug}")
+        if self.surface:
+            lines.append(f"surface: {_yaml_scalar(self.surface)}")
         lines += ["---", ""]
         # The five sections of a handoff record: what was asked, what came of
         # it, what was written, what was read, and what was said in passing.

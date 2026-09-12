@@ -37,7 +37,6 @@ _CLEAN_FM = [
     "tags: [dev-flow, docs]",
     "group: memory",
     "slug: {slug}",
-    "always_load: true",
 ]
 
 
@@ -204,7 +203,9 @@ class TestExcludeDirsParity(unittest.TestCase):
 class TestChecks(unittest.TestCase):
     def test_required_field_missing(self):
         with _Vault() as v:
-            fm = [l for l in _clean("a") if not l.startswith("tags:")]
+            # `slug`, not `tags`: an empty tag list is omitted since the card
+            # backfill, so `tags` is optional and `slug` is still required.
+            fm = [l for l in _clean("a") if not l.startswith("slug:")]
             _write(v, "memory/_always-load/a.md", fm)
             _, findings = _lint(v)
             self.assertIn("required-field", _ids(findings, "error"))
@@ -613,7 +614,15 @@ class TestSchemaPin(unittest.TestCase):
                          "lifecycle", "source", "filing_confidence",
                          # the capture's own record and the engine's review marks
                          # (the write path, tasks 2-3): caller-optional too
-                         "via", "captured", "surface", "instructions", "review_flags", "related", "trust")
+                         "via", "surface", "instructions", "review_flags", "related", "trust",
+                         # the card's read fields this builder never writes by default
+                         # (agentm-vault § The card): a knowing writer or the deep
+                         # pass writes them
+                         "title", "summary", "why", "importance", "lifecycle_since",
+                         "superseded_by", "project", "task",
+                         # retired from the memory card; written only for a
+                         # project-space group, and this call files to `memory`
+                         "group")
         )
         self.assertEqual(tuple(keys), expected)
 
@@ -629,7 +638,11 @@ class TestSchemaPin(unittest.TestCase):
             if f not in ("heat_pin", "source_url", "source_fetched", "source_id",
                          "supersedes", "occurrences", "lifecycle_tier", "derived_from", "arc",
                          "lifecycle", "source", "filing_confidence",
-                         "via", "captured", "surface", "instructions", "review_flags", "related", "trust")
+                         "via", "surface", "instructions", "review_flags", "related", "trust",
+                         "title", "summary", "why", "importance", "lifecycle_since",
+                         "superseded_by", "project", "task", "group",
+                         # an empty tag list is omitted, never written (the card)
+                         "tags")
         )
         self.assertEqual(tuple(keys), expected)
         self.assertIn("fingerprint: abc123", fm)

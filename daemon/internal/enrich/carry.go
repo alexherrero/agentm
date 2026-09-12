@@ -3,6 +3,7 @@ package enrich
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // The fields an enrichment response cannot know and must not lose: how the
@@ -25,19 +26,26 @@ import (
 // `lifecycle: superseded` without `superseded_by:` is a memory that has lost
 // its lineage, which `check-vault-frontmatter` fails on.
 //
-// Two dropped keys stay dropped, deliberately. `altitude` is retired by the
+// Some dropped keys stay dropped, deliberately. `altitude` is retired by the
 // design (the deep pass drops it), and `aliases` is the pass's own answer
 // under the alias-vocabulary gate — carrying it would make an alias permanent
-// the first time any pass proposed one.
+// the first time any pass proposed one. The card backfill (agentm-vault plan
+// 06) retired `group`, `always_load`, the `mining_*` trio and
+// `excerpt_edges_unverified` from the card, so a rewrite lets them go as well.
+// `captured` folds into `created` instead of travelling beside it: the note
+// keeps the earlier of the two days in the one field.
+//
+// `backfilled` names the fields the card backfill stamped rather than a writer
+// that knew. It travels less any field the pass wrote itself, because a title
+// the pass wrote is the pass's, and `enriched_by` already says so.
 var carriedFields = []string{
 	"source", "source_id", "source_url", "source_fetched",
 	"lifecycle", "lifecycle_since", "superseded_by", "supersedes",
 	"promoted_at", "promoted_to", "derived_from",
-	"captured", "created", "via", "surface", "instructions", "review_flags",
-	"excerpt_edges_unverified", "related", "trust", "why", "project", "task",
+	"created", "via", "surface", "instructions", "review_flags",
+	"related", "trust", "why", "project", "task",
 	"importance", "importance_proposed",
-	"slug", "group", "always_load", "fingerprint", "occurrences",
-	"mining_rationale", "mining_confidence", "mining_occurrences",
+	"slug", "fingerprint", "occurrences",
 }
 
 // EvidenceHeading opens the block quoting the excerpt a note came from. It is
@@ -73,6 +81,9 @@ func CarryProvenance(previous, next string) string {
 			continue
 		}
 		value := rawFrontmatterValue(previous, key)
+		if key == "created" {
+			value = earlierDate(value, rawFrontmatterValue(previous, "captured"))
+		}
 		if value == "" {
 			if key != "lifecycle" {
 				continue
@@ -81,7 +92,61 @@ func CarryProvenance(previous, next string) string {
 		}
 		fmt.Fprintf(&add, "\n%s: %s", key, value)
 	}
+	if kept := backfilledKept(previous, next, head+add.String()+tail); kept != "" {
+		fmt.Fprintf(&add, "\nbackfilled: %s", kept)
+	}
 	return carryEvidence(previous, head+add.String()+tail)
+}
+
+// earlierDate is the earlier of a `created` and a `captured` value, each as
+// written. The first wins when they fall on the same day or either does not
+// read as a date: the memory existed by the earliest day either writer recorded.
+func earlierDate(created, captured string) string {
+	if captured == "" {
+		return created
+	}
+	if created == "" {
+		return captured
+	}
+	dc, okc := isoDay(created)
+	dp, okp := isoDay(captured)
+	if okc && okp && dp < dc {
+		return captured
+	}
+	return created
+}
+
+// isoDay is the YYYY-MM-DD a date or timestamp value opens with.
+func isoDay(v string) (string, bool) {
+	v = strings.Trim(strings.TrimSpace(v), `"'`)
+	if len(v) < 10 {
+		return "", false
+	}
+	if _, err := time.Parse("2006-01-02", v[:10]); err != nil {
+		return "", false
+	}
+	return v[:10], true
+}
+
+// backfilledKept is the previous note's `backfilled` list, less every field
+// the rendered note sets itself and every field the carried note no longer
+// holds, as a flow list — or "" when nothing is left.
+func backfilledKept(previous, rendered, carried string) string {
+	raw := strings.TrimSpace(rawFrontmatterValue(previous, "backfilled"))
+	raw = strings.TrimSuffix(strings.TrimPrefix(raw, "["), "]")
+	var kept []string
+	for _, name := range strings.Split(raw, ",") {
+		name = strings.Trim(strings.TrimSpace(name), `"'`)
+		if name == "" || rawFrontmatterValue(rendered, name) != "" ||
+			rawFrontmatterValue(carried, name) == "" {
+			continue
+		}
+		kept = append(kept, name)
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return "[" + strings.Join(kept, ", ") + "]"
 }
 
 // carryImportance keeps an `importance` the operator set.

@@ -110,8 +110,10 @@ def _dump_frontmatter(fm: dict) -> str:
     seen = set()
     for k in field_order:
         if k in fm:
-            lines.append(_format_field(k, fm[k]))
             seen.add(k)
+            if k == "tags" and not fm[k]:
+                continue  # an empty tag list is omitted, never written
+            lines.append(_format_field(k, fm[k]))
     # Preserve any unknown fields in alphabetical order for determinism.
     for k in sorted(fm.keys()):
         if k not in seen:
@@ -136,10 +138,12 @@ def _format_field(key: str, value) -> str:
 
 
 def _compose_entry(fm: dict, body: str) -> str:
-    """Compose entry content with YAML frontmatter + body."""
+    """Compose entry content with YAML frontmatter + body, in the card's order
+    (agentm-vault § The card)."""
+    import card_shape  # noqa: E402  (same skill dir)
     fm_yaml = _dump_frontmatter(fm)
     body_stripped = body.lstrip("\n").rstrip("\n")
-    return f"---\n{fm_yaml}---\n\n{body_stripped}\n"
+    return card_shape.reorder(f"---\n{fm_yaml}---\n\n{body_stripped}\n")
 
 
 def _compute_archive_path(vault: Path, old_relative: Path, today: str) -> Path:
@@ -259,9 +263,7 @@ def evolve_entry(
         "created": today,
         "updated": today,
         "tags": fm.get("tags", []),
-        "group": fm.get("group", "memory"),
         "slug": new_slug if new_slug else fm.get("slug"),
-        "always_load": fm.get("always_load", False),
         "supersedes": str(archive_relative).replace(os.sep, "/"),
     }
     new_content = _compose_entry(new_fm, new_body)

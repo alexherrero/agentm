@@ -199,7 +199,11 @@ def _patch_frontmatter(content: str, updates: dict) -> str:
         new_lines.append(line)
     for k, v in remaining.items():
         new_lines.append(f"{k}: {v}")
-    return "---\n" + "\n".join(new_lines) + "\n---\n" + body
+    # A key the patch appended goes back to its place in the card's order
+    # (agentm-vault § The card): the sweep adds `tags` and `source_fetched`,
+    # which are read fields, as well as its own.
+    import card_shape  # noqa: E402  (same skill dir)
+    return card_shape.reorder("---\n" + "\n".join(new_lines) + "\n---\n" + body)
 
 
 def _utcnow_iso(now: "float | None" = None) -> str:
@@ -356,7 +360,9 @@ def stage_candidate(vault: Path, path: Path, *, now: "float | None" = None) -> "
 # -----------------------------------------------------------------------------
 
 def _staged_at(fm: dict) -> "str | None":
-    return fm.get("source_fetched") or fm.get("captured")
+    # `captured` folded into `created` with the card backfill (agentm-vault
+    # plan 06); a capture written since carries its instant there.
+    return fm.get("source_fetched") or fm.get("captured") or fm.get("created")
 
 
 def _is_past_staging_window(fm: dict, *, now_dt: datetime, window_seconds: float) -> bool:
@@ -539,7 +545,14 @@ def fold_idea_candidate(vault: Path, path: Path) -> "tuple[bool, str]":
 def restamp_candidate(vault: Path, path: Path) -> bool:
     """Correct `captured:` against the file's own filesystem creation/
     modification time when they disagree by more than a few seconds
-    (floating-point/clock-skew tolerant). Returns True if corrected."""
+    (floating-point/clock-skew tolerant). Returns True if corrected.
+
+    Only `captured:`, never `created:`. The card backfill (agentm-vault plan
+    06) folded `captured` into `created`, and a card's mtime is its last write,
+    not its creation. Following the fold would move a rewritten card's creation
+    date to whatever last touched it — which is what this duty did to
+    `captured` on unfiled class cards once captures stopped landing in a
+    staging directory."""
     raw = path.read_text(encoding="utf-8")
     fm, _body = _parse_frontmatter(raw)
     captured = fm.get("captured")

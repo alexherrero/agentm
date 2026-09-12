@@ -139,17 +139,20 @@ class VocabularyRoutingTests(_Base):
         self.assertIn("workflow", str(caught.exception))
 
 
-class AltitudeTests(_Base):
-    def test_every_entry_carries_the_default_altitude(self) -> None:
-        """Written rather than left implied: a field that is present and default
-        is one a later pass can change in place."""
-        path = save.save_entry(self.vault, "workflow", "a-recipe", "Body.")
-        self.assertEqual(frontmatter(path)["altitude"], "artifact")
+class RetiredCardFieldTests(_Base):
+    """agentm-vault § The card retired `altitude` (`lifecycle: pinned` is what
+    `canonical` meant) and `always_load` (the tier is a directory). A new entry
+    carries neither, so no note claims a durability it was never judged to have."""
 
-    def test_a_note_earns_canonical_rather_than_assuming_it(self) -> None:
+    def test_no_entry_carries_the_retired_altitude(self) -> None:
+        path = save.save_entry(self.vault, "workflow", "a-recipe", "Body.")
+        self.assertNotIn("altitude", frontmatter(path))
+
+    def test_a_note_never_claims_canonical_or_always_load(self) -> None:
         path = save.save_entry(self.vault, "convention", "a-rule", "Body.")
-        self.assertEqual(frontmatter(path)["altitude"], save.DEFAULT_ALTITUDE)
-        self.assertNotEqual(frontmatter(path)["altitude"], "canonical")
+        fm = frontmatter(path)
+        self.assertNotIn("canonical", fm.values())
+        self.assertNotIn("always_load", fm)
 
 
 class ContractUnavailableTests(_Base):

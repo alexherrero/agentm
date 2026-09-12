@@ -210,13 +210,15 @@ class GroupCorrectnessTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def test_every_note_carries_group_personal(self) -> None:
+    def test_no_note_carries_the_retired_group(self) -> None:
+        # `group: memory` retired from the memory card with the card backfill
+        # (agentm-vault § The card): the class directory says where it lives.
         result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
         fm_doc, _ = _frontmatter_and_body(result.document)
-        self.assertEqual(fm_doc["group"], "memory")
+        self.assertNotIn("group", fm_doc)
         for c in result.chunks:
             fm_chunk, _ = _frontmatter_and_body(c)
-            self.assertEqual(fm_chunk["group"], "memory")
+            self.assertNotIn("group", fm_chunk)
 
 
 class HtmlExtractionTests(unittest.TestCase):

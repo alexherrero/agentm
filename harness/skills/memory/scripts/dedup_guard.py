@@ -171,5 +171,6 @@ def reinforce(path: Path, *, today: str | None = None) -> int:
         else:
             fm = fm.rstrip("\n") + f"\nupdated: {today}"
 
-    atomic_write(path, content[:span[0]] + fm + content[span[1]:])
+    import card_shape  # noqa: E402  (same skill dir)
+    atomic_write(path, card_shape.reorder(content[:span[0]] + fm + content[span[1]:]))
     return count

@@ -299,8 +299,11 @@ class TheStampsOnEveryWriter(_Vault):
                             extra={"related": "memory/semantic/y.md", "via": "cli",
                                    "review_flags": ["near-duplicate"]})
         keys = [line.split(":", 1)[0] for line in p.read_text(encoding="utf-8").split("\n---\n", 1)[0].splitlines()[1:]]
+        # The card's order (agentm-vault § The card): `related` reads with the
+        # operator's fields; a capture's record, then the review marks, close
+        # the machine block.
+        self.assertLess(keys.index("related"), keys.index("via"))
         self.assertLess(keys.index("via"), keys.index("review_flags"))
-        self.assertLess(keys.index("review_flags"), keys.index("related"))
 
 
 # Every test here gets its own engine state dir: the map reads the dream
