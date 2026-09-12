@@ -11,7 +11,7 @@ import (
 // notes and a vector arm with no vectors looks exactly like one that is cold.
 func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 	got := defaultEmbedScope("Agent")
-	want := []string{"Agent/memory", "Agent/desk", "Agent/external", "Agent/diagnostics", "Projects", "Calendar"}
+	want := []string{"Agent/memory", "Agent/desk", "Agent/external", "Agent/diagnostics", "Projects", "Calendar", "standards/voice"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,7 +23,7 @@ func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 	for _, root := range []string{"", "  ", "/"} {
 		got := defaultEmbedScope(root)
-		want := "memory,desk,external,diagnostics,Projects,Calendar"
+		want := "memory,desk,external,diagnostics,Projects,Calendar,standards/voice"
 		if strings.Join(got, ",") != want {
 			t.Errorf("memory_root %q gave %v, want %s", root, got, want)
 		}
@@ -40,6 +40,26 @@ func TestDefaultEmbedScopeIncludesDiagnostics(t *testing.T) {
 		}
 	}
 	t.Fatalf("diagnostics missing from default embed scope: %v", defaultEmbedScope("Agent"))
+}
+
+// The voice library is IN the default scope (agentm-vault plan 05): its rules
+// were dense-retrievable under Projects/ and moved to the vault-root
+// `standards/voice/`; the first retrieval gate after the move flipped the
+// questions that expect them to misses. The rest of `standards/` stays out.
+func TestDefaultEmbedScopeIncludesTheVoiceLibraryOnly(t *testing.T) {
+	scope := defaultEmbedScope("Agent")
+	voice := false
+	for _, s := range scope {
+		if s == "standards/voice" {
+			voice = true
+		}
+		if s == "standards" {
+			t.Fatalf("the rule files must not be in the vector scope: %v", scope)
+		}
+	}
+	if !voice {
+		t.Fatalf("standards/voice missing from default embed scope: %v", scope)
+	}
 }
 
 // Captures into the projects space land at the vault-root `Projects/` — the
