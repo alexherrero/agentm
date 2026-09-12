@@ -32,18 +32,35 @@ func cmdTiers(args []string) error {
 	version := fs.String("pass-version", "", "the pass version this run is at")
 	forget := fs.String("forget", "",
 		"drop a job's qualification, sending it back to the strong tier")
+	audit := fs.Bool("audit", false,
+		"run the qualifying audit for --job: both tiers answer a sample of real "+
+			"cards and a judge says whether they agree")
+	judge := fs.String("judge", defaultAuditJudge,
+		"the model that decides agreement in an audit")
+	samples := fs.Int("samples", defaultAuditSamples, "how many cards an audit draws")
+	seed := fs.Int64("seed", 0, "seed for the audit's draw (0 picks one and prints it)")
+	yes := fs.Bool("yes", false,
+		"spend: run the audit rather than only projecting what it would cost")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if extra := fs.Args(); len(extra) > 0 {
 		return fmt.Errorf("unexpected argument %q; usage: agentmd tiers "+
-			"[--job NAME] [--cheap MODEL --strong MODEL --pass-version V] [--json]",
-			extra[0])
+			"[--job NAME] [--cheap MODEL --strong MODEL --pass-version V] [--json] | "+
+			"--audit --job NAME --cheap MODEL [--judge MODEL] [--samples N] "+
+			"[--seed S] [--yes]", extra[0])
 	}
 
 	cfg, err := config.Load(*opts)
 	if err != nil {
 		return err
+	}
+	if *audit {
+		// The audit earns a qualification; the rest of this command reads one.
+		// It resolves its own models, because "no cheap model" is a refusal
+		// there and an empty column here.
+		return cmdTiersAudit(cfg, *job, *cheap, *strong, *judge, *version,
+			*samples, *seed, *yes, *asJSON, productionAuditDeps())
 	}
 	dir := tierMetaDir(cfg)
 	table, err := tiers.Load(dir)

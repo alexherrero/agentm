@@ -295,6 +295,11 @@ func (c *Caller) CallJSON(ctx context.Context, prompt string, v any) error {
 	return nil
 }
 
+// ExtractJSON is extractJSON for a caller outside the package that has a
+// model's raw answer in hand — the tier audit's judge — and wants the same
+// tolerance of a fence or a sentence around the object.
+func ExtractJSON(s string) (string, error) { return extractJSON(s) }
+
 // extractJSON pulls the outermost balanced JSON object or array out of a
 // response, ignoring braces inside strings.
 //

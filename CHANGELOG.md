@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`agentmd tiers --audit`** — the cheap-tier audit for the light pass
+  ([agentm-vault](wiki/designs/agentm-vault.md) § Dreaming, amended). It
+  draws a seeded sample of the cards the current pass has judged on the
+  strong tier, asks both tiers the light-pass question under identical
+  conditions through the enrichment `Caller`, and has a judge —
+  `claude-fable-5-1` unless `--judge` says otherwise — say whether the two
+  answers would file and rank the card the same way, with a reason the
+  report keeps on every disagreement. The cheap model comes from `--cheap`
+  or `daemon.cheap_model` and is never defaulted. The command projects
+  three calls per card and an estimated cost, stops unless `--yes` is
+  passed, saves a qualification to the tier table only at the
+  pre-registered bar (90% over at least 25 judged samples), and records
+  every run to `tier-audits.jsonl` beside `enrich-runs.jsonl`.
+  `tiers.Agrees` now takes the sample and returns a verdict with a reason,
+  `tiers.CanAudit` refuses a pinned job or a missing model before anything
+  is drawn, and a saved qualification names its judge.
 - **The night stops re-paying for answers it already has.** A card whose
   response a post-gate rejects is left exactly as it stood, so it carries no
   enrichment stamp, so eligibility offers it again the next night — nineteen
@@ -27,7 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outside `PassVersion`. Sharpening the judge's question invalidates the
   refusals alone — one night re-judging the refused set — where folding it
   into the pass version would re-owe the deep pass to every card in the vault.
-
 - **The pasted context payload is layout-free, and every copy of it is derived**
   ([agentm-vault](wiki/designs/agentm-vault.md), landing group 11a).
   `templates/agentmemory-context.md` names `index.md`, `standards/` and

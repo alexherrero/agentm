@@ -60,7 +60,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd ledger     ask what dreaming has already done, and what is pending
   agentmd queue      show the pending-work queues, or record work owed
   agentmd sources    ask whether a source has been mined, and watermark it
-  agentmd tiers      ask which model tier a dreaming job may run on
+  agentmd tiers      ask which model tier a dreaming job may run on, or audit one
   agentmd graph      ask what the corpus mentions, links to, and lacks
   agentmd meters     measure whether the corpus is converging on itself
   agentmd clusters   group notes that say the same thing, and say which kind
@@ -1401,14 +1401,7 @@ func cmdEnrich(args []string) error {
 	// one prints a line as it finishes — the per-call half of "usage printed".
 	meter := enrich.NewMeter()
 	budget.Meter = meter
-	meter.OnCall = func(r enrich.CallRecord) {
-		status := ""
-		if r.Err != nil {
-			status = " · failed"
-		}
-		fmt.Printf("call %d · %s · %s/%s · %s%s\n", meter.Total().Calls, r.Label,
-			r.Model, r.Tier, r.Usage, status)
-	}
+	meter.OnCall = callLinePrinter(meter, os.Stdout)
 
 	caller := enrich.DefaultCaller(name)
 	caller.Meter = meter
@@ -1686,23 +1679,14 @@ func cmdEnrich(args []string) error {
 // dependency hub.
 func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget,
 	led *ledger.Ledger, refusals *enrich.Refusals) {
-	eligibility := enrich.DefaultEligibility(modelMayRead(cfg))
-	eligibility.IsRecordKind = func(kind string) bool {
-		loaded, err := cfg.Rules.Get()
-		// No contract, no way to tell a record from a card: refuse, the same
-		// direction mayRead takes.
-		return err != nil || loaded.IsRecordKind(kind)
-	}
 	// The fingerprint gate reads the coverage ledger, which is what turns
 	// its idempotency claim from a description into a mechanism. A nil
 	// ledger leaves it inert, which is honest — a gate with nothing to
 	// remember costs a call it might not have needed, rather than
 	// pretending to an idempotency it cannot provide.
 	fp := enrichFingerprint(cfg, led)
+	pass.AddPre(freeGates(cfg)...)
 	pass.AddPre(
-		eligibility,
-		enrich.DefaultPrivacy(),
-		enrich.DefaultSize(),
 		fp,
 		// The refusal gate, on the fingerprint's own Key, so "keyed the same
 		// way the fingerprint gate is" is one function two gates call rather
@@ -1730,6 +1714,34 @@ func enrichRefused(cfg *config.Config, fp *enrich.Fingerprint,
 		return refusals.Standing(rel, key, enrich.GatesVersion)
 	}
 	return g
+}
+
+// freeGates are the three pre-gates that read nothing but the contract and
+// the note — eligibility, privacy, size — in the order they run. Shared with
+// the tier audit, which draws its sample through the same three so a card no
+// model may see is never offered to one there either.
+func freeGates(cfg *config.Config) []enrich.Gate {
+	eligibility := enrich.DefaultEligibility(modelMayRead(cfg))
+	eligibility.IsRecordKind = func(kind string) bool {
+		loaded, err := cfg.Rules.Get()
+		// No contract, no way to tell a record from a card: refuse, the same
+		// direction mayRead takes.
+		return err != nil || loaded.IsRecordKind(kind)
+	}
+	return []enrich.Gate{eligibility, enrich.DefaultPrivacy(), enrich.DefaultSize()}
+}
+
+// callLinePrinter prints one line per call as it finishes — the per-call half
+// of "usage printed" — for every command that spends.
+func callLinePrinter(meter *enrich.Meter, w io.Writer) func(enrich.CallRecord) {
+	return func(r enrich.CallRecord) {
+		status := ""
+		if r.Err != nil {
+			status = " · failed"
+		}
+		fmt.Fprintf(w, "call %d · %s · %s/%s · %s%s\n", meter.Total().Calls, r.Label,
+			r.Model, r.Tier, r.Usage, status)
+	}
 }
 
 // modelMayRead is the contract's answer to "may a background model read this
