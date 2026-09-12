@@ -1430,7 +1430,17 @@ func cmdEnrich(args []string) error {
 		return ""
 	})
 	pass.SetNeighbours(enrichNeighbours(cfg, idx, modelMayRead(cfg)))
-	attachPreGates(pass, cfg, budget, led)
+
+	// What the post-gates refused before, so a card the judge already said no
+	// to is not bought a second answer to the same question. A record that will
+	// not read is reported and then ignored: the night costs what it used to,
+	// which is the direction that loses money rather than work.
+	refusals, err := enrich.NewRefusals(enrichStateDir(cfg))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "enrich: reading %s: %v — every card will be "+
+			"offered as though nothing had been refused\n", refusals.Path(), err)
+	}
+	attachPreGates(pass, cfg, budget, led, refusals)
 
 	// The judge is a second caller rather than the same one. They want
 	// different things: enrichment wants prose and a long answer is fine, while
@@ -1508,6 +1518,11 @@ func cmdEnrich(args []string) error {
 		}
 		verdicts.count(dest, verdict)
 		landed[rel] = next
+		// Whatever the post-gates once said about this card, they have now said
+		// otherwise. The row would stop matching on its own, because the write
+		// moved the body and so the key; dropping it here is what keeps the
+		// standing count right in the meantime.
+		refusals.Resolve(rel)
 		// Against the destination rather than the source: a slug correction moves
 		// the note, and a row filed under the path it no longer has would leave
 		// the path it does have looking untouched.
@@ -1538,6 +1553,18 @@ func cmdEnrich(args []string) error {
 		reason := out.Reason
 		if reason == "" && err != nil {
 			reason = err.Error()
+		}
+		// A post-gate rejection is the one failure that leaves no trace on the
+		// card, so it is written down here instead. Only an ineligible
+		// rejection reaches this: a judge that could not answer, or one that
+		// rejected without naming a claim, leaves RefusedBy empty, because
+		// neither is a finding about the card and blacklisting a card over a
+		// bad hour is worse than paying for it again.
+		if row, ok := refusalFor(cfg, keyer, req, out, reason); ok {
+			if rerr := refusals.Record(row); rerr != nil {
+				fmt.Fprintf(os.Stderr, "enrich: recording the refusal of %s: %v — "+
+					"it will be offered and refused again\n", req.Rel, rerr)
+			}
 		}
 		recordEnrich(context.Background(), led, ledger.Entry{
 			Stage: ledger.StageEnrich, Target: req.Rel,
@@ -1604,7 +1631,16 @@ func cmdEnrich(args []string) error {
 	// The night's own record, for the morning note's enrichment row and its
 	// spend line. Written before anything is printed, so a run whose output
 	// nobody captured still left its numbers somewhere.
+	// The refusal record, folded back to one standing row per card. Appending is
+	// what makes a refusal survive a run that is killed; compacting is what
+	// stops the file growing by the whole refused set each time the prompt
+	// moves. A failure here costs a larger file and nothing else.
+	if cerr := refusals.Compact(); cerr != nil {
+		fmt.Fprintf(os.Stderr, "enrich: compacting %s: %v\n", refusals.Path(), cerr)
+	}
 	run := newEnrichRun(rep, verdicts, name, budget)
+	run.RefusalsOpen = refusals.Open(enrich.PassVersion, currentRulesHash(cfg),
+		enrich.GatesVersion)
 	if err := appendEnrichRun(cfg, run); err != nil {
 		fmt.Fprintf(os.Stderr, "enrich: recording the run: %v\n", err)
 	}
@@ -1616,6 +1652,11 @@ func cmdEnrich(args []string) error {
 		"skipped %d · failed %d · %d note(s) sent in %s\n",
 		rep.Considered, rep.Enriched, verdicts.Active, verdicts.BelowFloor,
 		rep.Skipped, rep.Failed, rep.Calls, rep.Elapsed.Round(time.Millisecond))
+	if run.RefusalsOpen > 0 {
+		fmt.Printf("refused: %d card(s) stand refused at this pass · %d skipped "+
+			"free this run rather than re-judged · %s\n",
+			run.RefusalsOpen, rep.Refused, refusals.Path())
+	}
 	for _, tier := range meter.Tiers() {
 		fmt.Printf("%s tier: %s of the %s-token line\n", tier, meter.Tier(tier),
 			commasInt(budget.TokenLines[tier]))
@@ -1636,7 +1677,7 @@ func cmdEnrich(args []string) error {
 	return json.NewEncoder(os.Stdout).Encode(run.summary())
 }
 
-// attachPreGates registers the five deterministic checks, in order.
+// attachPreGates registers the six deterministic checks, in order.
 //
 // Wired here rather than inside the enrich package because two of them need
 // things the package deliberately does not import: the filing contract, for
@@ -1644,7 +1685,7 @@ func cmdEnrich(args []string) error {
 // idempotency key. Passing them in keeps `enrich` a pass rather than a
 // dependency hub.
 func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget,
-	led *ledger.Ledger) {
+	led *ledger.Ledger, refusals *enrich.Refusals) {
 	eligibility := enrich.DefaultEligibility(modelMayRead(cfg))
 	eligibility.IsRecordKind = func(kind string) bool {
 		loaded, err := cfg.Rules.Get()
@@ -1652,18 +1693,43 @@ func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget,
 		// direction mayRead takes.
 		return err != nil || loaded.IsRecordKind(kind)
 	}
+	// The fingerprint gate reads the coverage ledger, which is what turns
+	// its idempotency claim from a description into a mechanism. A nil
+	// ledger leaves it inert, which is honest — a gate with nothing to
+	// remember costs a call it might not have needed, rather than
+	// pretending to an idempotency it cannot provide.
+	fp := enrichFingerprint(cfg, led)
 	pass.AddPre(
 		eligibility,
 		enrich.DefaultPrivacy(),
 		enrich.DefaultSize(),
-		// The fingerprint gate reads the coverage ledger, which is what turns
-		// its idempotency claim from a description into a mechanism. A nil
-		// ledger leaves it inert, which is honest — a gate with nothing to
-		// remember costs a call it might not have needed, rather than
-		// pretending to an idempotency it cannot provide.
-		enrichFingerprint(cfg, led),
+		fp,
+		// The refusal gate, on the fingerprint's own Key, so "keyed the same
+		// way the fingerprint gate is" is one function two gates call rather
+		// than two implementations that agree until one of them is edited.
+		// Between the fingerprint and the budget: the fingerprint answers the
+		// commoner case, and the budget counts a call the instant it agrees to
+		// one, so everything that can still decline has to decline first.
+		enrichRefused(cfg, fp, refusals),
 		enrich.NewCycleBudget(budget.MaxCalls, budget.MaxDuration),
 	)
+}
+
+// enrichRefused is the standing-refusal gate wired to the record.
+//
+// A nil record leaves it inert, the same way a nil ledger leaves the
+// fingerprint inert: the cards are offered and paid for, which is what happened
+// before the record existed.
+func enrichRefused(cfg *config.Config, fp *enrich.Fingerprint,
+	refusals *enrich.Refusals) *enrich.Refused {
+	g := &enrich.Refused{Key: fp.Key}
+	if refusals == nil {
+		return g
+	}
+	g.Standing = func(rel, key string) (enrich.Refusal, bool) {
+		return refusals.Standing(rel, key, enrich.GatesVersion)
+	}
+	return g
 }
 
 // modelMayRead is the contract's answer to "may a background model read this

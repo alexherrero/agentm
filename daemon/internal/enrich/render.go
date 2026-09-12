@@ -152,6 +152,29 @@ func RenderFrontmatter(r Response, s Stamp, v FilingVerdict) string {
 	return b.String()
 }
 
+// passWrittenFields is every frontmatter key RenderFrontmatter can emit.
+//
+// The register exists so the faithfulness judge can be shown the facts a card
+// carries without being shown the previous pass's own answers — see
+// judgeSource. A test renders a response with every field populated and holds
+// each key it finds against this list, so a field added to the render above and
+// forgotten here fails rather than quietly becoming evidence for itself.
+//
+// `lifecycle`, `lifecycle_since`, `importance`, `importance_proposed` and
+// `related` are here as well as in carriedFields. They can come from either
+// side — the pass writes them, and CarryProvenance puts back the ones it did
+// not. Counting them as the pass's is the conservative reading: it withholds
+// evidence that was sometimes the operator's, where the other direction would
+// occasionally hand the judge a previous pass's invention and call it source.
+var passWrittenFields = map[string]bool{
+	"title": true, "type": true, "status": true,
+	"lifecycle": true, "lifecycle_since": true,
+	"confidence": true, "filing_confidence": true,
+	"importance": true, "importance_proposed": true,
+	"tags": true, "aliases": true, "related": true, "summary": true,
+	"updated": true, "enriched_by": true, "rules_hash": true, "enriched_at": true,
+}
+
 // FilingVerdict is what a judgment decides about where a card stands.
 type FilingVerdict struct {
 	// Status is `active` at or above the floor and `unfiled` below it.

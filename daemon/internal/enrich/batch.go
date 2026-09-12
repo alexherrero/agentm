@@ -58,6 +58,13 @@ type BatchReport struct {
 	Enriched int `json:"enriched"`
 	// Skipped is how many a pre-gate declined — already enriched, ineligible.
 	Skipped int `json:"skipped"`
+	// Refused is the part of Skipped the refusal record accounts for: cards a
+	// post-gate rejected on an earlier night, offered again because a refused
+	// card carries no stamp, and declined here for nothing. Counted apart from
+	// the rest because it is the number that says what the record saved — two
+	// model calls and about forty cents a card, every night, for as long as
+	// nothing about the card or the prompt changes.
+	Refused int `json:"refused"`
 	// Failed is how many were asked about and answered badly, or errored.
 	Failed int `json:"failed"`
 	// Calls is how many notes were sent to the model — one enrichment call
@@ -258,6 +265,9 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 				}
 			case out.Skipped:
 				rep.Skipped++
+				if out.SkippedBy == GateRefusal {
+					rep.Refused++
+				}
 			case out.Enriched:
 				if err := write(ctx, cand.Rel, out); err != nil {
 					rep.Failed++

@@ -386,7 +386,27 @@ def _enrichment_line(runs: list) -> str:
     stopped = [r["stopped_by"] for r in runs if r.get("stopped_by")]
     if stopped:
         line += f". Stopped by {stopped[-1]}"
-    return line + "."
+    return line + "." + _refusal_sentence(runs)
+
+
+def _refusal_sentence(runs: list) -> str:
+    """What the post-gates refused, and what not asking again saved.
+
+    A refused card leaves no stamp, so it comes back around every night unless
+    something remembers. `refusals_open` is what the last run saw standing and
+    `refused` is how many of them it declined for free instead of paying twice
+    to be told no again. Silence here means nothing is standing, which is the
+    state worth being able to tell apart from nobody counting."""
+    if not runs:
+        return ""
+    standing = int(runs[-1].get("refusals_open") or 0)
+    if not standing:
+        return ""
+    skipped = _sum(runs, "refused")
+    out = f" {standing} card(s) stand refused at this pass"
+    if skipped:
+        out += f", {skipped} of them skipped free rather than judged again"
+    return out + "."
 
 
 def _binary_rows(rep: dict) -> list:
@@ -545,8 +565,16 @@ def headline(night: Night, needs: list) -> str:
     parts = []
     if night.tonight_runs:
         runs = night.tonight_runs
-        parts.append(f"enrichment judged {_sum(runs, 'notes_sent')} "
-                     f"({_verdicts(runs, 'filed_active')} active, {_verdicts(runs, 'sank')} sank)")
+        judged = (f"enrichment judged {_sum(runs, 'notes_sent')} "
+                  f"({_verdicts(runs, 'filed_active')} active, "
+                  f"{_verdicts(runs, 'sank')} sank)")
+        # The standing refusals ride on the headline rather than only in the
+        # body, because a set that grows quietly is the failure this number was
+        # added to prevent, and the headline is the line that gets read.
+        standing = int(runs[-1].get("refusals_open") or 0)
+        if standing:
+            judged += f", {standing} refused"
+        parts.append(judged)
     elif "enrich-nightly" in night.reasons:
         parts.append(f"enrichment did not run ({night.reasons['enrich-nightly']})")
     if night.binary_tonight:

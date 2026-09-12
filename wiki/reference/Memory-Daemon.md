@@ -516,6 +516,45 @@ genuinely unchanged since its last pass is caught for free by the separate
 fingerprint gate, keyed on the pass version, the rules hash, and the body
 together (`Fingerprint.Check`, `pregates.go:298-307`).
 
+### The refusal record
+
+A card whose response a post-gate rejected is left exactly as it stood, so
+it carries no stamp, so eligibility offers it again the next night. On
+2026-09-11 nineteen cards did that in one run — seventeen refused by the
+grounding judge, two by the alias-vocabulary gate — at two model calls and
+roughly forty cents each, and the nightly job would have repeated it
+indefinitely.
+
+The refusal is written down instead, one JSON line per card in
+`enrich-refusals.jsonl` beside the run record
+(`Refusals`, `daemon/internal/enrich/refusals.go`). It is keyed by
+`Fingerprint.Key` — literally the same function the fingerprint gate calls,
+passed in rather than reimplemented — so pass version, rules hash and body
+decide a standing refusal exactly as they decide an idempotent skip. The
+`refusal` pre-gate reads it, sixth in the order, between the fingerprint and
+the budget: after the fingerprint because that answers the commoner case,
+and before the budget because the budget counts a call the moment it agrees
+to one. A refused card comes back when its body changes, when the prompt
+changes, or when `GatesVersion` changes — the last being a version over the
+judge's own question, kept out of `PassVersion` deliberately so sharpening
+the judge re-queues the refused set rather than re-owing the deep pass to
+all eight thousand cards.
+
+Only a rejection that named a claim is recorded (`Outcome.RefusedBy`, set
+in `pass.go` only when the post-gate's error wraps `ErrNotEligible`). A
+judge that could not answer, and a judge that rejected without naming a
+claim, both return a plain error and leave no row — otherwise one lapsed
+login would blacklist every card that hour touched. A card that later
+enriches has its row dropped (`Refusals.Resolve`), and the file is
+compacted to one row per card at the end of each run.
+
+It is not in the card's own frontmatter, and not a ledger stage. The
+frontmatter is read by `PassDepth`, which decides deep from light purely on
+whether a stamp is there, and a refusal stored beside one would have to be
+excluded by hand in every reader. The ledger's rebuild wipes a stage and
+recovers it by walking the corpus, and a refusal has nothing in the corpus
+to recover from — that absence is the whole reason it needs recording.
+
 ### The queue
 
 The batch no longer asks for "every `unfiled` note." It walks the
@@ -776,7 +815,22 @@ the card's own text is carried byte for byte now, so nothing of it can go
 missing. What the judge still checks, on every note, is the other
 direction: whether the title, the summary, or the added prose asserts
 anything the card and its neighbours did not (`Grounding`,
-`daemon/internal/enrich/grounding.go`). `daemon.enrich_sample_rate`, which
+`daemon/internal/enrich/grounding.go`).
+
+The judge's source is the card the enricher was shown, not a shorter version
+of it. It used to be the body alone, with the frontmatter stripped, while the
+enricher was handed the whole card and told every claim must trace to it — so
+a proposal naming the card's own `source_id`, `lifecycle` or `captured` date
+was refused for asserting what the judge could not see. Three of the nineteen
+refusals on 2026-09-11 were exactly that. `judgeSource` now keeps the
+frontmatter, less the fields the pass writes itself
+(`passWrittenFields`, `render.go`): on a card the pass has already enriched,
+its `title`, `summary` and `tags` are its previous answer, and handing those
+back as source would let one pass's hallucination ground the next pass's
+restatement of it. A card with no enrichment stamp has no previous pass, so
+all of its frontmatter is the capture's and all of it is evidence.
+
+`daemon.enrich_sample_rate`, which
 governed how often the retired half sampled, is no longer read; a config
 that still carries the key is harmless.
 
@@ -877,7 +931,7 @@ Each section is left out when it has nothing to say. When *What ran*, *What need
 
 | Line | What it says | Read from |
 |---|---|---|
-| What ran · enrichment | `N judged · N filed active · N below the floor · N sank · N calls · N tokens against the line · <model>`, then `N failed` and `Stopped by <reason>` when present; a note that sank also counts below the floor | `<engine state dir>/enrich-runs.jsonl`, the runs since the opening |
+| What ran · enrichment | `N judged · N filed active · N below the floor · N sank · N calls · N tokens against the line · <model>`, then `N failed` and `Stopped by <reason>` when present; a note that sank also counts below the floor. Then `N card(s) stand refused at this pass`, with `, N of them skipped free rather than judged again` when the run declined any — silence means none stand, and the headline carries `, N refused` beside the judged count | `<engine state dir>/enrich-runs.jsonl`, the runs since the opening; the numbers are the run's own `refusals_open` and `refused` |
 | What ran · the binary | the pass's mode, outcome and gate reason, then one table row per job (lifecycle, copies, refile, promote, calendar, mocs, dates); `ran, and its gate held; the last pass was N ago` when the runner started it and the gate held | `<engine state dir>/dreaming/last-report.json`, when written since the opening |
 | What ran · the Python cycle | possible twins, shared keys, proposed facets, and the orphan, contradiction and mis-cased-link counts from lint; `filing is halted` with the parse error when the contract did not parse | `<engine state dir>/dreaming/python-cycle.json`, when written since the opening |
 | What ran · did not run | `Did not run last night: <step> (<reason>)` for enrichment, the dreaming binary, the Python cycle or the corpus scorecard | the runner's per-job markers and `~/.cache/agentm/runner/last-cycle.json` |

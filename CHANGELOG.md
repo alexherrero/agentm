@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The night stops re-paying for answers it already has.** A card whose
+  response a post-gate rejects is left exactly as it stood, so it carries no
+  enrichment stamp, so eligibility offers it again the next night — nineteen
+  cards did that in a single run on 2026-09-11, seventeen refused by the
+  grounding judge and two by the alias-vocabulary gate, at two model calls
+  apiece. A sixth pre-gate now reads a refusal record
+  (`enrich-refusals.jsonl`, beside `enrich-runs.jsonl` in the engine state
+  directory) and declines those cards for nothing. It is keyed by
+  `Fingerprint.Key` itself — the same function the idempotency gate calls,
+  passed in rather than written twice — so a card returns when its body
+  changes or the prompt does, which is when it is genuinely owed another look.
+  Only a rejection that named a claim is recorded: a judge that could not
+  answer, or one that refused without saying why, leaves no row, because
+  otherwise one lapsed login would blacklist every card that hour touched.
+- **`GatesVersion`**, a version over the post-gates' own wording, deliberately
+  outside `PassVersion`. Sharpening the judge's question invalidates the
+  refusals alone — one night re-judging the refused set — where folding it
+  into the pass version would re-owe the deep pass to every card in the vault.
+
 - **The pasted context payload is layout-free, and every copy of it is derived**
   ([agentm-vault](wiki/designs/agentm-vault.md), landing group 11a).
   `templates/agentmemory-context.md` names `index.md`, `standards/` and
@@ -31,6 +50,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gained a row per copy carrying its hash and naming the one that differs.
 
 ### Changed
+
+- **The faithfulness judge sees the card the enricher was shown.** Its source
+  was the body with the frontmatter stripped, while the enricher is handed the
+  whole card and told every claim must trace to it — so a proposal naming the
+  card's own `source_id`, `lifecycle` or capture date was refused for
+  asserting what the judge could not see. Three of the nineteen refusals above
+  were that and nothing else. The judge now keeps the frontmatter, less the
+  fields the pass writes itself (`passWrittenFields`): on a card already
+  enriched, its `title`, `summary` and `tags` are its own previous answer, and
+  handing those back as source would let one pass's hallucination ground the
+  next pass's restatement of it. A card with no stamp has no previous pass, so
+  all of its frontmatter is the capture's and all of it is evidence.
+- **The morning note says how many cards stand refused**, in the enrichment
+  row and in the headline, with how many the night skipped free rather than
+  judging again. A refused card leaves nothing on disk to notice, so a growing
+  refused set was invisible; silence on this line now means none stand rather
+  than nobody counted.
 
 - **`install.sh` / `install.ps1` render the Gemini managed section** rather
   than copying the Antigravity rule file into it. One renderer,

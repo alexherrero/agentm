@@ -88,6 +88,21 @@ type Outcome struct {
 	// Reason says why, in words meant for a human reading a log. Populated for
 	// a skip and for a failure, empty for a plain success.
 	Reason string
+	// SkippedBy names the pre-gate that declined the note, empty when none
+	// did. Beside Reason rather than inside it, because a caller counting how
+	// many notes a particular gate declined should not have to parse a sentence
+	// written for a person.
+	SkippedBy string
+	// RefusedBy names the post-gate that rejected the model's response as
+	// ineligible, empty when none did.
+	//
+	// Only an ineligible rejection, which is the distinction that keeps this
+	// usable as a durable record. A judge that could not answer — a lapsed
+	// login, an exhausted allowance — and a judge that rejected without naming
+	// a claim both return a plain error rather than ErrNotEligible, and neither
+	// is a finding about the card. Recording those would blacklist every card a
+	// bad hour touched.
+	RefusedBy string
 	// Body is the enriched note, present only when Enriched.
 	Body string
 	// Calls is how many model calls this run spent. Zero on a skip, and the
@@ -306,6 +321,7 @@ func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 			if errors.Is(err, ErrNotEligible) {
 				p.skips.Add(1)
 				out.Skipped = true
+				out.SkippedBy = g.Name()
 				out.Reason = fmt.Sprintf("%s: %v", g.Name(), unwrapReason(err))
 				return out, nil
 			}
@@ -342,6 +358,9 @@ func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 		if err := g.Check(ctx, req, body); err != nil {
 			p.failures.Add(1)
 			out.Elapsed = time.Since(started)
+			if errors.Is(err, ErrNotEligible) {
+				out.RefusedBy = g.Name()
+			}
 			out.Reason = fmt.Sprintf("%s rejected the response: %v", g.Name(),
 				unwrapReason(err))
 			return out, fmt.Errorf("enrich: post-gate %s: %w", g.Name(), err)
