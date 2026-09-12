@@ -506,7 +506,7 @@ def main(argv: list) -> int:
                           members=list(cluster.get("members", [])),
                           reason=_reason_for(cluster, arm)).as_dict())
     # The header comes from the daemon's report rather than from
-    # `$MEMORY_VAULT_PATH`, which is the per-invocation override and is unset on
+    # `$MEMORY_ROOT`, which is the per-invocation override and is unset on
     # an ordinary machine — printing it would say "no vault" whenever the vault
     # was resolved the normal way.
     print(json.dumps({

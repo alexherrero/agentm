@@ -62,11 +62,11 @@ _VALID_ACTIONS = {"promote", "dismiss", "defer", "skip"}
 def _resolve_vault_path(arg_path: str | None) -> Path:
     if arg_path:
         return Path(arg_path).expanduser()
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         return Path(env).expanduser()
     raise ValueError(
-        "vault path required: pass --vault-path or set MEMORY_VAULT_PATH"
+        "vault path required: pass --vault-path or set MEMORY_ROOT"
     )
 
 

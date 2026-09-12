@@ -44,7 +44,7 @@ the corpus keeps frontmatter flat. Parse errors are caught at any depth, since
 the parse is over the whole block.
 
 The vault path is resolved at runtime via `harness_memory.vault_path()` —
-`$MEMORY_VAULT_PATH`, then `plugins.obsidian-vault.vault_path` from the kernel
+`$MEMORY_ROOT`, then `plugins.obsidian-vault.vault_path` from the kernel
 config. Never a literal (see AGENTS.md § Vault-path convention).
 
 Usage:

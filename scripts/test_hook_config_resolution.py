@@ -9,7 +9,7 @@ that setter writes ONLY `plugins.obsidian-vault.vault_path` — so the hooks
 silently fail to resolve the vault and `MEMORY_VAULT_PATH` stays unset.
 
 Extracts the `_resolve_vault_path` function body verbatim from each hook
-script (no `MEMORY_VAULT_PATH` env, no legacy `vault_path` key) and invokes it
+script (no `MEMORY_ROOT` / `MEMORY_VAULT_PATH` env, no legacy `vault_path` key) and invokes it
 directly via `bash -c`, asserting the plugin-namespaced key resolves.
 
 Run: python3 scripts/test_hook_config_resolution.py
@@ -62,6 +62,7 @@ class TestHookConfigResolution(unittest.TestCase):
         func = _extract_function(hook)
         script = f"{func}\n_resolve_vault_path\n"
         env = {**os.environ, "AGENTM_INSTALL_PREFIX": str(self.root)}
+        env.pop("MEMORY_ROOT", None)
         env.pop("MEMORY_VAULT_PATH", None)
         proc = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
         return proc.stdout.strip()

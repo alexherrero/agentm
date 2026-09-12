@@ -22,7 +22,7 @@ A `Stop` event hook that runs reflection mining (via `skills/memory/scripts/refl
 - **Output:**
   - **stdout** — passed through from reflect.py (one JSON record per line: the summary + route passes).
   - **stderr** — one transparency line: `[memory-reflect-stop] Mined N memory + M idea candidates from <transcript>; saved S, filed flagged for review I`.
-- **Exit 0 always** — even on missing transcript, routing errors (e.g. `MEMORY_VAULT_PATH` unset), missing python3 (graceful-skip pattern across the layered failure modes).
+- **Exit 0 always** — even on missing transcript, routing errors (e.g. `MEMORY_ROOT` unset), missing python3 (graceful-skip pattern across the layered failure modes).
 
 ## Implementation status
 
@@ -37,7 +37,7 @@ Routing **shipped** (plan #7a part 3 task 5): the hook mines AND routes — HIGH
 
 ## Failure modes (all soft)
 
-- **`MEMORY_VAULT_PATH` unset** — `reflect.py --route` exits non-zero (no vault to route into); the hook emits a "reflect.py --route exited N (MEMORY_VAULT_PATH set?)" stderr note + exit 0, and leaves the `.start` marker intact so a later pass can retry.
+- **`MEMORY_ROOT` unset** — `reflect.py --route` exits non-zero (no vault to route into); the hook emits a "reflect.py --route exited N (MEMORY_ROOT set?)" stderr note + exit 0, and leaves the `.start` marker intact so a later pass can retry.
 - **Stdin payload missing `session_id`** — hook reports "no session_id on stdin" + exit 0.
 - **Transcript path doesn't exist** — stderr "transcript not found: <path>" + exit 0.
 - **reflect.py not installed** — exit 0 silently (graceful-skip; matches the recall hooks' pattern).

@@ -148,6 +148,7 @@ class _Env:
         os.environ["AGENTM_INSTALL_PREFIX"] = str(self._prefix)
         # Drop the discovery env overrides so a stray operator value can't leak
         # into the resolver; the vault tests inject `vault_plugin_scripts` directly.
+        os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
         os.environ.pop("OBSIDIAN_VAULT_SCRIPTS", None)
         return self
@@ -229,6 +230,7 @@ class TestSelectBackend(unittest.TestCase):
         try:
             self.assertEqual(bs.choose_protocol(), "vault")
         finally:
+            os.environ.pop("MEMORY_ROOT", None)
             os.environ.pop("MEMORY_VAULT_PATH", None)
             if old is not None:
                 os.environ["MEMORY_VAULT_PATH"] = old

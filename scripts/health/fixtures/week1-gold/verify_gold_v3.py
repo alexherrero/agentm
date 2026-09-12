@@ -27,7 +27,8 @@ def resolve_vault_root() -> Path:
         raise SystemExit(
             "[verify_gold_v3] no reachable vault. Set "
             "plugins.obsidian-vault.vault_path via `agentm_config --vault-path` "
-            "or export $MEMORY_VAULT_PATH to the vault root (not Agent/)."
+            "or export $MEMORY_ROOT to the memory root (Agent/); vault_path() "
+            "derives the vault root above it from the configured memory_root."
         )
     return Path(p)
 

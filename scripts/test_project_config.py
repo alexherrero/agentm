@@ -47,6 +47,7 @@ def no_vault_configured():
     old_vault = os.environ.get("MEMORY_VAULT_PATH")
     old_prefix = os.environ.get("AGENTM_INSTALL_PREFIX")
     with tempfile.TemporaryDirectory() as prefix:
+        os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
         os.environ["AGENTM_INSTALL_PREFIX"] = prefix
         hm._reset_warn_state()
@@ -54,6 +55,7 @@ def no_vault_configured():
             yield Path(prefix)
         finally:
             if old_vault is None:
+                os.environ.pop("MEMORY_ROOT", None)
                 os.environ.pop("MEMORY_VAULT_PATH", None)
             else:
                 os.environ["MEMORY_VAULT_PATH"] = old_vault
@@ -204,6 +206,7 @@ class TestRegisterIntegration(unittest.TestCase):
                     config = pc.register(repo, registered_via="auto-detect")
             finally:
                 if old_env is None:
+                    os.environ.pop("MEMORY_ROOT", None)
                     os.environ.pop("MEMORY_VAULT_PATH", None)
                 else:
                     os.environ["MEMORY_VAULT_PATH"] = old_env
@@ -274,6 +277,7 @@ class TestRegisterIntegration(unittest.TestCase):
                     pc.register(repo, registered_via="auto-detect")
             finally:
                 if old_env is None:
+                    os.environ.pop("MEMORY_ROOT", None)
                     os.environ.pop("MEMORY_VAULT_PATH", None)
                 else:
                     os.environ["MEMORY_VAULT_PATH"] = old_env
@@ -646,6 +650,7 @@ class TestShouldNudgeGit(unittest.TestCase):
             (repo / ".git").write_text("gitdir: /elsewhere/.git/worktrees/x\n", encoding="utf-8")
             # Not a harness source, no marker, no vault registration -> nudge.
             old_env = os.environ.get("MEMORY_VAULT_PATH")
+            os.environ.pop("MEMORY_ROOT", None)
             os.environ.pop("MEMORY_VAULT_PATH", None)
             try:
                 rc = pc.main(["should-nudge", str(repo)])

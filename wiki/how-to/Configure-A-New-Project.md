@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Goal:** Open a repo the harness hasn't seen, run the detection flow, and persist an approved enablement config so every later phase resolves this repo's `{slug, type, enabled skills/hooks}`.
-> **Prereqs:** agentm v4.8.0+ (ships V4 #32), `python3` on `PATH`, and a repo with a `.git` dir. A reachable vault (`MEMORY_VAULT_PATH`) to persist the config — without one the proposal still renders but the write is skipped.
+> **Prereqs:** agentm v4.8.0+ (ships V4 #32), `python3` on `PATH`, and a repo with a `.git` dir. A reachable vault (`MEMORY_ROOT`) to persist the config — without one the proposal still renders but the write is skipped.
 
 When you open an unconfigured code project, the SessionStart hook emits a one-line nudge offering to configure it. Saying "configure this project" or running `/setup --detect` scans the repo, renders a default-all-enabled proposal with a per-skill/per-hook rationale, and writes the approved enablement block to `project.json` on approval.
 

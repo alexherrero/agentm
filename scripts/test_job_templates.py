@@ -71,10 +71,13 @@ class JobTemplatesLoad(unittest.TestCase):
         # operator's standing spend switch still off — which is the one thing
         # that switch exists to prevent.
         self.assertNotIn("--yes", job.command)
-        # The runner's MEMORY_VAULT_PATH is the memory root and agentmd reads it
-        # as the vault root; under it the queue is empty and the job judges
-        # nothing, every night, without an error (found 2026-09-11).
-        self.assertTrue(job.command.startswith("env -u MEMORY_VAULT_PATH "), job.command)
+        # The runner exports the memory root and agentmd reads it as the memory
+        # root (2026-09-11). The `env -u MEMORY_VAULT_PATH` prefix that hid the
+        # variable while the daemon still read it as the vault root is gone,
+        # and must not come back: hiding the export from one job is how the
+        # two meanings survived in the first place.
+        self.assertNotIn("env -u", job.command, job.command)
+        self.assertTrue(job.command.startswith("$HOME/.local/bin/agentmd enrich"), job.command)
         # It declares that it spends, so the fleet ceiling gates it (and only
         # it); the number is the night's line (plan 04, task 2; raised to
         # 2,000,000 on 2026-09-11).

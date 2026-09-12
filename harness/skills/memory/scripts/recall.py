@@ -25,11 +25,11 @@
 #
 # Vault resolution chain (matches save.py):
 #   1. --vault-path arg (highest priority; overrides env).
-#   2. MEMORY_VAULT_PATH env var.
+#   2. MEMORY_ROOT env var.
 #   3. No fallback — return None (caller decides what to do).
 #
 # Hook-invocation graceful-skip contract:
-#   - If MEMORY_VAULT_PATH unset OR vault doesn't exist → exit 0 with no
+#   - If MEMORY_ROOT unset OR vault doesn't exist → exit 0 with no
 #     stdout; stderr "no vault configured" line is optional. The hook
 #     never blocks session boot for missing config.
 #   - If _always-load/ directory missing → exit 0 with "Loaded 0" line.
@@ -647,14 +647,14 @@ def _apply_token_budget(
 
 
 def _resolve_vault_path(arg_vault_path: str | None) -> Path | None:
-    """Resolve vault path per the chain: --vault-path → MEMORY_VAULT_PATH env → None.
+    """Resolve vault path per the chain: --vault-path → MEMORY_ROOT env → None.
 
     Returns None if no path resolves. Callers should treat None as
     "graceful-skip" — exit 0 with no output.
     """
     if arg_vault_path:
         return Path(arg_vault_path).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env_path:
         return Path(env_path).expanduser()
     return None
@@ -2799,7 +2799,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--vault-path",
         required=False,
-        help="MemoryVault root (overrides MEMORY_VAULT_PATH env var)",
+        help="MemoryVault root (overrides MEMORY_ROOT env var)",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -2936,7 +2936,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "query":
         if vault is None:
             print(
-                "ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)",
+                "ERROR: no vault path resolved (set --vault-path or MEMORY_ROOT)",
                 file=sys.stderr,
             )
             return 1
@@ -2965,7 +2965,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "heat-policy":
         if vault is None:
             print(
-                "ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)",
+                "ERROR: no vault path resolved (set --vault-path or MEMORY_ROOT)",
                 file=sys.stderr,
             )
             return 1
@@ -2987,7 +2987,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "heat-pin":
         if vault is None:
             print(
-                "ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)",
+                "ERROR: no vault path resolved (set --vault-path or MEMORY_ROOT)",
                 file=sys.stderr,
             )
             return 1

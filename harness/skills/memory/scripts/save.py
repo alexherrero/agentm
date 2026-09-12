@@ -704,7 +704,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--vault-path",
         required=False,
-        help="path to MemoryVault root (overrides MEMORY_VAULT_PATH env var)",
+        help="path to MemoryVault root (overrides MEMORY_ROOT env var)",
     )
     parser.add_argument(
         "--group",
@@ -758,17 +758,17 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def _resolve_vault_path(arg_vault_path: str | None) -> Path:
     """Resolve vault path per the documented chain.
 
-    Order: --vault-path arg > MEMORY_VAULT_PATH env > error.
+    Order: --vault-path arg > MEMORY_ROOT env > error.
     (The third level — ~/.config/crickets/memory.yml — is deferred to a
     future task; documented in SKILL.md.)
     """
     if arg_vault_path:
         return Path(arg_vault_path).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env_path:
         return Path(env_path).expanduser()
     raise FileNotFoundError(
-        "No vault path resolved. Set --vault-path or the MEMORY_VAULT_PATH "
+        "No vault path resolved. Set --vault-path or the MEMORY_ROOT "
         "environment variable. (Config-file resolution path "
         "~/.config/crickets/memory.yml is documented but not yet "
         "implemented as of v0.9.0; tracked for a future task.)"

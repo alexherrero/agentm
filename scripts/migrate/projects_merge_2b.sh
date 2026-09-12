@@ -20,9 +20,9 @@
 # completes the remainder and touches nothing done.
 set -euo pipefail
 
-VAULT="${MEMORY_VAULT_PATH:-}"          # the MEMORY root (…/Vault/Agent)
+VAULT="${MEMORY_ROOT:-${MEMORY_VAULT_PATH:-}}"   # the MEMORY root (…/Vault/Agent)
 if [[ -z "$VAULT" || ! -d "$VAULT" ]]; then
-  echo "projects_merge_2b: MEMORY_VAULT_PATH unset or not a directory" >&2
+  echo "projects_merge_2b: MEMORY_ROOT unset or not a directory" >&2
   exit 2
 fi
 ROOT="$(cd "$VAULT/.." && pwd)"          # the vault root (…/Vault)

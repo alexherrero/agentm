@@ -62,13 +62,13 @@ _ROW_RE = re.compile(r"^### (\d+)\. ", re.M)
 def _memory_root(explicit: "str | None") -> Path:
     if explicit:
         return Path(explicit)
-    env = os.environ.get("MEMORY_VAULT_PATH")
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH"))
     if env:
         return Path(env)
     import corpus_scorecard  # noqa: E402  (same skill dir)
     root = corpus_scorecard.memory_root_from_daemon()
     if not root:
-        raise SystemExit("no memory root: set $MEMORY_VAULT_PATH or start the daemon")
+        raise SystemExit("no memory root: set $MEMORY_ROOT or start the daemon")
     return Path(root)
 
 

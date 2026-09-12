@@ -647,11 +647,11 @@ def build(vault: Path, *, now: Optional[float] = None, rel: Path = None,
 
 def main(argv: list = None) -> int:
     ap = argparse.ArgumentParser(description="Write the morning note.")
-    ap.add_argument("--vault-path", default=None, help="the memory root (overrides MEMORY_VAULT_PATH)")
+    ap.add_argument("--vault-path", default=None, help="the memory root (overrides MEMORY_ROOT)")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
-    vault = args.vault_path or os.environ.get("MEMORY_VAULT_PATH") or corpus_scorecard.memory_root_from_daemon()
+    vault = args.vault_path or (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH")) or corpus_scorecard.memory_root_from_daemon()
     if not vault:
-        print("morning-note: no memory root. Set $MEMORY_VAULT_PATH, or start the daemon "
+        print("morning-note: no memory root. Set $MEMORY_ROOT, or start the daemon "
               "so it can say which vault it is serving.", file=sys.stderr)
         return 2
     # Always the memory root's diagnostics/morning: the session brief and the

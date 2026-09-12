@@ -18,6 +18,6 @@ lookback: 24h
 command: >-
   python3 -m health.inbox_digest --cadence 3day
   --db-path ~/.cache/agentm/telemetry/rollup.db
-  --vault-path "$MEMORY_VAULT_PATH"
+  --vault-path "$MEMORY_ROOT"
 tier: T2
 dry_run: true

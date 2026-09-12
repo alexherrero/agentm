@@ -32,7 +32,7 @@ Schema (v2; v4.5.1+) — written to `<install-prefix>/.agentm-config.json`:
       "vault_path": "/path/to/Obsidian/MyVault",     // null when unset; the
                                                       // on-device source of truth
                                                       // for the MemoryVault root
-                                                      // (env MEMORY_VAULT_PATH wins
+                                                      // (env MEMORY_ROOT wins
                                                       // as override per locked DC-2)
       "state_mode": "local" | "vault"                // optional (Hardening I #44);
                                                       // how the harness runs / where

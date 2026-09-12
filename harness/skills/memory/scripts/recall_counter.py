@@ -56,7 +56,7 @@ def default_history_path() -> Path:
     caller no longer just adds a row -- it read-modify-writes the file and can
     drop real ones. Redirecting the path protects whatever the mocks miss.
 
-    Mirrors the `$MEMORY_VAULT_PATH` / `$AGENTM_TELEMETRY_DIR` /
+    Mirrors the `$MEMORY_ROOT` / `$AGENTM_TELEMETRY_DIR` /
     `$XDG_CACHE_HOME` escape hatches this codebase already uses.
     """
     override = os.environ.get("AGENTM_RECALL_HISTORY")

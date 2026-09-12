@@ -152,12 +152,12 @@ class Candidate:
 def resolve_vault(explicit: str | None) -> str:
     """Resolve the vault the same way everything else in this repo does.
 
-    Never a literal. `$MEMORY_VAULT_PATH` is the per-invocation override, then the
+    Never a literal. `$MEMORY_ROOT` is the per-invocation override, then the
     kernel config's `plugins.obsidian-vault.vault_path`.
     """
     if explicit:
         return explicit
-    env = os.environ.get("MEMORY_VAULT_PATH")
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH"))
     if env:
         return env
     cfg_path = Path(os.environ.get("AGENTM_CONFIG") or "")
@@ -190,13 +190,13 @@ def resolve_memory_root(explicit: str | None) -> str:
     while the agent's tree is one level down. This module needs both, and
     handing the gate a memory root makes it refuse with `git-degraded`.
 
-    An explicit `--vault` or `$MEMORY_VAULT_PATH` already names a memory tree by
+    An explicit `--vault` or `$MEMORY_ROOT` already names a memory tree by
     the convention every other consumer follows, so the prefix is not re-applied
     to either.
     """
     if explicit:
         return explicit
-    env = os.environ.get("MEMORY_VAULT_PATH")
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH"))
     if env:
         return env
     root = resolve_vault(None)

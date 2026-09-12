@@ -681,7 +681,7 @@ def _resolve_vault(cli_arg: "str | None") -> "Path | None":
     if cli_arg:
         p = Path(cli_arg)
         return p if p.is_dir() else None
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         p = Path(env).expanduser()
         return p if p.is_dir() else None
@@ -693,7 +693,7 @@ def main(argv: "list[str] | None" = None) -> int:
         prog="ingest-sweep",
         description="The automated half of /memory ingest — fetch, stage, promote, act, fold, re-stamp.",
     )
-    parser.add_argument("--vault-path", help="vault root (default: $MEMORY_VAULT_PATH env var)")
+    parser.add_argument("--vault-path", help="vault root (default: $MEMORY_ROOT env var)")
     parser.add_argument(
         "--staging-window-seconds", type=float, default=_DEFAULT_STAGING_WINDOW_SECONDS,
         help="how long a fetched candidate stays staged before promotion (default: one sweep cycle)",
@@ -702,7 +702,7 @@ def main(argv: "list[str] | None" = None) -> int:
 
     vault = _resolve_vault(args.vault_path)
     if vault is None:
-        print("[ingest-sweep] no vault resolved — pass --vault-path or configure MEMORY_VAULT_PATH", file=sys.stderr)
+        print("[ingest-sweep] no vault resolved — pass --vault-path or configure MEMORY_ROOT", file=sys.stderr)
         return 2
 
     result = run_ingest_sweep(vault, staging_window_seconds=args.staging_window_seconds)

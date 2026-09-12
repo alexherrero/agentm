@@ -319,7 +319,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--vault-path",
         required=False,
-        help="path to MemoryVault root (overrides MEMORY_VAULT_PATH env var)",
+        help="path to MemoryVault root (overrides MEMORY_ROOT env var)",
     )
     return parser.parse_args(argv)
 
@@ -327,11 +327,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def _resolve_vault_path(arg_vault_path: str | None) -> Path:
     if arg_vault_path:
         return Path(arg_vault_path).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env_path:
         return Path(env_path).expanduser()
     raise FileNotFoundError(
-        "No vault path resolved. Set --vault-path or the MEMORY_VAULT_PATH "
+        "No vault path resolved. Set --vault-path or the MEMORY_ROOT "
         "environment variable."
     )
 

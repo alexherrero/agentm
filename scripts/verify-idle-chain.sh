@@ -178,7 +178,7 @@ A_VAULT="$SCRATCH/a-vault"; A_TR="$SCRATCH/a-transcripts"
 seed_vault "$A_VAULT"; seed_transcripts "$A_TR"
 A_ADAPT="$(state_for "$A_VAULT")/skill-discovery-cache/adapt-state/fixture-source"
 
-A_OUT="$(env MEMORY_VAULT_PATH="$A_VAULT" MEMORY_TRANSCRIPT_ROOT="$A_TR" \
+A_OUT="$(env MEMORY_ROOT="$A_VAULT" MEMORY_TRANSCRIPT_ROOT="$A_TR" \
   AGENTM_STATE_DIR="$(state_for "$A_VAULT")" "$PY" "$S/orchestration_idle.py" --vault-path "$A_VAULT" ${DRY_FLAG[@]+"${DRY_FLAG[@]}"} 2>/dev/null)"
 
 assert_equals "A. chain reports it ran (not a plan)" "$(jfield "$A_OUT" status)" "ran"
@@ -229,7 +229,7 @@ assert_equals "A. state: last_fire recorded for idle_chain" "$A_FIRE" "yes"
 # Only meaningful once A really fired, so skip it under the fault.
 if [ "$FAULT" != "dry-run" ]; then
   echo "verify-idle-chain: ── B. cooldown gates run 2 ──"
-  B_OUT="$(env MEMORY_VAULT_PATH="$A_VAULT" MEMORY_TRANSCRIPT_ROOT="$A_TR" \
+  B_OUT="$(env MEMORY_ROOT="$A_VAULT" MEMORY_TRANSCRIPT_ROOT="$A_TR" \
     AGENTM_STATE_DIR="$(state_for "$A_VAULT")" "$PY" "$S/orchestration_idle.py" --vault-path "$A_VAULT" 2>/dev/null)"
   assert_equals "B. second run inside the window is a cooldown no-op" \
     "$(jfield "$B_OUT" status)" "cooldown"
@@ -251,7 +251,7 @@ if n != 1:
     sys.exit('fixture: expected exactly 1 enable_idle_chain key in the seeded config, found %d' % n)
 p.write_text(text, encoding='utf-8')
 " || fail "C. fixture: could not flip enable_idle_chain in the seeded config" "see stderr"
-C_OUT="$(env MEMORY_VAULT_PATH="$C_VAULT" MEMORY_TRANSCRIPT_ROOT="$C_TR" \
+C_OUT="$(env MEMORY_ROOT="$C_VAULT" MEMORY_TRANSCRIPT_ROOT="$C_TR" \
   AGENTM_STATE_DIR="$(state_for "$C_VAULT")" "$PY" "$S/orchestration_idle.py" --vault-path "$C_VAULT" 2>/dev/null)"
 assert_equals "C. disabled chain reports disabled" "$(jfield "$C_OUT" status)" "disabled"
 assert_absent "C. disabled chain mines no transcripts" "$(state_for "$C_VAULT")/transcript-reflection-state.json"
@@ -270,7 +270,7 @@ echo "verify-idle-chain: ── D. discover outcome is not hardcoded ──"
 D_VAULT="$SCRATCH/d-vault"; D_TR="$SCRATCH/d-transcripts"
 seed_vault "$D_VAULT"; seed_transcripts "$D_TR"
 rm -f "$(state_for "$D_VAULT")/skill-discovery-cache/state.json"
-D_OUT="$(env MEMORY_VAULT_PATH="$D_VAULT" MEMORY_TRANSCRIPT_ROOT="$D_TR" \
+D_OUT="$(env MEMORY_ROOT="$D_VAULT" MEMORY_TRANSCRIPT_ROOT="$D_TR" \
   AGENTM_STATE_DIR="$(state_for "$D_VAULT")" "$PY" "$S/orchestration_idle.py" --vault-path "$D_VAULT" 2>/dev/null)"
 D_DISCOVER="$(step_outcome "$D_OUT" discover-skills)"
 if [ -n "$D_DISCOVER" ] && [ "$D_DISCOVER" != "throttled" ]; then
@@ -303,7 +303,7 @@ EOF
 # crystallization step reads <project-root>/.harness/, so leaving it unset would
 # have this gate reading the repo it is running inside.
 E_PROJ="$SCRATCH/e-proj"; mkdir -p "$E_PROJ/.harness"
-E_OUT="$(env MEMORY_VAULT_PATH="$E_VAULT" MEMORY_SKILL_PATHS="$SCRATCH/e-skills" AGENTM_STATE_DIR="$(state_for "$E_VAULT")" \
+E_OUT="$(env MEMORY_ROOT="$E_VAULT" MEMORY_SKILL_PATHS="$SCRATCH/e-skills" AGENTM_STATE_DIR="$(state_for "$E_VAULT")" \
   "$PY" "$S/orchestration_phase.py" --vault-path "$E_VAULT" --project-root "$E_PROJ" \
   post-release 2>/dev/null)"
 assert_equals "E. post-release reports it ran" "$(jfield "$E_OUT" status)" "ran"

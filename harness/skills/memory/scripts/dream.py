@@ -628,13 +628,13 @@ def _resolve_vault_path(arg_vault_path: str | None) -> Path | None:
 
     if arg_vault_path:
         return Path(arg_vault_path).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     return Path(env_path).expanduser() if env_path else None
 
 
 def main(argv: list | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the Python half of the night once.")
-    parser.add_argument("--vault-path", help="the memory root (overrides MEMORY_VAULT_PATH)")
+    parser.add_argument("--vault-path", help="the memory root (overrides MEMORY_ROOT)")
     parser.add_argument("--run-id", help="override the generated run id")
     # Accepted and ignored, so a manifest written before plan 04 still runs:
     # the cycle applies nothing, so there is nothing to cap or to skip.
@@ -644,7 +644,7 @@ def main(argv: list | None = None) -> int:
 
     vault = _resolve_vault_path(args.vault_path)
     if vault is None or not vault.exists():
-        print("ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)", file=sys.stderr)
+        print("ERROR: no vault path resolved (set --vault-path or MEMORY_ROOT)", file=sys.stderr)
         return 1
 
     digest = run_dream(vault, run_id=args.run_id)

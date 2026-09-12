@@ -399,7 +399,7 @@ def _render_report(report: LintReport) -> str:
 
 def main(argv: "list | None" = None) -> int:
     parser = argparse.ArgumentParser(description="Run the lint pass (structural checks + orphans + quality score).")
-    parser.add_argument("--vault-path", help="MemoryVault root (overrides MEMORY_VAULT_PATH env var)")
+    parser.add_argument("--vault-path", help="MemoryVault root (overrides MEMORY_ROOT env var)")
     parser.add_argument(
         "--apply", action="store_true",
         help="write auto-repairable mis-cased-wikilink fixes directly (the nightly cycle "

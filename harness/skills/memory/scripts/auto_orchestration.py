@@ -78,14 +78,14 @@ _STATE_FILENAME = "auto-orchestration-state.json"
 
 # ── vault + path resolution (mirrors the other memory scripts) ──────────────
 def _resolve_vault_path(arg_path: str | None = None) -> Path:
-    """Resolve vault path: arg → MEMORY_VAULT_PATH env → error."""
+    """Resolve vault path: arg → MEMORY_ROOT env → error."""
     if arg_path:
         return Path(arg_path).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env_path:
         return Path(env_path).expanduser()
     raise ValueError(
-        "vault path required: pass --vault-path or set MEMORY_VAULT_PATH"
+        "vault path required: pass --vault-path or set MEMORY_ROOT"
     )
 
 

@@ -278,14 +278,14 @@ print("    state_mode:local OK")
 PY
 
 printf '{"vault_project": "smokedemo"}\n' > "$LOCAL_PROJECT/.harness/project.json"
-echo "# smoke PLAN" | env -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_PREFIX" \
+echo "# smoke PLAN" | env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_PREFIX" \
   python3 "$HARNESS_ROOT/scripts/harness_memory.py" write-state \
   --project-root "$LOCAL_PROJECT" PLAN.md > /dev/null
 if [[ ! -f "$LOCAL_PROJECT/.harness/PLAN.md" ]]; then
   echo "FAIL: --local-state write-state did not land repo-local at .harness/PLAN.md" >&2
   exit 1
 fi
-GOT="$(env -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_PREFIX" \
+GOT="$(env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_PREFIX" \
   python3 "$HARNESS_ROOT/scripts/harness_memory.py" read-state \
   --project-root "$LOCAL_PROJECT" PLAN.md)"
 if [[ "$GOT" != "# smoke PLAN" ]]; then

@@ -13,7 +13,7 @@ A `UserPromptSubmit` event hook that takes the user's prompt as a recall query, 
 ## How it works
 
 - **Trigger:** Claude Code's `UserPromptSubmit` event (matcher `.*` — fires on every user prompt).
-- **Vault resolution:** reads `MEMORY_VAULT_PATH` env var. If unset, exits 0 silently (no-op — the hook never breaks a session where MemoryVault isn't configured).
+- **Vault resolution:** reads `MEMORY_ROOT` env var. If unset, exits 0 silently (no-op — the hook never breaks a session where MemoryVault isn't configured).
 - **Input:** stdin JSON from Claude Code with at minimum a `prompt` field (the user's submitted text).
 - **Recall query:** prompt text → recall engine → top-K relevant entries (default K=5).
 - **Dedup:** entries with paths matching the always-load set (loaded by `memory-recall-session-start`) are dropped — no redundant injection.
@@ -39,7 +39,7 @@ This task ships the **hook scaffold** — the hook installs at its host destinat
 
 ## Failure modes (all soft)
 
-- **`MEMORY_VAULT_PATH` unset:** exits 0 with no output.
+- **`MEMORY_ROOT` unset:** exits 0 with no output.
 - **Vault path doesn't exist:** stderr warning + exit 0.
 - **Stdin not valid JSON or `prompt` field missing:** stderr warning + exit 0 (graceful — the agent still gets the prompt).
 - **Recall engine raises (any reason):** stderr warning + exit 0 with empty injection (degraded-graceful — agent processes prompt without memory context this turn).

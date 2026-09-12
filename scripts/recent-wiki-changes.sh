@@ -17,11 +17,12 @@
 #   --repo <slug>       Filter to one repo only (default: all registered)
 #   --days N            Override AGENTM_WIKI_RECENT_DAYS env (default: 7)
 #   --limit N           Cap rows shown (default: 50)
-#   --vault-path <path> Override $MEMORY_VAULT_PATH env
+#   --vault-path <path> Override $MEMORY_ROOT env (the memory root)
 #   --help, -h          Print this help and exit
 #
 # Env:
-#   MEMORY_VAULT_PATH         vault root (required unless --vault-path passed)
+#   MEMORY_ROOT               the memory root (required unless --vault-path passed);
+#                             MEMORY_VAULT_PATH is its deprecated alias
 #   AGENTM_WIKI_RECENT_DAYS   default recent-window in days (default: 7)
 #
 # Exit:
@@ -31,7 +32,7 @@
 
 set -euo pipefail
 
-VAULT_PATH="${MEMORY_VAULT_PATH:-}"
+VAULT_PATH="${MEMORY_ROOT:-${MEMORY_VAULT_PATH:-}}"
 REPO_FILTER=""
 DAYS="${AGENTM_WIKI_RECENT_DAYS:-7}"
 LIMIT=50
@@ -73,13 +74,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# v4.5.1: resolution order: --vault-path CLI → $MEMORY_VAULT_PATH env (set as
-# $VAULT_PATH default above) → vault_path in .agentm-config.json.
+# Resolution order: --vault-path CLI → $MEMORY_ROOT env (or its deprecated alias
+# $MEMORY_VAULT_PATH; set as $VAULT_PATH default above) → the memory root the
+# kernel config resolves to. The value is the MEMORY root, not the vault root:
+# the registry this reads is `<memory-root>/_meta/repos.json`, and exporting
+# the config's bare vault_path (as this did until 2026-09-11) pointed every
+# reader at `<vault>/_meta/` on the split layout.
 if [[ -z "$VAULT_PATH" ]]; then
-    VAULT_PATH="$(python3 "$(dirname "$0")/agentm_config.py" --get vault_path 2>/dev/null || true)"
+    VAULT_PATH="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import harness_memory; print(harness_memory.memory_root() or "")' "$(dirname "$0")" 2>/dev/null || true)"
 fi
 if [[ -z "$VAULT_PATH" || ! -d "$VAULT_PATH" ]]; then
-    echo '{"skipped": true, "reason": "MEMORY_VAULT_PATH unset AND no vault_path in .agentm-config.json (or resolved directory missing). Run agentm_config.py --vault-path <path> to set."}'
+    echo '{"skipped": true, "reason": "MEMORY_ROOT unset AND no vault_path in .agentm-config.json (or resolved directory missing). Run agentm_config.py --vault-path <path> to set."}'
     exit 1
 fi
 
@@ -100,7 +105,8 @@ fi
 
 # Delegate the heavy lifting to a Python script via stdin to avoid bash heredoc
 # quote-nesting hell. Exports env so child reads vault + registry.
-export MEMORY_VAULT_PATH="$VAULT_PATH"
+export MEMORY_ROOT="$VAULT_PATH"
+export MEMORY_VAULT_PATH="$VAULT_PATH"   # deprecated alias, same value
 export AGENTM_WIKI_RECENT_DAYS="$DAYS"
 export _RWC_REPO_FILTER="$REPO_FILTER"
 export _RWC_LIMIT="$LIMIT"
@@ -114,7 +120,7 @@ import sys
 import time
 from pathlib import Path
 
-vault = os.environ["MEMORY_VAULT_PATH"]
+vault = os.environ["MEMORY_ROOT"]
 days = int(os.environ.get("AGENTM_WIKI_RECENT_DAYS", "7"))
 filter_slug = os.environ.get("_RWC_REPO_FILTER", "")
 limit = int(os.environ.get("_RWC_LIMIT", "50"))
@@ -124,7 +130,7 @@ registry_py = os.environ["_RWC_REGISTRY_PY"]
 try:
     res = subprocess.run(
         [sys.executable, registry_py, "list"],
-        capture_output=True, text=True, env={**os.environ, "MEMORY_VAULT_PATH": vault},
+        capture_output=True, text=True, env={**os.environ, "MEMORY_ROOT": vault, "MEMORY_VAULT_PATH": vault},
     )
     data = json.loads(res.stdout or '{"repos": []}')
 except (subprocess.CalledProcessError, json.JSONDecodeError):

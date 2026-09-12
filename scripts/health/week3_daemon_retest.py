@@ -152,6 +152,7 @@ def run_driver(question, daemon_url, call_budget, *, model, timeout, config_dir,
         "--no-session-persistence", "--disable-slash-commands",
     ]
     env = dict(os.environ)
+    env.pop("MEMORY_ROOT", None)
     env.pop("MEMORY_VAULT_PATH", None)
 
     started = time.monotonic()

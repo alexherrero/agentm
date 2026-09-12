@@ -16,7 +16,7 @@ label).
 
 Graceful-skip contract (mirrors recall.py/save.py's vault resolution):
 CI has no access to the operator's private vault, so this script is NOT a
-hard check-all.sh gate — it resolves MEMORY_VAULT_PATH (or --vault-path),
+hard check-all.sh gate — it resolves MEMORY_ROOT (or --vault-path),
 and if the vault or any fixture-referenced file is unreachable, it reports
 what it can and exits 0 without failing the battery. The synthetic unit
 tests in scripts/test_graph_extract.py are what check-all.sh actually
@@ -51,7 +51,7 @@ HEALTH_AXIS = "memory persist+recall"
 def _resolve_vault(arg_vault_path: str | None) -> Path | None:
     if arg_vault_path:
         return Path(arg_vault_path).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env_path:
         return Path(env_path).expanduser()
     return None
@@ -143,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     vault = _resolve_vault(args.vault_path)
     if vault is None or not vault.exists():
         print(
-            "[eval-v6-graph] no reachable vault (MEMORY_VAULT_PATH unset or "
+            "[eval-v6-graph] no reachable vault (MEMORY_ROOT unset or "
             "path missing) — skipping the real-corpus eval (graceful-skip; "
             "this is expected in CI, which has no access to the private "
             "vault). The synthetic unit tests in test_graph_extract.py "

@@ -36,7 +36,7 @@ Usage:
   python3 scripts/check-vocabulary-membership.py --strict      # baseline ignored
 
 Environment:
-  MEMORY_VAULT_PATH              the corpus root; unset → corpus mode skips (CI has no vault)
+  MEMORY_ROOT              the corpus root; unset → corpus mode skips (CI has no vault)
   AGENTM_VOCAB_BASELINE          baseline path override (tests); default
                                  ~/.local/state/agentm/vocabulary-membership-baseline.json
   AGENTMD                        the daemon binary the contract is asked through
@@ -225,9 +225,9 @@ def main(argv: list) -> int:
         if code != 0:
             return code
 
-        vault = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+        vault = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
         if not vault or not Path(vault).is_dir():
-            print("check-vocabulary-membership: MEMORY_VAULT_PATH unset or not a directory — "
+            print("check-vocabulary-membership: MEMORY_ROOT unset or not a directory — "
                   "corpus mode skipped (the self-test half runs in CI regardless)")
             return 0
         baseline = Path(os.environ.get("AGENTM_VOCAB_BASELINE", "").strip() or _DEFAULT_BASELINE)

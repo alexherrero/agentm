@@ -397,16 +397,16 @@ def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser(description="write the session's episodic trace")
     ap.add_argument("transcript")
     ap.add_argument("--session", required=True)
-    ap.add_argument("--vault-path", default=None, help="the memory root (default: $MEMORY_VAULT_PATH)")
+    ap.add_argument("--vault-path", default=None, help="the memory root (default: $MEMORY_ROOT)")
     ap.add_argument("--day", default=None, help="YYYY-MM-DD (default: the transcript's first message)")
     ap.add_argument("--history", default=None, help="recall history JSONL (default: ~/.cache/agentm/telemetry/recall-history.jsonl)")
     ap.add_argument("--project", default="")
     ap.add_argument("--surface", default=os.environ.get("AGENTM_SURFACE", "").strip(),
                     help="where the session ran, e.g. claude-code (default: $AGENTM_SURFACE)")
     a = ap.parse_args(argv)
-    vault = a.vault_path or os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    vault = a.vault_path or (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if not vault:
-        print("episodic_trace: no memory root (--vault-path or MEMORY_VAULT_PATH)", file=sys.stderr)
+        print("episodic_trace: no memory root (--vault-path or MEMORY_ROOT)", file=sys.stderr)
         return 0
     try:
         trace = from_transcript(Path(a.transcript), session_id=a.session,

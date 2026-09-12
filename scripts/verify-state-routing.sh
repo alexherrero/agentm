@@ -3,7 +3,7 @@
 # guard (R1.3 / agentmEngine#1).
 #
 # Matrix (real CLIs against a scratch vault + scratch device-local project):
-#   A. storage.backend resolves to `vault` (via $MEMORY_VAULT_PATH) → state lands
+#   A. storage.backend resolves to `vault` (via $MEMORY_ROOT) → state lands
 #      at <vault>/desk/projects/<slug>/_harness/, never the repo-local .harness/.
 #   B. `.harness/.project-mode=local` opts out even with a vault configured →
 #      state lands repo-local, proving the opt-out still wins over a synced backend.
@@ -103,14 +103,14 @@ seed_project() {  # seed_project <proj-dir>
 # must point at an isolated, empty prefix instead. Hermeticity regression:
 # this script briefly wrote a fixture into the real vault before this fix.
 FRESH_PREFIX="$SCRATCH/install-prefix-fresh"; mkdir -p "$FRESH_PREFIX"
-hm() { env -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$FRESH_PREFIX" "${MODE_ENV[@]+"${MODE_ENV[@]}"}" \
+hm() { env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$FRESH_PREFIX" "${MODE_ENV[@]+"${MODE_ENV[@]}"}" \
   HARNESS_MEMORY_TOOLKIT_PATH="$S" OBSIDIAN_VAULT_SCRIPTS="$SHIM" "$PY" "$HM" "$@"; }
 
 if [ "$FAULT" != "1" ]; then
   # ── A. vault backend routes into <vault>/desk/projects/<slug>/_harness/ ─────────
   V_VAULT="$SCRATCH/vault"; mkdir -p "$V_VAULT/desk/projects"
   V_PROJ="$SCRATCH/proj-vault"; seed_project "$V_PROJ"
-  MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT")
+  MODE_ENV=("MEMORY_ROOT=$V_VAULT")
   printf '%s' "$PLAN_BODY" | hm write-state --project-root "$V_PROJ" PLAN.md >/dev/null
   assert_exists "A. vault backend: state lands in <vault>/desk/projects/<slug>/_harness/" \
     "$V_VAULT/desk/projects/$SLUG/_harness/PLAN.md"
@@ -122,13 +122,13 @@ if [ "$FAULT" != "1" ]; then
   #        sibling-rooted backend, and state lands in its own _harness/ ─────────
   R_ROOT="$SCRATCH/Vault"; R_VAULT="$R_ROOT/Agent"; mkdir -p "$R_VAULT/memory" "$R_ROOT/Projects/$SLUG" "$R_ROOT/.obsidian"
   R_PROJ="$SCRATCH/proj-root"; seed_project "$R_PROJ"
-  MODE_ENV=("MEMORY_VAULT_PATH=$R_VAULT")
+  MODE_ENV=("MEMORY_ROOT=$R_VAULT")
   printf '%s' "$PLAN_BODY" | hm write-state --project-root "$R_PROJ" PLAN.md >/dev/null
   assert_exists "A2. root generation: state lands in <vault-root>/Projects/<slug>/_harness/" \
     "$R_ROOT/Projects/$SLUG/_harness/PLAN.md"
   assert_absent "A2. root generation: nothing written under the memory root's desk/projects" \
     "$R_VAULT/desk/projects/$SLUG/_harness/PLAN.md"
-  MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT")
+  MODE_ENV=("MEMORY_ROOT=$V_VAULT")
 
   # ── B. .project-mode=local opts out even with a vault configured ───────────
   L_PROJ="$SCRATCH/proj-local-override"; seed_project "$L_PROJ"
@@ -157,7 +157,7 @@ json.dump({'storage.backend': 'vault', 'plugins.obsidian-vault.vault_path': '$D_
           open('$D_PREFIX/.agentm-config.json', 'w'))
 "
 D_PROJ="$SCRATCH/proj-broken"; seed_project "$D_PROJ"
-hm_broken() { env -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$D_PREFIX" \
+hm_broken() { env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$D_PREFIX" \
   HARNESS_MEMORY_TOOLKIT_PATH="$S" OBSIDIAN_VAULT_SCRIPTS="$SHIM" "$PY" "$HM" "$@"; }
 D_OUT="$(printf '%s' "$PLAN_BODY" | hm_broken write-state --project-root "$D_PROJ" PLAN.md 2>&1)"
 D_RC=$?
@@ -174,7 +174,7 @@ if [ "$FAULT" = "1" ]; then
   # scripts/harness_memory.py) under the SAME broken-vault + explicit-backend
   # scratch scenario as D, to prove this fixture is a faithful regression case
   # for the historical bug (not just an arbitrary broken-config scenario).
-  OLD_BUG_OUT="$(AGENTM_INSTALL_PREFIX="$D_PREFIX" env -u MEMORY_VAULT_PATH "$PY" - "$REPO/scripts" "$D_PROJ" <<'PYEOF'
+  OLD_BUG_OUT="$(AGENTM_INSTALL_PREFIX="$D_PREFIX" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH "$PY" - "$REPO/scripts" "$D_PROJ" <<'PYEOF'
 import sys
 sys.path.insert(0, sys.argv[1])
 import harness_memory as hm

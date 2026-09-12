@@ -35,7 +35,7 @@ window: "02:00-06:00"
 order: 3
 
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
-# Relies on MEMORY_VAULT_PATH already being set in the runner's own
+# Relies on MEMORY_ROOT already being set in the runner's own
 # environment, same as every other vault-reading script in this repo. No
 # `--batch-cap`: the cycle applies nothing, so there is nothing to cap (the
 # flag is still accepted, so a live copy that passes it keeps running).

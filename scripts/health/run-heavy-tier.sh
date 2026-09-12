@@ -81,7 +81,7 @@ if "$PY" -c "import sentence_transformers" >/dev/null 2>&1; then
   mkdir -p "$RE_VAULT/memory/reference"
   printf 'the deployment runbook staging gate lives at ops/deploy.md\n' \
     > "$RE_VAULT/memory/reference/deploy-runbook.md"
-  RE_OUT="$(MEMORY_VAULT_PATH="$RE_VAULT" "$PY" "$S/recall.py" query "deployment runbook staging gate" -k 5 2>&1)"; RE_RC=$?
+  RE_OUT="$(MEMORY_ROOT="$RE_VAULT" "$PY" "$S/recall.py" query "deployment runbook staging gate" -k 5 2>&1)"; RE_RC=$?
   rm -rf "$RE_VAULT"
   if [ "$RE_RC" -eq 0 ] && printf '%s' "$RE_OUT" | grep -q "deploy-runbook"; then
     emit "run-heavy-tier" "memory persist+recall" "real-embedding recall surfaces a seeded entry (no stub mode)" 1

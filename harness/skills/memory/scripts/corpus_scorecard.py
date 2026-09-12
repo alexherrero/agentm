@@ -152,15 +152,16 @@ def _agentmd(args: list) -> Any:
         # daemon writes UTF-8 and its own messages carry em-dashes — the meters'
         # "no vectors to measure —" among them — so the default would mojibake
         # the reason a report is about to print.
-        # Without $MEMORY_VAULT_PATH. The runner exports it as the memory root,
-        # and agentmd reads it as the vault root: under it the ledger answered
-        # "0 eligible" over a corpus of 183 cards (2026-09-11), and this report
-        # and the morning note printed that as a measurement. The daemon's own
-        # config names the vault.
+        # Under the caller's own environment, memory-root export included. The
+        # runner exports the memory root; until 2026-09-11 agentmd read that
+        # variable as the vault root, the ledger answered "0 eligible" over a
+        # corpus of 183 cards, and this report printed it as a measurement —
+        # so the variable was stripped here before asking. The daemon now reads
+        # the export as the memory root and derives the vault root from it,
+        # the same way harness_memory does, so the strip is gone: a scratch
+        # export reaches the daemon, and one meaning holds on both sides.
         proc = subprocess.run(argv, capture_output=True, text=True,
-                              encoding="utf-8", timeout=_TIMEOUT_SECONDS,
-                              env={k: v for k, v in os.environ.items()
-                                   if k != "MEMORY_VAULT_PATH"})
+                              encoding="utf-8", timeout=_TIMEOUT_SECONDS)
     except FileNotFoundError as exc:
         raise DaemonUnavailable(
             f"{DAEMON_BIN} is not on PATH; set $AGENTMD to a built binary") from exc
@@ -733,9 +734,9 @@ def main(argv: list = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     repo = Path(__file__).resolve().parents[4]
 
-    vault = os.environ.get("MEMORY_VAULT_PATH") or memory_root_from_daemon()
+    vault = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH")) or memory_root_from_daemon()
     if not vault:
-        print("corpus-scorecard: no vault. Set $MEMORY_VAULT_PATH, or start the "
+        print("corpus-scorecard: no vault. Set $MEMORY_ROOT, or start the "
               "daemon so it can say which vault it is serving.", file=sys.stderr)
         return 2
 

@@ -88,10 +88,10 @@ def pick_control(binary: str) -> tuple:
     sys.path.insert(0, str(_REPO / "scripts"))
     import harness_memory
 
-    resolved = os.environ.get("MEMORY_VAULT_PATH") or harness_memory.vault_path()
+    resolved = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH")) or harness_memory.vault_path()
     if not resolved:
         raise ProbeError(
-            "no vault resolved — set MEMORY_VAULT_PATH or point the kernel "
+            "no vault resolved — set MEMORY_ROOT or point the kernel "
             "config at one; the probe will not guess a path")
     vault = pathlib.Path(resolved)
     if vault.name != "Agent" and (vault / "Agent").is_dir():

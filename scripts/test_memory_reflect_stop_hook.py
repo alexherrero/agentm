@@ -66,6 +66,7 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         if with_vault:
             env["MEMORY_VAULT_PATH"] = str(self.vault)
         else:
+            env.pop("MEMORY_ROOT", None)
             env.pop("MEMORY_VAULT_PATH", None)
         env.update(over)
         return env

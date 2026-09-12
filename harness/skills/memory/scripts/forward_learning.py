@@ -1078,18 +1078,18 @@ def _resolve_vault_path(arg_vault_path: Optional[str]) -> Optional[Path]:
 
     if arg_vault_path:
         return Path(arg_vault_path).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     return Path(env_path).expanduser() if env_path else None
 
 
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(description="Run one forward-learning scan pass.")
-    parser.add_argument("--vault-path", help="MemoryVault root (overrides MEMORY_VAULT_PATH env var)")
+    parser.add_argument("--vault-path", help="MemoryVault root (overrides MEMORY_ROOT env var)")
     args = parser.parse_args(argv)
 
     vault = _resolve_vault_path(args.vault_path)
     if vault is None or not vault.exists():
-        print("ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)", file=sys.stderr)
+        print("ERROR: no vault path resolved (set --vault-path or MEMORY_ROOT)", file=sys.stderr)
         return 1
 
     result = run_forward_learning(vault)

@@ -871,10 +871,10 @@ def default_report_path(vault: Path, today: str) -> Path:
 def _resolve_vault(arg: Optional[str]) -> Path:
     if arg:
         return Path(arg).expanduser()
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         return Path(env).expanduser()
-    raise FileNotFoundError("no vault path — set --vault or MEMORY_VAULT_PATH")
+    raise FileNotFoundError("no vault path — set --vault or MEMORY_ROOT")
 
 
 def _render_text(model: VaultModel, findings: list) -> str:
@@ -906,7 +906,7 @@ def main(argv: Optional[list] = None) -> int:
     except Exception:
         pass
     p = argparse.ArgumentParser(prog="vault_lint", description="Read-only MemoryVault lint (V4 #33).")
-    p.add_argument("--vault", default=None, help="vault root (else MEMORY_VAULT_PATH)")
+    p.add_argument("--vault", default=None, help="vault root (else MEMORY_ROOT)")
     p.add_argument("--format", choices=("json", "text"), default="text")
     p.add_argument("--scope", choices=tuple(_SCOPE_DIRS), default="all")
     p.add_argument("--audit", action="store_true",

@@ -35,7 +35,7 @@ You fire a named phase chain through the kernel core.
 
 | Condition | Result |
 |---|---|
-| Vault absent / no `MEMORY_VAULT_PATH` | Returns 0, no side-effects. |
+| Vault absent / no `MEMORY_ROOT` | Returns 0, no side-effects. |
 | Memory toolkit not installed | Returns 0, no side-effects. |
 | `phase` not in `_BRIDGE_PHASES` | Raises `ValueError` — a caller bug, distinct from the graceful-skip paths. |
 | Normal execution | Fires the chain, records state (kernel-side), returns 0. |

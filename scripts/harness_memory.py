@@ -4,7 +4,7 @@
 Wires MemoryVault read + write into each harness phase command
 (`/setup`, `/plan`, `/work`, `/review`, `/release`, `/bugfix`). Phase specs
 invoke this CLI unconditionally; the dispatcher graceful-skips when
-MemoryVault is not installed (`$MEMORY_VAULT_PATH` env unset AND no
+MemoryVault is not installed (`$MEMORY_ROOT` env unset AND no
 `plugins.obsidian-vault.vault_path` in `<install-prefix>/.agentm-config.json`
 OR directory missing), so the harness runs the same on systems with or without
 the sibling `crickets` install.
@@ -35,7 +35,10 @@ Stdlib-only. Cross-platform via pathlib + subprocess. No third-party deps.
 
 Env vars consulted:
 
-    MEMORY_VAULT_PATH                       — root of MemoryVault (required for non-skip)
+    MEMORY_ROOT                             — the memory root (the directory holding
+                                              memory/, personal/, projects/, desk/);
+                                              vault_path() derives the vault root from it
+    MEMORY_VAULT_PATH                       — deprecated alias of MEMORY_ROOT, same meaning
     HARNESS_AUTO_SAVE_MODE                  — ask | silent | off (default: ask)
     HARNESS_AUTO_SAVE_CONFIDENCE_THRESHOLD  — float 0–1 (default: 0.8)
     HARNESS_RECALL_BUDGET_<PHASE>           — int tokens per-phase (defaults below)
@@ -198,6 +201,50 @@ _PLUGIN_VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
 # Unset means "the memory root IS the vault root" — the pre-cutover topology,
 # and still correct for every install whose vault_path points at a memory tree.
 _PLUGIN_MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
+
+# The per-invocation override, and the one meaning it has (operator ruling,
+# 2026-09-11): the value IS the memory root — the directory holding `memory/`,
+# `personal/`, `projects/` and `desk/` — never the vault root. Every consumer
+# that reads it joins those spaces onto it, so it has named the memory root in
+# practice since the 2026-08-10 split; what this pins down is that `vault_path()`
+# no longer reads the same value as the vault root. `MEMORY_VAULT_PATH` is the
+# deprecated alias with the same meaning, honoured for at least one release; the
+# new name wins when both are set. The hooks and the runner export both for now,
+# because readers outside this repo (crickets' installed plugins) still know only
+# the old name.
+MEMORY_ROOT_ENV = "MEMORY_ROOT"
+MEMORY_ROOT_ENV_DEPRECATED = "MEMORY_VAULT_PATH"
+
+
+def memory_root_override() -> str:
+    """The memory-root export, stripped: `$MEMORY_ROOT`, else the deprecated
+    `$MEMORY_VAULT_PATH`, else "". Existence is the caller's check."""
+    for name in (MEMORY_ROOT_ENV, MEMORY_ROOT_ENV_DEPRECATED):
+        raw = os.environ.get(name, "").strip()
+        if raw:
+            return raw
+    return ""
+
+
+def _vault_root_from_memory_root(root: Path) -> Path:
+    """The vault root an exported memory root sits in.
+
+    When the configured `plugins.obsidian-vault.memory_root` is the export's
+    trailing path — the shipped layout, `<vault>/Agent` under `memory_root:
+    Agent` — the vault root is what remains above it. Otherwise the layout is
+    flat and the export is both roots at once: a scratch vault, or an install
+    whose config names no prefix. The export never falls through to the
+    config's own `vault_path`: an override is hermetic, and a scratch run whose
+    suffix happens not to match must not land in the operator's real vault.
+    """
+    rel = _read_config_memory_root()
+    if not rel:
+        return root
+    parts = rel.split("/")
+    if len(root.parts) > len(parts) and list(root.parts[-len(parts):]) == parts:
+        return Path(*root.parts[:-len(parts)])
+    return root
+
 
 # One-time migration warning flag (reset by _reset_warn_state() in tests).
 _warned_vault_path_migration: bool = False
@@ -395,8 +442,8 @@ def engine_state_dir() -> Path:
     install already keeps under `~/.local/share/agentm`.
 
     `$AGENTM_STATE_DIR` is the per-invocation override tests and CI use to
-    point at a scratch directory — the same contract `$MEMORY_VAULT_PATH`
-    holds for the vault. Always returns a path (state has a home whether or
+    point at a scratch directory — the same contract `$MEMORY_ROOT`
+    holds for the memory root. Always returns a path (state has a home whether or
     not a vault resolves); creation is the caller's mkdir, not this
     resolver's side effect.
     """
@@ -439,17 +486,18 @@ def memory_root() -> Optional[Path]:
     folders by design), and `vault_lint._obsidian_root` (which walks up for
     `.obsidian/` and lands correctly from either).
 
-    `$MEMORY_VAULT_PATH` is returned as-is, WITHOUT joining the configured
-    prefix. The variable has always named the memory tree to the consumers that
-    actually read it — `recall.py`, `reflect.py` and `capture.py` all join
-    `personal/`, `projects/` and `_meta/` to it — so an export is already a
-    memory root and joining a second prefix onto it would address
-    `<vault>/Agent/Agent`. The hooks are what supply it, and they supply this.
+    An export — `$MEMORY_ROOT`, or its deprecated alias `$MEMORY_VAULT_PATH` —
+    is returned as-is, WITHOUT joining the configured prefix. The variable names
+    the memory tree to every consumer that reads it — `recall.py`, `reflect.py`
+    and `capture.py` all join `personal/`, `projects/` and `_meta/` to it — so
+    an export is already a memory root and joining a second prefix onto it would
+    address `<vault>/Agent/Agent`. The hooks are what supply it, and they supply
+    this. `vault_path()` derives the vault root from the same export.
 
     Returns None when no vault is accessible, matching `vault_path()`, so every
     existing graceful-skip on a falsy vault keeps working unchanged.
     """
-    raw = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    raw = memory_root_override()
     if raw:
         # Same fail-quiet-on-broken-export semantics as vault_path()'s env
         # branch: a set-but-wrong export is reported as "no vault", never
@@ -529,10 +577,20 @@ def vault_path() -> Optional[Path]:
     """Return the MemoryVault root if accessible, else None.
 
     Resolution order (first hit wins):
-      1. `$MEMORY_VAULT_PATH` env — preserved as override for CI / debugging /
-         per-session use. Even when set to a non-existent path, env takes
-         precedence: this branch returns None rather than falling through,
-         so operators can detect + fix a broken export. (v4.5.1 locked DC-2.)
+      1. The memory-root export — `$MEMORY_ROOT`, or its deprecated alias
+         `$MEMORY_VAULT_PATH` — preserved as override for CI / debugging /
+         per-session use. The export names the MEMORY root, so the vault root
+         is derived from it: the configured `plugins.obsidian-vault.memory_root`
+         is taken off its end when it is there (`<vault>/Agent` → `<vault>`),
+         and otherwise the layout is flat and the export is the vault root too
+         (see `_vault_root_from_memory_root`). Before this, the same value was
+         read as the vault root outright, so under any live export
+         `vault_path() == memory_root()` and every vault-relative path — the
+         corpus-write gate, `notes_link_discovery`, `vault_lint._obsidian_root`
+         — was rooted one level too deep. Even when set to a non-existent
+         path, env takes precedence: this branch returns None rather than
+         falling through, so operators can detect + fix a broken export.
+         (v4.5.1 locked DC-2.)
       2. `<install-prefix>/.agentm-config.json::plugins.obsidian-vault.vault_path`
          — the plugin-namespaced key written by `agentm_config --vault-path` (V5-7).
          Falls back to the legacy flat `vault_path` key; on first legacy-key read
@@ -548,18 +606,18 @@ def vault_path() -> Optional[Path]:
     return here would let the caller silently demote to device-local, which
     could mis-write or orphan the vault — that is the one failure this must
     never permit when the operator has explicitly requested vault storage.
-    The env override (`$MEMORY_VAULT_PATH`) is excluded from the guard: it is
+    The env override (`$MEMORY_ROOT`) is excluded from the guard: it is
     a per-session escape hatch, so a missing-path env is treated as a
     broken export (still graceful-skip on the env branch).
 
     The directory must exist for the path to be returned.
     """
-    raw = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    raw = memory_root_override()
     if raw:
         p = Path(os.path.expanduser(raw))
         if not p.is_dir():
             return None
-        return p
+        return _vault_root_from_memory_root(p)
     result = _read_config_vault_path()
     if result is None and _read_config_storage_backend() == "vault":
         raise StorageBackendNotInstalledError(
@@ -1834,7 +1892,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="harness_memory",
         description=(
             "Auto-context dispatcher for harness phases. Graceful-skips when "
-            "MemoryVault is not installed (MEMORY_VAULT_PATH unset or missing)."
+            "MemoryVault is not installed (MEMORY_ROOT unset or missing)."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)

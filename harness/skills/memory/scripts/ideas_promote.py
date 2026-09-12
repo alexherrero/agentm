@@ -49,19 +49,19 @@ DEFAULT_GC_MONTHS = 6  # per locked design call B1.i
 
 
 def _resolve_vault_path(arg: str | None) -> Path:
-    """vault path: arg → MEMORY_VAULT_PATH env → error."""
+    """vault path: arg → MEMORY_ROOT env → error."""
     if arg:
         return Path(arg).expanduser()
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         return Path(env).expanduser()
     raise FileNotFoundError(
-        "No vault path resolved. Set --vault-path or MEMORY_VAULT_PATH."
+        "No vault path resolved. Set --vault-path or MEMORY_ROOT."
     )
 
 
 def _resolve_vault_root() -> Path | None:
-    """Resolve the MemoryVault root at runtime via $MEMORY_VAULT_PATH —
+    """Resolve the MemoryVault root at runtime via $MEMORY_ROOT —
     never a cached literal. Same convention every sibling script in this
     package honors. Used only as a fallback when `_resolve_ideas_path`
     isn't handed an already-resolved vault (see `promote_idea`, which
@@ -74,10 +74,10 @@ def _resolve_vault_root() -> Path | None:
     extension, enforced by scripts/check-one-way-imports.py's lc8-bridge
     rule). The bridge — or any other caller — is responsible for resolving
     `harness_memory.vault_path()` (the canonical resolver; AGENTS.md §
-    Vault-path convention) and exporting it as $MEMORY_VAULT_PATH before
+    Vault-path convention) and exporting it as $MEMORY_ROOT before
     invoking this script.
     """
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         p = Path(env).expanduser()
         return p if p.is_dir() else None
@@ -105,7 +105,7 @@ def _resolve_ideas_path(arg: str | None, vault: Path | None = None) -> Path:
     if vault is None:
         raise FileNotFoundError(
             "No Ideas.md path resolved. Set --ideas-path, $IDEAS_SURFACE_PATH, "
-            "or $MEMORY_VAULT_PATH (Ideas.md defaults to the parent directory "
+            "or $MEMORY_ROOT (Ideas.md defaults to the parent directory "
             "of the resolved vault path)."
         )
     return vault.parent / "Ideas.md"

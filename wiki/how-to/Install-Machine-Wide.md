@@ -17,10 +17,10 @@ AgentM installs once, for your whole machine. Its customizations go into `~/.cla
 1. **Point the vault at a Google Drive folder.** Create a folder named `Agent` in your Google Drive (the recommended default) and set it as the vault path:
 
    ```bash
-   export MEMORY_VAULT_PATH="<your-google-drive>/Agent"
+   export MEMORY_ROOT="<your-google-drive>/Agent"
    ```
 
-   The install below persists this path into your config, so you only set it once. `$MEMORY_VAULT_PATH` also stays available afterward as a per-invocation override.
+   The install below persists this path into your config, so you only set it once. `$MEMORY_ROOT` also stays available afterward as a per-invocation override.
 
 2. **Install.** Run the installer — it takes no target path:
 
@@ -42,7 +42,7 @@ AgentM installs once, for your whole machine. Its customizations go into `~/.cla
 
 | Symptom | Fix |
 |---|---|
-| The vault path isn't picked up | Make sure `MEMORY_VAULT_PATH` points at the real Drive folder and that it exists. The install persists it; if you set it afterward, re-run the install or set it with `agentm_config --vault-path <path>`. |
+| The vault path isn't picked up | Make sure `MEMORY_ROOT` points at the real Drive folder and that it exists. The install persists it; if you set it afterward, re-run the install or set it with `agentm_config --vault-path <path>`. |
 | You want AgentM in only one project | There is no per-project install any more. AgentM's customizations are machine-wide; what varies per project is its *state* (`PLAN.md`, `progress.md`), which lives in the vault under that project's slug — or in `<repo>/.harness/` if you set [single-repo state mode](Single-Repo-State-Mode). |
 
 ## Related

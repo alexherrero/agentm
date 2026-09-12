@@ -45,6 +45,8 @@ func vaultWithContract(t *testing.T, exempt ...string) string {
 // loadWith writes a kernel config holding the given keys and loads it.
 func loadWith(t *testing.T, vault string, keys map[string]any) (*Config, error) {
 	t.Helper()
+	t.Setenv("MEMORY_ROOT", "")
+	os.Unsetenv("MEMORY_ROOT")
 	t.Setenv("MEMORY_VAULT_PATH", "")
 	os.Unsetenv("MEMORY_VAULT_PATH")
 	t.Setenv("AGENTM_STORAGE_RULES", "")

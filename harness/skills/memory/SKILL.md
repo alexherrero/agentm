@@ -54,7 +54,7 @@ Synchronously writes a markdown entry to MemoryVault. File write returns immedia
 | `<slug>` | yes | — | Kebab-case identifier; filename stem. Validated as `^[a-z0-9-]+$`. |
 | `--group <group>` | no | `personal-private` | Memory group: `personal-private` / `personal-skills` / `desk/projects/<project-slug>`. |
 | `--always-load` | no | false | Routes to `MemoryVault/personal-private/_always-load/<slug>.md` and sets `always_load: true` frontmatter — entry gets injected at SessionStart per the recall-loop part. Overrides `--group` (always lands in `_always-load`). |
-| `--vault-path <path>` | no | from config | Absolute path to the MemoryVault folder. Resolution order: `--vault-path` arg > `MEMORY_VAULT_PATH` env var > `~/.config/crickets/memory.yml` `vault_path:` key > error. |
+| `--vault-path <path>` | no | from config | Absolute path to the MemoryVault folder. Resolution order: `--vault-path` arg > `MEMORY_ROOT` env var > `~/.config/crickets/memory.yml` `vault_path:` key > error. |
 | `--tags <tag1,tag2>` | no | empty list | Comma-separated tags; written to `tags:` frontmatter list. |
 | `--supersedes <old-path>` | no | empty | Path to an existing entry this new entry supersedes. Sets `supersedes:` frontmatter; **does NOT archive the old entry** — that's `/memory evolve`'s job (task 3). `--supersedes` is for cross-link-without-archive cases. |
 
@@ -62,7 +62,7 @@ The entry body (free-form markdown after the YAML frontmatter) comes from stdin 
 
 #### Step-by-step flow
 
-**Step 1 — Resolve vault path.** Walk the resolution order: `--vault-path` arg → `MEMORY_VAULT_PATH` env var → `~/.config/crickets/memory.yml` (`vault_path:` key). If none found, halt with `"No vault path resolved. Set --vault-path, MEMORY_VAULT_PATH, or ~/.config/crickets/memory.yml vault_path: <path>."`. Verify the resolved path exists and is a directory; halt otherwise with a clear error.
+**Step 1 — Resolve vault path.** Walk the resolution order: `--vault-path` arg → `MEMORY_ROOT` env var → `~/.config/crickets/memory.yml` (`vault_path:` key). If none found, halt with `"No vault path resolved. Set --vault-path, MEMORY_ROOT, or ~/.config/crickets/memory.yml vault_path: <path>."`. Verify the resolved path exists and is a directory; halt otherwise with a clear error.
 
 **Step 2 — Validate inputs.** `<kind>` and `<slug>` must match `^[a-z0-9-]+$` (kebab-case). `--group` (if provided) must match `^[a-z0-9-]+(/[a-z0-9-]+)?$` (kebab-case; one optional `/<project-slug>` segment for `desk/projects/<slug>`). Tags (if provided) each must match `^[a-z0-9-]+$`. Halt on any validation failure with a clear error pointing at the offending arg.
 
@@ -262,7 +262,7 @@ The same door, callable by any connected MCP host: `memory_capture(content, kind
 
 - **Unknown `kind`** → returns `success: false` with the specific error; nothing written.
 - **Empty `content`** → returns `success: false`; nothing written.
-- **Vault not resolved** → the CLI exits 2 with a clear remedy (`--vault-path` or `$MEMORY_VAULT_PATH`); the MCP tool raises via the shared `_require_vault()` path every other tool uses.
+- **Vault not resolved** → the CLI exits 2 with a clear remedy (`--vault-path` or `$MEMORY_ROOT`); the MCP tool raises via the shared `_require_vault()` path every other tool uses.
 - **Write failure** (disk full, permissions) → returns `success: false` with the underlying error message — never a silent drop.
 
 #### Anti-patterns
@@ -287,7 +287,7 @@ python3 skills/memory/scripts/ingest.py <url-or-file> \
 |---|---|
 | `<url-or-file>` (positional) | A URL (fetched via a single stdlib `urllib` GET, no HTTP dependency) or a local file path. |
 | `--topic` | The topic slug (kebab-case) notes for this ingest are tagged and slug-prefixed with. **Omit it to get a suggestion first** — the command extracts a title-based slug and stops without writing anything; re-run with `--topic <suggested-or-your-own>` to actually ingest. This is a real confirmation step, not an auto-accept. |
-| `--vault-path` | Same resolution chain as `/memory save`: arg > `MEMORY_VAULT_PATH` env > error. |
+| `--vault-path` | Same resolution chain as `/memory save`: arg > `MEMORY_ROOT` env > error. |
 
 #### What gets written
 
@@ -323,7 +323,7 @@ Atomic archive-and-replace primitive that prevents memory rot when preferences c
 | `<reason>` | yes | — | Free-text rationale recorded in the archive's `superseded_reason` frontmatter. Captures WHY this evolution happened — important for audit-trail review. |
 | `--new-slug <slug>` | no | (same slug as old) | If set, the new entry lands at `<old-parent-dir>/<new-slug>.md` (renamed evolution). If absent, the new entry takes the old entry's slot (in-place evolution; same slug). Validated as `^[a-z0-9-]+$`. |
 | `--body-file <path-or-->` | no | `-` (stdin) | Path to file with the new entry body, or `-` to read from stdin. |
-| `--vault-path <path>` | no | from config | Same resolution chain as `/memory save`: `--vault-path` arg > `MEMORY_VAULT_PATH` env > config (deferred) > error. |
+| `--vault-path <path>` | no | from config | Same resolution chain as `/memory save`: `--vault-path` arg > `MEMORY_ROOT` env > config (deferred) > error. |
 
 #### Step-by-step flow
 
@@ -592,7 +592,7 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/reflect.py corpus \
 | Arg | Required | Default | Meaning |
 |---|---|---|---|
 | `--projects-root <dir>` | no | `$MEMORY_TRANSCRIPT_ROOT` or `~/.claude/projects` | Recursive walk root. |
-| `--vault-path <path>` | yes¹ | `$MEMORY_VAULT_PATH` env | MemoryVault root — state file + inbox writes land here. ¹Required via flag or env. |
+| `--vault-path <path>` | yes¹ | `$MEMORY_ROOT` env | MemoryVault root — state file + inbox writes land here. ¹Required via flag or env. |
 | `--batch-size N` | no | 10 | Sessions per batch (state saved each session; summary line printed every N sessions). |
 | `--max-batches M` | no | unlimited | Stop after M batches — scout mode. State preserved for resume. |
 | `--execute` | no | **off (dry-run default)** | Actually write entries + update state file. Without this flag, runs in dry-run mode (counts + estimates only). |
@@ -685,7 +685,7 @@ Graduates an `_idea-incubator/<slug>/` entry to a real project at `desk/projects
 
 #### Step-by-step flow
 
-**Step 1 — Resolve vault path** via the chain `--vault-path` arg → `MEMORY_VAULT_PATH` env. Halt with clear next-step on failure.
+**Step 1 — Resolve vault path** via the chain `--vault-path` arg → `MEMORY_ROOT` env. Halt with clear next-step on failure.
 
 **Step 2 — Verify incubator entry exists** at `<vault>/personal-private/_idea-incubator/<slug>/`. If missing, halt with `"incubator entry not found: <path> (check slug; list with ls _idea-incubator/)"`. If a `desk/projects/<slug>/` already exists, halt to avoid clobber — operator picks a new slug or removes the existing.
 
@@ -752,12 +752,12 @@ Walks `SKILL.md` files across configured source paths (`crickets/skills/`, `agen
 | Arg | Required | Default | Meaning |
 |---|---|---|---|
 | `--skill-path <dir>` | yes¹ | — | Skill source directory to walk. Repeatable. ¹Required unless `MEMORY_SKILL_PATHS` env var (colon-separated) supplies at least one path. |
-| `--vault-path <path>` | no | `$MEMORY_VAULT_PATH` env | MemoryVault root. Halts if neither arg nor env resolves. |
+| `--vault-path <path>` | no | `$MEMORY_ROOT` env | MemoryVault root. Halts if neither arg nor env resolves. |
 | `--repo-name <slug>` | no | auto-detected | Explicit repo-slug for ALL discovered skills. Overrides the auto-detection walk (which finds the first ancestor containing `.git/` or `AGENTS.md`). Useful when sources don't sit under a git repo. Kebab-normalized regardless of input. |
 
 #### Step-by-step flow
 
-**Step 1 — Resolve vault path** via `--vault-path` arg → `MEMORY_VAULT_PATH` env. Halt with clear next-step on failure.
+**Step 1 — Resolve vault path** via `--vault-path` arg → `MEMORY_ROOT` env. Halt with clear next-step on failure.
 
 **Step 2 — Resolve skill paths** via `--skill-path` args + `MEMORY_SKILL_PATHS` env (colon-separated, deduplicated). Halt with `"no skill paths configured"` if neither produced any path.
 
@@ -839,7 +839,7 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/discover_skills.py \
 
 | Arg | Required | Default | Meaning |
 |---|---|---|---|
-| `--vault-path <path>` | yes¹ | `$MEMORY_VAULT_PATH` env | MemoryVault root — whitelist + cache + state land here. ¹Required via flag or env. |
+| `--vault-path <path>` | yes¹ | `$MEMORY_ROOT` env | MemoryVault root — whitelist + cache + state land here. ¹Required via flag or env. |
 | `--cadence-days N` | no | `7` (or `$MEMORY_SKILL_DISCOVERY_CADENCE_DAYS`) | Minimum days between scans. Used with `--cadence-check`. |
 | `--cadence-check` | no | off | Skip the fetch entirely if `last_scan` was within the cadence window. Used by the idle-hook to avoid hammering URLs on every idle fire. |
 | `--dry-run` | no | off | List sources that would be scanned without actually fetching. |
@@ -875,7 +875,7 @@ Per-source cache lives under `<vault>/_meta/skill-discovery-cache/`:
 
 #### Step-by-step flow
 
-**Step 1 — Resolve vault path** via `--vault-path` arg → `MEMORY_VAULT_PATH` env. Halt with clear error on failure.
+**Step 1 — Resolve vault path** via `--vault-path` arg → `MEMORY_ROOT` env. Halt with clear error on failure.
 
 **Step 2 — Resolve cadence** via `--cadence-days` arg → `$MEMORY_SKILL_DISCOVERY_CADENCE_DAYS` env → default 7.
 
@@ -894,7 +894,7 @@ Per-source cache lives under `<vault>/_meta/skill-discovery-cache/`:
 
 #### Idle-hook integration
 
-`memory-reflect-idle` (the existing orphan-recovery hook from plan #7a part 3 task 4) extends to call `discover_skills.py --cadence-check` at the end of its run. Graceful-skip when `MEMORY_VAULT_PATH` is unset or `discover_skills.py` is absent. The cadence-check means the hook can fire frequently (every SessionStart) without hammering URLs.
+`memory-reflect-idle` (the existing orphan-recovery hook from plan #7a part 3 task 4) extends to call `discover_skills.py --cadence-check` at the end of its run. Graceful-skip when `MEMORY_ROOT` is unset or `discover_skills.py` is absent. The cadence-check means the hook can fire frequently (every SessionStart) without hammering URLs.
 
 #### Failure modes (graceful)
 
@@ -930,7 +930,7 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/adapt_skills.py \
 
 | Arg | Required | Default | Meaning |
 |---|---|---|---|
-| `--vault-path <path>` | yes¹ | `$MEMORY_VAULT_PATH` env | MemoryVault root. ¹Required via flag or env. |
+| `--vault-path <path>` | yes¹ | `$MEMORY_ROOT` env | MemoryVault root. ¹Required via flag or env. |
 | `--source <slug>` | no | all sources | Limit Pass 1 to a single source-slug (e.g. `anthropics-anthropic-cookbook`). |
 | `--skip-network` | no | off | Skip GitHub API enrichment (offline / rate-limited contexts). |
 | `--dry-run` | no | off | Evaluate without writing JSON files or updating state. |
@@ -1080,7 +1080,7 @@ A diary line for today, or a paragraph on any facet of the daily register (filin
 | `--facet <f>` | no (default `diary` via `quick`) | One of the contract's registered facets (`meetings`, `correspondence`, `docs`, `diary`); an unregistered facet is refused naming the registry — adding one is a rules edit, never a mkdir. |
 | `--day YYYY-MM-DD` | no | Today by default. A day before today is closed and refuses the append; correct it with `calendar_facets.py correct --facet <f> --day <day> --text "…"`, which writes a new dated note carrying `supersedes:` back to the original. |
 
-**Step 1 — Resolve the memory root** the way every other verb does (`--vault-path` → `MEMORY_VAULT_PATH` → the kernel config). The register sits at the vault root beside `Projects/`, discovered through the Obsidian witness, never conjured.
+**Step 1 — Resolve the memory root** the way every other verb does (`--vault-path` → `MEMORY_ROOT` → the kernel config). The register sits at the vault root beside `Projects/`, discovered through the Obsidian witness, never conjured.
 
 **Step 2 — Run the writer.** `python3 ~/Antigravity/agentm/harness/skills/memory/scripts/calendar_facets.py --vault <memory-root> quick --text "<text>"` for the diary; `append --facet <f> --text "<text>" [--day …]` otherwise. The writer takes the vault mutex, appends, and regenerates the day index.
 
@@ -1105,7 +1105,7 @@ python3 harness/skills/memory/scripts/recall.py heat-pin <slug> [--vault-path <p
 #### Failure modes (graceful)
 
 - **Not enough recorded sessions yet** → reports `too_early: true` in the result; no demotions considered until the cold-session floor is met.
-- **No vault resolved** → same resolution failure as every other `recall.py` sub-command (`--vault-path` / `MEMORY_VAULT_PATH`).
+- **No vault resolved** → same resolution failure as every other `recall.py` sub-command (`--vault-path` / `MEMORY_ROOT`).
 
 ### `/memory lint`
 
@@ -1128,7 +1128,7 @@ python3 harness/skills/memory/scripts/lint.py [--vault-path <path>] [--apply]
 
 #### Failure modes (graceful)
 
-- **No vault resolved** → same resolution failure as every other verb (`--vault-path` / `MEMORY_VAULT_PATH`); exit 2.
+- **No vault resolved** → same resolution failure as every other verb (`--vault-path` / `MEMORY_ROOT`); exit 2.
 - **A scoring failure on one note** (e.g. a decay-score lookup error) → best-effort; that note's freshness axis falls back to `1.0` rather than failing the whole report.
 
 #### Anti-patterns

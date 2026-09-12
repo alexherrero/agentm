@@ -67,7 +67,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   judging again. A refused card leaves nothing on disk to notice, so a growing
   refused set was invisible; silence on this line now means none stand rather
   than nobody counted.
-
+- **`MEMORY_VAULT_PATH` has one meaning, and a name that says it:
+  `MEMORY_ROOT`.** The variable names the memory root — the directory holding
+  `memory/`, `personal/`, `projects/` and `desk/`, `<vault>/Agent` on the
+  shipped layout — and every consumer that reads it has joined those spaces
+  onto it since the 2026-08-10 split. Two readers took it as the vault root:
+  `harness_memory.vault_path()` returned the same export it gave
+  `memory_root()`, so under any live export the corpus-write gate,
+  `notes_link_discovery` and `vault_lint` were rooted one level too deep; and
+  the daemon's `config.Load` set its vault path from it, so under the runner
+  the nightly batch built its queue at `<memory-root>/Agent/memory/…` and
+  found nothing to judge (“unreadable 183”, the morning note's coverage line
+  reading “not measured”). Both now derive the vault root by taking the
+  configured `plugins.obsidian-vault.memory_root` off the export's end, and
+  treat an export that does not end in it as a flat layout — both roots at
+  once, never a fall-through to the config's own `vault_path`, so a scratch
+  export stays hermetic. The daemon's `vault_source` says which variable
+  spoke and that it was read as the memory root. Every reader in this repo
+  accepts both names, the new one winning; the four memory hooks, the runner
+  and `recent-wiki-changes` (which exported the bare vault root until now)
+  export both, because crickets' installed plugins still know only the old
+  one. `MEMORY_VAULT_PATH` is deprecated with the same meaning and is removed
+  one release after 2026-09-11. The workarounds that existed only because of
+  the split are gone: `enrich-nightly.yaml` no longer runs `agentmd` under
+  `env -u MEMORY_VAULT_PATH`, and the corpus scorecard no longer strips the
+  variable before asking the daemon. The `env -u` guards in the verify scripts
+  stay, and now drop both names: those are hermeticity, not the split.
 - **`install.sh` / `install.ps1` render the Gemini managed section** rather
   than copying the Antigravity rule file into it. One renderer,
   `scripts/payload_render.py`, feeds the tracked rule, `~/.gemini/GEMINI.md`

@@ -168,7 +168,7 @@ def _is_contract_exempt(path: Path, vault: Path | None = None) -> bool:
     because one of its directories happened to be called `personal`. A space is a
     space, not a word.
 
-    Falls back to `$MEMORY_VAULT_PATH` and its parent — the split layout keeps
+    Falls back to `$MEMORY_ROOT` and its parent — the split layout keeps
     memory under `<vault>/Agent/` and the operator's spaces beside it, so the
     exempt space is a sibling of the memory root rather than inside it.
 
@@ -186,7 +186,7 @@ def _is_contract_exempt(path: Path, vault: Path | None = None) -> bool:
     candidates = []
     if vault is not None:
         candidates.append(Path(vault))
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         candidates.append(Path(env))
         candidates.append(Path(env).parent)
@@ -215,7 +215,7 @@ def validate(note_path: Path | str, *, vault: Path | str | None = None) -> list[
     # inherited from a scope list.
     #
     # `vault` is passed by validate_vault, which knows the root. A caller that
-    # does not know it falls back to $MEMORY_VAULT_PATH; a path under no known
+    # does not know it falls back to $MEMORY_ROOT; a path under no known
     # vault is validated rather than skipped.
     #
     # This was already true by accident: the scope dirs sit under the memory root

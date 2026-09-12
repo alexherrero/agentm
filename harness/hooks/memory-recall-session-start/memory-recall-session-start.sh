@@ -127,11 +127,14 @@ if [[ -z "$RECALL_PY" ]]; then
     exit 0
 fi
 
-# Resolve MEMORY_VAULT_PATH: env → .agentm-config.json vault_path → none.
+# Resolve MEMORY_ROOT: env → .agentm-config.json vault_path → none.
 # recall.py requires this; Claude Code doesn't inject it into hook env, so
 # pre-fix the hook found the script but recall.py silently exited 0 on
 # "no vault configured".
 _resolve_vault_path() {
+    if [[ -n "${MEMORY_ROOT:-}" ]]; then
+        printf '%s\n' "$MEMORY_ROOT"; return 0
+    fi
     if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
         printf '%s\n' "$MEMORY_VAULT_PATH"; return 0
     fi
@@ -160,6 +163,11 @@ print(root)
 }
 _resolved_vault="$(_resolve_vault_path 2>/dev/null)" || _resolved_vault=""
 if [[ -n "$_resolved_vault" ]]; then
+    # The memory root, under its one name (operator ruling 2026-09-11).
+    # MEMORY_VAULT_PATH is the deprecated alias with the same meaning, exported
+    # alongside for one release because readers outside this repo (crickets'
+    # installed plugins) still know only that name.
+    export MEMORY_ROOT="$_resolved_vault"
     export MEMORY_VAULT_PATH="$_resolved_vault"
 fi
 unset _resolved_vault
@@ -206,7 +214,7 @@ _resolve_agentm_python() {
 }
 AGENTM_PY="$(_resolve_agentm_python)"
 
-# Invoke recall. recall.py handles MEMORY_VAULT_PATH resolution, glob,
+# Invoke recall. recall.py handles MEMORY_ROOT resolution, glob,
 # frontmatter parse, filter, output, and the 500ms time budget internally.
 # We no longer `exec` it — the SessionStart pending-state briefing
 # (orchestration_briefing.py) appends after the always-load recall
@@ -223,8 +231,8 @@ AGENTM_PY="$(_resolve_agentm_python)"
 # scripts dir, so the same resolver finds it across install scopes.
 BRIEFING_PY="$(_resolve_memory_script orchestration_briefing.py 2>/dev/null)" || BRIEFING_PY=""
 if [[ -n "$BRIEFING_PY" ]]; then
-    if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
-        "$AGENTM_PY" "$BRIEFING_PY" --vault-path "$MEMORY_VAULT_PATH" 2>/dev/null || true
+    if [[ -n "${MEMORY_ROOT:-}" ]]; then
+        "$AGENTM_PY" "$BRIEFING_PY" --vault-path "$MEMORY_ROOT" 2>/dev/null || true
     else
         "$AGENTM_PY" "$BRIEFING_PY" 2>/dev/null || true
     fi

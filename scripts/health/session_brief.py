@@ -175,15 +175,15 @@ def default_state_path() -> Path:
 
 
 def resolve_vault(arg_path: "str | None" = None) -> "Path | None":
-    """arg → $MEMORY_VAULT_PATH → ~/.claude/.agentm-config.json → None.
+    """arg → $MEMORY_ROOT → ~/.claude/.agentm-config.json → None.
 
     Mirrors `memory-recall-session-start.sh`'s own resolver: the host does not
-    inject MEMORY_VAULT_PATH into the hook environment, so fall back to the
+    inject MEMORY_ROOT into the hook environment, so fall back to the
     config's dual key (the V5-8 `plugins.obsidian-vault.vault_path`, then the
     legacy flat `vault_path`).
 
     What every reader here wants is the memory root — the directory holding
-    `diagnostics/` — which is what `$MEMORY_VAULT_PATH` names. The config's
+    `diagnostics/` — which is what `$MEMORY_ROOT` names. The config's
     vault path is the vault root, so the fallback joins the configured
     `plugins.obsidian-vault.memory_root` onto it when there is one. Without the
     join the hook looked for `<vault>/diagnostics/` beside `Agent/` and reported
@@ -191,7 +191,7 @@ def resolve_vault(arg_path: "str | None" = None) -> "Path | None":
     if arg_path:
         p = Path(arg_path).expanduser()
         return p if p.is_dir() else None
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         p = Path(env).expanduser()
         if p.is_dir():

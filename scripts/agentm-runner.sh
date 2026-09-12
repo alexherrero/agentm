@@ -21,9 +21,9 @@ cd "$HERE"
 # job discovery no longer depends on the cd above.
 # A launchd LaunchAgent gets no shell profile and no environment beyond what
 # the plist's own EnvironmentVariables block sets (PATH only, on this
-# machine) -- MEMORY_VAULT_PATH is never one of them. A job manifest's own
+# machine) -- MEMORY_ROOT is never one of them. A job manifest's own
 # command (e.g. observability-digest-3day.yaml's `--vault-path
-# "$MEMORY_VAULT_PATH"`) then silently expands to an empty string, which
+# "$MEMORY_ROOT"`) then silently expands to an empty string, which
 # Path("") resolves to cwd (scripts/, per the cd above) -- inbox_digest.py's
 # own is_dir() check passes on that and writes a real note into
 # scripts/desk/briefs/ instead of the actual vault, exit 0, no error anywhere.
@@ -32,7 +32,7 @@ cd "$HERE"
 # agnostic) -- resolve it here via the canonical resolver rather than
 # depending on the launchd plist to have set it.
 #
-# The resolver is memory_root(), not vault_path(): $MEMORY_VAULT_PATH names the
+# The resolver is memory_root(), not vault_path(): $MEMORY_ROOT names the
 # agent's own tree to every consumer that reads it -- recall.py, reflect.py,
 # capture.py and inbox_digest.py all join `memory/`, `_meta/` or `desk/briefs/`
 # onto it -- so an export is already a memory root, which is exactly what
@@ -44,12 +44,20 @@ cd "$HERE"
 # the cutover and already join the configured prefix; the runner was the last
 # unpatched export. memory_root() falls back to vault_path() when the config key
 # is unset, so an install whose vault root IS its memory root is unchanged.
-if [[ -z "${MEMORY_VAULT_PATH:-}" ]]; then
-    _resolved_vault="$(python3 -c 'import harness_memory; print(harness_memory.memory_root() or "")' 2>/dev/null || true)"
-    if [[ -n "$_resolved_vault" ]]; then
-        export MEMORY_VAULT_PATH="$_resolved_vault"
-    fi
-    unset _resolved_vault
+#
+# One name, one meaning (operator ruling 2026-09-11): MEMORY_ROOT is the memory
+# root. MEMORY_VAULT_PATH is its deprecated alias -- read when the new name is
+# unset, and exported alongside it for one release, because readers outside
+# this repo (crickets' installed plugins) still know only the old name.
+if [[ -z "${MEMORY_ROOT:-}" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
+    MEMORY_ROOT="$MEMORY_VAULT_PATH"
+fi
+if [[ -z "${MEMORY_ROOT:-}" ]]; then
+    MEMORY_ROOT="$(python3 -c 'import harness_memory; print(harness_memory.memory_root() or "")' 2>/dev/null || true)"
+fi
+if [[ -n "${MEMORY_ROOT:-}" ]]; then
+    export MEMORY_ROOT
+    export MEMORY_VAULT_PATH="$MEMORY_ROOT"
 fi
 
 python3 -m runner.cli "$@" --jobs-dir "$REPO_ROOT/.harness/jobs" --harness-dir "$REPO_ROOT/.harness"

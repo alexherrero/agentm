@@ -414,10 +414,10 @@ def apply_designs_move(vault: Path, project: str, arc: str, plan: Plan) -> None:
 def _resolve_vault(arg: str | None) -> Path:
     if arg:
         return Path(arg).expanduser()
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         return Path(env).expanduser()
-    raise FileNotFoundError("no vault path — set --vault or MEMORY_VAULT_PATH")
+    raise FileNotFoundError("no vault path — set --vault or MEMORY_ROOT")
 
 
 def main(argv: list[str] | None = None) -> int:

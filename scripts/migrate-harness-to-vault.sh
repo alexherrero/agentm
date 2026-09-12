@@ -12,7 +12,7 @@
 #   bash agentm/scripts/migrate-harness-to-vault.sh [OPTIONS] [TARGET]
 #
 # Options:
-#   --vault-path <path>   Override vault root. Default: $MEMORY_VAULT_PATH env.
+#   --vault-path <path>   Override vault root. Default: $MEMORY_ROOT env.
 #   --preview             Dry-run: print what would change without modifying.
 #   --cleanup             After migration, delete <target>/.harness/<file> for
 #                         each successfully-migrated file (preserves
@@ -35,7 +35,7 @@
 set -euo pipefail
 
 # ── argument parsing ──────────────────────────────────────────────────────
-VAULT_PATH="${MEMORY_VAULT_PATH:-}"
+VAULT_PATH="${MEMORY_ROOT:-${MEMORY_VAULT_PATH:-}}"
 TARGET=""
 PREVIEW=0
 CLEANUP=0
@@ -83,14 +83,14 @@ if [[ ! -d "$TARGET" ]]; then
 fi
 TARGET="$(cd "$TARGET" && pwd)"
 
-# v4.5.1: resolution order: --vault-path CLI → $MEMORY_VAULT_PATH env →
+# v4.5.1: resolution order: --vault-path CLI → $MEMORY_ROOT env →
 # vault_path in .agentm-config.json.
 if [[ -z "$VAULT_PATH" ]]; then
     VAULT_PATH="$(python3 "$(dirname "$0")/agentm_config.py" --get vault_path 2>/dev/null || true)"
 fi
 if [[ -z "$VAULT_PATH" ]]; then
     echo "Error: vault path not configured." >&2
-    echo "  Resolution: \$MEMORY_VAULT_PATH env → vault_path in ~/.claude/.agentm-config.json → --vault-path CLI." >&2
+    echo "  Resolution: \$MEMORY_ROOT env → vault_path in ~/.claude/.agentm-config.json → --vault-path CLI." >&2
     echo "  Set via: python3 \"\$(dirname \"\$0\")/agentm_config.py\" --vault-path <path>" >&2
     echo "       or: bash install.sh --scope user --force-vault-prompt" >&2
     exit 1

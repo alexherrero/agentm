@@ -211,7 +211,7 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 
 | Key | Default | Notes |
 |---|---|---|
-| `plugins.obsidian-vault.vault_path` | — | Required. `$MEMORY_VAULT_PATH` overrides it. |
+| `plugins.obsidian-vault.vault_path` | — | Required. `$MEMORY_ROOT` overrides it, and names the **memory** root (`<vault>/Agent` on the shipped layout): the daemon takes the configured `memory_root` off the export's end to find the vault root, and an export that does not end in it is a flat layout — both roots at once. `--vault` beats the export. **Deprecated:** `$MEMORY_VAULT_PATH` is the old name for the same variable, with the same memory-root meaning; the hooks and the runner still export it alongside `$MEMORY_ROOT`, and it is removed one release after 2026-09-11. |
 | `daemon.spaces` | derived from `memory_root`: `{"memory": "<root>/memory", "projects": "Projects", "diagnostics": "<root>/diagnostics"}` | Space name to vault-relative directory. `diagnostics` joined the defaults in filing-v2 part 2a. `projects` points at the vault-root sibling `Projects/` as of filing-v2 part 2b — unprefixed, since it sits beside `<root>` (previously `<root>/desk/projects`). |
 | `daemon.shard` | `date` | The fallback only — a typed note the filing contract's `routing` table names lands in that class directory regardless of this setting (see [Lifecycle, sources, and facets](#lifecycle-sources-and-facets)). `daemon.shard` governs only a note the contract can't place: `date` writes `<space>/<YYYY>/<MM>/<slug>.md`, `flat` writes `<space>/<slug>.md`. |
 | `daemon.phone_paths` | `[]` | Vault-relative prefixes whose changes are attributed to the phone. |
@@ -918,7 +918,7 @@ The last step of the night, and the page you read the next morning. `morning_not
 
 | | |
 |---|---|
-| Command | `python3 harness/skills/memory/scripts/morning_note.py [--vault-path <memory-root>]`; without the flag, `$MEMORY_VAULT_PATH`, then the memory root the daemon reports |
+| Command | `python3 harness/skills/memory/scripts/morning_note.py [--vault-path <memory-root>]`; without the flag, `$MEMORY_ROOT`, then the memory root the daemon reports |
 | Scheduled by | `templates/jobs/morning-note.yaml`: `schedule: daily`, `lookback: 3d`, window `02:00-06:00`, order 5 (after the corpus scorecard at 4), `tier: T2`, `dry_run: false` |
 | Writes | `<memory-root>/diagnostics/morning/YYYY-MM-DD.md`, dated by local time, and a copy at `latest_morning_note.md` beside it; a `diagnostics` space the daemon reports takes the place of `diagnostics/` |
 | Frontmatter | `title`, `kind: report`, `date`, `headline` (*What ran* in one line with a count of the lists that need you, JSON-quoted), `generated_by: morning_note.py` |

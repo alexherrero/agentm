@@ -16,7 +16,7 @@ lookback: 3d
 window: "02:00-06:00"
 order: 5
 
-# Runs from `scripts/` as cwd; MEMORY_VAULT_PATH is the memory root in the
+# Runs from `scripts/` as cwd; MEMORY_ROOT is the memory root in the
 # runner's environment (scripts/agentm-runner.sh resolves it).
 command: python3 ../harness/skills/memory/scripts/morning_note.py
 

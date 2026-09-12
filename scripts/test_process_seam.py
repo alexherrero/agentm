@@ -94,6 +94,7 @@ class _SeamFixture(unittest.TestCase):
 
     def tearDown(self) -> None:
         if self._prev_vault is None:
+            os.environ.pop("MEMORY_ROOT", None)
             os.environ.pop("MEMORY_VAULT_PATH", None)
         else:
             os.environ["MEMORY_VAULT_PATH"] = self._prev_vault
@@ -105,6 +106,7 @@ class _SeamFixture(unittest.TestCase):
         os.environ["MEMORY_VAULT_PATH"] = str(self.vault)
 
     def _unset_vault(self) -> None:
+        os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
 
     def _dl_select(self):

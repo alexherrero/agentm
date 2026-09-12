@@ -406,8 +406,10 @@ func defaultSpaces(memoryRoot string) map[string]string {
 }
 
 // Load resolves configuration from, in descending precedence: explicit flags,
-// $MEMORY_VAULT_PATH (the documented per-invocation escape hatch), and the
-// kernel config file's plugins.obsidian-vault.vault_path.
+// the memory-root export ($MEMORY_ROOT, or its deprecated alias
+// $MEMORY_VAULT_PATH — the documented per-invocation escape hatch, from which
+// the vault root is derived), and the kernel config file's
+// plugins.obsidian-vault.vault_path.
 func Load(opts Options) (*Config, error) {
 	cfgPath := opts.ConfigPath
 	if cfgPath == "" {
@@ -439,12 +441,46 @@ func Load(opts Options) (*Config, error) {
 		ProbeBudget:     10 * time.Second,
 	}
 
-	// --- the vault path -----------------------------------------------------
+	// --- the memory root, then the vault path --------------------------------
+	//
+	// `plugins.obsidian-vault.memory_root` is the vault-relative prefix the
+	// memory lives under (`Agent` in the shipped layout). It is read before the
+	// vault path because the per-invocation override names the MEMORY root, not
+	// the vault root — one name, one meaning (operator ruling 2026-09-11) — so
+	// the vault root has to be derived from it, and the prefix is what says how.
+	//
+	// Precedence for the vault root:
+	//   1. --vault. The export is then not consulted, and the configured prefix
+	//      stands.
+	//   2. $MEMORY_ROOT, or its deprecated alias $MEMORY_VAULT_PATH (same
+	//      meaning; the new name wins when both are set). The vault root is
+	//      what sits above the configured prefix when the export ends in it
+	//      (`<vault>/Agent` under `Agent` → `<vault>`). An export that does not
+	//      is a flat layout — a scratch vault, or an install with no prefix —
+	//      and is both roots at once, so the prefix becomes empty and the
+	//      export is walked as itself rather than as `<export>/Agent`.
+	//   3. plugins.obsidian-vault.vault_path from the kernel config.
+	//
+	// Until 2026-09-11 the export was read as the vault root outright. Under
+	// the runner, which exports the memory root, every class directory was
+	// then sought at `<memory-root>/Agent/memory/...`, and the nightly batch
+	// found nothing to judge — no error, an empty queue.
+	c.MemoryRoot = strings.Trim(
+		filepath.ToSlash(strings.TrimSpace(strVal(raw, "plugins.obsidian-vault.memory_root"))), "/")
+	envName, envRoot := memoryRootEnv()
 	switch {
 	case opts.VaultPath != "":
 		c.VaultPath, c.VaultSource = opts.VaultPath, "--vault flag"
-	case os.Getenv("MEMORY_VAULT_PATH") != "":
-		c.VaultPath, c.VaultSource = os.Getenv("MEMORY_VAULT_PATH"), "$MEMORY_VAULT_PATH"
+	case envRoot != "":
+		vault, rel := splitMemoryRoot(expandHome(envRoot), c.MemoryRoot)
+		c.VaultPath, c.MemoryRoot = vault, rel
+		if rel != "" {
+			c.VaultSource = fmt.Sprintf(
+				"$%s (the memory root; the vault root is what sits above memory_root %q)", envName, rel)
+		} else {
+			c.VaultSource = fmt.Sprintf(
+				"$%s (the memory root; a flat layout, so it is the vault root too)", envName)
+		}
 	default:
 		if v := strVal(raw, "plugins.obsidian-vault.vault_path"); v != "" {
 			c.VaultPath = v
@@ -458,7 +494,7 @@ func Load(opts Options) (*Config, error) {
 		}
 		return nil, fmt.Errorf(
 			"no vault path: set plugins.obsidian-vault.vault_path in %s, "+
-				"or pass --vault, or set $MEMORY_VAULT_PATH%s", cfgPath, hint)
+				"or pass --vault, or set $MEMORY_ROOT to the memory root%s", cfgPath, hint)
 	}
 	abs, err := filepath.Abs(expandHome(c.VaultPath))
 	if err != nil {
@@ -558,11 +594,8 @@ func Load(opts Options) (*Config, error) {
 		c.EnrichConcurrency = 2
 	}
 
-	c.MemoryRoot = strings.Trim(
-		filepath.ToSlash(strings.TrimSpace(strVal(raw, "plugins.obsidian-vault.memory_root"))), "/")
-
-	// Now that the root is known, a config that named no spaces gets the ones
-	// derived from it.
+	// The memory root was settled with the vault path above. A config that
+	// named no spaces gets the ones derived from it.
 	if len(c.Spaces) == 0 {
 		c.Spaces = defaultSpaces(c.MemoryRoot)
 	}
@@ -780,6 +813,38 @@ func parseDate(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("not a date I can read; use YYYY-MM-DD or RFC3339")
+}
+
+// memoryRootEnv is the per-invocation memory-root override: $MEMORY_ROOT, or
+// the deprecated $MEMORY_VAULT_PATH, which has the same meaning. Returns the
+// variable's name with its value, so VaultSource can say which one spoke.
+func memoryRootEnv() (name, value string) {
+	for _, n := range []string{"MEMORY_ROOT", "MEMORY_VAULT_PATH"} {
+		if v := strings.TrimSpace(os.Getenv(n)); v != "" {
+			return n, v
+		}
+	}
+	return "", ""
+}
+
+// splitMemoryRoot takes an exported memory root apart into the vault root it
+// sits in and the vault-relative prefix. When the configured prefix is the
+// export's trailing path, the vault root is what remains above it. Otherwise
+// the layout is flat: the export is both roots and the prefix is empty. The
+// export never falls through to the config's own vault_path — an override is
+// hermetic, and a scratch vault whose suffix happens not to match must not
+// land the daemon in the operator's real one.
+func splitMemoryRoot(export, configured string) (vault, rel string) {
+	clean := filepath.Clean(export)
+	if configured != "" {
+		suffix := string(filepath.Separator) + filepath.FromSlash(configured)
+		if strings.HasSuffix(clean, suffix) {
+			if above := strings.TrimSuffix(clean, suffix); above != "" {
+				return above, configured
+			}
+		}
+	}
+	return clean, ""
 }
 
 func expandHome(p string) string {
