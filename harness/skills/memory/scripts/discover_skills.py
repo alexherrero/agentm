@@ -54,6 +54,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import engine_state  # noqa: E402
+import vault_layout  # noqa: E402
 
 
 # Default source whitelist seed — operator-specified order: cookbook,
@@ -114,7 +115,7 @@ def _resolve_cadence_days(arg_days: int | None) -> int:
 
 
 def _whitelist_path(vault: Path) -> Path:
-    return vault / "memory" / "skill-discovery-sources.md"
+    return vault_layout.feature_state_path(vault, "skill-discovery-sources.md")
 
 
 def _cache_root(vault: Path) -> Path:
@@ -447,7 +448,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             "the internet; cache + diff each fetch; emit 'new content since "
             "last scan' for the adapt-don't-import workflow (task 4) to "
             "evaluate. Source whitelist is operator-editable at "
-            "<vault>/personal/skill-discovery-sources.md."
+            "Projects/agentm/skill-discovery-sources.md."
         ),
     )
     parser.add_argument(

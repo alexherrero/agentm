@@ -55,6 +55,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import vault_layout  # noqa: E402
+
 
 _VALID_ACTIONS = {"promote", "dismiss", "defer", "skip"}
 
@@ -71,7 +73,7 @@ def _resolve_vault_path(arg_path: str | None) -> Path:
 
 
 def _watchlist_root(vault: Path) -> Path:
-    return vault / "memory" / "_skill-watchlist"
+    return vault_layout.feature_state_path(vault, "_skill-watchlist")
 
 
 def _general_watchlist_root(vault: Path) -> Path:
@@ -79,7 +81,7 @@ def _general_watchlist_root(vault: Path) -> Path:
     forward-learning pipeline's ideas/patterns/references (generalized
     beyond skills; `forward_learning.py` is the sole writer). Same entry
     shape, same review verbs; this CLI scans both roots as one surface."""
-    return vault / "memory" / "_watchlist"
+    return vault_layout.feature_state_path(vault, "_watchlist")
 
 
 def _watchlist_roots(vault: Path) -> list[Path]:

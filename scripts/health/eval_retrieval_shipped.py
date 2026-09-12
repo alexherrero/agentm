@@ -87,6 +87,58 @@ def _remap_merged(path: str) -> str:
     return path
 
 
+# Memory-root trims (agentm-vault plan 05, 2026-09-11): the voice library and
+# the two settings files moved again — but by a migration the operator runs
+# at deploy time, so on a vault that has not moved yet the pre-trims paths
+# are still the true ones. Each remap here is taken only when the vault
+# holds the destination; with no vault (CI) the eval stays pre-trims. Keyed
+# on the paths as the 2b remap leaves them.
+_TRIMS_REMAPS = (
+    ("Projects/_global/wiki-style/", "standards/voice/"),
+    ("Agent/memory/skill-discovery-sources.md", "Projects/agentm/skill-discovery-sources.md"),
+    ("Agent/memory/trusted-sources.md", "Projects/agentm/trusted-sources.md"),
+)
+_VAULT_ROOT: "Path | None | bool" = False  # False = not resolved yet
+
+
+def _vault_root() -> "Path | None":
+    """The vault root the eval's paths are relative to, from the memory root
+    the same way `_migration_table` resolves it (`$MEMORY_ROOT` wins). Cached
+    for the process; a test isolates it by setting `_VAULT_ROOT`."""
+    global _VAULT_ROOT
+    if _VAULT_ROOT is False:
+        import os
+        env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
+        root = Path(env) if env else None
+        if root is None:
+            try:
+                sys.path.insert(0, str(_REPO / "scripts"))
+                import harness_memory  # noqa: E402
+                root = harness_memory.memory_root()
+            except Exception:
+                root = None
+        if root is None or not root.is_dir():
+            _VAULT_ROOT = None
+        else:
+            sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
+            import vault_layout  # noqa: E402
+            _VAULT_ROOT = vault_layout.vault_root_candidates(root)[0]
+    return _VAULT_ROOT
+
+
+def _remap_trims(path: str, vault_root: "Path | None | bool" = False) -> str:
+    root = _vault_root() if vault_root is False else vault_root
+    if root is None:
+        return path
+    for old, new in _TRIMS_REMAPS:
+        if path.startswith(old):
+            candidate = new + path[len(old):]
+            if (Path(root) / candidate).exists():
+                return candidate
+            return path
+    return path
+
+
 # Filing-v2 part 3 (2026-09-03): the corpus migration routed every memory out
 # of the inbox, the legacy type-named dirs, the 2026/ month buckets, _archive
 # and _opinions into the six class directories. The gold set keeps its pinned
@@ -459,7 +511,7 @@ def score(binary: str, entries: list, k: int) -> dict:
     all_scores = []
     for e in entries:
         question = e["question"]
-        expected = [_migrated(_remap_merged(p)) for p in (e.get(EXPECTED_FIELD) or []) if p]
+        expected = [_migrated(_remap_trims(_remap_merged(p))) for p in (e.get(EXPECTED_FIELD) or []) if p]
         rows = _search_rows(binary, question, k)
         got = [path for path, _score in rows]
         all_scores.extend(s for _path, s in rows if s is not None)

@@ -18,7 +18,7 @@ A `SessionStart` event hook that globs `MemoryVault/personal-private/_always-loa
 - **Filter:** entries with `status: superseded` in their frontmatter are skipped (defense-in-depth; supersession normally moves entries to `_archive/` but we filter here too).
 - **Output:**
   - **stdout** — formatted markdown block: a header line + each entry's body (frontmatter stripped) separated by `---` rules. Claude Code injects this as additional session context.
-  - **stderr** — one transparency line: `[memory-recall-session-start] Loaded N MemoryVault always-load entries: <slug-list>` (shown to operator in hook logs but not the agent's context).
+  - **stderr** — one transparency line: `[memory-recall-session-start] Loaded N MemoryVault always-load entries (B bytes injected): <slug-list>` (shown to operator in hook logs but not the agent's context). The tier is `standards/` at the vault root — `storage-rules.md`, `user-preferences.md`, `security-and-secret-governance.md`; generated `moc-*` files and the `voice/` library are never injected — with the retired pen `memory/_always-load/` read behind it while it still holds anything.
 - **Time budget:** 500ms wall clock. On overrun: log a warning to stderr, return the partial results gathered so far (degraded-graceful). The hook never blocks session boot.
 - **Exit 0** always (unless a Python interpreter error — vault problems are warnings, not failures).
 

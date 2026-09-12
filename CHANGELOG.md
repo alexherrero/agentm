@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The memory root holds two folders and nothing loose** (agentm-vault
+  plan 05, the memory-root trims). `agent/` is `diagnostics/` and
+  `memory/`; `memory/` is the six classes. The always-load pen folded into
+  `standards/user-preferences.md`, the file you write;
+  `standards/security-and-secret-governance.md` is drafted from the
+  standing constraints; the nine voice rules moved to `standards/voice/`;
+  `standards/moc-standards.md` is generated. The two watchlists, the three
+  settings files and `forward-learning-sources.json` are agentm's feature
+  state and live in `Projects/agentm/`. `.heat.json`, `.lifecycle.json`,
+  the repo registry and the dream exhaust left the vault for the engine
+  state directory; `_meta/` retired with its how-to twin folded into
+  `index.md`; the empty `desk/` went. Every reader and writer of a moved
+  file resolves it through `vault_layout.py` (the toolkit) — the new home
+  first, the retired one as the fallback, the new home when neither exists
+  — on the Python side, and the daemon's decay reader and the dreaming
+  binary take the engine directory first on the Go side
+  (`index.OpenWithSidecar`, `PlanLifecycle`'s `sidecarDir`). `save
+  --always-load` files a pinned entry into its class; the heat policy
+  reports but never recreates the pen; `repo_registry` reads and writes the
+  engine store (`repos.json`), the vault's `_meta/repos.json` only while it
+  is the sole copy. `scripts/migrate/memory_root_trims.py` moves a live
+  vault (dry run by default, idempotent); `check-memory-root-shape` joins
+  the battery and enforces the shape once the moves have run. The
+  session-start hook's transparency line carries the tier's byte count.
+  The retrieval gate remaps the gold set's voice-rule and settings-file
+  paths through the move. The doctor's `items_source` pointer is checked
+  against the vault, where the project space is.
+
 - **The tier audit names what failed, and stops when every call fails the
   same way.** The first live run of `agentmd tiers --audit` failed thirty
   cheap-tier calls on a lapsed CLI login, and the report could only say a

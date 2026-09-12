@@ -68,7 +68,7 @@ The entry body (free-form markdown after the YAML frontmatter) comes from stdin 
 
 **Step 3 — Compute target path.** Two cases:
 
-- `--always-load` set: `<vault-path>/personal-private/_always-load/<slug>.md`
+- `--always-load` set: the entry's class directory, stamped `lifecycle: pinned` (the pen `memory/_always-load/` retired with the memory-root trims; the always-load tier is `standards/`, yours to write — a vault that still has the pen keeps using it)
 - `--always-load` not set: `<vault-path>/<group>/<kind>/<slug>.md` (with `<group>` defaulting to `personal-private`)
 
 Create parent directories if they don't exist (via Write tool's implicit dir creation, or explicit `Glob` + `Write` for clarity).
@@ -975,7 +975,7 @@ Caller dispatches `adapt-evaluator` (see [`agents/adapt-evaluator.md`](../../age
 1. **Reads** each enriched candidate JSON.
 2. **Cross-references** the operator's vault (`personal-skills/` / `personal-private/_always-load/` / `desk/projects/<repo>/conventions.md`) for fit.
 3. **Classifies** with semantic judgment (HIGH / MEDIUM / LOW) — overrides Pass 1's rubric verdict when context warrants.
-4. **Writes** the watchlist entry to `<vault>/personal-private/_skill-watchlist/<source-slug>/<pattern-slug>.md` (HIGH + MEDIUM only; LOW dropped silently).
+4. **Writes** the watchlist entry to `Projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` — the feature's state lives in its project since the memory-root trims; `memory/_skill-watchlist/` is read as the fallback on a vault that never moved (HIGH + MEDIUM only; LOW dropped silently).
 
 Watchlist entry shape locked in [`agents/adapt-evaluator.md`](../../agents/adapt-evaluator.md) under "Watchlist entry shape".
 
@@ -1099,8 +1099,8 @@ python3 harness/skills/memory/scripts/recall.py heat-policy [--apply] [--vault-p
 python3 harness/skills/memory/scripts/recall.py heat-pin <slug> [--vault-path <path>]
 ```
 
-- **`heat-policy`** — dry-run by default: reports demotion/promotion candidates to stderr without moving anything. Pass `--apply` to actually move files (patches `always_load` frontmatter + relocates the entry). A safety floor (`MIN_ALWAYS_LOAD`) always keeps a minimum number of always-load entries regardless of how many candidates qualify; `heat_pin: true` entries are never demoted.
-- **`heat-pin <slug>`** — pins a specific entry to always-load (`heat_pin: true`), restoring it if a prior run had demoted it. Use this for an entry you want kept warm regardless of recall frequency.
+- **`heat-policy`** — dry-run by default: reports demotion/promotion candidates to stderr without moving anything. Pass `--apply` to actually move files (patches `always_load` frontmatter + relocates the entry). A safety floor (`MIN_ALWAYS_LOAD`) always keeps a minimum number of always-load entries regardless of how many candidates qualify; `heat_pin: true` entries are never demoted. Since the memory-root trims the pen is gone: the policy still reports its candidates (`pen_retired: true` in the result) but moves nothing — the tier is `standards/`, yours — and never recreates the pen.
+- **`heat-pin <slug>`** — pins a specific entry (`heat_pin: true`), restoring it to the pen if a prior run had demoted it; with the pen retired it pins the entry in place. Use this for an entry you want kept warm regardless of recall frequency.
 
 #### Failure modes (graceful)
 

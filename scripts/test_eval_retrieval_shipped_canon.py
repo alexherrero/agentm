@@ -93,6 +93,26 @@ class MigratedPaths(unittest.TestCase):
                          "Projects/agentm/_harness/archive/designs/ag-design-history/a.md")
         self.assertEqual(ev._remap_merged("Agent/memory/semantic/a.md"), "Agent/memory/semantic/a.md")
 
+    def test_the_trims_remaps_fire_only_where_the_vault_has_moved(self):
+        """agentm-vault plan 05: the migration runs at deploy time, so the
+        gold set's voice-rule and settings paths follow the move only on a
+        vault that holds the destination, and stay pre-trims elsewhere."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            old = "Projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+            self.assertEqual(ev._remap_trims(old, vault), old)
+            (vault / "standards" / "voice").mkdir(parents=True)
+            (vault / "standards" / "voice" / "2026-07-05-docs-prose-style.md").write_text("x", encoding="utf-8")
+            self.assertEqual(ev._remap_trims(old, vault), "standards/voice/2026-07-05-docs-prose-style.md")
+            self.assertEqual(ev._remap_trims("Agent/memory/trusted-sources.md", vault),
+                             "Agent/memory/trusted-sources.md")
+            (vault / "Projects" / "agentm").mkdir(parents=True)
+            (vault / "Projects" / "agentm" / "trusted-sources.md").write_text("x", encoding="utf-8")
+            self.assertEqual(ev._remap_trims("Agent/memory/trusted-sources.md", vault),
+                             "Projects/agentm/trusted-sources.md")
+            self.assertEqual(ev._remap_trims("Agent/memory/semantic/a.md", vault), "Agent/memory/semantic/a.md")
+            self.assertEqual(ev._remap_trims(old, None), old, "no vault: the eval stays pre-trims")
+
     def test_purged_and_held_rows_do_not_enter_the_table(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._root(Path(td))

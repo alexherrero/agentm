@@ -245,7 +245,7 @@ seed_vault "$C_VAULT"; seed_transcripts "$C_TR"
 "$PY" -c "
 import re, sys
 from pathlib import Path
-p = Path('$C_VAULT/memory/auto-orchestration-config.md')
+p = Path('$C_VAULT/Projects/agentm/auto-orchestration-config.md')  # plan 05: the feature's state lives in its project
 text, n = re.subn(r'enable_idle_chain\s*=\s*\w+', 'enable_idle_chain = false', p.read_text())
 if n != 1:
     sys.exit('fixture: expected exactly 1 enable_idle_chain key in the seeded config, found %d' % n)

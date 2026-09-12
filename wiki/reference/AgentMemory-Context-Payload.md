@@ -51,7 +51,7 @@ The door is not built yet; it lands with the surfaces plan. Until then the paylo
 1. In a fresh chat on each surface, with no priming: *what's our commit-message convention?* It passes when the answer comes from the vault and cites the note's path.
 2. *Where does agentm stand?* It passes when the answer comes from `moc-projects.md` or a tracker's State. This one can only pass after the projects migration writes the trackers.
 3. *Where does a new capture go?* It passes when the answer names a memory class and `status: unfiled`, and never `_inbox/`, `_always-load/`, `_index.md` or `_harness/`.
-4. From any session: a Drive title search for `storage-rules.md`, `voice-kernel.md` and `index.md` returns exactly one file each, and the doctor reports the Gemini managed section equal to the template.
+4. From any session: a Drive title search for `storage-rules.md`, `user-preferences.md` and `index.md` returns exactly one file each, and the doctor reports the Gemini managed section equal to the template. (Before the memory-root trims folded it in, this checked `voice-kernel.md`; a migrated vault holds the voice content inside `user-preferences.md` instead.)
 
 Check 4 has two halves. The Drive half passes once only one copy of the vault is in the Drive the connector searches. The doctor half is `machinery_doctor.py`'s `payload-copy: gemini managed section` row.
 

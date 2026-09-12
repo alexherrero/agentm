@@ -56,6 +56,8 @@ import storage_rules  # noqa: E402  (the filing contract, for space exemptions)
 # heat_policy.py's HEAT_SIDECAR_NAME convention).
 LIFECYCLE_SIDECAR_NAME = ".lifecycle.json"
 
+import vault_layout  # noqa: E402  (same-dir; the sidecar's home moved to the engine dir in plan 05)
+
 # Decay-exempt "error-history" proxy: the reserved `kind` value save.py
 # already mandates a PII scrub for. Named explicitly in FABLE R1's gate #2.
 DECAY_EXEMPT_KINDS = frozenset({"failure-incident"})
@@ -120,7 +122,7 @@ def is_decay_exempt(fm: dict[str, str], rel_path: str | Path) -> bool:
 
 
 def _load_sidecar(vault: Path) -> dict:
-    path = vault / LIFECYCLE_SIDECAR_NAME
+    path = vault_layout.sidecar_path(vault, LIFECYCLE_SIDECAR_NAME)
     try:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)
@@ -135,10 +137,12 @@ def _save_sidecar(vault: Path, data: dict) -> None:
     try:
         from vault_lock import atomic_write  # type: ignore
     except ImportError:
-        path = vault / LIFECYCLE_SIDECAR_NAME
+        path = vault_layout.sidecar_path(vault, LIFECYCLE_SIDECAR_NAME)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
         return
-    path = vault / LIFECYCLE_SIDECAR_NAME
+    path = vault_layout.sidecar_path(vault, LIFECYCLE_SIDECAR_NAME)
+    path.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(data, indent=2, sort_keys=True)
     atomic_write(path, content)
 

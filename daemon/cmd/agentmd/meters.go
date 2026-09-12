@@ -87,7 +87,7 @@ func cmdMeters(args []string) error {
 	if err != nil {
 		return err
 	}
-	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	idx, err := index.OpenWithSidecar(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.EngineStateDir, cfg.DecayEnabled)
 	if err != nil {
 		return err
 	}

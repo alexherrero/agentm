@@ -195,7 +195,7 @@ func cmdServe(args []string) error {
 
 	log.Info("resolved vault", "path", cfg.VaultPath, "source", cfg.VaultSource)
 
-	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	idx, err := index.OpenWithSidecar(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.EngineStateDir, cfg.DecayEnabled)
 	if err != nil {
 		return err
 	}
@@ -560,7 +560,7 @@ func cmdCapture(args []string) error {
 	if err != nil {
 		return err
 	}
-	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	idx, err := index.OpenWithSidecar(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.EngineStateDir, cfg.DecayEnabled)
 	if err != nil {
 		return err
 	}
@@ -602,7 +602,7 @@ func cmdReindex(args []string) error {
 		}
 		fmt.Println("deleted", cfg.IndexPath)
 	}
-	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	idx, err := index.OpenWithSidecar(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.EngineStateDir, cfg.DecayEnabled)
 	if err != nil {
 		return err
 	}
@@ -661,7 +661,7 @@ func cmdEmbed(args []string) error {
 	if err != nil {
 		return err
 	}
-	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	idx, err := index.OpenWithSidecar(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.EngineStateDir, cfg.DecayEnabled)
 	if err != nil {
 		return err
 	}
@@ -1179,7 +1179,7 @@ func openReadOnly(opts *config.Options) (*config.Config, *index.Index, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	idx, err := index.OpenWithSidecar(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.EngineStateDir, cfg.DecayEnabled)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1245,7 +1245,7 @@ func cmdEnrich(args []string) error {
 	if err != nil {
 		return err
 	}
-	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	idx, err := index.OpenWithSidecar(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.EngineStateDir, cfg.DecayEnabled)
 	if err != nil {
 		return err
 	}

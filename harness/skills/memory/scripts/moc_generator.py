@@ -243,6 +243,80 @@ def generate(vault_path: Path | str) -> list[str]:
 
 
 # -----------------------------------------------------------------------------
+# The standards map (agentm-vault plan 05) — `standards/moc-standards.md`, a
+# generated map of the always-load tier: the rule files at the top of
+# standards/ and the voice library under standards/voice/. The loader skips
+# every `moc-*` file (generated navigation carries no standing instruction),
+# so the map is for you and the chat surfaces, never for the injected tier.
+# It is the one file besides the two drafted documents this plan writes into
+# standards/, and it is fully regenerated: nothing hand-written survives here.
+# -----------------------------------------------------------------------------
+
+_STANDARDS_MOC_NAME = "moc-standards.md"
+
+
+def _standards_dir(vault: Path) -> Path:
+    import vault_layout  # noqa: E402 — same-dir convention
+    return vault_layout.standards_dir(vault)
+
+
+def render_standards_moc(standards: Path) -> str:
+    """The map's text for a standards directory: the rule files, then the
+    voice library, each as a wikilink by stem with its `title:` or first
+    heading when the file carries one."""
+    rules = sorted(p for p in standards.glob("*.md") if not p.stem.startswith("moc-"))
+    voice_dir = standards / "voice"
+    voice = sorted(voice_dir.glob("*.md")) if voice_dir.is_dir() else []
+    lines = [
+        "---",
+        "kind: moc",
+        "status: active",
+        "generated_by: moc_generator.py",
+        "---",
+        "",
+        "# MOC — standards",
+        "",
+        "The always-load tier. Every file at the top of `standards/` loads into",
+        "every session; the voice library under `standards/voice/` is read on",
+        "demand, by genre. Generated — edit the files, not this map.",
+        "",
+        f"## Rules ({len(rules)})",
+        "",
+    ]
+    for p in rules:
+        lines.append(f"- [[{p.stem}]] — {_title_of(p)}")
+    lines += ["", f"## Voice library ({len(voice)})", ""]
+    for p in voice:
+        lines.append(f"- [[{p.stem}]] — {_title_of(p)}")
+    return "\n".join(lines) + "\n"
+
+
+def _title_of(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return path.stem
+    fm = _parse_frontmatter(text) or {}
+    for key in ("title", "trigger", "description"):
+        v = fm.get(key)
+        if v:
+            return str(v).strip().strip("'\"")
+    for line in text.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return path.stem
+
+
+def generate_standards_moc(vault_path: Path | str) -> Path:
+    """Write `standards/moc-standards.md` and return its path."""
+    standards = _standards_dir(Path(vault_path))
+    standards.mkdir(parents=True, exist_ok=True)
+    out = standards / _STANDARDS_MOC_NAME
+    out.write_text(render_standards_moc(standards), encoding="utf-8")
+    return out
+
+
+# -----------------------------------------------------------------------------
 # Arc-index pages (2026-07-18 arc-as-metadata convention) — one real `kind:
 # arc-index` entry per (project, arc), at `projects/<project>/arcs/<arc>.md`.
 # Unlike the fully-generated `_moc/<kind>.md` pages above, an arc-index is a
@@ -358,6 +432,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--vault", required=True, help="path to the vault root")
     parser.add_argument("--arcs", action="store_true",
                          help="also (re)generate projects/<project>/arcs/<arc>.md arc-index pages")
+    parser.add_argument("--standards", action="store_true",
+                         help="also (re)generate standards/moc-standards.md, the always-load tier's map")
     return parser.parse_args(argv)
 
 
@@ -368,6 +444,8 @@ def main(argv: list[str]) -> int:
     print(f"wrote {len(written)} MOC page(s) under {Path(args.vault) / _OUTPUT_DIRNAME}")
     for kind in written:
         print(f"  {kind}.md")
+    if args.standards:
+        print(f"wrote {generate_standards_moc(args.vault)}")
     if args.arcs:
         arc_written = generate_arc_indexes(args.vault, today=date.today().isoformat())
         print(f"wrote/updated {len(arc_written)} arc-index page(s)")

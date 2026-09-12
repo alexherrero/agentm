@@ -22,6 +22,7 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | [Choose a storage backend](Choose-A-Storage-Backend) | Pick the storage backend, confirm its plugin. |
 | [Back the vault with Google Drive](Back-The-Vault-With-Drive) | Sync the vault across devices with Drive. |
 | [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault) | Add the optional Obsidian layer over the vault. |
+| [Run the memory-root trims migration](Run-The-Memory-Root-Trims-Migration) | Move an existing vault onto the post-plan-05 shape — `standards/`, `Projects/agentm/`, and the engine's own files out of the vault. |
 
 ## Use it anywhere
 

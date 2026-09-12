@@ -166,7 +166,11 @@ func SetLifecycle(text, to, since string) string {
 
 // PlanLifecycle reads every memory under `root` and decides the pass. It
 // writes nothing; the run applies the intents through the journal.
-func PlanLifecycle(root string, r *rules.Rules, now time.Time, cap int) (LifecyclePlan, error) {
+//
+// `sidecarDir` is the engine state directory the recall-access sidecar lives
+// in since the memory-root trims; the memory root is read as the fallback, so
+// an empty sidecarDir means the legacy location alone.
+func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap int) (LifecyclePlan, error) {
 	var plan LifecyclePlan
 	dormantAfter, archiveAfter := Thresholds(r)
 	if cap <= 0 {
@@ -176,7 +180,7 @@ func PlanLifecycle(root string, r *rules.Rules, now time.Time, cap int) (Lifecyc
 	if err != nil {
 		return plan, err
 	}
-	log := note.NewAccessLog(root)
+	log := note.NewAccessLog(sidecarDir, root)
 	since := now.UTC().Format("2006-01-02")
 	// Silence is counted in whole days from midnight, the way the Python
 	// policy counts it (its anchors and its `now` are dates), so the two

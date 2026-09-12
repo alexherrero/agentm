@@ -111,9 +111,21 @@ def _target_path(
     vocabulary it has already resolved; `entry_target_path()` below resolves
     first and then calls it, so a caller asking where a note WILL go and the
     writer that puts it there can never answer differently."""
+    class_target = group_target_dir(vault, group) / _class_segment(vocabulary_field, value) / f"{slug}.md"
     if always_load:
-        return vault / "memory" / "_always-load" / f"{slug}.md"
-    return group_target_dir(vault, group) / _class_segment(vocabulary_field, value) / f"{slug}.md"
+        # The pen `memory/_always-load/` retired with the memory-root trims
+        # (plan 05): the always-load tier is `standards/`, the operator's to
+        # write. A pinned save files into its class carrying
+        # `lifecycle: pinned` — the stamp the pinned loader (plan 11) reads —
+        # and only a vault that still has the pen keeps using it. Nothing
+        # recreates the pen.
+        import vault_layout  # noqa: E402 — lazy, same-dir convention
+
+        pen = vault_layout.legacy_pen_dir(vault)
+        if pen.is_dir():
+            return pen / f"{slug}.md"
+        return class_target
+    return class_target
 
 
 def entry_target_path(
@@ -715,8 +727,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--always-load",
         action="store_true",
         help=(
-            "route to personal/_always-load/ + set always_load: true. "
-            "Overrides --group."
+            "set always_load: true + lifecycle: pinned. The entry files into "
+            "its class (the pen memory/_always-load/ retired; the tier is "
+            "standards/, yours to write); a vault that still has the pen "
+            "keeps using it. Overrides --group."
         ),
     )
     parser.add_argument(

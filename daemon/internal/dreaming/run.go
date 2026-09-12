@@ -173,7 +173,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	// applied before the next plans, so a note the copy job just superseded
 	// is not re-filed under it.
 	var intents []Intent
-	plan, err := PlanLifecycle(root, contract, now, opt.Cap)
+	plan, err := PlanLifecycle(root, cfg.EngineStateDir, contract, now, opt.Cap)
 	if err != nil {
 		return rep, err
 	}

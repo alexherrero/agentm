@@ -331,7 +331,7 @@ func TestThePlanSinksTheSilentLiftsTheRecalledAndNamesTheCold(t *testing.T) {
 	blob, _ := json.Marshal(sidecar)
 	os.WriteFile(filepath.Join(root, ".lifecycle.json"), blob, 0o644)
 
-	plan, err := PlanLifecycle(root, nil, now, 0)
+	plan, err := PlanLifecycle(root, "", nil, now, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestThePlanSinksTheSilentLiftsTheRecalledAndNamesTheCold(t *testing.T) {
 			t.Errorf("%s: planning wrote something", in.Rel)
 		}
 	}
-	capped, _ := PlanLifecycle(root, nil, now, 1)
+	capped, _ := PlanLifecycle(root, "", nil, now, 1)
 	if len(capped.Demoted) != 1 || capped.Capped != 1 {
 		t.Errorf("cap 1: demoted %d capped %d, want 1 and 1", len(capped.Demoted), capped.Capped)
 	}
@@ -474,7 +474,7 @@ func TestACrashedPassIsResumedBeforeTheGateAndNothingIsAppliedTwice(t *testing.T
 	a := writeNote(t, root, "memory/semantic/a.md", "active", 400, now, "")
 	b := writeNote(t, root, "memory/semantic/b.md", "active", 400, now, "")
 	// Simulate a pass that journaled two intents, applied the first, and died.
-	plan, _ := PlanLifecycle(root, nil, now, 0)
+	plan, _ := PlanLifecycle(root, "", nil, now, 0)
 	j, _ := OpenJournal(cfg.EngineStateDir)
 	j.Append(Entry{Kind: KindRunStart, RunID: "crashed", TS: now, Mode: "apply"})
 	for i, in := range plan.Intents {

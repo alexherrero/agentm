@@ -103,6 +103,7 @@ if str(_HERE) not in sys.path:
 # sys.path, and a bare import placed earlier only ever worked when the hooks
 # ran the file as a script.
 import engine_state  # noqa: E402
+import vault_layout  # noqa: E402
 from vault_lock import atomic_write  # noqa: E402
 
 # Optional dependency (NOT in requirements.txt's default install — see
@@ -127,13 +128,20 @@ __all__ = [
 _USER_AGENT = "agentm-forward-learning/1.0"
 _FETCH_TIMEOUT_SEC = 10
 
-# The sources whitelist is the operator's to edit — an operator-owned config
-# file, so it lives in standards/ (filing-v2 part 2a), not in machine state.
-SOURCES_CONFIG_REL = Path("standards") / "forward-learning-sources.json"
+# The sources whitelist is the operator's to edit, and it is this feature's
+# state rather than a standing rule, so it lives with the watchlist under
+# Projects/agentm/ (memory-root trims, plan 05). `standards/` — where filing-v2
+# part 2a put it — is read as the fallback while a vault still has it there.
+SOURCES_CONFIG_NAME = "forward-learning-sources.json"
 # The watermark cache is machine state; joined onto the engine state dir by
 # its readers, not onto the vault.
 STATE_NAME = Path("forward-learning-cache") / "state.json"
-WATCHLIST_REL = Path("memory") / "_watchlist"
+WATCHLIST_NAME = "_watchlist"
+# The pre-trims spellings, memory-root-relative. Still read, as fallbacks,
+# by sources_config_path() and watchlist_root(); never the write target of a
+# vault that has the new home.
+SOURCES_CONFIG_REL = Path("standards") / SOURCES_CONFIG_NAME
+WATCHLIST_REL = Path("memory") / WATCHLIST_NAME
 
 VALID_KINDS = ("idea", "pattern", "reference")
 VALID_TYPES = ("feed", "repo", "web")
@@ -210,13 +218,29 @@ class ScanResult:
 # Sources config + watermark state
 # -----------------------------------------------------------------------------
 
+def sources_config_path(vault_path: Path) -> Path:
+    """Where the sources whitelist is: the feature's state dir first, then the
+    pre-trims `standards/` spelling, then the feature's state dir for a
+    vault that has neither."""
+    cands = vault_layout.feature_state_candidates(vault_path, SOURCES_CONFIG_NAME)
+    cands = cands[:-1] + [s / SOURCES_CONFIG_NAME for s in vault_layout.standards_dir_candidates(vault_path)]
+    for c in cands:
+        if c.is_file():
+            return c
+    return cands[0]
+
+
+def watchlist_root(vault_path: Path) -> Path:
+    """`Projects/agentm/_watchlist/`, or the retired `memory/_watchlist/`
+    while that is where the entries still are."""
+    return vault_layout.feature_state_path(vault_path, WATCHLIST_NAME)
+
+
 def load_sources(vault_path: Path) -> list:
-    # `vault_path` here is the memory root; standards/ sits at the vault root
-    # beside it. Probe the sibling first (the split layout), then flat — the
-    # same two-probe order the rules loader uses for the same file family.
-    sibling = Path(vault_path).parent / SOURCES_CONFIG_REL
-    flat = Path(vault_path) / SOURCES_CONFIG_REL
-    path = sibling if sibling.is_file() or not flat.is_file() else flat
+    # `vault_path` here is the memory root. The file lives with the feature's
+    # state (Projects/agentm/); a vault that still keeps it in standards/ is
+    # read from there.
+    path = sources_config_path(Path(vault_path))
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -953,7 +977,7 @@ def _write_watchlist_entry(
     source = scored.source
     candidate = scored.candidate
     item_slug = _slugify(candidate.title or candidate.slug)
-    entry_dir = Path(vault_path) / WATCHLIST_REL / source.slug
+    entry_dir = watchlist_root(Path(vault_path)) / source.slug
     entry_path = entry_dir / f"{item_slug}.md"
 
     excerpt = candidate.body.strip()[:400]

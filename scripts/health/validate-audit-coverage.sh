@@ -171,9 +171,9 @@ print('zzz-high-kept' if '### zzz-high' in result else 'zzz-high-dropped')
 
 VOICE_OLD_BUG="$("$PY" -c "
 import sys, pathlib; sys.path.insert(0, '$SCRIPTS_DIR/../harness/skills/memory/scripts')
-import recall
+import recall, vault_layout
 vault = pathlib.Path('$VOICE_VAULT')
-always_load_dir = vault / recall._ALWAYS_LOAD_REL
+always_load_dir = vault_layout.legacy_pen_dir(vault)  # the pen the pre-fix loader read
 candidates = sorted(always_load_dir.glob('*.md'))  # pure alphabetical — no priority re-sort (the pre-fix shape)
 parsed = []
 for p in candidates:

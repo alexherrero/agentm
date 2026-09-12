@@ -49,7 +49,7 @@ The clock only resets on a genuine recall — `recall.py`'s `prompt_submit()` is
 
 ## Troubleshooting
 
-- **A note I thought was long-cold is still `active`, or isn't named as an archive candidate.** Check `.lifecycle.json` at your memory root for its last genuine access — a recall resets the clock — and `agentmdream status` for the binary's last pass. A memory sinks to `dormant` only on a pass, and only a *dormant* memory past five years is named for the archive. `agentmdream run -force` prints what the next pass would do.
+- **A note I thought was long-cold is still `active`, or isn't named as an archive candidate.** Check `.lifecycle.json` for its last genuine access — a recall resets the clock. Since the memory-root trims (agentm-vault plan 05) it lives in `<engine state dir>`, with your memory root read as the fallback on a vault that hasn't moved yet. `agentmdream status` reports the binary's last pass. A memory sinks to `dormant` only on a pass, and only a *dormant* memory past five years is named for the archive. `agentmdream run -force` prints what the next pass would do.
 - **A shelved artifact didn't come back after I touched it.** Nothing returns a shelved artifact on its own any more; the tidying stage that did so retired in agentm-vault plan 04. Move it out of `_shelf/` by hand.
 
 ## See also

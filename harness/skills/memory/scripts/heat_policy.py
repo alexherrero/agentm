@@ -37,11 +37,12 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-# Heat sidecar filename at vault root (hidden by leading dot, not an Obsidian note).
-HEAT_SIDECAR_NAME = ".heat.json"
+import vault_layout  # noqa: E402
 
-# Always-load directory (relative to vault root), matching recall.py convention.
-_ALWAYS_LOAD_REL = Path("memory") / "_always-load"
+# Heat sidecar filename (hidden by leading dot, not an Obsidian note). It lives
+# in the engine state directory since the memory-root trims (plan 05);
+# vault_layout.sidecar_path() still reads a copy left at the memory root.
+HEAT_SIDECAR_NAME = ".heat.json"
 
 # Policy thresholds (conservative by design — incorrect demotions are silent quality bugs).
 COLD_SESSIONS_MIN = 10   # min prompt-submit sessions recorded before cold-demotion is eligible
@@ -52,7 +53,7 @@ MIN_ALWAYS_LOAD = 5      # safety floor: never demote below this count of always
 
 def _load_heat(vault: Path) -> dict:
     """Load the heat sidecar. Returns default structure if missing or corrupt."""
-    path = vault / HEAT_SIDECAR_NAME
+    path = vault_layout.sidecar_path(vault, HEAT_SIDECAR_NAME)
     try:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)
@@ -70,10 +71,12 @@ def _save_heat(vault: Path, data: dict) -> None:
     except ImportError:
         # Fallback: plain write (no concurrent-write safety, acceptable for
         # best-effort heat tracking if vault_lock is unavailable).
-        path = vault / HEAT_SIDECAR_NAME
+        path = vault_layout.sidecar_path(vault, HEAT_SIDECAR_NAME)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
         return
-    path = vault / HEAT_SIDECAR_NAME
+    path = vault_layout.sidecar_path(vault, HEAT_SIDECAR_NAME)
+    path.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(data, indent=2, sort_keys=True)
     atomic_write(path, content)
 
@@ -238,7 +241,14 @@ def run_policy(
         "too_early": False,
     }
 
-    always_load_dir = vault / _ALWAYS_LOAD_REL
+    # The pen `memory/_always-load/` retired with the memory-root trims
+    # (plan 05): the always-load tier is `standards/`, the operator's. On a
+    # vault without the pen the policy still REPORTS its candidates (the
+    # console's decay report reads them) but moves nothing — a promotion
+    # has nowhere the agent may write, and nothing recreates the pen.
+    always_load_dir = vault_layout.legacy_pen_dir(vault)
+    pen_retired = not always_load_dir.is_dir()
+    result["pen_retired"] = pen_retired
     if not vault.exists():
         return result
 
@@ -352,9 +362,16 @@ def run_policy(
                     + (" (dry-run)" if dry_run else ""),
                     file=stderr,
                 )
+                if pen_retired:
+                    print(
+                        f"[heat-policy] PROMOTE {slug}: the pen retired; candidate "
+                        "recorded, nothing moved (the tier is standards/, yours)",
+                        file=stderr,
+                    )
+                    result["promoted"].append(slug)
+                    continue
                 if not dry_run:
                     try:
-                        always_load_dir.mkdir(parents=True, exist_ok=True)
                         patched = _patch_frontmatter(content, {"always_load": True})
                         try:
                             from vault_lock import atomic_write  # type: ignore
@@ -380,8 +397,29 @@ def pin_entry(vault: Path, slug: str, *, stderr=sys.stderr) -> bool:
 
     Returns True on success, False on failure.
     """
-    always_load_dir = vault / _ALWAYS_LOAD_REL
+    always_load_dir = vault_layout.legacy_pen_dir(vault)
     always_load_path = always_load_dir / f"{slug}.md"
+
+    if not always_load_dir.is_dir():
+        # The pen retired (plan 05): pin in place. `heat_pin: true` is what the
+        # demotion pass honours, and the entry stays in its class.
+        found = _find_entry_in_vault(vault, slug)
+        if found is None:
+            print(f"[heat-policy] PIN {slug} failed: entry not found in vault", file=stderr)
+            return False
+        try:
+            content = found.read_text(encoding="utf-8")
+            patched = _patch_frontmatter(content, {"heat_pin": True})
+            try:
+                from vault_lock import atomic_write  # type: ignore
+                atomic_write(found, patched)
+            except ImportError:
+                found.write_text(patched, encoding="utf-8")
+            print(f"[heat-policy] PIN {slug}: marked heat_pin=true in place (the pen retired)", file=stderr)
+            return True
+        except Exception as e:
+            print(f"[heat-policy] PIN {slug} failed: {e}", file=stderr)
+            return False
 
     if always_load_path.exists():
         # Already in always-load — just add/update the pin.

@@ -1810,6 +1810,14 @@ class TestRepoRegistry(unittest.TestCase):
         from storage_device_local import DeviceLocalBackend
         return DeviceLocalBackend(root=root)
 
+    def setUp(self) -> None:
+        # The registry lives in the engine state directory since plan 05; a
+        # hand-run of this file must never touch the machine's real one.
+        import engine_state_isolation as esi
+        cm = esi.isolated_engine_state()
+        self._engine = Path(cm.__enter__())
+        self.addCleanup(cm.__exit__, None, None, None)
+
     def test_read_empty_returns_default_schema(self) -> None:
         """First-write semantics: missing registry file returns {version:1, repos:[]}."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -1820,7 +1828,8 @@ class TestRepoRegistry(unittest.TestCase):
             self.assertFalse((Path(tmp) / "_meta" / "repos.json").exists())
 
     def test_register_creates_file_and_entry(self) -> None:
-        """First register_repo populates _meta/repos.json in the backend root."""
+        """First register_repo populates repos.json in the engine store (plan
+        05: the registry left the vault), never `_meta/` in the backend root."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             backend = self._make_backend(root)
@@ -1828,8 +1837,9 @@ class TestRepoRegistry(unittest.TestCase):
                 backend, "agentm", "/tmp/fixture-agentm",
                 wiki_path="/tmp/fixture-agentm/wiki",
             )
-            path = root / "_meta" / "repos.json"
+            path = self._engine / "repos.json"
             self.assertTrue(path.exists())
+            self.assertFalse((root / "_meta" / "repos.json").exists())
             data = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(data["version"], 1)
             self.assertEqual(len(data["repos"]), 1)
@@ -1883,11 +1893,11 @@ class TestRepoRegistry(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             backend = self._make_backend(Path(tmp))
             repo_registry.register_repo(backend, "agentm", "/a")
-            loc = repo_registry.registry_locator(backend)
-            content = backend.read(loc)
+            store, loc = repo_registry.registry_store(backend)
+            content = store.read(loc)
             stale_hash = hm.content_hash(content.encode("utf-8"))
-            # Simulate another writer mutating the file via the backend.
-            backend.write(loc, content + " ")
+            # Simulate another writer mutating the file via the store.
+            store.write(loc, content + " ")
             data = repo_registry.read_registry(backend)
             with self.assertRaises(hm.ConcurrentModificationError):
                 repo_registry.write_registry(backend, data, expected_hash=stale_hash)
@@ -1953,25 +1963,54 @@ class TestRepoRegistry(unittest.TestCase):
             root = Path(tmp)
             backend = self._make_backend(root)
             repo_registry.register_repo(backend, "agentm", "/a")
-            meta_dir = root / "_meta"
-            tmp_files = list(meta_dir.glob("*.tmp"))
+            tmp_files = list(self._engine.glob("*.tmp"))
             self.assertEqual(tmp_files, [])
 
-    def test_parallel_run_vault_backend_maps_to_same_path(self) -> None:
-        """LC-7: VaultBackend registry_locator maps to <vault>/_meta/repos.json (behavior-preserving)."""
+    def test_legacy_vault_copy_is_the_store_until_it_moves(self) -> None:
+        """Plan 05, readers accept both: while the vault still holds the only
+        `_meta/repos.json`, it is read AND written there (write where the
+        resolver reads, so a pre-move vault never forks), and the locator
+        keys it the LC-7 way."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            (vault / "_meta").mkdir(parents=True)
+            (vault / "_meta" / "repos.json").write_text(
+                json.dumps({"version": 1, "repos": [{"slug": "old", "root_path": "/old"}]}),
+                encoding="utf-8")
+            from vault_backend_stub import VaultBackend
+            backend = VaultBackend(root=vault)
+            self.assertEqual(repo_registry.registry_locator(backend).key, "_meta/repos.json")
+            repo_registry.register_repo(backend, "test-repo", "/some/path")
+            data = json.loads((vault / "_meta" / "repos.json").read_text(encoding="utf-8"))
+            self.assertEqual({r["slug"] for r in data["repos"]}, {"old", "test-repo"})
+            self.assertFalse((self._engine / "repos.json").exists())
+
+    def test_engine_copy_wins_over_a_legacy_copy(self) -> None:
+        """Once the registry has moved, a stale copy left in the vault is not read."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            (vault / "_meta").mkdir(parents=True)
+            (vault / "_meta" / "repos.json").write_text(
+                json.dumps({"version": 1, "repos": [{"slug": "stale", "root_path": "/s"}]}),
+                encoding="utf-8")
+            (self._engine / "repos.json").write_text(
+                json.dumps({"version": 1, "repos": [{"slug": "moved", "root_path": "/m"}]}),
+                encoding="utf-8")
+            from vault_backend_stub import VaultBackend
+            backend = VaultBackend(root=vault)
+            self.assertEqual(repo_registry.registry_locator(backend).key, "repos.json")
+            self.assertEqual([r["slug"] for r in repo_registry.list_repos(backend)], ["moved"])
+
+    def test_a_fresh_machine_writes_the_engine_store(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
             vault.mkdir()
             from vault_backend_stub import VaultBackend
             backend = VaultBackend(root=vault)
             repo_registry.register_repo(backend, "test-repo", "/some/path")
-            loc = repo_registry.registry_locator(backend)
-            self.assertEqual(loc.key, "_meta/repos.json")
-            expected_path = vault / "_meta" / "repos.json"
-            self.assertTrue(expected_path.is_file())
-            data = json.loads(expected_path.read_text(encoding="utf-8"))
-            slugs = {r["slug"] for r in data["repos"]}
-            self.assertIn("test-repo", slugs)
+            self.assertEqual(repo_registry.registry_locator(backend).key, "repos.json")
+            self.assertTrue((self._engine / "repos.json").is_file())
+            self.assertFalse((vault / "_meta").exists())
 
 
 class TestRepoRegistryCLI(unittest.TestCase):
