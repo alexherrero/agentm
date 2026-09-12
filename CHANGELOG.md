@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The tier audit names what failed, and stops when every call fails the
+  same way.** The first live run of `agentmd tiers --audit` failed thirty
+  cheap-tier calls on a lapsed CLI login, and the report could only say a
+  tier could not be reached. The report now names each sample it could not
+  score, with the tier and the reason (up to five); five excluded samples
+  in a row stop the run (`tiers.MaxFailuresInARow`, the enrichment batch's
+  own fuse), and the stop is named in the verdict and the run's record. The
+  per-call line, shared with `agentmd enrich`, carries a failed call's
+  reason.
+
 ## [9.21.0] - 2026-09-11
 
 The vault-perfection series lands its first four plans, and the night runs. The AgentM Vault design was decided across seven sessions and approved as final ([#576](https://github.com/alexherrero/agentm/pull/576) through [#582](https://github.com/alexherrero/agentm/pull/582)); plans 01 to 04 then cleaned the vault, purged the residue on the operator's ruling, made every writer land the same card, and put the nightly enrichment batch under a window, a token line and one morning note ([#586](https://github.com/alexherrero/agentm/pull/586), [#588](https://github.com/alexherrero/agentm/pull/588), [#589](https://github.com/alexherrero/agentm/pull/589), [#590](https://github.com/alexherrero/agentm/pull/590)). The first supervised batches taught the night to load no MCP servers into a call, to ask only for what its judge accepts, to count what a call adds, to write a refusal down, and to keep the facts a pass cannot know ([#591](https://github.com/alexherrero/agentm/pull/591) through [#597](https://github.com/alexherrero/agentm/pull/597)); a model now judges the cheap tier's audit ([#598](https://github.com/alexherrero/agentm/pull/598)). `MEMORY_VAULT_PATH` becomes `MEMORY_ROOT`, one meaning, both names exported for one release ([#599](https://github.com/alexherrero/agentm/pull/599)). The doctor sees a checkout that is missing merged work ([#587](https://github.com/alexherrero/agentm/pull/587)). The Python FastMCP memory server, long superseded by the Go daemon, is gone.

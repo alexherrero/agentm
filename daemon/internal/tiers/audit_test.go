@@ -92,10 +92,12 @@ func TestATierThatMeetsTheBarQualifies(t *testing.T) {
 // either way — and the report says which exclusion it was.
 func TestAnUnreachableJudgeIsExcludedRatherThanCountedEitherWay(t *testing.T) {
 	ask, _ := asker(0)
+	// Four in a row, one under the fuse: this test is about exclusion, and
+	// the fuse has its own.
 	seen := 0
 	judge := func(ctx context.Context, s Sample, cheap, strong string) (Verdict, error) {
 		seen++
-		if seen <= 5 {
+		if seen <= 4 {
 			return Verdict{}, errors.New("the judge could not be reached")
 		}
 		return sameAnswer(ctx, s, cheap, strong)
@@ -106,11 +108,11 @@ func TestAnUnreachableJudgeIsExcludedRatherThanCountedEitherWay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Unjudged != 5 || rep.Failed != 0 {
-		t.Errorf("Unjudged = %d, Failed = %d; want 5 unjudged and no tier failures",
+	if rep.Unjudged != 4 || rep.Failed != 0 {
+		t.Errorf("Unjudged = %d, Failed = %d; want 4 unjudged and no tier failures",
 			rep.Unjudged, rep.Failed)
 	}
-	if rep.Sampled != 30 || rep.Rate != 1.0 {
+	if rep.Sampled != 31 || rep.Rate != 1.0 {
 		t.Errorf("Sampled = %d at %.2f; the unjudged samples leaked into the rate",
 			rep.Sampled, rep.Rate)
 	}
@@ -200,7 +202,7 @@ func TestAnUnreachableTierIsExcludedRatherThanCountedAgainst(t *testing.T) {
 	ask := func(_ context.Context, model, prompt string) (string, error) {
 		if model == cheapM {
 			seen++
-			if seen <= 5 {
+			if seen <= 4 { // one under the fuse; the fuse has its own test
 				return "", boom
 			}
 		}
@@ -212,11 +214,21 @@ func TestAnUnreachableTierIsExcludedRatherThanCountedAgainst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Failed != 5 {
-		t.Errorf("Failed = %d, want 5", rep.Failed)
+	if rep.Failed != 4 {
+		t.Errorf("Failed = %d, want 4", rep.Failed)
 	}
-	if rep.Sampled != 30 {
-		t.Errorf("Sampled = %d, want the 30 that answered", rep.Sampled)
+	if rep.Sampled != 31 {
+		t.Errorf("Sampled = %d, want the 31 that answered", rep.Sampled)
+	}
+	// Each excluded sample is named with what failed and why, so "could not
+	// be reached" is never the whole story.
+	if len(rep.Failures) != 4 {
+		t.Fatalf("named %d failure(s), want 4", len(rep.Failures))
+	}
+	for _, f := range rep.Failures {
+		if f.Tier != string(Cheap) || f.Reason != boom.Error() || f.Ref == "" {
+			t.Errorf("a failure is not named with its tier and reason: %+v", f)
+		}
 	}
 	if rep.Rate != 1.0 {
 		t.Errorf("Rate = %.2f; an unreachable tier was counted as disagreement",
@@ -228,6 +240,69 @@ func TestAnUnreachableTierIsExcludedRatherThanCountedAgainst(t *testing.T) {
 	}
 	if !strings.Contains(rep.Why, "not a disagreement") {
 		t.Errorf("the report does not explain the exclusion: %s", rep.Why)
+	}
+}
+
+// A lapsed login fails every call the same way. The fuse stops the run after
+// five excluded samples in a row, names what failed, and says so in the
+// verdict — rather than walking the whole sample producing the same error.
+func TestALapsedLoginTripsTheFuse(t *testing.T) {
+	lapsed := errors.New("enrich: the call reported an error: Failed to " +
+		"authenticate: OAuth session expired and could not be refreshed")
+	calls := 0
+	ask := func(_ context.Context, model, prompt string) (string, error) {
+		calls++
+		return "", lapsed
+	}
+	rep, q, err := Audit(context.Background(), Summarize, cheapM, strongM, version,
+		samplesN(35), ask, sameAnswer, auditAt())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != MaxFailuresInARow || rep.Calls != MaxFailuresInARow {
+		t.Errorf("made %d call(s), reported %d; want the fuse's %d",
+			calls, rep.Calls, MaxFailuresInARow)
+	}
+	if rep.Failed != MaxFailuresInARow || rep.Sampled != 0 {
+		t.Errorf("Failed = %d, Sampled = %d", rep.Failed, rep.Sampled)
+	}
+	if !strings.Contains(rep.StoppedBy, "5 samples in a row") ||
+		!strings.Contains(rep.StoppedBy, "OAuth session expired") {
+		t.Errorf("StoppedBy does not say what tripped the fuse: %q", rep.StoppedBy)
+	}
+	if !strings.Contains(rep.Why, "stopped early") {
+		t.Errorf("the verdict does not say the run stopped early: %s", rep.Why)
+	}
+	if len(rep.Failures) != MaxFailuresInARow || rep.Failures[0].Tier != string(Cheap) {
+		t.Errorf("the failures are not named: %+v", rep.Failures)
+	}
+	if rep.Qualified || q != (Qualification{}) {
+		t.Error("a run that could score nothing qualified something")
+	}
+
+	// A strong tier that fails after the cheap tier answered is named as the
+	// strong tier, and the fuse resets on a sample that was scored.
+	seen := 0
+	flaky := func(_ context.Context, model, prompt string) (string, error) {
+		if model == strongM {
+			seen++
+			if seen%2 == 0 {
+				return "", errors.New("strong tier timed out")
+			}
+		}
+		return "same", nil
+	}
+	rep, _, err = Audit(context.Background(), Summarize, cheapM, strongM, version,
+		samplesN(30), flaky, sameAnswer, auditAt())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.StoppedBy != "" || rep.Sampled != 15 || rep.Failed != 15 {
+		t.Errorf("alternating failures tripped the fuse or miscounted: sampled %d, "+
+			"failed %d, stopped %q", rep.Sampled, rep.Failed, rep.StoppedBy)
+	}
+	if len(rep.Failures) != maxNamedFailures || rep.Failures[0].Tier != string(Strong) {
+		t.Errorf("strong-tier failures are not named and capped: %+v", rep.Failures)
 	}
 }
 

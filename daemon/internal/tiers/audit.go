@@ -141,6 +141,22 @@ type Disagreement struct {
 	Reason string `json:"reason"`
 }
 
+// Failure is one sample the audit could not score: which call failed and
+// what it said. Named so the report says what happened rather than only that
+// something did — a lapsed login and a rejected model name both read as
+// "could not be reached" until the reason sits beside the count. The first
+// live run hit exactly that, and the reason was only in the call's envelope.
+type Failure struct {
+	Ref string `json:"ref"`
+	// Tier is what failed: the cheap tier, the strong tier, or the judge.
+	Tier   string `json:"tier"`
+	Reason string `json:"reason"`
+}
+
+// judgeTier labels the judge in a Failure. The same word the command's meter
+// keys the judge's spend under.
+const judgeTier = "judge"
+
 // AuditReport is what one qualification run measured.
 type AuditReport struct {
 	Job         Job    `json:"job"`
@@ -171,6 +187,13 @@ type AuditReport struct {
 	// each with the rule's reason, so the number can be checked rather than
 	// believed.
 	Disagreements []Disagreement `json:"disagreements,omitempty"`
+	// Failures names the samples that could not be scored, with the reason,
+	// up to maxNamedFailures: a lapsed login fails every call the same way,
+	// and the report should say so once.
+	Failures []Failure `json:"failures,omitempty"`
+	// StoppedBy says what ended the run early, in words, when the fuse
+	// tripped. Empty when every sample was offered.
+	StoppedBy string `json:"stopped_by,omitempty"`
 	// Calls is every model call the audit made: two tier calls and one
 	// judgment per sample. The judgment is counted because for the jobs this
 	// audits it is a model call, and the cost of a measurement should be
@@ -183,6 +206,20 @@ type AuditReport struct {
 // as the enrichment batch's error cap: a run where everything disagreed should
 // say so once rather than once per sample.
 const maxNamedDisagreements = 20
+
+// maxNamedFailures bounds the failures a report names. Fewer than the
+// disagreements: failures are usually one error repeated.
+const maxNamedFailures = 5
+
+// MaxFailuresInARow is the fuse: after this many samples in a row that could
+// not be scored, the run stops. The enrichment batch stops after the same
+// number of notes, for the same reason — a lapsed login or an exhausted
+// allowance fails every call the same way, and a run that kept going would
+// spend the rest of its sample producing the same error. The cheap tier is
+// asked first, so a cheap tier that cannot be reached costs nothing; a strong
+// tier or a judge that cannot be reached has already paid for the calls
+// before it, which is what the fuse bounds.
+const MaxFailuresInARow = 5
 
 // CanAudit says whether an audit of this job, between these models, may run
 // at all. Audit asks it first; a command asks it before drawing a sample, so a
@@ -237,6 +274,23 @@ func Audit(ctx context.Context, job Job, cheapModel, strongModel, passVersion st
 				"counts as agreement")
 	}
 
+	// exclude records one sample that could not be scored and reports
+	// whether the fuse has tripped.
+	inARow := 0
+	exclude := func(ref, tier string, err error) (stop bool) {
+		if len(rep.Failures) < maxNamedFailures {
+			rep.Failures = append(rep.Failures,
+				Failure{Ref: ref, Tier: tier, Reason: err.Error()})
+		}
+		inARow++
+		if inARow >= MaxFailuresInARow {
+			rep.StoppedBy = fmt.Sprintf("%d samples in a row could not be scored; "+
+				"the last said: %v", inARow, err)
+			return true
+		}
+		return false
+	}
+
 	for _, s := range samples {
 		if ctx.Err() != nil {
 			break
@@ -245,20 +299,30 @@ func Audit(ctx context.Context, job Job, cheapModel, strongModel, passVersion st
 		rep.Calls++
 		if cerr != nil {
 			rep.Failed++
+			if exclude(s.Ref, string(Cheap), cerr) {
+				break
+			}
 			continue
 		}
 		strong, serr := ask(ctx, strongModel, s.Prompt)
 		rep.Calls++
 		if serr != nil {
 			rep.Failed++
+			if exclude(s.Ref, string(Strong), serr) {
+				break
+			}
 			continue
 		}
 		v, jerr := agrees(ctx, s, cheap, strong)
 		rep.Calls++
 		if jerr != nil {
 			rep.Unjudged++
+			if exclude(s.Ref, judgeTier, jerr) {
+				break
+			}
 			continue
 		}
+		inARow = 0
 		rep.Sampled++
 		if v.Agree {
 			rep.Agreed++
@@ -310,6 +374,9 @@ func Audit(ctx context.Context, job Job, cheapModel, strongModel, passVersion st
 	if rep.Unjudged > 0 {
 		rep.Why += fmt.Sprintf(" (%d sample(s) excluded: the judge could not be "+
 			"reached, which is not a disagreement either)", rep.Unjudged)
+	}
+	if rep.StoppedBy != "" {
+		rep.Why += " — stopped early: " + rep.StoppedBy
 	}
 
 	if !rep.Qualified {

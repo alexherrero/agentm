@@ -713,7 +713,7 @@ comparison is between two models on one prompt, and both are asked it.
 The cheap model comes from `--cheap`, else `daemon.cheap_model`, and the
 command refuses to run with neither named rather than defaulting one: the
 choice is the operator's at invocation (`planTierAudit`). A pinned job is
-refused before anything is drawn (`tiers.CanAudit`, `audit.go:190`).
+refused before anything is drawn (`tiers.CanAudit`, `audit.go:227`).
 
 The command projects before it spends. Without `--yes` it prints the
 pool, the draw and its seed, the call count (three per card) and an
@@ -730,8 +730,13 @@ samples (`tiers.MinAgreement`, `tiers.MinSamples`) — is saved to
 the qualification, and `enrichRouter` routes `summarize` cheap from the
 next run; one that does not saves nothing, and the report's `why` says
 what fell short. A tier or judge that could not be reached takes its
-sample out of the rate rather than counting either way (`tiers.Audit`,
-`audit.go:223`). Every run, saved or not, appends one line to
+sample out of the rate rather than counting either way, and the report
+names each such sample with what failed and why, up to five — a lapsed
+login fails every call the same way, and the first live run could only
+say a tier could not be reached; five excluded samples in a row stop the
+run, the batch's own fuse (`tiers.Audit`, `audit.go:260`;
+`tiers.MaxFailuresInARow`). The per-call line carries a failed call's
+reason for the same reason. Every run, saved or not, appends one line to
 `tier-audits.jsonl` beside `enrich-runs.jsonl` (`appendTierAudit`), for
 the morning note to read later. `--samples` defaults to 30 — the floor
 plus a margin for excluded calls — and `--seed S` redraws the same cards.

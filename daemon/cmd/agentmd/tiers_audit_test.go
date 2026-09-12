@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -445,6 +446,68 @@ func TestTheTierAuditCommandRunsEndToEnd(t *testing.T) {
 	}
 	if len(recordLines(t, cfg)) != 2 {
 		t.Error("the second run was not recorded")
+	}
+}
+
+// A run that cannot score its samples says what failed and why, stops at the
+// fuse, and records all of it: the first live run failed thirty cheap calls on
+// a lapsed CLI login and could only say a tier could not be reached.
+func TestATierAuditNamesWhatFailedAndStops(t *testing.T) {
+	cfg := auditConfig(t)
+	lapsed := errors.New("enrich: the call reported an error: Failed to " +
+		"authenticate: OAuth session expired and could not be refreshed")
+	calls := 0
+	meter := enrich.NewMeter()
+	var lines bytes.Buffer
+	meter.OnCall = callLinePrinter(meter, &lines)
+	failing := &auditCalls{
+		ask: func(_ context.Context, r enrich.Route, label, _ string) (string, error) {
+			calls++
+			meter.Record(enrich.CallRecord{Label: label, Model: r.Model, Tier: r.Tier,
+				Usage: enrich.Usage{Calls: 1}, Err: lapsed})
+			return "", lapsed
+		},
+		judge: func(_ context.Context, _, _ string) (string, error) {
+			t.Fatal("the judge was asked about a sample no tier answered")
+			return "", nil
+		},
+		meter: meter,
+	}
+
+	rec, err := runTierAudit(context.Background(), cfg, plannedAudit(30),
+		auditSamplesN(30), failing, auditNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != tiers.MaxFailuresInARow {
+		t.Errorf("made %d call(s); want the fuse to stop it at %d", calls,
+			tiers.MaxFailuresInARow)
+	}
+	if rec.Saved || rec.Report.Sampled != 0 {
+		t.Errorf("a run that scored nothing saved something: %+v", rec.Report)
+	}
+	if len(rec.Report.Failures) == 0 ||
+		!strings.Contains(rec.Report.Failures[0].Reason, "OAuth session expired") {
+		t.Errorf("the record does not carry the failure's reason: %+v", rec.Report.Failures)
+	}
+
+	var out bytes.Buffer
+	printTierAudit(&out, cfg, rec)
+	for _, want := range []string{"failed: " + auditSampleRef(0) + " · cheap — ",
+		"OAuth session expired", "stopped early: 5 samples in a row"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("the report does not say %q:\n%s", want, out.String())
+		}
+	}
+	// And the per-call line carried the reason as it happened.
+	if !strings.Contains(lines.String(), "failed: enrich: the call reported an error: "+
+		"Failed to authenticate") {
+		t.Errorf("the call line does not carry the reason:\n%s", lines.String())
+	}
+
+	got := recordLines(t, cfg)
+	if len(got) != 1 || got[0].Report.StoppedBy == "" || len(got[0].Report.Failures) == 0 {
+		t.Errorf("the record does not carry the stop and the failures: %+v", got)
 	}
 }
 
