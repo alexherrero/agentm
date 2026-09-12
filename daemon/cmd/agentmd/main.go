@@ -1732,16 +1732,29 @@ func freeGates(cfg *config.Config) []enrich.Gate {
 }
 
 // callLinePrinter prints one line per call as it finishes — the per-call half
-// of "usage printed" — for every command that spends.
+// of "usage printed" — for every command that spends. A failed call carries
+// its reason on the line: the first tier audit failed thirty calls in a row
+// and the only word on each line was "failed", while the reason — a lapsed
+// login — was in the envelope nothing printed.
 func callLinePrinter(meter *enrich.Meter, w io.Writer) func(enrich.CallRecord) {
 	return func(r enrich.CallRecord) {
 		status := ""
 		if r.Err != nil {
-			status = " · failed"
+			status = " · failed: " + oneLine(r.Err.Error(), 200)
 		}
 		fmt.Fprintf(w, "call %d · %s · %s/%s · %s%s\n", meter.Total().Calls, r.Label,
 			r.Model, r.Tier, r.Usage, status)
 	}
+}
+
+// oneLine flattens a message onto one line and bounds it, for a log line
+// that has to stay a line.
+func oneLine(s string, max int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
 }
 
 // modelMayRead is the contract's answer to "may a background model read this

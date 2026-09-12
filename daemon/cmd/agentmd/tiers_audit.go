@@ -598,6 +598,12 @@ func printTierAudit(w io.Writer, cfg *config.Config, rec tierAuditRecord) {
 	for _, d := range rep.Disagreements {
 		fmt.Fprintf(w, "  disagreed: %s — %s\n", d.Ref, d.Reason)
 	}
+	for _, f := range rep.Failures {
+		fmt.Fprintf(w, "  failed: %s · %s — %s\n", f.Ref, f.Tier, oneLine(f.Reason, 300))
+	}
+	if rep.StoppedBy != "" {
+		fmt.Fprintf(w, "  stopped early: %s\n", oneLine(rep.StoppedBy, 300))
+	}
 	keys := make([]string, 0, len(rec.Usage))
 	for k := range rec.Usage {
 		keys = append(keys, k)
