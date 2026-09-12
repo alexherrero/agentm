@@ -110,7 +110,7 @@ class MigrationTests(unittest.TestCase):
         t = self._run(apply=False)
         self.assertEqual(_snapshot(self.vault), before)
         self.assertFalse(list(self.engine.iterdir()))
-        joined = "\n".join(t.pending)
+        joined = "\n".join(t.pending).replace("\\", "/")  # Windows spells the paths with backslashes
         for needle in ("user-preferences.md", "security-and-secret-governance.md",
                        "standards/voice/2026-07-05-docs-prose-style.md", "moc-standards.md",
                        "Projects/agentm/_watchlist", "Projects/agentm/forward-learning-sources.json",

@@ -83,7 +83,10 @@ class ShapeGateTests(unittest.TestCase):
         mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
         (self.root / ".DS_Store").write_bytes(b"\x00")
         (self.root / ".rename-vault-root-complete").write_text("done\n", encoding="utf-8")
-        (self.root / "memory" / "Icon\r").write_bytes(b"")
+        # Drive's folder-icon file is `Icon\r`; Windows cannot create that name,
+        # so the runner writes the plain spelling the gate also ignores.
+        import os
+        (self.root / "memory" / ("Icon" if os.name == "nt" else "Icon\r")).write_bytes(b"")
         rc, _text = self._check()
         self.assertEqual(rc, 0)
 
