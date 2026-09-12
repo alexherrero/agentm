@@ -63,8 +63,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1068,6 +1071,152 @@ def check_install_head(repo: Optional[Path] = None) -> Check:
     return Check("install-head", "OK", detail)
 
 
+def _daemon_binary(explicit: "Path | None" = None) -> "Path | None":
+    """The binary the machine actually runs, or None when there is none.
+
+    `install.sh` puts it on the PATH, so `which` is the honest answer; the
+    `~/.local/bin` fallback is where every deploy runbook in this repo writes
+    it when the PATH is not the caller's.
+    """
+    if explicit is not None:
+        return explicit if explicit.is_file() else None
+    found = shutil.which("agentmd")
+    if found:
+        return Path(found)
+    fallback = Path.home() / ".local" / "bin" / "agentmd"
+    return fallback if fallback.is_file() else None
+
+
+_GO_DURATION_PART = re.compile(r"([0-9]*\.?[0-9]+)(ns|us|\u00b5s|ms|s|m|h)")
+_GO_DURATION_UNITS = {"ns": 1e-9, "us": 1e-6, "\u00b5s": 1e-6, "ms": 1e-3,
+                      "s": 1.0, "m": 60.0, "h": 3600.0}
+
+
+def _parse_go_duration(text: str) -> "float | None":
+    """Seconds from a Go duration string, or None when it is not one.
+
+    Go prints what it has: `800ms` for a daemon that just started, `20m15s`
+    after a while, `3h4m5s` after longer. Every part must be consumed — a
+    parser that sums the parts it recognizes and ignores the rest reads
+    `nonsense` as zero seconds, which this row would take for a daemon that
+    started this instant.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    if raw == "0":
+        return 0.0
+    parts = list(_GO_DURATION_PART.finditer(raw))
+    if not parts or "".join(m.group(0) for m in parts) != raw:
+        return None
+    return sum(float(m.group(1)) * _GO_DURATION_UNITS[m.group(2)] for m in parts)
+
+
+def check_install_binary(
+    repo: "Path | None" = None, *, binary: "Path | None" = None,
+    now: "float | None" = None, uptime_seconds: "float | None" = None,
+) -> Check:
+    """Whether the daemon the machine is running is the daemon that shipped.
+
+    `check_install_head` above asks whether this clone has the code. That is
+    the whole answer for the Python half, because `~/.claude/hooks` and
+    `~/.claude/skills` are symlinks into this clone: a fast-forward makes them
+    live with no build step. The Go half does not work that way. The binary at
+    `~/.local/bin/agentmd` only changes when somebody rebuilds it, so a commit
+    that touches both `daemon/` and `harness/` half-deploys, and nothing said
+    so until a human noticed.
+
+    It has been noticed three times. Plan 03 of agentm-vault merged Go changes
+    on 2026-09-10 and the resident binary stayed two days stale. PR #599
+    renamed `MEMORY_VAULT_PATH` to `MEMORY_ROOT` across `config.go` and six
+    hook scripts; somebody fast-forwarded this clone, and the live hooks
+    exported a name the running daemon could not read. Each catch was somebody
+    remembering to look.
+
+    Two questions, because there are two ways to be behind:
+
+      * **The binary predates the source.** The newest commit touching
+        `daemon/` is newer than the file's own mtime, so a rebuild is owed.
+      * **The process predates the binary.** Somebody rebuilt and did not
+        restart, so the file on disk is current and the resident process is
+        not. `agentmd status` prints full OK health from the old process in
+        that state, because the client is new and the server kept its inode;
+        the uptime is the only tell.
+
+    mtime is a proxy and this row says so rather than pretending otherwise: a
+    rebuild from a stale checkout carries a fresh mtime and old code. The row
+    catches the failure that keeps happening, and the detail names the check
+    that settles it — grep the binary for a string literal the commit added,
+    taken from a production file, since literals in `_test.go` are never
+    compiled in.
+
+    Reported, never repaired, like every row here. Rebuilding somebody's
+    daemon out from under them is not a diagnosis.
+    """
+    repo = repo if repo is not None else repo_root()
+    name = "install-binary"
+
+    path = _daemon_binary(binary)
+    if path is None:
+        return Check(name, "UNVERIFIED",
+                     "no `agentmd` on PATH or at ~/.local/bin — nothing is installed to compare")
+    if not (repo / "daemon").is_dir():
+        return Check(name, "UNVERIFIED", f"no daemon/ tree at {repo} — nothing to compare against")
+
+    rc, when = _git_out(repo, "log", "-1", "--format=%ct", "--", "daemon")
+    if rc != 0 or not when.strip().isdigit():
+        return Check(name, "UNVERIFIED",
+                     "no commit touching daemon/ is reachable from HEAD")
+    newest = int(when.strip())
+    try:
+        built = path.stat().st_mtime
+    except OSError as e:
+        return Check(name, "UNVERIFIED", f"{path} unreadable ({e})")
+
+    notes = []
+    if newest > built:
+        rc_c, count = _git_out(repo, "rev-list", "--count", f"--since=@{int(built)}", "HEAD", "--", "daemon")
+        n = count.strip() if rc_c == 0 and count.strip() else "?"
+        notes.append(
+            f"{path.name} was built before the newest daemon/ commit — {n} commit(s) "
+            "touching daemon/ land after it, so the running daemon is older than this "
+            "checkout; rebuild both binaries and `launchctl kickstart -k`")
+
+    # The process half. Absent uptime is not a failure: the daemon may simply
+    # be down, which other rows own.
+    seconds = uptime_seconds
+    if seconds is None:
+        seconds = _daemon_uptime_seconds(path)
+    if seconds is not None:
+        moment = (now if now is not None else time.time()) - seconds
+        if built > moment:
+            notes.append(
+                f"{path.name} on disk is newer than the running process (up {int(seconds)}s) — "
+                "a rebuild without a restart; `agentmd status` reports the old process as healthy")
+
+    if notes:
+        return Check(name, "WARN", " · ".join(notes))
+    return Check(name, "OK",
+                 f"{path.name} is no older than the newest daemon/ commit, and the "
+                 "running process is no older than it")
+
+
+def _daemon_uptime_seconds(binary: Path) -> "float | None":
+    """The resident daemon's uptime, or None when it cannot be asked."""
+    try:
+        proc = subprocess.run([str(binary), "status", "--json"],
+                              capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        payload = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError:
+        return None
+    return _parse_go_duration(str(payload.get("uptime") or "")) if isinstance(payload, dict) else None
+
+
 # ── composition ───────────────────────────────────────────────────────────
 def run_inventory(
     repo: Optional[Path] = None, *, state_root: Optional[Path] = None,
@@ -1087,6 +1236,7 @@ def run_inventory(
         ),
     ]
     checks.append(check_install_head(repo))
+    checks.append(check_install_binary(repo))
     checks.append(check_runner_cycle(state_root=state_root))
     for job_name in job_names(repo):
         checks.append(check_runner_job(repo, job_name, state_root=state_root))

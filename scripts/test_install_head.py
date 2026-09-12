@@ -7,9 +7,12 @@ has checked out the machine-wide live configuration. Nothing said so. On
 a ref 38 commits behind; the live config regressed two days, and a survey read
 a stale design and published a false finding from it.
 
-Two halves, both tested here. `refresh_local_main` levels the branch after
-every release so a stray checkout is harmless, and `check_install_head` says
-when the clone's HEAD is not the newest tag or its `main` has fallen behind.
+Three parts, all tested here. `refresh_local_main` levels the branch after
+every release so a stray checkout is harmless; `check_install_head` says when
+the clone's HEAD is not the newest tag or its `main` has fallen behind; and
+`check_install_binary` says when the Go half has not followed the Python half,
+because the symlinked hooks go live on a fast-forward while the binary only
+moves when somebody rebuilds it.
 
 Every fixture is a real git repository. The behaviour under test is entirely
 about what git reports, and a mocked git would only prove the mock agrees with
@@ -337,6 +340,126 @@ class TheLiveTreeVersusWhatHasMerged(unittest.TestCase):
             check = doctor_mod.check_install_head(repo)
 
         self.assertNotIn("missing", check.detail)
+
+
+class TheGoDurationParser(unittest.TestCase):
+    """The daemon reports its uptime in Go's format, and the row reads it to
+    tell a rebuild-without-restart from an ordinary one. A parser that sums
+    the parts it recognises and ignores the rest reads `nonsense` as zero
+    seconds, which the row would take for a daemon that started this instant."""
+
+    def test_the_shapes_a_running_daemon_actually_prints(self):
+        for text, want in (("20m15s", 1215.0), ("3h4m5s", 11045.0),
+                           ("800ms", 0.8), ("45.2s", 45.2), ("0", 0.0)):
+            with self.subTest(text=text):
+                self.assertEqual(doctor_mod._parse_go_duration(text), want)
+
+    def test_anything_that_is_not_a_duration_is_refused(self):
+        for text in ("nonsense", "", "12x", "20m 15s", "m15s"):
+            with self.subTest(text=text):
+                self.assertIsNone(doctor_mod._parse_go_duration(text))
+
+
+class TheResidentBinary(unittest.TestCase):
+    """A commit touching both `daemon/` and `harness/` half-deploys: the
+    symlinked Python goes live on the fast-forward, the binary does not.
+    Every fixture is a real repository with a real file on disk, because the
+    row's whole subject is what git and the filesystem report."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.repo = self.tmp / "repo"
+        self.repo.mkdir()
+        git(self.repo, "init", "-q", "-b", "main")
+        (self.repo / "daemon").mkdir()
+        self.binary = self.tmp / "agentmd"
+        self.binary.write_bytes(b"binary")
+
+    def _commit_daemon(self, message: str) -> None:
+        (self.repo / "daemon" / "main.go").write_text(message, encoding="utf-8")
+        git(self.repo, "add", "daemon/main.go")
+        git(self.repo, "-c", "user.email=t@t", "-c", "user.name=t",
+            "commit", "-q", "-m", message)
+
+    def _touch(self, when: float) -> None:
+        import os
+        os.utime(self.binary, (when, when))
+
+    def _commit_time(self) -> int:
+        return int(git(self.repo, "log", "-1", "--format=%ct", "--", "daemon"))
+
+    def test_a_binary_built_after_the_newest_daemon_commit_is_current(self):
+        self._commit_daemon("one")
+        built = self._commit_time() + 60
+        self._touch(built)
+        check = doctor_mod.check_install_binary(
+            self.repo, binary=self.binary, now=built + 20, uptime_seconds=10)
+        self.assertEqual(check.status, "OK", check.detail)
+
+    def test_a_binary_older_than_the_daemon_source_warns(self):
+        self._commit_daemon("one")
+        self._touch(self._commit_time() - 3600)
+        check = doctor_mod.check_install_binary(
+            self.repo, binary=self.binary, now=self._commit_time() + 20,
+            uptime_seconds=10)
+        self.assertEqual(check.status, "WARN")
+        self.assertIn("rebuild", check.detail)
+
+    def test_a_commit_touching_only_the_python_half_does_not_warn(self):
+        # The asymmetry itself: the symlinked half is live already, and the
+        # binary is not owed a rebuild for it.
+        self._commit_daemon("one")
+        built = self._commit_time() + 60
+        self._touch(built)
+        (self.repo / "harness").mkdir()
+        (self.repo / "harness" / "hook.sh").write_text("later", encoding="utf-8")
+        git(self.repo, "add", "harness/hook.sh")
+        git(self.repo, "-c", "user.email=t@t", "-c", "user.name=t",
+            "commit", "-q", "-m", "python only")
+        check = doctor_mod.check_install_binary(
+            self.repo, binary=self.binary, now=built + 20, uptime_seconds=10)
+        self.assertEqual(check.status, "OK", check.detail)
+
+    def test_a_rebuild_without_a_restart_warns(self):
+        # `agentmd status` reports the old process as healthy in this state,
+        # so the uptime is the only tell.
+        self._commit_daemon("one")
+        built = self._commit_time() + 60
+        self._touch(built)
+        check = doctor_mod.check_install_binary(
+            self.repo, binary=self.binary, now=built + 10, uptime_seconds=100)
+        self.assertEqual(check.status, "WARN")
+        self.assertIn("without a restart", check.detail)
+
+    def test_a_restart_after_the_build_is_current(self):
+        self._commit_daemon("one")
+        built = self._commit_time() + 60
+        self._touch(built)
+        check = doctor_mod.check_install_binary(
+            self.repo, binary=self.binary, now=built + 100, uptime_seconds=50)
+        self.assertEqual(check.status, "OK", check.detail)
+
+    def test_a_daemon_that_cannot_be_asked_is_not_a_failure(self):
+        # The daemon may simply be down; other rows own that.
+        self._commit_daemon("one")
+        self._touch(self._commit_time() + 60)
+        check = doctor_mod.check_install_binary(self.repo, binary=self.binary)
+        self.assertIn(check.status, ("OK", "WARN"))
+
+    def test_no_installed_binary_is_unverified_rather_than_a_pass(self):
+        self._commit_daemon("one")
+        check = doctor_mod.check_install_binary(
+            self.repo, binary=self.tmp / "absent", uptime_seconds=10)
+        self.assertEqual(check.status, "UNVERIFIED")
+
+    def test_a_tree_with_no_daemon_is_unverified(self):
+        import shutil as _shutil
+        _shutil.rmtree(self.repo / "daemon")
+        check = doctor_mod.check_install_binary(
+            self.repo, binary=self.binary, uptime_seconds=10)
+        self.assertEqual(check.status, "UNVERIFIED")
 
 
 if __name__ == "__main__":
