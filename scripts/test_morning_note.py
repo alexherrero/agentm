@@ -290,6 +290,31 @@ class TheNote(_Night):
         self.assertEqual(mn.OPERATOR_LINES["cheap"], const("CheapTokenLine"))
         self.assertEqual(mn.CALL_GUARD, const("CallGuard"))
 
+    def test_a_growing_refusal_set_is_not_silent(self):
+        """A refused card leaves no stamp, so nothing on disk says it was asked
+        about. The note is where a set that is quietly growing becomes visible."""
+        self.full_night()
+        self.runs(_run(THREE_DAYS_AGO), _run(TONIGHT, refused=17, refusals_open=19))
+        text, *_, head = self.build()
+        self.assertIn("19 card(s) stand refused at this pass, 17 of them skipped "
+                      "free rather than judged again.", text)
+        self.assertIn("19 refused", head)
+
+    def test_the_first_night_of_refusals_reads_without_a_saving(self):
+        self.full_night()
+        self.runs(_run(TONIGHT, refused=0, refusals_open=19))
+        text, *_ = self.build()
+        self.assertIn("19 card(s) stand refused at this pass.", text)
+        self.assertNotIn("skipped free", text)
+
+    def test_nothing_standing_says_nothing(self):
+        """The silence has to mean 'none', not 'nobody counted' — a run record
+        written before the refusal record existed carries neither number."""
+        self.full_night()
+        text, *_, head = self.build()
+        self.assertNotIn("stand refused", text)
+        self.assertNotIn("refused", head)
+
     def test_a_budget_stop_is_named(self):
         self.runs(_run(TONIGHT, stopped_by="the call guard (250 calls)"))
         text, *_ = self.build()

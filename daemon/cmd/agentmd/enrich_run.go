@@ -51,13 +51,22 @@ func (v *enrichVerdicts) count(rel string, verdict enrich.FilingVerdict) {
 
 // enrichRun is one line of the record.
 type enrichRun struct {
-	At           time.Time               `json:"at"`
-	Model        string                  `json:"model"`
-	PassVersion  string                  `json:"pass_version"`
-	Considered   int                     `json:"considered"`
-	Enriched     int                     `json:"enriched"`
-	Skipped      int                     `json:"skipped"`
-	Failed       int                     `json:"failed"`
+	At          time.Time `json:"at"`
+	Model       string    `json:"model"`
+	PassVersion string    `json:"pass_version"`
+	Considered  int       `json:"considered"`
+	Enriched    int       `json:"enriched"`
+	Skipped     int       `json:"skipped"`
+	Failed      int       `json:"failed"`
+	// Refused is the part of Skipped the refusal record accounts for — cards a
+	// post-gate rejected on an earlier night and this one declined for free.
+	Refused int `json:"refused"`
+	// RefusalsOpen is how many cards stood refused when the run finished, under
+	// the pass and gates running now. In the record so the morning note reads
+	// one number from one file: a refused set that is growing is the operator's
+	// to see, and the alternative is teaching the note to open a second file and
+	// re-derive what the run already knew.
+	RefusalsOpen int                     `json:"refusals_open"`
 	NotesSent    int                     `json:"notes_sent"`
 	ModelCalls   int                     `json:"model_calls"`
 	Tokens       int64                   `json:"tokens"`
@@ -77,7 +86,8 @@ func newEnrichRun(rep enrich.BatchReport, v enrichVerdicts, model string,
 	return enrichRun{
 		At: time.Now().UTC(), Model: model, PassVersion: enrich.PassVersion,
 		Considered: rep.Considered, Enriched: rep.Enriched, Skipped: rep.Skipped,
-		Failed: rep.Failed, NotesSent: rep.Calls, ModelCalls: rep.ModelCalls,
+		Refused: rep.Refused,
+		Failed:  rep.Failed, NotesSent: rep.Calls, ModelCalls: rep.ModelCalls,
 		Tokens: rep.Tokens, TotalCostUSD: rep.TotalCostUSD, Usage: rep.Usage,
 		TokenLines: b.TokenLines, CallGuard: b.MaxCalls, StoppedBy: rep.StoppedBy,
 		Cursor: rep.Cursor, ElapsedSec: rep.Elapsed.Seconds(), Verdicts: v,
@@ -100,13 +110,38 @@ func (r enrichRun) summary() map[string]any {
 	return out
 }
 
+// refusalFor is the row a post-gate rejection leaves behind, or nothing when
+// the run did not end in one.
+//
+// A named function rather than four lines inside the observer, because this is
+// the half of the record that has to agree with the gate reading it back — the
+// same keyer, the same pass version, the same rules hash, the same gates
+// version. A row built from any other four would be written every night and
+// matched by nothing, which looks exactly like a record that is working.
+func refusalFor(cfg *config.Config, keyer *enrich.Fingerprint, req enrich.Request,
+	out enrich.Outcome, reason string) (enrich.Refusal, bool) {
+	if out.RefusedBy == "" {
+		return enrich.Refusal{}, false
+	}
+	return enrich.Refusal{
+		Rel: req.Rel, Gate: out.RefusedBy, Key: keyer.Key(req.Raw),
+		Version: enrich.PassVersion, RulesHash: currentRulesHash(cfg),
+		Gates: enrich.GatesVersion, Reason: reason,
+	}, true
+}
+
+// enrichStateDir is where enrichment keeps its side records — the run record
+// and the refusal record, which a person debugging a night reads together.
+func enrichStateDir(cfg *config.Config) string {
+	if cfg.EngineStateDir != "" {
+		return cfg.EngineStateDir
+	}
+	return filepath.Dir(cfg.IndexPath)
+}
+
 // enrichRunsPath is where the record lives.
 func enrichRunsPath(cfg *config.Config) string {
-	dir := cfg.EngineStateDir
-	if dir == "" {
-		dir = filepath.Dir(cfg.IndexPath)
-	}
-	return filepath.Join(dir, "enrich-runs.jsonl")
+	return filepath.Join(enrichStateDir(cfg), "enrich-runs.jsonl")
 }
 
 // appendEnrichRun adds one run to the record.

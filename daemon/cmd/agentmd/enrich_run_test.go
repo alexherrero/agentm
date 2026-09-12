@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -200,5 +201,92 @@ func TestTheRunIsRecordedForTheMorningNote(t *testing.T) {
 	}
 	if n := strings.Count(string(raw), "\n"); n != 2 {
 		t.Errorf("%d lines in the record, want one per run", n)
+	}
+}
+
+// The refusal record's two halves have to agree: the row the observer writes
+// and the gate that reads it back. This walks the round trip through the same
+// wiring the command uses, because a row written under one key and looked up
+// under another is a record that is written every night and matched by nothing
+// — which looks from outside exactly like a record that is working.
+func TestARefusedCardIsDeclinedByTheGateThatReadsTheRowBack(t *testing.T) {
+	vault := t.TempDir()
+	cfg := configOverRules(t, vault, "reference")
+	cfg.EngineStateDir = t.TempDir()
+
+	raw := "---\ntype: reference\nstatus: unfiled\n---\n\nA card the judge said no to.\n"
+	req := enrich.Request{Rel: "Agent/memory/semantic/a.md", Raw: raw}
+	out := enrich.Outcome{Rel: req.Rel, RefusedBy: "grounding"}
+
+	keyer := enrichFingerprint(cfg, nil)
+	row, ok := refusalFor(cfg, keyer, req, out, "the proposal asserts what the card does not")
+	if !ok {
+		t.Fatal("a post-gate rejection produced no row to record")
+	}
+
+	refusals, err := enrich.NewRefusals(enrichStateDir(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := refusals.Record(row); err != nil {
+		t.Fatal(err)
+	}
+
+	// The next night: a fresh read of the record, and the gate the command
+	// builds from it.
+	next, err := enrich.NewRefusals(enrichStateDir(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := enrichRefused(cfg, enrichFingerprint(cfg, nil), next)
+	err = gate.Check(context.Background(), req, raw)
+	if !errors.Is(err, enrich.ErrNotEligible) {
+		t.Fatalf("the card was offered again after being refused: %v", err)
+	}
+	if n := next.Open(enrich.PassVersion, currentRulesHash(cfg), enrich.GatesVersion); n != 1 {
+		t.Errorf("open = %d, want 1 — the standing count is what the morning note reads", n)
+	}
+
+	// And the record lands beside the run record, where a person debugging a
+	// night reads the two together.
+	if got, want := next.Path(),
+		filepath.Join(cfg.EngineStateDir, enrich.RefusalsName); got != want {
+		t.Errorf("the refusal record is at %s, want %s", got, want)
+	}
+}
+
+// A rejection that named no claim is a fact about the judge rather than about
+// the card. Recording it would blacklist every card a lapsed login touched.
+func TestAJudgeThatCouldNotAnswerLeavesNoRow(t *testing.T) {
+	cfg := configOverRules(t, t.TempDir(), "reference")
+	req := enrich.Request{Rel: "a.md", Raw: "raw"}
+	if _, ok := refusalFor(cfg, enrichFingerprint(cfg, nil), req,
+		enrich.Outcome{Rel: "a.md"}, "the faithfulness judge could not answer"); ok {
+		t.Error("a judge that could not answer was recorded as a refusal of the card")
+	}
+}
+
+// The run record carries both numbers, because the morning note reads one file.
+func TestTheRunRecordCarriesTheRefusalNumbers(t *testing.T) {
+	vault := t.TempDir()
+	cfg := configOverRules(t, vault, "reference")
+	cfg.EngineStateDir = t.TempDir()
+	run := newEnrichRun(enrich.BatchReport{Considered: 10, Skipped: 3, Refused: 2},
+		enrichVerdicts{}, "opus", enrich.Budget{})
+	run.RefusalsOpen = 19
+	if err := appendEnrichRun(cfg, run); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(enrichRunsPath(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["refused"] != float64(2) || got["refusals_open"] != float64(19) {
+		t.Errorf("the record carries refused=%v open=%v, want 2 and 19",
+			got["refused"], got["refusals_open"])
 	}
 }

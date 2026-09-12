@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // stubJudge answers however the test needs, and records what it was asked.
@@ -358,4 +359,135 @@ func TestTheSamplerIsDeterministicAndHandlesTheEdges(t *testing.T) {
 	if !SampleEvery(1)("x.md") {
 		t.Error("a rate of one skipped a note; it samples everything")
 	}
+}
+
+// The asymmetry that produced false refusals: the enricher is handed the whole
+// card and told every claim must trace to it, while the judge used to be shown
+// the body alone. Three of the nineteen refusals on 2026-09-11 were a card
+// being refused for naming a fact written in its own frontmatter.
+func TestTheJudgeSeesTheFactsTheCardCarries(t *testing.T) {
+	j := &stubJudge{}
+	g := &Grounding{Judge: j}
+	raw := "---\n" +
+		"type: idea\n" +
+		"captured: '2026-05-22'\n" +
+		"lifecycle: active\n" +
+		"source_id: idea-incubator:collective-memory\n" +
+		"tags: [idea-incubator-graduate]\n" +
+		"---\n\nThe queue is vault-backed.\n"
+	if err := g.Check(context.Background(), Request{Rel: "x.md", Raw: raw},
+		respond(t, "It graduated from the incubator.")); err != nil {
+		t.Fatal(err)
+	}
+	src := judgeSourceOf(t, j.prompts[0])
+	for _, want := range []string{
+		"captured: '2026-05-22'",
+		"lifecycle: active",
+		"source_id: idea-incubator:collective-memory",
+		// Never enriched, so nothing on this card is a previous pass's answer.
+		"tags: [idea-incubator-graduate]",
+		"The queue is vault-backed.",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("the judge cannot see %q, which the card plainly carries:\n%s", want, src)
+		}
+	}
+}
+
+// The other half of the same rule. On a card the pass has already enriched, its
+// own `title`, `summary` and `tags` are its previous answer — handing those
+// back as source would let a hallucination one pass let through ground the
+// next pass's restatement of it.
+func TestTheJudgeIsNotShownThePassesOwnPreviousAnswer(t *testing.T) {
+	j := &stubJudge{}
+	g := &Grounding{Judge: j}
+	raw := "---\n" +
+		"title: A title an earlier pass wrote\n" +
+		"summary: A summary an earlier pass wrote\n" +
+		"tags: [a-tag-an-earlier-pass-wrote]\n" +
+		"captured: '2026-05-22'\n" +
+		"source: conversation\n" +
+		"enriched_by: enrich/1+prompt/older\n" +
+		"enriched_at: \"2026-08-27T13:52:16Z\"\n" +
+		"---\n\nThe queue is vault-backed.\n"
+	if err := g.Check(context.Background(), Request{Rel: "x.md", Raw: raw},
+		respond(t, "Something.")); err != nil {
+		t.Fatal(err)
+	}
+	src := judgeSourceOf(t, j.prompts[0])
+	for _, gone := range []string{
+		"A title an earlier pass wrote",
+		"A summary an earlier pass wrote",
+		"a-tag-an-earlier-pass-wrote",
+	} {
+		if strings.Contains(src, gone) {
+			t.Errorf("the judge is being shown %q, which the pass wrote itself:\n%s", gone, src)
+		}
+	}
+	// What the card carried from before the pass is still evidence.
+	for _, kept := range []string{"captured: '2026-05-22'", "source: conversation",
+		"The queue is vault-backed."} {
+		if !strings.Contains(src, kept) {
+			t.Errorf("the judge lost %q, which no pass wrote:\n%s", kept, src)
+		}
+	}
+}
+
+// A dropped key takes its block-list items with it. Keeping them would leave
+// the judge reading bare values under whichever key happened to come before.
+func TestDroppingAKeyDropsTheLinesThatBelongToIt(t *testing.T) {
+	fm := "---\ntags:\n  - one\n  - two\ncaptured: '2026-05-22'\nwhy: the room said so\n---\n"
+	got := carriedFrontmatter(fm)
+	for _, gone := range []string{"tags:", "- one", "- two"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("%q survived a dropped key:\n%s", gone, got)
+		}
+	}
+	for _, kept := range []string{"captured: '2026-05-22'", "why: the room said so", "---"} {
+		if !strings.Contains(got, kept) {
+			t.Errorf("%q was dropped with something else:\n%s", kept, got)
+		}
+	}
+}
+
+// The register the filter reads has to know every field the render can write,
+// or a newly added field quietly becomes evidence for itself.
+func TestEveryFieldTheRenderWritesIsInThePassWrittenRegister(t *testing.T) {
+	r := Response{
+		Title: "T", Type: "reference", Summary: "S", Confidence: 0.1,
+		ImportanceProposed: 7, Tags: []string{"a"}, Aliases: []string{"b"},
+		Related: []string{"c"},
+	}
+	s := Stamp{Version: "v", RulesHash: "h", ConfidenceFloor: 0.65, At: time.Now()}
+	// Below the floor and judged below before, so the sink fields are written
+	// too — those are the two only a sinking card ever shows.
+	v := VerdictFor("---\nstatus: unfiled\nenriched_at: \"2026-01-01T00:00:00Z\"\n---\n", r, 0.65)
+	if !v.Sank {
+		t.Fatal("the fixture did not sink, so lifecycle_since is never rendered")
+	}
+	for _, line := range strings.Split(RenderFrontmatter(r, s, v), "\n") {
+		if line == "" || line == "---" {
+			continue
+		}
+		key, _, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		if !passWrittenFields[strings.ToLower(strings.TrimSpace(key))] {
+			t.Errorf("RenderFrontmatter writes %q and passWrittenFields does not "+
+				"list it, so the judge would be shown the pass's own answer as source",
+				strings.TrimSpace(key))
+		}
+	}
+}
+
+// judgeSourceOf is the SOURCE section of a faithfulness prompt.
+func judgeSourceOf(t *testing.T, prompt string) string {
+	t.Helper()
+	i := strings.Index(prompt, "SOURCE — the card:")
+	j := strings.Index(prompt, "PROPOSAL:")
+	if i < 0 || j < 0 {
+		t.Fatalf("the prompt carries no source section:\n%s", prompt)
+	}
+	return prompt[i:j]
 }

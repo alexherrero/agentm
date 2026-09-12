@@ -153,7 +153,7 @@ func faithfulnessQuestion(req Request, r Response) string {
 	var b strings.Builder
 	b.WriteString(faithfulnessPrompt)
 	b.WriteString("\n\nSOURCE — the card:\n\n")
-	b.WriteString(sourceBody(req.Raw))
+	b.WriteString(judgeSource(req.Raw))
 	if len(req.Neighbours) > 0 {
 		b.WriteString("\n\nSOURCE — its neighbours:\n\n")
 		for _, n := range req.Neighbours {
@@ -173,6 +173,67 @@ func faithfulnessQuestion(req Request, r Response) string {
 	if strings.TrimSpace(r.Body) != "" {
 		b.WriteString("\n\nAdded below the card:\n\n")
 		b.WriteString(r.Body)
+	}
+	return b.String()
+}
+
+// judgeSource is the card as the judge sees it: its own text, and above it the
+// frontmatter facts it carries that no pass put there.
+//
+// It used to be the body alone, and that was a false-refusal machine. The
+// enricher is handed `req.Raw` — the whole card, frontmatter included — and the
+// prompt tells it every claim must be traceable to the card. So a proposal
+// naming the card's `source_id`, its `lifecycle`, or the date it was captured
+// is doing exactly what it was asked, while a judge shown only the body cannot
+// find any of it and correctly-by-its-lights calls it invented. Three of the
+// nineteen refusals on the night of 2026-09-11 were that and nothing else:
+// `agentm-v7-multi-agent-collective-memory` refused for naming its own
+// `source_id` and its own tag, `docker-inventory` for a capture date sitting in
+// its `captured:` field, `deliberate-capture-lands-active-when-the-caller-says-so`
+// for a `lifecycle: active` written directly above the line the judge read.
+//
+// Not the whole block, though. The pass writes `title`, `summary`, `tags` and
+// the rest of passWrittenFields, so on a card it has already enriched those are
+// its own previous answer — and handing them back as source would let a
+// hallucination the last pass let through ground the next pass's restatement of
+// it. A card with no enrichment stamp has no previous pass, so every field on
+// it is the capture's and all of it is evidence.
+func judgeSource(raw string) string {
+	fm, body := splitNote(raw)
+	if fm == "" {
+		return body
+	}
+	if strings.TrimSpace(frontmatterValue(raw, "enriched_at")) == "" {
+		return fm + body
+	}
+	return carriedFrontmatter(fm) + body
+}
+
+// carriedFrontmatter is the frontmatter block with the pass's own fields taken
+// out, fences kept so it still reads as frontmatter.
+//
+// A line that does not open a key — an indented block-list item, a wrapped
+// value — belongs to whichever key last opened, and is kept or dropped with it.
+// Dropping a key and keeping its items would leave the judge reading a list of
+// bare values under whatever came before.
+func carriedFrontmatter(fm string) string {
+	var b strings.Builder
+	keep := true
+	for _, line := range strings.SplitAfter(fm, "\n") {
+		trimmed := strings.TrimRight(line, "\n")
+		switch {
+		case trimmed == "---":
+			keep = true
+		case trimmed == "" || strings.HasPrefix(trimmed, " ") ||
+			strings.HasPrefix(trimmed, "\t") || strings.HasPrefix(trimmed, "-"):
+			// A continuation: it keeps the previous key's decision.
+		default:
+			k, _, ok := strings.Cut(trimmed, ":")
+			keep = !ok || !passWrittenFields[strings.ToLower(strings.TrimSpace(k))]
+		}
+		if keep {
+			b.WriteString(line)
+		}
 	}
 	return b.String()
 }
