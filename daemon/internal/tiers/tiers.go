@@ -147,6 +147,11 @@ type Qualification struct {
 	StrongModel string `json:"strong_model"`
 	// PassVersion is the prompt-and-code version the sample was judged under.
 	PassVersion string `json:"pass_version"`
+	// Judge names what decided agreement, when a model did. Provenance for
+	// whoever reads the file, not part of the key: the measurement is of the
+	// two models on the pass version, and a different judge is a different
+	// reading of the same comparison, of which the table keeps the latest.
+	Judge string `json:"judge,omitempty"`
 
 	Sampled int     `json:"sampled"`
 	Agreed  int     `json:"agreed"`

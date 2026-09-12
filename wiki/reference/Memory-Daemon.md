@@ -77,7 +77,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `ledger` | Ask what dreaming has already done, and what is pending. |
 | `queue` | Show the pending-work queues, or record work owed. |
 | `sources` | Ask whether a source has been mined, and watermark it. |
-| `tiers` | Ask which model tier a dreaming job may run on. |
+| `tiers` | Ask which model tier a dreaming job may run on. `--audit --job summarize --cheap MODEL [--judge MODEL] [--samples N] [--seed S] [--yes]` runs the audit that earns one. |
 | `door` | Ask whether a write inside a project needs alignment. |
 | `slop` | Score notes for template residue and novelty. `--threshold`, `--json`. |
 | `completeness` | Sample enriched notes and split them into claims for grading. `--sample`, `--replicates`, `--json`. |
@@ -666,25 +666,75 @@ which is what the morning note reads for its enrichment row. The record's
 `tokens` counts cache reads too, and its per-tier `usage` keeps the four
 counts apart.
 
-### The tier table, and why it still routes everything strong
+### The tier table, and the audit that earns a cheap tier
 
 Each depth routes through the same tier table `agentmd tiers` reads: the
 deep pass is the table's `classify-unfiled` job, the light pass is
-`summarize` (`enrichJobs`, `daemon/cmd/agentmd/tiers.go:116-120`) — names
+`summarize` (`enrichJobs`, `daemon/cmd/agentmd/tiers.go:132-135`) — names
 from when the table's jobs were first named for dreaming, not enrichment.
 `enrichRouter` reads the table once per run, so a qualification written
 mid-night takes effect from the next night rather than the next note; a
 table that will not load routes every depth strong, the table's own
-answer to an unknown (`enrichRouter`, `tiers.go:127-143`). Every job still
-routes strong today — no audit has yet qualified a cheap model for either
-job. The strong model defaults to `opus` when `daemon.enrich_model` names
-none (`DefaultStrongModel`, `model.go`; `strongModel`, `tiers.go:145-151`)
-— session 3 ruled the deep pass strong, Opus (agentm-vault § Dreaming,
-Q4). `agentmd tiers` itself still reports only the configured name rather
-than enrichment's default here, deliberately: reading "a strong model is
-named" as "a strong call can be made" would call a judge that raises
-spend by contract — an interim answer until the Python cycle's sampled
-audit retires (agentm-vault plan 04, task 5).
+answer to an unknown (`enrichRouter`, `tiers.go:143-157`). Every job
+routes strong until an audit says otherwise, and the strong model
+defaults to `opus` when `daemon.enrich_model` names none
+(`DefaultStrongModel`, `model.go`; `strongModel`, `tiers.go:161-166`) —
+session 3 ruled the deep pass strong, Opus (agentm-vault § Dreaming, Q4).
+`agentmd tiers` resolves the same default, so the plain question answers
+about the run that would happen.
+
+The light pass is the job the audit measures first, because it may move a
+card's `summary`, `tags`, `related` and `confidence` and nothing the
+daemon ranks by. `agentmd tiers --audit --job summarize --cheap MODEL`
+(`cmdTiersAudit`, `daemon/cmd/agentmd/tiers_audit.go`) draws a seeded
+sample of the cards the current pass has already judged on the strong
+tier — those stamped `enriched_by` with the running pass version under
+the contract's class directories, walked by the same queue the batch uses
+and filtered through its three free gates (`auditPool`) — and, for each
+card, makes three calls through the enrichment `Caller`: the cheap tier
+and the strong tier answer the light-pass prompt, rendered exactly as the
+batch renders it, neighbours included; then the judge is shown the card,
+the strong answer as the reference and the cheap answer on trial, and
+returns `{"agree": bool, "reason": "one sentence"}`. Agreement is a
+model's judgment, not a string comparison (the operator's ruling of
+2026-09-11): "agree" means the two answers would file and rank the card
+the same way — the same meaning in the summary, tags that name the same
+things, a `related` set that overlaps on the neighbours that matter,
+confidence on the same side of the filing floor — and not the same bytes
+(`auditJudgeInstructions`). The judge is `claude-fable-5-1` unless
+`--judge` names another; it may not be the cheap model on trial.
+
+The strong tier is asked again rather than read from disk. The stamped
+card holds a deep-shape answer that went through the post-gates, Compose
+and `CarryProvenance`, so a field the gate stripped or the carry restored
+would read as the strong tier's judgment when it was the gate's. The
+comparison is between two models on one prompt, and both are asked it.
+
+The cheap model comes from `--cheap`, else `daemon.cheap_model`, and the
+command refuses to run with neither named rather than defaulting one: the
+choice is the operator's at invocation (`planTierAudit`). A pinned job is
+refused before anything is drawn (`tiers.CanAudit`, `audit.go:190`).
+
+The command projects before it spends. Without `--yes` it prints the
+pool, the draw and its seed, the call count (three per card) and an
+estimated cost at the strong tier's measured cost per call — read from
+the strong tier's usage in `enrich-runs.jsonl` when it holds calls, else
+the 2026-09-11 figures of about 18,000 tokens and $0.20 per call — and
+stops; `--json` emits the same projection as one object. With `--yes` it
+runs, prints a line per call as `agentmd enrich` does, then the report:
+judged, agreed, the rate, every disagreement with the judge's reason,
+usage per tier with the judge on its own line, and the verdict. A verdict
+that meets the pre-registered bar — 90% agreement over at least 25 judged
+samples (`tiers.MinAgreement`, `tiers.MinSamples`) — is saved to
+`model-tiers.json` in the engine state directory with the judge named on
+the qualification, and `enrichRouter` routes `summarize` cheap from the
+next run; one that does not saves nothing, and the report's `why` says
+what fell short. A tier or judge that could not be reached takes its
+sample out of the rate rather than counting either way (`tiers.Audit`,
+`audit.go:223`). Every run, saved or not, appends one line to
+`tier-audits.jsonl` beside `enrich-runs.jsonl` (`appendTierAudit`), for
+the morning note to read later. `--samples` defaults to 30 — the floor
+plus a margin for excluded calls — and `--seed S` redraws the same cards.
 
 ### Sequential, decided
 

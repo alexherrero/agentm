@@ -38,7 +38,14 @@ func asker(disagree int) (Ask, *int) {
 	}, &calls
 }
 
-func sameAnswer(cheap, strong string) bool { return cheap == strong }
+// sameAnswer is the rule a test states: the answers agree when they are the
+// same text, and a disagreement says so.
+func sameAnswer(_ context.Context, _ Sample, cheap, strong string) (Verdict, error) {
+	if cheap == strong {
+		return Verdict{Agree: true, Reason: "the same answer"}, nil
+	}
+	return Verdict{Agree: false, Reason: "the cheap tier said " + cheap}, nil
+}
 
 func auditAt() time.Time { return time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC) }
 
@@ -60,15 +67,82 @@ func TestATierThatMeetsTheBarQualifies(t *testing.T) {
 	if q.MinAgreement != MinAgreement || q.MinSamples != MinSamples {
 		t.Errorf("the record does not stamp the bar it was measured against: %+v", q)
 	}
-	// Two calls per sample, both at full price. The number is reported because
-	// it is the cost of the measurement and nobody should have to infer it.
-	if *calls != 60 || rep.Calls != 60 {
-		t.Errorf("calls = %d/%d, want 60 — two per sample", *calls, rep.Calls)
+	// Two tier calls per sample, and the judgment counted beside them: three
+	// per sample, all at full price. The number is reported because it is the
+	// cost of the measurement and nobody should have to infer it.
+	if *calls != 60 || rep.Calls != 90 {
+		t.Errorf("tier calls = %d, reported calls = %d; want 60 and 90 — two "+
+			"tier calls and one judgment per sample", *calls, rep.Calls)
 	}
-	// And the disagreements are named, so the rate can be checked.
+	// And the disagreements are named, each with the rule's reason, so the
+	// rate can be checked rather than believed.
 	if len(rep.Disagreements) != 2 {
-		t.Errorf("Disagreements = %v, want the two samples that differed",
+		t.Fatalf("Disagreements = %v, want the two samples that differed",
 			rep.Disagreements)
+	}
+	for _, d := range rep.Disagreements {
+		if d.Ref == "" || !strings.Contains(d.Reason, "the cheap tier said") {
+			t.Errorf("a disagreement carries no checkable reason: %+v", d)
+		}
+	}
+}
+
+// A judge that could not be reached has found no disagreement. The sample is
+// excluded, like one whose tier could not be reached, rather than counted
+// either way — and the report says which exclusion it was.
+func TestAnUnreachableJudgeIsExcludedRatherThanCountedEitherWay(t *testing.T) {
+	ask, _ := asker(0)
+	seen := 0
+	judge := func(ctx context.Context, s Sample, cheap, strong string) (Verdict, error) {
+		seen++
+		if seen <= 5 {
+			return Verdict{}, errors.New("the judge could not be reached")
+		}
+		return sameAnswer(ctx, s, cheap, strong)
+	}
+
+	rep, q, err := Audit(context.Background(), Summarize, cheapM, strongM, version,
+		samplesN(35), ask, judge, auditAt())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Unjudged != 5 || rep.Failed != 0 {
+		t.Errorf("Unjudged = %d, Failed = %d; want 5 unjudged and no tier failures",
+			rep.Unjudged, rep.Failed)
+	}
+	if rep.Sampled != 30 || rep.Rate != 1.0 {
+		t.Errorf("Sampled = %d at %.2f; the unjudged samples leaked into the rate",
+			rep.Sampled, rep.Rate)
+	}
+	if !rep.Qualified || q.Job != Summarize {
+		t.Errorf("a judge outage disqualified a tier that agreed on every sample "+
+			"it was judged on: %s", rep.Why)
+	}
+	if !strings.Contains(rep.Why, "the judge could not be reached") {
+		t.Errorf("the report does not say the judge was the exclusion: %s", rep.Why)
+	}
+}
+
+// A disagreement the rule gave no reason for still counts against the tier.
+// Dropping it would raise the rate, which is the one direction this audit
+// must never err in; it is named with a placeholder so a reader sees the gap.
+func TestAReasonlessDisagreementStillCounts(t *testing.T) {
+	ask, _ := asker(3)
+	mute := func(_ context.Context, _ Sample, cheap, strong string) (Verdict, error) {
+		return Verdict{Agree: cheap == strong}, nil
+	}
+	rep, _, err := Audit(context.Background(), Summarize, cheapM, strongM, version,
+		samplesN(30), ask, mute, auditAt())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Agreed != 27 || len(rep.Disagreements) != 3 {
+		t.Fatalf("agreed %d, named %d; want 27 and 3", rep.Agreed, len(rep.Disagreements))
+	}
+	for _, d := range rep.Disagreements {
+		if d.Reason == "" {
+			t.Errorf("a reasonless disagreement was named with no placeholder: %+v", d)
+		}
 	}
 }
 
@@ -180,6 +254,18 @@ func TestAuditRefusesToCompareAModelWithItself(t *testing.T) {
 			samplesN(30), ask, sameAnswer, auditAt()); err == nil {
 			t.Errorf("an audit of %q against %q was accepted", tc[0], tc[1])
 		}
+	}
+}
+
+// No cheap model is refused rather than defaulted, and before anything is
+// drawn or spent: which model is on trial is the operator's choice.
+func TestCanAuditRefusesWithoutACheapModel(t *testing.T) {
+	err := CanAudit(Summarize, "", strongM)
+	if err == nil || !strings.Contains(err.Error(), "cheap model") {
+		t.Errorf("an audit with no cheap model was not refused for that reason: %v", err)
+	}
+	if err := CanAudit(Summarize, cheapM, strongM); err != nil {
+		t.Errorf("a well-formed audit was refused: %v", err)
 	}
 }
 

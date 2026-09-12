@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -21,8 +22,8 @@ import (
 //
 // The coverage ledger and the source registry live in the index database
 // because losing them costs a re-scan. Losing this costs a re-audit, and a
-// re-audit is 2N model calls per job at full price — there is no batch tier to
-// soften it here. So it lives in the vault, in git, beside the notes it decides
+// re-audit is 3N model calls per job at full price — each tier and then the
+// judge, with no batch tier to soften it here. So it lives in the vault, in git, beside the notes it decides
 // how to spend money on.
 //
 // Losing it is still safe, which is the point of the fallback direction: every
@@ -95,6 +96,11 @@ type Sample struct {
 	// comparison is between the models and not between two framings of the
 	// question.
 	Prompt string
+	// Card is the input as the rule for agreement is shown it: the card's own
+	// text and whatever the prompt offered beside it, without the instructions
+	// both tiers were given. The tiers answer the prompt; a judge reads the
+	// card beside their answers and says whether they filed it the same way.
+	Card string
 }
 
 // Ask runs one tier over one prompt and returns its answer.
@@ -104,13 +110,36 @@ type Sample struct {
 // seam the coverage ledger uses for its lookup.
 type Ask func(ctx context.Context, model, prompt string) (string, error)
 
+// Verdict is one judgment of agreement.
+type Verdict struct {
+	Agree bool `json:"agree"`
+	// Reason is one sentence saying why. It is what makes a disagreement
+	// checkable: a rate whose disagreements carry no reason is a number that
+	// can only be believed.
+	Reason string `json:"reason"`
+}
+
 // Agrees decides whether two answers count as the same answer.
 //
 // Supplied because agreement means different things per job. A classification
 // agrees when the labels match; a summary agrees when it says the same thing,
-// which is a judgment rather than a comparison. Handing this in keeps the
-// package from pretending one rule covers both.
-type Agrees func(cheap, strong string) bool
+// which is a judgment rather than a comparison — for `summarize` the operator
+// ruled (2026-09-11) that a third model makes it, shown the card and both
+// answers, and says whether the two would file and rank the card the same
+// way. Handing this in keeps the package from pretending one rule covers
+// both.
+//
+// An error means the rule could not be applied — a judge that could not be
+// reached — which is not a disagreement, and the sample is excluded from the
+// rate the way an unreachable tier's is.
+type Agrees func(ctx context.Context, s Sample, cheap, strong string) (Verdict, error)
+
+// Disagreement is one sample the two tiers answered differently on, with the
+// rule's reason, so the number can be checked rather than believed.
+type Disagreement struct {
+	Ref    string `json:"ref"`
+	Reason string `json:"reason"`
+}
 
 // AuditReport is what one qualification run measured.
 type AuditReport struct {
@@ -125,19 +154,29 @@ type AuditReport struct {
 	// rate rather than counted as disagreement: a model that could not be
 	// reached has not disagreed with anything, and counting it as a
 	// disagreement would let an outage disqualify a tier that was fine.
-	Failed int     `json:"failed"`
-	Rate   float64 `json:"rate"`
+	Failed int `json:"failed"`
+	// Unjudged counts samples both tiers answered and the rule for agreement
+	// could not be applied to — a judge that errored. Excluded from the rate
+	// on the same reasoning: a judge that could not be reached has found no
+	// disagreement.
+	Unjudged int     `json:"unjudged"`
+	Rate     float64 `json:"rate"`
 
 	// Qualified is the verdict, and it is the only thing that should be read as
 	// one. A rate above the bar over too small a sample is not a qualification.
 	Qualified bool   `json:"qualified"`
 	Why       string `json:"why"`
 
-	// Disagreements names the samples the two tiers answered differently on, so
-	// the number can be checked rather than believed.
-	Disagreements []string      `json:"disagreements,omitempty"`
-	Calls         int           `json:"calls"`
-	Elapsed       time.Duration `json:"elapsed"`
+	// Disagreements names the samples the two tiers answered differently on,
+	// each with the rule's reason, so the number can be checked rather than
+	// believed.
+	Disagreements []Disagreement `json:"disagreements,omitempty"`
+	// Calls is every model call the audit made: two tier calls and one
+	// judgment per sample. The judgment is counted because for the jobs this
+	// audits it is a model call, and the cost of a measurement should be
+	// reported whole.
+	Calls   int           `json:"calls"`
+	Elapsed time.Duration `json:"elapsed"`
 }
 
 // maxNamedDisagreements bounds the list a report carries, on the same reasoning
@@ -145,11 +184,42 @@ type AuditReport struct {
 // say so once rather than once per sample.
 const maxNamedDisagreements = 20
 
+// CanAudit says whether an audit of this job, between these models, may run
+// at all. Audit asks it first; a command asks it before drawing a sample, so a
+// refusal costs nothing.
+func CanAudit(job Job, cheapModel, strongModel string) error {
+	if !Known(job) {
+		return fmt.Errorf("tiers: %q is not a token-bearing job", job)
+	}
+	if yes, why := Pinned(job); yes {
+		return fmt.Errorf(
+			"tiers: %s is pinned to the strong tier without audit (%s); auditing "+
+				"it would spend money measuring a route nothing takes", job, why)
+	}
+	if cheapModel == "" {
+		// Refused rather than defaulted. Which model is on trial is the
+		// operator's choice, and a default here would make the first audit a
+		// measurement of a model nobody picked.
+		return fmt.Errorf("tiers: an audit needs a cheap model to measure, and " +
+			"none is named")
+	}
+	if strongModel == "" {
+		return fmt.Errorf("tiers: an audit needs a strong model to measure against, " +
+			"and none is named")
+	}
+	if cheapModel == strongModel {
+		return fmt.Errorf(
+			"tiers: an audit compares two different models, got %q twice", cheapModel)
+	}
+	return nil
+}
+
 // Audit runs one job's cheap tier against its strong tier over a sample.
 //
-// Two calls per sample, both at full price — there is no batch tier here, which
-// is exactly why this is a deliberate, operator-initiated measurement rather
-// than something a nightly cycle does on its own.
+// Three calls per sample, all at full price — each tier, then the judge — and
+// there is no batch tier here, which is exactly why this is a deliberate,
+// operator-initiated measurement rather than something a nightly cycle does on
+// its own.
 func Audit(ctx context.Context, job Job, cheapModel, strongModel, passVersion string,
 	samples []Sample, ask Ask, agrees Agrees, now time.Time) (AuditReport, Qualification, error) {
 	started := time.Now()
@@ -158,24 +228,13 @@ func Audit(ctx context.Context, job Job, cheapModel, strongModel, passVersion st
 		PassVersion: passVersion,
 	}
 
-	if !Known(job) {
-		return rep, Qualification{}, fmt.Errorf(
-			"tiers: %q is not a token-bearing job", job)
-	}
-	if yes, why := Pinned(job); yes {
-		return rep, Qualification{}, fmt.Errorf(
-			"tiers: %s is pinned to the strong tier without audit (%s); auditing "+
-				"it would spend money measuring a route nothing takes", job, why)
+	if err := CanAudit(job, cheapModel, strongModel); err != nil {
+		return rep, Qualification{}, err
 	}
 	if ask == nil || agrees == nil {
 		return rep, Qualification{}, fmt.Errorf(
 			"tiers: an audit needs both a way to ask each tier and a rule for what " +
 				"counts as agreement")
-	}
-	if cheapModel == "" || strongModel == "" || cheapModel == strongModel {
-		return rep, Qualification{}, fmt.Errorf(
-			"tiers: an audit compares two different models, got %q and %q",
-			cheapModel, strongModel)
 	}
 
 	for _, s := range samples {
@@ -194,13 +253,27 @@ func Audit(ctx context.Context, job Job, cheapModel, strongModel, passVersion st
 			rep.Failed++
 			continue
 		}
+		v, jerr := agrees(ctx, s, cheap, strong)
+		rep.Calls++
+		if jerr != nil {
+			rep.Unjudged++
+			continue
+		}
 		rep.Sampled++
-		if agrees(cheap, strong) {
+		if v.Agree {
 			rep.Agreed++
 			continue
 		}
 		if len(rep.Disagreements) < maxNamedDisagreements {
-			rep.Disagreements = append(rep.Disagreements, s.Ref)
+			reason := strings.TrimSpace(v.Reason)
+			if reason == "" {
+				// Counted against the tier all the same. Dropping a
+				// disagreement for want of a reason would raise the rate, and
+				// that is the direction this audit must never err in.
+				reason = "(the rule gave no reason)"
+			}
+			rep.Disagreements = append(rep.Disagreements,
+				Disagreement{Ref: s.Ref, Reason: reason})
 		}
 	}
 
@@ -233,6 +306,10 @@ func Audit(ctx context.Context, job Job, cheapModel, strongModel, passVersion st
 	if rep.Failed > 0 {
 		rep.Why += fmt.Sprintf(" (%d sample(s) excluded: a tier could not be "+
 			"reached, which is not a disagreement)", rep.Failed)
+	}
+	if rep.Unjudged > 0 {
+		rep.Why += fmt.Sprintf(" (%d sample(s) excluded: the judge could not be "+
+			"reached, which is not a disagreement either)", rep.Unjudged)
 	}
 
 	if !rep.Qualified {
