@@ -24,6 +24,7 @@ _SCRIPT = _REPO_ROOT / "scripts" / "check-kind-taxonomy.sh"
 
 def _run(env_overrides: dict) -> subprocess.CompletedProcess:
     env = dict(os.environ)
+    env.pop("MEMORY_ROOT", None)
     env.pop("MEMORY_VAULT_PATH", None)
     env.update(env_overrides)
     return subprocess.run(

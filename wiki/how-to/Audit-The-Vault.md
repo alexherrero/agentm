@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Goal:** Run the read-only vault lint, read the categorized report it writes under `diagnostics/lint/`, and apply the suggested fixes by hand — the lint never edits the vault.
-> **Prereqs:** agentm v4.9.0+ (ships V4 #33), `python3` on `PATH`, and a reachable vault (`MEMORY_VAULT_PATH` set, or pass `--vault PATH`). The lint reads only; it surfaces candidate fixes for you to review and apply.
+> **Prereqs:** agentm v4.9.0+ (ships V4 #33), `python3` on `PATH`, and a reachable vault (`MEMORY_ROOT` set, or pass `--vault PATH`). The lint reads only; it surfaces candidate fixes for you to review and apply.
 
 ## Steps
 
@@ -13,7 +13,7 @@
    python3 harness/skills/memory/scripts/vault_lint.py --format json
    ```
 
-   Narrow the corpus with `--scope` (`all` · `always-load` · `projects` · `memory` · `incubator`; default `all`). Point at a specific vault with `--vault PATH` if `MEMORY_VAULT_PATH` is unset.
+   Narrow the corpus with `--scope` (`all` · `always-load` · `projects` · `memory` · `incubator`; default `all`). Point at a specific vault with `--vault PATH` if `MEMORY_ROOT` is unset.
 
 2. **Write the audit report.** Add `--audit` to write a grouped operator-review report instead of printing:
 

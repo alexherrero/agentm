@@ -507,7 +507,9 @@ class RunnerEntrypointTests(unittest.TestCase):
         shutil.copy2(real_scripts_dir / "harness_memory.py", self.scripts_dir / "harness_memory.py")
         (self.scripts_dir / "_vault_probe.py").write_text(
             "import os, sys\n"
-            "sys.exit(0 if os.environ.get('MEMORY_VAULT_PATH') == sys.argv[1] else 1)\n",
+            "ok = os.environ.get('MEMORY_ROOT') == sys.argv[1]\n"
+            "ok = ok and os.environ.get('MEMORY_VAULT_PATH') == sys.argv[1]\n"
+            "sys.exit(0 if ok else 1)\n",
             encoding="utf-8",
         )
         self.jobs_dir = self.repo_root / ".harness" / "jobs"
@@ -578,7 +580,31 @@ class RunnerEntrypointTests(unittest.TestCase):
         summary = self._run(env_extra={"AGENTM_INSTALL_PREFIX": str(prefix)})
         self.assertEqual(summary["outcomes"][0]["exit_code"], 0, summary)
 
+    def test_respects_an_already_set_memory_root(self) -> None:
+        # The new name, and the alias follows it: a job reading either sees
+        # the same directory.
+        override = Path(self.tmp.name) / "override-root"
+        override.mkdir()
+        _write_job(
+            self.jobs_dir, "vault-probe", schedule="daily", lookback="6h", tier="T3", dry_run=False,
+            command=f"{sys.executable} {self.scripts_dir / '_vault_probe.py'} {override}",
+        )
+        summary = self._run(env_extra={"MEMORY_ROOT": str(override)})
+        self.assertEqual(summary["outcomes"][0]["exit_code"], 0, summary)
+
+    def test_the_new_name_wins_over_the_alias(self) -> None:
+        wins = Path(self.tmp.name) / "wins"; wins.mkdir()
+        loses = Path(self.tmp.name) / "loses"; loses.mkdir()
+        _write_job(
+            self.jobs_dir, "vault-probe", schedule="daily", lookback="6h", tier="T3", dry_run=False,
+            command=f"{sys.executable} {self.scripts_dir / '_vault_probe.py'} {wins}",
+        )
+        summary = self._run(env_extra={"MEMORY_ROOT": str(wins), "MEMORY_VAULT_PATH": str(loses)})
+        self.assertEqual(summary["outcomes"][0]["exit_code"], 0, summary)
+
     def test_respects_an_already_set_memory_vault_path(self) -> None:
+        # The deprecated alias alone still selects the root, and the new name
+        # is exported from it.
         override = Path(self.tmp.name) / "override-vault"
         override.mkdir()
         _write_job(

@@ -59,6 +59,7 @@ class TestHarnessContextHook(unittest.TestCase):
     def _env(self, **over) -> dict:
         env = {**os.environ, "HOME": str(self.fake_home)}
         env.pop("AGENTM_INSTALL_PREFIX", None)
+        env.pop("MEMORY_ROOT", None)
         env.pop("MEMORY_VAULT_PATH", None)
         env.update(over)
         return env

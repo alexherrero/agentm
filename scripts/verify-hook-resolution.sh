@@ -16,7 +16,7 @@
 # plugin-namespaced key (+ `source_clones.agentm` so the hooks find the
 # scripts without a real skill install) and a scratch vault seeded with an
 # always-load entry + a memory/reference entry. Runs all four hook scripts
-# against it (env -u MEMORY_VAULT_PATH — the config-read path must be what
+# against it (env -u MEMORY_ROOT -u MEMORY_ROOT — the config-read path must be what
 # resolves the vault, not a leaked env var) and asserts each one actually used
 # the vault:
 #   - recall session-start:  always-load entry appears on stdout
@@ -104,7 +104,7 @@ mkdir -p "$AGENTM_STATE_DIR"
 SV="$(mktemp -d)"
 PROJ="$(mktemp -d)"
 # reflect-idle backgrounds a detached (reparented) orchestration_idle.py job
-# when MEMORY_VAULT_PATH resolves — fire-and-forget by design, so cleanup can
+# when MEMORY_ROOT resolves — fire-and-forget by design, so cleanup can
 # race it mid-write. Best-effort, quiet, retried once.
 cleanup() { rm -rf "$SCRATCH_HOME" "$SV" "$PROJ" 2>/dev/null; rm -rf "$SCRATCH_HOME" "$SV" "$PROJ" 2>/dev/null || true; }
 trap cleanup EXIT
@@ -170,12 +170,12 @@ mkdir -p "$PROJ/elsewhere"
 cp "$TRANSCRIPT" "$PAYLOAD_TRANSCRIPT"
 
 run_hook() {  # run_hook <hook-script-relpath> [stdin] — stdout only
-  ( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX \
+  ( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX \
       bash "$HOOKS/$1" <<<"${2:-}" 2>/dev/null )
 }
 
 run_hook_stderr() {  # run_hook_stderr <hook-script-relpath> [stdin] — stderr only
-  ( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX \
+  ( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX \
       bash "$HOOKS/$1" <<<"${2:-}" 2>&1 >/dev/null )
 }
 
@@ -204,7 +204,7 @@ session_id: $SESSION_ID
 started_at: 2026-01-01T00:00:00Z
 transcript: $TRANSCRIPT
 EOF
-( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
+( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
     bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
 assert_absent "reflect-idle: orphan marker consumed (.start removed)" "$MARKER"
 assert_exists "reflect-idle: orphan marker reflected (.reflected written)" "${MARKER%.start}.reflected"
@@ -223,7 +223,7 @@ transcript: $PROJ/definitely-not-here.jsonl
 EOF
 DEAD_NOLINE="$PROJ/.harness/session-id-dead-noline.start"
 printf 'session_id: dead-noline\nstarted_at: 2026-01-01T00:00:00Z\n' > "$DEAD_NOLINE"
-( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
+( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
     bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
 assert_absent "reflect-idle: dead pointer cleared (transcript missing)" "$DEAD_GONE"
 assert_absent "reflect-idle: dead pointer cleared (no transcript: line)" "$DEAD_NOLINE"
@@ -260,7 +260,7 @@ assert_contains "session-start: marker records the SessionStart source" "$MARKER
 
 # The marker the payload wrote must be resolvable by the sweeper that reads it —
 # the round trip that was broken for 57 days, now closed without a formula.
-( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
+( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
     bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
 assert_exists "reflect-idle: payload-written marker reflects (not cleared as dead)" \
   "${MARKER_G%.start}.reflected"

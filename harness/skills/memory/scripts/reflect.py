@@ -1320,7 +1320,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--route", action="store_true",
         help="after mining, route candidates per tri-modal heuristic "
              "(HIGH → auto-save; MEDIUM → see --route-mode; LOW → filed flagged low). "
-             "Requires --vault-path or MEMORY_VAULT_PATH env var.",
+             "Requires --vault-path or MEMORY_ROOT env var.",
     )
     parser.add_argument(
         "--route-mode", choices=list(_VALID_ROUTE_MODES), default=None,
@@ -1332,7 +1332,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--vault-path",
         help="MemoryVault root (used when --route is set). Resolves from "
-             "--vault-path → MEMORY_VAULT_PATH env. Required for --route.",
+             "--vault-path → MEMORY_ROOT env. Required for --route.",
     )
     parser.add_argument(
         "--source", default=None,
@@ -1370,7 +1370,7 @@ def _parse_corpus_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--vault-path", default=None,
-        help="MemoryVault root (default: $MEMORY_VAULT_PATH env var). "
+        help="MemoryVault root (default: $MEMORY_ROOT env var). "
              "Required — state file + inbox entries land here.",
     )
     parser.add_argument(
@@ -1408,10 +1408,10 @@ def _main_corpus(argv: list[str]) -> int:
     # Resolve vault.
     vault_arg = args.vault_path
     if not vault_arg:
-        vault_arg = os.environ.get("MEMORY_VAULT_PATH", "").strip() or None
+        vault_arg = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip() or None
     if not vault_arg:
         print(
-            "ERROR: corpus mode requires --vault-path or MEMORY_VAULT_PATH env var",
+            "ERROR: corpus mode requires --vault-path or MEMORY_ROOT env var",
             file=sys.stderr,
         )
         return 1
@@ -1476,10 +1476,10 @@ def main(argv: list[str] | None = None) -> int:
         # Resolve vault path: arg → env → error.
         vault_arg = args.vault_path
         if not vault_arg:
-            vault_arg = os.environ.get("MEMORY_VAULT_PATH", "").strip() or None
+            vault_arg = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip() or None
         if not vault_arg:
             print(
-                "ERROR: --route requires --vault-path or MEMORY_VAULT_PATH env var",
+                "ERROR: --route requires --vault-path or MEMORY_ROOT env var",
                 file=sys.stderr,
             )
             return 1

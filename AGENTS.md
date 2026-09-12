@@ -48,7 +48,7 @@ It runs the unit suite (`scripts/test_*.py`) + every `check-*` gate (syntax · r
 
 Vault paths are **resolved at runtime; never cache an absolute path as a literal constant, config value, or remembered fact.**
 
-The canonical resolver is `harness_memory.vault_path()`, which reads `plugins.obsidian-vault.vault_path` from the kernel config (set by `agentm_config --vault-path`; V5-7 config-plane). The `$MEMORY_VAULT_PATH` env var is the escape hatch for per-invocation overrides.
+The canonical resolver is `harness_memory.vault_path()`, which reads `plugins.obsidian-vault.vault_path` from the kernel config (set by `agentm_config --vault-path`; V5-7 config-plane). The `$MEMORY_ROOT` env var is the escape hatch for per-invocation overrides, and it has one meaning: the value is the **memory root** — the directory holding `memory/`, `personal/`, `projects/` and `desk/` (`<vault>/Agent` on the shipped layout) — never the vault root. `vault_path()` derives the vault root from it by taking the configured `plugins.obsidian-vault.memory_root` off its end; an export that does not end in that prefix is a flat layout and is both roots at once. `$MEMORY_VAULT_PATH` is the deprecated alias with the same meaning, honoured for at least one release (ruling of 2026-09-11; see [wiki/reference/Memory-Daemon.md](wiki/reference/Memory-Daemon.md)).
 
 Why this matters: an absolute path like `/Users/<name>/Library/CloudStorage/GoogleDrive-<id>/…/Obsidian/Agent` encodes machine-specific state (username, drive ID, mount point) that changes across installations and over time. A path cached as a literal in memory or code silently becomes wrong when any of those change — and wrong content is worse than no content because it reads as valid.
 

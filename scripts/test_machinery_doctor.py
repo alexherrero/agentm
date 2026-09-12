@@ -618,6 +618,13 @@ class ProjectJsonPointerTests(unittest.TestCase):
         self.assertEqual(c.status, "OK")
         self.assertIn("3 vault pointer(s)", c.detail)
 
+    def test_the_new_name_is_checked_the_same_way(self):
+        c = self._check({"env": {"MEMORY_ROOT": str(self.mem)}})
+        self.assertEqual(c.status, "OK")
+        c = self._check({"env": {"MEMORY_ROOT": str(self.stale)}})
+        self.assertEqual(c.status, "FAIL")
+        self.assertIn("outside", c.detail)
+
     def test_fail_when_pointer_exists_but_is_outside_the_vault(self):
         c = self._check({"env": {"MEMORY_VAULT_PATH": str(self.stale)}})
         self.assertEqual(c.status, "FAIL")

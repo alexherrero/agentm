@@ -38,6 +38,7 @@ class MemoryRootBase(unittest.TestCase):
         (self.vault / "Church").mkdir()
         self._env = dict(os.environ)
         os.environ["AGENTM_INSTALL_PREFIX"] = str(self.prefix)
+        os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
         self.addCleanup(self._restore)
 
@@ -126,6 +127,77 @@ class TestConsistencyGate(MemoryRootBase):
     def test_unset_memory_root_is_not_a_violation(self):
         cfg = self.write_config(**{"daemon.spaces": {"memory": "memory"}})
         self.assertEqual(self.run_gate(cfg).returncode, 0)
+
+
+class TestTheOverrideHasOneMeaning(MemoryRootBase):
+    """The export names the memory root — `$MEMORY_ROOT`, or its deprecated
+    alias `$MEMORY_VAULT_PATH` — and `vault_path()` derives the vault root from
+    it. Before 2026-09-11 `vault_path()` read the same value as the vault root,
+    so under any live export the two resolvers agreed on a directory that was
+    right for one of them and one level too deep for the other.
+    """
+
+    def test_memory_root_is_the_export_under_either_name(self):
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        os.environ["MEMORY_ROOT"] = str(self.vault / "Agent")
+        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+        del os.environ["MEMORY_ROOT"]
+        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "Agent")
+        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+
+    def test_vault_path_is_what_sits_above_the_configured_prefix(self):
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        os.environ["MEMORY_ROOT"] = str(self.vault / "Agent")
+        self.assertEqual(hm.vault_path(), self.vault)
+        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+
+    def test_the_alias_derives_the_same_vault(self):
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "Agent")
+        self.assertEqual(hm.vault_path(), self.vault)
+
+    def test_the_new_name_wins_when_both_are_set(self):
+        other = Path(self._tmp.name) / "Other" / "Agent"
+        other.mkdir(parents=True)
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        os.environ["MEMORY_ROOT"] = str(self.vault / "Agent")
+        os.environ["MEMORY_VAULT_PATH"] = str(other)
+        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+        self.assertEqual(hm.vault_path(), self.vault)
+
+    def test_an_export_without_the_prefix_is_a_flat_layout(self):
+        """A scratch vault exported while the config says `Agent`: the export is
+        both roots. It must never fall through to the config's vault_path —
+        that would land a scratch run in the operator's real vault."""
+        scratch = Path(self._tmp.name) / "scratch"
+        scratch.mkdir()
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        os.environ["MEMORY_ROOT"] = str(scratch)
+        self.assertEqual(hm.vault_path(), scratch)
+        self.assertEqual(hm.memory_root(), scratch)
+
+    def test_no_configured_prefix_means_the_export_is_both_roots(self):
+        self.write_config()
+        os.environ["MEMORY_ROOT"] = str(self.vault / "Agent")
+        self.assertEqual(hm.vault_path(), self.vault / "Agent")
+        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+
+    def test_a_nested_prefix_is_taken_off_whole(self):
+        deep = Path(self._tmp.name) / "V" / "a" / "b"
+        deep.mkdir(parents=True)
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "a/b"})
+        os.environ["MEMORY_ROOT"] = str(deep)
+        self.assertEqual(hm.vault_path(), Path(self._tmp.name) / "V")
+
+    def test_a_broken_export_is_no_vault_under_either_name(self):
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        os.environ["MEMORY_ROOT"] = str(self.vault / "gone")
+        self.assertIsNone(hm.vault_path())
+        self.assertIsNone(hm.memory_root())
+        del os.environ["MEMORY_ROOT"]
+        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "gone")
+        self.assertIsNone(hm.vault_path())
+        self.assertIsNone(hm.memory_root())
 
 
 if __name__ == "__main__":

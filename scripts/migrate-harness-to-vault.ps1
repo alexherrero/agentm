@@ -8,7 +8,7 @@
 #   pwsh -NoProfile -File migrate-harness-to-vault.ps1 [OPTIONS] [TARGET]
 #
 # Options:
-#   -VaultPath <path>   Override vault root. Default: $env:MEMORY_VAULT_PATH.
+#   -VaultPath <path>   Override vault root. Default: $env:MEMORY_ROOT.
 #   -Preview            Dry-run.
 #   -Cleanup            Remove legacy files after byte-identical verification.
 #   -Rollback           Write the repo-local .project-mode=local marker (DC-8).
@@ -19,7 +19,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$VaultPath = $env:MEMORY_VAULT_PATH,
+    [string]$VaultPath = $(if ($env:MEMORY_ROOT) { $env:MEMORY_ROOT } else { $env:MEMORY_VAULT_PATH }),
     [switch]$Preview,
     [switch]$Cleanup,
     [switch]$Rollback,
@@ -45,7 +45,7 @@ if (-not (Test-Path -LiteralPath $Target -PathType Container)) {
 $Target = (Resolve-Path -LiteralPath $Target).ProviderPath
 
 if (-not $VaultPath) {
-    Write-Error 'vault path not provided. Set MEMORY_VAULT_PATH or pass -VaultPath.'
+    Write-Error 'vault path not provided. Set MEMORY_ROOT or pass -VaultPath.'
     exit 1
 }
 if (-not (Test-Path -LiteralPath $VaultPath -PathType Container)) {

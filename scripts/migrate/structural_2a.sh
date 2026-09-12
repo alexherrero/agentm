@@ -15,9 +15,9 @@
 # touches nothing done.
 set -euo pipefail
 
-VAULT="${MEMORY_VAULT_PATH:-}"
+VAULT="${MEMORY_ROOT:-${MEMORY_VAULT_PATH:-}}"
 if [[ -z "$VAULT" || ! -d "$VAULT" ]]; then
-  echo "structural_2a: MEMORY_VAULT_PATH unset or not a directory" >&2
+  echo "structural_2a: MEMORY_ROOT unset or not a directory" >&2
   exit 2
 fi
 

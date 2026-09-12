@@ -15,7 +15,7 @@
 # Runs the REAL `harness_memory.py` / `project_config.py` CLIs against a `mktemp`
 # scratch — never a real vault, never the network, never a sub-agent dispatch.
 # The whole suite runs TWICE:
-#   • vault pass  — MEMORY_VAULT_PATH set; state lands <vault>/desk/projects/<slug>/_harness/
+#   • vault pass  — MEMORY_ROOT set; state lands <vault>/desk/projects/<slug>/_harness/
 #   • local pass  — device state_mode:local, NO vault; state lands <repo>/.harness/
 # so a write that lands in the wrong place (or a vault-assumption that breaks
 # without a vault) fails loudly in one of the two passes.
@@ -88,8 +88,8 @@ FEATURES_BODY='[{"name": "fixture-feature", "passes": false}]'
 # vault + prefix vars keeps each pass hermetic (no leak from the other mode or the
 # caller's shell).
 MODE_ENV=()
-hm()  { env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX "${MODE_ENV[@]+"${MODE_ENV[@]}"}" "$PY" "$HM" "$@"; }
-pcli(){ env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX "${MODE_ENV[@]+"${MODE_ENV[@]}"}" PYTHONPATH="$REPO/scripts" "$PY" "$PC" "$@"; }
+hm()  { env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX "${MODE_ENV[@]+"${MODE_ENV[@]}"}" "$PY" "$HM" "$@"; }
+pcli(){ env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX "${MODE_ENV[@]+"${MODE_ENV[@]}"}" PYTHONPATH="$REPO/scripts" "$PY" "$PC" "$@"; }
 
 # write_state <proj> <file>  (content on stdin) — the state-write seam, with the
 # fault hook for the negative check.
@@ -169,7 +169,7 @@ printf '{"vault_project": "%s"}\n' "$SLUG" > "$V_PROJ/.harness/project.json"
 _VP_SHIM="$SCRATCH/vault-plugin"
 mkdir -p "$_VP_SHIM"
 printf 'from vault_backend_stub import VaultBackend\nPROTOCOL = "vault"\n' > "$_VP_SHIM/storage_vault.py"
-MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT" "HARNESS_MEMORY_TOOLKIT_PATH=$S" "OBSIDIAN_VAULT_SCRIPTS=$_VP_SHIM")
+MODE_ENV=("MEMORY_ROOT=$V_VAULT" "HARNESS_MEMORY_TOOLKIT_PATH=$S" "OBSIDIAN_VAULT_SCRIPTS=$_VP_SHIM")
 run_lifecycle "[vault]" "$V_PROJ" "$V_VAULT/desk/projects/$SLUG/_harness" 1
 # The vault repo_registry seam fired (cross-device index).
 assert_exists "[vault] setup: repo_registry index written" "$V_VAULT/_meta/repos.json"
@@ -201,7 +201,7 @@ assert_absent "[local] isolation: no registry under project tree"  "$L_PROJ/_met
 echo "verify-phases: ── bridge: session-marker scenarios ──"
 SM_PROJ="$SCRATCH/sm-proj"; mkdir -p "$SM_PROJ/.harness"
 SM_VAULT="$SCRATCH/sm-vault"; mkdir -p "$SM_VAULT"
-sm_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_VAULT_PATH="$SM_VAULT" HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
+sm_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_ROOT="$SM_VAULT" HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
 
 PW_SM0="$(sm_hm phase-dispatch post-work --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
 assert_contains "bridge: post-work no marker → no-session"          "$PW_SM0" '"status": "no-session"'
@@ -225,7 +225,7 @@ assert_contains "bridge: post-release runs discover-skills"         "$PR_SM"  'd
 echo "verify-phases: ── crystallization staging (retired) ──"
 CZ_PROJ="$SCRATCH/cz-proj"; mkdir -p "$CZ_PROJ/.harness"
 CZ_VAULT="$SCRATCH/cz-vault"; mkdir -p "$CZ_VAULT"
-cz_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_VAULT_PATH="$CZ_VAULT" HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
+cz_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_ROOT="$CZ_VAULT" HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
 CZ_T1="$SCRATCH/cz-transcript-1.jsonl"; : > "$CZ_T1"
 printf 'session_id: cz-s1\nstarted_at: 2026-01-01T00:00:00Z\ntranscript: %s\n' "$CZ_T1" \
   > "$CZ_PROJ/.harness/session-id-cz-s1.start"

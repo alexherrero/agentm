@@ -20,7 +20,7 @@ schedule: hourly
 lookback: 3h
 
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
-# Relies on MEMORY_VAULT_PATH already being set in the runner's own
+# Relies on MEMORY_ROOT already being set in the runner's own
 # environment, same as every other vault-reading script in this repo.
 command: python3 ../harness/skills/memory/scripts/ingest_sweep.py
 

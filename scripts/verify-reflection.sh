@@ -37,7 +37,7 @@
 # ablated. Additive to VERIFY_REFLECTION_FAULT; the two are never combined
 # in one run.
 #
-# Hermetic: MEMORY_TRANSCRIPT_ROOT points at a scratch dir; MEMORY_VAULT_PATH
+# Hermetic: MEMORY_TRANSCRIPT_ROOT points at a scratch dir; MEMORY_ROOT
 # at a scratch vault. No network, no real ~/.claude/projects/ read.
 #
 # Usage:   bash scripts/verify-reflection.sh
@@ -148,7 +148,7 @@ elif [ "$ABLATE" = "1" ]; then
     # machine-global now; each lane run gets its own.
     export AGENTM_STATE_DIR="$V.engine-state"
     mkdir -p "$AGENTM_STATE_DIR"
-    CORPUS_OUT="$(env MEMORY_VAULT_PATH="$V" "$PY" "$S/reflect.py" corpus \
+    CORPUS_OUT="$(env MEMORY_ROOT="$V" "$PY" "$S/reflect.py" corpus \
       --projects-root "$ROOT" --vault-path "$V" --route-mode "$mode" 2>&1)"
     TOTAL="$("$PY" -c "
 import json,sys
@@ -199,7 +199,7 @@ print(len(hits))
     # machine-global now; each lane run gets its own.
     export AGENTM_STATE_DIR="$V.engine-state"
     mkdir -p "$AGENTM_STATE_DIR"
-    CORPUS_OUT="$(env MEMORY_VAULT_PATH="$V" "$PY" "$S/reflect.py" corpus \
+    CORPUS_OUT="$(env MEMORY_ROOT="$V" "$PY" "$S/reflect.py" corpus \
       --projects-root "$ROOT" --vault-path "$V" --execute --route-mode "$mode" 2>&1)"
     TOTAL="$("$PY" -c "
 import json,sys

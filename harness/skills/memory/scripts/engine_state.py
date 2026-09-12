@@ -16,7 +16,7 @@ lines pinned by a parity test (`scripts/test_engine_state_parity.py`, the
 house pattern for exactly this seam).
 
 `$AGENTM_STATE_DIR` is the per-invocation override tests and CI use — the
-same contract `$MEMORY_VAULT_PATH` holds for the vault. Creation is the
+same contract `$MEMORY_ROOT` holds for the vault. Creation is the
 caller's mkdir, not this resolver's side effect.
 """
 from __future__ import annotations

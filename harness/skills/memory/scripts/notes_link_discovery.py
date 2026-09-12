@@ -773,7 +773,7 @@ def build_report(notes: list, suggestions: list, *, today: str,
 def default_report_path(vault: Path, today: str) -> Path:
     """`<vault>/_meta/notes-links-<date>.md` — agent-controlled output, mirroring
     vault_lint's `vault-lint-<date>.md`. `vault` is the AgentMemory root
-    (MEMORY_VAULT_PATH); the personal-notes corpus is the Obsidian parent, but the
+    (MEMORY_ROOT); the personal-notes corpus is the Obsidian parent, but the
     report lands inside the agent's own vault, never beside a personal note."""
     # An operator-review report is a diagnostics record (filing-v2 part 2a),
     # beside vault_lint's own, never beside a personal note.
@@ -928,7 +928,7 @@ def main(argv: Optional[list] = None) -> int:
     p = argparse.ArgumentParser(
         prog="notes_link_discovery",
         description="Read-only missing-link audit for personal notes (V4 #43).")
-    p.add_argument("--vault", default=None, help="vault root (else MEMORY_VAULT_PATH)")
+    p.add_argument("--vault", default=None, help="vault root (else MEMORY_ROOT)")
     p.add_argument("--format", choices=("json", "text"), default="text")
     p.add_argument("--top", type=int, default=_DEFAULT_TOP, help="max suggestions (0 = all)")
     p.add_argument("--min-score", type=float, default=_DEFAULT_MIN_SCORE,

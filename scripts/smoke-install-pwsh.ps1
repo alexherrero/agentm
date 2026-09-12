@@ -292,7 +292,9 @@ try {
     if (-not $py) { $py = Get-Command python -ErrorAction SilentlyContinue }
     if ($py) {
         $prevVault = $env:MEMORY_VAULT_PATH
+        $prevRoot = $env:MEMORY_ROOT
         Remove-Item Env:\MEMORY_VAULT_PATH -ErrorAction SilentlyContinue
+        Remove-Item Env:\MEMORY_ROOT -ErrorAction SilentlyContinue
         try {
             '# smoke PLAN' | & $py.Source (Join-Path $HarnessRoot 'scripts/harness_memory.py') `
                 write-state --project-root $localProject 'PLAN.md' | Out-Null
@@ -309,6 +311,7 @@ try {
             Write-Host '    repo-local write/read round-trip OK'
         } finally {
             if ($prevVault) { $env:MEMORY_VAULT_PATH = $prevVault }
+            if ($prevRoot) { $env:MEMORY_ROOT = $prevRoot }
         }
     }
 

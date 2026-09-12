@@ -27,7 +27,7 @@ Install AgentM and crickets with the recommended configuration and a Google Driv
 
 ```bash
 # Point the vault at a Google Drive folder named "Agent" (the recommended default)
-export MEMORY_VAULT_PATH="<your-google-drive>/Agent"
+export MEMORY_ROOT="<your-google-drive>/Agent"
 
 # Install AgentM for every project on this machine
 bash ~/agentm/install.sh

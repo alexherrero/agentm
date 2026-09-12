@@ -65,7 +65,7 @@ mkdir -p "$AGENTM_STATE_DIR"
 
 cleanup() { rm -rf "$V"; }
 trap cleanup EXIT
-export MEMORY_VAULT_PATH="$V"
+export MEMORY_ROOT="$V"   # flat scratch layout: the memory root is the vault root
 echo "verify-memory-roundtrip: scratch vault = $V"
 
 mem() { "$PY" "$S/$1" "${@:2}"; }   # mem <script> <args...>

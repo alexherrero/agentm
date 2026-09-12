@@ -67,9 +67,12 @@ _resolve_agentm_python() {
 }
 AGENTM_PY="$(_resolve_agentm_python)"
 
-# Resolve MEMORY_VAULT_PATH from .agentm-config.json if not in env. See
+# Resolve MEMORY_ROOT from .agentm-config.json if not in env. See
 # memory-recall-session-start.sh for rationale + bug history.
 _resolve_vault_path() {
+    if [[ -n "${MEMORY_ROOT:-}" ]]; then
+        printf '%s\n' "$MEMORY_ROOT"; return 0
+    fi
     if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
         printf '%s\n' "$MEMORY_VAULT_PATH"; return 0
     fi
@@ -98,6 +101,11 @@ print(root)
 }
 _resolved_vault="$(_resolve_vault_path 2>/dev/null)" || _resolved_vault=""
 if [[ -n "$_resolved_vault" ]]; then
+    # The memory root, under its one name (operator ruling 2026-09-11).
+    # MEMORY_VAULT_PATH is the deprecated alias with the same meaning, exported
+    # alongside for one release because readers outside this repo (crickets'
+    # installed plugins) still know only that name.
+    export MEMORY_ROOT="$_resolved_vault"
     export MEMORY_VAULT_PATH="$_resolved_vault"
 fi
 unset _resolved_vault
@@ -203,7 +211,7 @@ for marker in "${markers[@]:-}"; do
     fi
 
     # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → filed flagged low
-    # via reflect.py's tri-modal routing). Requires MEMORY_VAULT_PATH; if
+    # via reflect.py's tri-modal routing). Requires MEMORY_ROOT; if
     # unset, --route fails non-zero + marker stays .start for next pass.
     if "$AGENTM_PY" "$REFLECT_PY" "$transcript" --summary --route 2>/dev/null; then
         # Rename .start → .reflected on success, then stamp it NOW: mv keeps the
@@ -254,10 +262,10 @@ fi
 # return immediately. Killing the hook at 30s would otherwise leave the chain
 # never recording its fire, re-running every session. The chain's results
 # surface on the NEXT session via the task-3 briefing. Requires
-# MEMORY_VAULT_PATH; graceful-skip if unset / driver absent.
+# MEMORY_ROOT; graceful-skip if unset / driver absent.
 ORCH_IDLE_PY="$(_resolve_memory_script orchestration_idle.py 2>/dev/null)" || ORCH_IDLE_PY=""
-if [[ -n "$ORCH_IDLE_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
-    ( "$AGENTM_PY" "$ORCH_IDLE_PY" --vault-path "$MEMORY_VAULT_PATH" >/dev/null 2>&1 & ) 2>/dev/null || true
+if [[ -n "$ORCH_IDLE_PY" && -n "${MEMORY_ROOT:-}" ]]; then
+    ( "$AGENTM_PY" "$ORCH_IDLE_PY" --vault-path "$MEMORY_ROOT" >/dev/null 2>&1 & ) 2>/dev/null || true
 fi
 
 exit 0

@@ -129,8 +129,9 @@ if (-not (Test-Path $RecallPy)) {
 $BriefingPy = ".claude/skills/memory/scripts/orchestration_briefing.py"
 if (Test-Path $BriefingPy) {
     try {
-        if ($env:MEMORY_VAULT_PATH) {
-            & $Py $BriefingPy --vault-path $env:MEMORY_VAULT_PATH 2>$null
+        $VaultEnv = if ($env:MEMORY_ROOT) { $env:MEMORY_ROOT } else { $env:MEMORY_VAULT_PATH }
+        if ($VaultEnv) {
+            & $Py $BriefingPy --vault-path $VaultEnv 2>$null
         } else {
             & $Py $BriefingPy 2>$null
         }

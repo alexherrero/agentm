@@ -124,7 +124,7 @@ $ReflectArgs = @($ReflectPy, $Transcript, "--summary", "--route")
 $ReflectOut = & $Py @ReflectArgs 2>&1 | Out-String
 $ReflectExit = $LASTEXITCODE
 if ($ReflectExit -ne 0) {
-    [Console]::Error.WriteLine("[memory-reflect-stop] reflect.py --route exited $ReflectExit (MEMORY_VAULT_PATH set?); transcript was $Transcript")
+    [Console]::Error.WriteLine("[memory-reflect-stop] reflect.py --route exited $ReflectExit (MEMORY_ROOT set?); transcript was $Transcript")
     exit 0
 }
 

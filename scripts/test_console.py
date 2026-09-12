@@ -81,6 +81,7 @@ class ResolveVaultPathTests(unittest.TestCase):
             )
             with patch.dict(os.environ, {"AGENTM_INSTALL_PREFIX": str(prefix)}, clear=False), \
                     patch.object(c, "find_repo_root", return_value=None):
+                os.environ.pop("MEMORY_ROOT", None)
                 os.environ.pop("MEMORY_VAULT_PATH", None)
                 self.assertEqual(c.resolve_vault_path(), vault)
 
@@ -92,6 +93,7 @@ class ResolveVaultPathTests(unittest.TestCase):
             )
             with patch.dict(os.environ, {"AGENTM_INSTALL_PREFIX": str(prefix)}, clear=False), \
                     patch.object(c, "find_repo_root", return_value=None):
+                os.environ.pop("MEMORY_ROOT", None)
                 os.environ.pop("MEMORY_VAULT_PATH", None)
                 self.assertEqual(c.resolve_vault_path(), vault)
 
@@ -114,6 +116,7 @@ class ResolveVaultPathTests(unittest.TestCase):
             prefix = Path(prefix_td)  # no .agentm-config.json written
             with patch.dict(os.environ, {"AGENTM_INSTALL_PREFIX": str(prefix)}, clear=False), \
                     patch.object(c, "find_repo_root", return_value=None):
+                os.environ.pop("MEMORY_ROOT", None)
                 os.environ.pop("MEMORY_VAULT_PATH", None)
                 self.assertIsNone(c.resolve_vault_path())
 

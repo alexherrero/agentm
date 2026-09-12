@@ -13,7 +13,7 @@ A `SessionStart` event hook that globs `MemoryVault/personal-private/_always-loa
 ## How it works
 
 - **Trigger:** Claude Code's `SessionStart` event (matcher `.*` — fires on startup, resume, clear, and compact).
-- **Vault resolution:** reads `MEMORY_VAULT_PATH` env var. If unset, exits 0 silently (no-op — the hook never breaks a session where MemoryVault isn't configured).
+- **Vault resolution:** reads `MEMORY_ROOT` env var. If unset, exits 0 silently (no-op — the hook never breaks a session where MemoryVault isn't configured).
 - **Glob:** `<vault>/personal-private/_always-load/*.md`.
 - **Filter:** entries with `status: superseded` in their frontmatter are skipped (defense-in-depth; supersession normally moves entries to `_archive/` but we filter here too).
 - **Output:**
@@ -46,7 +46,7 @@ transcript: <absolute-path-to-transcript-jsonl>
 
 ## Failure modes (all soft)
 
-- **`MEMORY_VAULT_PATH` unset:** exits 0 with no output. Session proceeds without MemoryVault context.
+- **`MEMORY_ROOT` unset:** exits 0 with no output. Session proceeds without MemoryVault context.
 - **Vault path doesn't exist:** stderr warning `vault path not found: <path>` + exit 0.
 - **`_always-load/` directory missing:** stderr `[memory-recall-session-start] Loaded 0 MemoryVault always-load entries` + exit 0.
 - **Time budget exceeded mid-load:** stderr warning naming the budget overrun + partial results emitted + exit 0.

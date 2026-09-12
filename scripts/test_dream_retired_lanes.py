@@ -52,6 +52,7 @@ class RetiredLanesTests(unittest.TestCase):
                                f"lifecycle: active\ncreated: {created}\n---\n\nnobody asked\n", encoding="utf-8")
         self._env = {k: os.environ.get(k) for k in ("AGENTM_STATE_DIR", "MEMORY_VAULT_PATH")}
         os.environ["AGENTM_STATE_DIR"] = str(root / "state")
+        os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
         self.addCleanup(self._restore)
 

@@ -54,14 +54,14 @@ DEFAULT_BUDGET_TOKENS = 5000
 
 
 def _resolve_vault_path(arg: str | None) -> Path:
-    """Resolve vault path: arg → MEMORY_VAULT_PATH env → error."""
+    """Resolve vault path: arg → MEMORY_ROOT env → error."""
     if arg:
         return Path(arg).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env_path:
         return Path(env_path).expanduser()
     raise FileNotFoundError(
-        "No vault path resolved. Set --vault-path or MEMORY_VAULT_PATH env var."
+        "No vault path resolved. Set --vault-path or MEMORY_ROOT env var."
     )
 
 
@@ -245,7 +245,7 @@ def create_incubator_skeleton(
 
     Raises:
         FileNotFoundError: if vault_path doesn't resolve (caller didn't pass
-            arg + MEMORY_VAULT_PATH env unset).
+            arg + MEMORY_ROOT env unset).
         ValueError: if title or summary are empty after strip.
     """
     title = (title or "").strip()
@@ -306,7 +306,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("summary", help="1-2 sentence pitch")
     parser.add_argument(
         "--vault-path", default=None,
-        help="MemoryVault root (default: $MEMORY_VAULT_PATH)",
+        help="MemoryVault root (default: $MEMORY_ROOT)",
     )
     parser.add_argument("--slug", default=None,
                         help="kebab-case slug (default: derived from title)")

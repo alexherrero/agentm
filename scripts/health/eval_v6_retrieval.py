@@ -150,7 +150,7 @@ def score_at_k(expected: list[str], ranked: list[str], k: int = 5) -> dict:
 def _resolve_vault(arg_vault_path: str | None) -> Path | None:
     if arg_vault_path:
         return Path(arg_vault_path).expanduser()
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env_path:
         return Path(env_path).expanduser()
     return None

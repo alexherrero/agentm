@@ -135,10 +135,11 @@ if ($markers.Count -gt 0 -or $gcCount -gt 0) {
 # the enable_idle_chain toggle, so most invocations are a fast no-op; when it
 # DOES fire it can exceed this hook's 30s SessionStart timeout, so we launch
 # it DETACHED (hidden, no -Wait) and return immediately. Results surface on the
-# NEXT session via the task-3 briefing. Graceful-skip if MEMORY_VAULT_PATH
+# NEXT session via the task-3 briefing. Graceful-skip if MEMORY_ROOT (or its
+# deprecated alias MEMORY_VAULT_PATH)
 # unset / driver absent.
 $OrchIdlePy = ".claude/skills/memory/scripts/orchestration_idle.py"
-$VaultEnv = $env:MEMORY_VAULT_PATH
+$VaultEnv = if ($env:MEMORY_ROOT) { $env:MEMORY_ROOT } else { $env:MEMORY_VAULT_PATH }
 if ((Test-Path $OrchIdlePy) -and $VaultEnv) {
     try {
         Start-Process -FilePath $Py -ArgumentList @($OrchIdlePy, "--vault-path", $VaultEnv) -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null

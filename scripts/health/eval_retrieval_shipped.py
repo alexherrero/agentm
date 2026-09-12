@@ -130,14 +130,14 @@ def _disposition_map(memory_root: "Path | None") -> dict:
 
 
 def _migration_table() -> dict:
-    """The reports of the memory root this process is pointed at. `$MEMORY_VAULT_PATH`
+    """The reports of the memory root this process is pointed at. `$MEMORY_ROOT`
     wins when set — the per-invocation override every hermetic harness uses, so
     a test vault never reads the operator's live reports — else the configured
     root. Cached for the process; a test isolates it by setting `_MIGRATION_TABLE`."""
     global _MIGRATION_TABLE
     if _MIGRATION_TABLE is None:
         import os
-        env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+        env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
         root = Path(env) if env else None
         if root is None:
             try:

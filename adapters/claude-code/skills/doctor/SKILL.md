@@ -140,7 +140,7 @@ Skip on Antigravity/Gemini (no hook surface). Send a synthetic SessionStart even
 **Additionally** assert `memory-recall-session-start` emits **non-empty stdout** when the configured vault has any `<vault>/personal/_always-load/*.md` entries:
 
 - Count always-load entries: `find "$vault_path/personal/_always-load" -maxdepth 1 -name '*.md' | wc -l`.
-- If count > 0 AND the probe's stdout is empty → **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`**. This is the silent-broken shape (V4.7 / agentm-hooks regression): pre-fix, the hook hardcoded a project-scope relative path to `recall.py` and assumed `MEMORY_VAULT_PATH` was injected by Claude Code into the hook env — neither held on user-scope installs.
+- If count > 0 AND the probe's stdout is empty → **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`**. This is the silent-broken shape (V4.7 / agentm-hooks regression): pre-fix, the hook hardcoded a project-scope relative path to `recall.py` and assumed `MEMORY_ROOT` was injected by Claude Code into the hook env — neither held on user-scope installs.
 - If count == 0 → empty stdout is correctly OK.
 
 Pass: `harness-context-session-start` emits a 2-path block matching the expected shape AND, when vault has always-load entries, `memory-recall-session-start` emits a `# MemoryVault — always-load entries` header followed by entry bodies.

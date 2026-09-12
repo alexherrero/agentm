@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Goal:** Run the read-only personal-notes link-discovery audit, read the ranked "these two notes look related but aren't linked" report it writes under `diagnostics/lint/`, and add the suggested `[[wikilinks]]` by hand in Obsidian — the audit never edits a personal note.
-> **Prereqs:** agentm v4.10.0+ (ships V4 #43), `python3` on `PATH`, and a reachable Obsidian vault (`MEMORY_VAULT_PATH` set, or pass `--vault PATH`). The embedding signal additionally needs the `sentence-transformers` package; without it the audit runs TF-IDF-only.
+> **Prereqs:** agentm v4.10.0+ (ships V4 #43), `python3` on `PATH`, and a reachable Obsidian vault (`MEMORY_ROOT` set, or pass `--vault PATH`). The embedding signal additionally needs the `sentence-transformers` package; without it the audit runs TF-IDF-only.
 
 This audit is the complement to [Audit the vault](Audit-The-Vault) — that one lints your agent-shaped vault-root entries; this one looks at your **personal** notes (the ones outside the vault root) and surfaces pairs that read as related but have no `[[wikilink]]` between them. It is strictly **personal↔personal**: it never suggests linking a personal note to a vault-root entry.
 
@@ -15,7 +15,7 @@ This audit is the complement to [Audit the vault](Audit-The-Vault) — that one 
    python3 harness/skills/memory/scripts/notes_link_discovery.py --format json
    ```
 
-   Tuning flags: `--top N` caps the shortlist (default 40; `0` = all), `--min-score X` sets the TF-IDF cosine floor (default `0.18`), and `--vault PATH` points at a specific Obsidian root when `MEMORY_VAULT_PATH` isn't set. The corpus is every `.md` under the Obsidian root **except** the vault root folder itself, `.obsidian/`, `.trash/`, and `.git/`.
+   Tuning flags: `--top N` caps the shortlist (default 40; `0` = all), `--min-score X` sets the TF-IDF cosine floor (default `0.18`), and `--vault PATH` points at a specific Obsidian root when `MEMORY_ROOT` isn't set. The corpus is every `.md` under the Obsidian root **except** the vault root folder itself, `.obsidian/`, `.trash/`, and `.git/`.
 
 2. **Add the semantic signal (optional but recommended).** Pass `--embeddings` to run a second relatedness pass that catches related notes which *don't share surface vocabulary* — including the same note in two languages:
 

@@ -131,7 +131,7 @@ def resolve_vault_path() -> "Path | None":
     """Reuse harness_memory.vault_path() when this is an agentm dev checkout
     (the canonical resolver, since it also carries the fail-loud
     storage.backend=vault guard); otherwise fall back to the same
-    $MEMORY_VAULT_PATH env / on-device .agentm-config.json read every
+    $MEMORY_ROOT env / on-device .agentm-config.json read every
     install-side script (doctor_vault.py, the memory hooks) already uses --
     so memory-activity/vault-doctor/vault-lint/dreaming resolve the same
     vault from any repo, not just an agentm dev checkout."""
@@ -148,7 +148,7 @@ def resolve_vault_path() -> "Path | None":
                 return p
         except Exception:
             pass
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         p = Path(env).expanduser()
         return p if p.is_dir() else None
@@ -531,7 +531,7 @@ def heat_policy_report(vault: "Path | None") -> str:
 def section_memory(vault: "Path | None") -> str:
     if vault is None:
         return (
-            "Memory activity: n/a (no vault resolved -- set MEMORY_VAULT_PATH or "
+            "Memory activity: n/a (no vault resolved -- set MEMORY_ROOT or "
             "configure plugins.obsidian-vault.vault_path)"
         )
     lines = []

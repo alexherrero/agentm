@@ -235,7 +235,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument("content", help="the captured text (a thought, or a link + note)")
-    parser.add_argument("--vault-path", help="vault root (default: $MEMORY_VAULT_PATH env var)")
+    parser.add_argument("--vault-path", help="vault root (default: $MEMORY_ROOT env var)")
     parser.add_argument("--kind", choices=_KNOWN_KINDS, default="capture")
     parser.add_argument("--slug", help="override the default timestamp-based slug")
     parser.add_argument("--source", help="the transport, e.g. 'cli', 'clipper'")
@@ -247,18 +247,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def _resolve_vault(cli_arg: "str | None") -> "Path | None":
-    """arg → $MEMORY_VAULT_PATH. Deliberately does NOT import harness_memory:
+    """arg → $MEMORY_ROOT. Deliberately does NOT import harness_memory:
     kernel toolkit scripts under harness/skills/memory/scripts/ are invoked
     as subprocesses by the harness_memory bridge and must never import it
     back (V5-5 LC-8 bridge extension, enforced by
     scripts/check-one-way-imports.py's lc8-bridge rule). The bridge — or any
     other caller — resolves `harness_memory.vault_path()` and exports it as
-    $MEMORY_VAULT_PATH before invoking this script. Same convention as
+    $MEMORY_ROOT before invoking this script. Same convention as
     `ideas_promote.py::_resolve_vault_root`."""
     if cli_arg:
         p = Path(cli_arg)
         return p if p.is_dir() else None
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         p = Path(env).expanduser()
         return p if p.is_dir() else None
@@ -269,7 +269,7 @@ def main(argv: "list[str] | None" = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv)
     vault = _resolve_vault(args.vault_path)
     if vault is None:
-        print("[capture] no vault resolved — pass --vault-path or configure MEMORY_VAULT_PATH", file=sys.stderr)
+        print("[capture] no vault resolved — pass --vault-path or configure MEMORY_ROOT", file=sys.stderr)
         return 2
     result = capture(
         vault, args.content, kind=args.kind, slug=args.slug, source=args.source or "cli",

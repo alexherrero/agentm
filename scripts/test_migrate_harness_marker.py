@@ -49,6 +49,7 @@ class TestMigrateMarkerRepoLocal(unittest.TestCase):
 
     def _run(self, *extra: str) -> subprocess.CompletedProcess:
         env = dict(os.environ)
+        env.pop("MEMORY_ROOT", None)
         env.pop("MEMORY_VAULT_PATH", None)
         return subprocess.run(
             ["bash", str(_SCRIPT), "--vault-path", str(self.vault), str(self.target), *extra],

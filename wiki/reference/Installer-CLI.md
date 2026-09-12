@@ -59,7 +59,7 @@ You use `scripts/agentm_config.py` to read and set fields on the on-host `.agent
 
 | Operation | Effect |
 |---|---|
-| `--vault-path <path>` | Set the vault path (validates the dir exists). Writes `plugins.obsidian-vault.vault_path` + `storage.backend=vault` on the on-host `.agentm-config.json` (V5-7 config-plane, tasks 1+2 shipped). `--get vault_path` reads the plugin-namespaced key first, then falls back to the legacy flat `vault_path` key. `--unset vault_path` removes both keys. Backs `harness_memory.py::vault_path()` when `$MEMORY_VAULT_PATH` is unset. |
+| `--vault-path <path>` | Set the vault path (validates the dir exists). Writes `plugins.obsidian-vault.vault_path` + `storage.backend=vault` on the on-host `.agentm-config.json` (V5-7 config-plane, tasks 1+2 shipped). `--get vault_path` reads the plugin-namespaced key first, then falls back to the legacy flat `vault_path` key. `--unset vault_path` removes both keys. Backs `harness_memory.py::vault_path()` when `$MEMORY_ROOT` is unset. |
 | `--state-mode <local\|backend>` | Set `state_mode` — the device-level run mode. `local` opts a vault-less machine into repo-local state; `backend` switches back. `vault` is still accepted but is a deprecated alias — the code normalizes it to `backend` on write (LC-5). Idempotent; mutually exclusive with `--vault-path`. See [Single-repo state mode](Single-Repo-State-Mode). |
 | `--get <field>` | Read a single field to stdout; `rc=0` if present, `rc=1` (silent) if absent. |
 | `--list` | Dump the full config as JSON. |

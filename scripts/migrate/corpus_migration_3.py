@@ -713,10 +713,10 @@ def _drop_emptied(rows: list, vault: Path, vault_root: Path, *, populations) -> 
 def resolve_vault(arg) -> Path:
     if arg:
         return Path(arg).expanduser()
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env:
         return Path(env).expanduser()
-    raise SystemExit("no vault — pass --vault or set MEMORY_VAULT_PATH (the memory root)")
+    raise SystemExit("no vault — pass --vault or set MEMORY_ROOT (the memory root)")
 
 
 def default_report_dir(vault: Path, *, applied: bool) -> Path:
@@ -730,7 +730,7 @@ def default_report_dir(vault: Path, *, applied: bool) -> Path:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="corpus_migration_3.py", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--vault", help="the memory root (default: $MEMORY_VAULT_PATH)")
+    ap.add_argument("--vault", help="the memory root (default: $MEMORY_ROOT)")
     ap.add_argument("--rules", help="a rules file to load instead of the vault's (tests)")
     ap.add_argument("--apply", action="store_true", help="perform --phase; without it, dry run")
     ap.add_argument("--phase", choices=PHASES, help="which phase to apply")

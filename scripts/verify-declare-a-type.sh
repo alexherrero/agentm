@@ -65,7 +65,7 @@ export REPO="$REPO"
 # Isolation, through the only channels the harness's own calls go through.
 # $HOME last: the kernel config is resolved from it, and left alone this run
 # would read the operator's real vault path out of it.
-export MEMORY_VAULT_PATH="$WORK/vault"
+export MEMORY_ROOT="$WORK/vault"   # flat scratch layout: the memory root is the vault root
 export AGENTM_STATE_DIR="$WORK"
 export HOME="$WORK"
 

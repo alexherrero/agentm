@@ -352,6 +352,7 @@ class ResolveMemoryRootTests(unittest.TestCase):
         self.vault = self.tmp / "Vault"
         (self.vault / "Agent").mkdir(parents=True)
         self._env = {k: os.environ.get(k) for k in ("MEMORY_VAULT_PATH", "AGENTM_INSTALL_PREFIX")}
+        os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
         os.environ["AGENTM_INSTALL_PREFIX"] = str(self.prefix)
 
@@ -429,6 +430,7 @@ class ResolveVaultTests(unittest.TestCase):
         )
         old_env = os.environ.get("MEMORY_VAULT_PATH")
         old_prefix = os.environ.get("AGENTM_INSTALL_PREFIX")
+        os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
         os.environ["AGENTM_INSTALL_PREFIX"] = str(prefix)
         try:

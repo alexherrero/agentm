@@ -3,7 +3,7 @@
 > [!NOTE]
 > **Status: implemented** — shipped by `PLAN-capture-article-ingestion.md` (FRIDAY ladder feature 3, capture part 2 of 3).
 > **Goal:** Turn a web page or a local file into a searchable, chunked memory — one intact full-document note plus small, reading-order-linked chunks for retrieval.
-> **Prereqs:** A resolvable vault (`--vault-path` or `$MEMORY_VAULT_PATH`). No new dependency — fetching a URL uses stdlib `urllib` only.
+> **Prereqs:** A resolvable vault (`--vault-path` or `$MEMORY_ROOT`). No new dependency — fetching a URL uses stdlib `urllib` only.
 
 `/memory ingest` is the explicit, human-invoked door into article ingestion — you name the URL or file yourself. It writes straight to permanent memory, the same trust level as `memory_append`: you named the source, so there's no staging step. (Contrast the automated ingest sweep, which fetches forwarded links on its own schedule and stages first — see [Capture from your phone](Capture-From-Your-Phone).)
 

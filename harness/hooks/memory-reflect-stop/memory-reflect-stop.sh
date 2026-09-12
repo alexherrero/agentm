@@ -49,9 +49,12 @@ if [[ -z "$REFLECT_PY" ]]; then
     exit 0
 fi
 
-# Resolve MEMORY_VAULT_PATH from .agentm-config.json if not in env. See
+# Resolve MEMORY_ROOT from .agentm-config.json if not in env. See
 # memory-recall-session-start.sh for rationale + bug history.
 _resolve_vault_path() {
+    if [[ -n "${MEMORY_ROOT:-}" ]]; then
+        printf '%s\n' "$MEMORY_ROOT"; return 0
+    fi
     if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
         printf '%s\n' "$MEMORY_VAULT_PATH"; return 0
     fi
@@ -80,6 +83,11 @@ print(root)
 }
 _resolved_vault="$(_resolve_vault_path 2>/dev/null)" || _resolved_vault=""
 if [[ -n "$_resolved_vault" ]]; then
+    # The memory root, under its one name (operator ruling 2026-09-11).
+    # MEMORY_VAULT_PATH is the deprecated alias with the same meaning, exported
+    # alongside for one release because readers outside this repo (crickets'
+    # installed plugins) still know only that name.
+    export MEMORY_ROOT="$_resolved_vault"
     export MEMORY_VAULT_PATH="$_resolved_vault"
 fi
 unset _resolved_vault
@@ -210,10 +218,10 @@ fi
 REFLECT_OUT="$("$AGENTM_PY" "$REFLECT_PY" "$TRANSCRIPT" --summary --route 2>&1)"
 REFLECT_EXIT=$?
 if [[ $REFLECT_EXIT -ne 0 ]]; then
-    # Most common cause: MEMORY_VAULT_PATH not set in hook env. Reflection
+    # Most common cause: MEMORY_ROOT not set in hook env. Reflection
     # output is captured but routing failed; emit what we have + stderr note.
     echo "$REFLECT_OUT" >&2 | head -3
-    echo "[memory-reflect-stop] reflect.py --route exited $REFLECT_EXIT (MEMORY_VAULT_PATH set?); transcript was $TRANSCRIPT" >&2
+    echo "[memory-reflect-stop] reflect.py --route exited $REFLECT_EXIT (MEMORY_ROOT set?); transcript was $TRANSCRIPT" >&2
     exit 0
 fi
 

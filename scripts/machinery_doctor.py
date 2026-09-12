@@ -767,20 +767,22 @@ def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
 
 # ── project.json vault pointers ─────────────────────────────────────────────
 # Path-valued keys on a `project.json`, each paired with the vault surface it
-# must sit under. `MEMORY_VAULT_PATH` names the memory tree itself and
-# `items_source` addresses per-project state inside it, so both belong under
+# must sit under. `MEMORY_ROOT` (and its deprecated alias `MEMORY_VAULT_PATH`,
+# the same meaning) names the memory tree itself and `items_source` addresses
+# per-project state inside it, so all of them belong under
 # `harness_memory.memory_root()`. `IDEAS_SURFACE_PATH` is the operator's own
 # note at the vault root, one level ABOVE the memory tree — checking it against
 # the memory root would flag a correctly-configured install.
 _PROJECT_JSON_PATH_KEYS = (
     ("items_source", "memory"),
+    ("env.MEMORY_ROOT", "memory"),
     ("env.MEMORY_VAULT_PATH", "memory"),
     ("env.IDEAS_SURFACE_PATH", "vault"),
 )
 
 
 def _dotted(cfg: dict, key: str):
-    """Read a one-level-dotted key (`env.MEMORY_VAULT_PATH`). None if absent."""
+    """Read a one-level-dotted key (`env.MEMORY_ROOT`). None if absent."""
     node = cfg
     for part in key.split("."):
         if not isinstance(node, dict) or part not in node:

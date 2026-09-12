@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Goal:** Adjust the auto-orchestration toggles, thresholds, and cooldowns so the SessionStart briefing and idle-time memory chain fire on a cadence that fits how you work.
-> **Prereqs:** `MEMORY_VAULT_PATH` set; harness with the auto-orchestration push-surface installed (V4 #23). See [Auto-orchestration config](Auto-Orchestration-Config) for every key this page edits.
+> **Prereqs:** `MEMORY_ROOT` set; harness with the auto-orchestration push-surface installed (V4 #23). See [Auto-orchestration config](Auto-Orchestration-Config) for every key this page edits.
 
 The tunables live in `<vault>/personal/auto-orchestration-config.md`, auto-seeded with sensible defaults the first time the push-surface runs. The file is yours to edit — a re-seed never clobbers your edits. Every key sits in one `settings` fence; you change a value, save, and the next run picks it up. Below, you edit a threshold, a cooldown, or a toggle, then verify the change with `--dry-run`.
 
@@ -11,7 +11,7 @@ The tunables live in `<vault>/personal/auto-orchestration-config.md`, auto-seede
 1. **Locate (or seed) the config.** Open `<vault>/personal/auto-orchestration-config.md`. If it doesn't exist yet, seed it with the defaults:
 
    ```bash
-   python3 harness/skills/memory/scripts/auto_orchestration.py --vault-path "$MEMORY_VAULT_PATH" seed-config
+   python3 harness/skills/memory/scripts/auto_orchestration.py --vault-path "$MEMORY_ROOT" seed-config
    ```
 
    It prints `seeded` (wrote the file) or `kept` (one already existed — your edits are safe). The values to edit live in the fenced block:
@@ -57,19 +57,19 @@ The tunables live in `<vault>/personal/auto-orchestration-config.md`, auto-seede
 5. **Verify the change took effect.** Confirm the config parses to the values you expect:
 
    ```bash
-   python3 harness/skills/memory/scripts/auto_orchestration.py --vault-path "$MEMORY_VAULT_PATH" show-config
+   python3 harness/skills/memory/scripts/auto_orchestration.py --vault-path "$MEMORY_ROOT" show-config
    ```
 
    Then dry-run the affected chain without touching state — the idle chain prints its resolved step plan and `cooldown_ok`:
 
    ```bash
-   python3 harness/skills/memory/scripts/orchestration_idle.py --vault-path "$MEMORY_VAULT_PATH" --dry-run
+   python3 harness/skills/memory/scripts/orchestration_idle.py --vault-path "$MEMORY_ROOT" --dry-run
    ```
 
    For the briefing, run the generator directly — it prints the block only when something is over threshold and the cooldown allows:
 
    ```bash
-   python3 harness/skills/memory/scripts/orchestration_briefing.py --vault-path "$MEMORY_VAULT_PATH"
+   python3 harness/skills/memory/scripts/orchestration_briefing.py --vault-path "$MEMORY_ROOT"
    ```
 
    To see when each chain last fired, inspect the `last_fire` timestamps in `~/.local/state/agentm/auto-orchestration-state.json` (the engine state directory; `$AGENTM_STATE_DIR` overrides it).

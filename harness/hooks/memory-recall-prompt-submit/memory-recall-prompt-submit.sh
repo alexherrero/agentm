@@ -46,10 +46,13 @@ if [[ -z "$RECALL_PY" ]]; then
     exit 0
 fi
 
-# Resolve MEMORY_VAULT_PATH from .agentm-config.json if not in env (Claude Code
+# Resolve MEMORY_ROOT from .agentm-config.json if not in env (Claude Code
 # doesn't inject it into hook envs). See memory-recall-session-start.sh for
 # rationale + bug history.
 _resolve_vault_path() {
+    if [[ -n "${MEMORY_ROOT:-}" ]]; then
+        printf '%s\n' "$MEMORY_ROOT"; return 0
+    fi
     if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
         printf '%s\n' "$MEMORY_VAULT_PATH"; return 0
     fi
@@ -78,6 +81,11 @@ print(root)
 }
 _resolved_vault="$(_resolve_vault_path 2>/dev/null)" || _resolved_vault=""
 if [[ -n "$_resolved_vault" ]]; then
+    # The memory root, under its one name (operator ruling 2026-09-11).
+    # MEMORY_VAULT_PATH is the deprecated alias with the same meaning, exported
+    # alongside for one release because readers outside this repo (crickets'
+    # installed plugins) still know only that name.
+    export MEMORY_ROOT="$_resolved_vault"
     export MEMORY_VAULT_PATH="$_resolved_vault"
 fi
 unset _resolved_vault
@@ -102,7 +110,7 @@ _resolve_agentm_python() {
 AGENTM_PY="$(_resolve_agentm_python)"
 
 # Pipe stdin (the UserPromptSubmit JSON payload) through to recall.py.
-# recall.py handles MEMORY_VAULT_PATH resolution, JSON parsing, prompt
+# recall.py handles MEMORY_ROOT resolution, JSON parsing, prompt
 # extraction, recall engine query (lands in task 3), dedup, output, and
 # the 300ms time budget internally.
 exec "$AGENTM_PY" "$RECALL_PY" prompt-submit

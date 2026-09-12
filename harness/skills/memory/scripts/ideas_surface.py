@@ -50,7 +50,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 
 def _resolve_vault_root() -> Path | None:
-    """Resolve the MemoryVault root at runtime via $MEMORY_VAULT_PATH —
+    """Resolve the MemoryVault root at runtime via $MEMORY_ROOT —
     never a cached literal. Same convention every sibling script in this
     package honors (e.g. ideas_incubator.py's _resolve_vault_path).
 
@@ -60,10 +60,10 @@ def _resolve_vault_root() -> Path | None:
     extension, enforced by scripts/check-one-way-imports.py's lc8-bridge
     rule). The bridge — or any other caller — is responsible for resolving
     `harness_memory.vault_path()` (the canonical resolver; AGENTS.md §
-    Vault-path convention) and exporting it as $MEMORY_VAULT_PATH before
+    Vault-path convention) and exporting it as $MEMORY_ROOT before
     invoking this script.
     """
-    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    env_path = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
     if env_path:
         p = Path(env_path).expanduser()
         return p if p.is_dir() else None
@@ -79,7 +79,7 @@ def _resolve_ideas_path(arg_path: str | None) -> Path:
     """Resolve Ideas.md path: arg → env → parent of the resolved vault path.
 
     Raises FileNotFoundError if none of arg / $IDEAS_SURFACE_PATH /
-    $MEMORY_VAULT_PATH / harness_memory.vault_path() resolve — never falls
+    $MEMORY_ROOT / harness_memory.vault_path() resolve — never falls
     back to a cached path literal.
     """
     if arg_path:
@@ -91,7 +91,7 @@ def _resolve_ideas_path(arg_path: str | None) -> Path:
     if vault is None:
         raise FileNotFoundError(
             "No Ideas.md path resolved. Set --ideas-path, $IDEAS_SURFACE_PATH, "
-            "or $MEMORY_VAULT_PATH (Ideas.md defaults to the parent directory "
+            "or $MEMORY_ROOT (Ideas.md defaults to the parent directory "
             "of the resolved vault path)."
         )
     return vault.parent / "Ideas.md"

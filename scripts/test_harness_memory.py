@@ -808,6 +808,7 @@ class TestCLI(unittest.TestCase):
 
     def _run(self, *args: str, env_extra: dict | None = None) -> subprocess.CompletedProcess:
         env = dict(os.environ)
+        env.pop("MEMORY_ROOT", None)
         env.pop("MEMORY_VAULT_PATH", None)
         env.pop("HARNESS_AUTO_SAVE_MODE", None)
         env.pop("HARNESS_AUTO_SAVE_CONFIDENCE_THRESHOLD", None)

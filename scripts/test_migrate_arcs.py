@@ -271,6 +271,7 @@ class TestResolveVault(unittest.TestCase):
             self.assertEqual(ma._resolve_vault(None), Path("/env/path"))
         finally:
             if old is None:
+                os.environ.pop("MEMORY_ROOT", None)
                 os.environ.pop("MEMORY_VAULT_PATH", None)
             else:
                 os.environ["MEMORY_VAULT_PATH"] = old

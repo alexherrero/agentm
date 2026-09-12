@@ -2,14 +2,14 @@
 
 > [!NOTE]
 > **Goal:** Tune the harness's phase-boundary MemoryVault auto-context behavior (recall budgets, save mode, confidence threshold) for your project, and troubleshoot when it doesn't fire as expected.
-> **Prereqs:** [crickets](https://github.com/alexherrero/crickets) sibling-cloned next to agentm; `MEMORY_VAULT_PATH` env set; harness ≥ v2.5.0. See [Project config](Project-Config) for the `.harness/project.json` field references this page assumes.
+> **Prereqs:** [crickets](https://github.com/alexherrero/crickets) sibling-cloned next to agentm; `MEMORY_ROOT` env set; harness ≥ v2.5.0. See [Project config](Project-Config) for the `.harness/project.json` field references this page assumes.
 
-Once [crickets](https://github.com/alexherrero/crickets) is sibling-cloned next to agentm and `MEMORY_VAULT_PATH` is set, every harness phase auto-loads relevant MemoryVault context at its natural start, and offers to save durable items at its natural end — without you having to invoke `/memory search` or `/memory save` manually.
+Once [crickets](https://github.com/alexherrero/crickets) is sibling-cloned next to agentm and `MEMORY_ROOT` is set, every harness phase auto-loads relevant MemoryVault context at its natural start, and offers to save durable items at its natural end — without you having to invoke `/memory search` or `/memory save` manually.
 
 ## Prerequisites
 
 1. **MemoryVault installed** (v4.0.0+: shipped with agentm at `harness/skills/memory/`; in v3.x and earlier it lived at `crickets/skills/memory/` and the harness loaded it via sibling-clone resolution). For v3.x compatibility, the harness's 3-tier resolver checks `agentm/harness/skills/memory/scripts/save.py` first, then falls back to the legacy `crickets/skills/memory/scripts/save.py` sibling path, then to `HARNESS_MEMORY_TOOLKIT_PATH` env override.
-2. **`MEMORY_VAULT_PATH` env set** to your vault root (set once via `agentm_config --vault-path`; resolved at runtime via `harness_memory.vault_path()`).
+2. **`MEMORY_ROOT` env set** to your vault root (set once via `agentm_config --vault-path`; resolved at runtime via `harness_memory.vault_path()`).
 3. **`.harness/project.json` has a `vault_project` field** OR your repo has a `github.repo` field OR a git origin — auto-detect uses the 3-tier fallback (see [Memory System design](agentm-memory-system) §Q2).
 
 If any prerequisite is absent, every phase still works — the dispatcher graceful-skips silently (see Troubleshooting below).
@@ -56,7 +56,7 @@ You don't normally invoke these directly — phase specs invoke them at the righ
 
 | Variable | Default | Effect |
 |---|---|---|
-| `MEMORY_VAULT_PATH` | (unset) | Vault root path. **Unset → all auto-context features graceful-skip silently.** |
+| `MEMORY_ROOT` | (unset) | Vault root path. **Unset → all auto-context features graceful-skip silently.** |
 | `HARNESS_AUTO_SAVE_MODE` | `ask` | `ask` (confidence-modulated), `silent` (always save, no prompt), `off` (never save). |
 | `HARNESS_AUTO_SAVE_CONFIDENCE_THRESHOLD` | `0.8` | Float 0–1. Agent-supplied `--confidence ≥ threshold` → silent save with stderr notice; below → prompt. |
 | `HARNESS_RECALL_BUDGET_<PHASE>` | 4000 (review/setup) or 6000 (others) | Token cap for recall, per phase. Use uppercase phase name: `SETUP` / `PLAN` / `WORK` / `REVIEW` / `RELEASE` / `BUGFIX`. |
@@ -100,14 +100,14 @@ Entry cap is a separate constraint (default 5 per phase) — if you need more en
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| No recall output at all | `MEMORY_VAULT_PATH` env unset OR directory missing | `echo $MEMORY_VAULT_PATH` + verify dir exists |
+| No recall output at all | `MEMORY_ROOT` env unset OR directory missing | `echo $MEMORY_ROOT` + verify dir exists |
 | Recall output but missing per-project entries | `vault_project` slug not resolving to a real `projects/<slug>/` dir (or legacy `personal-projects/<slug>/` pre-rename) | `python3 scripts/vault_project.py read .` — check the returned slug matches a vault entry |
 | `[harness_memory] toolkit not installed` stderr notice | Memory scripts not found via 3-tier resolution | Verify `agentm/harness/skills/memory/scripts/save.py` (v4.0.0+) OR legacy `crickets/skills/memory/scripts/save.py` (v3.x) exists; OR set `HARNESS_MEMORY_TOOLKIT_PATH` |
 | Save prompt fires even at high confidence | Threshold set above 0.8 OR `HARNESS_AUTO_SAVE_MODE=ask` with no `--confidence` passed | Check threshold env; if confidence is omitted by the agent, prompt is correct behavior (fallback to ask) |
 | Save proceeds silently when you wanted to review | `HARNESS_AUTO_SAVE_MODE=silent` OR confidence ≥ threshold | Switch mode back to `ask` (default); raise threshold if confidence is being over-estimated |
 | Cursor advances but no candidates surface | `progress.md` since last cursor was empty OR LLM summarizer found nothing durable | Expected when last plan was small/routine; re-check with `--dry-run` flag |
 | Windows UnicodeEncodeError on recall output | cp1252 stdout default; recall output contains non-ASCII | Add `sys.stdout.reconfigure(encoding="utf-8")` defensively in any wrapper script invoking the dispatcher |
-| `available` exits 1 even with vault set | Vault directory deleted/moved OR permissions issue | `ls -la "$MEMORY_VAULT_PATH"` — confirm it's readable + a directory (not a symlink to nowhere) |
+| `available` exits 1 even with vault set | Vault directory deleted/moved OR permissions issue | `ls -la "$MEMORY_ROOT"` — confirm it's readable + a directory (not a symlink to nowhere) |
 
 ## See also
 

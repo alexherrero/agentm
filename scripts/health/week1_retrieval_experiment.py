@@ -126,7 +126,7 @@ _NO_ANSWER = {"no answer found", "none", "no answer", "n/a", "-"}
 def resolve_vault(arg_vault_path=None):
     """Resolve the vault root. Never a literal — `harness_memory.vault_path()` reads
     `plugins.obsidian-vault.vault_path` from the on-host kernel config, and
-    `$MEMORY_VAULT_PATH` overrides per-invocation. See AGENTS.md's vault-path
+    `$MEMORY_ROOT` overrides per-invocation. See AGENTS.md's vault-path
     convention for why a cached absolute path goes wrong silently.
     """
     if arg_vault_path:
@@ -137,8 +137,8 @@ def resolve_vault(arg_vault_path=None):
     if p is None or not Path(p).is_dir():
         raise SystemExit(
             "[week1] no reachable vault. Set plugins.obsidian-vault.vault_path via "
-            "`agentm_config --vault-path`, export $MEMORY_VAULT_PATH, or pass "
-            "--vault-path."
+            "`agentm_config --vault-path`, export $MEMORY_ROOT to the memory "
+            "root (Agent/), or pass --vault-path."
         )
     return Path(p)
 
@@ -341,6 +341,7 @@ def run_driver_claude(question, arm, socket_path, call_budget, *, model, timeout
         "--no-session-persistence", "--disable-slash-commands",
     ]
     env = dict(os.environ)
+    env.pop("MEMORY_ROOT", None)
     env.pop("MEMORY_VAULT_PATH", None)
 
     started = time.monotonic()

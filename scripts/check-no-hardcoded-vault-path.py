@@ -14,7 +14,7 @@ Fails if any non-test file under the repo root embeds:
       in backtick notation without a path prefix are not literals).
 
 Agents must resolve the vault path at runtime (harness_memory.vault_path() or
-$MEMORY_VAULT_PATH) — never cache an absolute path as a constant or config value.
+$MEMORY_ROOT) — never cache an absolute path as a constant or config value.
 
 Exit:
   0  clean
@@ -147,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
     print(
-        "  Resolve via harness_memory.vault_path() or the $MEMORY_VAULT_PATH env var.",
+        "  Resolve via harness_memory.vault_path() or the $MEMORY_ROOT env var.",
         file=sys.stderr,
     )
     print("  See AGENTS.md § Vault-path convention.", file=sys.stderr)
