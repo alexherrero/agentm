@@ -96,7 +96,7 @@ func TestParityWithTheRecordedPythonPass(t *testing.T) {
 
 	// The lifecycle lane: nil rules are the packaged thresholds, the same
 	// the recorder's stub returned.
-	life, err := PlanLifecycle(root, nil, now, 0)
+	life, err := PlanLifecycle(root, "", nil, now, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

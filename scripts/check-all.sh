@@ -92,6 +92,7 @@ gate "check-payload-parity (every payload copy is the template's derivation)" "$
 gate "check-vocabulary-membership (--strict: any unregistered type/kind value fails; collision self-test)" "$PY" scripts/check-vocabulary-membership.py --strict
 gate "check-retrieval-regression (shipped ranker vs the pinned gold-set baseline)" bash scripts/check-retrieval-regression.sh
 gate "check-vault-frontmatter (every note's frontmatter parses as YAML)" "$PY" scripts/check-vault-frontmatter.py
+gate "check-memory-root-shape (agent/ holds two children; memory/ only the classes; the standards set)" "$PY" scripts/check-memory-root-shape.py
 gate "check-memory-root-consistency (daemon spaces sit beneath memory_root)" "$PY" scripts/check-memory-root-consistency.py
 gate "check-registry-hygiene (no throwaway temp path registered as a repo)" "$PY" scripts/check-registry-hygiene.py
 # Graceful-skips (PASS) when no crickets checkout is reachable — it needs

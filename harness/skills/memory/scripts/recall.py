@@ -328,10 +328,9 @@ def _stem(token: str) -> str:
             return token[: -len(suffix)]
     return token
 
-# Path convention: always-load entries live under <vault>/personal/_always-load/.
-# Group-scoped _always-load/ dirs (e.g. work-public/_always-load/) are reserved
-# for future per-group recall; v0.1.0 hardwires personal/.
-_ALWAYS_LOAD_REL = Path("memory") / "_always-load"
+# The always-load tier is `standards/` at the vault root (memory-root trims,
+# plan 05); vault_layout.always_load_dirs() resolves it, and the retired pen
+# `memory/_always-load/` behind it while that still holds anything.
 
 # Filing-v2 2b: the project space is the vault-root `Projects/`, a SIBLING of
 # the memory root recall is handed. Its notes are corpus: the walk reaches
@@ -753,21 +752,20 @@ def session_start(
     # 6's pinned loader lands). Standards sit at the vault root beside the
     # memory root, so the sibling probe comes first, the flat layout second —
     # the same two-probe order the rules loader uses.
-    always_load_dir = vault / _ALWAYS_LOAD_REL
-    standards_dir = vault.parent / "standards"
-    if not standards_dir.is_dir():
-        standards_dir = vault / "standards"
+    # The tier is `standards/` (memory-root trims, plan 05): the loader
+    # resolves it through vault_layout, which also returns the retired pen
+    # while it still holds anything, in that order. The voice library under
+    # `standards/voice/` is on-demand and never in the glob.
+    import vault_layout  # noqa: E402 — lazy, mirrors this module's other cross-file imports
 
     candidates = []
-    if standards_dir.is_dir():
+    for tier_dir in vault_layout.always_load_dirs(vault):
         # Generated navigation (moc-*) carries no standing instruction and
         # would spend the token budget on links; skip it.
         candidates.extend(
-            p for p in sorted(standards_dir.glob("*.md"))
+            p for p in sorted(tier_dir.glob("*.md"))
             if not p.stem.startswith("moc-")
         )
-    if always_load_dir.is_dir():
-        candidates.extend(sorted(always_load_dir.glob("*.md")))
 
     # One injection per slug: the same stem on both surfaces means the pen
     # still holds a copy of something standards/ now owns (the normal
@@ -894,9 +892,13 @@ def session_start(
 
     # Transparency line on stderr (shown in hook logs, not agent context).
     slug_list = ", ".join(loaded_slugs) if loaded_slugs else "(none)"
+    # The tier's size, as injected: the part file asks the hook to print
+    # its byte count, so a tier that creeps toward the 40,000-token ceiling
+    # (design § the always-load tier) is visible in every hook log.
+    injected_bytes = sum(len(b.encode("utf-8")) for b in blocks)
     transparency = (
         f"[memory-recall-session-start] Loaded {len(loaded_slugs)} "
-        f"MemoryVault always-load entries: {slug_list}"
+        f"MemoryVault always-load entries ({injected_bytes:,} bytes injected): {slug_list}"
     )
     if overrun:
         transparency += (
@@ -976,14 +978,16 @@ def _collect_always_load_paths(vault: Path) -> set[str]:
     already loaded. Returns a set of vault-relative path strings (POSIX-style,
     matching the relative-path convention used in entry frontmatter).
     """
-    always_load_dir = vault / _ALWAYS_LOAD_REL
-    if not always_load_dir.exists():
-        return set()
+    import vault_layout  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
     out: set[str] = set()
-    for md_path in always_load_dir.glob("*.md"):
-        # Vault-relative POSIX path (consistent with save.py's path convention).
-        rel = _vault_rel(md_path, vault)
-        out.add(rel)
+    for tier_dir in vault_layout.always_load_dirs(vault):
+        for md_path in tier_dir.glob("*.md"):
+            if md_path.stem.startswith("moc-"):
+                continue
+            # Memory-root-relative POSIX path (consistent with save.py's path
+            # convention); a standards file keys as `../standards/<name>.md`.
+            out.add(_vault_rel(md_path, vault))
     return out
 
 

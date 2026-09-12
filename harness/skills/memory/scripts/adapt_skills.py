@@ -51,6 +51,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import engine_state  # noqa: E402
+import vault_layout  # noqa: E402
 
 
 _FETCH_TIMEOUT_SEC = 10
@@ -102,19 +103,20 @@ def _adapt_state_root(vault: Path) -> Path:
 
 
 def _trusted_sources_path(vault: Path) -> Path:
-    return vault / "memory" / "trusted-sources.md"
+    return vault_layout.feature_state_path(vault, "trusted-sources.md")
 
 
 def _skill_watchlist_root(vault: Path) -> Path:
-    return vault / "memory" / "_skill-watchlist"
+    return vault_layout.feature_state_path(vault, "_skill-watchlist")
 
 
 def _personal_skills_root(vault: Path) -> Path:
     return vault / "personal-skills"
 
 
-def _always_load_root(vault: Path) -> Path:
-    return vault / "memory" / "_always-load"
+def _always_load_roots(vault: Path) -> list[Path]:
+    """The always-load tier's directories (standards/, then the retired pen)."""
+    return vault_layout.always_load_dirs(vault)
 
 
 def _utcnow_iso() -> str:
@@ -397,11 +399,9 @@ def _existing_skill_names(vault: Path) -> set[str]:
 def _always_load_keywords(vault: Path) -> set[str]:
     """Extract a keyword bag from _always-load/ entry slugs + tags."""
     out: set[str] = set()
-    root = _always_load_root(vault)
-    if not root.exists():
-        return out
-    for p in root.glob("*.md"):
-        out.update(re.findall(r"[a-z]+", p.stem.lower()))
+    for root in _always_load_roots(vault):
+        for p in root.glob("*.md"):
+            out.update(re.findall(r"[a-z]+", p.stem.lower()))
     return out
 
 

@@ -129,13 +129,15 @@ class DryRunFixtureSourceSetTests(_ForwardLearningTestBase):
         changed_paths |= {p for p in pre_snapshot if pre_snapshot.get(p) != post_snapshot.get(p)}
         for rel in changed_paths:
             self.assertTrue(
-                rel.startswith(str(fl.WATCHLIST_REL)) or rel.startswith(str(fl.STATE_REL.parent)),
+                rel.startswith(str(fl.WATCHLIST_REL))
+                or rel.startswith(str(fl.watchlist_root(self.vault).relative_to(self.vault)))
+                or rel.startswith(str(fl.STATE_REL.parent)),
                 f"unexpected write outside the watchlist/cache: {rel}",
             )
 
     def test_low_scored_candidate_is_never_written(self) -> None:
         fl.run_forward_learning(self.vault, fetcher=self.fetcher, now=1_700_000_000.0)
-        low_dir = self.vault / fl.WATCHLIST_REL / "low-src"
+        low_dir = fl.watchlist_root(self.vault) / "low-src"
         self.assertFalse(low_dir.exists())
 
     def test_watermark_advances_after_scan(self) -> None:
@@ -252,6 +254,7 @@ class NoSourcesConfiguredTests(_ForwardLearningTestBase):
         # An (empty) cache state write is expected and allowed; no watchlist
         # dir is ever created when there was nothing to scan.
         self.assertFalse((self.vault / fl.WATCHLIST_REL).exists())
+        self.assertFalse(fl.watchlist_root(self.vault).exists())
 
 
 class MalformedSourceEntryTests(_ForwardLearningTestBase):

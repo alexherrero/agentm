@@ -64,7 +64,8 @@ echo "verify-v4: scratch vault = $SV"
 
 # ── A. config seed + parse ──────────────────────────────────────────────────
 "$PY" "$S/auto_orchestration.py" --vault-path "$SV" seed-config >/dev/null 2>&1
-[ -f "$SV/memory/auto-orchestration-config.md" ] \
+# Plan 05: a vault with neither home yet gets the config in Projects/agentm/.
+[ -f "$SV/Projects/agentm/auto-orchestration-config.md" ] \
   && pass "config: seed-config materializes the operator config" \
   || fail "config: seed-config materializes the operator config" "no file created"
 CFG="$("$PY" "$S/auto_orchestration.py" --vault-path "$SV" show-config 2>/dev/null)"

@@ -104,23 +104,51 @@ type AccessLog struct {
 	mu      sync.RWMutex
 	byslug  map[string]time.Time
 	loaded  bool
-	vault   string
+	dirs    []string
 	modTime time.Time
 }
 
-// NewAccessLog reads the sidecar under `vault`. A missing or unparseable file is
-// an empty log rather than an error: decay still works from `updated`, and a
-// ranking pass that refused to run because a cache was corrupt would be trading
-// a small inaccuracy for no answer at all.
-func NewAccessLog(vault string) *AccessLog {
-	a := &AccessLog{vault: vault, byslug: map[string]time.Time{}}
+// NewAccessLog reads the sidecar from the first of `dirs` that holds one. The
+// memory-root trims (agentm-vault plan 05) moved `.lifecycle.json` into the
+// engine state directory, so a caller passes that first and the memory root
+// second, and a vault on either side of the move reads the same file; an
+// empty dir is skipped. A missing or unparseable file is an empty log rather
+// than an error: decay still works from `updated`, and a ranking pass that
+// refused to run because a cache was corrupt would be trading a small
+// inaccuracy for no answer at all.
+func NewAccessLog(dirs ...string) *AccessLog {
+	a := &AccessLog{byslug: map[string]time.Time{}}
+	for _, d := range dirs {
+		if strings.TrimSpace(d) != "" {
+			a.dirs = append(a.dirs, d)
+		}
+	}
 	a.Refresh()
 	return a
 }
 
+// SidecarPath is where the sidecar is read from: the first candidate that
+// exists, else the first candidate (the engine directory, where a fresh one
+// is created).
+func (a *AccessLog) SidecarPath() string {
+	if len(a.dirs) == 0 {
+		return ""
+	}
+	for _, d := range a.dirs {
+		p := filepath.Join(d, ".lifecycle.json")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return filepath.Join(a.dirs[0], ".lifecycle.json")
+}
+
 // Refresh re-reads the sidecar when it has changed on disk.
 func (a *AccessLog) Refresh() {
-	path := filepath.Join(a.vault, ".lifecycle.json")
+	path := a.SidecarPath()
+	if path == "" {
+		return
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return

@@ -81,8 +81,13 @@ def _default_registry() -> Path | None:
         import harness_memory as hm  # noqa: WPS433
     except ImportError:
         return None
+    engine = hm.engine_state_dir() / "repos.json"
+    if engine.is_file():
+        return engine
     root = hm.memory_root()
-    return None if root is None else root / "_meta" / "repos.json"
+    if root is not None and (root / "_meta" / "repos.json").is_file():
+        return root / "_meta" / "repos.json"  # the pre-trims copy, while it is the only one
+    return engine
 
 
 def check(registry: Path | None) -> int:
@@ -143,7 +148,8 @@ def check(registry: Path | None) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--registry", metavar="PATH", default=None,
-                    help="registry to check (default: <memory_root>/_meta/repos.json)")
+                    help="registry to check (default: <engine state dir>/repos.json, "
+                         "else the vault's legacy _meta/repos.json)")
     args = ap.parse_args(argv)
     registry = Path(args.registry) if args.registry else _default_registry()
     return check(registry)

@@ -47,6 +47,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 import engine_state  # noqa: E402
+import vault_layout  # noqa: E402
 
 # sibling import (same scripts dir; Python puts the script dir on sys.path[0],
 # and tests insert it explicitly)
@@ -94,7 +95,7 @@ def _read_frontmatter(path: Path) -> dict[str, str]:
 
 
 def count_watchlist_high_pending(vault: Path) -> int:
-    root = Path(vault) / "memory" / "_skill-watchlist"
+    root = vault_layout.feature_state_path(vault, "_skill-watchlist")
     if not root.is_dir():
         return 0
     n = 0
@@ -220,7 +221,7 @@ def count_stale_promoted(vault: Path, stale_days: int, now: datetime) -> int:
     """(g) Count `_skill-watchlist/` entries marked `status: promoted` whose
     `promoted_at` is older than `stale_days` — the operator said "I'll author
     this skill" N days ago and hasn't. The safety-rail nudge. Never raises → 0."""
-    root = Path(vault) / "memory" / "_skill-watchlist"
+    root = vault_layout.feature_state_path(vault, "_skill-watchlist")
     if not root.is_dir():
         return 0
     cutoff = max(0, int(stale_days))
@@ -260,7 +261,7 @@ def count_staged_adapt(vault: Path) -> int:
     root = engine_state.engine_state_dir() / "skill-discovery-cache" / "adapt-state"
     if not root.is_dir():
         return 0
-    wl_root = Path(vault) / "memory" / "_skill-watchlist"
+    wl_root = vault_layout.feature_state_path(vault, "_skill-watchlist")
     n = 0
     try:
         for source_dir in root.iterdir():

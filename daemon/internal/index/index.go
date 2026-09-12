@@ -55,8 +55,14 @@ type Index struct {
 	// access is the recall-access sidecar, used by decay. Lazily loaded: an Index
 	// opened for a one-shot command never reads it, and a long-lived one refreshes
 	// it when the file changes rather than on every search.
-	// memoryRoot is vault-relative; the sidecar sits under it, not under vault.
+	// memoryRoot is vault-relative; the sidecar sat under it before the
+	// memory-root trims, and is still read from there when no copy exists in
+	// sidecarDir.
 	memoryRoot string
+	// sidecarDir is the engine state directory the recall-access sidecar
+	// lives in since plan 05. Empty for an Index opened with Open (tests and
+	// one-shot readers): those read the legacy location only.
+	sidecarDir string
 	// decayEnabled gates age-based demotion at every ranking call site.
 	decayEnabled bool
 	access       *note.AccessLog
@@ -99,6 +105,15 @@ func (x *Index) snippeted() int64 {
 // turns age-based demotion on; see config.DecayEnabled for why it is off in the
 // shipped configuration, and why that is a measurement rather than caution.
 func Open(dbPath, vault, memoryRoot string, decay bool) (*Index, error) {
+	return OpenWithSidecar(dbPath, vault, memoryRoot, "", decay)
+}
+
+// OpenWithSidecar is Open with the engine state directory the recall-access
+// sidecar (`.lifecycle.json`) lives in since the memory-root trims. Every
+// production caller opens through this with cfg.EngineStateDir — a Test in
+// cmd/agentmd pins that — so a resident daemon never ranks off the fallback
+// anchor because it looked in the vault for a file that moved.
+func OpenWithSidecar(dbPath, vault, memoryRoot, sidecarDir string, decay bool) (*Index, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, fmt.Errorf("index directory: %w", err)
 	}
@@ -138,6 +153,7 @@ func Open(dbPath, vault, memoryRoot string, decay bool) (*Index, error) {
 
 	idx := &Index{db: db, vault: vault,
 		memoryRoot:   memoryRoot,
+		sidecarDir:   sidecarDir,
 		decayEnabled: decay, path: dbPath}
 	if err := idx.migrate(); err != nil {
 		db.Close()
@@ -885,7 +901,7 @@ func (x *Index) pathsLocked(tx *sql.Tx) ([]string, error) {
 // accessLog returns the recall-access sidecar for this vault, loading it once.
 func (x *Index) accessLog() *note.AccessLog {
 	x.accessOnce.Do(func() {
-		x.access = note.NewAccessLog(filepath.Join(x.vault, filepath.FromSlash(x.memoryRoot)))
+		x.access = note.NewAccessLog(x.sidecarDir, filepath.Join(x.vault, filepath.FromSlash(x.memoryRoot)))
 	})
 	x.access.Refresh()
 	return x.access

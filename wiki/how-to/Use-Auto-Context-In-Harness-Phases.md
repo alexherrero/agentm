@@ -18,12 +18,14 @@ If any prerequisite is absent, every phase still works — the dispatcher gracef
 
 | Phase | Recall (start) | Save (end) |
 |---|---|---|
-| `/setup` (§1b + §8b) | `_always-load/` conventions | Offer `projects/<slug>/_index.md` stub (legacy `personal-projects/` accepted pre-rename) |
-| `/plan` (§1b + §4c) | `_always-load/` + `_index.md` + decisions + open-questions | Offer per-entry save for plan's `## Risks / open questions` |
-| `/work` (§1b + §7b + §7c) | `_always-load/` + decisions + known-issues | Offer "remember-this" candidates + `plan-done-promotion` when final task flips PLAN.md to `done` |
-| `/review` (§2b) | `_always-load/` only (read-only — no save) | — |
-| `/release` (§1c + §5b + §5c) | `_always-load/` + decisions | Offer per-decision save + `plan-done-promotion` (shared cursor with `/work`) |
-| `/bugfix` (§2b + §4b) | `_always-load/` + known-issues | Offer save when bug had non-obvious root cause |
+| `/setup` (§1b + §8b) | `standards/` conventions | Offer `projects/<slug>/_index.md` stub (legacy `personal-projects/` accepted pre-rename) |
+| `/plan` (§1b + §4c) | `standards/` + `_index.md` + decisions + open-questions | Offer per-entry save for plan's `## Risks / open questions` |
+| `/work` (§1b + §7b + §7c) | `standards/` + decisions + known-issues | Offer "remember-this" candidates + `plan-done-promotion` when final task flips PLAN.md to `done` |
+| `/review` (§2b) | `standards/` only (read-only — no save) | — |
+| `/release` (§1c + §5b + §5c) | `standards/` + decisions | Offer per-decision save + `plan-done-promotion` (shared cursor with `/work`) |
+| `/bugfix` (§2b + §4b) | `standards/` + known-issues | Offer save when bug had non-obvious root cause |
+
+`standards/` is the always-load tier at the vault root (the memory-root trims, agentm-vault plan 05) — `storage-rules.md`, `user-preferences.md`, `security-and-secret-governance.md`, plus the on-demand voice library under `standards/voice/` (never auto-loaded). The retired pen `memory/_always-load/` is read behind it on a vault that still holds entries there.
 
 The "Pattern A" boundary is recall-then-work-then-offer-save. `/review` skips save by design — a reviewer that writes biases toward confirming its own findings.
 

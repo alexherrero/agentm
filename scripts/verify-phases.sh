@@ -172,7 +172,8 @@ printf 'from vault_backend_stub import VaultBackend\nPROTOCOL = "vault"\n' > "$_
 MODE_ENV=("MEMORY_ROOT=$V_VAULT" "HARNESS_MEMORY_TOOLKIT_PATH=$S" "OBSIDIAN_VAULT_SCRIPTS=$_VP_SHIM")
 run_lifecycle "[vault]" "$V_PROJ" "$V_VAULT/desk/projects/$SLUG/_harness" 1
 # The vault repo_registry seam fired (cross-device index).
-assert_exists "[vault] setup: repo_registry index written" "$V_VAULT/_meta/repos.json"
+assert_exists "[vault] setup: repo_registry index written (the engine store, plan 05)" "$AGENTM_STATE_DIR/repos.json"
+assert_absent "[vault] setup: no registry under the vault's retired _meta/" "$V_VAULT/_meta/repos.json"
 # ADR 0020 (reverses V5-3 DC-1): a synced backend routes state into the vault
 # _harness/; the device-local .harness/ stays the thin {vault_project} pointer and
 # must NOT carry the kernel-written plan state.

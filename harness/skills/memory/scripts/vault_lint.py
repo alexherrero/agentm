@@ -97,7 +97,9 @@ _ALIASES_RE = re.compile(r"^aliases:\s*\[([^\]]*)\]\s*$", re.M)
 # --scope → directory subset under the vault root.
 _SCOPE_DIRS = {
     "all": ["memory", "desk/projects"],
-    "always-load": ["memory/_always-load"],
+    # Resolved at walk time (vault_layout.always_load_dirs): standards/ at
+    # the vault root, then the retired pen while it exists.
+    "always-load": [],
     "projects": ["desk/projects"],
     "memory": ["memory"],
     # No entry-walk roots: the bespoke idea-ledger pass walks its own root
@@ -244,8 +246,12 @@ def _is_dir_exact(path):
         return False
 
 
-def _scope_roots(vault: Path, roots) -> list:
+def _scope_roots(vault: Path, roots, scope: str = "") -> list:
     out = [vault / r for r in roots]
+    if scope == "always-load":
+        import vault_layout  # noqa: E402 — same-dir convention
+
+        out.extend(vault_layout.always_load_dirs(vault))
     if "desk/projects" in roots:
         root_space = _root_projects_dir(vault)
         if root_space is not None and root_space not in out:
@@ -262,7 +268,7 @@ def _vault_rel(path: Path, vault: Path) -> str:
 
 def _iter_md_files(vault: Path, scope: str):
     roots = _SCOPE_DIRS.get(scope, _SCOPE_DIRS["all"])
-    for root in _scope_roots(vault, roots):
+    for root in _scope_roots(vault, roots, scope):
         for dirpath, dirnames, filenames in os.walk(root):
             # Prune excluded dirs in-place so os.walk doesn't descend.
             dirnames[:] = [d for d in dirnames if d not in _EXCLUDE_DIRS]

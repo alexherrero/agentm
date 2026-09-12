@@ -132,7 +132,7 @@ class EntryPathFromSlugsResolvesEitherRootTests(_WatchlistReviewTestBase):
 
     def test_nonexistent_entry_falls_back_to_skill_watchlist_path(self) -> None:
         resolved = wr._entry_path_from_slugs(self.vault, "no-such-src", "no-such-slug")
-        self.assertEqual(resolved, self.vault / "memory" / "_skill-watchlist" / "no-such-src" / "no-such-slug.md")
+        self.assertEqual(resolved, wr._watchlist_root(self.vault) / "no-such-src" / "no-such-slug.md")
 
 
 if __name__ == "__main__":

@@ -48,6 +48,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 import engine_state  # noqa: E402
+import vault_layout  # noqa: E402
 
 # ── defaults ────────────────────────────────────────────────────────────────
 # Each key's type here is also the coercion target when parsing the config md.
@@ -95,7 +96,7 @@ def state_path(vault: Path) -> Path:
 
 
 def config_path(vault: Path) -> Path:
-    return Path(vault) / "memory" / _CONFIG_FILENAME
+    return vault_layout.feature_state_path(vault, _CONFIG_FILENAME)
 
 
 # ── state ───────────────────────────────────────────────────────────────────

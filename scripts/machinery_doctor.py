@@ -777,7 +777,10 @@ def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
 # note at the vault root, one level ABOVE the memory tree — checking it against
 # the memory root would flag a correctly-configured install.
 _PROJECT_JSON_PATH_KEYS = (
-    ("items_source", "memory"),
+    # Filing-v2 2b put the project space at the vault root, beside the memory
+    # root, so the board file is checked against the vault rather than the
+    # memory root (the rule that read it as a stale pointer was the stale side).
+    ("items_source", "vault"),
     ("env.MEMORY_ROOT", "memory"),
     ("env.MEMORY_VAULT_PATH", "memory"),
     ("env.IDEAS_SURFACE_PATH", "vault"),

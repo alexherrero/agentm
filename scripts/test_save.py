@@ -72,9 +72,19 @@ class EntryTargetPathTests(unittest.TestCase):
         written = self._assert_predicts("domain-reference", "a-retired-note")
         self.assertEqual(written.parent.name, "semantic")
 
-    def test_predicts_the_always_load_holding_pen(self) -> None:
+    def test_predicts_the_always_load_holding_pen_while_it_exists(self) -> None:
+        (self.vault / "memory" / "_always-load").mkdir(parents=True, exist_ok=True)
         written = self._assert_predicts("reference", "a-pinned-note", always_load=True)
         self.assertEqual(written.parent.name, "_always-load")
+
+    def test_a_pinned_save_files_into_its_class_once_the_pen_retired(self) -> None:
+        """Memory-root trims (plan 05): with no pen, `--always-load` lands in
+        the class carrying `lifecycle: pinned`, and nothing recreates the pen."""
+        self.assertFalse((self.vault / "memory" / "_always-load").exists())
+        written = self._assert_predicts("reference", "a-pinned-note", always_load=True)
+        self.assertEqual(written.parent.name, "semantic")
+        self.assertIn("lifecycle: pinned", written.read_text(encoding="utf-8"))
+        self.assertFalse((self.vault / "memory" / "_always-load").exists())
 
     def test_refuses_a_value_the_contract_does_not_carry(self) -> None:
         with self.assertRaises(ValueError):

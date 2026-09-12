@@ -51,7 +51,7 @@ Run these in a fresh chat, with no priming.
 1. *What's our commit-message convention?* — the answer comes from the vault and cites the note's path.
 2. *Where does agentm stand?* — the answer comes from `moc-projects.md` or a tracker's State. This one waits on the projects migration; until then the honest answer is the charter.
 3. *Where does a new capture go?* — the answer names a memory class and `status: unfiled`, and never `_inbox/`, `_always-load/`, `_index.md` or `_harness/`.
-4. From any session: a Drive title search for `storage-rules.md`, `voice-kernel.md` and `index.md` returns one file each, and `/doctor` reports the Gemini managed section equal to the template.
+4. From any session: a Drive title search for `storage-rules.md`, `user-preferences.md` and `index.md` returns one file each, and `/doctor` reports the Gemini managed section equal to the template. (This checked `voice-kernel.md` before the memory-root trims folded that file into `user-preferences.md`.)
 
 Record the result where you keep the project's follow-ups.
 

@@ -638,13 +638,20 @@ class ProjectJsonPointerTests(unittest.TestCase):
 
     def test_memory_and_vault_surfaces_are_distinguished(self):
         """A file at the vault root is legitimate for IDEAS_SURFACE_PATH and
-        wrong for items_source. Collapsing both onto one root -- in either
-        direction -- flips exactly one of these two assertions."""
+        for items_source (the project space is a sibling of the memory root
+        since filing-v2 2b), and wrong for the memory-root pointers.
+        Collapsing both surfaces onto one root -- in either direction --
+        flips exactly one of these assertions."""
         stray = self.vault / "Ideas.md"
         stray.write_text("# Ideas", encoding="utf-8")
         ok = self._check({"env": {"IDEAS_SURFACE_PATH": str(stray)}})
         self.assertEqual(ok.status, "OK")
-        bad = self._check({"items_source": str(stray)})
+        board = self.vault / "Projects" / "agentm" / "_harness" / "board-items.json"
+        board.parent.mkdir(parents=True, exist_ok=True)
+        board.write_text("[]", encoding="utf-8")
+        ok = self._check({"items_source": str(board)})
+        self.assertEqual(ok.status, "OK")
+        bad = self._check({"env": {"MEMORY_ROOT": str(self.vault)}})
         self.assertEqual(bad.status, "FAIL")
         self.assertIn("outside", bad.detail)
 

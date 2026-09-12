@@ -1,12 +1,12 @@
 # Auto-orchestration config reference
 
-Two files drive the memory push-surface. You tune the config at `<vault>/memory/auto-orchestration-config.md`. It holds toggles, thresholds, and cooldowns. It auto-seeds with defaults. Re-seeding never clobbers your edits. The system stores runtime state at `~/.local/state/agentm/auto-orchestration-state.json` — the engine state directory (`$AGENTM_STATE_DIR` overrides it; machine state left the vault in filing-v2 part 2a). This state holds last-fire-per-chain timestamps. It also holds the last-shown snapshot for the shifted-since-last-shown check. All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). See [Auto-orchestration](Auto-Orchestration) for the why. See [Tune auto-orchestration](Tune-Auto-Orchestration) to edit the config.
+Two files drive the memory push-surface. You tune the config at `<vault>/Projects/agentm/auto-orchestration-config.md` — moved there from `<vault>/memory/` by the memory-root trims (agentm-vault plan 05); a vault that hasn't migrated yet is still read from the retired spelling. It holds toggles, thresholds, and cooldowns. It auto-seeds with defaults. Re-seeding never clobbers your edits. The system stores runtime state at `~/.local/state/agentm/auto-orchestration-state.json` — the engine state directory (`$AGENTM_STATE_DIR` overrides it; machine state left the vault in filing-v2 part 2a). This state holds last-fire-per-chain timestamps. It also holds the last-shown snapshot for the shifted-since-last-shown check. All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). See [Auto-orchestration](Auto-Orchestration) for the why. See [Tune auto-orchestration](Tune-Auto-Orchestration) to edit the config.
 
 ## ⚡ Quick Reference
 
 | Question | Answer |
 |---|---|
-| Where is the operator config? | `<vault>/memory/auto-orchestration-config.md` — auto-seeded, operator-editable. |
+| Where is the operator config? | `<vault>/Projects/agentm/auto-orchestration-config.md` — auto-seeded, operator-editable. The retired `<vault>/memory/` spelling is read as the fallback. |
 | Where is the runtime state? | `~/.local/state/agentm/auto-orchestration-state.json` (engine state directory; `$AGENTM_STATE_DIR` overrides) — `last_fire` timestamps + `last_shown` snapshot. |
 | Does a re-seed overwrite my edits? | No. `seed_config` is idempotent and never clobbers an existing file. |
 | What are the four config groups? | Emission toggles · briefing thresholds · nudge thresholds · chain cooldowns. |

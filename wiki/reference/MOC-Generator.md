@@ -98,6 +98,20 @@ Unlike the fully-generated `_moc/<kind>.md` pages, an arc-index is a real memory
 
 Like `--arcs` regeneration itself, this is CLI-invokable only — no hook or scheduled wiring, same as the base `--vault`-only mode above.
 
+## The standards map (`--standards`)
+
+The `--standards` flag additionally (re)generates `standards/moc-standards.md` — a map of the always-load tier, added by the memory-root trims (agentm-vault plan 05). It lists the rule files at the top of `standards/` and, separately, the voice library under `standards/voice/`, each as a `[[wikilink]]` by stem with its `title:` (or `trigger:` or `description:`) frontmatter value, falling back to the file's first `# ` heading, then its stem. Every entry is generated fresh — nothing hand-written survives a regeneration.
+
+This is the one file besides `user-preferences.md` and `security-and-secret-governance.md` (the two migration-drafted documents) that plan 05 puts under `standards/`. The recall loader skips every `moc-*` file when it builds the always-load injection (generated navigation carries no standing instruction), so this map is for you and the chat surfaces to browse by, never for the injected tier itself.
+
+| Function | Signature | Purpose |
+|---|---|---|
+| `render_standards_moc(standards)` | `render_standards_moc(standards: Path) -> str` | Read-only render. Lists the rule files (every `standards/*.md` except `moc-*`), then the voice library (`standards/voice/*.md`), each titled via `_title_of()`. |
+| `generate_standards_moc(vault_path)` | `generate_standards_moc(vault_path: Path \| str) -> Path` | Writes `standards/moc-standards.md` (creating `standards/` if absent) and returns its path. |
+| CLI | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path> --standards` | Runs `generate()` as normal, then also runs `generate_standards_moc()`. |
+
+Like `--arcs`, this is CLI-invokable only — no hook or scheduled wiring. `scripts/migrate/memory_root_trims.py` calls `generate_standards_moc()` directly as the last step of the standards-set migration, rather than shelling out to this CLI.
+
 ## Related
 
 - [Kind-taxonomy registry](Kind-Taxonomy-Registry) — This generator depends on this registry for known/unrecognized-kind labeling. `--arcs` groups by `arc_registry.py`'s `KNOWN_ARCS` the same way.

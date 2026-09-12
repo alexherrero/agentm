@@ -65,8 +65,15 @@ if str(_HERE) not in sys.path:
 import harness_memory as hm  # noqa: E402
 
 
-_REGISTRY_REL = "_meta/repos.json"
-_REGISTRY_PARTS = ("_meta", "repos.json")
+# The registry moved out of the vault with the memory-root trims (agentm-vault
+# plan 05, 2026-09-11): it is a machine's index of its own clones, engine
+# state rather than knowledge, so it lives in the engine state directory
+# (`harness_memory.engine_state_dir()`, `~/.local/state/agentm` unless
+# `$AGENTM_STATE_DIR` says otherwise) behind the seam's device-local backend.
+# The vault's `_meta/repos.json` is read as the legacy copy while it is the
+# only one, so a reader on either side of the move sees the same registry.
+_REGISTRY_NAME = "repos.json"
+_LEGACY_REGISTRY_PARTS = ("_meta", "repos.json")
 _SCHEMA_VERSION = 1
 
 
@@ -74,14 +81,44 @@ _SCHEMA_VERSION = 1
 # Locator resolution
 # -----------------------------------------------------------------------------
 
-def registry_locator(backend: "StorageBackend") -> "Locator":
-    """Return the Locator for the registry file in the given backend.
+def _engine_store() -> "StorageBackend":
+    """The registry's home: the engine state directory, as a seam backend."""
+    from storage_device_local import DeviceLocalBackend  # noqa: E402 — the seam's own local backend
 
-    Replaces the V5-5 `registry_path(vault_path) -> Path` — on the
-    obsidian-vault backend the returned Locator maps to the same
-    `<vault>/_meta/repos.json` as before (LC-1 behavior-preserving).
+    return DeviceLocalBackend(hm.engine_state_dir())
+
+
+def registry_store(backend: "Optional[StorageBackend]") -> "tuple[StorageBackend, Locator]":
+    """The (store, locator) pair the registry is read from and written to.
+
+    The engine store wins whenever it holds the file, and is the home for a
+    machine that holds no registry anywhere yet. The vault backend's
+    `_meta/repos.json` is used only while it is the sole copy — the read
+    side of "readers accept both" — and the migration that moves it retires
+    that rung.
     """
-    return backend.resolve(*_REGISTRY_PARTS)
+    engine = _engine_store()
+    loc = engine.resolve(_REGISTRY_NAME)
+    if engine.exists(loc):
+        return engine, loc
+    if backend is not None:
+        legacy = backend.resolve(*_LEGACY_REGISTRY_PARTS)
+        try:
+            if backend.exists(legacy):
+                return backend, legacy
+        except Exception:  # noqa: BLE001 — a backend that cannot answer is no legacy copy
+            pass
+    return engine, loc
+
+
+def registry_locator(backend: "Optional[StorageBackend]") -> "Locator":
+    """Return the Locator for the registry file, in whichever store holds it.
+
+    The V5-5 `registry_path(vault_path) -> Path` became a Locator on the
+    passed backend (LC-1); since plan 05 the Locator addresses the engine
+    store unless the vault still holds the only copy.
+    """
+    return registry_store(backend)[1]
 
 
 def _backend_or_none() -> Optional["StorageBackend"]:
@@ -113,10 +150,10 @@ def read_registry(backend: "StorageBackend") -> dict:
     Raises json.JSONDecodeError if the file exists but is malformed —
     caller should surface to operator; corruption is not auto-repaired.
     """
-    loc = registry_locator(backend)
-    if not backend.exists(loc):
+    store, loc = registry_store(backend)
+    if not store.exists(loc):
         return {"version": _SCHEMA_VERSION, "repos": []}
-    content = backend.read(loc)
+    content = store.read(loc)
     data = json.loads(content)
     data.setdefault("version", _SCHEMA_VERSION)
     data.setdefault("repos", [])
@@ -155,12 +192,12 @@ def write_registry(
     data = dict(data)
     data.setdefault("version", _SCHEMA_VERSION)
     data.setdefault("repos", [])
-    loc = registry_locator(backend)
+    store, loc = registry_store(backend)
     content = json.dumps(data, indent=2, sort_keys=False) + "\n"
 
     if expected_hash is not None:
-        if backend.exists(loc):
-            actual = hm.content_hash(backend.read(loc).encode("utf-8"))
+        if store.exists(loc):
+            actual = hm.content_hash(store.read(loc).encode("utf-8"))
             if actual != expected_hash:
                 raise hm.ConcurrentModificationError(
                     f"registry was modified concurrently "
@@ -174,7 +211,7 @@ def write_registry(
                 f"Re-read and re-apply changes."
             )
 
-    return backend.write(loc, content)
+    return store.write(loc, content)
 
 
 # -----------------------------------------------------------------------------
@@ -212,12 +249,12 @@ def _mutate_registry(
     verb holds it internally, so serialization is still correct. The outer
     CAS loop (via write_registry's expected_hash) handles cross-device races.
     """
-    loc = registry_locator(backend)
     last_exc: Optional[BaseException] = None
     for _ in range(_MAX_REGISTRY_RETRIES):
+        store, loc = registry_store(backend)
         current_hash = (
-            hm.content_hash(backend.read(loc).encode("utf-8"))
-            if backend.exists(loc) else None
+            hm.content_hash(store.read(loc).encode("utf-8"))
+            if store.exists(loc) else None
         )
         data = read_registry(backend)
         result = mutate(data)
