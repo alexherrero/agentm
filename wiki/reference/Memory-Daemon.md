@@ -145,7 +145,7 @@ Four properties are load-bearing:
 
 `artifact` separates a note that states something durable from one that records a moment. A convention and a distilled meeting are both `type: workflow` and should not rank alike on a general question. When a question asks for the artifact shape, the dampening is **removed** rather than reversed into a boost. Every multiplier here is at or below 1.0 and the negative-IDF clamp depends on it, so a multiplier above 1.0 on a row whose score went negative would move that row up for being boosted.
 
-The design makes `artifact` the default so `canonical` has to be earned. Capture writes that default on every new note (`DefaultAltitude`, `daemon/internal/capture/capture.go:140,416`) rather than leaving the field absent for this ranker to read as a fallback. The enrichment pass dropped `altitude` from its own response shape entirely (agentm-vault plan 04 — see [Enrichment](#enrichment) below) and no longer touches the field. No note in this corpus carries `altitude` yet, so reading an absent field as `artifact` would multiply all 15,824 rows. For the same clamp reason, that is not the no-op it looks like.
+The design makes `artifact` the default so `canonical` has to be earned. Capture used to write that default explicitly onto every new note (`DefaultAltitude`) rather than leaving the field absent for this ranker to read as a fallback. The card backfill (agentm-vault plan 06) retired `altitude` from the card entirely: capture no longer writes it, and the backfill drops it from every note still carrying it. The enrichment pass had already dropped `altitude` from its own response shape (agentm-vault plan 04 — see [Enrichment](#enrichment) below) and does not touch the field either. The `artifact` row above keys off the literal string `altitude: artifact`. No memory writer sets it any more; the calendar's day indexes, facet files and reviews still write it on their own records (`calendar_index.py`, `calendar_facets.py`, the dreaming binary's calendar job). So on the memory classes the class matches nothing, and the dampening stays behind `daemon.altitude_enabled`, off by default, until the ranker is re-audited against a field the card no longer carries.
 
 `durable` carries no weight and is not a penalty. It is the record of a decision, read by decay where the weights are not.
 
@@ -197,7 +197,7 @@ Returns `{results, note, matched, archived_hidden, superseded_hidden, staged_hid
 | `source_url` | `str` | — | A fetched page's address, when the memory came from one. |
 | `space` | `str` | `memory` | Which configured space to write into. |
 
-`status` is not a published param and cannot be set through this tool. It is derived from what the writer knew: a call that names a `type` and gives a `why` is a card someone judged, and it lands `active`; anything else lands `unfiled`, a candidate the nightly pass judges later (`knowingWriter`, `daemon/internal/capture/capture.go:161`; called from `Do` at `:316-339`). The wire-level `Request.Status` field still exists for callers that haven't moved off it, but a value that disagrees with the derivation is reported back in the response rather than silently obeyed or swallowed.
+`status` is not a published param and cannot be set through this tool. It is derived from what the writer knew: a call that names a `type` and gives a `why` is a card someone judged, and it lands `active`; anything else lands `unfiled`, a candidate the nightly pass judges later (`knowingWriter`, `daemon/internal/capture/capture.go:158`; called from `Do` at `:313-337`). The wire-level `Request.Status` field still exists for callers that haven't moved off it, but a value that disagrees with the derivation is reported back in the response rather than silently obeyed or swallowed.
 
 `instructions` is accepted on the wire (`Request.Instructions`) but is deliberately **not** published in this schema, for the same reason `probe` isn't: the ingest sweep executes a matching instruction under a fixed grammar, and a field a model can see is one it will eventually fill from note content — an execution path for whatever that content says. It reaches this door only from operator-typed surfaces: the CLI's `agentmd capture -instructions`, and the phone clipper. See [How to capture from your phone](Capture-From-Your-Phone).
 
@@ -563,8 +563,10 @@ derived classes it never owns — today `memory/semantic` and
 `memory/procedural` — read from the contract rather than listed in the
 binary (`enrichQueueDirs`, `daemon/cmd/agentmd/enrich_run.go:124-155`).
 `memory/episodic` is never walked: no memory type routes there, and its
-notes are session traces, not cards. Neither is `memory/_watchlist/`,
-whose entries are `forward_learning.py`'s pending-review records. The
+notes are session traces, not cards. Nor is the watchlist offered: it lives
+in the project space (`Projects/agentm/_watchlist/`), outside every class
+directory, and its entries are `forward_learning.py`'s pending-review
+records. The
 eligibility pre-gate adds a second refusal beside this: a note whose
 `kind` is one of the contract's `record_kinds` — a session trace, a
 directory index — is refused as a record rather than a card
@@ -771,7 +773,7 @@ What it does once it runs: add to a card rather than rewrite it. The card's
 own text is the evidence and stays exactly where the session left it; the
 deep pass's judgment lands in the frontmatter above it and, for prose worth
 adding, in a dated `## Added by dreaming (YYYY-MM-DD)` section below it
-(`Compose`, `daemon/internal/enrich/compose.go:134-180`) — any heading the
+(`Compose`, `daemon/internal/enrich/compose.go:136-185`) — any heading the
 model wrote inside that section steps down to `###`, so the section's own
 boundary stays the only `## ` it contains and a later deep pass can find and
 replace just its own section, keeping anything the operator wrote below it.
@@ -781,14 +783,15 @@ the session wrote.
 The response may carry `title`, `slug`, `type`, `summary`, `tags`,
 `aliases`, `related`, `importance_proposed`, `body` and `confidence`
 (`Response`, `daemon/internal/enrich/schema.go:33-64`). `altitude` is gone
-from the shape entirely — capture still writes the `artifact` default, but
-enrichment no longer reads or writes the field (see [the rank
+from the shape entirely — the card backfill (agentm-vault plan 06) retired
+the field from the card itself, so capture no longer writes it either, and
+enrichment neither reads nor writes it (see [the rank
 penalty](#the-rank-penalty) above). `why` is never asked for, and a response
 that offers one anyway has it stripped before the strict decode rather than
 failing the whole call over a field that was never going to land
 (`strippedFields`, `schema.go:66-76`). `related` may only name ids from the
 neighbours the prompt offered — Compose keeps only those
-(`relatedIDs`, `compose.go:102-122`) and renders them as the quoted wikilink
+(`relatedIDs`, `compose.go:104-124`) and renders them as the quoted wikilink
 flow list the capture door already writes; an id the model invented is
 silently dropped rather than refusing the note. An empty `body` is a fine
 answer, and the usual one (`Schema.Validate`, `schema.go:157-177`). The
@@ -830,12 +833,14 @@ one judgment this pass makes about its own number, and a third band would
 be a threshold nobody measured. The needs-review reading selects on
 `filing_confidence` without knowing what floor produced it.
 
-`CarryProvenance` (`daemon/internal/enrich/carry.go:36`) copies every
+`CarryProvenance` (`daemon/internal/enrich/carry.go:68`) copies every
 capture-record and review-mark field the composed note doesn't already
-set — `source`, `lifecycle`, `captured`, `created`, `via`, `source_url`,
-`source_fetched`, `surface`, `instructions`, `review_flags`, `related`,
-`trust`, `why`, `project`, `task`, `importance`, `importance_proposed`
-(`carriedFields`, `carry.go:13-17`) — from the note as it stood before
+set — `source`, `source_id`, `source_url`, `source_fetched`, `lifecycle`,
+`lifecycle_since`, `superseded_by`, `supersedes`, `promoted_at`,
+`promoted_to`, `derived_from`, `created`, `via`, `surface`, `instructions`,
+`review_flags`, `related`, `trust`, `why`, `project`, `task`, `importance`,
+`importance_proposed`, `slug`, `fingerprint`, `occurrences`
+(`carriedFields`, `carry.go:41-49`) — from the note as it stood before
 enrichment. `filing_confidence` is deliberately excluded from that list:
 the pass re-judges it, which is how an unfiled capture actually clears the
 needs-review reading rather than carrying its old low stamp forward
@@ -843,12 +848,25 @@ unread. `why` rides the carry list and is never written by the pass itself
 — no pass was in the room, so a `why` it invented would read exactly like
 a real one.
 
-Two guards sit beside the plain carry. `carryImportance` (`carry.go:74-85`)
+The card backfill (agentm-vault plan 06) retired `group`, `always_load`,
+the `mining_*` trio and `excerpt_edges_unverified` from the card, so the
+carry lets them go rather than keep restoring retired fields onto a
+rewrite; `captured` no longer travels beside `created` either — it folds
+into it, the earlier of the two days winning (`earlierDate`, `carry.go:104`).
+The migration's `backfilled:` list rides along too, trimmed
+(`backfilledKept`, `carry.go:134`): it keeps naming a field the backfill
+stamped only while the rewritten note still carries that field and the
+pass did not write it itself. A title or a `filing_confidence` the pass
+writes leaves the list; a carried `trust` or `created` stays on it. So a
+rewritten card still shows which of its fields the backfill stamped rather
+than a writer that knew.
+
+Two guards sit beside the plain carry. `carryImportance` (`carry.go:163-174`)
 keeps an `importance` the operator edited: capture writes `importance` and
 `importance_proposed` equal, so a note where they *differ* is a note
 someone edited by hand, and that value survives a pass untouched — the
 pass's own reading lands in `importance_proposed` instead. `carryEvidence`
-(`carry.go:93-99`) restores the note's `## Evidence` block verbatim on the
+(`carry.go:182-188`) restores the note's `## Evidence` block verbatim on the
 rare composition that would otherwise drop it — insurance beside the
 byte-for-byte guarantee above, since the block quotes the note's source
 material and the pass was never entitled to rewrite or drop it.

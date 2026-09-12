@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 )
 
 // Job "copies" — the port of dream.py's `_stage_suffix_backlog_drain`, the
@@ -172,7 +174,10 @@ func PlanCopies(root string, cap int) (CopiesPlan, error) {
 			// its successor; `status` is not touched, and `supersedes:` is only
 			// ever the successor's back-link. The lifecycle journal records the
 			// move like any other transition, through the intent's Meta.
-			after := PatchFrontmatter(c.raw, []Update{{"lifecycle", "superseded"}, {"superseded_by", canonical.rel}})
+			// Put back in the card's order after the patch: `superseded_by` is a
+			// read field beside `related`, and the patch appends a key it did
+			// not find at the end of the block.
+			after := cardshape.Reorder(PatchFrontmatter(c.raw, []Update{{"lifecycle", "superseded"}, {"superseded_by", canonical.rel}}))
 			from := strings.TrimSpace(ParseFrontmatterValue(c.raw, "lifecycle"))
 			if from == "" {
 				from = lifecycleDefaultState

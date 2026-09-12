@@ -75,6 +75,12 @@ UNIT_WRAPPED = {
     # agentm-vault plan 05: the memory-root shape gate reads the live vault,
     # which CI has none of; its three states are unit-tested on fixtures.
     "check-memory-root-shape.py": "test_check_memory_root_shape.py",
+    # agentm-vault plan 06: the three card gates read the live vault's class
+    # directories, which CI has none of; each rule and both states are
+    # unit-tested on fixtures.
+    "check-card-shape.py": "test_card_gates.py",
+    "check-class-directories.py": "test_card_gates.py",
+    "check-no-empty-tags.py": "test_card_gates.py",
     "check-multi-plan-naming.sh": "test_check_multi_plan_naming.py",
     "check-no-auto-worktree.sh": "test_worktree_slug_probe.py",
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",

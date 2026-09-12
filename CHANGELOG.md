@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every card takes the card's shape** (agentm-vault plan 06, the card
+  backfill). The class directories other than `mocs/` read in the order
+  agentm-vault § The card decided — what you read first, what the machinery
+  reads last — and every writer of a class card writes that order: one
+  definition in the toolkit (`card_shape.py`) and one in the daemon
+  (`internal/cardshape`), held equal by a test. The capture door stops
+  writing `altitude` and grows a taken name by the note's own words instead
+  of `-2`; the filing engine does the same instead of `~dup`. The enrichment
+  compose lets the retired fields go and folds `captured` into `created`;
+  save.py writes no `altitude`, `always_load` or empty tag list, and `group`
+  only for a project-space entry. `scripts/migrate/card_backfill.py` brings
+  the corpus to the shape without a model call (dry run by default; `--apply`
+  against the recorded plan and a confirmed count, through the revert log):
+  deterministic stamps, the retired fields dropped, counter slugs renamed with
+  their links rewritten, and the six empty opinion-lane directories removed.
+  It names what it stamped in `backfilled:`, never writes `enriched_by` or
+  `enriched_at`, and re-records the night's standing refusals under the
+  rewritten cards' keys. `check-card-shape`, `check-class-directories` and
+  `check-no-empty-tags` join the battery and enforce once the backfill's
+  marker exists. vault_lint accepts an ISO timestamp in `created`; the
+  ingest sweep's restamp no longer follows `captured` into `created`. The
+  dreaming parity recording's two copies after-texts move `slug:` into the
+  machine block, on purpose.
+
 - **The memory root holds two folders and nothing loose** (agentm-vault
   plan 05, the memory-root trims). `agent/` is `diagnostics/` and
   `memory/`; `memory/` is the six classes. The always-load pen folded into

@@ -107,10 +107,12 @@ class TestInboxDedup(_Base):
     def test_different_body_same_slug_still_keeps_both(self):
         # The collision handler stays. Two genuinely different captures that
         # slug alike are two notes, and suppressing the second would lose a
-        # real capture — a worse failure than the duplication being fixed.
+        # real capture — a worse failure than the duplication being fixed. The
+        # second is named by a meaningful word of its own title, never a
+        # counter (agentm-vault § The card: "A title" skips the one-letter word).
         self._route([_cand("User stated: first thing.", slug="dupe")])
         self._route([_cand("User stated: second, different thing.", slug="dupe")])
-        self.assertEqual(self._inbox_files(), ["dupe.md", "dupe~dup.md"])
+        self.assertEqual(self._inbox_files(), ["dupe-title.md", "dupe.md"])
 
     def test_a_longer_transcript_does_not_write_a_second_copy(self):
         # The shape re-mining actually produces. A transcript grows, the same

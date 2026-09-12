@@ -266,9 +266,15 @@ def _resolve_type(rules, type_hint: "str | None", kind_hint: "str | None") -> "t
     return default, reasons
 
 
-def _settle_dest(vault: Path, class_dir: str, slug: str, fingerprint: str) -> "tuple[str, list]":
-    """`<class>/<slug>.md`, or the next free `~dup` name when a different note
-    already owns the basename. Returns (dest_rel, flags)."""
+def _settle_dest(vault: Path, class_dir: str, slug: str, fingerprint: str, *,
+                 words: "tuple | list" = (), digest: str = "") -> "tuple[str, list]":
+    """`<class>/<slug>.md`, or a free name when a different note already owns
+    the basename. Returns (dest_rel, flags).
+
+    The collision rule (agentm-vault § The card) grows the arriving note's name
+    by the next meaningful words of its own title and body (`words`) — never a
+    `~dup` or `-2` counter. When no word frees the name it ends in six
+    characters of the note's hash (`digest`, else `fingerprint`)."""
     dest = f"{class_dir}/{slug}.md"
     p = vault / dest
     if not p.exists():
@@ -279,13 +285,13 @@ def _settle_dest(vault: Path, class_dir: str, slug: str, fingerprint: str) -> "t
             return dest, []  # the twin test upstream already decided noop
     except (OSError, UnicodeDecodeError):
         pass
+    import card_shape  # noqa: E402  (same skill dir)
     stem = _DUP_SUFFIX.sub("", slug)
-    n = 1
-    while True:
-        cand = f"{class_dir}/{stem}~dup{'' if n == 1 else n}.md"
-        if not (vault / cand).exists():
-            return cand, ["basename-clash"]
-        n += 1
+    name = card_shape.free_name(stem, list(words), lambda s: (vault / f"{class_dir}/{s}.md").exists(),
+                                digest=digest or fingerprint)
+    if name is None:
+        raise ValueError(f"no free name for `{stem}` in {class_dir}")
+    return f"{class_dir}/{name}.md", ["basename-clash"]
 
 
 def _title_overlap(a: str, b: str) -> float:
@@ -388,7 +394,9 @@ def decide(vault: "Path | str", *, title: str, body: str, slug: str, type_hint: 
 
     if decision.op == "supersede" and decision.related and not slug:
         slug = Path(decision.related).stem
-    dest, dflags = _settle_dest(vault, class_dir, slug, fp)
+    import card_shape  # noqa: E402  (same skill dir)
+    dest, dflags = _settle_dest(vault, class_dir, slug, fp,
+                                words=card_shape.kebab(f"{title} {body}").split("-"))
     decision.dest_rel = dest
     decision.flags.extend(dflags)
     return decision
@@ -424,7 +432,10 @@ def _stamp_superseded(vault: Path, rel: str, by_rel: str) -> None:
         else:
             lines.insert(end, f"{k}: {v}")
             end += 1
-    p.write_text("\n".join(lines), encoding="utf-8")
+    # Back into the card's order: an appended `superseded_by` belongs beside
+    # `related`, not after the machine block (agentm-vault § The card).
+    import card_shape  # noqa: E402  (same skill dir)
+    p.write_text(card_shape.reorder("\n".join(lines)), encoding="utf-8")
 
 
 def _write_day(extra: "dict | None") -> "date | None":

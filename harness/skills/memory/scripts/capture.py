@@ -154,7 +154,7 @@ def capture(
         # Decide, then write; when a concurrent writer lands on the settled
         # name between the two, decide again against the disk — the next
         # pass sees the newcomer (a twin to reinforce, or a namesake to
-        # settle past with the `~dup` mark). The writer's own guard under
+        # settle past with a grown name). The writer's own guard under
         # its mutex is what makes the loser lose loudly instead of clobbering.
         for _attempt in range(64):
             decision = filing_engine.decide(
@@ -173,8 +173,13 @@ def capture(
                     return CaptureResult(success=True, path=twin, slug=twin.stem, deduplicated=True)
                 # Files fresh beside the twin: the engine's own settling, asked
                 # with a fingerprint that matches nothing so the occupied name
-                # yields the next `~dup` mark rather than the twin itself.
-                dest, _flags = filing_engine._settle_dest(vault, decision.class_dir, resolved_slug, "")
+                # yields a grown name rather than the twin itself.
+                import card_shape  # same skill dir
+                import hashlib
+                dest, _flags = filing_engine._settle_dest(
+                    vault, decision.class_dir, resolved_slug, "",
+                    words=card_shape.kebab(f"{title} {content}").split("-"),
+                    digest=hashlib.sha256(content.encode("utf-8")).hexdigest())
                 decision.op, decision.dest_rel, decision.related = "add", dest, None
             try:
                 written = filing_engine.apply(

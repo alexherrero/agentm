@@ -157,36 +157,41 @@ def entry_target_path(
 
 # Locked frontmatter field order — the schema source of truth shared with
 # `vault_lint.py` (V4 #33 DC-2: the lint reuses this so the two can't drift).
-# `_build_frontmatter` below emits fields in this exact order; a test pins them.
-# `altitude` sits beside `status` because the two are the note's own account of
-# itself — what stage of life it is in, and how durable a claim it makes. Both
-# are always emitted; every field after them is caller-supplied or optional.
+# `_build_frontmatter` below emits fields in this order; a test pins it. It is
+# the card's order (agentm-vault § The card, `card_shape.READ_ORDER` then
+# `MACHINE_ORDER`): what you read first, what the machinery reads last. The card
+# backfill (agentm-vault plan 06) retired `altitude`, `group`, `always_load` and
+# `captured` from the card. `altitude` and `always_load` are never written
+# (`always_load` still stamps `lifecycle: pinned`); `group` still decides where
+# an entry lands and is written only outside the memory classes, where the recall
+# fallback's project filter reads it; a caller's `captured` becomes `created`.
 #
 # The vocabulary field is spelled `kind` here and emitted as `type` for a memory
 # — one slot, and `_resolve_vocabulary` decides which name it takes. Listing both
 # would imply a note could carry both, which is the one thing the contract
 # forbids.
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
-    "kind", "status", "altitude", "created", "updated", "tags", "arc", "group", "slug",
-    # Where the material came from, as opposed to how it arrived (`source:`,
-    # below). `source_url` is a fetched page's address and `source_id` a
-    # registry identity — the provenance ruling of 2026-09-06 gave each its
-    # own field so `source:` could go back to naming the transport alone.
-    "source_url", "source_fetched", "source_id",
-    "fingerprint", "occurrences", "always_load", "supersedes", "lifecycle_tier",
-    "derived_from", "heat_pin",
-    # Filing-v2 (the write path): the aging axis, the provenance transport, and
-    # the write-time judgment's confidence — stamped by the filing engine on
-    # every auto-filed note; optional, so a hand-written entry stays complete.
-    "lifecycle", "source", "filing_confidence",
-    # A capture's own record (the write path, task 2): how it arrived and what
-    # the operator said at capture time; and the engine's review marks (task
-    # 3): the flags the needs-review reading selects on and the note they
-    # point at. All optional.
-    "via", "captured", "surface", "instructions", "review_flags", "related",
-    # How far to trust where the note came from (task 5): the contract's
-    # `sources` map, read once at write time so no reader needs the contract.
-    "trust",
+    "title", "kind", "summary", "why", "importance",
+    # Filing-v2 (the write path): the filing state, the aging axis and the
+    # write-time judgment's confidence — stamped by the filing engine on every
+    # auto-filed note; optional, so a hand-written entry stays complete.
+    "status", "lifecycle", "lifecycle_since", "filing_confidence",
+    # How the material arrived (`source:`, the transport) and where it came
+    # from: `source_url` is a fetched page's address and `source_id` a registry
+    # identity — the provenance ruling of 2026-09-06 gave each its own field so
+    # `source:` could go back to naming the transport alone. `trust` is the
+    # contract's `sources` map, read once at write time so no reader needs it.
+    "source", "source_url", "source_id", "source_fetched", "trust",
+    "created", "updated", "tags",
+    "related", "supersedes", "superseded_by", "project", "task",
+    # Fields the card does not place sit between its two blocks. `group` is one:
+    # retired from the memory card, still written for a project-space entry.
+    "arc", "group", "lifecycle_tier", "heat_pin",
+    # The machine block: the join keys, the provenance edge, a capture's own
+    # record of how it arrived and what the operator said at capture time, and
+    # the engine's review marks (the flags the needs-review reading selects on).
+    "slug", "fingerprint", "occurrences", "derived_from",
+    "via", "surface", "instructions", "review_flags",
 )
 # Required fields = every field except the optional ones.
 # `fingerprint` stays structurally optional in the frontmatter contract, but
@@ -206,16 +211,11 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
 # names the temporal wave of work a decisions/designs entry belongs to (a
 # V5/V6/V7/V8 roadmap wave, architecture-governance, a lettered AG build wave,
 # …), validated against arc_registry.py. Optional: most entries carry no arc.
-# `altitude` is emitted on every new entry and REQUIRED on none. Those are not in
-# tension: the default is what absence means, so a note written before the field
-# existed is complete without it — and requiring it would have turned every note
-# in the corpus into a lint error to make a point the default already makes.
-_OPTIONAL_FIELDS = frozenset({
-    "source_url", "source_fetched", "source_id", "fingerprint", "occurrences", "supersedes",
-    "lifecycle_tier", "derived_from", "heat_pin", "arc", "altitude",
-    "lifecycle", "source", "filing_confidence",
-    "via", "captured", "surface", "instructions", "review_flags", "related", "trust",
-})
+# `tags` is optional since the card backfill: an empty list is omitted rather
+# than written (agentm-vault § The card).
+_OPTIONAL_FIELDS = frozenset(
+    f for f in FRONTMATTER_FIELD_ORDER if f not in ("kind", "status", "created", "updated", "slug")
+)
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
 )
@@ -224,13 +224,6 @@ REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
 def _today_iso() -> str:
     """Today's date in YYYY-MM-DD UTC."""
     return date.today().isoformat()
-
-
-# Altitude is the axis ranking dampens on: `canonical` states something durable,
-# `artifact` records a moment. The default is `artifact`, so a note earns
-# `canonical` rather than assuming it.
-ALTITUDES = ("artifact", "canonical")
-DEFAULT_ALTITUDE = "artifact"
 
 
 def _trust_tier(source: str) -> "str | None":
@@ -375,7 +368,6 @@ def _build_frontmatter(
     kind: str,
     group: str,
     vocabulary_field: str = "kind",
-    altitude: str = DEFAULT_ALTITUDE,
     slug: str,
     tags: list[str],
     always_load: bool,
@@ -392,13 +384,12 @@ def _build_frontmatter(
     extra: dict | None = None,
     trust: str | None = None,
 ) -> str:
-    """Build the locked-order YAML frontmatter for a memory entry.
+    """Build the frontmatter for a memory entry, in the card's order.
 
-    Field order is locked for deterministic diffs:
-      kind / status / created / updated / tags / group / slug / source_url
-      (omitted if None) / source_fetched (omitted if None) / fingerprint
-      (omitted if None) / always_load / supersedes (omitted if None) /
-      lifecycle_tier (omitted if None) / derived_from (omitted if None/empty).
+    Field order is locked for deterministic diffs: `FRONTMATTER_FIELD_ORDER`,
+    then `card_shape.reorder` — the read block first, the machine block last
+    (agentm-vault § The card). Every optional field is omitted when absent, and
+    `tags` is omitted when empty.
 
     `source_url` / `source_fetched` (the capture design's provenance
     plumbing, `designs/friday/agentm-capture.md`) record where a captured or
@@ -422,57 +413,56 @@ def _build_frontmatter(
     it was derived from. Comma-joined in the emitted YAML (a bracketed list,
     same shape as `tags`), omitted if None or empty.
     """
+    import card_shape  # noqa: E402  (same skill dir)
+
     today = _today_iso()
-    # Build the tags list inline (`[]` if empty, `[a, b, c]` otherwise).
-    tags_yaml = "[]" if not tags else "[" + ", ".join(tags) + "]"
-    lines = [
-        "---",
-        f"{vocabulary_field}: {kind}",
-        f"status: {status}",
-        f"altitude: {altitude}",
-        f"created: {today}",
-        f"updated: {today}",
-        f"tags: {tags_yaml}",
-        f"group: {group}",
-        f"slug: {slug}",
-    ]
+    extra = dict(extra or {})
+    # `captured` folds into `created` (agentm-vault § The card): the capture's
+    # instant, as the caller wrote it, is the day the entry came into existence.
+    captured = extra.pop("captured", None)
+    fields: dict[str, str] = {
+        vocabulary_field: kind,
+        "status": status,
+        "created": str(captured) if captured else today,
+        "updated": today,
+        "slug": slug,
+    }
+    if tags:
+        fields["tags"] = "[" + ", ".join(tags) + "]"
+    if group and group != "memory":
+        # A project-space entry keeps the group it files under; a memory card
+        # does not carry one, because its class directory says it.
+        fields["group"] = group
     if source_url:
-        lines.append(f"source_url: {source_url}")
+        fields["source_url"] = source_url
     if source_fetched:
-        lines.append(f"source_fetched: {source_fetched}")
+        fields["source_fetched"] = source_fetched
     if fingerprint:
-        lines.append(f"fingerprint: {fingerprint}")
-    lines.append(f"always_load: {'true' if always_load else 'false'}")
+        fields["fingerprint"] = fingerprint
     if always_load:
-        # The v2 lifecycle axis (filing-v2 part 1): always-load is what
-        # `pinned` means — never decays, loads every session. Stamped here so
-        # part 6's pinned loader retires the holding pen with a query, not a
-        # migration.
-        lines.append("lifecycle: pinned")
+        # The v2 lifecycle axis (filing-v2 part 1): always-load is what `pinned`
+        # means — never decays, loads every session. The field itself retired;
+        # the stamp is what the pinned loader reads.
+        fields["lifecycle"] = "pinned"
+    elif lifecycle:
+        fields["lifecycle"] = lifecycle
     if supersedes:
-        lines.append(f"supersedes: {supersedes}")
+        fields["supersedes"] = supersedes
     if lifecycle_tier:
-        lines.append(f"lifecycle_tier: {lifecycle_tier}")
+        fields["lifecycle_tier"] = lifecycle_tier
     if derived_from:
-        lines.append("derived_from: [" + ", ".join(derived_from) + "]")
-    # Filing-v2 write-time stamps. `always_load` already spelled the lifecycle
-    # (`pinned`) above and wins; otherwise the engine's value is written.
-    if lifecycle and not always_load:
-        lines.append(f"lifecycle: {lifecycle}")
+        fields["derived_from"] = "[" + ", ".join(derived_from) + "]"
     if source:
-        lines.append(f"source: {source}")
+        fields["source"] = source
     if filing_confidence:
-        lines.append(f"filing_confidence: {filing_confidence}")
+        fields["filing_confidence"] = filing_confidence
     if trust:
-        lines.append(f"trust: {trust}")
+        fields["trust"] = trust
     # A capture's own record fields (the surface it came through, the operator's
-    # verbatim instructions, the capture stamp) — written last, values quoted
-    # as JSON strings when they carry anything YAML would misread.
-    extra = extra or {}
-    ordered = [k for k in FRONTMATTER_FIELD_ORDER if k in extra] + [k for k in extra if k not in FRONTMATTER_FIELD_ORDER]
-    for key in ordered:
-        value = extra[key]
-        if value is None or value == "" or value == []:
+    # verbatim instructions) and the engine's review marks — values quoted as
+    # JSON strings when they carry anything YAML would misread.
+    for key, value in extra.items():
+        if value is None or value == "" or value == [] or key in fields:
             continue
         if isinstance(value, (list, tuple)):
             text = "[" + ", ".join(str(v) for v in value) + "]"
@@ -480,9 +470,11 @@ def _build_frontmatter(
             text = str(value)
             if not _BARE_SCALAR.match(text) or text.lower() in _YAML_SPECIAL:
                 text = json.dumps(text)
-        lines.append(f"{key}: {text}")
-    lines.append("---")
-    return "\n".join(lines) + "\n"
+        fields[key] = text
+    position = {k: i for i, k in enumerate(FRONTMATTER_FIELD_ORDER)}
+    ordered = sorted(fields, key=lambda k: position.get("kind" if k == "type" else k, len(position)))
+    lines = ["---"] + [f"{k}: {fields[k]}" for k in ordered] + ["---"]
+    return card_shape.reorder("\n".join(lines) + "\n")
 
 
 def save_entry(

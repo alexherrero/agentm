@@ -50,12 +50,14 @@ class TestCaptureInboxGuard(unittest.TestCase):
         self.assertEqual(len(filed), 1)
         self.assertIn("occurrences: 2", r1.path.read_text(encoding="utf-8"))
 
-    def test_distinct_content_same_slug_still_suffixes(self):
+    def test_distinct_content_same_slug_still_gets_its_own_name(self):
         r1 = capture.capture(self.vault, "first idea", slug="idea")
         r2 = capture.capture(self.vault, "second, different idea", slug="idea")
         self.assertTrue(r1.success and r2.success)
         self.assertFalse(r2.deduplicated)
-        self.assertEqual({r1.slug, r2.slug}, {"idea", "idea~dup"})
+        # The collision rule (agentm-vault § The card): a word of its own text,
+        # never a `~dup` or `-2` counter.
+        self.assertEqual({r1.slug, r2.slug}, {"idea", "idea-second"})
 
     def test_capture_writes_fingerprint_frontmatter(self):
         r = capture.capture(self.vault, "some captured content", slug="cap")

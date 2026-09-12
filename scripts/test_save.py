@@ -92,11 +92,15 @@ class EntryTargetPathTests(unittest.TestCase):
 
 
 class FrontmatterFieldOrderTests(unittest.TestCase):
-    def test_source_fields_positioned_after_slug_before_fingerprint(self) -> None:
+    def test_source_fields_sit_beside_source_and_the_join_keys_close_the_block(self) -> None:
+        # The card's order (agentm-vault § The card): where the material came
+        # from reads beside how it arrived; `slug` and `fingerprint` are the
+        # machine block that closes the frontmatter.
         order = save.FRONTMATTER_FIELD_ORDER
-        self.assertLess(order.index("slug"), order.index("source_url"))
+        self.assertLess(order.index("source"), order.index("source_url"))
         self.assertLess(order.index("source_url"), order.index("source_fetched"))
-        self.assertLess(order.index("source_fetched"), order.index("fingerprint"))
+        self.assertLess(order.index("source_fetched"), order.index("slug"))
+        self.assertLess(order.index("slug"), order.index("fingerprint"))
 
     def test_source_fields_are_optional(self) -> None:
         self.assertIn("source_url", save._OPTIONAL_FIELDS)
@@ -137,7 +141,7 @@ class BuildFrontmatterProvenanceTests(unittest.TestCase):
         url_i = next(i for i, l in enumerate(lines) if l.startswith("source_url:"))
         fetched_i = next(i for i, l in enumerate(lines) if l.startswith("source_fetched:"))
         fp_i = next(i for i, l in enumerate(lines) if l.startswith("fingerprint:"))
-        self.assertTrue(slug_i < url_i < fetched_i < fp_i)
+        self.assertTrue(url_i < fetched_i < slug_i < fp_i)
 
 
 class SaveEntryProvenanceTests(unittest.TestCase):

@@ -169,9 +169,11 @@ func appendEnrichRun(cfg *config.Config, r enrichRun) error {
 // Read from the contract rather than listed here. Today that is
 // `memory/semantic` and `memory/procedural`. It is not `memory/episodic`,
 // which no memory type routes to because it holds session traces — records,
-// not cards, whose `session`, `day` and `touched` a rewrite would drop. And it
-// is not `memory/_watchlist/`, whose `pending-review` entries are
-// forward_learning.py's records. Neither may spend the night's budget.
+// not cards, whose `session`, `day` and `touched` a rewrite would drop. Nor is
+// the watchlist offered: it lives in the project space
+// (`Projects/agentm/_watchlist/`), outside every class directory, and its
+// `pending-review` entries are forward_learning.py's records. Neither may spend
+// the night's budget.
 func enrichQueueDirs(cfg *config.Config) ([]string, error) {
 	loaded, err := cfg.Rules.Get()
 	if err != nil {

@@ -39,7 +39,10 @@ class CaptureBasicsTests(unittest.TestCase):
         self.assertIn("status: unfiled", content)
         self.assertIn("filing_confidence: low", content)
         self.assertIn("source: operator-direct", content)
-        self.assertIn("captured: 2026-07-18T12:00:00", content)
+        # `captured` folds into `created` (agentm-vault § The card): the capture's
+        # instant is the day the note came into existence, in the one field.
+        self.assertIn("created: 2026-07-18T12:00:00", content)
+        self.assertNotIn("captured:", content)
         self.assertIn("a thought worth keeping", content)
 
     def test_idea_kind_writes_note(self) -> None:
@@ -94,7 +97,7 @@ class CaptureBasicsTests(unittest.TestCase):
         content = result.path.read_text(encoding="utf-8")
         self.assertIn("source: operator-direct", content)  # the transport is always stamped
         self.assertNotIn("via:", content)
-        self.assertIn("tags: []", content)  # the writer's schema always carries the field
+        self.assertNotIn("tags:", content)  # an empty tag list is omitted, never written (the card)
         self.assertNotIn("surface:", content)
         self.assertNotIn("source_url:", content)
         self.assertNotIn("instructions:", content)
@@ -114,24 +117,25 @@ class SlugCollisionTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def test_explicit_slug_collision_appends_suffix(self) -> None:
+    def test_explicit_slug_collision_grows_a_name(self) -> None:
         r1 = cap.capture(self.vault, "first", slug="my-slug", now=_NOW)
         r2 = cap.capture(self.vault, "second", slug="my-slug", now=_NOW)
         self.assertTrue(r1.success)
         self.assertTrue(r2.success)
         self.assertNotEqual(r1.path, r2.path)
-        # The filing engine settles a namesake the way the corpus migration
-        # did: the second note keeps its slug and takes the `~dup` mark.
-        self.assertEqual(r2.slug, "my-slug~dup")
+        # The collision rule (agentm-vault § The card): the second note keeps
+        # its slug and grows it by the next meaningful word of its own text —
+        # never a `~dup` or `-2` counter.
+        self.assertEqual(r2.slug, "my-slug-second")
         # Both files survive with their own distinct content.
         self.assertIn("first", r1.path.read_text(encoding="utf-8"))
         self.assertIn("second", r2.path.read_text(encoding="utf-8"))
 
-    def test_three_way_collision_increments(self) -> None:
-        r1 = cap.capture(self.vault, "a", slug="dup", now=_NOW)
-        r2 = cap.capture(self.vault, "b", slug="dup", now=_NOW)
-        r3 = cap.capture(self.vault, "c", slug="dup", now=_NOW)
-        self.assertEqual({r1.slug, r2.slug, r3.slug}, {"dup", "dup~dup", "dup~dup2"})
+    def test_three_way_collision_names_each_note_by_its_text(self) -> None:
+        r1 = cap.capture(self.vault, "alpha note", slug="dup", now=_NOW)
+        r2 = cap.capture(self.vault, "bravo note", slug="dup", now=_NOW)
+        r3 = cap.capture(self.vault, "charlie note", slug="dup", now=_NOW)
+        self.assertEqual({r1.slug, r2.slug, r3.slug}, {"dup", "dup-bravo", "dup-charlie"})
 
 
 class ConcurrencyTests(unittest.TestCase):

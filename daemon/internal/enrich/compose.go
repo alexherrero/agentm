@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 )
 
 // Composing the note a judgment writes.
@@ -166,7 +168,10 @@ func Compose(previous string, r Response, s Stamp, depth Depth, offered []Neighb
 
 	verdict := VerdictFor(previous, r, s.ConfidenceFloor)
 	body := joinBody(captured, section, after)
-	next := CarryProvenance(previous, RenderFrontmatter(r, s, verdict)+separator(body)+body)
+	// The card leaves in the card's order (agentm-vault § The card). The render
+	// writes the judgment and the carry appends the provenance, and neither
+	// order is the one the operator reads.
+	next := cardshape.Reorder(CarryProvenance(previous, RenderFrontmatter(r, s, verdict)+separator(body)+body))
 
 	// The guard, checked on the bytes about to be written rather than on the
 	// intent: everything the session wrote is still there, unchanged, directly

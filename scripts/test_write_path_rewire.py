@@ -166,7 +166,10 @@ class TheCaptureFrontDoorFilesAtClass(_Vault):
         self.assertEqual(fm["lifecycle"], "active")
         self.assertEqual(fm["source"], "operator-direct")
         self.assertEqual(fm["filing_confidence"], "low")
-        self.assertTrue(fm["captured"].startswith("2026-09-04T09:00:00"), fm["captured"])
+        # The capture's instant, in `created`: `captured` folded into it
+        # (agentm-vault § The card).
+        self.assertTrue(fm["created"].startswith("2026-09-04T09:00:00"), fm["created"])
+        self.assertNotIn("captured", fm)
         self._no_staging_dir()
 
     def test_a_link_capture_is_external_fetch_and_keeps_its_url(self):

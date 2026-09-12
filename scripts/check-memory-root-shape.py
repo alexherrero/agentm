@@ -50,7 +50,8 @@ import vault_layout  # noqa: E402
 CLASSES = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
 AGENT_DIRS = {"diagnostics", "memory", "archive"}
 AGENT_LOOSE_ALLOWED = {"Home.md"}  # plan 07 retires it
-IGNORABLE = {".DS_Store", "Icon\r", "Icon", ".rename-vault-root-complete", ".gitkeep"}
+IGNORABLE = {".DS_Store", "Icon\r", "Icon", ".rename-vault-root-complete", ".gitkeep",
+             ".card-backfill-complete"}  # the card backfill's marker (agentm-vault plan 06)
 STANDARDS_SET = ("storage-rules.md", "user-preferences.md",
                  "security-and-secret-governance.md", "moc-standards.md")
 FEATURE_ITEMS = ("_watchlist", "_skill-watchlist", "auto-orchestration-config.md",

@@ -192,9 +192,11 @@ class TheFourOperations(unittest.TestCase):
         with self.assertRaises(ValueError):
             self._decide("A brief", "records are not memories", kind_hint="brief", slug="brief")
 
-    def test_a_namesake_with_a_different_body_takes_a_dup_name(self):
+    def test_a_namesake_with_a_different_body_takes_a_grown_name(self):
+        # The collision rule (agentm-vault § The card): the name grows by the next
+        # meaningful word of the arriving note's own title, never a `~dup` mark.
         d = self._decide("Plain fact, restated", "A different body under the same slug.", type_hint="reference", slug="plain-fact")
-        self.assertEqual(d.dest_rel, "memory/semantic/plain-fact~dup.md")
+        self.assertEqual(d.dest_rel, "memory/semantic/plain-fact-restated.md")
         self.assertIn("basename-clash", d.flags)
 
 

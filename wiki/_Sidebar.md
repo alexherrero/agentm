@@ -17,6 +17,7 @@
 - [Back the vault with Google Drive](Back-The-Vault-With-Drive)
 - [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault)
 - [Run the memory-root trims migration](Run-The-Memory-Root-Trims-Migration)
+- [Run the card backfill](Run-The-Card-Backfill)
 - [Persist a morning report](Persist-A-Morning-Report)
 - [Enable on-device notifications](Enable-On-Device-Notifications)
 - [Enable the daily email](Enable-Email-Digest-Delivery)

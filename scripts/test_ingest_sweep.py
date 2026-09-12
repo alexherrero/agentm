@@ -330,6 +330,12 @@ class IdeaFoldTests(unittest.TestCase):
         self.assertEqual(fm["status"], "promoted")
 
 
+def _carry_captured(path: Path, value: str) -> None:
+    """Give a candidate the legacy `captured:` stamp the restamp duty corrects."""
+    path.write_text(ingest_sweep._patch_frontmatter(path.read_text(encoding="utf-8"), {"captured": value}),
+                    encoding="utf-8")
+
+
 class RestampTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -339,10 +345,23 @@ class RestampTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_wrong_captured_timestamp_gets_corrected(self) -> None:
+        # A note that still carries `captured:` (the corpus before the card
+        # backfill folded it into `created:`) is corrected as before.
         path = _new_candidate(self.vault, now=datetime(2020, 1, 1, tzinfo=timezone.utc))
+        _carry_captured(path, "2020-01-01T00:00:00+00:00")
         ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
         fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
         self.assertNotEqual(fm["captured"], "2020-01-01T00:00:00+00:00")
+
+    def test_a_folded_capture_instant_is_never_restamped(self) -> None:
+        # `captured` folds into `created` at capture now, and a card's mtime is
+        # its last write rather than its creation: the duty does not follow the
+        # fold, or every rewritten card's creation would move to its last write.
+        path = _new_candidate(self.vault, now=datetime(2020, 1, 1, tzinfo=timezone.utc))
+        ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
+        fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
+        self.assertEqual(fm["created"], "2020-01-01T00:00:00+00:00")
+        self.assertNotIn("captured", fm)
 
     def test_already_agreeing_captured_timestamp_is_untouched(self) -> None:
         path = _new_candidate(self.vault)
@@ -390,6 +409,7 @@ class ConcurrencyTests(unittest.TestCase):
 
     def test_concurrent_restamp_and_act_step_do_not_clobber_each_other(self) -> None:
         path = _new_candidate(self.vault, instructions="tag:urgent", now=datetime(2020, 1, 1, tzinfo=timezone.utc))
+        _carry_captured(path, "2020-01-01T00:00:00+00:00")
 
         def _do_restamp():
             return ingest_sweep.restamp_candidate(self.vault, path)
