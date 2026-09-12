@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.20.0](https://github.com/alexherrero/agentm/releases/tag/v9.20.0).** The inbox triage engine retires. Its three jobs move to the heat policy, the dreaming binary, and the lifecycle axis — but nothing now parks a fuzzy-similar pair for you.
+> **Latest release: [v9.21.0](https://github.com/alexherrero/agentm/releases/tag/v9.21.0).** The night runs: the corpus is judged once a night inside a window against a two-million-token line, every writer lands the same card, the residue is purged on your ruling, and one morning note says what happened. `MEMORY_VAULT_PATH` becomes `MEMORY_ROOT`, one meaning, both names exported for one release.

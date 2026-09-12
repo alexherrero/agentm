@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.6.0](https://github.com/alexherrero/agentm/releases/tag/v9.6.0).** Every recall-history row names the vault directory a note lived in, and nothing ever removed one — rows now expire on a 90-day clock, swept from the same write path that creates them.
+> **Latest release: [v9.21.0](https://github.com/alexherrero/agentm/releases/tag/v9.21.0).** The night runs: the corpus is judged once a night inside a window against a two-million-token line, every writer lands the same card, the residue is purged on your ruling, and one morning note says what happened. `MEMORY_VAULT_PATH` becomes `MEMORY_ROOT`, one meaning, both names exported for one release.
 
 ---
 

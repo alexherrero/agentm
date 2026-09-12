@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.21.0] - 2026-09-11
+
+The vault-perfection series lands its first four plans, and the night runs. The AgentM Vault design was decided across seven sessions and approved as final ([#576](https://github.com/alexherrero/agentm/pull/576) through [#582](https://github.com/alexherrero/agentm/pull/582)); plans 01 to 04 then cleaned the vault, purged the residue on the operator's ruling, made every writer land the same card, and put the nightly enrichment batch under a window, a token line and one morning note ([#586](https://github.com/alexherrero/agentm/pull/586), [#588](https://github.com/alexherrero/agentm/pull/588), [#589](https://github.com/alexherrero/agentm/pull/589), [#590](https://github.com/alexherrero/agentm/pull/590)). The first supervised batches taught the night to load no MCP servers into a call, to ask only for what its judge accepts, to count what a call adds, to write a refusal down, and to keep the facts a pass cannot know ([#591](https://github.com/alexherrero/agentm/pull/591) through [#597](https://github.com/alexherrero/agentm/pull/597)); a model now judges the cheap tier's audit ([#598](https://github.com/alexherrero/agentm/pull/598)). `MEMORY_VAULT_PATH` becomes `MEMORY_ROOT`, one meaning, both names exported for one release ([#599](https://github.com/alexherrero/agentm/pull/599)). The doctor sees a checkout that is missing merged work ([#587](https://github.com/alexherrero/agentm/pull/587)). The Python FastMCP memory server, long superseded by the Go daemon, is gone.
+
 ### Added
 
 - **`agentmd tiers --audit`** — the cheap-tier audit for the light pass
@@ -63,6 +67,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/memory payload`** — prints the body and the surface list, `--write`
   regenerates both derived copies, `--check` runs the parity gate. The doctor
   gained a row per copy carrying its hash and naming the one that differs.
+- **The AgentM Vault design** ([#576](https://github.com/alexherrero/agentm/pull/576) through [#582](https://github.com/alexherrero/agentm/pull/582)) — the
+  vault-perfection series' successor to Filing v2, decided in seven sessions
+  (layout and card; initial capture; dreaming and where the tokens go; projects
+  and tasks as memory; consolidation, retirement and forgetting per space; one
+  memory across every surface; the close) and approved as final, then
+  translated to fourteen parts and sequenced into fourteen named plans in the
+  vault harness. Filing v2 gains a pointer to it; `Designs.md` shows it Final.
+- **A purge population is re-selected on the day it runs** ([#588](https://github.com/alexherrero/agentm/pull/588), plan 02).
+  `purge.py` gains a `POPULATIONS` table — each residue shape's title, ruled
+  count, claimable class directories and predicate — and a `CLAIM_ORDER`, so a
+  path belongs to exactly one population and the counts still add.
+  `select --population <A-F> [--expect-count N]` re-selects against today's
+  corpus, writes the manifest `apply` consumes, prints the fresh count beside
+  the ruled one, and exits 4 when they differ. The predicates were calibrated
+  against the ruled rows rather than guessed: they reproduce every row of B–F
+  and 291 of manifest A's 292. 627 notes were purged on the operator's ruling,
+  each apply hash-verified and count-confirmed with a journal entry naming its
+  manifest; the classes went 836 → 210, and every purged file still lives at
+  the vault commit taken first.
+- **The tally template is refused at both write doors** ([#588](https://github.com/alexherrero/agentm/pull/588)).
+  `filing_engine.decide()` raises `RefusedTally` before it resolves a type, and
+  `capture.Do()` refuses right after the empty-text check, so a worktree still
+  running an older miner cannot land one. The corpus scorecard gains a
+  `residue` line — the six shapes plus `status: proposed` and
+  `status: deleted` — reading zero, from a `residue_shapes` module the nightly
+  reader and the operator-only purge lane both import, so the scorecard still
+  cannot reach a delete.
+- **The Go door writes the card** ([#589](https://github.com/alexherrero/agentm/pull/589), plan 03). `memory_capture` gains
+  `summary`, `why`, `importance`, `related`, `project` and `task`;
+  `instructions` is accepted but unpublished, beside `probe`. Status is
+  derived, never asserted: a caller-named type plus a `why` lands `active`,
+  everything else `unfiled`. The session trace becomes the handoff record —
+  `## Asked`, `## Outcome`, `## Captured`, `## Recalled`, `## Candidates` — in
+  the session's own words at no model cost, and the miner files a card only
+  for a HIGH candidate. `ingest_staged` joins the ranker's wall in both arms.
+- **The night** ([#590](https://github.com/alexherrero/agentm/pull/590), plan 04). A job manifest may carry a `window` and
+  an `order`, so the four nightly steps run inside `02:00–06:00` in the order
+  each reads what the last wrote: enrichment, the dreaming binary, the Python
+  cycle, the scorecards, then the morning note and the email that carries it.
+  The enrichment batch reads its model from `agentmd tiers`, spends against a
+  token line per night with a 250-call guard, records usage from
+  `claude -p --output-format json` into `enrich-runs.jsonl`, and queues only
+  the cards in the contract's class directories. One prompt with two shapes:
+  the deep pass is handed five neighbours and returns `related` from them and
+  `importance_proposed` against the contract's rubric, never `why`; the
+  Evidence block survives byte for byte, an edited `importance` is never
+  overwritten, and body content is added only under `## Added by dreaming`.
+  The dreaming binary runs nightly, and promote reads a trace's `## Captured`
+  and `## Candidates` into semantic candidates.
+- **One morning note** ([#590](https://github.com/alexherrero/agentm/pull/590)) — `<memory root>/diagnostics/morning/YYYY-MM-DD.md`
+  with a `latest_morning_note.md` mirror: what ran, what needs you, the corpus
+  in one line, and spend, each left out when empty. It is the daily email's
+  body and the session brief shows its first section. It holds the night to
+  the operator's numbers rather than a hand run's flags, with a test pinning
+  its copy of the constants to the Go ones, and it reads coverage a second
+  time after a pause when the first answer says nothing is eligible over a
+  corpus that holds cards ([#593](https://github.com/alexherrero/agentm/pull/593)).
+- **The doctor sees a checkout that is missing merged work** ([#587](https://github.com/alexherrero/agentm/pull/587)). The
+  `install-head` row asks whether `origin/main` is an ancestor of HEAD, which
+  stops being true exactly when the tree running every hook, skill and
+  scheduled job lacks commits that have landed — the case a tag comparison is
+  blind to and the local-`main` comparison misnamed. Found the day after
+  plan 01, when a stale tree's nightly job re-created a directory the plan had
+  removed.
 
 ### Changed
 
@@ -117,6 +185,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`how-to/Use-AgentMemory-In-Any-Agent.md` and
   `reference/AgentMemory-Context-Payload.md`** rewritten to the layout-free
   payload, the email door and the four checks that prove a paste took.
+- **The eager enrichment trigger retires; enrichment is a nightly batch**
+  ([#589](https://github.com/alexherrero/agentm/pull/589)). The per-note model call that was never attached to a running
+  daemon is gone; eligibility moves from status to stamp, with three guards on
+  what a pass may not touch — `why`, the Evidence block, and an `importance`
+  somebody edited.
+- **The Python cycle shrinks to what has a reader** ([#590](https://github.com/alexherrero/agentm/pull/590)). It reads,
+  reports and proposes, and changes no note: the contract (fail-closed), the
+  meters, lint as a report, dedup at 0.92 and contradiction triage as
+  needs-review sections, facet promotion as proposed facets. Retired, each
+  checked for callers first: the lifecycle stage, tidying, compression, the
+  lint repair lane, the opinion supplement, insight generation and
+  qualification, the sampled audit, entity rollups, stub synthesis, the
+  unfiled drain, the confirm-and-revert path, and crystallization staging. The
+  dreaming scorecard and the daily digest job retire with the morning note's
+  arrival.
+- **The enrichment call loads no MCP servers** ([#591](https://github.com/alexherrero/agentm/pull/591)).
+  `--strict-mcp-config` travels with an empty `--mcp-config`, held together by
+  a test. The operator's servers were four fifths of a call's baseline input —
+  113,509 tokens down to 30,783 — most of what a night spent before the first
+  note was read.
+- **The prompt asks for what the judge accepts, and the line counts what a
+  call adds** ([#592](https://github.com/alexherrero/agentm/pull/592)). `body` is written only when the card and a neighbour
+  between them state something the card alone does not, every sentence
+  traceable, no inference; four cards had drawn four refusals under the old
+  invitation to infer. The token line counts input, cache writes and output,
+  not cache reads — the old line stopped a night after nine cards, bounding
+  one constant re-read twice per card.
+- **The night's line is one number: two million tokens on either tier**
+  ([#595](https://github.com/alexherrero/agentm/pull/595)). `StrongTokenLine` moves from 1,000,000 to 2,000,000; the job
+  template, its live copy and the morning note's `OPERATOR_LINES` say the
+  same. The nightly job is registered and on as of 2026-09-11.
 
 ### Removed
 
@@ -130,6 +229,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server had no live caller and its own doctor failed by construction against
   the daemon.
 
+
+### Fixed
+
+- **Enrichment keeps the facts it cannot know** ([#596](https://github.com/alexherrero/agentm/pull/596)). The first
+  full-corpus run dropped frontmatter a pass has no way to re-derive — `slug`
+  on 104 cards, `group` and `always_load` on 40, the mining provenance on 19,
+  `superseded_by` on 2 — leaving a memory with no lineage and a red
+  `check-vault-frontmatter`. Every such key is carried now; `altitude` and
+  `aliases` stay dropped deliberately, each with a test saying so. The 103
+  notes already written were repaired in place from the journal's own
+  `previous` bytes, the judgment and the body untouched.
+- **`created:` was missing from enrichment's carried fields** ([#589](https://github.com/alexherrero/agentm/pull/589)), so
+  the first enrichment of a new note would have dropped the day it came into
+  existence.
+- **The vault survey's seven housekeeping defects** ([#586](https://github.com/alexherrero/agentm/pull/586), plan 01).
+  `health-pass` really was broken: under a UTF-8 `LC_CTYPE`, bash absorbed the
+  ellipsis after an unbraced `$label` into the identifier and `set -u` killed
+  `run-fast-tier.sh` before one check record was emitted. `classDir` resolved
+  a memory-root-relative routing value against the space for all six routed
+  types. `Agent/memory/memory/`, a vault-root `diagnostics/` and ten empty
+  calendar reviews are gone; two jobs parked since July are resumed, the
+  second found by the new `agentm-runner.sh health` surface; `corpus-scorecard`
+  is registered as a daily job.
+- **The dreaming gate's clock moves only on an applying pass** ([#590](https://github.com/alexherrero/agentm/pull/590)) — a
+  report-only pass by hand had frozen the maps for a week. `test_dream_job`'s
+  epoch clock sat inside the window in Pacific time and outside it in UTC; the
+  session brief reads the morning note from the configured memory root instead
+  of beside `Agent/`.
+- **The runner's fleet USD ceiling counts the last day only, and only jobs
+  that spend** ([#590](https://github.com/alexherrero/agentm/pull/590)). Summed forever, the first heavy night would have
+  held every spending job, the batch included, for good.
+- **The retrieval gate's red after the purge was not corpus drift** ([#588](https://github.com/alexherrero/agentm/pull/588)).
+  Nine of manifest D's extras were the frozen gold set's research corpus,
+  matched by the same fetch path and `source: external-fetch`. Restored and
+  re-embedded, the gate came back clean; D's predicate now requires the
+  ingest's rubric stamp, with a regression test naming the incident.
+
+### Internal
+
+- Two suites read the operator's real engine state directory instead of a
+  temp one — `test_session_brief` and `test_crystallize_staging`, 19 failures
+  latent until a daemon restart staged candidates — and each class now sets
+  `$AGENTM_STATE_DIR` to its own temp dir ([#588](https://github.com/alexherrero/agentm/pull/588)). `test_enrichment_breaker`'s
+  trip record leaked between tests the same way ([#589](https://github.com/alexherrero/agentm/pull/589)).
+- Gates retired or narrowed with their subjects ([#590](https://github.com/alexherrero/agentm/pull/590)):
+  `verify-opinion-supplements` retires; `verify-dreaming` keeps the twin, the
+  no-mutation check and the manifest; `verify-declare-a-type` reads the
+  batch's queue through `agentmd enrich --dry-run`; `verify-phases` asserts a
+  phase dispatch stages nothing; `check-dreaming-parity` drops promote's
+  recorded half. The battery is 46 gates.
+- [#594](https://github.com/alexherrero/agentm/pull/594) dropped `MEMORY_VAULT_PATH` from every `agentmd` command a job runs,
+  the interim protection after the first supervised batch found the daemon
+  reading the runner's memory root as the vault root; [#599](https://github.com/alexherrero/agentm/pull/599) gives the
+  variable one meaning and removes those `env -u` guards again in this same
+  release.
+- The `agentm-vault` design's Surfaces section names `standards/storage-rules.md`
+  from `index.md`'s self-description ([#584](https://github.com/alexherrero/agentm/pull/584), narrowed by [#585](https://github.com/alexherrero/agentm/pull/585) after
+  its own re-run showed the failing Gem was missing an attached file, not a
+  map section). Its budget paragraph reads the two-million line and the first
+  supervised batch as it ran ([#596](https://github.com/alexherrero/agentm/pull/596)). `Memory-Daemon.md` and
+  `Read-The-Nightly-Scorecards.md` carry the line's accounting, the isolation
+  table and the morning note's rows ([#593](https://github.com/alexherrero/agentm/pull/593)).
 
 ## [9.20.0] - 2026-09-06
 
