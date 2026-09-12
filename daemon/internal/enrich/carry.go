@@ -10,10 +10,34 @@ import (
 // write path). `RenderNote` writes the judgment; this carries the provenance
 // across it. `filing_confidence` is deliberately absent — the pass re-judges
 // it, which is how an unfiled capture clears the needs-review reading.
+// The list was audited against the journal after the first full-corpus run
+// (2026-09-11), by asking which frontmatter keys a rewrite actually lost: of
+// 133 cards, it dropped `slug` 104 times, `group` and `always_load` 40 each,
+// the `mining_*` trio 19, `derived_from` 18, `fingerprint` 16, `occurrences`
+// 7, `source_id` 4, `excerpt_edges_unverified` 3, and `superseded_by`,
+// `promoted_at` and `promoted_to` twice each. Every one of them is a fact from
+// before the pass, which is exactly what this list is for, so every one is
+// carried now.
+//
+// `lifecycle` in particular does not travel alone. The fields beside it say
+// when the aging axis last moved and, for a superseded note, which note
+// replaced it — and the vault's own contract requires the pair:
+// `lifecycle: superseded` without `superseded_by:` is a memory that has lost
+// its lineage, which `check-vault-frontmatter` fails on.
+//
+// Two dropped keys stay dropped, deliberately. `altitude` is retired by the
+// design (the deep pass drops it), and `aliases` is the pass's own answer
+// under the alias-vocabulary gate — carrying it would make an alias permanent
+// the first time any pass proposed one.
 var carriedFields = []string{
-	"source", "lifecycle", "captured", "created", "via", "source_url",
-	"source_fetched", "surface", "instructions", "review_flags", "related",
-	"trust", "why", "project", "task", "importance", "importance_proposed",
+	"source", "source_id", "source_url", "source_fetched",
+	"lifecycle", "lifecycle_since", "superseded_by", "supersedes",
+	"promoted_at", "promoted_to", "derived_from",
+	"captured", "created", "via", "surface", "instructions", "review_flags",
+	"excerpt_edges_unverified", "related", "trust", "why", "project", "task",
+	"importance", "importance_proposed",
+	"slug", "group", "always_load", "fingerprint", "occurrences",
+	"mining_rationale", "mining_confidence", "mining_occurrences",
 }
 
 // EvidenceHeading opens the block quoting the excerpt a note came from. It is
