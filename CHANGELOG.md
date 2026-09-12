@@ -36,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The retrieval gate remaps the gold set's voice-rule and settings-file
   paths through the move. The doctor's `items_source` pointer is checked
   against the vault, where the project space is.
+- **The voice library stays in the vector arm's scope.** The first retrieval
+  gate after the move read five gold questions flipping to a miss: the nine
+  voice rules had left `Projects/` for the vault-root `standards/voice/`,
+  which the daemon's default embed scope did not name, so the dense arm
+  could no longer reach notes the lexical arm still served first. The
+  default scope names `standards/voice` beside `Projects` and `Calendar`;
+  the rest of `standards/` stays out, since the loader reads the rule files
+  whole every session.
 
 - **The tier audit names what failed, and stops when every call fails the
   same way.** The first live run of `agentmd tiers --audit` failed thirty

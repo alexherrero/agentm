@@ -367,6 +367,15 @@ func defaultEmbedScope(memoryRoot string) []string {
 	// indexed from the start; the dense arm reaches them too now (filing-v2
 	// remainders task 3).
 	out = append(out, "Calendar")
+	// The voice library (agentm-vault plan 05, the memory-root trims) moved
+	// from `Projects/_global/wiki-style/` to the vault-root `standards/voice/`.
+	// Its nine rules are on-demand notes recall surfaces by keyword, and they
+	// were dense-retrievable under Projects/; the first gate after the move
+	// read five gold questions flipping to a miss because the sibling was
+	// outside this scope. The rest of `standards/` stays out on purpose: the
+	// rule files are read whole by the loader every session, and plan 12
+	// drops them from recall altogether.
+	out = append(out, "standards/voice")
 	return out
 }
 
