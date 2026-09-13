@@ -12,6 +12,9 @@ sibling checkout is reachable."""
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -27,6 +30,7 @@ import dispatch as dp  # noqa: E402
 import grade as gr  # noqa: E402
 import handoff as hf  # noqa: E402
 import board_sync as bs  # noqa: E402
+import harness_memory as hm  # noqa: E402  (importing n1_run put scripts/ on the path)
 
 
 class _FakeCompletedProcess:
@@ -153,8 +157,12 @@ class RunN1SequenceTests(unittest.TestCase):
         report = self._run(config)
         self.assertIsNotNone(report.handoff_manifest)
         self.assertEqual(len(report.handoff_manifest["prompts"]), 1)
-        dest = self.tmp / "_n1_handoff"
+        # A bare temporary directory resolves no vault, so the pack goes to the
+        # engine state directory this module isolates, under the directory's name.
+        dest = Path(os.environ["AGENTM_STATE_DIR"]) / "n1-handoff" / self.tmp.resolve().name
+        self.assertEqual(Path(report.handoff_dir), dest)
         self.assertTrue((dest / "prompts.json").is_file())
+        self.assertFalse((self.tmp / "_n1_handoff").exists())
 
     def test_empty_work_items_is_a_clean_run(self):
         config = n1.N1Config(plan="n1", work_items=[], cwd=self.tmp, telemetry_root=self.telemetry_root)
@@ -247,6 +255,109 @@ class RunN1SequenceTests(unittest.TestCase):
         report = self._run(config)
         as_dict = n1._report_to_dict(report)
         self.assertEqual(as_dict["decision"]["exit"], "done")
+
+
+def _git(*args, cwd) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+
+def _recording_handoff_builder():
+    """Records where the run aims its handoff pack and writes nothing, so a run
+    against a real checkout, and whatever vault it resolves, leaves both as
+    they were."""
+    targets = []
+
+    def builder(results, session_outputs, dest_dir):
+        targets.append(Path(dest_dir))
+        return {"prompts": [], "snapshotted_files": []}
+
+    builder.targets = targets
+    return builder
+
+
+class HandoffPackStaysOutOfTheCheckoutTests(unittest.TestCase):
+    """The pack must never land inside the git checkout the run works in.
+
+    `n1-overnight` runs with `--cwd` at the live clone. The pack used to go to
+    `<cwd>/_n1_handoff/`, so every nightly run rewrote tracked files there, and
+    on 2026-09-12 a changed render left the clone dirty and stopped a deploy.
+    Each test here fails if the run aims the pack inside the checkout."""
+
+    @classmethod
+    def setUpClass(cls):
+        if shutil.which("git") is None:
+            raise unittest.SkipTest("git is not on PATH")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.checkout = self.tmp / "repo"
+        self.checkout.mkdir()
+        _git("init", "-q", cwd=self.checkout)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def assertOutsideCheckout(self, target, cwd):
+        # git prints the toplevel resolved, with forward slashes: resolve both sides.
+        toplevel = Path(_git("rev-parse", "--show-toplevel", cwd=cwd)).resolve()
+        target = Path(target).resolve()
+        self.assertFalse(
+            target == toplevel or toplevel in target.parents,
+            f"the handoff pack is aimed at {target}, inside the checkout at {toplevel}",
+        )
+
+    def _run(self, cwd, builder):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(cwd))]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=cwd, telemetry_root=self.tmp / "telemetry")
+        return n1.run_n1_sequence(
+            config, dispatcher=_fake_dispatcher, grade_declarer=_fake_grade_declarer, handoff_builder=builder,
+        )
+
+    def test_a_run_leaves_the_checkout_clean(self):
+        # _fake_handoff_builder really writes prompts.json wherever it is aimed.
+        self._run(self.checkout, _fake_handoff_builder)
+        self.assertEqual(_git("status", "--porcelain", "--untracked-files=all", cwd=self.checkout), "")
+
+    def test_the_pack_is_aimed_outside_the_checkout_from_its_root_or_a_subdirectory(self):
+        # scripts/ is the runner's own working directory, where --cwd defaults to.
+        (self.checkout / "scripts").mkdir()
+        for cwd in (self.checkout, self.checkout / "scripts"):
+            with self.subTest(cwd=cwd.name):
+                builder = _recording_handoff_builder()
+                self._run(cwd, builder)
+                self.assertOutsideCheckout(builder.targets[0], cwd)
+
+    def test_with_a_vault_the_pack_goes_under_the_project_harness_directory(self):
+        from storage_seam import Locator
+        from vault_backend_stub import VaultBackend
+
+        vault = self.tmp / "vault"
+        # The per-repo marker pins vault-backed state, whatever this machine's config says.
+        (self.checkout / ".harness").mkdir()
+        (self.checkout / ".harness" / ".project-mode").write_text("backend\n", encoding="utf-8")
+        resolution = {
+            "slug": "repo", "layout": "root", "project_root": self.checkout,
+            "backend": VaultBackend(root=vault, lock_root=self.tmp / "locks"),
+            "project_locator": Locator("Projects/repo"),
+        }
+        builder = _recording_handoff_builder()
+        with mock.patch.object(hm, "resolve_project", return_value=resolution):
+            self._run(self.checkout, builder)
+        self.assertEqual(builder.targets[0], vault / "Projects" / "repo" / "_harness" / "n1-handoff")
+        self.assertOutsideCheckout(builder.targets[0], self.checkout)
+
+    def test_this_repositorys_own_checkout(self):
+        # The live case: n1-overnight's --cwd is the agentm clone itself.
+        try:
+            repo_root = Path(_git("rev-parse", "--show-toplevel", cwd=_HERE))
+        except subprocess.CalledProcessError:
+            self.skipTest("not running from a git checkout")
+        builder = _recording_handoff_builder()
+        self._run(repo_root, builder)
+        self.assertOutsideCheckout(builder.targets[0], repo_root)
 
 
 class CliTests(unittest.TestCase):
@@ -354,6 +465,13 @@ class RealCricketsN1BridgeTests(unittest.TestCase):
         self.assertEqual(report.grade_event["event"], "run-start")
         self.assertEqual(report.grade_event["tags"]["grade"], "G-ship")
         self.assertIsNotNone(report.handoff_manifest)
+
+
+# Each test gets its own engine state directory, so a pack that falls back to
+# it never lands in the machine's real one on a hand run.
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
 
 
 if __name__ == "__main__":

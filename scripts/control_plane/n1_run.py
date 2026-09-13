@@ -49,6 +49,10 @@ import board_sync as bs  # noqa: E402
 import handoff as hf  # noqa: E402
 import grade as gr  # noqa: E402
 import goal_contract as gc  # noqa: E402
+import harness_memory as hm  # noqa: E402
+
+# The handoff pack's directory, under whichever root `resolve_handoff_dir` picks.
+HANDOFF_DIRNAME = "n1-handoff"
 
 
 @dataclass
@@ -76,7 +80,33 @@ class N1Report:
     dispatch_results: list = field(default_factory=list)
     board_outcomes: list = field(default_factory=list)
     handoff_manifest: "dict | None" = None
+    handoff_dir: "str | None" = None
     decision: "gc.Decision | None" = None
+
+
+def resolve_handoff_dir(cwd: "str | Path") -> Path:
+    """Where the batch's handoff pack goes: never inside the checkout the run
+    works in.
+
+    A handoff pack is harness state, and `/handoff-pack` keeps each pack in a
+    directory under the project's `_harness/` in the vault. So this asks
+    `harness_memory.harness_state_dir()`, the resolver the plans go through,
+    and the pack goes to `n1-handoff/` there. With no synced vault that
+    resolver answers `<project_root>/.harness/`, which is inside the checkout,
+    so the pack goes to `n1-handoff/<project>/` in the engine state directory
+    instead.
+    """
+    project_root = Path(cwd).resolve()
+    resolution = hm.resolve_project({"cwd": project_root})
+    harness_dir = hm.harness_state_dir(resolution)
+    if harness_dir is not None and not _is_within(Path(harness_dir), project_root):
+        return Path(harness_dir) / HANDOFF_DIRNAME
+    return hm.engine_state_dir() / HANDOFF_DIRNAME / (resolution.get("slug") or project_root.name)
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    path, root = path.resolve(), root.resolve()
+    return path == root or root in path.parents
 
 
 def run_n1_sequence(
@@ -110,10 +140,19 @@ def run_n1_sequence(
     re-checked at decide time below, after dispatch has run. That ordering
     is what makes the tamper check meaningful: a snapshot taken after
     dispatch would just fingerprint whatever the run already produced.
+
+    The handoff pack goes to `resolve_handoff_dir(config.cwd)`, never under
+    `config.cwd` itself: the scheduled job's cwd is the live clone, and a pack
+    written there rewrote its tracked files every night until a changed
+    render left the clone dirty and stopped a deploy (2026-09-12). The
+    directory is resolved before dispatch, so a vault that cannot be resolved
+    stops the run before it spends anything.
     """
     done_check_snapshot = None
     if config.done_check_path is not None:
         done_check_snapshot = gc.snapshot_done_check(config.done_check_path)
+
+    handoff_dir = resolve_handoff_dir(config.cwd)
 
     grade_event = grade_declarer(
         config.plan, grade=config.grade, root=config.cwd, telemetry_root=config.telemetry_root,
@@ -131,9 +170,7 @@ def run_n1_sequence(
             [{"name": r.name, "status": "dispatched"} for r in dispatch_results], **kwargs,
         )
 
-    handoff_manifest = handoff_builder(
-        dispatch_results, {}, Path(config.cwd) / "_n1_handoff",
-    )
+    handoff_manifest = handoff_builder(dispatch_results, {}, handoff_dir)
 
     # Decide step (goal_contract.decide()): the run-level done determination
     # comes from the contract's own check, never from this dispatcher
@@ -152,7 +189,7 @@ def run_n1_sequence(
     return N1Report(
         grade_event=grade_event, dispatch_results=dispatch_results,
         board_outcomes=board_outcomes, handoff_manifest=handoff_manifest,
-        decision=decision,
+        handoff_dir=str(handoff_dir), decision=decision,
     )
 
 
@@ -189,6 +226,7 @@ def _report_to_dict(report: N1Report) -> dict:
         "dispatch_results": [asdict(r) for r in report.dispatch_results],
         "board_outcomes": report.board_outcomes,
         "handoff_manifest": report.handoff_manifest,
+        "handoff_dir": report.handoff_dir,
         "decision": asdict(report.decision) if report.decision is not None else None,
     }
 
