@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The morning note no longer gives a stale cycle's reason for a step that did
+  not run.** The runner writes `last-cycle.json` when a cycle ends, and the note
+  runs inside a cycle, so it read the cycle before its own. On 2026-09-13 that
+  cycle had started at 01:52, before the window opened, and the note said
+  enrichment did not run because it was outside the window. The cycle the note
+  ran in had held the batch at the budget ceiling, and the next one ran it. A
+  reason now counts only from a cycle that started inside the night's window,
+  apart from `disabled` and `watchdog-stop`, which a cycle reads before it looks
+  at the window. Any other step reads `no reason on record for the night`.
+
 ## [9.23.0] - 2026-09-13
 
 The vault-perfection series lands plan 07: the maps are named for what they map, and one root note carries the write-authority table. The dreaming pass writes a root map and a memory map, paginates a type's map inside itself, and writes a map beside each calendar year; `Home.md` retires, `Filing.md` folds into `index.md`, and three gates hold the shape once the maps data run has run ([#620](https://github.com/alexherrero/agentm/pull/620)). A calendar review links the facet notes it is built from instead of the bare-date day index the design dropped, and the migration's ledger step restores what the night owed ([#622](https://github.com/alexherrero/agentm/pull/622)). Plan 06's two code leftovers ride along: `repair_excerpts` stops writing a field the card retired, and the retrieval gate counts the flipped questions it does not name. The stale `_n1_handoff/` pair leaves the repo ([#608](https://github.com/alexherrero/agentm/pull/608)).

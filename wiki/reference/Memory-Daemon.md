@@ -979,7 +979,7 @@ The cycle's own account — what loaded, what was refused and why, what ran — 
 | Surface | What it shows |
 |---|---|
 | Session brief | `⚠ runner refused N manifest(s): <name>, <name>, … (every other job still runs; see ~/.cache/agentm/runner/last-cycle.json)` |
-| Morning note | `Did not run last night: <step> (<reason>)`, the reason taken from that step's outcome in the last cycle (see [the morning note](#the-morning-note)) |
+| Morning note | `Did not run last night: <step> (<reason>)`, the reason taken from that step's outcome in the last cycle if that cycle started inside the night's window (see [the morning note](#the-morning-note)) |
 | Doctor | A `runner-cycle` row — `FAIL` naming the refused files when the last cycle refused any (even though the other jobs in that cycle still ran), `OK` with the loaded/ran counts otherwise, `UNVERIFIED` when no cycle has run yet |
 | `agentm-runner run --strict` | The old all-or-nothing load, on demand: exits 3 on the first refused manifest and runs nothing |
 
@@ -1024,6 +1024,8 @@ A step counts as run when its runner marker finished since the opening, or when 
 - `exited N`
 
 A step missing from the last cycle reads `not registered` when the runner has no marker for it. It reads `no cycle has reported it` when it has one.
+
+The note runs inside a cycle, and the runner writes `last-cycle.json` only at the end of a cycle, so the last cycle the note can read is always an earlier one. When the runner starts the note, that cycle usually started before the window opened. Only a cycle that started inside the window gives the reasons above. From any other cycle the note keeps two reasons, `disabled` and `watchdog-stop`, because a cycle reads those before it looks at the window. A step with any other outcome there reads `no reason on record for the night`. Every cycle also prints its account to the runner's log, `~/.cache/agentm/telemetry/runner-launchd.log`, and the reasons the night's cycles gave are there.
 
 ### Who reads it
 
