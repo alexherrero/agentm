@@ -7,8 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The root map and the memory map.** The dreaming pass writes
+  `memory/mocs/moc-root.md`, the agent's entry point, listing every area's map,
+  and `moc-memory.md`, which maps every memory type: a type with a page by its
+  link, a smaller one with its notes in full. Each is rewritten only when what
+  it lists changes (agentm-vault plan 07).
+- **A map for each calendar year.** `Calendar/moc-calendar-YYYY.md` sits beside
+  every year that has a facet note and lists each facet note of the year, newest
+  first under a heading per month.
+- **Three gates hold the new shape.** `check-root-notes` holds `Home.md` and
+  `Filing.md` retired, nothing linking to either, and `index.md` carrying the
+  write-authority table once. `check-calendar-root` holds the calendar root to
+  years and their maps. `check-class-directories` holds `mocs/` to the three
+  named maps and the type pages past the threshold, never a numbered page. Each
+  reports until the maps data run writes its marker, and enforces after it.
+- **The maps data run.** `scripts/migrate/maps_and_root_notes.py` records a
+  plan with a manifest line per deletion, applies it through the revert log,
+  checks every post-condition before it writes its marker, and reverts.
+
+### Changed
+
+- **A type's map paginates inside itself.** Past `moc_split_at`, a page holds
+  its members in sections instead of spilling into `workflow-2.md`, and
+  generated maps no longer carry `group:`. `needs-review.md` links the root map,
+  and `check-memory-root-shape` names a loose `Home.md` once the maps data run
+  has gone.
+- **`repair_excerpts` reports what it cannot verify.** An excerpt whose edges
+  cannot be checked against its transcript is reported and left as it is. The
+  pass no longer writes `excerpt_edges_unverified`, a field the card retired,
+  and `--only` goes with the marks.
+- **The retrieval gate counts what it does not name.** The paired comparison
+  names six flipped questions and says how many more there are.
+
 ### Removed
 
+- **`moc_generator.generate()`.** It wrote the retired `_moc/<kind>.md` pages
+  with a `[[Home]]` backlink, and nothing called it any more. The command runs
+  `--standards` and `--arcs`, and asks for one of them.
 - **The stale `_n1_handoff/` pair.** `_n1_handoff/PROMPTS.md` and
   `_n1_handoff/prompts.json` were the overnight run's handoff pack, committed
   by mistake twice. Since [#607](https://github.com/alexherrero/agentm/pull/607)

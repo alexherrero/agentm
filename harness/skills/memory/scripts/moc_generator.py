@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-# moc_generator.py — V6-18 browse-first Maps of Content.
+# moc_generator.py — two generated indexes outside the maps' class directory:
+# `standards/moc-standards.md`, the always-load tier's map, and the arc-index
+# pages under `Projects/<project>/arcs/`. Neither touches a source note.
 #
-# Reads the vault (read-only, over personal/, projects/ and
-# _idea-incubator/), groups notes by their
-# kind: frontmatter value (via kind_registry's known/unrecognized labeling),
-# and writes one MOC page per kind under <vault>/_moc/<kind>.md — a bullet
-# list of [[slug]] wikilinks, newest-first by `created`. Idempotent: a
-# regenerate overwrites only the _moc/*.md pages this module itself owns;
-# it never touches any source note.
+# The per-kind pages it once wrote under `<vault>/_moc/` retired at the
+# 2026-08-11 rehoming pass, and the function that wrote them, with its
+# `[[Home]]` backlink, went in agentm-vault plan 07: the dreaming binary's
+# mocs job writes the maps, under `memory/mocs/`.
 
 from __future__ import annotations
 
@@ -18,14 +17,6 @@ from pathlib import Path
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
-
-from kind_registry import is_kebab, is_known  # noqa: E402
-
-# The same three roots `graph_snapshot.py` walks — deliberately including
-# _idea-incubator/, unlike frontmatter_validator.py's DC-4-exempt walk.
-# Browse-first MOCs should cover every kind the vault actually holds,
-# incubator included.
-_WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
 
 
 # Filing-v2 2b: the newest project-space generation is the vault-root
@@ -65,29 +56,6 @@ def _is_dir_exact(path):
         return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
     except OSError:
         return False
-
-
-def _walk_roots(vault: Path) -> list:
-    roots = [vault / d for d in _WALK_SUBDIRS]
-    root_space = _root_projects_dir(vault)
-    if root_space is not None and root_space not in roots:
-        roots.append(root_space)
-    return [r for r in roots if _is_dir_exact(r)]
-
-
-def _vault_rel(path: Path, vault: Path) -> str:
-    try:
-        rel = path.relative_to(vault)
-    except ValueError:
-        rel = path.relative_to(vault.parent)
-    return str(rel).replace("\\", "/")
-
-
-def _vault_rel_path(path: Path, vault: Path) -> Path:
-    try:
-        return path.relative_to(vault)
-    except ValueError:
-        return path.relative_to(vault.parent)
 
 
 def _project_home(vault: Path, project: str) -> Path:
@@ -140,27 +108,6 @@ def _parse_frontmatter(text: str) -> dict[str, str] | None:
     return fm
 
 
-def _walk_notes(vault: Path):
-    """Yield (rel_path, frontmatter dict) for every walkable note. Never
-    yields anything under the output dir this module owns, so a
-    regeneration never tries to fold its own prior output back in."""
-    for root in _walk_roots(vault):
-        for md in sorted(root.rglob("*.md")):
-            if any(p == "_archive" or p == _OUTPUT_DIRNAME for p in md.parts):
-                continue
-            if md.name.startswith("PLAN.archive."):
-                continue
-            try:
-                text = md.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            fm = _parse_frontmatter(text)
-            if fm is None or "kind" not in fm:
-                continue
-            rel = _vault_rel_path(md, vault)
-            yield rel, fm
-
-
 def _wikilink_target(rel_path: Path, fm: dict[str, str]) -> str:
     """The bare slug a wikilink resolves against, matching the real vault's
     own MOC convention (personal/preferences/_index.md): `[[slug]]`, not a
@@ -168,78 +115,6 @@ def _wikilink_target(rel_path: Path, fm: dict[str, str]) -> str:
     absent (shouldn't happen on a conformant entry, but never crash on one
     that isn't)."""
     return fm.get("slug") or rel_path.stem
-
-
-def build_kind_groups(vault_path: Path | str) -> dict[str, list[tuple[str, str, dict]]]:
-    """Read-only scan. Returns {kind: [(rel_path_str, created, fm), ...]}
-    sorted newest-first by `created` within each kind group. `kind` here is
-    the raw frontmatter value, including unrecognized/malformed ones — this
-    function does not filter, only groups; `generate()` decides what to
-    render.
-    """
-    vault = Path(vault_path)
-    groups: dict[str, list[tuple[str, str, dict]]] = {}
-    if not vault.is_dir():
-        return groups
-    for rel_path, fm in _walk_notes(vault):
-        kind = fm["kind"]
-        groups.setdefault(kind, []).append((str(rel_path).replace("\\", "/"), fm.get("created", ""), fm))
-    for kind in groups:
-        groups[kind].sort(key=lambda entry: entry[1], reverse=True)
-    return groups
-
-
-_HOME_BACKLINK_URL = "https://github.com/alexherrero/agentm/wiki/Home"
-
-
-def _render_moc(kind: str, entries: list[tuple[str, str, dict]]) -> str:
-    label = kind if is_known(kind) else f"{kind} (unrecognized kind)"
-    lines = [
-        f"# MOC — {label}",
-        "",
-        # Two distinct backlinks, not a duplicate: [[Home]] is the vault's
-        # own navigational root (Obsidian wikilink, resolves in-vault by
-        # filename regardless of path) -- added 2026-07-11 (Consolidation
-        # arc exit-gate follow-up) after E5's vault-connectivity review
-        # found Home.md and _moc/ never cross-referenced each other at all,
-        # in either direction. The wiki-Home link (CONS-1, 2026-07-10) is a
-        # separate, still-valid pointer to the *project's* docs entry point
-        # on GitHub -- a different destination for a different orientation
-        # need, not something this replaces.
-        "[[Home]]",
-        f"[← wiki Home]({_HOME_BACKLINK_URL})",
-        "",
-        f"{len(entries)} entries, newest-first by `created`.",
-        "",
-    ]
-    for rel_path, _created, fm in entries:
-        lines.append(f"- [[{_wikilink_target(Path(rel_path), fm)}]]")
-    return "\n".join(lines) + "\n"
-
-
-def generate(vault_path: Path | str) -> list[str]:
-    """Write one MOC page per kind under <vault>/_moc/<kind>.md. Returns the
-    list of kind values a page was written for. Malformed (non-kebab) kind
-    values are skipped entirely — a MOC filename must itself be a legal
-    kebab-case name, and a malformed kind has no other legitimate slot to
-    file under (kind_registry.py's audit(), not this module, is where a
-    malformed value gets flagged for a human to fix).
-
-    Idempotent + narrowly scoped to overwrite: only files this call is about
-    to (re)write are touched; nothing else under _moc/ or the source tree is
-    read, deleted, or modified.
-    """
-    vault = Path(vault_path)
-    groups = build_kind_groups(vault)
-    output_dir = vault / _OUTPUT_DIRNAME
-    written: list[str] = []
-    for kind, entries in sorted(groups.items()):
-        if not is_kebab(kind):
-            continue
-        output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / f"{kind}.md").write_text(_render_moc(kind, entries), encoding="utf-8")
-        written.append(kind)
-    return written
 
 
 # -----------------------------------------------------------------------------
@@ -428,22 +303,21 @@ def generate_arc_indexes(vault_path: Path | str, *, today: str) -> list[str]:
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="V6-18 browse-first MOC generator")
+    parser = argparse.ArgumentParser(description="the standards map and the arc-index pages")
     parser.add_argument("--vault", required=True, help="path to the vault root")
     parser.add_argument("--arcs", action="store_true",
-                         help="also (re)generate projects/<project>/arcs/<arc>.md arc-index pages")
+                         help="(re)generate projects/<project>/arcs/<arc>.md arc-index pages")
     parser.add_argument("--standards", action="store_true",
-                         help="also (re)generate standards/moc-standards.md, the always-load tier's map")
+                         help="(re)generate standards/moc-standards.md, the always-load tier's map")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str]) -> int:
     from datetime import date
     args = _parse_args(argv)
-    written = generate(args.vault)
-    print(f"wrote {len(written)} MOC page(s) under {Path(args.vault) / _OUTPUT_DIRNAME}")
-    for kind in written:
-        print(f"  {kind}.md")
+    if not (args.standards or args.arcs):
+        print("nothing to generate: pass --standards, --arcs or both", file=sys.stderr)
+        return 2
     if args.standards:
         print(f"wrote {generate_standards_moc(args.vault)}")
     if args.arcs:

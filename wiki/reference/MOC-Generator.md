@@ -1,88 +1,29 @@
 # MOC generator reference
 
 > [!NOTE]
-> **Status: implemented** — You can find this shipped in `harness/skills/memory/scripts/moc_generator.py` (`PLAN-v6-15-v6-18-typed-object-moc` task 3, V6-18). [AgentM Memory System](../designs/agentm-memory-system) governs this. 13 tests in `scripts/test_moc_generator.py` (`TestBuildKindGroups`, `TestGenerate`) cover this.
+> **Status: implemented** — `harness/skills/memory/scripts/moc_generator.py` now covers two generated indexes: the standards map (`--standards`) and the arc-index pages (`--arcs`). [AgentM Memory System](../designs/agentm-memory-system) governs the arc convention (V6-18, arcs added 2026-07-18); [AgentM Vault](../designs/agentm-vault) governs the maps that replaced this module's per-`kind` pages (agentm-vault plan 07).
 
 > [!IMPORTANT]
-> **Not yet run against the real vault.** You have not run this against the real vault yet. Unlike task 1/2's read-only audits, `generate()` writes new files. It writes one page per distinct `kind` into `<vault>/_moc/`. This totals roughly 40 files at the real vault's current kind-frequency spread. This is a visible side effect inside your personal Obsidian vault. You trigger this via the CLI. You do not run it silently as part of this build task. See [Running it for the first time](#running-it-for-the-first-time) below.
+> **The per-kind pages retired.** This module once wrote one page per `kind:` value under `<vault>/_moc/<kind>.md` (`build_kind_groups()`, `_render_moc()`, `generate()`). The pages themselves went at the 2026-08-11 rehoming pass; the functions that wrote them — with their `[[Home]]` backlink — were deleted in agentm-vault plan 07, once nothing called them any more. Browsing by memory type works through a different mechanism now: see [What replaced the per-kind pages](#what-replaced-the-per-kind-pages) below.
 
-`moc_generator.py` builds browse-first MOCs (Maps of Content) over the vault. You get one generated Markdown page per `kind`. Each page lists wikilinks to every note of that kind. This lets you browse a kind's entries in Obsidian without a search. It depends on the [kind-taxonomy registry](Kind-Taxonomy-Registry) (task 1) to label each group known vs. unrecognized.
+`moc_generator.py` writes two things today, neither of them a source note: `standards/moc-standards.md`, a generated map of the always-load tier, and the arc-index pages under `Projects/<project>/arcs/`. Passing neither `--standards` nor `--arcs` is refused — there's nothing else left for the CLI to do.
 
 ## ⚡ Quick Reference
 
 | Question | Answer |
 |---|---|
-| What generates the MOCs? | `harness/skills/memory/scripts/moc_generator.py` — `build_kind_groups(vault_path)` (`moc_generator.py:89`) + `generate(vault_path)` (`moc_generator.py:136`). |
-| How do I run it? | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path>` (CLI-invokable; no hook or scheduling wiring in this plan). |
-| Where do the generated pages live? | `<vault>/_moc/<kind>.md` — one page per distinct `kind` (`_OUTPUT_DIRNAME`, `moc_generator.py:30`). |
-| Does it read the whole vault, or something narrower? | A read-only walk over `memory/`, `desk/projects/`, `_idea-incubator/` (`_WALK_SUBDIRS`, `moc_generator.py:28`) — the same roots `graph_snapshot.py` walks — plus the vault-root `Projects/` as of filing-v2 part 2b, unioned with `desk/projects/` for the duration of the merge window. Deliberately wider than `frontmatter_validator.py`'s DC-4-exempt walk (task 2) — MOCs should cover every kind the vault holds, incubator included. |
-| Is it safe to re-run? | Yes — idempotent. Regenerating overwrites only the `_moc/*.md` pages it owns; it never touches source notes. Confirmed byte-identical by `test_idempotent_regeneration_is_byte_identical` and never-mutates-sources by `test_never_touches_source_notes` (`scripts/test_moc_generator.py`). |
-| What order are entries listed in? | Newest-first by `created`, within each kind group. |
-| Does it label unrecognized kinds? | Yes, via the [kind-taxonomy registry](Kind-Taxonomy-Registry)'s `is_known()` — an unrecognized kind's page header reads `<kind> (unrecognized kind)`. |
-| What happens to a malformed (non-kebab) `kind` value? | Skipped entirely — no page is written for it. See [Malformed kinds are skipped](#malformed-kinds-are-skipped-not-flagged) below. |
-| Has this been run against the real vault yet? | No — see the callout above. |
-| Related pages | [Kind-taxonomy registry](Kind-Taxonomy-Registry) · [AgentM Memory System](../designs/agentm-memory-system) |
+| What does this script generate, today? | `standards/moc-standards.md` (`--standards`) and the arc-index pages under `Projects/<project>/arcs/<arc-slug>.md` (`--arcs`). Nothing else. |
+| How do I run it? | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path> [--standards] [--arcs]` — at least one flag; both together is fine. Neither given prints `nothing to generate: pass --standards, --arcs or both` to stderr and exits 2. |
+| Where did the per-kind pages go? | Retired — see the callout above and [What replaced the per-kind pages](#what-replaced-the-per-kind-pages). |
+| Is it safe to re-run? | Yes, for both remaining modes. `--standards` overwrites only `standards/moc-standards.md`. `--arcs` only ever replaces an arc-index page's generated link-list below its marker line; a hand-written header above the marker survives. |
+| Does it read the whole vault, or something narrower? | `--arcs` scans `desk/projects/` and the vault-root `Projects/` (unioned) for entries carrying `arc:`. `--standards` reads only `standards/*.md` and `standards/voice/*.md`. Neither walks `memory/` any more — that walk went with the deleted per-kind functions. |
+| Related pages | [Memory daemon reference § the dreaming binary](Memory-Daemon#the-dreaming-binary-agentmdream) — where per-type browsing lives now · [Kind-taxonomy registry](Kind-Taxonomy-Registry) · [AgentM Vault](../designs/agentm-vault) · [AgentM Memory System](../designs/agentm-memory-system) |
 
-## Shipped surface
+## What replaced the per-kind pages
 
-| Function | Signature | Purpose |
-|---|---|---|
-| `build_kind_groups(vault_path)` | `build_kind_groups(vault_path: Path \| str) -> dict[str, list[tuple[str, str, dict]]]` (`moc_generator.py:89`) | Read-only scan. Returns `{kind: [(rel_path_str, created, fm), ...]}`, sorted newest-first by `created` within each group. Groups by the raw frontmatter `kind` value with no filtering — including unrecognized or malformed values; `generate()` is what decides what to render. |
-| `_render_moc(kind, entries)` | `_render_moc(kind: str, entries: list[tuple[str, str, dict]]) -> str` (`moc_generator.py:111`) | Renders one kind's page body: an `# MOC — <kind>` (or `<kind> (unrecognized kind)`) header, an entry count, then one `- [[slug]]` line per entry, newest-first. |
-| `generate(vault_path)` | `generate(vault_path: Path \| str) -> list[str]` (`moc_generator.py:136`) | Writes one page per kind under `<vault>/_moc/<kind>.md`. Returns the list of kind values a page was actually written for (malformed kinds excluded). |
-| CLI | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path>` (`moc_generator.py:161-177`) | Runs `generate()` against the given vault path and prints a summary line plus one line per kind page written. |
+Browsing the vault by memory type is now the dreaming binary's job, not this script's. `daemon/internal/dreaming/mocs.go`'s `mocs` job writes a generated page per memory **type** (`type:` — the six values the filing contract registers, not the free-form `kind:` field this module's retired pages grouped by) under `memory/mocs/`, once a type holds at least `moc_min_members` live notes; `moc-memory.md` lists every type, at or past the floor by its page's link and below it in full; `moc-root.md` is the generated entry point, listing every area's map. See [Memory daemon reference § the dreaming binary](Memory-Daemon#the-dreaming-binary-agentmdream) for the mechanism, and [CI gates reference](CI-Gates) for the gates that hold `mocs/` to that shape.
 
-## Wikilink target and page shape
-
-Each bullet links to the bare slug. This matches the real vault's existing MOC convention at `personal/preferences/_index.md`. It uses `[[slug]]` rather than a full relative path (`_wikilink_target`, `moc_generator.py:80-86`). The target is the note's `slug:` frontmatter value. It falls back to the file's stem if `slug` is absent.
-
-A rendered page looks like:
-
-```markdown
-# MOC — fix
-
-[← wiki Home](https://github.com/alexherrero/agentm/wiki/Home)
-
-2 entries, newest-first by `created`.
-
-- [[new-slug]]
-- [[old-slug]]
-```
-
-The Home-backlink (CONS-1) is a plain markdown link instead of an Obsidian wikilink. The vault has no "Home" note of its own to link to. Each generated MOC page orients you back to the project's actual documentation entry point instead.
-
-An unrecognized kind's header instead reads `# MOC — made-up-kind (unrecognized kind)` (`_render_moc`, `moc_generator.py:112`). This uses the [kind-taxonomy registry](Kind-Taxonomy-Registry)'s `is_known()`.
-
-## Walk roots — deliberately wider than the validator's (task 2)
-
-`_WALK_SUBDIRS` (`moc_generator.py:28`) is `("personal", "projects", "_idea-incubator")`. This matches `graph_snapshot.py`'s walk. This is a deliberate difference from `frontmatter_validator.py`'s narrower DC-4-exempt walk (task 2, which excludes `_idea-incubator` among other dirs). Browse-first MOCs cover every kind the vault actually holds. This includes the incubator. `test_includes_idea_incubator` in `scripts/test_moc_generator.py:56-64` is the regression test for this.
-
-The walk also skips any path with an `_archive` or `_moc` path segment (`_walk_notes`, `moc_generator.py:56-65`). This prevents a regeneration from folding its own prior output back in as a source note. It also skips `PLAN.archive.*` files. This mirrors `kind_registry.py`'s own walk excludes.
-
-## Malformed kinds are skipped, not flagged
-
-`generate()` calls `is_kebab(kind)` (from `kind_registry.py`) per group. It silently omits any group whose kind fails the kebab-case shape check. No page is written. No error is raised (`moc_generator.py:153`). A MOC filename must itself be a legal kebab-case name. A malformed kind has no other legitimate slot to file under. Flagging a malformed value for a human to fix is `kind_registry.py`'s `audit()` job (task 1), not this generator's. `test_malformed_kind_is_skipped_not_crashed` in `scripts/test_moc_generator.py:149-162` confirms both the empty return and that `_moc/` itself is never created when every group is malformed.
-
-An **unrecognized** (valid kebab-case, just not in `KNOWN_KINDS`) kind is different. It still gets a page. It gets labeled `(unrecognized kind)` in the header. `test_unrecognized_kind_still_gets_a_page` (`scripts/test_moc_generator.py:164-171`) is the regression test for that distinction.
-
-## Running it for the first time
-
-> [!IMPORTANT]
-> You have not yet run this against the real vault. `generate()` writes real files. Creating roughly 40 new pages under `<vault>/_moc/` is a visible, non-trivial change to your personal Obsidian vault. Running it is your call to make. You should not trigger it silently as part of a build task.
-
-To run it:
-
-```bash
-python3 harness/skills/memory/scripts/moc_generator.py --vault <path-to-vault>
-```
-
-This prints a summary line (`wrote N MOC page(s) under <vault>/_moc`). This is followed by one line per kind page written. Re-running is safe at any time. Regeneration only overwrites the `_moc/*.md` pages this module owns. It never touches a source note (see the idempotency row in the Quick Reference above).
-
-## Scope boundaries (this plan)
-
-- **CLI-invokable only.** You get no hook wiring, no scheduled regeneration, and no automatic regeneration. You will do a follow-up once the generator proves useful in practice.
-- **No pagination.** High-frequency kinds (`preferences` alone was 993 notes at the plan's frequency audit) produce a single long MOC page with no pagination design. This is a named follow-up. You do not solve it here.
-- **Read-only over source notes.** The generator can overwrite its own `_moc/*.md` output. It never mutates a note it catalogs.
+The [kind-taxonomy registry](Kind-Taxonomy-Registry)'s `is_known()` labeling, which gave the retired pages their "unrecognized kind" header, has no reader left in this module. The registry itself is still read by `vault_lint.py`, `frontmatter_validator.py`, `check-vocabulary-membership.py` and `check-kind-taxonomy` (see [CI gates](CI-Gates)).
 
 ## Arc-index pages (`--arcs`)
 
@@ -92,7 +33,7 @@ The `--arcs` flag additionally (re)generates one `kind: arc-index` page per `(pr
 |---|---|---|
 | `build_arc_groups(vault_path)` | `build_arc_groups(vault_path: Path \| str) -> dict[tuple[str, str], list[tuple[str, str, dict]]]` (`moc_generator.py`) | Read-only scan of `desk/projects/` and the vault-root `Projects/` (unioned) for entries carrying `arc:`. Returns `{(project, arc): [(rel_path_str, created, fm), ...]}`, newest-first by `created`. |
 | `generate_arc_indexes(vault_path, *, today)` | `generate_arc_indexes(vault_path: Path \| str, *, today: str) -> list[str]` | Writes/updates each `(project, arc)` page. Returns the `project/arc` keys written. |
-| CLI | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path> --arcs` | Runs `generate()` as normal, then also runs `generate_arc_indexes()`. |
+| CLI | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path> --arcs` | Runs `generate_arc_indexes()`. |
 
 Unlike the fully-generated `_moc/<kind>.md` pages, an arc-index is a real memory entry a human may hand-edit above a marker line (`<!-- BEGIN GENERATED ARC LINKS (moc_generator.py — do not edit below) -->`). Regeneration only ever replaces the generated link-list below that marker — a hand-written header above it survives. A cross-repo arc (the same `arc:` slug stamped in more than one project) gets a full link list in each project that has entries, plus an "also stamped `arc: <arc>` in: …" cross-reference line pointing at the sibling project's page — the canonical-vs-pointer distinction the design names is an editorial call layered on by hand, not a mechanical one.
 
@@ -108,12 +49,14 @@ This is the one file besides `user-preferences.md` and `security-and-secret-gove
 |---|---|---|
 | `render_standards_moc(standards)` | `render_standards_moc(standards: Path) -> str` | Read-only render. Lists the rule files (every `standards/*.md` except `moc-*`), then the voice library (`standards/voice/*.md`), each titled via `_title_of()`. |
 | `generate_standards_moc(vault_path)` | `generate_standards_moc(vault_path: Path \| str) -> Path` | Writes `standards/moc-standards.md` (creating `standards/` if absent) and returns its path. |
-| CLI | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path> --standards` | Runs `generate()` as normal, then also runs `generate_standards_moc()`. |
+| CLI | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path> --standards` | Runs `generate_standards_moc()`. |
 
 Like `--arcs`, this is CLI-invokable only — no hook or scheduled wiring. `scripts/migrate/memory_root_trims.py` calls `generate_standards_moc()` directly as the last step of the standards-set migration, rather than shelling out to this CLI.
 
 ## Related
 
-- [Kind-taxonomy registry](Kind-Taxonomy-Registry) — This generator depends on this registry for known/unrecognized-kind labeling. `--arcs` groups by `arc_registry.py`'s `KNOWN_ARCS` the same way.
-- [AgentM Memory System](../designs/agentm-memory-system) — This is the governing design (V6-18; arcs added 2026-07-18).
-- [Audit the vault](../how-to/Audit-The-Vault) — This generator follows this sibling read-only vault tool pattern.
+- [Memory daemon reference § the dreaming binary](Memory-Daemon#the-dreaming-binary-agentmdream) — where the retired per-kind pages' job — browsing the vault by memory type — lives now.
+- [Kind-taxonomy registry](Kind-Taxonomy-Registry) — the `kind:` catalog this module no longer reads; `arc_registry.py`'s own `KNOWN_ARCS` is a separate, sibling registry that `--arcs` does not read either — it groups by the raw `arc:` value with no registry validation.
+- [AgentM Memory System](../designs/agentm-memory-system) — the governing design for the arc convention (V6-18; arcs added 2026-07-18).
+- [AgentM Vault](../designs/agentm-vault) — the governing design for the maps that replaced the per-kind pages (agentm-vault plan 07).
+- [Audit the vault](../how-to/Audit-The-Vault) — this generator follows this sibling read-only vault tool pattern.

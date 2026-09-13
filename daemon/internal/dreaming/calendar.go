@@ -350,6 +350,11 @@ type CalendarPlan struct {
 	Written   []string `json:"written"`
 	Refreshed int      `json:"refreshed"`
 	Skipped   string   `json:"skipped,omitempty"`
+	// YearMaps is every year map the pass keeps, memory-root relative, changed
+	// or not: the root map lists them. MapsWritten names the ones it rewrote;
+	// Written stays the reviews alone.
+	YearMaps    []string `json:"year_maps,omitempty"`
+	MapsWritten []string `json:"maps_written,omitempty"`
 }
 
 // PlanCalendar is calendar_rollups.catch_up as intents: a review is an
@@ -453,6 +458,32 @@ func PlanCalendar(root string, r *rules.Rules, today time.Time, weeks int) (Cale
 		}
 		key := fmt.Sprintf("%04d-%02d", m[0], m[1])
 		consider(filepath.Join(calendarRoot, fmt.Sprintf("%04d", m[0]), key+"-review.md"), renderMonth(calendarRoot, facets, m[0], m[1], planned))
+	}
+	for _, year := range yearDirs(calendarRoot) {
+		notes := YearFacetNotes(calendarRoot, facets, year)
+		if len(notes) == 0 {
+			continue // a map of nothing is not written
+		}
+		target := filepath.Join(calendarRoot, calendarMapPrefix+year+".md")
+		cur, err := os.ReadFile(target)
+		created := ""
+		if err == nil {
+			fm, _ := ParseFrontmatter(string(cur))
+			created = strings.TrimSpace(fm["created"])
+		}
+		text := RenderYearMap(year, notes, created)
+		rel := relOf(target)
+		plan.YearMaps = append(plan.YearMaps, rel)
+		if err == nil && string(cur) == text {
+			continue
+		}
+		var before []byte
+		if err == nil {
+			before = cur
+		}
+		plan.MapsWritten = append(plan.MapsWritten, filepath.Base(target))
+		plan.Intents = append(plan.Intents, Intent{Job: JobCalendar, Rel: rel, Before: before, After: []byte(text),
+			Summary: "calendar map " + strings.TrimSuffix(filepath.Base(target), ".md") + " regenerated"})
 	}
 	return plan, nil
 }
