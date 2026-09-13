@@ -98,6 +98,13 @@ class TheRender(unittest.TestCase):
         self.assertTrue(all(len(line) <= pb.LINE_WIDTH for line in lines))
         self.assertTrue(lines[1].endswith("…"))
 
+    def test_the_plan_path_reads_with_forward_slashes_on_every_platform(self) -> None:
+        from pathlib import PureWindowsPath
+        lines = pb.render(project="agentm", task="build-the-brief", project_tracker=None,
+                          task_tracker=_tracker(), progress=[], open_followups=0, unfiled=0,
+                          plan_path=PureWindowsPath(r"C:\v\tasks\build-the-brief\plan.md"))
+        self.assertIn("Plan: C:/v/tasks/build-the-brief/plan.md", lines)
+
 
 class TheCounts(unittest.TestCase):
     def test_open_followups_are_unchecked_boxes_and_unfinished_rows(self) -> None:
@@ -124,6 +131,14 @@ class TheCounts(unittest.TestCase):
             card("mocs/e.md", "unfiled", "agentm")
             self.assertEqual(pb.count_unfiled(root, "agentm"), 2)
             self.assertEqual(pb.count_unfiled(None, "agentm"), 0)
+
+    def test_a_card_saved_with_windows_line_endings_is_counted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "memory" / "semantic" / "a.md"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"---\r\ntitle: T\r\nstatus: unfiled\r\nproject: agentm\r\n---\r\n\r\nbody\r\n")
+            self.assertEqual(pb.count_unfiled(root, "agentm"), 1)
 
 
 class TheCommandLine(unittest.TestCase):
@@ -201,8 +216,11 @@ class _Hooks(unittest.TestCase):
 
     def _run(self, script: Path, **env) -> subprocess.CompletedProcess:
         payload = json.dumps({"session_id": "brief", "cwd": str(self.proj)})
+        # Read as UTF-8, the way a host reads a hook's output. The platform's locale
+        # codec (cp1252 on a Windows runner) is not what any host reads with, and it
+        # cannot read a correct brief's `·` back.
         return subprocess.run(self._command(script), input=payload, env=self._env(**env),
-                              capture_output=True, text=True)
+                              capture_output=True, encoding="utf-8")
 
     def test_with_a_tracker_the_session_opens_on_the_brief(self) -> None:
         tk.write(self.harness / "tracker-foo.md",

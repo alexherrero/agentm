@@ -116,6 +116,23 @@ class TrackerGate(unittest.TestCase):
     def test_the_self_test_passes(self) -> None:
         self.assertEqual(self._main("--self-test"), (0, "check-tracker-schema: self-test OK\n"))
 
+    def test_a_tracker_saved_with_windows_line_endings_is_still_found(self) -> None:
+        # A note saved on Windows ends its lines in CRLF, and the gate's head read
+        # must find its frontmatter all the same.
+        path = self.project / "research" / "copied-tracker.md"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(tk.render(GOOD).replace("\n", "\r\n").encode("utf-8"))
+        count, findings = self._findings()
+        self.assertEqual(count, 1)
+        self.assertIn("outside a tracker's place", findings[0])
+
+    def test_a_failed_self_test_says_so_where_the_caller_reads(self) -> None:
+        from unittest import mock
+        with mock.patch.object(gate, "projects_findings", return_value=(0, [])):
+            rc, out = self._main("--self-test")
+        self.assertEqual(rc, 1)
+        self.assertIn("self-test FAILED", out)
+
 
 if __name__ == "__main__":
     unittest.main()

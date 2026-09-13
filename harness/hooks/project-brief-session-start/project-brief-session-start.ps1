@@ -41,12 +41,29 @@ if (-not $brief) {
 }
 
 # ── The brief, when a tracker exists ──
+# UTF-8 end to end, the way the host reads a hook's output. Left alone, Python
+# writes a pipe in the ANSI code page and this host decodes it with the console's,
+# so the brief's own separators, and whatever its trackers and progress say, come
+# out as replacement characters. Both are put back before the fallback, so the
+# plan block prints exactly as the context hook prints it on its own.
 if ($brief -and (Test-Path -LiteralPath $eventCwd -PathType Container)) {
+    $savedIo = $env:PYTHONIOENCODING
+    $savedOut = $null
+    try {
+        $savedOut = [Console]::OutputEncoding
+        [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    } catch { }
+    $env:PYTHONIOENCODING = 'utf-8'
     $out = & $py $brief --cwd $eventCwd 2>$null
-    if ($LASTEXITCODE -eq 0 -and $out) {
+    $briefExit = $LASTEXITCODE
+    $env:PYTHONIOENCODING = $savedIo
+    if ($briefExit -eq 0 -and $out) {
         @($out) | ForEach-Object { Write-Output $_ }
         [Console]::Error.WriteLine("[project-brief] brief for $eventCwd")
         exit 0
+    }
+    if ($savedOut) {
+        try { [Console]::OutputEncoding = $savedOut } catch { }
     }
 }
 

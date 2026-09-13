@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Optional
 
 _HERE = Path(__file__).resolve().parent
@@ -124,6 +124,7 @@ def count_unfiled(memory_root: Optional[Path], project: str) -> int:
                     head = fh.read(_HEAD_BYTES).decode("utf-8", errors="replace")
             except OSError:
                 continue
+            head = head.replace("\r\n", "\n")  # a card saved on Windows ends its lines in CRLF
             if not head.startswith("---\n"):
                 continue
             block = head[4:head.find("\n---", 3)] if "\n---" in head[3:] else head[4:]
@@ -163,7 +164,10 @@ def render(*, project: str, task: Optional[str], project_tracker: Optional[tk.Tr
         out += [f"  {ln}" for ln in progress]
     out.append(f"Open follow-ups: {open_followups} · unfiled captures with project {project}: {unfiled}")
     if plan_path is not None:
-        out.append(f"Plan: {plan_path}")
+        # Forward slashes on every platform, so the brief reads the same on Windows,
+        # where the session's tools accept them.
+        shown = plan_path.as_posix() if isinstance(plan_path, PurePath) else str(plan_path)
+        out.append(f"Plan: {shown}")
     return [_clip(ln) for ln in out][:MAX_LINES]
 
 

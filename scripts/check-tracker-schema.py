@@ -65,6 +65,7 @@ def declares_tracker(path: Path) -> bool:
             head = fh.read(_HEAD_BYTES).decode("utf-8", errors="replace")
     except OSError:
         return False
+    head = head.replace("\r\n", "\n")  # a note saved on Windows ends its lines in CRLF
     if not head.startswith("---\n"):
         return False
     end = head.find("\n---", 3)
@@ -148,9 +149,12 @@ def _put(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def self_test(out=sys.stdout) -> int:
+def self_test(out=None) -> int:
     """The checks fire on fixtures: a good tracker in each place passes, and a
     malformed, a mismatched and a misplaced one are each named."""
+    # Resolved per call rather than when the module loads, so a caller that
+    # redirects stdout reads the failure.
+    out = sys.stdout if out is None else out
     good = tk.new(title="Fixture task", project="fixture", task="build-it",
                   objective="The fixture is built.", next_step="Start.", today="2026-09-12")
     with tempfile.TemporaryDirectory(prefix="check-tracker-schema-") as tmp:
