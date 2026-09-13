@@ -80,7 +80,7 @@ You should point operators to [Audit the vault](../how-to/Audit-The-Vault). This
 
 ## Downstream consumer
 
-The [MOC generator](MOC-Generator) (task 3, V6-18) depends on this registry. It uses the registry to label each generated Map-of-Content page's group as a known kind or an unrecognized one.
+The [MOC generator](MOC-Generator) (task 3, V6-18) once used this registry to label each generated per-`kind` page as a known kind or an unrecognized one. The pages retired at the 2026-08-11 rehoming pass, the functions that wrote them went in agentm-vault plan 07, and `moc_generator.py` no longer imports this module. `vault_lint.py`, `frontmatter_validator.py`, `check-vocabulary-membership.py` and `check-kind-taxonomy` (task 4, below) still read it.
 
 ## Advisory kind-taxonomy check in check-all.sh (task 4)
 

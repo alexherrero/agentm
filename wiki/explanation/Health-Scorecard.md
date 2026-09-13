@@ -40,8 +40,8 @@ The canonical local path is:
 GitHub renders no clickable `file://` links on a wiki page — that's a
 platform limitation, not a bug — so the block above is meant to be
 copy-pasted into a browser's address bar or opened directly, not clicked
-from here. The vault's own `Home.md` carries a real clickable link, since
-Obsidian opens local files.
+from here. Obsidian opens local files, so a note in your vault can carry
+a real clickable link to it.
 
 ## Reading it
 

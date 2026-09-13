@@ -174,6 +174,28 @@ class Comparison(unittest.TestCase):
         self.assertEqual(ev.compare(before, after)["compared"], 1)
 
 
+class FlippedIds(unittest.TestCase):
+    """The comparison names six flipped questions and counts the rest, so a line
+    that names six never hides a seventh."""
+
+    def test_six_or_fewer_are_named_in_full(self):
+        ids = [f"q{i}" for i in range(6)]
+        self.assertEqual(ev.shown_ids(ids), str(ids))
+
+    def test_past_six_the_rest_are_counted(self):
+        ids = [f"q{i:02d}" for i in range(11)]
+        self.assertEqual(ev.shown_ids(ids), f"{ids[:6]} and 5 more")
+
+    def test_the_printed_miss_line_counts_what_it_does_not_name(self):
+        before = result({f"q{i}": {"hit": True, "negative": False, "rank": 1} for i in range(14)})
+        after = result({f"q{i}": {"hit": False, "negative": False, "rank": None} for i in range(14)})
+        lines = ev.comparison_lines(ev.compare(before, after), 5)
+        miss = next(ln for ln in lines if "flipped to a miss" in ln)
+        self.assertIn("14 ['q0', 'q1', 'q10', 'q11', 'q12', 'q13'] and 8 more", miss)
+        hit = next(ln for ln in lines if "flipped to a hit" in ln)
+        self.assertTrue(hit.endswith(": 0 []"), hit)
+
+
 class RefusalToMeasure(unittest.TestCase):
     """The guard the inherited eval lacked. A lexical-only run reported as a
     hybrid result is not a weaker measurement, it is a different one — and the

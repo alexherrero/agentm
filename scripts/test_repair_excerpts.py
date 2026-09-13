@@ -5,14 +5,15 @@ The bar, written before the pass:
 
   1. A note whose transcript survives and contains the passage is re-cut, and the
      result is source text rather than anything inferred.
-  2. A note whose transcript is gone is marked and its body is untouched.
+  2. A note whose edges cannot be checked is reported unverified, and nothing is
+     written to it.
   3. A document that merely quotes mined bodies is never touched at all. This is
      the one that matters most: the first measurement of the damage swept in the
      labelling worksheets written to review it.
   4. Nothing is trimmed, reconstructed or guessed at.
   5. Every write goes through the revert log and comes back byte-identical.
   6. A dry run writes nothing.
-  7. A second run over an already-marked note does not mark it twice.
+  7. No run writes `excerpt_edges_unverified`, the key the card retired.
 """
 
 from __future__ import annotations
@@ -123,20 +124,20 @@ class RepairFromTranscriptTests(Case):
                         "interrupted by a missing tool")
         self.note("m/a.md", f"User stated: {MANGLED}", session="proj/abc")
         f = self.scan().findings[0]
-        self.assertEqual(f.outcome, "marked",
+        self.assertEqual(f.outcome, "unverified",
                          "a similar-but-different passage was treated as the source")
 
-    def test_a_transcript_without_the_passage_marks_rather_than_guesses(self):
+    def test_a_transcript_without_the_passage_is_unverified_rather_than_guessed(self):
         self.transcript("proj", "abc", "an entirely unrelated conversation")
         self.note("m/a.md", f"User stated: {MANGLED}", session="proj/abc")
         f = self.scan().findings[0]
-        self.assertEqual(f.outcome, "marked")
+        self.assertEqual(f.outcome, "unverified")
         self.assertIn("does not contain", f.reason)
 
-    def test_a_named_transcript_that_no_longer_exists_marks(self):
+    def test_a_named_transcript_that_no_longer_exists_is_unverified(self):
         self.note("m/a.md", f"User stated: {MANGLED}", session="proj/vanished")
         f = self.scan().findings[0]
-        self.assertEqual(f.outcome, "marked")
+        self.assertEqual(f.outcome, "unverified")
         self.assertIn("no surviving transcript", f.reason)
 
     def test_a_missing_transcript_is_decided_before_any_re_cut(self):
@@ -150,11 +151,11 @@ class RepairFromTranscriptTests(Case):
                          "the missing-transcript case was decided somewhere else")
         self.assertEqual(f.repairs, {}, "a re-cut was attempted with no transcript")
 
-    def test_a_note_with_no_session_at_all_marks(self):
+    def test_a_note_with_no_session_at_all_is_unverified(self):
         # 80.6% of the real damaged corpus. The common case, not the edge one.
         self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
         f = self.scan().findings[0]
-        self.assertEqual(f.outcome, "marked")
+        self.assertEqual(f.outcome, "unverified")
 
 
 class EveryExcerptTests(Case):
@@ -209,21 +210,24 @@ class EveryExcerptTests(Case):
 
     def test_one_repairable_and_one_not_is_reported_as_both(self):
         # Only the body's passage is in the transcript. Calling the note
-        # "repaired" would overstate it and "marked" would understate it.
+        # "repaired" would overstate it and "unverified" would understate it.
         self.transcript("proj", "abc", SOURCE)
         self.two_excerpt_note()
         f = self.scan().findings[0]
-        self.assertEqual(f.outcome, "repaired-and-marked", f.reason)
+        self.assertEqual(f.outcome, "repaired-in-part", f.reason)
         self.assertEqual(len(f.repairs), 1)
         self.assertEqual(f.unrepaired, 1)
 
-    def test_a_partly_repaired_note_is_also_marked_on_disk(self):
+    def test_a_partly_repaired_note_writes_the_repair_and_leaves_the_rest(self):
         self.transcript("proj", "abc", SOURCE)
         p = self.two_excerpt_note()
         rx.apply(self.vault, self.scan(), self.log, "run-1")
         after = p.read_text(encoding="utf-8")
-        self.assertIn(rx.MARKER, after, "the unverified half was not marked")
         self.assertNotIn("...alls", after, "the repairable half was not repaired")
+        self.assertIn(f"> {self.SECOND}\n", after,
+                      "the unverified half was rewritten rather than left as it was")
+        self.assertNotIn("excerpt_edges_unverified", after,
+                         "the unverified half was marked with the retired key")
 
     def test_a_partly_repaired_note_reverts_whole(self):
         self.transcript("proj", "abc", SOURCE)
@@ -232,28 +236,6 @@ class EveryExcerptTests(Case):
         entry = rx.apply(self.vault, self.scan(), self.log, "run-1")
         self.log.revert("run-1", entry)
         self.assertEqual(p.read_bytes(), before)
-
-    def test_only_marked_writes_no_repairs(self):
-        # The mirror, and it needs a *partly* repairable note. A fully repairable
-        # one is filtered out of an `--only marked` run entirely, so the write
-        # path is never reached and the assertion proves nothing.
-        self.transcript("proj", "abc", SOURCE)
-        p = self.two_excerpt_note()
-        rx.apply(self.vault, self.scan(), self.log, "run-1", only="marked")
-        after = p.read_text(encoding="utf-8")
-        self.assertIn(rx.MARKER, after)
-        self.assertIn("...alls", after,
-                      "a repair was written during a marking-only run")
-
-    def test_only_repaired_still_marks_nothing(self):
-        # `--only repaired` on a partly-repairable note writes the repair and
-        # leaves the marker off, so the two halves can still be landed apart.
-        self.transcript("proj", "abc", SOURCE)
-        p = self.two_excerpt_note()
-        rx.apply(self.vault, self.scan(), self.log, "run-1", only="repaired")
-        after = p.read_text(encoding="utf-8")
-        self.assertNotIn("...alls", after)
-        self.assertNotIn(rx.MARKER, after)
 
 
 class IdempotenceTests(Case):
@@ -346,39 +328,53 @@ class RetiredNotesTests(Case):
         self.assertEqual(len(self.scan().findings), 1)
 
 
-class MarkingTests(Case):
-    """Bar 2: marking changes the frontmatter and nothing else."""
+class UnverifiedTests(Case):
+    """Bar 2: a note whose edges cannot be checked is left exactly as it was."""
 
-    def test_marking_leaves_the_body_byte_identical(self):
+    def test_an_unverified_note_is_left_byte_identical(self):
         p = self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
-        before = p.read_text(encoding="utf-8").split("---\n", 2)[2]
+        before = p.read_bytes()
         rep = self.scan()
-        rx.apply(self.vault, rep, self.log, "run-1")
-        after = p.read_text(encoding="utf-8").split("---\n", 2)[2]
-        self.assertEqual(after, before, "marking edited the body")
+        self.assertEqual(rep.findings[0].outcome, "unverified")
+        self.assertEqual(rx.apply(self.vault, rep, self.log, "run-1"), "",
+                         "an unverified note produced a revert-log entry")
+        self.assertEqual(p.read_bytes(), before, "an unverified note was written")
 
-    def test_the_marker_lands_in_the_frontmatter(self):
-        p = self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
+    def test_no_run_writes_the_retired_marker(self):
+        # Every shape that used to be marked, in one run beside a note the run
+        # does write, so the check cannot pass on a run that wrote nothing.
+        self.transcript("proj", "abc", SOURCE)
+        self.transcript("other", "xyz", "an entirely unrelated conversation")
+        self.note("m/gone.md", f"User stated: {MANGLED}", session="proj/vanished")
+        self.note("m/none.md", f"User stated: {MANGLED}", mining=True)
+        self.note("m/unrelated.md", f"User stated: {MANGLED}", session="other/xyz")
+        part = self.note("m/part.md",
+                         f"User stated: {MANGLED}\n\n## Supporting excerpts\n\n"
+                         f"> {EveryExcerptTests.SECOND}\n",
+                         session="proj/abc")
+        (self.vault / "m/bare.md").write_text(f"User stated: {MANGLED}\n", encoding="utf-8")
         rx.apply(self.vault, self.scan(), self.log, "run-1")
-        self.assertIn("excerpt_edges_unverified: true", p.read_text(encoding="utf-8"))
+        self.assertNotIn("...alls", part.read_text(encoding="utf-8"),
+                         "the run wrote nothing, so the check below proves nothing")
+        for p in sorted((self.vault / "m").glob("*.md")):
+            self.assertNotIn("excerpt_edges_unverified", p.read_text(encoding="utf-8"), p.name)
 
-    def test_a_second_run_does_not_mark_twice(self):
+    def test_a_second_run_reports_the_same_and_writes_nothing(self):
         p = self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
+        before = p.read_bytes()
         rx.apply(self.vault, self.scan(), self.log, "run-1")
-        first = p.read_text(encoding="utf-8")
-
         second = self.scan()
-        self.assertEqual(second.findings[0].outcome, "already-marked")
-        rx.apply(self.vault, second, self.log, "run-2")
-        self.assertEqual(p.read_text(encoding="utf-8"), first)
-        self.assertEqual(first.count("excerpt_edges_unverified"), 1)
+        self.assertEqual(second.findings[0].outcome, "unverified")
+        self.assertEqual(rx.apply(self.vault, second, self.log, "run-2"), "")
+        self.assertEqual(p.read_bytes(), before)
 
-    def test_a_note_with_no_frontmatter_still_gets_one(self):
+    def test_a_note_with_no_frontmatter_is_left_alone(self):
         p = self.vault / "m/bare.md"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(f"User stated: {MANGLED}\n", encoding="utf-8")
+        before = p.read_bytes()
         rx.apply(self.vault, self.scan(), self.log, "run-1")
-        self.assertIn("excerpt_edges_unverified: true", p.read_text(encoding="utf-8"))
+        self.assertEqual(p.read_bytes(), before, "a frontmatter block was added")
 
 
 class PopulationTests(Case):
@@ -431,28 +427,6 @@ class PopulationTests(Case):
         self.assertFalse(rx.is_mined_note(raw))
 
 
-class MarkIsIdempotentTests(Case):
-    """`mark`, called directly and twice.
-
-    The end-to-end test never reaches a second `mark` — the `already-marked`
-    branch skips the write — so duplicating the key inside `mark` stayed green.
-    """
-
-    def test_marking_twice_leaves_one_key(self):
-        raw = "---\nstatus: active\n---\n\nUser stated: ...alls back...\n"
-        once = rx.mark(raw)
-        twice = rx.mark(once)
-        self.assertEqual(twice.count(rx.MARKER), 1, twice)
-        self.assertEqual(once, twice, "a second mark changed the note")
-
-    def test_marking_keeps_the_other_frontmatter(self):
-        raw = ("---\nstatus: active\ntitle: a thing\n---\n\n"
-               "User stated: ...alls back...\n")
-        got = rx.mark(raw)
-        self.assertIn("status: active", got)
-        self.assertIn("title: a thing", got)
-
-
 class QuotingDocumentsTests(Case):
     """Bar 3: the evidence is not the patient."""
 
@@ -495,24 +469,24 @@ class QuotingDocumentsTests(Case):
 class NoGuessingTests(Case):
     """Bar 4: nothing is trimmed or reconstructed."""
 
-    def test_a_marked_note_keeps_its_partial_word(self):
+    def test_an_unverified_note_keeps_its_partial_word(self):
         # The trim was measured and rejected: `...preface with "I'll continue"`
         # loses a complete word, and nothing in the note distinguishes that from
         # `...all back to direct push`.
         p = self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
         rx.apply(self.vault, self.scan(), self.log, "run-1")
         self.assertIn("...alls back", p.read_text(encoding="utf-8"),
-                      "the partial word was trimmed rather than left and marked")
+                      "the partial word was trimmed rather than left")
 
     def test_an_edge_that_only_looks_clean_is_still_unverified(self):
         # `...back` reads as a whole word and may be the tail of `fallback`. The
-        # note cannot tell, so the pass does not claim to either — it marks the
+        # note cannot tell, so the pass does not claim to either — it reports the
         # edges unverified rather than pronouncing them clean.
         self.note("m/a.md",
                   "User stated: ...back to direct push and announces the...",
                   mining=True)
         f = self.scan().findings[0]
-        self.assertEqual(f.outcome, "marked")
+        self.assertEqual(f.outcome, "unverified")
 
     def test_an_elision_at_the_head_alone_is_a_finding(self):
         # Every other fixture is elided at both ends, so the head test was
@@ -550,44 +524,51 @@ class RevertTests(Case):
         self.transcript("proj", "abc", SOURCE)
         paths = [
             self.note("m/repaired.md", f"User stated: {MANGLED}", session="proj/abc"),
-            self.note("m/marked.md", f"User stated: {MANGLED}", mining=True),
+            self.note("m/unverified.md", f"User stated: {MANGLED}", mining=True),
             # CRLF and a missing final newline, so "byte-identical" is a claim the
-            # fixture can actually distinguish from "close enough".
+            # fixture can actually distinguish from "close enough". It carries
+            # mining frontmatter because a CRLF body alone does not read as mined,
+            # and a note the run never writes proves nothing about the revert.
             self.vault / "m/awkward.md",
         ]
         paths[2].write_bytes(
-            f"---\r\nstatus: active\r\n---\r\n\r\nUser stated: {MANGLED}".encode())
+            f"---\r\nstatus: active\r\nsessions: [proj/abc]\r\nmining_confidence: LOW\r\n"
+            f"---\r\n\r\nUser stated: {MANGLED}".encode())
         before = {p: p.read_bytes() for p in paths}
 
         entry = rx.apply(self.vault, self.scan(), self.log, "run-1")
-        self.assertTrue(any(p.read_bytes() != before[p] for p in paths),
-                        "the run wrote nothing to revert")
+        self.assertNotEqual(paths[0].read_bytes(), before[paths[0]], "the repair was not written")
+        self.assertNotEqual(paths[2].read_bytes(), before[paths[2]],
+                            "the CRLF note was not written, so its revert proves nothing")
 
         self.log.revert("run-1", entry)
         for p in paths:
             self.assertEqual(p.read_bytes(), before[p], str(p))
 
     def test_one_entry_covers_the_whole_batch(self):
-        for i in range(4):
-            self.note(f"m/n{i}.md", f"User stated: {MANGLED}", mining=True)
+        self.transcript("proj", "abc", SOURCE)
+        notes = [self.note(f"m/n{i}.md", f"User stated: {MANGLED}", session="proj/abc")
+                 for i in range(4)]
+        before = [p.read_bytes() for p in notes]
         entry = rx.apply(self.vault, self.scan(), self.log, "run-1")
+        self.assertTrue(all(p.read_bytes() != b for p, b in zip(notes, before)),
+                        "not every note in the batch was written")
         self.log.revert("run-1", entry)
-        for i in range(4):
-            self.assertNotIn("excerpt_edges_unverified",
-                             (self.vault / f"m/n{i}.md").read_text(encoding="utf-8"))
+        self.assertEqual([p.read_bytes() for p in notes], before)
 
 
 class BatchTests(Case):
     """Bar 6: a run touches what it said it would."""
 
     def test_the_batch_cap_bounds_one_run(self):
+        self.transcript("proj", "abc", SOURCE)
         for i in range(10):
-            self.note(f"m/n{i}.md", f"User stated: {MANGLED}", mining=True)
+            self.note(f"m/n{i}.md", f"User stated: {MANGLED}", session="proj/abc")
         rx.apply(self.vault, self.scan(), self.log, "run-1", batch=3)
-        marked = sum(1 for i in range(10)
-                     if "excerpt_edges_unverified" in (self.vault / f"m/n{i}.md").read_text(
-                         encoding="utf-8"))
-        self.assertEqual(marked, 3)
+        repaired = sum(1 for i in range(10)
+                       if "...alls" not in (self.vault / f"m/n{i}.md").read_text(
+                           encoding="utf-8"))
+        self.assertEqual(repaired, 3)
 
     def test_the_default_cap_is_twenty_five(self):
         # It matched the dream cycle's auto-apply cap until that retired in
@@ -607,46 +588,26 @@ class BatchTests(Case):
         self.assertEqual(rx.apply(self.vault, self.scan(), self.log, "run-1"), "")
 
 
-class OnlyTests(Case):
-    """The two outcomes land separately when asked.
-
-    A repair rewrites a body from a transcript; a mark adds a frontmatter key.
-    They are not equally consequential, and on the live corpus they arrive 51
-    against 2,249 — so without a filter the first thing anyone sees is the larger,
-    duller half.
-    """
+class MixedRunTests(Case):
+    """A run over repairable and unverified notes writes the repairs and nothing else."""
 
     def _mixed(self):
         self.transcript("proj", "abc", SOURCE)
         a = self.note("m/repairable.md", f"User stated: {MANGLED}", session="proj/abc")
-        b = self.note("m/markable.md", f"User stated: {MANGLED}", mining=True)
+        b = self.note("m/unverified.md", f"User stated: {MANGLED}", mining=True)
         return a, b
 
-    def test_only_repaired_leaves_the_markable_note_alone(self):
+    def test_the_repair_lands_and_the_unverified_note_is_left_alone(self):
         a, b = self._mixed()
         before_b = b.read_bytes()
-        rx.apply(self.vault, self.scan(), self.log, "run-1", only="repaired")
-        self.assertNotIn("...alls", a.read_text(encoding="utf-8"))
-        self.assertEqual(b.read_bytes(), before_b, "a mark was written anyway")
-
-    def test_only_marked_leaves_the_repairable_note_alone(self):
-        a, b = self._mixed()
-        before_a = a.read_bytes()
-        rx.apply(self.vault, self.scan(), self.log, "run-1", only="marked")
-        self.assertIn(rx.MARKER, b.read_text(encoding="utf-8"))
-        self.assertEqual(a.read_bytes(), before_a, "a repair was written anyway")
-
-    def test_no_filter_writes_both(self):
-        # The default, stated so the filter cannot become mandatory by accident.
-        a, b = self._mixed()
         rx.apply(self.vault, self.scan(), self.log, "run-1")
         self.assertNotIn("...alls", a.read_text(encoding="utf-8"))
-        self.assertIn(rx.MARKER, b.read_text(encoding="utf-8"))
+        self.assertEqual(b.read_bytes(), before_b, "the unverified note was written")
 
-    def test_a_filter_matching_nothing_writes_nothing(self):
-        self.note("m/markable.md", f"User stated: {MANGLED}", mining=True)
+    def test_a_run_of_unverified_notes_writes_nothing(self):
+        self.note("m/unverified.md", f"User stated: {MANGLED}", mining=True)
         self.assertEqual(
-            rx.apply(self.vault, self.scan(), self.log, "run-1", only="repaired"), "",
+            rx.apply(self.vault, self.scan(), self.log, "run-1"), "",
             "an empty selection produced a revert-log entry")
 
 

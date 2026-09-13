@@ -15,7 +15,7 @@ A project's `_harness/` already archives its own completed plans in place (`PLAN
 
 3. **Unregister the repo, if any.** If the project corresponds to a repo tracked in `repo_registry` (`python3 scripts/repo_registry.py unregister <slug>`), unregister it — check first with the registry's own list output; most vault-only projects were never registered.
 
-4. **Update `Home.md`.** Drop the project from the active Projects list; add (or extend) the "Archived projects" line so the archive is still discoverable from the map, just not in the active eyeline.
+4. **No hand-kept map to update.** `Home.md`, which used to carry the active/archived Projects list, retired for the generated root map (agentm-vault plan 07) — there's nothing to hand-edit here today. `moc-root.md`'s Projects section links whatever `Projects/moc-*.md` maps exist; a generated project index (`moc-projects.md`) is still future work (see [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent)). Moving the directory (step 2) is the whole mechanism until it ships.
 
 ## Why this shape
 

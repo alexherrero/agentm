@@ -359,7 +359,7 @@ class RootSpaceNeedsTheVaultWitness(unittest.TestCase):
             self.assertEqual(migrate_arcs._project_root(vault, "agentm"), vault / "desk/projects" / "agentm")
             self.assertEqual(moc_generator._project_home(vault, "agentm"), vault / "desk/projects" / "agentm")
             for roots in (arc_registry._walk_roots(vault), kind_registry._walk_roots(vault),
-                          moc_generator._walk_roots(vault),
+                          [moc_generator._root_projects_dir(vault)],  # the root space the arc indexes walk
                           frontmatter_validator._scope_roots(vault, ("memory", "desk/projects")),
                           vault_lint._scope_roots(vault, ["memory", "desk/projects"])):
                 self.assertNotIn(home / "Projects", roots)
@@ -403,7 +403,7 @@ class FlatRootSpaceIsDiscoveredEverywhere(unittest.TestCase):
             self.assertEqual(migrate_arcs._project_root(vault, "agentm"), vault / "Projects" / "agentm")
             self.assertEqual(moc_generator._project_group(vault, "agentm"), "projects")
             for roots in (arc_registry._walk_roots(vault), kind_registry._walk_roots(vault),
-                          moc_generator._walk_roots(vault),
+                          [moc_generator._root_projects_dir(vault)],  # the root space the arc indexes walk
                           frontmatter_validator._scope_roots(vault, ("memory", "desk/projects")),
                           vault_lint._scope_roots(vault, ["memory", "desk/projects"])):
                 self.assertIn(vault / "Projects", roots)

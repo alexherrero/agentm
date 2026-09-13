@@ -140,7 +140,7 @@ func writeTyped(t *testing.T, root, rel, typ, anchor, body string) {
 	writeRaw(t, root, rel, fm+"---\n\n"+body)
 }
 
-func TestMocsCreateAtTheFloorSplitPastTheLineAndFlagStale(t *testing.T) {
+func TestMocsCreateAtTheFloorPaginateInPlaceAndFlagStale(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < 4; i++ {
@@ -161,41 +161,68 @@ func TestMocsCreateAtTheFloorSplitPastTheLineAndFlagStale(t *testing.T) {
 	if plan.BelowFloor["fact"] != 4 {
 		t.Errorf("four members is below the floor of five: %v", plan.BelowFloor)
 	}
-	var byRel = map[string]MocPage{}
+	byRel := map[string]MocPage{}
 	for _, p := range plan.Pages {
 		byRel[p.Rel] = p
 	}
+	if _, ok := byRel["memory/mocs/fact.md"]; ok {
+		t.Errorf("a type below the floor has no page of its own")
+	}
 	wf, ok := byRel["memory/mocs/workflow.md"]
-	if !ok || wf.Members != 5 || wf.Pages != 1 || wf.Stale || wf.Newest != "2026-08-14" {
+	if !ok || wf.Members != 5 || wf.Sections != 1 || wf.Stale || wf.Newest != "2026-08-14" {
 		t.Errorf("workflow page = %+v", wf)
 	}
-	p1, ok1 := byRel["memory/mocs/preference.md"]
-	p2, ok2 := byRel["memory/mocs/preference-2.md"]
-	if !ok1 || !ok2 || p1.Members != 40 || p2.Members != 1 || p1.Pages != 2 {
-		t.Errorf("41 members split into 40 + 1: %+v %+v", p1, p2)
+	pref, ok := byRel["memory/mocs/preference.md"]
+	if !ok || pref.Members != 41 || pref.Sections != 2 || !pref.Stale {
+		t.Errorf("41 members paginate inside one page, in two sections, stale past the 90-day line: %+v", pref)
 	}
-	if !p1.Stale || !p2.Stale {
-		t.Errorf("the newest preference is from January, past the 90-day line: should be stale")
+	if _, ok := byRel["memory/mocs/preference-2.md"]; ok {
+		t.Errorf("a page never splits into a numbered file")
 	}
-	var wfText string
-	for _, in := range plan.Intents {
-		if in.Rel == "memory/mocs/workflow.md" {
-			wfText = string(in.After)
+	text := func(rel string) string {
+		for _, in := range plan.Intents {
+			if in.Rel == rel {
+				return string(in.After)
+			}
 		}
+		return ""
 	}
+	wfText := text("memory/mocs/workflow.md")
 	for _, want := range []string{
 		"kind: moc\n", "updated: 2026-08-14\n", "slug: workflow\n", "type_of_members: workflow\n", "members: 5\n",
+		"\n[[moc-root]] · [[moc-memory]]\n", "\n## Members\n",
 		"- [[five-4]] — five-4 · Step 4 of the procedure, the phrase the map shows.\n",
 	} {
 		if !strings.Contains(wfText, want) {
 			t.Errorf("workflow page lacks %q:\n%s", want, wfText)
 		}
 	}
-	if strings.Contains(wfText, "[[gone]]") || strings.Contains(wfText, "stale: true") {
-		t.Errorf("a superseded note is not a member and a fresh map is not stale:\n%s", wfText)
+	for _, unwanted := range []string{"[[gone]]", "stale: true", "group:", "[[Home]]"} {
+		if strings.Contains(wfText, unwanted) {
+			t.Errorf("workflow page carries %q — a superseded member, a stale flag on a fresh map, a retired field or the retired map:\n%s", unwanted, wfText)
+		}
 	}
 	if !strings.Contains(wfText, "- [[five-4]]") || strings.Index(wfText, "[[five-4]]") > strings.Index(wfText, "[[five-0]]") {
 		t.Errorf("members are newest first")
+	}
+	prefText := text("memory/mocs/preference.md")
+	for _, want := range []string{"members: 41\n", "stale: true\n", "\n## Members 1\u201340\n", "\n## Members 41\u201341\n"} {
+		if !strings.Contains(prefText, want) {
+			t.Errorf("preference page lacks %q:\n%s", want, prefText)
+		}
+	}
+	if strings.Contains(prefText, "page:") || strings.Contains(prefText, "Page ") {
+		t.Errorf("an in-page section is not a page number:\n%s", prefText)
+	}
+	memText := text("memory/mocs/moc-memory.md")
+	for _, want := range []string{
+		"slug: moc-memory\n", "members: 50\n", "updated: 2026-08-14\n", "\n[[moc-root]]\n",
+		"- [[preference]] — 41 notes\n", "- [[workflow]] — 5 notes\n", "- fact — 4 notes, listed below\n",
+		"\n## fact\n", "- [[four-0]] — four-0 · Four is not enough.\n",
+	} {
+		if !strings.Contains(memText, want) {
+			t.Errorf("memory map lacks %q:\n%s", want, memText)
+		}
 	}
 	// Apply, then plan again: byte-stable, and `created` survives.
 	j, _ := OpenJournal(t.TempDir())
@@ -395,7 +422,15 @@ func TestThePassCarriesTheChecksAndRemembersThem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Vocabulary.Considered != 1 || rep.Trends.Week != 1 || !rep.Reclassify.Ran || rep.Reclassify.Reason != "first pass under a recorded version" {
+	// Three notes by the time the checks run: the one written here, the memory
+	// map the pass wrote over it, and the root map over that (agentm-vault
+	// plan 07).
+	for _, m := range []string{"memory/mocs/moc-memory.md", "memory/mocs/moc-root.md"} {
+		if _, err := os.Stat(filepath.Join(root, m)); err != nil {
+			t.Errorf("the pass writes %s over a typed corpus: %v", m, err)
+		}
+	}
+	if rep.Vocabulary.Considered != 3 || rep.Trends.Week != 3 || !rep.Reclassify.Ran || rep.Reclassify.Reason != "first pass under a recorded version" {
 		t.Errorf("checks on the report: vocab=%+v trends week=%d reclassify=%+v", rep.Vocabulary, rep.Trends.Week, rep.Reclassify)
 	}
 	st, _ := LoadState(cfg.EngineStateDir)

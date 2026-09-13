@@ -12,18 +12,19 @@ makes no new ones. This is what to do about the ones already written.
 excerpt is found in it verbatim, and the body is re-cut with the fixed function.
 Byte-exact, nothing inferred.
 
-**Marked** — everything else. `excerpt_edges_unverified: true` goes into the
-frontmatter and the body is left alone. The note stays exactly as it was; what
-changes is that search, triage and a human reading it can now tell it apart from a
-note whose edges were cut properly.
+**Unverified** — everything else. The run reports the note and writes nothing to
+it, so the note stays exactly as it was. It once carried
+`excerpt_edges_unverified: true` in its frontmatter; the card retired that key
+(agentm-vault plan 06), because nothing read it, and the finding lives in the
+run's report now.
 
-The key is named for what it can support. It does not say the edges *are* ragged,
+The word is chosen for what it can support. It does not say the edges *are* ragged,
 because the note cannot show that — `...back to direct push` and `...alls back to
 direct push` are the same shape from outside. It says they were cut by a function
 that ignored word boundaries and cannot be checked from here, which is true of
 every mined note written before 2026-08-24 and false of every one after.
 
-Marking rather than trimming is the whole design call. Trimming the partial word
+Reporting rather than trimming is the whole design call. Trimming the partial word
 looks safe — the fragment carries no information, so dropping it costs nothing —
 and it is not, because nothing in the note says which leading word is a fragment.
 The old code emitted `...` whenever anything was elided, whether or not the cut
@@ -71,7 +72,6 @@ BODY_PREFIX = re.compile(
 FRONTMATTER = re.compile(r"\A---[ \t\r]*\n(.*?)\n---[ \t\r]*\n", re.S)
 MINING_FM = re.compile(r"^mining_confidence:", re.M)
 SESSIONS_FM = re.compile(r"^sessions:\s*\[(.+?)\]", re.M | re.S)
-MARKER_FM = re.compile(r"^excerpt_edges_unverified:", re.M)
 
 # An elided edge — an ellipsis against lowercase letters, which is where a
 # mid-word cut *may* be.
@@ -80,18 +80,13 @@ MARKER_FM = re.compile(r"^excerpt_edges_unverified:", re.M)
 # same shape from outside, because the pre-fix function emitted `...` for any
 # elision whether or not it landed on a space. So this matches the population
 # whose edges cannot be trusted, not the subset that is actually broken — and the
-# marker is named for what that supports.
-ELIDED_HEAD = re.compile(r"\A\.\.\.[a-z]{2,}")
-ELIDED_TAIL = re.compile(r"[a-z]{2,}\.\.\.\Z")
-
-# The frontmatter key a marked note carries.
+# report calls them unverified, which is what that supports.
 #
 # "Unverified", not "ragged". Raggedness is only ever proved in the case where it
 # is also repaired: the transcript survives, the re-cut differs, and the note is
-# fixed rather than flagged. Everywhere else the truthful claim is that the edges
-# were cut by a function that did not respect word boundaries and cannot be
-# checked from the note.
-MARKER = "excerpt_edges_unverified"
+# fixed.
+ELIDED_HEAD = re.compile(r"\A\.\.\.[a-z]{2,}")
+ELIDED_TAIL = re.compile(r"[a-z]{2,}\.\.\.\Z")
 
 # How many notes one run may touch without being told otherwise.
 #
@@ -122,8 +117,7 @@ class Finding:
     unrepaired: int = 0
     # outcome is decided before anything is written, so a dry run and a real run
     # report the same thing.
-    outcome: str = "marked"  # repaired | repaired-and-marked | verified |
-    #                                 marked | already-marked
+    outcome: str = "unverified"  # repaired | repaired-in-part | verified | unverified
     reason: str = ""
 
     def as_dict(self) -> dict:
@@ -301,16 +295,6 @@ def recut_from(transcript: Path, excerpt: str) -> str:
     return ""
 
 
-def mark(raw: str) -> str:
-    """Add the marker to the frontmatter. Body untouched."""
-    m = FRONTMATTER.match(raw)
-    if not m:
-        return f"---\n{MARKER}: true\n---\n\n" + raw.lstrip("\n")
-    head, rest = m.group(1), raw[m.end():]
-    lines = [ln for ln in head.split("\n") if not ln.startswith(f"{MARKER}:")]
-    return "---\n" + "\n".join(lines + [f"{MARKER}: true"]) + "\n---\n" + rest
-
-
 def replace_body_excerpt(raw: str, old: str, new: str) -> str:
     """Swap one excerpt for its repaired form, changing nothing else."""
     if old not in raw:
@@ -330,11 +314,10 @@ def scan(vault: Path, *, transcripts: Path, limit: int = 0) -> Report:
         if not is_mined_note(raw):
             rep.skipped_not_mined += 1
             continue
-        # A retired note is not worth marking. `retro_mining_cleanup` expires the
-        # ones the miner should never have written, and annotating the edges of a
-        # note that has left the live corpus is work nobody reads — it would have
-        # put `excerpt_edges_unverified` on 2,311 notes already carrying
-        # `status: expired` and a reason.
+        # A retired note is not worth reporting. `retro_mining_cleanup` expires the
+        # ones the miner should never have written, and judging the edges of a
+        # note that has left the live corpus is work nobody reads — it once
+        # flagged 2,311 notes already carrying `status: expired` and a reason.
         m = FRONTMATTER.match(raw)
         if m and re.search(r"^status:\s*expired", m.group(1), re.M):
             continue
@@ -371,9 +354,6 @@ def scan(vault: Path, *, transcripts: Path, limit: int = 0) -> Report:
         # checked against the source.
         f.unrepaired = len(excerpts) - verified
 
-        m = FRONTMATTER.match(raw)
-        marked_already = bool(m and MARKER_FM.search(m.group(1)))
-
         if f.repairs and not f.unrepaired:
             f.outcome = "repaired"
             f.reason = f"{len(f.repairs)} of {len(excerpts)} re-cut from {t.name}"
@@ -386,16 +366,14 @@ def scan(vault: Path, *, transcripts: Path, limit: int = 0) -> Report:
         elif f.repairs:
             # Both, and said as both. A note where one passage came back and
             # another did not is not honestly described by either label alone.
-            f.outcome = "repaired-and-marked"
+            f.outcome = "repaired-in-part"
             f.reason = (f"{len(f.repairs)} of {len(excerpts)} re-cut from "
                         f"{t.name}; the rest are unverified")
-        elif marked_already:
-            f.outcome, f.reason = "already-marked", "seen by an earlier run"
         elif t is None:
-            f.outcome = "marked"
+            f.outcome = "unverified"
             f.reason = "no surviving transcript to re-cut from"
         else:
-            f.outcome = "marked"
+            f.outcome = "unverified"
             f.reason = f"{t.name} exists but does not contain the passage"
         rep.findings.append(f)
         if limit and len(rep.findings) >= limit:
@@ -404,38 +382,22 @@ def scan(vault: Path, *, transcripts: Path, limit: int = 0) -> Report:
 
 
 def apply(vault: Path, rep: Report, revert_log, run_id: str, *,
-          batch: int = DEFAULT_BATCH, only: str = "") -> str:
-    """Write the decided outcomes, through the revert log.
+          batch: int = DEFAULT_BATCH) -> str:
+    """Write the repairs, through the revert log.
 
     One `record_and_apply` for the batch. A half-applied repair leaves the corpus
     in a state no single revert undoes, which is worse than not starting.
 
-    `only` restricts the run to one outcome. The two are not equally consequential
-    — a repair rewrites a body from a transcript, a mark adds a frontmatter key —
-    and an operator has good reason to land the fifty exact ones, read them, and
-    decide about the two thousand separately. Without this they arrive together in
-    path order, and the first thing anyone sees is the larger, duller half.
+    Only a repair is ever written. An unverified excerpt stays exactly as it is,
+    the unverified half of a note repaired in part included; a note that ends up
+    unchanged is dropped by the `body == raw` test below, which is the one rule.
     """
     mutations = []
     for f in rep.findings:
-        if f.outcome == "already-marked":
-            continue
-        # No filter check here. `only` is honoured at the write below, and a
-        # note that ends up unchanged is dropped by the `body == raw` test — so a
-        # skip clause at this point is a second implementation of the same rule.
-        # Removing it changed no test, which is how it was found.
         raw = (vault / f.rel).read_text(encoding="utf-8")
         body = raw
-        # The filter governs what gets written, not just which notes are visited.
-        # A note with one repairable passage and one that is not passes an
-        # `--only repaired` filter, and marking it there would land half the
-        # marking pass early — which is exactly what landing them separately was
-        # for.
-        if only != "marked":
-            for old, new in f.repairs.items():
-                body = replace_body_excerpt(body, old, new)
-        if f.unrepaired and only != "repaired":
-            body = mark(body)
+        for old, new in f.repairs.items():
+            body = replace_body_excerpt(body, old, new)
         if body == raw:
             continue
         mutations.append((vault / f.rel, body))
@@ -453,9 +415,6 @@ def main(argv: list) -> int:
     ap.add_argument("--apply", action="store_true",
                     help="write the changes; without it nothing is touched")
     ap.add_argument("--batch", type=int, default=DEFAULT_BATCH)
-    ap.add_argument("--only", choices=("repaired", "marked"), default="",
-                    help="write only this outcome; the two differ enough in "
-                         "consequence to be landed separately")
     ap.add_argument("--limit", type=int, default=0, help="stop scanning after N findings")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
@@ -469,10 +428,9 @@ def main(argv: list) -> int:
     else:
         counts = rep.counts()
         print(f"scanned {rep.scanned} notes, {rep.skipped_not_mined} not mined")
-        for k in ("repaired", "repaired-and-marked", "verified", "marked",
-                  "already-marked"):
+        for k in ("repaired", "repaired-in-part", "verified", "unverified"):
             if counts.get(k):
-                print(f"  {k:<15} {counts[k]}")
+                print(f"  {k:<16} {counts[k]}")
         for f in rep.findings[:5]:
             print(f"\n  {f.rel}\n    {f.outcome}: {f.reason}")
 
@@ -486,8 +444,7 @@ def main(argv: list) -> int:
     from revert_log import RevertLog  # noqa: E402
     import time
     run_id = f"repair-{int(time.time())}"
-    entry = apply(vault, rep, RevertLog(vault), run_id, batch=args.batch,
-                  only=args.only)
+    entry = apply(vault, rep, RevertLog(vault), run_id, batch=args.batch)
     print(f"\napplied as {run_id} / {entry}")
     print(f"undo with: RevertLog(vault).revert({run_id!r}, {entry!r})")
     return 0

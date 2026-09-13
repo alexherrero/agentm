@@ -688,6 +688,25 @@ def compare(baseline: dict, current: dict) -> dict:
     }
 
 
+def shown_ids(ids: list, limit: int = 6) -> str:
+    """The first `limit` question ids, then how many more there are past them.
+
+    A bare `[:6]` read the same whether six questions flipped or sixty."""
+    more = len(ids) - limit
+    return f"{ids[:limit]}" + (f" and {more} more" if more > 0 else "")
+
+
+def comparison_lines(cmp: dict, k: int) -> list:
+    """The paired comparison, as the gate prints it."""
+    return [
+        f"\npaired comparison over {cmp['compared']} question(s):",
+        f"  R@{k}            : {cmp['r_at_k_before']:.3f} -> {cmp['r_at_k_after']:.3f}",
+        f"  flipped to a hit  : {cmp['flips_for']} {shown_ids(cmp['flipped_for_ids'])}",
+        f"  flipped to a miss : {cmp['flips_against']} {shown_ids(cmp['flipped_against_ids'])}",
+        f"  exact paired p    : {cmp['p']:.4f}",
+    ]
+
+
 def render(result: dict, provenance: str) -> str:
     lines = [
         f"corpus: {provenance}",
@@ -794,11 +813,8 @@ def main(argv: list) -> int:
         if drift:
             print(f"\n{drift}")
         cmp = compare(baseline, first)
-        print(f"\npaired comparison over {cmp['compared']} question(s):")
-        print(f"  R@{args.k}            : {cmp['r_at_k_before']:.3f} -> {cmp['r_at_k_after']:.3f}")
-        print(f"  flipped to a hit  : {cmp['flips_for']} {cmp['flipped_for_ids'][:6]}")
-        print(f"  flipped to a miss : {cmp['flips_against']} {cmp['flipped_against_ids'][:6]}")
-        print(f"  exact paired p    : {cmp['p']:.4f}")
+        for line in comparison_lines(cmp, args.k):
+            print(line)
         if cmp["regressed"]:
             print("\nREGRESSION: more questions got worse than better, and the flip "
                   "count is unlikely under chance. The bar is not met.", file=sys.stderr)

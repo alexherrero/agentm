@@ -233,6 +233,16 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	if err != nil {
 		return rep, err
 	}
+	planned := append([]string(nil), calendar.YearMaps...)
+	for _, p := range mocs.Pages {
+		planned = append(planned, p.Rel)
+	}
+	rootMap, err := PlanRootMap(root, planned, now)
+	if err != nil {
+		return rep, err
+	}
+	mocs.Pages = append(mocs.Pages, rootMap.Pages...)
+	mocs.Intents = append(mocs.Intents, rootMap.Intents...)
 	rep.Mocs = mocs
 	intents = append(intents, mocs.Intents...)
 	dates, err := PlanDates(root, contract, now)

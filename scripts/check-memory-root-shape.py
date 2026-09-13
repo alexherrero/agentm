@@ -25,8 +25,10 @@ knows three states:
   mixed          both — a half-applied move, or a writer that recreated a
                  retired path. Named item by item; exit 1.
 
-`Home.md` is allowed loose in `agent/` until plan 07 retires it. `.DS_Store`,
-Drive's `Icon` files and the `.rename-vault-root-complete` marker are ignored.
+`Home.md` is allowed loose in `agent/` until the maps data run (agentm-vault
+plan 07) writes `memory/.maps-and-root-notes-complete`; from then on it is a
+finding, so the retired map cannot come back. `.DS_Store`, Drive's `Icon`
+files and the `.rename-vault-root-complete` marker are ignored.
 
 Usage:
   python3 scripts/check-memory-root-shape.py                 # the resolved memory root
@@ -45,13 +47,15 @@ for _p in (str(_HERE), str(_TOOLKIT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import maps_shape as ms  # noqa: E402
 import vault_layout  # noqa: E402
 
 CLASSES = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
 AGENT_DIRS = {"diagnostics", "memory", "archive"}
-AGENT_LOOSE_ALLOWED = {"Home.md"}  # plan 07 retires it
+AGENT_LOOSE_UNTIL_MAPS = {"Home.md"}  # retired by the maps data run (agentm-vault plan 07)
 IGNORABLE = {".DS_Store", "Icon\r", "Icon", ".rename-vault-root-complete", ".gitkeep",
-             ".card-backfill-complete"}  # the card backfill's marker (agentm-vault plan 06)
+             ".card-backfill-complete",  # the card backfill's marker (agentm-vault plan 06)
+             ms.MARKER_NAME}  # the maps data run's marker (agentm-vault plan 07)
 STANDARDS_SET = ("storage-rules.md", "user-preferences.md",
                  "security-and-secret-governance.md", "moc-standards.md")
 FEATURE_ITEMS = ("_watchlist", "_skill-watchlist", "auto-orchestration-config.md",
@@ -94,13 +98,14 @@ def _shape_findings(root: Path) -> list[str]:
     findings = []
     if not root.is_dir():
         return [f"memory root {root} is not a directory"]
+    loose_allowed = set() if ms.data_run_done(root) else AGENT_LOOSE_UNTIL_MAPS
     for p in sorted(root.iterdir()):
         if p.name in IGNORABLE:
             continue
         if p.is_dir():
             if p.name not in AGENT_DIRS:
                 findings.append(f"agent/ holds an extra directory: {p.name}/")
-        elif p.name not in AGENT_LOOSE_ALLOWED:
+        elif p.name not in loose_allowed:
             findings.append(f"agent/ holds a loose file: {p.name}")
     memory = root / "memory"
     if memory.is_dir():
