@@ -2,10 +2,12 @@
 """The maps and root notes migration (agentm-vault plan 07), on a fixture vault
 under git: the dry run plans without writing, the apply refuses a moved vault or
 a wrong count and lands the plan through the revert log, the revert brings every
-byte back, and the marker waits for every post-condition."""
+byte back and refuses rather than lose a write made after the run, the marker
+waits for every post-condition, and a second dry run plans nothing."""
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 import sys
 import tempfile
@@ -20,6 +22,7 @@ for _p in (str(_HERE), str(_TOOLKIT), str(_HERE / "migrate")):
 
 import maps_and_root_notes as mig  # noqa: E402
 import maps_shape as ms  # noqa: E402
+import revert_log  # noqa: E402
 import storage_rules  # noqa: E402
 
 RULES = storage_rules.StorageRules({
@@ -252,6 +255,100 @@ class Finish(Fixture):
         plan = self.plan()
         with self.assertRaises(mig.Refused):
             mig.finish(self.vault, self.root, plan, self.out, RULES)
+
+
+def as_journaled_before_the_check(journal: Path) -> None:
+    """The journal as the revert log wrote it before it recorded what each stage
+    left behind, which is how the live runs of plans 06 and 07 were journaled."""
+    records = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines() if line]
+    for record in records:
+        for pre in record["pre_images"]:
+            del pre["after_exists"], pre["after_hash"]
+    journal.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+
+
+class RevertAfterALaterWrite(Fixture):
+    """The night writes to the vault after an apply: it appends to day notes and
+    re-enriches cards. Restoring over those writes would lose them, so a revert
+    names each changed file, restores nothing, and leaves the marker."""
+
+    def applied(self):
+        plan = self.plan()
+        self.assertTrue(self.apply(plan)["matches_dry_run"])
+        ms.marker_path(self.root).write_text("run run-1\n", encoding="utf-8")
+        return plan
+
+    def revert(self, **kw):
+        mig.revert(self.vault, self.root, "run-1", log_root=self.logs, lock_root=self.locks, **kw)
+
+    def refused(self, **kw):
+        after = self.snapshot()
+        with self.assertRaises(revert_log.ChangedSinceRunError) as caught:
+            self.revert(**kw)
+        self.assertEqual(self.snapshot(), after, "the refused revert wrote, or removed the marker")
+        return [Path(path) for path, _reason in caught.exception.changed]
+
+    def test_a_line_appended_to_the_moved_day_note_refuses_the_revert_and_is_kept(self):
+        self.applied()
+        diary = self.vault / "Calendar/2026/2026-08-10-diary.md"
+        diary.write_bytes(diary.read_bytes() + b"\nWritten after the move.\n")
+        self.assertEqual(self.refused(), [diary])
+        self.assertTrue(diary.read_bytes().endswith(b"\nWritten after the move.\n"))
+        self.assertFalse((self.vault / "Calendar/2026-08-10.md").exists(),
+                         "the day note came back to the calendar root beside its year's copy")
+
+    def test_a_line_added_to_a_card_the_links_stage_rewrote_refuses_the_revert_and_is_kept(self):
+        self.applied()
+        card = self.root / "memory/semantic/blog-author.md"
+        card.write_bytes(card.read_bytes() + b"\nEnriched after the apply.\n")
+        self.assertEqual(self.refused(), [card])
+        self.assertIn("[[moc-root|Home]]", card.read_text(encoding="utf-8"))
+
+    def test_once_the_file_holds_what_the_run_wrote_the_revert_brings_every_byte_back(self):
+        before = self.snapshot()
+        self.applied()
+        diary = self.vault / "Calendar/2026/2026-08-10-diary.md"
+        written = diary.read_bytes()
+        diary.write_bytes(written + b"\nWritten after the move.\n")
+        self.refused()
+        diary.write_bytes(written)
+        self.revert()
+        self.assertEqual(self.snapshot(), before)
+
+    def test_a_run_journaled_before_the_check_is_checked_against_its_recorded_plan(self):
+        before = self.snapshot()
+        plan = self.applied()
+        (self.out / "plan-run-1.json").write_text(json.dumps(plan), encoding="utf-8")
+        as_journaled_before_the_check(self.logs / "run-1.jsonl")
+        card = self.root / "memory/semantic/blog-author.md"
+        written = card.read_bytes()
+        card.write_bytes(written + b"\nEnriched after the apply.\n")
+        self.assertEqual(self.refused(out_dir=self.out), [card])
+        card.write_bytes(written)
+        self.revert(out_dir=self.out)
+        self.assertEqual(self.snapshot(), before)
+
+
+class SecondRun(Fixture):
+    def test_a_second_dry_run_over_the_migrated_vault_plans_nothing(self):
+        plan = self.plan(also_delete=["fix"])
+        self.assertTrue(self.apply(plan)["matches_dry_run"])
+        self.regenerate(also_fix=True)
+        self.assertEqual(mig.finish(self.vault, self.root, plan, self.out, RULES), [])
+        _git(self.vault, "add", "-A")
+        _git(self.vault, "commit", "-q", "-m", "the data run landed")
+        again, _contents, _draft = mig.build_plan(self.vault, self.root, RULES)
+        self.assertEqual(again["counts"], {"deletions": 0, "moves": 0, "links": 0, "index": 0, "files": 0})
+        self.assertEqual(sorted(again["pinned_done"]), sorted(mig.PROJECTS_LINKS))
+
+    def test_a_pinned_note_holding_some_of_its_links_but_not_all_still_refuses(self):
+        p = self.vault / "Projects/agentm/decisions/memory-os-architecture-scan.md"
+        p.write_text(p.read_text(encoding="utf-8").replace("[[Home]] MOC", "[[moc-root\\|Home]] MOC"),
+                     encoding="utf-8")
+        _git(self.vault, "commit", "-q", "-am", "one of its two links repointed by hand")
+        with self.assertRaises(mig.Refused) as caught:
+            self.plan()
+        self.assertIn("holds 1 of them", str(caught.exception))
 
 
 if __name__ == "__main__":

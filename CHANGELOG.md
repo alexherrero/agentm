@@ -29,6 +29,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reason now counts only from a cycle that started inside the night's window,
   apart from `disabled` and `watchdog-stop`, which a cycle reads before it looks
   at the window. Any other step reads `no reason on record for the night`.
+- **A revert no longer loses what was written after its run.** `--revert` on the
+  card backfill and on the maps and root notes migration wrote each saved copy
+  back, and deleted each file the run had created, whatever the file held by
+  then. A revert after a night would have dropped the cards it re-enriched and
+  the lines appended to the moved day note. The revert log now records what
+  each stage wrote. A revert checks every file before it writes anything, and
+  each stage again under its lock. When a file no longer holds the run's bytes,
+  the revert names each such file and restores nothing. A run journaled before
+  this change, as both live runs of plans 06 and 07 were, is checked against
+  the plan its dry run recorded, which holds the same digests.
+- **A second dry run of the maps and root notes migration plans nothing.** Over
+  the migrated vault it was refused. Each note the operator's ruling pinned
+  still had to hold its exact count of links to `Home` or `Filing`, and after
+  the run it holds none. A pinned note with no link to a retired note now counts
+  as done, and the dry run lists it. One holding any other count still refuses.
 
 ## [9.23.0] - 2026-09-13
 

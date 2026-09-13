@@ -28,7 +28,9 @@ records the plan in the engine state directory. `--apply` recomputes the plan,
 refuses unless it matches the recorded one and `--confirm-count`, applies it
 through the revert log, and writes a journal whose counts are read back from the
 vault. Run the applied pass with the runner and the daemon quiesced, outside the
-night's window. `--revert RUN_ID` restores every file the run wrote.
+night's window. `--revert RUN_ID` restores every file the run wrote, unless a file
+no longer holds what the run wrote: then it names each such file and restores
+nothing, so a card the night re-enriched since keeps its enrichment.
 
   python3 scripts/migrate/card_backfill.py
   python3 scripts/migrate/card_backfill.py --apply --plan PLAN --confirm-count N
@@ -700,9 +702,32 @@ def apply(vault: Path, memory_root: Path, contract: Contract, git: Git, recorded
     return journal
 
 
-def revert(vault: Path, memory_root: Path, run_id: str, log_root: Path | None = None) -> None:
+def _written_by_plan(vault: Path, plan: dict) -> dict:
+    """What each stage of a recorded plan left at each path, a digest or None
+    where it left no file: the check for a run journaled before the revert log
+    recorded that itself."""
+    vault = Path(vault)
+    notes = {}
+    for n in plan["notes"]:
+        if n["new_rel"]:
+            notes.update({str(vault / n["new_rel"]): n["after"], str(vault / n["rel"]): None})
+        else:
+            notes[str(vault / n["rel"])] = n["after"]
+    return {"card-backfill-notes": notes,
+            "card-backfill-links": {str(vault / link["rel"]): link["after"] for link in plan["links"]}}
+
+
+def revert(vault: Path, memory_root: Path, run_id: str, log_root: Path | None = None,
+           out_dir: Path | None = None) -> None:
+    """Restore every file the run wrote and remove the marker, or refuse and
+    restore nothing when a file no longer holds what the run wrote: a card the
+    night re-enriched since keeps its enrichment. A run journaled before the
+    revert log recorded what it wrote is checked against its plan in `out_dir`."""
     import revert_log  # noqa: E402
-    revert_log.RevertLog(vault, log_root=log_root).revert(run_id)
+    plan = Path(out_dir) / f"plan-{run_id}.json" if out_dir is not None else None
+    written = _written_by_plan(vault, json.loads(plan.read_text(encoding="utf-8"))) \
+        if plan is not None and plan.is_file() else None
+    revert_log.RevertLog(vault, log_root=log_root).revert(run_id, written=written)
     marker = memory_root / "memory" / cs.MARKER_NAME
     if marker.exists():
         marker.unlink()
@@ -737,7 +762,12 @@ def main(argv: list | None = None) -> int:
     refusals = state_dir / "enrich-refusals.jsonl"
 
     if args.revert:
-        revert(vault, memory_root, args.revert)
+        import revert_log  # noqa: E402
+        try:
+            revert(vault, memory_root, args.revert, out_dir=out_dir)
+        except revert_log.RevertLogError as exc:
+            print(f"card backfill: {exc}", file=sys.stderr)
+            return 1
         print(f"card backfill: reverted {args.revert}")
         return 0
 
