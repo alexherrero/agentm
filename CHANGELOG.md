@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.22.0] - 2026-09-12
+
+The vault-perfection series lands plans 05 and 06: the memory root holds two folders and nothing loose, and every card takes the card's shape. Plan 05 folded the always-load pen into `standards/`, moved the voice rules there and agentm's feature state into its project space, and took the engine's own state out of the vault, with every reader resolving the new home first ([#602](https://github.com/alexherrero/agentm/pull/602)); the voice library stays in the vector arm's scope after the move ([#603](https://github.com/alexherrero/agentm/pull/603)). Plan 06 gave every class card one field order, written by every writer, brought to the corpus by a backfill that calls no model, and held by three gates that now enforce it ([#604](https://github.com/alexherrero/agentm/pull/604)); the backfill rewrites only live links, so a project record keeps the names it was written with ([#605](https://github.com/alexherrero/agentm/pull/605)). The tier audit names what failed and stops when every call fails the same way ([#600](https://github.com/alexherrero/agentm/pull/600)), and the doctor sees a resident binary that predates the daemon source ([#601](https://github.com/alexherrero/agentm/pull/601)). The overnight run's handoff pack stays out of the checkout ([#607](https://github.com/alexherrero/agentm/pull/607)), and the daemon reference cites the code where it sits now ([#606](https://github.com/alexherrero/agentm/pull/606)).
+
+### Added
+
+- **The doctor sees a resident binary that predates the daemon source.**
+  `check_install_head` asks whether the clone has the code that shipped, which
+  is the whole answer for the Python half, since the hooks and skills are
+  symlinks into the clone. The Go binary changes only when someone rebuilds
+  it, so a commit touching both halves half-deploys. `check_install_binary`
+  reports the two ways that goes wrong: the newest commit touching `daemon/`
+  is newer than the binary, so a rebuild is owed; or the running process is
+  older than the binary, a rebuild without a restart, where `agentmd status`
+  still prints OK from the old process. Reported, never repaired, like every
+  doctor row.
+
 ### Changed
 
 - **Every card takes the card's shape** (agentm-vault plan 06, the card
@@ -96,6 +113,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the engine state directory instead. The destination is resolved before
   dispatch, the run's report names it (`handoff_dir`), and a test fails if
   the pack is aimed inside the checkout.
+
+### Internal
+
+- **The daemon reference cites the code where it sits now.** Thirty of the 69
+  file:line citations in `wiki/reference/Memory-Daemon.md` had drifted from
+  the symbols their sentences name; each points at its current position on
+  main, and no prose changed.
 
 ## [9.21.0] - 2026-09-11
 

@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.21.0](https://github.com/alexherrero/agentm/releases/tag/v9.21.0).** The night runs: the corpus is judged once a night inside a window against a two-million-token line, every writer lands the same card, the residue is purged on your ruling, and one morning note says what happened. `MEMORY_VAULT_PATH` becomes `MEMORY_ROOT`, one meaning, both names exported for one release.
+> **Latest release: [v9.22.0](https://github.com/alexherrero/agentm/releases/tag/v9.22.0).** Every card takes the same shape: one field order on every class note, written by every writer, held by three gates, and brought to the whole corpus by a backfill that calls no model. The memory root holds two folders and nothing loose, and the overnight run's handoff pack stays out of the checkout.
 
 ---
 
