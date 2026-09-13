@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **The stale `_n1_handoff/` pair.** `_n1_handoff/PROMPTS.md` and
+  `_n1_handoff/prompts.json` were the overnight run's handoff pack, committed
+  by mistake twice. Since [#607](https://github.com/alexherrero/agentm/pull/607)
+  moved the pack out of the checkout, nothing writes there. The pair is
+  deleted, and `/_n1_handoff/` is ignored so the old path cannot be committed
+  a third time.
+
 ## [9.22.0] - 2026-09-12
 
 The vault-perfection series lands plans 05 and 06: the memory root holds two folders and nothing loose, and every card takes the card's shape. Plan 05 folded the always-load pen into `standards/`, moved the voice rules there and agentm's feature state into its project space, and took the engine's own state out of the vault, with every reader resolving the new home first ([#602](https://github.com/alexherrero/agentm/pull/602)); the voice library stays in the vector arm's scope after the move ([#603](https://github.com/alexherrero/agentm/pull/603)). Plan 06 gave every class card one field order, written by every writer, brought to the corpus by a backfill that calls no model, and held by three gates that now enforce it ([#604](https://github.com/alexherrero/agentm/pull/604)); the backfill rewrites only live links, so a project record keeps the names it was written with ([#605](https://github.com/alexherrero/agentm/pull/605)). The tier audit names what failed and stops when every call fails the same way ([#600](https://github.com/alexherrero/agentm/pull/600)), and the doctor sees a resident binary that predates the daemon source ([#601](https://github.com/alexherrero/agentm/pull/601)). The overnight run's handoff pack stays out of the checkout ([#607](https://github.com/alexherrero/agentm/pull/607)), and the daemon reference cites the code where it sits now ([#606](https://github.com/alexherrero/agentm/pull/606)).
