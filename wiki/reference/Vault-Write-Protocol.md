@@ -21,6 +21,7 @@ Implementation occurs in `scripts/vault_lock.py`. This script provides `atomic_w
 - **Shared-vault writes** acquire the one per-vault mutex. These include `PLAN.md` / `progress.md` / `features.json`, the repo registry, and every `/memory save` / `/memory evolve` entry.
 - **Replace-style shared files** additionally pass a **content-hash CAS** (`expected_hash`). The write re-reads and re-hashes the file inside the lock. The write aborts with `ConcurrentModificationError` if the content changed under it. Callers then re-read and retry.
 - **Repo-local state** (`.harness/` in a checkout, the promotion cursor) takes the atomic writer for the `fsync` but **no mutex**. It is partitioned by construction. It is never in the synced vault.
+- **The tracker** (`tasks/<slug>/tracker.md`, or `tracker.md` / `tracker-<slug>.md` beside a plan pair) is shared-vault state that takes neither this mutex nor `vault_lock`'s atomic writer. `scripts/tracker.py` does its own tempfile → `fsync` → `os.replace` in the same directory, guarded by its own content-hash compare-and-swap (`expected_hash`) rather than this protocol's. A `transition` call that finds the file changed since it was read raises and asks the caller to re-read it (agentm-vault plan 09).
 
 ## Write-time stamps and the volume gate
 

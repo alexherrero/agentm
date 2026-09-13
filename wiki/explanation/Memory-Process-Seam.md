@@ -9,7 +9,7 @@ The V5 unbundling moved the phase loop (Setup · Plan · Work · Review · Relea
 The tempting answer is "import `harness_memory` and call whatever you need." That couples every consumer to the engine's private shape: a phase would reach for an internal helper, the engine would refactor it, and the phase would break — across a repo boundary, where the breakage is hardest to see coming. The seam is the deliberate alternative. It is a single small client (`scripts/process_seam.py`) exposing exactly two operations a process actually needs:
 
 - **offer save here** — "here's something I might save; tell me where it would go" (advisory only — it never saves).
-- **state path here** — "where does this project's `PLAN.md` / `progress.md` live?"
+- **state path here** — "where do this project's `PLAN.md` / `progress.md` / `tracker.md` live?"
 
 (A third operation, **recall here**, was retired in R0.9 — it delegated to a V5-3 stub that always returned empty; no live crickets consumer called it.)
 

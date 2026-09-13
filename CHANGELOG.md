@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A task can live in its own directory, and the resolver finds either
+  layout (agentm-vault plan 09).** `resolve_active_plan` looks for
+  `tasks/<slug>/plan.md` first and falls back to the flat `PLAN-<slug>.md`
+  pair. It returns the pair it always did, plus the tracker beside it:
+  `tasks/<slug>/tracker.md`, or `tracker-<slug>.md` beside a flat pair.
+  `resolve-active-plan --with-tracker` prints all three, and
+  `process_seam.py state-path tracker` resolves the tracker.
+- **The tracker has one schema and a module that keeps it.**
+  `scripts/tracker.py` renders, parses, creates and transitions a tracker
+  (five statuses, one transition table), and writes it atomically, refusing a
+  write when the file changed since it was read. `check-tracker-schema` holds
+  every tracker in the projects space to the schema and to its place. It
+  passes on today's vault, which has no tracker yet.
+- **A second SessionStart hook opens a bound session with its project's
+  brief.** `project-brief-session-start` prints at most twenty lines: the
+  project and task trackers' state and next steps, the last progress lines,
+  and the counts of open follow-ups and unfiled cards. With no tracker it
+  prints the context hook's plan block unchanged, and the context hook leaves
+  that block to it once it is registered. Registering it is a hand step, and
+  its `hook.md` has the command.
+- **The nightly batch enriches project records after the cards.** The queue
+  serves a project's charter and its `decisions/`, `designs/` and `research/`
+  notes after the cards, inside the same token line, and pages by position.
+  The pass merges its fields and its dated section into a record, keeps every
+  field the record carried, writes no filing verdict and never renames the
+  file. It never writes a tracker, a plan or a progress log. A card with
+  `project:`, and a record, see their project's records first among the
+  neighbours. The run record counts records apart from the filing verdicts,
+  and the morning note shows that count on nights that merged one.
+
 ### Changed
 
 - **Last night's enrichment no longer holds tonight's.** The fleet ceiling
@@ -17,6 +49,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had no batch. Twenty hours is the day less the four-hour night window. The $5
   ceiling still holds a second paid run inside the same night, which a higher
   ceiling would not: the batch's own limits start again on every run.
+- **Traces and Stop-hook cards carry `project:` and `task:`, and recall
+  favours the session's project.** A bound session's traces and Stop-hook
+  cards are stamped from the repo's `project.json` and the active plan, and
+  the opening brief asks the session to pass both when it captures. Both
+  recall arms damp every note the session's project does not match to ×0.80,
+  so a matching card ranks ×1.25 against an equal one. A session with no
+  binding ranks as before, and `agentmd search -project` carries the binding
+  to the daemon.
+- **The readers take both task layouts, and the index reads a progress log by
+  its head.** Queue status, the plan graph, the context hooks and the doctor
+  find a task directory as well as a flat pair. The index reads the first
+  88,192 bytes of a progress log, as the in-process arm already did, and ranks
+  notes under a project's `completed/` at ×0.30 by their path segment.
 
 ### Fixed
 

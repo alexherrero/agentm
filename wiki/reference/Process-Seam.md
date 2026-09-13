@@ -10,7 +10,7 @@ The memory↔process client seam ([`scripts/process_seam.py`](https://github.com
 | Function | Signature | Returns | Memory absent → |
 |---|---|---|---|
 | `offer_save_here` | `offer_save_here(context, candidate)` | `list[dict]` — `[enriched_candidate]` (advisory; never persists) | `[]` |
-| `state_path` | `state_path(context, which)` | `Path` — active PLAN/progress path | repo-local `<project_root>/.harness/<file>` (never `None`) |
+| `state_path` | `state_path(context, which)` | `Path` — active plan/progress/tracker path | repo-local `<project_root>/.harness/<file>` (never `None`) |
 
 > [!IMPORTANT]
 > **Read-only invariant.** The seam performs no writes. It imports the engine's public readers. It never imports or calls any write path. This makes "the seam is read-only" literally true. The `offer_save_here` function is **advisory** ([LC-2]). It returns save *candidates*. Persistence stays on the existing `/memory save` path (`harness_memory.offer_save` / the `offer-save` CLI verb).
@@ -48,13 +48,13 @@ You use this to resolve the harness state path for `which` in the current contex
 | Parameter | Type | Detail |
 |---|---|---|
 | `context` | `dict \| None` | `cwd` selects the project root; `plan` (optional) names a plan via `resolve_active_plan`'s explicit-arg path. |
-| `which` | `str` | `"plan"` or `"progress"` — which file of the active pair. |
+| `which` | `str` | `"plan"`, `"progress"` or `"tracker"` — which file of the active plan. The tracker sits beside the pair: `tracker-<name>.md` in `_harness/`, or `tracker.md` inside a task directory. |
 
 | Condition | Result |
 |---|---|
-| Vault-backed memory present | The resolved `Path` under the vault `_harness/` dir. |
+| Vault-backed memory present | The resolved `Path` under the vault `_harness/` dir, or — for a task's plan (agentm-vault plan 09) — the already-absolute path inside its `tasks/<slug>/` directory. |
 | No vault / memory configured | Repo-local degrade `<project_root>/.harness/<file>` ([LC-3]) — **never `None`**. |
-| `which` not `"plan"`/`"progress"` | Raises `ValueError` — a caller bug, distinct from the absent-memory degrade. |
+| `which` not `"plan"`/`"progress"`/`"tracker"` | Raises `ValueError` — a caller bug, distinct from the absent-memory degrade. |
 | `.harness/active-plan` marker present but dangling / names an unsafe slug | Propagates `harness_memory.ActivePlanError` / `ValueError` — **not** swallowed. |
 
 > [!WARNING]
@@ -66,7 +66,7 @@ This acts as a thin shell shim ([LC-1]). You use it to expose the same two funct
 
 | Subcommand | Flags | Emits |
 |---|---|---|
-| `state-path` | `which` (positional: `plan`/`progress`), `--cwd`, `--plan` | the resolved path on stdout |
+| `state-path` | `which` (positional: `plan`/`progress`/`tracker`), `--cwd`, `--plan` | the resolved path on stdout |
 | `offer-save-here` | `--cwd`, `--phase`, `--kind` (req), `--slug` (req), `--body-file` (`-` = stdin), `--confidence`, `--confidence-reason` | the advisory candidate list as indented JSON |
 
 ```bash
