@@ -45,7 +45,7 @@ The script makes these changes without asking a model anything. It never writes 
 
    - A count per stamp, correction, and retirement.
    - The renames it plans to make.
-   - The links it plans to rewrite. It only rewrites links under `Agent/`, `Calendar/`, and `Projects/agentm/`. It lists a link elsewhere as `not written`.
+   - The links it plans to rewrite. It rewrites links only in the agent's notes and maps under `Agent/` and in `Calendar/`, and a path only when it names the renamed note's own class directory. A note elsewhere, the project space's records included, keeps the names it was written with and is listed as `not written`.
    - The standing enrichment refusals it plans to re-key.
    - The sidecar (`.heat.json`/`.lifecycle.json`) keys it plans to move.
    - The empty class-directory-internal directories it plans to remove.

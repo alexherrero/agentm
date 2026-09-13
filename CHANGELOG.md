@@ -23,7 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the corpus to the shape without a model call (dry run by default; `--apply`
   against the recorded plan and a confirmed count, through the revert log):
   deterministic stamps, the retired fields dropped, counter slugs renamed with
-  their links rewritten, and the six empty opinion-lane directories removed.
+  their links rewritten in the agent's notes and the calendar (a project-space
+  record keeps the names it was written with, and a path is repointed only when
+  it names the renamed note's own class directory), and the six empty
+  opinion-lane directories removed.
   It names what it stamped in `backfilled:`, never writes `enriched_by` or
   `enriched_at`, and re-records the night's standing refusals under the
   rewritten cards' keys. `check-card-shape`, `check-class-directories` and
