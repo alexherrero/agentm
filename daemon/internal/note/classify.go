@@ -90,6 +90,12 @@ const (
 	// four-month recall amputation, and the disagreement is worse when it is
 	// the *permissive* half that is silent.
 	ClassIngestStaged = "ingest-staged"
+	// ClassCompleted is a record in a project's `completed/` folder: the research,
+	// briefs and drafts a closed task left behind (agentm-vault § Projects and
+	// tasks). Kept in the index and penalized rather than walled, so a closed
+	// task's outcome is still findable and never outranks a live one. Earned by
+	// where the note sits — see pathClasses — not by anything it says.
+	ClassCompleted = "completed"
 )
 
 // Weights are applied multiplicatively to the BM25 score.
@@ -138,6 +144,9 @@ var Weights = map[string]float64{
 	ClassDormant:    0.30,
 	ClassArchived:   0.30,
 	ClassSuperseded: 0.30,
+	// A closed task's records, by their path. Same 0.30 as every other demoted
+	// class, for the sweep's reason.
+	ClassCompleted: 0.30,
 }
 
 // ProjectMismatch is what a note earns when a query names the session's project
@@ -149,6 +158,34 @@ var Weights = map[string]float64{
 // equal unmatched one. Mild on purpose: the sweep above found every weight at
 // or below 0.6 ranks like a wall, and a project is not a wall.
 const ProjectMismatch = 0.80
+
+// pathClasses are the classes a note earns by where it sits rather than by what
+// it says. A row names a space (the first path segment, compared without case),
+// the depth of the directory segment it matches, and that segment's name. The
+// first row is a project's `completed/` folder; agentm-vault plan 11 adds its
+// archive class per space here rather than as another special case.
+var pathClasses = []struct {
+	space   string
+	depth   int
+	segment string
+	class   string
+}{
+	{space: "projects", depth: 2, segment: "completed", class: ClassCompleted},
+}
+
+// pathClassFlags returns the classes `rel`'s directories earn from pathClasses.
+// Directories only: a file that happens to carry a segment's name earns nothing.
+func pathClassFlags(rel string) []string {
+	parts := strings.Split(rel, "/")
+	var out []string
+	for _, c := range pathClasses {
+		if len(parts) > c.depth+1 && strings.EqualFold(parts[0], c.space) &&
+			strings.EqualFold(parts[c.depth], c.segment) {
+			out = append(out, c.class)
+		}
+	}
+	return out
+}
 
 // Overfetch is how deep to look before re-ranking. A penalty can only promote a
 // note the first fetch actually saw, so the window has to be wide enough that a
@@ -268,6 +305,9 @@ func classify(rel, head, body, status, lifecycle string) []string {
 	if inDampenedSpace(rel) {
 		flags = append(flags, ClassSpace)
 	}
+
+	// Where the note sits: a project's completed records (pathClasses).
+	flags = append(flags, pathClassFlags(rel)...)
 
 	if isDurable(rel, head) {
 		flags = append(flags, ClassDurable)

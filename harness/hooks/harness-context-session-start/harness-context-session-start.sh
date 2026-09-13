@@ -93,6 +93,15 @@ else
 fi
 
 # ── Inject: named-plan mode → singleton (DC-7, locked) → nudge/skip ────────────
+# A task's plan is tasks/<slug>/plan.md beside a vault _harness/ (agentm-vault
+# plan 09); a flat plan is PLAN-<slug>.md. Each is labelled by the name a reader types.
+_plan_label() {
+    case "$1" in
+        */tasks/*/plan.md) _t="${1%/plan.md}"; printf 'tasks/%s\n' "${_t##*/}" ;;
+        *) basename "$1" ;;
+    esac
+}
+
 if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
     # Named-plan mode: surface every PLAN*.md + the .harness/active-plan binding.
     {
@@ -102,19 +111,21 @@ if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
         # Each plan's progress is its progress-<name>.md.
         [[ -n "$PLAN_PATH" ]] && printf '  %-22s %s\n' "PLAN.md" "$PLAN_PATH"
         for _pf in "${NAMED_PLANS[@]}"; do
-            printf '  %-22s %s\n' "$(basename "$_pf")" "$_pf"
+            printf '  %-22s %s\n' "$(_plan_label "$_pf")" "$_pf"
         done
         # Active-plan binding — resolved by list-plans from .harness/active-plan.
         # A binding whose plan file is absent in the output is dangling — surfaced, not fatal.
         if [[ -n "$ACTIVE_BINDING" ]]; then
             BOUND_PATH=""
             for _np in "${NAMED_PLANS[@]}"; do
-                [[ "$(basename "$_np")" == "PLAN-$ACTIVE_BINDING.md" ]] && { BOUND_PATH="$_np"; break; }
+                case "$_np" in
+                    */PLAN-"$ACTIVE_BINDING".md|*/tasks/"$ACTIVE_BINDING"/plan.md) BOUND_PATH="$_np"; break ;;
+                esac
             done
             if [[ -n "$BOUND_PATH" ]]; then
                 echo "Active plan (.harness/active-plan -> $ACTIVE_BINDING): $BOUND_PATH"
             else
-                echo "Active plan (.harness/active-plan -> $ACTIVE_BINDING): DANGLING - PLAN-$ACTIVE_BINDING.md not found; run doctor."
+                echo "Active plan (.harness/active-plan -> $ACTIVE_BINDING): DANGLING - PLAN-$ACTIVE_BINDING.md not found, nor tasks/$ACTIVE_BINDING/plan.md; run doctor."
             fi
         fi
         echo "Read the plan you own (or the .harness/active-plan one) before /work, /review, /release."

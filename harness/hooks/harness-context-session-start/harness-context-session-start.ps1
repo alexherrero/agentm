@@ -75,7 +75,7 @@ foreach ($line in ($plansOut -split "`n")) {
     if (-not $line) { continue }
     if ($line -like 'active-binding=*') {
         $activeBinding = $line.Substring('active-binding='.Length)
-    } elseif ($line -like '*PLAN.md') {
+    } elseif ($line -clike '*PLAN.md') {
         $planPath = $line
     } elseif ($line -like '*.md') {
         $namedPlans += $line
@@ -101,16 +101,17 @@ if ($namedPlans.Count -gt 0) {
         Write-Output ("  {0,-22} {1}" -f "PLAN.md", $planPath)
     }
     foreach ($pf in $namedPlans) {
-        $pfName = Split-Path $pf -Leaf
+        # A task's plan is tasks/<slug>/plan.md (agentm-vault plan 09).
+        $pfName = if ($pf -match '[\\/]tasks[\\/]([^\\/]+)[\\/]plan\.md$') { "tasks/$($Matches[1])" } else { Split-Path $pf -Leaf }
         Write-Output ("  {0,-22} {1}" -f $pfName, $pf)
     }
     # Active-plan binding — resolved by list-plans from .harness/active-plan.
     if ($activeBinding) {
-        $boundPath = $namedPlans | Where-Object { (Split-Path $_ -Leaf) -eq "PLAN-$activeBinding.md" } | Select-Object -First 1
+        $boundPath = $namedPlans | Where-Object { ((Split-Path $_ -Leaf) -eq "PLAN-$activeBinding.md") -or ($_ -match ('[\\/]tasks[\\/]' + [regex]::Escape($activeBinding) + '[\\/]plan\.md$')) } | Select-Object -First 1
         if ($boundPath) {
             Write-Output "Active plan (.harness/active-plan -> $activeBinding): $boundPath"
         } else {
-            Write-Output "Active plan (.harness/active-plan -> $activeBinding): DANGLING - PLAN-$activeBinding.md not found; run doctor."
+            Write-Output "Active plan (.harness/active-plan -> $activeBinding): DANGLING - PLAN-$activeBinding.md not found, nor tasks/$activeBinding/plan.md; run doctor."
         }
     }
     Write-Output "Read the plan you own (or the .harness/active-plan one) before /work, /review, /release."

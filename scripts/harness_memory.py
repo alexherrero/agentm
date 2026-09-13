@@ -960,9 +960,11 @@ def harness_state_dir(resolution: dict) -> Optional[Path]:
 
 
 def list_plan_files(harness_dir: Path) -> list:
-    """Every active plan file in harness_dir: singleton PLAN.md plus named plans.
+    """Every active plan file in harness_dir: singleton PLAN.md plus named plans,
+    then each task's `tasks/<slug>/plan.md` beside a vault `_harness/`.
 
-    Sorting: singleton first, then named alphabetically — deterministic.
+    Sorting: singleton first, then named alphabetically, then tasks by slug —
+    deterministic.
     Excludes archived plans (PLAN.archive.* — the `PLAN-*` glob skips them) and
     GDrive conflict copies (detected by ``_conflict_family``).
     Used by the ``list-plans`` CLI verb and ``queue_status_lite``.
@@ -974,6 +976,13 @@ def list_plan_files(harness_dir: Path) -> list:
     for p in sorted(harness_dir.glob("PLAN-*.md")):
         if p.is_file() and _conflict_family(p.name) is None:
             files.append(p)
+    # The task layout (agentm-vault plan 09): a task's plan is `tasks/<slug>/plan.md`
+    # in the project directory beside a vault `_harness/`. A device-local
+    # `.harness/` sits in a repo, and the repo's own `tasks/` is not plan state.
+    if harness_dir.name == "_harness":
+        for p in sorted((harness_dir.parent / _TASKS_DIRNAME).glob("*/plan.md")):
+            if p.is_file() and _is_safe_plan_slug(p.parent.name):
+                files.append(p)
     return files
 
 
@@ -2316,6 +2325,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         # harness_state_dir (V5-6 compat). Output format (one per line):
         #   <absolute-path-to-PLAN.md>           (singleton, first if present)
         #   <absolute-path-to-PLAN-<slug>.md>    (named plans, sorted)
+        #   <absolute-path-to-tasks/<slug>/plan.md> (tasks beside a vault _harness/, sorted)
         #   active-binding=<slug>                (only when .harness/active-plan set)
         # Always exits 0 — graceful-skip when no harness dir or no plans.
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()

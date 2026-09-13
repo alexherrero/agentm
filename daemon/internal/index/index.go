@@ -493,6 +493,10 @@ func (x *Index) IndexFile(rel string) error {
 	if err != nil {
 		return err
 	}
+	if note.IsProgressLog(rel) {
+		// A progress log is indexed from its head; see note.ProgressHeadBytes.
+		raw = note.ProgressHead(raw)
+	}
 	n := note.Parse(rel, string(raw), info.ModTime())
 	return x.Upsert(n, info.ModTime().UnixNano(), info.Size())
 }

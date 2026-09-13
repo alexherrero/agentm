@@ -181,6 +181,24 @@ def _progress_path_for(harness_dir: Path, plan_name: str) -> Path:
     return harness_dir / progress_name
 
 
+def _is_task_plan(plan_path: Path) -> bool:
+    """A task's plan: ``tasks/<slug>/plan.md`` (agentm-vault plan 09)."""
+    return plan_path.name == "plan.md" and plan_path.parent.parent.name == hm._TASKS_DIRNAME
+
+
+def _slug_for(plan_path: Path) -> str:
+    """The plan's slug in either layout: a task directory's name, or the flat
+    file name's."""
+    return plan_path.parent.name if _is_task_plan(plan_path) else _slug_from_filename(plan_path.name)
+
+
+def _progress_for(harness_dir: Path, plan_path: Path) -> Path:
+    """The progress log beside a task's plan, or the flat pair's in *harness_dir*."""
+    if _is_task_plan(plan_path):
+        return plan_path.parent / "progress.md"
+    return _progress_path_for(harness_dir, plan_path.name)
+
+
 # ---------------------------------------------------------------------------
 # Core builder
 # ---------------------------------------------------------------------------
@@ -192,7 +210,7 @@ def _parse_plan(plan_path: Path, progress_path: Path, active: bool) -> PlanInfo:
     except OSError:
         text = ""
     fm, body = _split_frontmatter(text)
-    slug = _slug_from_filename(plan_path.name)
+    slug = _slug_for(plan_path)
     status = _extract_status(body)
     tasks_done, tasks_total = _count_tasks(body)
     touched = _last_touched(progress_path)
@@ -200,7 +218,8 @@ def _parse_plan(plan_path: Path, progress_path: Path, active: bool) -> PlanInfo:
     touches = _parse_frontmatter_list(fm, "touches")
     return PlanInfo(
         slug=slug,
-        filename=plan_path.name,
+        filename=(f"{hm._TASKS_DIRNAME}/{slug}/plan.md" if _is_task_plan(plan_path)
+                  else plan_path.name),
         status=status,
         tasks_done=tasks_done,
         tasks_total=tasks_total,
@@ -222,9 +241,10 @@ def build_plan_graph(harness_dir: Path) -> list[PlanInfo]:
     # --- active plans ---
     for plan_path in sorted(
         _list_active_plans(harness_dir),
-        key=lambda p: (0, "") if p.name == "PLAN.md" else (1, p.name),
+        key=lambda p: ((0, "") if p.name == "PLAN.md"
+                       else (2, _slug_for(p)) if _is_task_plan(p) else (1, p.name)),
     ):
-        progress = _progress_path_for(harness_dir, plan_path.name)
+        progress = _progress_for(harness_dir, plan_path)
         plans.append(_parse_plan(plan_path, progress, active=True))
 
     # --- queued plans ---
@@ -254,6 +274,11 @@ def _list_active_plans(harness_dir: Path) -> list[Path]:
     for p in harness_dir.glob("PLAN-*.md"):
         if p.is_file() and hm._conflict_family(p.name) is None:
             files.append(p)
+    # A task's plan beside a vault `_harness/` (agentm-vault plan 09).
+    if harness_dir.name == "_harness":
+        for p in sorted((harness_dir.parent / hm._TASKS_DIRNAME).glob("*/plan.md")):
+            if p.is_file() and hm._is_safe_plan_slug(p.parent.name):
+                files.append(p)
     return files
 
 

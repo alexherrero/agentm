@@ -945,9 +945,13 @@ def project_json_configs(repo: Path, *, mem_root: Optional[Path] = None) -> list
     import harness_memory as _hm_rs  # noqa: PLC0415 — the one root-space predicate
     candidates = []
     root_space = _hm_rs._root_projects_dir(Path(mem_root))
+    # When `_harness/` dissolves, a project's machine files move to its `desk/`
+    # (agentm-vault § Projects and tasks); both homes are read until then.
     if root_space is not None:
-        candidates.append(root_space / slug / "_harness" / "project.json")
-    candidates.append(Path(mem_root).joinpath(*projects_rel.split("/"), slug, "_harness", "project.json"))
+        for home in ("_harness", "desk"):
+            candidates.append(root_space / slug / home / "project.json")
+    for home in ("_harness", "desk"):
+        candidates.append(Path(mem_root).joinpath(*projects_rel.split("/"), slug, home, "project.json"))
     for vault_cfg in candidates:
         if vault_cfg.is_file():
             found.append((vault_cfg, "vault"))
