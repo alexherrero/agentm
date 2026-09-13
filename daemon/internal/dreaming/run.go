@@ -233,7 +233,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	if err != nil {
 		return rep, err
 	}
-	var planned []string
+	planned := append([]string(nil), calendar.YearMaps...)
 	for _, p := range mocs.Pages {
 		planned = append(planned, p.Rel)
 	}

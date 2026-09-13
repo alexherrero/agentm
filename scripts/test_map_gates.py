@@ -259,5 +259,81 @@ class RootNotes(unittest.TestCase):
         self.assertIn("pending: Projects/p.md:1: [[Home]] names a retired note", out)
 
 
+calroot = _load("check-calendar-root")
+
+
+class CalendarRoot(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name)
+        (self.vault / ".obsidian").mkdir()
+        self.root = self.vault / "Agent"
+        (self.root / "memory").mkdir(parents=True)
+        (self.vault / "Calendar").mkdir()
+
+    def write(self, rel: str, text: str = "x\n") -> Path:
+        p = self.vault / "Calendar" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def data_run_done(self):
+        ms.marker_path(self.root).write_text("run m\n", encoding="utf-8")
+
+    def gate(self):
+        buf = io.StringIO()
+        return calroot.check(self.root, out=buf), buf.getvalue()
+
+    def test_years_their_maps_and_the_daily_note_allowances_pass(self):
+        self.write("2026/2026-08-10-diary.md")
+        self.write("moc-calendar-2026.md")
+        self.write("_daily-template.md")
+        self.write("2026-09-13.md")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("note — Calendar/_daily-template.md: allowed at the root until plan 10", out)
+        self.assertIn("note — Calendar/2026-09-13.md: allowed at the root until plan 10", out)
+        self.assertIn("clean", out)
+
+    def test_a_stray_note_or_folder_at_the_root_fails(self):
+        self.write("2026/2026-08-10-diary.md")
+        self.write("moc-calendar-2026.md")
+        self.write("notes.md")
+        self.write("drafts/idea.md")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("Calendar/notes.md: the calendar root holds years and their maps", out)
+        self.assertIn("Calendar/drafts/: not a year directory", out)
+
+    def test_a_year_map_with_no_year_fails(self):
+        self.write("moc-calendar-2025.md")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("Calendar/moc-calendar-2025.md: a year map with no 2025/ beside it", out)
+
+    def test_a_year_still_waiting_for_its_map_is_a_note_not_a_failure(self):
+        self.write("2027/2027-01-01-diary.md")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("note — Calendar/2027/: no moc-calendar-2027.md yet; the night writes it", out)
+
+    def test_before_the_data_run_it_reports_and_passes(self):
+        self.write("notes.md")
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("before the maps data run — 1 finding(s)", out)
+        self.assertIn("pending: Calendar/notes.md", out)
+
+    def test_no_calendar_is_nothing_to_check(self):
+        (self.vault / "Calendar").rmdir()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+
+
 if __name__ == "__main__":
     unittest.main()

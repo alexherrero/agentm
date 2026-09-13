@@ -84,6 +84,7 @@ UNIT_WRAPPED = {
     # agentm-vault plan 07: the root-notes gate reads the live vault, which CI
     # has none of; each rule and both states are unit-tested on fixtures.
     "check-root-notes.py": "test_map_gates.py",
+    "check-calendar-root.py": "test_map_gates.py",
     "check-multi-plan-naming.sh": "test_check_multi_plan_naming.py",
     "check-no-auto-worktree.sh": "test_worktree_slug_probe.py",
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",
