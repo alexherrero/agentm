@@ -15,6 +15,12 @@ it reports its findings and exits 0 (the purge left six empty opinion-lane
 directories inside `crystallized/`, which the backfill removes); once the marker
 exists it enforces.
 
+`mocs/` also holds the maps' shape (agentm-vault plan 07): the three named maps
+(`moc-root`, `moc-memory`, `needs-review`), the class index, and a page per
+memory type with at least `moc_min_members` live notes, never a numbered page.
+Those findings have two states of their own: reported until the maps data run
+writes `memory/.maps-and-root-notes-complete`, enforced once it has.
+
 Usage:
   python3 scripts/check-class-directories.py                 # the resolved memory root
   python3 scripts/check-class-directories.py --memory-root DIR
@@ -33,17 +39,26 @@ for _p in (str(_HERE), str(_TOOLKIT)):
         sys.path.insert(0, _p)
 
 import card_shape as cs  # noqa: E402
+import maps_shape as ms  # noqa: E402
 
 CLASSES = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
 IGNORABLE = {".DS_Store", "Icon\r", "Icon", ".gitkeep", cs.MARKER_NAME}
 
 
-def load_registers():
-    """`(memory types, record kinds)` from the filing contract, or None."""
+def load_rules():
+    """The filing contract, or None when it does not load."""
     try:
         import storage_rules  # noqa: E402
-        rules = storage_rules.load()
+        return storage_rules.load()
     except Exception:
+        return None
+
+
+def load_registers(rules=None):
+    """`(memory types, record kinds)` from the filing contract, or None."""
+    if rules is None:
+        rules = load_rules()
+    if rules is None:
         return None
     return set(rules.memory_types()), set(rules.record_kinds())
 
@@ -86,21 +101,40 @@ def findings_for(memory_root: Path, registers=None) -> tuple[list[str], int]:
     return out, count
 
 
-def check(memory_root: Path, registers=None, out=sys.stdout) -> int:
+def check(memory_root: Path, registers=None, out=sys.stdout, rules=None) -> int:
     findings, count = findings_for(memory_root, registers)
     if registers is None:
         print("check-class-directories: the filing contract did not load; values are not checked", file=out)
+    rc = 0
     if not (memory_root / "memory" / cs.MARKER_NAME).exists():
         print(f"check-class-directories: pre-backfill — {len(findings)} finding(s) over {count} entries, which "
               f"the card backfill clears; enforced once memory/{cs.MARKER_NAME} exists", file=out)
-        return 0
-    if findings:
+    elif findings:
         print(f"check-class-directories: {len(findings)} finding(s) over {count} entries", file=out)
         for f in findings:
             print(f"  {f}", file=out)
-        return 1
-    print(f"check-class-directories: clean — {count} entries, every one a card or a record", file=out)
-    return 0
+        rc = 1
+    else:
+        print(f"check-class-directories: clean — {count} entries, every one a card or a record", file=out)
+    return max(rc, check_maps(memory_root, rules, out))
+
+
+def check_maps(memory_root: Path, rules=None, out=sys.stdout) -> int:
+    """`mocs/` holds the maps' shape: reported until the maps data run writes its
+    marker, enforced once it has."""
+    findings = ms.mocs_findings(memory_root, rules)
+    if not findings:
+        return 0
+    if not ms.data_run_done(memory_root):
+        print(f"check-class-directories: before the maps data run — {len(findings)} map finding(s) in mocs/, "
+              f"which the data run clears; enforced once memory/{ms.MARKER_NAME} exists", file=out)
+        for f in findings:
+            print(f"  pending: {f}", file=out)
+        return 0
+    print(f"check-class-directories: {len(findings)} map finding(s) in mocs/", file=out)
+    for f in findings:
+        print(f"  {f}", file=out)
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,7 +146,8 @@ def main(argv: list[str] | None = None) -> int:
     if root is None or not (root / "memory").is_dir():
         print("check-class-directories: no memory root resolves; nothing to check")
         return 0
-    return check(root, load_registers())
+    rules = load_rules()
+    return check(root, load_registers(rules), rules=rules)
 
 
 def _resolve(arg: str | None) -> Path | None:
