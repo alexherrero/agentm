@@ -773,7 +773,7 @@ _CATEGORY_TYPES = {
 
 def _file_candidate(
     candidate: Candidate, vault: Path, *, source: str | None = None, corpus=None, search=None,
-    stderr=sys.stderr, type_hint: str | None = None,
+    stderr=sys.stderr, type_hint: str | None = None, extra: dict | None = None,
 ) -> "Path | object | None":
     """File a candidate through the write-time filing engine (filing-v2, the
     write path): type via the contract, class routing, the update relationship
@@ -803,7 +803,7 @@ def _file_candidate(
             return ALREADY_CAPTURED  # type: ignore[return-value]
         tags = ["machine-session"] if source == "machine-session" else None
         return filing_engine.apply(vault, decision, body=candidate.body, tags=tags,
-                                   title=candidate.title, corpus=corpus)
+                                   title=candidate.title, corpus=corpus, extra=extra)
     except VolumeCapRefused as e:
         print(f"[reflect.route] {e}", file=stderr)
         return VOLUME_REFUSED  # type: ignore[return-value]
@@ -819,6 +819,15 @@ def _file_candidate(
 DEFAULT_MACHINE_SESSION_MAX_INBOX = 10
 
 
+def _session_binding(transcript: Path):
+    """The binding of the session a transcript records (agentm-vault plan 09): the
+    directory the transcript names, else this process's own, which is the
+    session's when the Stop hook runs. The corpus batch passes none — a marker
+    read today may name a different task than the one an old session worked."""
+    import session_binding  # same skill dir
+    return session_binding.for_transcript(transcript, fallback=Path.cwd())
+
+
 def route_candidates(
     memory_candidates: list[Candidate],
     idea_candidates: list[Candidate],
@@ -828,6 +837,7 @@ def route_candidates(
     source: str | None = None,
     session_id: str | None = None,
     max_inbox: int | None = None,
+    binding=None,
     stdin=sys.stdin,
     stdout=sys.stdout,
     stderr=sys.stderr,
@@ -855,6 +865,9 @@ def route_candidates(
             — ideas, now that they are the only ones. Candidates that would
             exceed the cap are counted in `stats["capped"]` instead of
             written. None (default) = no cap.
+        binding: the session's `session_binding.Binding`. Every card this
+            call files carries the bound `project` and `task`
+            (agentm-vault plan 09); None stamps neither.
 
     Returns stats dict:
         {
@@ -887,10 +900,12 @@ def route_candidates(
         print(f"[reflect.route] filing engine unavailable up front: {e}", file=stderr)
         corpus, search = None, None
     low_filings_so_far = 0
+    import session_binding  # same skill dir
+    stamps = session_binding.stamps(binding) if binding else {}
 
     def _file(c: Candidate, *, type_hint: "str | None" = None) -> "Path | object | None":
         return _file_candidate(c, vault, source=source, corpus=corpus, search=search, stderr=stderr,
-                               type_hint=type_hint)
+                               type_hint=type_hint, extra=dict(stamps) or None)
 
     def _file_capped(c: Candidate, *, type_hint: "str | None" = None) -> bool:
         """File a low-confidence candidate unless max_inbox (the per-session
@@ -1512,6 +1527,7 @@ def main(argv: list[str] | None = None) -> int:
             memory_to_route, idea_to_route, vault=vault, mode=route_mode,
             source=source, session_id=_session_id_from_path(Path(args.transcript_path).expanduser()),
             max_inbox=max_inbox,
+            binding=_session_binding(Path(args.transcript_path).expanduser()),
         )
         # Routing stats as a final JSON-Lines record on stdout (after the
         # candidate records). Operator scripts + hooks can parse this to

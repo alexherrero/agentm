@@ -140,6 +140,16 @@ var Weights = map[string]float64{
 	ClassSuperseded: 0.30,
 }
 
+// ProjectMismatch is what a note earns when a query names the session's project
+// and the note's own `project:` names another one, or none (agentm-vault §
+// Projects and tasks: a modest boost for the session's own cards, "on the
+// dampen mechanism the ranker already has"). The lift is spelled as a mild
+// dampening of everything else because nothing in Weights may exceed 1.0 — the
+// clamp in penalizeRankAndDecay assumes it — so a matching card ranks 1.25x an
+// equal unmatched one. Mild on purpose: the sweep above found every weight at
+// or below 0.6 ranks like a wall, and a project is not a wall.
+const ProjectMismatch = 0.80
+
 // Overfetch is how deep to look before re-ranking. A penalty can only promote a
 // note the first fetch actually saw, so the window has to be wide enough that a
 // real note buried under a wall of fragments can climb into the top five. 200 is

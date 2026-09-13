@@ -488,11 +488,11 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 					},
 					"project": map[string]any{
 						"type":        "string",
-						"description": "The project slug this was captured under, when the session has one.",
+						"description": "The vault project this session is bound to, when it has one. The session's opening brief names it; pass it so the card is found with the project's work.",
 					},
 					"task": map[string]any{
 						"type":        "string",
-						"description": "The task's verb-slug this was captured under, when the session has one.",
+						"description": "The task this session is bound to, when it has one. The opening brief names it beside the project.",
 					},
 					"tags": map[string]any{
 						"type": "array", "items": map[string]any{"type": "string"},

@@ -40,6 +40,10 @@ type Result struct {
 	// of the JSON the driver sees — it is an index-internal handle, not a fact
 	// about the note.
 	rowid int64
+	// project is the note's `project:`, carried for the adjustment a query naming
+	// a project applies. Unexported for rowid's reason: the driver's JSON keeps
+	// its shape.
+	project string
 }
 
 // The search modes. ModeAnd is what the prompt-submit hook runs and what every
@@ -115,6 +119,11 @@ type Query struct {
 	// model and scored against another's rows is not a weak search, it is a
 	// meaningless one, so the model is matched in SQL rather than assumed.
 	EmbedModel string
+	// Project is the session's vault project (agentm-vault § Projects and tasks).
+	// When set, a note whose own `project:` names another one, or none, takes
+	// note.ProjectMismatch: a modest lift for the session's own cards. Empty ranks
+	// exactly as before.
+	Project string
 }
 
 // SearchOutcome carries the hits plus whatever the driver needs to know about how
@@ -182,9 +191,9 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 
 	switch q.Mode {
 	case "", ModeAnd:
-		return x.searchAnd(text, k, after, before, q.IncludeArchived)
+		return x.searchAnd(text, k, after, before, q.IncludeArchived, q.Project)
 	case ModeFusion:
-		return x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived)
+		return x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived, q.Project)
 	case ModeHybrid:
 		return x.searchHybrid(text, k, after, before, q)
 	default:
@@ -219,8 +228,8 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 // and 1,784ms ranked-with-snippets, because the matched set included notes of
 // 1.0–1.3 MB. Six of 206 benchmark queries cost four to six seconds each. Rank
 // first and the scan is priced for the five rows anyone will read.
-func (x *Index) searchAnd(text string, k int, after, before string, includeArchived bool) (SearchOutcome, error) {
-	out, wonBy, err := x.andRanked(text, k, after, before, includeArchived)
+func (x *Index) searchAnd(text string, k int, after, before string, includeArchived bool, project string) (SearchOutcome, error) {
+	out, wonBy, err := x.andRanked(text, k, after, before, includeArchived, project)
 	if err != nil {
 		return out, err
 	}
@@ -241,7 +250,7 @@ func (x *Index) searchAnd(text string, k int, after, before string, includeArchi
 // The split exists because a snippet is priced per document scanned, not per row
 // returned, so it must never be computed for a row the caller will not see. See
 // fusionRanked, which the same reasoning splits for the same reason.
-func (x *Index) andRanked(text string, k int, after, before string, includeArchived bool) (SearchOutcome, map[string]string, error) {
+func (x *Index) andRanked(text string, k int, after, before string, includeArchived bool, project string) (SearchOutcome, map[string]string, error) {
 	out := SearchOutcome{Results: []Result{}}
 
 	limit := note.Overfetch
@@ -259,7 +268,7 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
-		note.QueryWantsArtifact(text))
+		note.QueryWantsArtifact(text), project)
 
 	// One expression won every row here, unlike fusion's per-subset map, but the
 	// shape is shared so both paths snippet through one function.
@@ -283,7 +292,7 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 //
 // Roughly twenty lines, worth +3.75 points of R@5 at p = 0.0195.
 func penalizeAndRank(rows []Result, k int) []Result {
-	return penalizeRankAndDecay(rows, k, nil, time.Time{}, false)
+	return penalizeRankAndDecay(rows, k, nil, time.Time{}, false, "")
 }
 
 // penalizeRankAndDecay is penalizeAndRank plus age.
@@ -298,7 +307,7 @@ func penalizeAndRank(rows []Result, k int) []Result {
 // A nil log or a zero `now` disables it, which is what every caller that has no
 // vault to read an access record from passes.
 func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Time,
-	wantArtifact bool) []Result {
+	wantArtifact bool, project string) []Result {
 	for i := range rows {
 		flags := splitFlags(rows[i].Penalty)
 		// A question that asks for the artifact shape gets the artifact dampening
@@ -309,6 +318,12 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 			flags = withoutFlag(flags, note.ClassArtifact)
 		}
 		mult := note.Multiplier(flags)
+		// The session's project: a note it does not match is dampened, mildly, which
+		// is the session's own cards' lift (note.ProjectMismatch). Below 1.0, so the
+		// clamp that follows keeps it a demotion on a negative score too.
+		if project != "" && !strings.EqualFold(rows[i].project, project) {
+			mult *= note.ProjectMismatch
+		}
 
 		// Age, folded into the same multiplier. Multiplicative for the reason the
 		// classes are: a note that is both stale and a fragment is demoted twice
@@ -386,8 +401,8 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 // query — that gap, not a ranking preference, is the mechanism. A query under
 // three terms has no triple regardless of lex3 and falls through unchanged: the
 // bound `l := j + 1; l < len(terms)` is simply never satisfied.
-func (x *Index) searchFusion(text string, k int, after, before string, lex3, includeArchived bool) (SearchOutcome, error) {
-	out, wonBy, err := x.fusionRanked(text, k, after, before, lex3, includeArchived)
+func (x *Index) searchFusion(text string, k int, after, before string, lex3, includeArchived bool, project string) (SearchOutcome, error) {
+	out, wonBy, err := x.fusionRanked(text, k, after, before, lex3, includeArchived, project)
 	if err != nil {
 		return out, err
 	}
@@ -411,12 +426,12 @@ func (x *Index) searchFusion(text string, k int, after, before string, lex3, inc
 // against 26ms of ranking on the operator's corpus. Ranking is flat in k — the
 // over-fetch window is note.Overfetch regardless — so every bit of that was
 // decorative text for rows nobody would see.
-func (x *Index) fusionRanked(text string, k int, after, before string, lex3, includeArchived bool) (SearchOutcome, map[string]string, error) {
+func (x *Index) fusionRanked(text string, k int, after, before string, lex3, includeArchived bool, project string) (SearchOutcome, map[string]string, error) {
 	terms := dedupeTerms(ftsTokenRe.FindAllString(text, -1))
 	if len(terms) < 2 {
 		// One term has no two-term subset, and the fused ranking for it is just
 		// that term's own. Fall back rather than return nothing.
-		return x.andRanked(text, k, after, before, includeArchived)
+		return x.andRanked(text, k, after, before, includeArchived, project)
 	}
 
 	out := SearchOutcome{Results: []Result{}}
@@ -469,7 +484,7 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3, inc
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
-		note.QueryWantsArtifact(text))
+		note.QueryWantsArtifact(text), project)
 
 	if len(out.Results) == 0 {
 		out.Note = "0 results. No two terms of this query appear together in any one note."
@@ -502,10 +517,11 @@ const rrfDepth = 50
 // lexical arm and says so in the note. A caller that asked for hybrid and got
 // hybrid-minus-one-arm has a worse search; a caller that got an error has none.
 func (x *Index) searchHybrid(text string, k int, after, before string, q Query) (SearchOutcome, error) {
+	project := q.Project
 	// Ranked, not snippeted. This arm is read to rrfDepth for its ranks; the
 	// snippet pass runs once at the end, over the k rows that actually survive
 	// fusion — see fusionRanked for what snippeting all fifty costs.
-	lexical, wonBy, err := x.fusionRanked(text, rrfDepth, after, before, q.Lex3, q.IncludeArchived)
+	lexical, wonBy, err := x.fusionRanked(text, rrfDepth, after, before, q.Lex3, q.IncludeArchived, project)
 	if err != nil {
 		return lexical, err
 	}
@@ -536,7 +552,7 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	dense, denseHidden, denseSuperseded, denseStaged = wallUnserved(dense, q.IncludeArchived)
 	decayLog, decayNow := x.decayClock()
 	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
-		note.QueryWantsArtifact(text))
+		note.QueryWantsArtifact(text), project)
 
 	fused := fuseRRF(lexical.Results, dense)
 	out := SearchOutcome{Results: fused, Matched: len(fused),
@@ -722,7 +738,7 @@ func (x *Index) runMatch(match, after, before string, limit int) ([]Result, erro
 	sql := fmt.Sprintf(`
 		SELECT m.id, m.path,
 		       bm25(docs, %v, %v, %v, %v) AS s,
-		       m.flags, m.captured, m.captured_src, m.updated, m.created
+		       m.flags, m.captured, m.captured_src, m.updated, m.created, m.project
 		FROM docs JOIN docmeta m ON m.id = docs.rowid
 		WHERE docs MATCH ?
 		  AND (? = '' OR m.captured >= ?)
@@ -743,7 +759,7 @@ func (x *Index) runMatch(match, after, before string, limit int) ([]Result, erro
 		var bm float64
 		var flags, captured, capturedSrc, updated, created string
 		if err := rows.Scan(&r.rowid, &r.Path, &bm, &flags, &captured, &capturedSrc,
-			&updated, &created); err != nil {
+			&updated, &created, &r.project); err != nil {
 			return nil, err
 		}
 		r.Score = -bm

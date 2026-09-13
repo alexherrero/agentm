@@ -409,6 +409,9 @@ func cmdSearch(args []string) error {
 	lex3 := fs.Bool("lex3", false,
 		"widen `fusion`/`hybrid`'s lexical arm from 2-term to 2- and 3-term subsets "+
 			"(task 4, column `+lex3`); false reproduces `lexical-fusion`/`+question` exactly")
+	project := fs.String("project", "",
+		"the session's vault project: a note whose project: names another one, or none, ranks a little "+
+			"lower (agentm-vault, projects and tasks); empty ranks exactly as before")
 	includeArchived := fs.Bool("include-archived", false,
 		"also return notes whose lifecycle is archived or superseded — the contract's explicit archive query; "+
 			"off by default, both have left everyday search while staying on disk (a superseded note comes back demoted beside its successor)")
@@ -441,7 +444,7 @@ func cmdSearch(args []string) error {
 	}
 
 	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode, Lex3: *lex3,
-		IncludeArchived: *includeArchived}
+		IncludeArchived: *includeArchived, Project: *project}
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if innerMode == index.ModeHybrid {

@@ -135,6 +135,8 @@ DAEMON_BIN = "agentmd"
 # ever passes it. One place to flip back to "and" if the installed rule ever
 # needs reverting.
 DAEMON_SEARCH_MODE = "hybrid"
+# What Go's flag package says to a binary built before `-project` existed.
+_FLAG_UNKNOWN_PROJECT = "flag provided but not defined: -project"
 
 # The Go index's own words for "the dense arm was asked for but had nothing to
 # embed with" (daemon/internal/index/search.go, searchHybrid) — matched so a
@@ -301,10 +303,20 @@ _DEMOTED_LIFECYCLES = frozenset({"dormant", "archived", "superseded"})
 # states this reaches are the ones recall actually serves.
 _STATUS_DEMOTION = 0.60
 _DEMOTED_STATUSES = frozenset({"unfiled", "expired"})
+# The session's project (agentm-vault plan 09). When the session is bound, a card
+# whose `project:` names another project, or none, takes this weight, so the
+# session's own cards lift 1.25x against an equal card. Mirrors the daemon's
+# note.ProjectMismatch; a lift is spelled as a dampening because nothing here
+# multiplies above 1.0.
+_PROJECT_MISMATCH = 0.80
 
 
 def _status_of(fm: dict) -> str:
     return str(fm.get("status") or "").strip().strip("'\"").lower()
+
+
+def _project_of(fm: dict) -> str:
+    return str(fm.get("project") or "").strip().strip("'\"").lower()
 
 
 def _lifecycle_of(fm: dict) -> str:
@@ -945,6 +957,39 @@ def _read_prompt_from_stdin(stdin=sys.stdin) -> str | None:
     return prompt
 
 
+def _read_prompt_payload(stdin=sys.stdin) -> tuple[str | None, str | None]:
+    """The prompt and the session's directory from a UserPromptSubmit payload.
+
+    The directory binds the session's project (agentm-vault plan 09); a payload
+    without one binds nothing. Soft-fails to `(None, None)`, like
+    `_read_prompt_from_stdin`.
+    """
+    try:
+        raw = stdin.read()
+    except Exception:  # pragma: no cover — stdin EOF or similar
+        return None, None
+    try:
+        payload = json.loads(raw) if raw and raw.strip() else None
+    except json.JSONDecodeError:
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    prompt, cwd = payload.get("prompt"), payload.get("cwd")
+    return (prompt if isinstance(prompt, str) else None,
+            cwd if isinstance(cwd, str) and cwd.strip() else None)
+
+
+def _session_project(cwd: str | None) -> str | None:
+    """The vault project the session in `cwd` is bound to, or None."""
+    if not cwd:
+        return None
+    try:
+        import session_binding  # same skill dir
+    except ImportError:
+        return None
+    return session_binding.read_binding(cwd).project
+
+
 def _machine_prompt_marker(prompt: str) -> str | None:
     """Return the marker naming `prompt` as machine-generated, or None.
 
@@ -1453,6 +1498,7 @@ def query(
     deadline: float | None = None,
     filter_expr: str | None = None,
     status: dict | None = None,
+    project: str | None = None,
     stderr=sys.stderr,
 ) -> list[dict]:
     """Run the in-process recall engine.
@@ -1600,6 +1646,10 @@ def query(
         status_demoted = status_value in _DEMOTED_STATUSES
         if status_demoted:
             decay_score *= _STATUS_DEMOTION
+        # The session's project: every card it does not match takes the mild
+        # dampening that is the session's own cards' lift (agentm-vault plan 09).
+        if project and _project_of(fm) != project.strip().lower():
+            decay_score *= _PROJECT_MISMATCH
 
         combined = fused[path] * decay_score
 
@@ -2154,6 +2204,7 @@ def _daemon_search(
     daemon_vault: str | None = None,
     daemon_index: str | None = None,
     drops: dict | None = None,
+    project: str | None = None,
 ) -> list[dict] | None:
     """Ask the agentm daemon for the top-k entries relevant to `query_text`.
 
@@ -2228,6 +2279,10 @@ def _daemon_search(
         # The daemon walls `lifecycle: archived` itself; the explicit archive
         # query lifts its wall and this function's own reading together.
         argv.append("-include-archived")
+    if project:
+        # The session's project, which the daemon ranks against (agentm-vault
+        # plan 09). Before the terms, because the flag parser stops at the first.
+        argv += ["-project", project]
     argv.append(search_terms)
 
     started = time.monotonic()
@@ -2246,6 +2301,18 @@ def _daemon_search(
         return _skip(f"{DAEMON_BIN} could not be run ({type(e).__name__})")
     elapsed_ms = (time.monotonic() - started) * 1000.0
 
+    if proc.returncode != 0 and project and _FLAG_UNKNOWN_PROJECT in (proc.stderr or ""):
+        # An installed binary older than the flag refuses it. Ask it again
+        # without the flag rather than send every prompt of a bound session to
+        # the in-process engine until the binary is rebuilt.
+        retry = list(argv)
+        at = retry.index("-project")
+        del retry[at:at + 2]
+        try:
+            proc = subprocess.run(retry, capture_output=True, text=True, timeout=budget_ms / 1000.0)
+        except (subprocess.TimeoutExpired, OSError) as e:  # noqa: BLE001 — never block the prompt
+            return _skip(f"{DAEMON_BIN} could not be asked again without -project ({type(e).__name__})")
+        elapsed_ms = (time.monotonic() - started) * 1000.0
     if proc.returncode != 0:
         detail = (proc.stderr or "").strip().splitlines()
         return _skip(
@@ -2390,6 +2457,7 @@ def prompt_submit(
     token_budget: int = DEFAULT_TOKEN_BUDGET,
     include_inbox: bool = False,
     include_archive: bool = False,
+    project: str | None = None,
     stdout=sys.stdout,
     stderr=sys.stderr,
 ) -> int:
@@ -2481,6 +2549,7 @@ def prompt_submit(
                     budget_ms=min(DAEMON_BUDGET_MS, remaining_ms),
                     status=daemon_status,
                     drops=daemon_drops,
+                    project=project,
                 )
             except Exception as e:  # noqa: BLE001 — never block the prompt
                 daemon_status.update(
@@ -2507,6 +2576,7 @@ def prompt_submit(
                     include_archive=include_archive,
                     deadline=deadline,
                     status=recall_status,
+                    project=project,
                     stderr=stderr,
                 )
                 recall_status.setdefault("engine", "in-process")
@@ -2930,10 +3000,11 @@ def main(argv: list[str] | None = None) -> int:
             token_budget=_resolve_token_budget(args.token_budget),
         )
     if args.cmd == "prompt-submit":
-        prompt = _read_prompt_from_stdin()
+        prompt, cwd = _read_prompt_payload()
         return prompt_submit(
             vault=vault,
             prompt=prompt,
+            project=_session_project(cwd),
             budget_ms=_resolve_budget_ms(args.budget_ms, PROMPT_SUBMIT_BUDGET_MS),
             token_budget=_resolve_token_budget(args.token_budget),
         )

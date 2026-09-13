@@ -15,10 +15,10 @@ host. So every failure mode below asserts exit 0 alongside whatever else it
 checks.
 
 The event differs from the sibling's. recall.py's prompt-submit path reads
-exactly one field off the payload — `prompt` (`_read_prompt_from_stdin`) —
-where SessionStart reads session_id / cwd / transcript_path / source. Every
-other field is ignored, so a payload with no `prompt` is the graceful-skip
-trigger here, not a payload with no session_id.
+two fields off the payload — `prompt`, and `cwd` for the session's project
+binding (`_read_prompt_payload`) — where SessionStart reads session_id / cwd /
+transcript_path / source. Every other field is ignored, so a payload with no
+`prompt` is the graceful-skip trigger here, not a payload with no session_id.
 
 Both state modes are covered via the vault axis: vault-present (recall emits)
 vs no-vault / repo-local (recall silent, exit 0).
