@@ -16,7 +16,7 @@ model call:
   sentence, and nothing else — the deep pass writes the rest;
 - every note's frontmatter in the card's order;
 - counter slugs renamed to their title, or to a name grown from their text, with
-  the links to them rewritten.
+  the links to them rewritten in the agent's notes and the calendar.
 
 It never writes `enriched_by` or `enriched_at`. The nightly enrichment decides
 what it owes from those two stamps and from a key over the whole file, so this
@@ -60,9 +60,11 @@ _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}")
 _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$")
 _IGNORABLE = {".DS_Store", "Icon\r", "Icon", ".gitkeep", cs.MARKER_NAME}
 _SKIP_DIRS = {".git", ".obsidian", ".trash"}
-# Where a rename may rewrite a link: the agent's half, the shared calendar, and
-# the project this plan works under. A link anywhere else is listed, not written.
-_LINK_SPACES = ("Agent/", "Calendar/", "Projects/agentm/")
+# Where a rename may rewrite a link: the agent's half and the shared calendar.
+# The project space holds records of past measurements and manifests, whose
+# paths say what was measured under the old names; a link there, or anywhere
+# else, is listed and not written.
+_LINK_SPACES = ("Agent/", "Calendar/")
 _LIST_KEYS = ("touched", "related", "derived_from", "supersedes", "superseded_by")
 _WS_RUN = re.compile(r"[ \t\f\v]+")
 
@@ -308,10 +310,16 @@ def plan_note(vault: Path, path: Path, contract: Contract, git: Git):
 
 # ── links ─────────────────────────────────────────────────────────────────────
 
-def rewrite_links(text: str, renames: dict) -> tuple[str, int]:
+def rewrite_links(text: str, renames: dict, classes: "dict | None" = None) -> tuple[str, int]:
     """`text` with every link to a renamed note pointed at its new name: wikilinks,
-    paths ending in the note's file name, and the items of the frontmatter lists
-    that name notes by stem."""
+    the items of the frontmatter lists that name notes by stem, and paths.
+
+    A path is rewritten only when it names the renamed note itself: under
+    `memory/<class>/`, with the note's own class (`classes` maps a stem to it; a
+    caller without one accepts any class directory). A path elsewhere that ends
+    in the same file name is a different file and keeps its name: a card's
+    `derived_from` naming the inbox capture it was mined from, or a class
+    directory from before the migration."""
     if not renames:
         return text, 0
     alt = "|".join(re.escape(o) for o in sorted(renames, key=len, reverse=True))
@@ -324,11 +332,14 @@ def rewrite_links(text: str, renames: dict) -> tuple[str, int]:
 
     def path(m):
         nonlocal count
+        cls, stem = m.group(1), m.group(2)
+        if classes is not None and classes.get(stem) != cls:
+            return m.group(0)
         count += 1
-        return "/" + renames[m.group(1)] + ".md"
+        return f"memory/{cls}/{renames[stem]}.md"
 
     text = re.sub(r"\[\[(" + alt + r")((?:#|\|)[^\]]*)?\]\]", wiki, text)
-    text = re.sub(r"/(" + alt + r")\.md\b", path, text)
+    text = re.sub(r"memory/([a-z]+)/(" + alt + r")\.md\b", path, text)
     parsed = cs.split_note(text)
     if parsed:
         entries, rest = parsed
@@ -434,6 +445,7 @@ def build_plan(vault: Path, memory_root: Path, contract: Contract, git: Git,
     # Renames: a counter slug takes its title, or a name grown from its text.
     taken = {p.stem.lower() for p in _vault_notes(vault)}
     renames: dict = {}
+    classes: dict = {}
     unresolved: list = []
     for rel, facts in sorted(facts_by_rel.items()):
         path = Path(rel)
@@ -448,6 +460,7 @@ def build_plan(vault: Path, memory_root: Path, contract: Contract, git: Git,
             continue
         taken.add(target.lower())
         renames[path.stem] = target
+        classes[path.stem] = path.parent.name
         new_rel = (path.parent / f"{target}.md").as_posix()
         if facts.get("has_slug"):
             entries, rest = cs.split_note(text)
@@ -470,7 +483,7 @@ def build_plan(vault: Path, memory_root: Path, contract: Contract, git: Git,
             rel = p.relative_to(vault).as_posix()
             current = contents.get(rel)
             text = current if current is not None else p.read_text(encoding="utf-8")
-            new_text, n = rewrite_links(text, renames)
+            new_text, n = rewrite_links(text, renames, classes)
             if not n:
                 continue
             occurrences += n

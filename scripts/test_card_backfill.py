@@ -84,6 +84,7 @@ trust: trusted
 created: 2026-08-01
 updated: 2026-08-02
 slug: never-judged-by-a-model-1
+derived_from: [personal/_inbox/never-judged-by-a-model-1.md]
 enriched_by: {PV}
 enriched_at: "2026-09-12T09:00:00Z"
 rules_hash: {RULES}
@@ -276,14 +277,17 @@ class TheDryRun(_Vault):
         self.assertEqual((c["empty_tags"], c["entities_to_touched"], c["renames"]), (1, 1, 2))
         self.assertEqual(plan["renames"], {"never-judged-by-a-model-1": "staleness-computed-from-input-hashes",
                                            "twin~dup": "twin-note"})
-        self.assertEqual(c["links"]["files"], 2)
-        self.assertEqual([i["rel"] for i in c["links"]["not_written"]], ["Personal/notes/mine.md"])
+        # The calendar's link is rewritten; the project space's record and a
+        # personal note keep the names they were written with.
+        self.assertEqual(c["links"]["files"], 1)
+        self.assertEqual([i["rel"] for i in c["links"]["not_written"]],
+                         ["Personal/notes/mine.md", "Projects/agentm/_harness/log.md"])
         self.assertEqual(c["refusals"], {"stored": 2, "standing": 1, "reproduced": 1, "rerecord": 1})
         self.assertEqual((c["sidecars"], len(c["probes"]), c["titleless_judged"], c["titleless_unjudged"]),
                          (1, 1, [], 1))
         self.assertEqual(sorted(plan["empty_dirs"]),
                          ["Agent/memory/crystallized/good", "Agent/memory/crystallized/private"])
-        self.assertEqual(c["files"], len(plan["notes"]) + 2)
+        self.assertEqual(c["files"], len(plan["notes"]) + 1)
         self.assertNotIn(f"{S}/in-shape.md", [n["rel"] for n in plan["notes"]])
 
     def test_it_never_writes_an_enrichment_stamp_and_a_record_never_gains_card_fields(self):
@@ -331,13 +335,19 @@ class TheDryRun(_Vault):
                       plan["findings"])
 
     def test_links_are_rewritten_in_every_form_a_note_is_named(self):
-        text = ("---\nrelated: [\"[[old-1]]\"]\ntouched: [old-1, other]\nderived_from: [memory/semantic/old-1.md]\n---\n"
-                "See [[old-1]], [[old-1|this]], [[old-1#Part]] and memory/semantic/old-1.md; old-1 in prose stays.\n")
-        out, n = cb.rewrite_links(text, {"old-1": "new-name"})
+        text = ("---\nrelated: [\"[[old-1]]\"]\ntouched: [old-1, other]\n"
+                "derived_from: [memory/semantic/old-1.md, personal/_inbox/old-1.md]\n---\n"
+                "See [[old-1]], [[old-1|this]], [[old-1#Part]] and Agent/memory/semantic/old-1.md; "
+                "old-1 in prose stays, and so does memory/idea/old-1.md.\n")
+        out, n = cb.rewrite_links(text, {"old-1": "new-name"}, {"old-1": "semantic"})
         self.assertEqual(n, 7)  # three in the frontmatter lists, three wikilinks, one body path
         self.assertNotIn("[[old-1", out)
         self.assertIn("touched: [new-name, other]", out)
-        self.assertIn("derived_from: [memory/semantic/new-name.md]", out)
+        self.assertIn("Agent/memory/semantic/new-name.md", out)
+        # A path in another directory names a different file: the inbox capture a
+        # card was mined from, or a class directory from before the migration.
+        self.assertIn("derived_from: [memory/semantic/new-name.md, personal/_inbox/old-1.md]", out)
+        self.assertIn("so does memory/idea/old-1.md", out)
         self.assertIn("old-1 in prose stays", out)
 
 
@@ -353,7 +363,10 @@ class TheAppliedRun(_Vault):
         self.assertIn("slug: staleness-computed-from-input-hashes", self.read(new_rel))
         self.assertTrue((self.vault / S / "twin-note.md").exists())
         self.assertIn("[[staleness-computed-from-input-hashes|a note]]", self.read("Calendar/2026/2026-09-05.md"))
-        self.assertIn("semantic/staleness-computed-from-input-hashes.md", self.read("Projects/agentm/_harness/log.md"))
+        # The project space's record keeps the name it was written with, and the
+        # renamed card's provenance still names the inbox file it came from.
+        self.assertEqual(self.read("Projects/agentm/_harness/log.md"), FIXTURE["Projects/agentm/_harness/log.md"])
+        self.assertIn("derived_from: [personal/_inbox/never-judged-by-a-model-1.md]", self.read(new_rel))
         self.assertEqual(self.read("Personal/notes/mine.md"), FIXTURE["Personal/notes/mine.md"])
 
         rows = cb._standing_refusals(self.state / "enrich-refusals.jsonl")
