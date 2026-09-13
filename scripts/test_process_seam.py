@@ -266,6 +266,35 @@ class StatePath(_SeamFixture):
         seam.state_path(self._ctx(), "plan")
         self.assertFalse((self.harness / "active-plan").exists())
 
+    def test_tracker_resolves_beside_the_pair(self) -> None:
+        # agentm-vault plan 09: the tracker sits with the pair it describes.
+        self._local_mode()
+        self.assertEqual(seam.state_path(self._ctx(), "tracker"), self.harness / "tracker.md")
+        self.assertEqual(
+            seam.state_path(self._ctx(plan="foo"), "tracker"), self.harness / "tracker-foo.md"
+        )
+
+    def test_task_layout_resolves_on_a_synced_vault(self) -> None:
+        # agentm-vault plan 09: a task at tasks/<slug>/ wins over the flat pair,
+        # and a slug with no task still resolves to the flat pair.
+        from vault_backend_stub import VaultBackend
+
+        task = self.vault / "desk/projects" / _SLUG / "tasks" / "foo"
+        task.mkdir(parents=True)
+        (task / "plan.md").write_text("# plan\n", encoding="utf-8")
+        self._set_vault()
+        with unittest.mock.patch(
+            "backend_selection.select_backend", return_value=VaultBackend(root=self.vault)
+        ):
+            for which in ("plan", "progress", "tracker"):
+                with self.subTest(which=which):
+                    self.assertEqual(
+                        seam.state_path(self._ctx(plan="foo"), which), task / f"{which}.md"
+                    )
+            self.assertEqual(
+                seam.state_path(self._ctx(plan="bar"), "plan"), self.vault_harness / "PLAN-bar.md"
+            )
+
 
 class SeamIsReadOnly(_SeamFixture):
     """The load-bearing read-only proof — LC-2 + the V5-4 "seam is read-only" claim.

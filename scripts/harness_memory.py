@@ -1264,30 +1264,110 @@ def _plan_pair(slug: Optional[str]) -> tuple[str, str]:
     return (f"{_PLAN_PREFIX}{slug}.md", f"{_PROGRESS_PREFIX}{slug}.md")
 
 
+_TRACKER_PREFIX = "tracker-"
+_SINGLETON_TRACKER = "tracker.md"
+# The task layout (agentm-vault § Projects and tasks): a task is a directory
+# under its project, `tasks/<slug>/`, holding `plan.md`, `progress.md` and
+# `tracker.md`. The migration (agentm-vault plan 10) moves every flat pair into
+# one; until it has, the resolver reads both and the flat pair is the fallback.
+_TASKS_DIRNAME = "tasks"
+_TASK_FILES = ("plan.md", "progress.md", "tracker.md")
+
+
+def _tracker_name(slug: Optional[str]) -> str:
+    """The tracker beside a flat pair: `tracker-<slug>.md`, or `tracker.md` beside
+    the singleton. It sits with the pair it describes, so it moves with them."""
+    return _SINGLETON_TRACKER if slug is None else f"{_TRACKER_PREFIX}{slug}.md"
+
+
+class ActivePlan(tuple):
+    """The active `(plan, progress)` pair, with the tracker beside it.
+
+    It unpacks and compares as the pair `resolve_active_plan` has always
+    returned, so every caller written against that pair — the process seam, the
+    `resolve-active-plan` verb, and crickets through both — reads what it read
+    before. The tracker, the layout and the slug ride along as attributes.
+
+    `layout` is ``"flat"`` for `PLAN-<slug>.md` beside `progress-<slug>.md` in
+    `_harness/`, where all three names are bare filenames, and ``"task"`` for
+    `tasks/<slug>/`, where all three are absolute paths. Joining an absolute path
+    onto `harness_state_dir(resolution)` keeps it, so `state_dir / name` composes
+    both; `active_plan_paths` does that for a caller.
+    """
+
+    def __new__(cls, plan: str, progress: str, *, tracker: str, layout: str,
+                slug: Optional[str]) -> "ActivePlan":
+        self = super().__new__(cls, (plan, progress))
+        self.tracker = tracker
+        self.layout = layout
+        self.slug = slug
+        return self
+
+    def __repr__(self) -> str:
+        return (f"ActivePlan(plan={self[0]!r}, progress={self[1]!r}, "
+                f"tracker={self.tracker!r}, layout={self.layout!r})")
+
+
+def _flat_plan(slug: Optional[str]) -> ActivePlan:
+    plan, progress = _plan_pair(slug)
+    return ActivePlan(plan, progress, tracker=_tracker_name(slug), layout="flat", slug=slug)
+
+
+def _task_plan(resolution: dict, slug: Optional[str]) -> Optional[ActivePlan]:
+    """The task-layout plan for `slug`, or None when that layout has none.
+
+    Looked up only on a synced backend: `tasks/` is the vault's projects shape,
+    and a device-local `.harness/` has no project directory to hold it. A task
+    whose `plan.md` is absent or blank is not there, the same rule the marker
+    applies to `PLAN-<slug>.md`. Read through the backend verb, like every other
+    state read here."""
+    if slug is None:
+        return None
+    target = _state_backend_target(resolution)
+    if target is None:
+        return None
+    backend, _harness_loc, backend_root = target
+    task_loc = resolution["project_locator"].child(_TASKS_DIRNAME, slug)
+    try:
+        body = backend.read(task_loc.child("plan.md"))
+    except Exception:  # absent, unreadable or refused: not a task in this layout
+        return None
+    if not (body or "").strip():
+        return None
+    plan, progress, tracker = (
+        str(backend_root.joinpath(*task_loc.child(name).parts)) for name in _TASK_FILES
+    )
+    return ActivePlan(plan, progress, tracker=tracker, layout="task", slug=slug)
+
+
 def resolve_active_plan(
     resolution: dict, *, plan_arg: Optional[str] = None
-) -> tuple[str, str]:
-    """Resolve which `(plan_filename, progress_filename)` pair this session owns.
+) -> ActivePlan:
+    """Resolve which plan this session owns, in either layout.
 
     Precedence — first hit wins:
 
       1. **explicit `plan_arg`** — the caller named a plan (e.g. `/work foo`).
          Normalized, so "foo" / "PLAN-foo.md" / "PLAN-foo" all map to the same
          pair; an arg that normalizes to the singleton ("PLAN" / "PLAN.md" / "")
-         yields the unnamed pair. No existence check — naming a plan explicitly
-         is the caller's deliberate choice. Raises ``ValueError`` on a slug that
-         is not a single path component (traversal guard).
+         yields the unnamed pair. No existence check on the flat pair — naming a
+         plan explicitly is the caller's deliberate choice. Raises ``ValueError``
+         on a slug that is not a single path component (traversal guard).
       2. **worktree-local `<project_root>/.harness/active-plan`** — the sticky
          binding written by the worktree-spawn helper (V5-10 component 2). If the
-         file is **present**, it MUST resolve to a present, non-empty
-         `PLAN-<name>.md` in the resolved `_harness/`; otherwise ``ActivePlanError``.
-         A present-but-blank, malformed, or dangling marker never degrades to the
-         singleton (Risk #7).
+         file is **present**, it MUST resolve to a present, non-empty plan —
+         `tasks/<name>/plan.md` or `PLAN-<name>.md` in the resolved `_harness/`;
+         otherwise ``ActivePlanError``. A present-but-blank, malformed, or
+         dangling marker never degrades to the singleton (Risk #7).
       3. **legacy singleton** — no arg, no marker file → ``("PLAN.md", "progress.md")``.
 
-    Reader only: never writes the marker (component 2 owns the writer). Returns a
-    `(plan, progress)` tuple of bare filenames — resolve to an absolute path via
-    ``harness_state_dir(resolution)`` or read with ``read_state_file``.
+    Within a slug, a task at `tasks/<slug>/plan.md` on a synced backend wins, and
+    the flat `PLAN-<slug>.md` pair is the fallback (agentm-vault plan 09).
+
+    Reader only: never writes the marker (component 2 owns the writer). Returns an
+    ``ActivePlan``: the `(plan, progress)` pair — bare filenames in the flat
+    layout, absolute paths in the task layout — with `.tracker` beside it. Compose
+    paths with ``active_plan_paths``, or read a flat name with ``read_state_file``.
     """
     # 1. Explicit arg — highest precedence, the caller's deliberate choice.
     if plan_arg is not None:
@@ -1297,7 +1377,7 @@ def resolve_active_plan(
                 f"unsafe plan name {plan_arg!r}: a plan slug must be a single "
                 f"path component (no '/', '\\', or '..')."
             )
-        return _plan_pair(slug)
+        return _task_plan(resolution, slug) or _flat_plan(slug)
 
     # 2. Worktree-local sticky binding. Present ⇒ must resolve, else raise loud.
     project_root = Path(resolution.get("project_root") or Path.cwd())
@@ -1312,19 +1392,42 @@ def resolve_active_plan(
                 f"(V5-10 Risk #7). Write a plan name into the marker, or remove "
                 f"it to use PLAN.md."
             )
-        plan_name, progress_name = _plan_pair(slug)
+        task = _task_plan(resolution, slug)
+        if task is not None:
+            return task
+        active = _flat_plan(slug)
+        plan_name = active[0]
         if not read_state_file(resolution, plan_name).strip():
             raise ActivePlanError(
                 f".harness/active-plan binds this session to {plan_name!r}, but "
                 f"that plan is absent or empty in the resolved _harness/ "
-                f"(slug={resolution.get('slug')!r}). Refusing to fall back to the "
+                f"(slug={resolution.get('slug')!r}), and there is no "
+                f"tasks/{slug}/plan.md either. Refusing to fall back to the "
                 f"singleton PLAN.md — that would mis-bind this worker to another "
                 f"plan. Restore {plan_name!r} or fix the marker."
             )
-        return (plan_name, progress_name)
+        return active
 
     # 3. Legacy singleton default — no arg, no marker.
-    return _SINGLETON_PLAN
+    return _flat_plan(None)
+
+
+def active_plan_paths(
+    resolution: dict, *, plan_arg: Optional[str] = None
+) -> Optional[tuple[Path, Path, Path]]:
+    """The active plan's `(plan, progress, tracker)` as paths.
+
+    `resolve_active_plan` composed with `harness_state_dir`: a flat name joins the
+    resolved `_harness/` (or the device-local `.harness/`), and a task-layout path
+    is already absolute. None when the project has no state directory to resolve
+    against. Raises whatever `resolve_active_plan` raises, before that check, so a
+    dangling marker is loud even then.
+    """
+    active = resolve_active_plan(resolution, plan_arg=plan_arg)
+    state_dir = harness_state_dir(resolution)
+    if state_dir is None:
+        return None
+    return (state_dir / active[0], state_dir / active[1], state_dir / active.tracker)
 
 
 # -----------------------------------------------------------------------------
@@ -1995,6 +2098,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--project-root", default=None,
         help="path to project root (default: cwd)",
     )
+    p_rap.add_argument(
+        "--with-tracker", action="store_true",
+        help="append the tracker path as a third tab-separated field: "
+             "tasks/<slug>/tracker.md for a task, tracker-<slug>.md beside a "
+             "flat pair (agentm-vault plan 09)",
+    )
 
     # list-plans (V5-5 task 3): enumerate active plan files + active-plan binding
     # for a project root — used by the harness-context-session-start hook so plan
@@ -2177,7 +2286,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         # V5-10 part 1: emit the active (plan, progress) on-disk path pair as a
         # single tab-separated line — "<plan_path>\t<progress_path>". Honors the
         # effective state mode (vault vs local) via harness_state_dir, the same
-        # dir read_state_file / write_state_file target. Exit codes:
+        # dir read_state_file / write_state_file target, and a task directory
+        # when one exists (agentm-vault plan 09). `--with-tracker` appends the
+        # tracker as a third field; without it the line is the pair, unchanged.
+        # Exit codes:
         #   0 — resolved; pair printed.
         #   1 — state_dir is None (project_root absent from resolution): dead code
         #       post-V5-3 (harness_state_dir always resolves when project_root set).
@@ -2186,17 +2298,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
         resolution = resolve_project({"cwd": root})
         try:
-            plan_name, progress_name = resolve_active_plan(
-                resolution, plan_arg=args.plan
-            )
+            paths = active_plan_paths(resolution, plan_arg=args.plan)
         except (ActivePlanError, ValueError) as exc:
             print(f"[harness_memory] {exc}", file=sys.stderr)
             return 2
-        state_dir = harness_state_dir(resolution)
-        if state_dir is None:
+        if paths is None:
             print("", end="")
             return 1
-        print(f"{state_dir / plan_name}\t{state_dir / progress_name}")
+        fields = paths if args.with_tracker else paths[:2]
+        print("\t".join(str(p) for p in fields))
         return 0
 
     if args.cmd == "list-plans":
