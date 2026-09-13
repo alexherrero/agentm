@@ -90,6 +90,20 @@ class ShapeGateTests(unittest.TestCase):
         rc, _text = self._check()
         self.assertEqual(rc, 0)
 
+    def test_home_md_is_named_once_the_maps_data_run_is_done(self):
+        # The retired map is tolerated until the maps data run (agentm-vault
+        # plan 07) writes its marker; after that it cannot come back.
+        mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
+        (self.root / "Home.md").write_text("# Home\n", encoding="utf-8")
+        (self.root / "memory" / ".maps-and-root-notes-complete").write_text("run m\n", encoding="utf-8")
+        rc, text = self._check()
+        self.assertEqual(rc, 1, text)
+        self.assertIn("agent/ holds a loose file: Home.md", text)
+        self.assertNotIn(".maps-and-root-notes-complete", text, "the data run's own marker was named")
+        (self.root / "Home.md").unlink()
+        rc, text = self._check()
+        self.assertEqual(rc, 0, text)
+
     def test_a_missing_standards_file_is_named(self):
         mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
         (self.vault / "standards" / "moc-standards.md").unlink()

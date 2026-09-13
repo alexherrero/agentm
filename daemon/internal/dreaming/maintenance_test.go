@@ -422,12 +422,15 @@ func TestThePassCarriesTheChecksAndRemembersThem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Two notes by the time the checks run: the one written here, and the
-	// memory map the pass wrote over it (agentm-vault plan 07).
-	if _, err := os.Stat(filepath.Join(root, "memory/mocs/moc-memory.md")); err != nil {
-		t.Errorf("the pass writes the memory map over a typed corpus: %v", err)
+	// Three notes by the time the checks run: the one written here, the memory
+	// map the pass wrote over it, and the root map over that (agentm-vault
+	// plan 07).
+	for _, m := range []string{"memory/mocs/moc-memory.md", "memory/mocs/moc-root.md"} {
+		if _, err := os.Stat(filepath.Join(root, m)); err != nil {
+			t.Errorf("the pass writes %s over a typed corpus: %v", m, err)
+		}
 	}
-	if rep.Vocabulary.Considered != 2 || rep.Trends.Week != 2 || !rep.Reclassify.Ran || rep.Reclassify.Reason != "first pass under a recorded version" {
+	if rep.Vocabulary.Considered != 3 || rep.Trends.Week != 3 || !rep.Reclassify.Ran || rep.Reclassify.Reason != "first pass under a recorded version" {
 		t.Errorf("checks on the report: vocab=%+v trends week=%d reclassify=%+v", rep.Vocabulary, rep.Trends.Week, rep.Reclassify)
 	}
 	st, _ := LoadState(cfg.EngineStateDir)

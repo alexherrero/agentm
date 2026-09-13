@@ -239,14 +239,13 @@ def render(entries: list, *, created: str, today: str, proposals: "dict | None" 
         f"created: {created}",
         f"updated: {today}",
         "tags: [moc, needs-review]",
-        "group: memory",
         f"slug: {MOC_SLUG}",
         "generated_by: needs_review.py",
         "---",
         "",
         "# Needs review",
         "",
-        "[[Home]]",
+        "[[moc-root]]",
         "",
         f"{len(entries)} note(s) waiting for a judgment. Generated from the notes' own "
         "frontmatter — `filing_confidence`, `status`, `review_flags` — not edited by hand: "

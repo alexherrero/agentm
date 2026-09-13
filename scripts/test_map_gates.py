@@ -162,5 +162,102 @@ class MocsShape(_Memory):
         self.assertIn("carries both `type` and `kind`", out)
 
 
+roots = _load("check-root-notes")
+
+INDEX = ("# Vault\n\n| space | what it holds | authority |\n|---|---|---|\n"
+         "| `Agent/` | memory | FRIDAY writes freely |\n\nFRIDAY's own entry point is [[moc-root]].\n")
+
+
+class RootNotes(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name)
+        (self.vault / ".obsidian").mkdir()
+        self.root = self.vault / "Agent"
+        (self.root / "memory" / "mocs").mkdir(parents=True)
+
+    def write(self, rel: str, text: str) -> Path:
+        p = self.vault / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def retired_shape(self):
+        self.write("index.md", INDEX)
+        self.write("Agent/memory/mocs/moc-root.md", "# root\n")
+        self.write("Projects/index.md", "Lands as one revertible commit. See [[../index|Filing]].\n")
+        self.write("Projects/agentm/decisions/scan.md", "| 6 | our wiki + [[moc-root\\|Home]] MOC | core |\n")
+        self.write("Agent/memory/semantic/blog-author.md", "- [[moc-root|Home]] — vault map.\n")
+
+    def data_run_done(self):
+        ms.marker_path(self.root).write_text("run m\n", encoding="utf-8")
+
+    def gate(self):
+        buf = io.StringIO()
+        return roots.check(self.root, out=buf), buf.getvalue()
+
+    def test_the_retired_shape_passes(self):
+        self.retired_shape()
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("clean", out)
+
+    def test_the_retired_notes_on_disk_fail(self):
+        self.retired_shape()
+        self.write("Agent/Home.md", "# Home\n")
+        self.write("Filing.md", "# Filing\n\n| space | authority |\n|---|---|\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("Agent/Home.md: still exists", out)
+        self.assertIn("Filing.md: still exists", out)
+
+    def test_a_link_left_to_either_fails_by_its_text(self):
+        self.retired_shape()
+        self.write("Projects/agentm/pattern/funnel.md",
+                   "- [[Home]] — vault map.\n- see [[Filing]]\n- [[Agent/Home]]\n- [[home|the map]]\n"
+                   "- [the table](../../../Filing.md)\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        for line, link in ((1, "[[Home]]"), (2, "[[Filing]]"), (3, "[[Agent/Home]]"), (4, "[[home|the map]]")):
+            self.assertIn(f"Projects/agentm/pattern/funnel.md:{line}: {link}", out)
+        self.assertIn("Projects/agentm/pattern/funnel.md:5:", out)
+
+    def test_code_a_record_and_your_own_space_are_not_findings(self):
+        self.retired_shape()
+        self.write("Agent/memory/episodic/trace.md",
+                   "- **The `[[Home]]` trap:** a bare link would open the personal note.\n\n"
+                   "```\n[[Filing]]\n```\n")
+        self.write("Projects/agentm/_harness/progress-x.md", "Links [[Home]] and [[Filing]] as written then.\n")
+        self.write("Personal/Home/To Do, Lists, Specs/list.md", "Back to [[Home]].\n")
+        self.write("Projects/other.md", "My list: [[Personal/Home/To Do, Lists, Specs/Home]].\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+
+    def test_the_authority_table_appears_once(self):
+        self.retired_shape()
+        self.write("index.md", INDEX + "\n| space | authority |\n|---|---|\n| `Calendar/` | shared |\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("index.md: carries the write-authority table 2 time(s), not once", out)
+        self.write("index.md", "# Vault\n\nNo table here.\n")
+        _code, out = self.gate()
+        self.assertIn("index.md: carries the write-authority table 0 time(s), not once", out)
+
+    def test_before_the_data_run_it_reports_and_passes(self):
+        self.retired_shape()
+        self.write("Agent/Home.md", "# Home\n")
+        self.write("Projects/p.md", "[[Home]]\n")
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("before the maps data run — 2 finding(s)", out)
+        self.assertIn("pending: Projects/p.md:1: [[Home]] names a retired note", out)
+
+
 if __name__ == "__main__":
     unittest.main()
