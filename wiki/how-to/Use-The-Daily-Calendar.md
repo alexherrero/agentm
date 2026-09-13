@@ -5,7 +5,7 @@
 > **Goal:** Record a diary line or a facet entry for today in the vault's daily register, and correct one you logged wrong on a day that's already closed.
 > **Prereqs:** `Calendar/` exists at the vault root (or beside the memory root in a nested Obsidian layout) — create it once, by hand; the scripts discover the register, they never create it. A resolvable memory root to pass as `--vault`.
 
-`Calendar/YYYY/` is the agent-maintained daily register: one note per day per facet — `meetings`, `correspondence`, `docs`, `diary` — created only on a day that had content for it, plus a generated day index over whatever exists. `diary` is the zero-bar catch-all: anything worth a line that doesn't fit a standing facet lands there. See [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar) for the full design.
+`Calendar/YYYY/` is the agent-maintained daily register: one note per day per facet — `meetings`, `correspondence`, `docs`, `diary` — created only on a day that had content for it, plus a generated day index over whatever exists. `diary` is the zero-bar catch-all: anything worth a line that doesn't fit a standing facet lands there. See [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar) for the original design, and [AgentM Vault § the layout](agentm-vault#the-layout-session-1-decided) for the year map and the bare-date day index's retirement (agentm-vault plan 07).
 
 ## Steps
 
@@ -49,7 +49,7 @@
    "$HOME/.local/bin/agentmdream" run -force -apply
    ```
 
-   Writes `Calendar/YYYY/YYYY-Www-review.md` for every closed ISO week in the trailing eight, and `Calendar/YYYY/YYYY-MM-review.md` for the running month and the one before — sparse or not, only when the text changed. Drop `-apply` to preview what a pass would do without writing anything. The Python rollups CLI (`calendar_rollups.py`) retired with the takeover (filing v2 part 6, 2026-09-05); this is how you generate a review now.
+   Writes `Calendar/YYYY/YYYY-Www-review.md` for every closed ISO week in the trailing eight, and `Calendar/YYYY/YYYY-MM-review.md` for the running month and the one before — sparse or not, only when the text changed. A review's day lines link each day's own facet notes (`[[YYYY-MM-DD-facet|facet]] (N)`), never a bare-date day link. The same pass also keeps `Calendar/moc-calendar-YYYY.md` beside each year with a facet note — that year's facet notes, newest day first under a heading per month — rewritten only when its text changes (agentm-vault plan 07). Drop `-apply` to preview what a pass would do without writing anything. The Python rollups CLI (`calendar_rollups.py`) retired with the takeover (filing v2 part 6, 2026-09-05); this is how you generate a review now.
 
 6. **Correct a day that's already closed.** A plain `append` only ever targets today or a later day you name; naming a day before today with `--day` raises `ClosedDay` rather than silently editing the past:
 
@@ -74,7 +74,9 @@
 
 ## See also
 
-- [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar) — the full design: why the register is discovered rather than created, the rollup cadence, and the facet-promotion rationale.
+- [AgentM Filing v2 § The calendar](agentm-filing-v2#the-calendar) — the original design: why the register is discovered rather than created, the rollup cadence, and the facet-promotion rationale.
+- [AgentM Vault § the layout](agentm-vault#the-layout-session-1-decided) — the year map, and why the bare-date day index retired (agentm-vault plan 07).
 - [Memory daemon reference](Memory-Daemon#lifecycle-sources-and-facets) — the `facets` and calendar `record_kinds` contract vocabulary.
 - [Memory daemon reference § the dreaming binary](Memory-Daemon#the-dreaming-binary-agentmdream) — `agentmdream`'s gate, lock, journal, and its jobs in order, including `calendar`.
+- [CI gates reference § check-calendar-root](CI-Gates) — the shape the calendar root is held to, including the year map.
 - [Vault write protocol](Vault-Write-Protocol) — the lock and atomic-write primitives the calendar's own writer shares with the rest of the vault.

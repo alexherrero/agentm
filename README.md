@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.22.0](https://github.com/alexherrero/agentm/releases/tag/v9.22.0).** Every card takes the same shape: one field order on every class note, written by every writer, held by three gates, and brought to the whole corpus by a backfill that calls no model. The memory root holds two folders and nothing loose, and the overnight run's handoff pack stays out of the checkout.
+> **Latest release: [v9.23.0](https://github.com/alexherrero/agentm/releases/tag/v9.23.0).** The maps are named for what they map. One root map is the agent's entry point and lists every area's map, a memory map lists every type, and each calendar year has a map of its own. `Home.md` retires, `Filing.md` folds into `index.md`, and a calendar review links the notes it was built from.
 
 ---
 

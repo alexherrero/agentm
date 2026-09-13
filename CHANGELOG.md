@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.23.0] - 2026-09-13
+
+The vault-perfection series lands plan 07: the maps are named for what they map, and one root note carries the write-authority table. The dreaming pass writes a root map and a memory map, paginates a type's map inside itself, and writes a map beside each calendar year; `Home.md` retires, `Filing.md` folds into `index.md`, and three gates hold the shape once the maps data run has run ([#620](https://github.com/alexherrero/agentm/pull/620)). A calendar review links the facet notes it is built from instead of the bare-date day index the design dropped, and the migration's ledger step restores what the night owed ([#622](https://github.com/alexherrero/agentm/pull/622)). Plan 06's two code leftovers ride along: `repair_excerpts` stops writing a field the card retired, and the retrieval gate counts the flipped questions it does not name. The stale `_n1_handoff/` pair leaves the repo ([#608](https://github.com/alexherrero/agentm/pull/608)).
+
 ### Added
 
 - **The root map and the memory map.** The dreaming pass writes
