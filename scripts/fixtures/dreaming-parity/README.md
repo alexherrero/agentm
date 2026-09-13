@@ -12,4 +12,9 @@ edit to `expected.json`, reviewed as such.
 
 Edited on purpose, 2026-09-05 (PLAN-superseded-vocabulary): the copies' `after` texts now carry the contract's
 shape — `lifecycle: superseded` + `superseded_by: <canonical>` on the loser, `status` untouched, no loser-side
-`supersedes:` — the one deliberate change to a job's decisions since the recording; the Go parity test reproduces it.
+`supersedes:`; the Go parity test reproduces it.
+
+Edited on purpose, 2026-09-13 (agentm-vault plan 07): a calendar review's day lines link each facet note of the
+day (`- 2026-08-25 — [[2026-08-25-meetings|meetings]] (2), …`) instead of the bare-date day index the design
+dropped, and the reviews say they are generated from the facet notes. A day whose note arrived by a move has no
+day index, so the old link dangled.

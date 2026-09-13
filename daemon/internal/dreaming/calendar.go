@@ -18,9 +18,8 @@ import (
 // remembered to want them: every closed ISO week in the last eight, the
 // running month and the one before. A review carries the period's own last
 // day as `created`/`updated`, so a regeneration on an unchanged period is
-// byte-identical and the pass writes nothing; the Python layer renders the
-// same bytes while the two overlap, which is what the recorded parity
-// fixture asserts.
+// byte-identical and the pass writes nothing. The recorded parity fixture
+// holds the bytes, edited on purpose where a decision has changed.
 
 const (
 	JobCalendar         = "calendar"
@@ -206,12 +205,14 @@ func dayLine(calendarRoot string, facets []string, day time.Time) string {
 	if len(notes) == 0 {
 		return ""
 	}
+	// Each facet note by its link, never the bare-date day index the design dropped.
+	date := day.Format("2006-01-02")
 	var parts []string
 	for _, n := range notes {
 		_, count := phraseOf(n.Path)
-		parts = append(parts, fmt.Sprintf("%s (%d)", n.Facet, count))
+		parts = append(parts, fmt.Sprintf("[[%s-%s|%s]] (%d)", date, n.Facet, n.Facet, count))
 	}
-	return fmt.Sprintf("- [[%s]] — %s", day.Format("2006-01-02"), strings.Join(parts, ", "))
+	return fmt.Sprintf("- %s — %s", date, strings.Join(parts, ", "))
 }
 
 func reviewFrontmatter(kindTag, period, key string, stamp time.Time, extra []string) []string {
@@ -234,7 +235,7 @@ func RenderWeek(calendarRoot string, facets []string, year, week int) string {
 	lines := reviewFrontmatter("week", "week", key, days[6],
 		[]string{"from: " + days[0].Format("2006-01-02"), "to: " + days[6].Format("2006-01-02")})
 	lines = append(lines, fmt.Sprintf("# Week %s — %s to %s", key, days[0].Format("2006-01-02"), days[6].Format("2006-01-02")), "",
-		"Generated from the week's day indexes; the facet notes are the source.", "")
+		"Generated from the week's facet notes.", "")
 	var filled, empty []string
 	type dated struct {
 		day time.Time
@@ -290,7 +291,7 @@ func renderMonth(calendarRoot string, facets []string, year, month int, planned 
 	last := days[len(days)-1]
 	lines := reviewFrontmatter("month", "month", key, last,
 		[]string{"from: " + days[0].Format("2006-01-02"), "to: " + last.Format("2006-01-02")})
-	lines = append(lines, "# "+key, "", "Generated from the month's day indexes and week reviews; the facet notes are the source.", "")
+	lines = append(lines, "# "+key, "", "Generated from the month's facet notes and week reviews.", "")
 	type yw struct{ y, w int }
 	var weeks []yw
 	seen := map[yw]bool{}

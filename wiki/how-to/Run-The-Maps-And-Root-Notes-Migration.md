@@ -90,7 +90,7 @@
     agentmd enrich -dry-run
     ```
 
-    The deep count should match step 2. The light count should rise by one for each class card the plan's `links` list rewrote: a rewritten card is owed a light pass, and that is expected. Any other movement means a card was rewritten outside the plan, by step 7's pass or by another writer. Then follow [Run the card backfill](Run-The-Card-Backfill#steps) steps 5 and 8 against step 2's pending list, and also forget each card this run rewrote, so the night still owes it.
+    The deep count should match step 2, and the light count should rise by no more than one for each class card the plan's `links` list rewrote. A card that was already pending adds nothing. Any other movement means a card was rewritten outside the plan, by step 7's pass or by another writer. Then stop the daemon as in step 1, since `agentmd ledger` runs without it, and follow [Run the card backfill](Run-The-Card-Backfill#steps) steps 5 and 8. Rebuild the ledger, forget each target on step 2's pending list (under its new path when this run moved it), and measure again: the counts should match step 2. Bring the daemon back as in step 6.
 
 12. **Reindex the embeddings:**
 
@@ -120,7 +120,7 @@
 - `python3 scripts/check-root-notes.py` and `python3 scripts/check-calendar-root.py` both report `clean` (see [CI gates reference](CI-Gates)).
 - `memory/.maps-and-root-notes-complete` exists at the memory root, and is committed.
 - `memory/mocs/moc-root.md` lists every area's map, and `memory/mocs/moc-memory.md` lists every memory type.
-- The deep count in `agentmd enrich -dry-run` matches step 2, and the light count differs only by the cards this run rewrote.
+- The deep, light and unchanged counts in `agentmd enrich -dry-run` match step 2, or the light count is higher only by the class cards the plan's `links` list rewrote.
 - `bash scripts/check-all.sh` passes locally.
 
 ## Troubleshooting

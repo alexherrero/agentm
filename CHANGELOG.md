@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A calendar review links the day's facet notes.** Its day lines linked the
+  bare-date day index, which the design dropped and which a day note that
+  arrived by a move never gets, so the link dangled. Each line now links the
+  facet notes the review is built from, and the recorded parity text is edited
+  to match.
+- **The maps migration's ledger step restores what the night owed.** The how-to
+  told you to forget every card the run rewrote after the rebuild, which undid
+  the rebuild. It now forgets only step 2's pending targets.
 - **A type's map paginates inside itself.** Past `moc_split_at`, a page holds
   its members in sections instead of spilling into `workflow-2.md`, and
   generated maps no longer carry `group:`. `needs-review.md` links the root map,
