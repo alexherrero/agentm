@@ -28,6 +28,11 @@ lookback: 24h
 # dispatches under this flag's value (n1_run.py's own fallback since V8
 # proving Phase 3, 2026-07-13); omitting it left every dispatched session
 # rooted at `scripts/` instead of the project root, confirmed live.
+# The handoff pack does not follow `--cwd`: n1_run.py sends it to
+# `n1-handoff/` under the project's vault `_harness/`, or to
+# `n1-handoff/<project>/` in the engine state directory when no vault
+# resolves. It used to land in `<cwd>/_n1_handoff/`, inside the checkout,
+# where each run rewrote the live clone's tracked files (2026-09-12).
 command: >-
   python3 -m control_plane.n1_run --plan overnight
   --work-items ../.harness/n1-work-items.json

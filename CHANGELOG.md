@@ -82,6 +82,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-call line, shared with `agentmd enrich`, carries a failed call's
   reason.
 
+### Fixed
+
+- **The overnight run's handoff pack stays out of the checkout.** `n1_run.py`
+  wrote the batch's pack to `<cwd>/_n1_handoff/`, and the nightly
+  `n1-overnight` job runs with `--cwd` at the live clone, so every run
+  rewrote two tracked files there. When crickets' handoff marker changed the
+  rendered bytes, the clone went dirty and a deploy stopped on it. The pack
+  now goes where `/handoff-pack` keeps packs: `n1-handoff/` under the
+  project's `_harness/` in the vault, through
+  `harness_memory.harness_state_dir()`. With no vault, that resolver answers
+  the checkout's own `.harness/`, so the pack goes to `n1-handoff/<project>/`
+  in the engine state directory instead. The destination is resolved before
+  dispatch, the run's report names it (`handoff_dir`), and a test fails if
+  the pack is aimed inside the checkout.
+
 ## [9.21.0] - 2026-09-11
 
 The vault-perfection series lands its first four plans, and the night runs. The AgentM Vault design was decided across seven sessions and approved as final ([#576](https://github.com/alexherrero/agentm/pull/576) through [#582](https://github.com/alexherrero/agentm/pull/582)); plans 01 to 04 then cleaned the vault, purged the residue on the operator's ruling, made every writer land the same card, and put the nightly enrichment batch under a window, a token line and one morning note ([#586](https://github.com/alexherrero/agentm/pull/586), [#588](https://github.com/alexherrero/agentm/pull/588), [#589](https://github.com/alexherrero/agentm/pull/589), [#590](https://github.com/alexherrero/agentm/pull/590)). The first supervised batches taught the night to load no MCP servers into a call, to ask only for what its judge accepts, to count what a call adds, to write a refusal down, and to keep the facts a pass cannot know ([#591](https://github.com/alexherrero/agentm/pull/591) through [#597](https://github.com/alexherrero/agentm/pull/597)); a model now judges the cheap tier's audit ([#598](https://github.com/alexherrero/agentm/pull/598)). `MEMORY_VAULT_PATH` becomes `MEMORY_ROOT`, one meaning, both names exported for one release ([#599](https://github.com/alexherrero/agentm/pull/599)). The doctor sees a checkout that is missing merged work ([#587](https://github.com/alexherrero/agentm/pull/587)). The Python FastMCP memory server, long superseded by the Go daemon, is gone.
