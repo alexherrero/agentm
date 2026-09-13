@@ -47,9 +47,9 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](Reference) — fields, flags, schemas and more.
 - [What we built, when](Completed-Features) — the combined build timeline for AgentM and crickets, plus the roadmap-era-to-release-tag decoder.
 
-## 🗂️ Browse by kind
+## 🗂️ Browse by type
 
-The memory vault itself is browsable by kind — every note groups into a generated Map of Content (MOC) alongside its siblings of the same kind (`fix`, `pattern`, `decision`, and dozens more), so you can scan every entry of a kind without a search. See [MOC generator](MOC-Generator) for how the pages are built, and [Kind-taxonomy registry](Kind-Taxonomy-Registry) for the kinds it recognizes.
+The memory vault itself is browsable by type. Every memory appears on a generated map beside the others of its type (`preference`, `convention`, `fix`, and the three more the filing contract registers), so you can scan a type without a search, and `moc-root.md` is the map to start from. See [Memory daemon reference](Memory-Daemon#the-dreaming-binary-agentmdream) for how the maps are generated.
 
 ## 🤖 Sub-agents
 
