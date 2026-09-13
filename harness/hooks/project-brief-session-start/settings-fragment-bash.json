@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/project-brief-session-start/project-brief-session-start.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

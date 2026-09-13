@@ -102,7 +102,23 @@ _plan_label() {
     esac
 }
 
-if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
+# The opening brief (project-brief-session-start, agentm-vault plan 09) owns the
+# plan block once it is registered: it prints a tracker brief, or this block by
+# running this hook with AGENTM_PLAN_BLOCK_ONLY=1. While it is registered this
+# hook leaves the block to it, so the block never prints twice.
+BRIEF_REGISTERED=""
+if [[ "${AGENTM_PLAN_BLOCK_ONLY:-}" != "1" ]]; then
+    for _settings in "$HOME/.claude/settings.json" "$EVENT_CWD/.claude/settings.json" "$EVENT_CWD/.claude/settings.local.json"; do
+        if [[ -f "$_settings" ]] && grep -q 'project-brief-session-start' "$_settings" 2>/dev/null; then
+            BRIEF_REGISTERED=1
+            break
+        fi
+    done
+fi
+
+if [[ -n "$BRIEF_REGISTERED" ]]; then
+    echo "[harness-context] plan block left to project-brief-session-start" >&2
+elif [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
     # Named-plan mode: surface every PLAN*.md + the .harness/active-plan binding.
     {
         echo "[agentm] Project state for this repo lives in .harness/:"
@@ -171,6 +187,9 @@ fi
 # script self-resolves the vault + telemetry paths, anti-fatigues itself, and is
 # graceful on every edge (missing vault, never-run ladder, GDrive stall). It
 # lives next to the digest/park writers whose delivered notes it reads.
+# The opening brief asking for the plan block alone gets nothing more.
+[[ "${AGENTM_PLAN_BLOCK_ONLY:-}" == "1" ]] && exit 0
+
 SESSION_BRIEF="$(dirname "$RESOLVER")/health/session_brief.py"
 if [[ -f "$SESSION_BRIEF" ]]; then
     BRIEF_TIMEOUT=""
