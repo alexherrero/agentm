@@ -114,6 +114,12 @@ def _read_daily_ceiling(harness_dir: Optional[Path]) -> float:
     return float(daily) if daily is not None else _DEFAULT_DAILY_USD_CEILING
 
 
+# 24 hours less the four-hour night window (02:00-06:00): the previous night's
+# spend ages out before the window opens again, wherever in it that run
+# started, while a second paid run inside the same day is still held. Chosen
+# over a higher ceiling (operator ruling, 2026-09-13), because the enrichment
+# batch's own limits start again on every run, which leaves the ceiling as the
+# only guard against repeated paid runs.
 _SPEND_WINDOW_SECONDS = 20 * 3600
 
 
@@ -125,9 +131,10 @@ def _spend_so_far(state_root: Optional[Path], now: Optional[float] = None) -> fl
     A window, because a cost summed forever is a deadlock: the job that spent
     could never run again to replace its own number. Twenty hours is the day
     less the four-hour night window, so a nightly job's cost has aged out by
-    its next opening wherever in 02:00-06:00 it started. At a full day the
-    batch's own last start held every cycle before it the next night, so each
-    night began later than the last until one fell past 06:00 (2026-09-13).
+    its next opening wherever in 02:00-06:00 it started, while a second paid
+    run inside the same day is still held. At a full day the batch's own last
+    start held every cycle before it the next night, so each night began later
+    than the last until one fell past 06:00 (2026-09-13).
     """
     now = now if now is not None else time.time()
     d = state_mod._state_dir(state_root)

@@ -446,6 +446,24 @@ class CycleIdempotencyTests(unittest.TestCase):
             self.assertAlmostEqual(cycle._spend_so_far(sr, tonight + 1800), 22.13)
             self.assertAlmostEqual(cycle._spend_so_far(sr, tonight + 20 * 3600 + 1), 0.0)
 
+    def test_a_second_paid_run_ten_hours_later_is_still_held(self):
+        """The other side of the 20-hour window: last night's cost ages out, the
+        same day's does not. The batch's own limits start again on every run,
+        so the ceiling is the only thing that stops a second paid run in a day
+        (operator ruling, 2026-09-13). A spending job due again ten hours after
+        it ran, as a mistyped schedule would make it, is held by the $5 default."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
+            hd.mkdir()  # no budget.yaml: the $5 default
+            _write_job(jobs_dir, "enrich-nightly", schedule="10h", lookback="1h",
+                       dry_run=False, budget={"tokens": 2000000})
+            first = datetime(2026, 9, 13, 2, 22, 45).timestamp()
+            state.mark_done("enrich-nightly", now=first, cost_usd=22.13, state_root=sr)
+            report = cycle.run_cycle(jobs_dir, now=first + 10 * 3600, state_root=sr, harness_dir=hd)
+            self.assertTrue(report.budget_ceiling_hit)
+            self.assertFalse(report.outcomes[0].ran)
+            self.assertEqual(report.outcomes[0].skipped_reason, "budget-ceiling")
+
     def test_t2_report_survives_concurrent_style_append(self):
         # T2 reports route through vault_lock.atomic_write; two sequential
         # cycles should both land, proving the write path doesn't clobber.
