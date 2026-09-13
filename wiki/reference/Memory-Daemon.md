@@ -250,7 +250,7 @@ RED
 
 **The thresholds are age-dominant.** Under a standing daily ingest, fifty fresh unfiled items every morning is an ordinary Tuesday; the oldest unfiled item being three days old means filing stalled. The count threshold is a backstop at a thousand — at fifty a day it takes twenty dead days to reach, by which point age has been red for seventeen of them, so it fires on its own only when a producer wrote thousands of items at once.
 
-**The queue is `unfiled` or `inbox` notes no enrichment has judged.** `confidence_set = 0` narrows it past status alone (`awaitingJudgment`, `daemon/internal/index/index.go:645`): a card enrichment judged and left below the floor keeps `status: unfiled`, but it has been through the pass and is listed for you in [needs review](Review-Flagged-Memories) rather than counted here — the same reason `superseded` and `expired` are excluded. Counting an already-judged card would put one retired years ago at the head of the queue and leave the age threshold red permanently.
+**The queue is `unfiled` or `inbox` notes no enrichment has judged.** `confidence_set = 0` narrows it past status alone (`awaitingJudgment`, `daemon/internal/index/index.go:661`): a card enrichment judged and left below the floor keeps `status: unfiled`, but it has been through the pass and is listed for you in [needs review](Review-Flagged-Memories) rather than counted here — the same reason `superseded` and `expired` are excluded. Counting an already-judged card would put one retired years ago at the head of the queue and leave the age threshold red permanently.
 
 **The inherited backlog is reported and does not page.** The first status read against the real vault was 4,349 unfiled items, the oldest 29 days old. Both numbers are true and neither is news: the design already decided that pile is rank-penalized and drained by dreaming later, and their dates come from filesystem mtime, which a sync client can rewrite wholesale. So the daemon records a **queue baseline** on its first run — items captured before it are the backlog it inherited. The total, the inherited count, the backlog's own age, and the baseline date are on every status surface; only the part captured after the baseline is measured against the thresholds. A four-day-old item captured after the baseline pages even when the backlog is thousands deep, which is what keeps the split from being a mute button. Set `daemon.queue_baseline` to move the line by hand; delete `queue-baseline.json` in the state directory to re-record it.
 
@@ -345,7 +345,7 @@ queued for a later re-filing pass rather than corrected on the spot.
 
 [AgentM Filing v2](agentm-filing-v2) adds three
 vocabularies to the block
-(`daemon/internal/rules/storage-rules.default.md:258-287`). You declare
+(`daemon/internal/rules/storage-rules.default.md:274-303`). You declare
 each one; the daemon validates it exactly like `memory_types` and
 `record_kinds` above — a malformed value halts filing, by name. At the time
 these were added, none had a runtime reader: the table below was what the
@@ -369,7 +369,7 @@ above — a different field for a different, already-wired purpose (decay
 exemption).
 
 The same design added three calendar values to `record_kinds`
-(`storage-rules.default.md:210-212`):
+(`storage-rules.default.md:218-220`):
 
 - `calendar-facet`
 - `day-index`
@@ -382,12 +382,12 @@ writes `calendar-review` — `calendar_rollups.py` wrote it before the
 takeover (filing v2 part 6, 2026-09-05) retired that script.
 
 The `routing` table now sends an `idea` to `memory/semantic`, previously
-`desk` (`storage-rules.default.md:175`). At the time this reclassification
+`desk` (`storage-rules.default.md:182`). At the time this reclassification
 shipped, capture did not read `routing`, and no file moved because of it.
-The `ClassFor` function (`rules.go:569`) was the only reader of `routing`
+The `ClassFor` function (`rules.go:618`) was the only reader of `routing`
 at that earlier time, and only for the `agentmd graph` command — every
 `type: idea` note classified as `semantic` for a `memory/`-prefixed
-destination (`rules.go:578`) instead of nothing at all.
+destination (`rules.go:627`) instead of nothing at all.
 
 Filing v2's write path closed that gap. The `Capturer.Do` method
 (`daemon/internal/capture/capture.go`) now calls
@@ -422,17 +422,17 @@ all. Every write through this path asks [the volume
 gate](#the-volume-gate) first, below.
 
 Validation sits beside the existing checks in `validate()`
-(`daemon/internal/rules/rules.go:387-429`): kebab-case and no duplicates for
+(`daemon/internal/rules/rules.go:424-466`): kebab-case and no duplicates for
 each list, `default_lifecycle` checked against `lifecycle`'s own values, and
 `sources` checked against a closed, deliberately two-value tier set
 (`SourceTiers`, `rules.go:140`) — a finer trust ladder would be precision a
 write-time check cannot honestly deliver. `Rules` exposes the read side as
-`IsLifecycle`, `SourceTier`, `IsFacet` (`rules.go:471`, `:483`, `:489`) —
+`IsLifecycle`, `SourceTier`, `IsFacet` (`rules.go:508`, `:520`, `:538`) —
 still with no caller of their own; the trust stamp above reads the
 `Sources` map directly instead. `StorageRules` mirrors the same read side
 in Python as `lifecycles()`, `default_lifecycle()`, `sources()`,
-`facets()` (`harness/skills/memory/scripts/storage_rules.py:117`, `:122`,
-`:126`, `:131`), and three of those four now have real callers:
+`facets()` (`harness/skills/memory/scripts/storage_rules.py:119`, `:124`,
+`:128`, `:133`), and three of those four now have real callers:
 `save_entry` (`save.py`) reads `default_lifecycle()` to default a
 memory-type write's `lifecycle`; both `save_entry`'s own trust stamp and
 `filing_engine.transport()` read `sources()`; and `calendar_facets.py`'s
@@ -561,7 +561,7 @@ The batch no longer asks for "every `unfiled` note." It walks the
 directories the filing contract routes a memory type into, less the
 derived classes it never owns — today `memory/semantic` and
 `memory/procedural` — read from the contract rather than listed in the
-binary (`enrichQueueDirs`, `daemon/cmd/agentmd/enrich_run.go:124-155`).
+binary (`enrichQueueDirs`, `daemon/cmd/agentmd/enrich_run.go:166-199`).
 `memory/episodic` is never walked: no memory type routes there, and its
 notes are session traces, not cards. Nor is the watchlist offered: it lives
 in the project space (`Projects/agentm/_watchlist/`), outside every class
@@ -571,7 +571,7 @@ eligibility pre-gate adds a second refusal beside this: a note whose
 `kind` is one of the contract's `record_kinds` — a session trace, a
 directory index — is refused as a record rather than a card
 (`Eligibility.IsRecordKind`, `pregates.go:49-54,80-83`). The queue itself
-is a snapshot taken once per run (`enrichQueue`, `enrich_run.go:157-184`)
+is a snapshot taken once per run (`enrichQueue`, `enrich_run.go:201-228`)
 — a note captured mid-night waits for the next run rather than moving the
 cursor underneath the one in progress. `--dry-run` sizes the night against
 this same queue: how many cards are owed the deep pass, the light pass,
@@ -581,26 +581,26 @@ ledger's population (`pendingFor`) is the same queue too.
 
 ### The budget, and what stops a run
 
-`DefaultBudget` (`daemon/internal/enrich/batch.go:142-150`) is the
+`DefaultBudget` (`daemon/internal/enrich/batch.go:149-157`) is the
 operator's line: 2,000,000 tokens a night on either tier
-(raised from 1,000,000 strong on 2026-09-11) (`StrongTokenLine`, `CheapTokenLine`, `usage.go:216-219`), a
-250-call guard (`CallGuard`, `usage.go:220-224`) that counts every model call
+(raised from 1,000,000 strong on 2026-09-11) (`StrongTokenLine`, `CheapTokenLine`, `usage.go:224-227`), a
+250-call guard (`CallGuard`, `usage.go:228-232`) that counts every model call
 — the faithfulness judge's included — a 3h30m time limit sized to the
 02:00-06:00 window, and a fuse of five notes in a row whose model call
 itself failed (not a note a post-gate rejected, which is the model
 answering badly rather than not answering at all). All four are read
-before the next note (`stop`, `batch.go:187-211`); the first one a run
+before the next note (`stop`, `batch.go:194-218`); the first one a run
 hits ends it, and `BatchReport.StoppedBy` names which in words — "the
 call guard (250 calls)", "the strong-tier token line (2,000,000 tokens)",
 the time limit, or the fuse — alongside the `--after` cursor the next run
 resumes from. `--max-calls`, `--strong-tokens`, and `--cheap-tokens` may
 lower any of these lines and never raise them (`lowerOnly`,
-`enrich_run.go:199-212`) — nothing run by hand or by schedule is entitled
+`enrich_run.go:367-380`) — nothing run by hand or by schedule is entitled
 to more than the operator said.
 
 The token line counts what a call adds: its input, its cache writes and
 its output (`Usage.Added`, `usage.go:41-55`, read by `overLine`,
-`batch.go:290-297`). The cached prefix a call re-reads is left out. That
+`batch.go:300-307`). The cached prefix a call re-reads is left out. That
 prefix is the same on every call, about 37,000 tokens of Claude Code's own
 baseline, and a card reads it twice: once for the pass, once for its
 faithfulness judge.
@@ -643,9 +643,9 @@ otherwise turn the budget off silently (`parseEnvelope`,
 `usage.go:100-124`). An error envelope's `result` text — a lapsed login, an
 exhausted allowance — is what the failure reports. A shared `Meter` adds
 up every call by tier, the pass's and the faithfulness judge's alike
-(`Meter`, `usage.go:135-212`; wired in `cmdEnrich`, `main.go:1402-1414,
-1440`). The batch prints one line per call as it finishes
-(`main.go:1404-1411`):
+(`Meter`, `usage.go:135-212`; wired in `cmdEnrich`, `main.go:1402-1407,
+1443`). The batch prints one line per call as it finishes
+(`callLinePrinter`, `main.go:1739-1748`):
 
 ```text
 call N · <rel · depth> · <model>/<tier> · N tokens (in N · cache read N · cache write N · out N · N against the line) · $N.NNNN
@@ -658,12 +658,12 @@ processed, cache reads included (`Usage.Tokens`, `usage.go:35-39`), and
 Once the run ends, the batch prints one line per tier,
 `<tier> tier: <reading> of the N-token line`, then
 `night: N model call(s) of the N-call guard · <reading>`, each reading
-carrying both figures (`main.go:1615-1628`). The last line the command
+carrying both figures (`main.go:1644-1662`). The last line the command
 prints is a JSON object carrying `total_cost_usd` — the field the runner's
 spend line reads (see [AgentM Runner](agentm-runner)) — so the report above
 it and the spend line below it can never disagree. Each run also appends
 one line to `enrich-runs.jsonl` in the engine state directory
-(`newEnrichRun`/`appendEnrichRun`, `daemon/cmd/agentmd/enrich_run.go:68-122`),
+(`newEnrichRun`/`appendEnrichRun`, `daemon/cmd/agentmd/enrich_run.go:84-96,148-164`),
 which is what the morning note reads for its enrichment row. The record's
 `tokens` counts cache reads too, and its per-tier `usage` keeps the four
 counts apart.
@@ -746,7 +746,7 @@ plus a margin for excluded calls — and `--seed S` redraws the same cards.
 ### Sequential, decided
 
 `RunBatch` does not fan out, even though `daemon.enrich_concurrency` still
-bounds `Pass.Run` (`batch.go:146-156`). The cursor stays one answer — what
+bounds `Pass.Run` (`batch.go:159-169`). The cursor stays one answer — what
 a deferred run resumes with `--after` — and the token line and call guard
 are read before each note, so a sequential run overshoots the operator's
 line by at most the one note in flight, where N in flight would overshoot
@@ -767,7 +767,7 @@ without re-owing a single already-judged card. The neighbours come from the
 daemon's own lexical search over the card's title and tags, top five,
 excluding the card itself, a derived class, a space no background model may
 read, and any neighbour whose title or summary carries a credential shape
-(`enrichNeighbours`, `daemon/cmd/agentmd/enrich_run.go:218-262`).
+(`enrichNeighbours`, `daemon/cmd/agentmd/enrich_run.go:255-299`).
 
 What it does once it runs: add to a card rather than rewrite it. The card's
 own text is the evidence and stays exactly where the session left it; the
@@ -817,7 +817,7 @@ filename. The alias post-gate refuses a write whose alias the note cannot
 account for (`Aliases`, `daemon/internal/enrich/aliases.go:31`). Under the
 new wording the next three cards were all written, and none was refused.
 
-`VerdictFor` (`daemon/internal/enrich/render.go:180-200`) is what a
+`VerdictFor` (`daemon/internal/enrich/render.go:203-223`) is what a
 judgment decides about where a card stands. At or above the contract's
 floor a card lands `active` at `filing_confidence: high`. Below it the card
 stays `unfiled` — fully indexed, rank-penalized, and listed for you in
@@ -876,7 +876,7 @@ an auto-filed note either way, the same default a fresh write gets.
 `main.go`'s `cmdEnrich` is the one caller: it reads the note as it stood,
 calls `Compose` with the response, the stamp, the pass depth and the
 neighbours offered, and `Compose` calls `CarryProvenance` on the
-frontmatter it renders before the write applies (`main.go:1477-1496`).
+frontmatter it renders before the write applies (`main.go:1480-1499`).
 
 Two gates retired with the rewrite they existed to check. The
 token-preservation post-gate (`tokens.go`) held a rewrite to keep every
