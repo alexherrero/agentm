@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -362,7 +363,7 @@ class CycleIdempotencyTests(unittest.TestCase):
                        command="true", tier="T3", dry_run=False, budget={"tokens": 1000})
             # Seed prior spend directly (no real subprocess needed) well
             # above any sane default ceiling — today's, from another spending
-            # job, since the ceiling is a daily one and reads the past day.
+            # job, since the ceiling reads the last 20 hours of spend.
             state.mark_done("other-spender", now=90000.0 - 3600, cost_usd=100.0,
                             state_root=state_root)
 
@@ -422,6 +423,28 @@ class CycleIdempotencyTests(unittest.TestCase):
             # Within the day it still holds.
             state.mark_done("enrich-nightly", now=1000.0 + 2 * 86400, cost_usd=9.0, state_root=sr)
             self.assertAlmostEqual(cycle._spend_so_far(sr, 1000.0 + 2 * 86400 + 3600), 9.0)
+
+    def test_last_nights_batch_does_not_hold_tonights(self):
+        """2026-09-13: the batch that started at 02:23 the night before still
+        counted at 02:22, 40 seconds short of 24 hours, so the night's first
+        cycle held it and the next one ran it. Held that way, every night starts
+        later than the last until one falls past 06:00. The window is 20 hours,
+        the day less the four-hour night, so a nightly job's own cost has aged
+        out by its next opening."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
+            hd.mkdir()  # no budget.yaml: the $5 default
+            _write_job(jobs_dir, "enrich-nightly", lookback="36h", window="02:00-06:00",
+                       dry_run=False, budget={"tokens": 2000000})
+            last_night = datetime(2026, 9, 12, 2, 23, 25).timestamp()
+            tonight = datetime(2026, 9, 13, 2, 22, 45).timestamp()
+            state.mark_done("enrich-nightly", now=last_night, cost_usd=21.99, state_root=sr)
+            report = cycle.run_cycle(jobs_dir, now=tonight, state_root=sr, harness_dir=hd)
+            self.assertTrue(report.outcomes[0].ran, report.outcomes[0].skipped_reason)
+            # A second paid run inside the same night is still held.
+            state.mark_done("enrich-nightly", now=tonight, cost_usd=22.13, state_root=sr)
+            self.assertAlmostEqual(cycle._spend_so_far(sr, tonight + 1800), 22.13)
+            self.assertAlmostEqual(cycle._spend_so_far(sr, tonight + 20 * 3600 + 1), 0.0)
 
     def test_t2_report_survives_concurrent_style_append(self):
         # T2 reports route through vault_lock.atomic_write; two sequential

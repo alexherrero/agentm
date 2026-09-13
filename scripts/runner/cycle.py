@@ -114,20 +114,20 @@ def _read_daily_ceiling(harness_dir: Optional[Path]) -> float:
     return float(daily) if daily is not None else _DEFAULT_DAILY_USD_CEILING
 
 
-_SPEND_WINDOW_SECONDS = 86400
+_SPEND_WINDOW_SECONDS = 20 * 3600
 
 
 def _spend_so_far(state_root: Optional[Path], now: Optional[float] = None) -> float:
-    """Sum of the last-recorded cost of every job that ran in the past day —
-    a coarse fleet-spend proxy for a daily ceiling (each marker holds only its
-    own last run; good enough for a hard stop-loss, not a precise ledger).
+    """Sum of the last-recorded cost of every job that ran in the past 20 hours
+    — a coarse fleet-spend proxy for a daily ceiling (each marker holds only
+    its own last run; good enough for a hard stop-loss, not a precise ledger).
 
-    Only the past day, because the ceiling is a daily one and a cost that
-    never ages out is a deadlock rather than a ceiling. Until a job reported a
-    real cost this never mattered; the nightly enrichment batch reports one
-    (agentm-vault plan 04), and summed forever, one heavy night would have
-    held every job past the ceiling for good — the batch included, which
-    could then never run again to replace its own number.
+    A window, because a cost summed forever is a deadlock: the job that spent
+    could never run again to replace its own number. Twenty hours is the day
+    less the four-hour night window, so a nightly job's cost has aged out by
+    its next opening wherever in 02:00-06:00 it started. At a full day the
+    batch's own last start held every cycle before it the next night, so each
+    night began later than the last until one fell past 06:00 (2026-09-13).
     """
     now = now if now is not None else time.time()
     d = state_mod._state_dir(state_root)
