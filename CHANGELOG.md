@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Last night's enrichment no longer holds tonight's.** The fleet ceiling
+  counts a job's last reported cost for 20 hours from the start of the cycle
+  that ran it, not 24. At 24 hours the batch, about $22 a night against the $5
+  default, could not start within a day of its last start, so each night's run
+  began later than the night before until one fell past 06:00 and that night
+  had no batch. Twenty hours is the day less the four-hour night window. The $5
+  ceiling still holds a second paid run inside the same night, which a higher
+  ceiling would not: the batch's own limits start again on every run.
+
 ### Fixed
 
 - **The morning note no longer gives a stale cycle's reason for a step that did
