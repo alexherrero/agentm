@@ -20,7 +20,11 @@ migration's marker exists. This script changes the vault to match.
             every post-condition the gates will enforce, read from the vault.
             The marker is written only when all of them hold.
 
-`--revert RUN_ID` restores every file the run wrote and removes the marker.
+`--revert RUN_ID` restores every file the run wrote and removes the marker, unless
+a file no longer holds what the run wrote: then it names each such file and
+restores nothing, so a day note the night appended to since keeps what it gained.
+A second dry run over the migrated vault plans nothing; a pinned `Projects/` note
+that holds no link to what went is listed as already done.
 
 A link is repointed only where it may be: in the agent's notes under the memory
 root and in `Calendar/`, the maps themselves excepted because the job rewrites
@@ -267,7 +271,7 @@ def build_plan(vault, memory_root, rules=None, index_draft=None, also_delete=())
                       "restore": restore_commit(vault, src_rel)})
         retired.add(root_notes._key(src), Path(dst_rel).stem, False, [Path(src_rel).stem])
 
-    links, contents, in_scope = [], {}, set()
+    links, contents, in_scope, pinned_done = [], {}, set(), []
     for note in _scope(vault, memory_root):
         if retired.holds(note):
             continue
@@ -278,7 +282,10 @@ def build_plan(vault, memory_root, rules=None, index_draft=None, also_delete=())
         if rel in PROJECTS_LINKS:
             name, expected = PROJECTS_LINKS[rel]
             named = [c for c in changes if re.split(r"\\?\||#", c["from"][2:-2], maxsplit=1)[0].strip() == name]
-            if len(named) != expected or len(changes) != expected:
+            if not changes:
+                # No link to a retired note is left, so the ruling has been carried out.
+                pinned_done.append(rel)
+            elif len(named) != expected or len(changes) != expected:
                 raise Refused(f"{rel}: the ruling names {expected} link(s) to {name}, and the note now holds "
                               f"{len(named)} of them among {len(changes)} to retired notes")
         if changes:
@@ -309,7 +316,7 @@ def build_plan(vault, memory_root, rules=None, index_draft=None, also_delete=())
                  "restore": restore_commit(vault, "index.md")}
 
     plan = {"deletions": deletions, "held": held, "moves": moves, "links": links, "index": index,
-            "not_written": not_written, "retired": retired.entries,
+            "not_written": not_written, "pinned_done": pinned_done, "retired": retired.entries,
             "index_draft": str(index_draft) if index_draft is not None else None,
             "also_delete": sorted(also_delete)}
     plan["counts"] = {"deletions": len(deletions), "moves": len(moves), "links": len(links),
@@ -343,6 +350,8 @@ def print_summary(plan: dict, vault: Path, out=sys.stdout) -> None:
           f"{c['links']} note(s) with links repointed, index.md {'from the draft' if c['index'] else 'not given'}", file=out)
     for h in plan["held"]:
         print(f"  held: {h['rel']} — {h['why']}", file=out)
+    for rel in plan["pinned_done"]:
+        print(f"  already done: {rel} holds no link to what went", file=out)
     for link in plan["links"]:
         for ch in link["changes"]:
             print(f"  link: {link['rel']}:{ch['line']}  {ch['from']} -> {ch['to']}", file=out)
@@ -469,9 +478,32 @@ def finish(vault, memory_root, recorded, out_dir, rules=None) -> list:
     return sorted(set(problems))
 
 
-def revert(vault, memory_root, run_id: str, log_root=None, lock_root=None) -> None:
+def _written_by_plan(vault: Path, plan: dict) -> dict:
+    """What each stage of a recorded plan left at each path, a digest or None
+    where it left no file: the check for a run journaled before the revert log
+    recorded that itself."""
+    moves = {}
+    for m in plan["moves"]:
+        moves.update({str(vault / m["to"]): m["sha256"], str(vault / m["from"]): None})
+    return {
+        f"{STAGE}-deletions": {str(vault / d["rel"]): None for d in plan["deletions"]},
+        f"{STAGE}-moves": moves,
+        f"{STAGE}-links": {str(vault / link["rel"]): link["after_sha"] for link in plan["links"]},
+        f"{STAGE}-index": {str(vault / "index.md"): plan["index"]["after_sha"]} if plan["index"] else {},
+    }
+
+
+def revert(vault, memory_root, run_id: str, log_root=None, lock_root=None, out_dir=None) -> None:
+    """Restore every file the run wrote and remove the marker, or refuse and
+    restore nothing when a file no longer holds what the run wrote: a day note
+    the night appended to since keeps what it gained. A run journaled before the
+    revert log recorded what it wrote is checked against its plan in `out_dir`."""
     import revert_log  # noqa: E402
-    revert_log.RevertLog(Path(vault), log_root=log_root, lock_root=lock_root).revert(run_id)
+    vault = Path(vault)
+    plan = Path(out_dir) / f"plan-{run_id}.json" if out_dir is not None else None
+    written = _written_by_plan(vault, json.loads(plan.read_text(encoding="utf-8"))) \
+        if plan is not None and plan.is_file() else None
+    revert_log.RevertLog(vault, log_root=log_root, lock_root=lock_root).revert(run_id, written=written)
     marker = ms.marker_path(memory_root)
     if marker.exists():
         marker.unlink()
@@ -517,7 +549,12 @@ def main(argv: list | None = None) -> int:
     out_dir = state_dir / STAGE
 
     if args.revert:
-        revert(vault, memory_root, args.revert)
+        import revert_log  # noqa: E402
+        try:
+            revert(vault, memory_root, args.revert, out_dir=out_dir)
+        except revert_log.RevertLogError as exc:
+            print(f"maps and root notes: {exc}", file=sys.stderr)
+            return 1
         print(f"maps and root notes: reverted {args.revert}")
         return 0
     rules = _load_rules()

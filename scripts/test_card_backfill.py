@@ -20,6 +20,7 @@ for _p in (str(_REPO / "scripts"), str(_REPO / "scripts" / "migrate"),
 
 import card_backfill as cb  # noqa: E402
 import card_shape as cs  # noqa: E402
+import revert_log  # noqa: E402
 
 PV = "enrich/1+prompt/5d3a4cca1b02"
 RULES = "3c57fd89087c1a25"
@@ -410,6 +411,69 @@ class TheFingerprintPort(unittest.TestCase):
         text = "---\r\ntitle: Ünïcode Title\r\n\ttags: [a,  b]\n---\n\n  Body  WITH\ttabs  \n\n\nEnd.\n"
         self.assertEqual(cb.fingerprint_key(PV, RULES, text),
                          "7b214f29925d6dae9e94fb60eecde051619494d8c84b9d9ae1f5d672b8240dc9")
+
+
+class TheRevertAfterALaterWrite(_Vault):
+    """The night re-enriches cards after the backfill. A revert restores a file
+    only while it holds what the run wrote, so it names each card changed since,
+    restores nothing, and the enrichment is kept."""
+
+    RUN = "card-backfill-test"
+
+    def applied(self):
+        plan, _c, _l = self.plan()
+        plan["run_id"] = self.RUN
+        self.assertTrue(self.apply(plan)["matches_dry_run"])
+        return plan
+
+    def snapshot(self):
+        return {p.relative_to(self.vault).as_posix(): p.read_bytes()
+                for p in self.vault.rglob("*") if p.is_file() and ".git" not in p.parts}
+
+    def refused(self, **kw):
+        after = self.snapshot()
+        with self.assertRaises(revert_log.ChangedSinceRunError) as caught:
+            cb.revert(self.vault, self.root, self.RUN, log_root=self.logs, **kw)
+        self.assertEqual(self.snapshot(), after, "the refused revert wrote, or removed the marker")
+        return [Path(path) for path, _reason in caught.exception.changed]
+
+    def test_a_card_enriched_after_the_run_refuses_the_revert_and_keeps_the_enrichment(self):
+        self.applied()
+        card = self.vault / S / "old-card.md"
+        card.write_bytes(card.read_bytes() + b"\nEnriched after the backfill.\n")
+        self.assertEqual(self.refused(), [card])
+        self.assertTrue((self.root / "memory" / cs.MARKER_NAME).exists())
+
+    def test_a_renamed_card_enriched_after_the_run_keeps_one_name(self):
+        self.applied()
+        renamed = self.vault / S / "staleness-computed-from-input-hashes.md"
+        renamed.write_bytes(renamed.read_bytes() + b"\nEnriched after the rename.\n")
+        self.assertEqual(self.refused(), [renamed])
+        self.assertFalse((self.vault / S / "never-judged-by-a-model-1.md").exists(),
+                         "the revert brought the old name back beside the renamed card")
+
+    def test_a_run_journaled_before_the_check_is_checked_against_its_recorded_plan(self):
+        plan = self.applied()
+        out = self.state / "card-backfill"
+        (out / f"plan-{self.RUN}.json").write_text(json.dumps(plan), encoding="utf-8")
+        # As the live run of plan 06 was journaled: no record of what each stage left behind.
+        journal = self.logs / f"{self.RUN}.jsonl"
+        records = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines() if line]
+        for record in records:
+            for pre in record["pre_images"]:
+                del pre["after_exists"], pre["after_hash"]
+        journal.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+        renamed = self.vault / S / "staleness-computed-from-input-hashes.md"
+        written = renamed.read_bytes()
+        renamed.write_bytes(written + b"\nEnriched after the rename.\n")
+        self.assertEqual(self.refused(out_dir=out), [renamed])
+
+        renamed.write_bytes(written)
+        cb.revert(self.vault, self.root, self.RUN, log_root=self.logs, out_dir=out)
+        for rel, text in FIXTURE.items():
+            self.assertEqual(self.read(rel), text, rel)
+        self.assertFalse(renamed.exists())
+        self.assertFalse((self.root / "memory" / cs.MARKER_NAME).exists())
 
 
 if __name__ == "__main__":

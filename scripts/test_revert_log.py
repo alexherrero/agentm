@@ -20,6 +20,10 @@ Covers (plan task 1 verification):
     not text)
   - mutex discipline: one `vault_mutex` acquisition per `record_and_apply` /
     per reverted stage, never the whole pass under one lock
+  - a later write is never lost: a revert over a file that no longer holds
+    what the run wrote refuses, names the file and restores nothing; a
+    journal from before the revert log recorded that is checked against the
+    caller's `written`; a write landing mid-revert stops it at that stage
 
 All lock + journal activity is redirected to temp dirs so the real
 `~/.cache/agentm/` is never touched (mirrors the R4 rule 1 test hygiene in
@@ -27,6 +31,7 @@ All lock + journal activity is redirected to temp dirs so the real
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -241,6 +246,145 @@ class NoTmpRemnantTests(_RevertLogTestBase):
         self.log.record_and_apply("run-10", "dedup", [(entry, "v1\n")])
         self.log.revert("run-10")
         self.assertEqual(list(self.vault.rglob("*.tmp")), [])
+
+
+class LaterWriteTests(_RevertLogTestBase):
+    """A revert restores a file only while it holds what the run wrote. A
+    write made after the run would be lost under the pre-image, so the revert
+    refuses, names every such file, and restores nothing."""
+
+    def _as_journaled_before_the_check(self, run_id: str) -> None:
+        """Rewrite the journal as the revert log wrote it before it recorded
+        what each stage left behind."""
+        journal = self.log_root / f"{run_id}.jsonl"
+        records = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines() if line]
+        for record in records:
+            for pre in record["pre_images"]:
+                del pre["after_exists"], pre["after_hash"]
+        journal.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+
+    def test_a_changed_file_is_named_and_nothing_in_the_run_is_restored(self) -> None:
+        a = self._write("a.md", "a0\n")
+        b = self._write("b.md", "b0\n")
+        self.log.record_and_apply("run-11", "dedup", [(a, "a1\n"), (b, "b1\n")])
+        b.write_bytes(b"b1\nwritten after the run\n")
+
+        self.assertEqual(self.log.check("run-11"), [(str(b), "changed since the run wrote it")])
+        with self.assertRaises(rl.ChangedSinceRunError) as caught:
+            self.log.revert("run-11")
+
+        self.assertEqual(caught.exception.changed, [(str(b), "changed since the run wrote it")])
+        self.assertEqual(caught.exception.restored, [])
+        self.assertIn(str(b), str(caught.exception))
+        self.assertEqual(a.read_bytes(), b"a1\n", "the refused revert restored a file")
+        self.assertEqual(b.read_bytes(), b"b1\nwritten after the run\n")
+
+    def test_a_file_the_run_created_keeps_what_was_written_to_it_after(self) -> None:
+        moved = self.vault / "moved.md"
+        self.log.record_and_apply("run-12", "moves", [(moved, "body\n")])
+        moved.write_bytes(b"body\nappended after the move\n")
+
+        with self.assertRaises(rl.ChangedSinceRunError):
+            self.log.revert("run-12")
+
+        self.assertEqual(moved.read_bytes(), b"body\nappended after the move\n")
+
+    def test_a_file_the_run_removed_is_not_overwritten_once_written_again(self) -> None:
+        gone = self._write("gone.md", "old\n")
+        self.log.record_and_apply("run-13", "deletions", [(gone, None)])
+        gone.write_bytes(b"new\n")
+
+        with self.assertRaises(rl.ChangedSinceRunError) as caught:
+            self.log.revert("run-13")
+
+        self.assertEqual(caught.exception.changed, [(str(gone), "written since the run removed it")])
+        self.assertEqual(gone.read_bytes(), b"new\n")
+
+    def test_a_path_the_run_left_absent_is_not_deleted_once_created(self) -> None:
+        # Deleting a path that was never there journals an absent pre-image,
+        # and the old revert unlinked whatever stood at the path by then.
+        stray = self.vault / "stray.md"
+        self.log.record_and_apply("run-14", "cleanup", [(stray, None)])
+        stray.write_bytes(b"created later\n")
+
+        with self.assertRaises(rl.ChangedSinceRunError):
+            self.log.revert("run-14")
+
+        self.assertEqual(stray.read_bytes(), b"created later\n")
+
+    def test_a_file_deleted_after_the_run_is_named(self) -> None:
+        entry = self._write("entry.md", "v0\n")
+        self.log.record_and_apply("run-15", "dedup", [(entry, "v1\n")])
+        entry.unlink()
+
+        with self.assertRaises(rl.ChangedSinceRunError) as caught:
+            self.log.revert("run-15")
+
+        self.assertEqual(caught.exception.changed, [(str(entry), "deleted since the run wrote it")])
+        self.assertFalse(entry.exists())
+
+    def test_reverting_an_earlier_stage_under_a_later_one_refuses(self) -> None:
+        entry = self._write("entry.md", "v0\n")
+        first = self.log.record_and_apply("run-16", "dedup", [(entry, "v1\n")])
+        self.log.record_and_apply("run-16", "compression", [(entry, "v2\n")])
+
+        with self.assertRaises(rl.ChangedSinceRunError):
+            self.log.revert("run-16", entry_id=first)
+
+        self.assertEqual(entry.read_bytes(), b"v2\n")
+
+    def test_a_file_already_holding_its_pre_image_is_not_a_change(self) -> None:
+        entry = self._write("entry.md", "v0\n")
+        self.log.record_and_apply("run-17", "dedup", [(entry, "v1\n")])
+        self.log.revert("run-17")
+
+        self.assertEqual(self.log.check("run-17"), [])
+        self.log.revert("run-17")
+        self.assertEqual(entry.read_bytes(), b"v0\n")
+
+    def test_a_journal_that_does_not_record_what_the_run_wrote_needs_the_caller_to_say(self) -> None:
+        entry = self._write("entry.md", "v0\n")
+        self.log.record_and_apply("run-18", "dedup", [(entry, "v1\n")])
+        self._as_journaled_before_the_check("run-18")
+        written = {"dedup": {str(entry): vl.content_hash(b"v1\n")}}
+
+        with self.assertRaises(rl.ChangedSinceRunError) as caught:
+            self.log.revert("run-18")
+        self.assertEqual(caught.exception.changed,
+                         [(str(entry), "the journal does not record what the run wrote here")])
+
+        entry.write_bytes(b"v1\nwritten after the run\n")
+        with self.assertRaises(rl.ChangedSinceRunError):
+            self.log.revert("run-18", written=written)
+        self.assertEqual(entry.read_bytes(), b"v1\nwritten after the run\n")
+
+        entry.write_bytes(b"v1\n")
+        self.log.revert("run-18", written=written)
+        self.assertEqual(entry.read_bytes(), b"v0\n")
+
+    def test_a_write_that_lands_during_the_revert_stops_it_before_that_stage(self) -> None:
+        first = self._write("first.md", "f0\n")
+        second = self._write("second.md", "s0\n")
+        self.log.record_and_apply("run-19", "one", [(first, "f1\n")])
+        self.log.record_and_apply("run-19", "two", [(second, "s1\n")])
+        enters = []
+        real_mutex = vl.vault_mutex
+
+        class _WriteBeforeTheSecondLock(real_mutex):
+            def __enter__(self):
+                enters.append("enter")
+                if len(enters) == 2:  # stage "one"'s lock, after "two" was restored
+                    first.write_bytes(b"f1\nlanded during the revert\n")
+                return super().__enter__()
+
+        with mock.patch.object(rl, "vault_mutex", _WriteBeforeTheSecondLock):
+            with self.assertRaises(rl.ChangedSinceRunError) as caught:
+                self.log.revert("run-19")
+
+        self.assertEqual(caught.exception.restored, ["two"])
+        self.assertEqual(caught.exception.changed, [(str(first), "changed since the run wrote it")])
+        self.assertEqual(second.read_bytes(), b"s0\n")
+        self.assertEqual(first.read_bytes(), b"f1\nlanded during the revert\n")
 
 
 if __name__ == "__main__":
