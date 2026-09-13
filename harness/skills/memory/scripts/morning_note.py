@@ -182,7 +182,7 @@ def python_cycle(engine_dir: Path) -> Optional[dict]:
 
 
 def runner_state(state_dir: Path) -> tuple:
-    """(markers by job, the last cycle's outcomes by job)."""
+    """(markers by job, the last cycle's outcomes by job, when that cycle started)."""
     markers = {}
     for job, _label in NIGHT_JOBS:
         m = _read_json(Path(state_dir) / f"{job}.json")
@@ -190,11 +190,13 @@ def runner_state(state_dir: Path) -> tuple:
             markers[job] = m
     outcomes = {}
     cycle = _read_json(Path(state_dir) / "last-cycle.json")
-    rows = cycle.get("outcomes") if isinstance(cycle, dict) else None
+    if not isinstance(cycle, dict):
+        cycle = {}
+    rows = cycle.get("outcomes")
     for o in rows if isinstance(rows, list) else []:
         if isinstance(o, dict) and o.get("job"):
             outcomes[o["job"]] = o
-    return markers, outcomes
+    return markers, outcomes, _epoch(cycle.get("at"))
 
 
 def session_spend(rollup: Path, now: float) -> Optional[tuple]:
@@ -250,10 +252,19 @@ class Night:
     sessions: Optional[tuple] = None
 
 
-def _skip_reason(job: str, outcomes: dict, registered: bool) -> str:
+# The reasons a cycle gives whatever the hour, because it reads the switch and
+# the watchdog before it looks at the window. Every other reason is that
+# cycle's reading of its own moment: outside the window, not due, over the
+# ceiling.
+STANDING_REASONS = ("disabled", "watchdog-stop")
+
+
+def _skip_reason(job: str, outcomes: dict, registered: bool, *, cycle_tonight: bool) -> str:
     o = outcomes.get(job)
     if o is None:
         return "not registered" if not registered else "no cycle has reported it"
+    if not cycle_tonight and o.get("skipped_reason") not in STANDING_REASONS:
+        return "no reason on record for the night"
     if o.get("dry_run"):
         return "dry run"
     if o.get("skipped_reason"):
@@ -308,7 +319,16 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
     cycle = python_cycle(engine_dir)
     night.python = cycle if cycle and cycle["_at"] >= start else None
 
-    markers, outcomes = runner_state(runner_dir)
+    markers, outcomes, cycle_at = runner_state(runner_dir)
+    # A cycle writes its account only when it ends, and the note runs inside
+    # one, so the account on disk is an earlier cycle's. Only a cycle that
+    # started inside the window saw the night. On 2026-09-13 the note read the
+    # 01:52 cycle, where every night step was outside the window, and gave that
+    # as the reason enrichment did not run; the 02:22 cycle it ran in had held
+    # the batch at the budget ceiling, and the 02:56 cycle ran it.
+    closes = datetime.fromtimestamp(start).replace(
+        hour=NIGHT_WINDOW[1] // 60, minute=NIGHT_WINDOW[1] % 60).timestamp()
+    cycle_tonight = cycle_at is not None and start <= cycle_at < closes
     today = datetime.fromtimestamp(now).strftime("%Y-%m-%d")
     scorecard = out_dir.parent / "health" / f"{today}-health-scorecard.md"
     for job, _label in NIGHT_JOBS:
@@ -327,7 +347,8 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
             ran = ran or (scorecard.is_file() and scorecard.stat().st_mtime >= start)
         night.ran[job] = ran
         if not ran:
-            night.reasons[job] = _skip_reason(job, outcomes, registered=bool(m))
+            night.reasons[job] = _skip_reason(job, outcomes, registered=bool(m),
+                                              cycle_tonight=cycle_tonight)
     if scorecard.is_file():
         night.scorecard = scorecard.stem
 

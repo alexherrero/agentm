@@ -20,7 +20,7 @@ ls ~/Vault/Agent/diagnostics/morning/latest_morning_note.md ~/Vault/Agent/diagno
 
 The `morning-note` job writes it as the last step of the night, order 5 in the `02:00-06:00` window, after enrichment, the dreaming binary, the Python cycle and the corpus scorecard. Each of its four sections appears only when it has something to say.
 
-1. **Read the last line of *What ran* first.** `Did not run last night:` names each nightly step that did not run, with the reason from the runner's last cycle: `disabled`, `dry run`, `not registered`, `outside-window 02:00-06:00`, `budget-ceiling`, and the rest. A step you ran by hand inside the window counts as having run. When the line is missing, every step ran.
+1. **Read the last line of *What ran* first.** `Did not run last night:` names each nightly step that did not run, with the reason from the runner's last cycle: `disabled`, `dry run`, `not registered`, `budget-ceiling`, and the rest. When the runner starts the note, no cycle in the window has finished yet, so a step that did not run reads `no reason on record for the night` unless it is `disabled` or held at `watchdog-stop`. The reasons the night's cycles gave are in `~/.cache/agentm/telemetry/runner-launchd.log`. A step you ran by hand inside the window counts as having run. When the line is missing, every step ran.
 
 2. **Read the enrichment line left to right.** The format is `N judged · N filed active · N below the floor · N sank · N calls · N tokens against the line · <model>`. Judged is how many notes the batch sent to the model, and the next three counts are what their verdicts decided. A note that sank is counted below the floor as well. `N failed` and `Stopped by <reason>` follow when a run had failures or reached one of its limits.
 

@@ -141,8 +141,9 @@ class _Night(unittest.TestCase):
         (self.runner / f"{job}.json").write_text(json.dumps(
             {"status": "done", "last_run": at, "last_real_run": at, "last_cost_usd": 0.0}), encoding="utf-8")
 
-    def last_cycle(self, *outcomes):
-        (self.runner / "last-cycle.json").write_text(json.dumps({"outcomes": list(outcomes)}), encoding="utf-8")
+    def last_cycle(self, *outcomes, at=TONIGHT):
+        (self.runner / "last-cycle.json").write_text(
+            json.dumps({"at": at, "outcomes": list(outcomes)}), encoding="utf-8")
 
     def journal(self, *entries):
         (self.engine / "lifecycle-journal.jsonl").write_text(
@@ -321,13 +322,59 @@ class TheNote(_Night):
         self.assertIn("· opus. Stopped by the call guard (250 calls).", text)
 
     def test_a_step_that_did_not_run_says_why(self):
+        # The account is from a cycle inside tonight's window, so its word is
+        # about tonight.
         self.marker("dreaming", at=THREE_DAYS_AGO)
-        self.last_cycle({"job": "dreaming", "ran": False, "skipped_reason": "outside-window 02:00-06:00"},
+        self.last_cycle({"job": "dreaming", "ran": False, "skipped_reason": "missed-beyond-lookback"},
                         {"job": "dream", "ran": False, "dry_run": True})
         text, *_ = self.build()
         self.assertIn("- Did not run last night: enrichment (not registered) · the dreaming binary "
-                      "(outside-window 02:00-06:00) · the Python cycle (dry run) · the corpus "
+                      "(missed-beyond-lookback) · the Python cycle (dry run) · the corpus "
                       "scorecard (not registered).", text)
+
+    def test_a_cycle_from_before_the_window_cannot_say_why(self):
+        # 2026-09-13. The note runs inside a cycle, and a cycle writes its
+        # account only when it ends, so at 02:26 the note read the account of
+        # the cycle that started at 01:52, before the window opened, where
+        # every night step was outside the window. It gave that as the reason
+        # enrichment did not run. The 02:22 cycle it ran in had held the batch
+        # at the budget ceiling, and the 02:56 cycle ran it.
+        now = datetime(2026, 9, 13, 2, 26, 12).timestamp()
+        for job in ("dreaming", "dream", "corpus-scorecard"):
+            self.marker(job, at=datetime(2026, 9, 13, 2, 22, 45).timestamp())
+        self.marker("enrich-nightly", at=datetime(2026, 9, 12, 2, 23, 25).timestamp())
+        self.runs(_run(datetime(2026, 9, 12, 2, 33).timestamp()))
+        self.last_cycle(*({"job": job, "ran": False, "skipped_reason": "outside-window 02:00-06:00"}
+                          for job, _label in mn.NIGHT_JOBS),
+                        at=datetime(2026, 9, 13, 1, 52, 45).timestamp())
+        dated, _, head = mn.build(self.vault, now=now, engine_dir=self.engine, runner_dir=self.runner,
+                                  rollup=self.rollup, ask=_ask_fine)
+        text = dated.read_text(encoding="utf-8")
+        self.assertNotIn("outside-window", text)
+        self.assertIn("- Did not run last night: enrichment (no reason on record for the night).", text)
+        self.assertTrue(head.startswith("enrichment did not run (no reason on record for the night) · "), head)
+
+    def test_a_cycle_after_the_window_cannot_say_why_either(self):
+        # Run by hand at 13:00, the note reads a cycle the window had closed on.
+        self.marker("enrich-nightly", at=THREE_DAYS_AGO)
+        self.last_cycle({"job": "enrich-nightly", "ran": False, "skipped_reason": "outside-window 02:00-06:00"},
+                        at=datetime(2026, 9, 12, 12, 41).timestamp())
+        dated, _, _ = mn.build(self.vault, now=datetime(2026, 9, 12, 13, 0).timestamp(), engine_dir=self.engine,
+                               runner_dir=self.runner, rollup=self.rollup, ask=_ask_fine)
+        text = dated.read_text(encoding="utf-8")
+        self.assertIn("- Did not run last night: enrichment (no reason on record for the night)", text)
+        self.assertNotIn("outside-window", text)
+
+    def test_a_step_switched_off_says_so_whichever_cycle_saw_it(self):
+        # A cycle reads the switch and the watchdog before it looks at the
+        # window, so the cycle before the night saw both as well as one inside
+        # it would have.
+        self.last_cycle({"job": "enrich-nightly", "ran": False, "skipped_reason": "disabled"},
+                        {"job": "dreaming", "ran": False, "skipped_reason": "watchdog-stop"},
+                        at=datetime(2026, 9, 12, 1, 52).timestamp())
+        text, *_ = self.build()
+        self.assertIn("- Did not run last night: enrichment (disabled) · the dreaming binary "
+                      "(watchdog-stop) · ", text)
 
     def test_a_batch_run_by_hand_in_the_window_ran(self):
         # Task 7's supervised batch: the manifest is not registered, and the
