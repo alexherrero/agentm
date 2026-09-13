@@ -17,3 +17,6 @@ __pycache__/
 # results/*/NOTES.md; the detail lives vault-side at
 # <vault>/Agent/_meta/health/goldv2/. Added 2026-08-12.
 scripts/health/results/**/*.json
+
+# n1_run.py's old handoff destination, before #607 moved the pack out.
+/_n1_handoff/
