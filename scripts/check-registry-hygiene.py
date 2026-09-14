@@ -1,25 +1,38 @@
 #!/usr/bin/env python3
 """check-registry-hygiene — no throwaway path may be registered as a real repo.
 
-`repo_registry.register_repo` writes into the live vault at
-`<memory_root>/_meta/repos.json`, and a test that builds a fixture repo in a
-temp directory and registers it leaves an entry whose `root_path` is dead the
-moment the test exits. Three such entries accumulated by 2026-08-10 —
-`novault-marker`, `redetect-cli`, `redetect-demo` — because the tests that made
-them popped `$MEMORY_VAULT_PATH` to simulate "no vault" without redirecting
-`$AGENTM_INSTALL_PREFIX`, so `vault_path()` fell through to the operator's real
-config and resolved the real vault.
+`repo_registry.register_repo` writes the machine's repo registry. Since the
+memory-root trims (agentm-vault plan 05) that file is
+`harness_memory.engine_state_dir() / "repos.json"`: `$AGENTM_STATE_DIR/repos.json`,
+or `~/.local/state/agentm/repos.json` when the variable is unset. A test that
+builds a fixture repo in a temp directory and registers it leaves an entry
+whose `root_path` is dead the moment the test exits, and every reader of the
+registry is then handed a repo that does not exist.
 
-The cost is not the junk entries themselves. It is that they re-appear on every
-test run, so `Agent/_meta/repos.json` is permanently modified-but-uncommitted —
-and because the daemon commits markdown only, nothing ever clears it and
-`agentmd gate corpus-write` stays shut. A gate held closed by unrelated churn
-gets worked around, and then it protects nothing.
+The battery does not leak one, because `run_unit_suite.py` gives every test its
+own `$AGENTM_STATE_DIR`. A hand run does: `python3 scripts/test_<name>.py` with
+no state directory of its own writes the machine's registry, and this gate is
+where that shows up, on the next battery run. Until 2026-09-13 a hand run of
+`test_project_config.py` added five throwaway entries this way, and on
+2026-09-12 a hand run of `test_harness_memory.py` overwrote the real `sherwood`
+entry and removed the real `agentm` one.
 
-This makes the leak loud at the moment it happens instead of the next time
-someone wonders why the gate refuses. Tests should use the
-`no_vault_configured()` helper in `scripts/test_project_config.py`, which
-redirects both variables.
+Before the trims the registry lived in the vault, at
+`<memory_root>/_meta/repos.json`. Three entries — `novault-marker`,
+`redetect-cli`, `redetect-demo` — accumulated there by 2026-08-10, because the
+tests that made them popped `$MEMORY_VAULT_PATH` without redirecting
+`$AGENTM_INSTALL_PREFIX`, so `vault_path()` resolved the real vault. In the
+vault the entries also kept the tree dirty, which held `agentmd gate
+corpus-write` shut. That gate reads the vault's git status, and the registry no
+longer sits there.
+
+A test that registers a repo needs an engine state directory of its own:
+`engine_state_isolation.isolate_engine_state(self)` in the test, or
+`isolate_module(globals())` at the bottom of its module. A test that simulates
+"no vault" can use `no_vault_configured()` in `scripts/test_project_config.py`,
+which redirects the state directory along with `$MEMORY_ROOT` and
+`$AGENTM_INSTALL_PREFIX`. Redirecting those two alone no longer keeps a
+registration off the machine.
 
 Usage:
     python3 scripts/check-registry-hygiene.py [--registry PATH]
@@ -132,14 +145,18 @@ def check(registry: Path | None) -> int:
     for slug, path in leaked:
         print(f"  {slug} -> {path}", file=sys.stderr)
     print(
-        "\nThese paths stopped existing when the test that made them exited. They "
-        "re-appear on every run, so the registry is permanently dirty — and since "
-        "the daemon commits markdown only, nothing clears it and `agentmd gate "
-        "corpus-write` stays shut.\n"
-        "Fix the test to resolve against its own install prefix (see "
-        "`no_vault_configured()` in scripts/test_project_config.py — popping "
-        "$MEMORY_VAULT_PATH alone is not enough, $AGENTM_INSTALL_PREFIX has to "
-        "move too), then remove the entries above from the registry.",
+        "\nThese paths stopped existing when the test that made them exited, and "
+        "every reader of the registry is handed them as real repos.\n"
+        f"The registry is {registry}. The battery gives every test its own "
+        "$AGENTM_STATE_DIR, so an entry like these most likely came from a test "
+        "run by hand (`python3 scripts/test_<name>.py`) that set none; the slug "
+        "usually names its fixture. Give that test an engine state directory of "
+        "its own: `engine_state_isolation.isolate_engine_state(self)` in the test, "
+        "or `isolate_module(globals())` at the bottom of its module. "
+        "`no_vault_configured()` in scripts/test_project_config.py does it for a "
+        "test that simulates \"no vault\". Redirecting $MEMORY_ROOT or "
+        "$AGENTM_INSTALL_PREFIX no longer reaches the registry. Then remove the "
+        "entries above from the registry.",
         file=sys.stderr,
     )
     return 1

@@ -2,10 +2,11 @@
 """Unit tests for scripts/check-registry-hygiene.py.
 
 The gate exists because tests that build a fixture repo in a temp directory and
-register it leave an entry in the operator's live `Agent/_meta/repos.json` whose
-`root_path` died with the test. Three accumulated by 2026-08-10. The registry is
-then permanently modified-but-uncommitted, and since the daemon commits markdown
-only, nothing clears it and `agentmd gate corpus-write` stays shut.
+register it leave an entry in the machine's live repo registry whose
+`root_path` died with the test. Three accumulated in the vault's copy by
+2026-08-10. Since the memory-root trims (agentm-vault plan 05) the registry
+lives in the engine state directory, and a hand run of a suite that never sets
+`$AGENTM_STATE_DIR` is what reaches it.
 
 Every fixture below is a hand-written literal. None is built by asking the
 implementation what it would produce — a check that computes its expectation
@@ -121,11 +122,19 @@ class TestRegistryHygiene(unittest.TestCase):
         self.assertEqual(res.returncode, 0, res.stderr)
 
     def test_failure_message_names_the_helper_to_use(self):
-        """The remedy has to say what to do, not just that something is wrong."""
+        """The remedy has to say what to do, not just that something is wrong.
+
+        Since the memory-root trims (agentm-vault plan 05) what to do is give
+        the test an engine state directory of its own, so the message has to
+        name the variable and the helper that do it, and the registry to clean.
+        """
         with tempfile.TemporaryDirectory() as td:
-            res = run_gate(self._write(td, LEAKED_MACOS))
+            registry = self._write(td, LEAKED_MACOS)
+            res = run_gate(registry)
+        self.assertIn("AGENTM_STATE_DIR", res.stderr)
+        self.assertIn("isolate_engine_state", res.stderr)
         self.assertIn("no_vault_configured", res.stderr)
-        self.assertIn("AGENTM_INSTALL_PREFIX", res.stderr)
+        self.assertIn(str(registry), res.stderr)
 
 
 class TestGateIsWiredIntoBattery(unittest.TestCase):

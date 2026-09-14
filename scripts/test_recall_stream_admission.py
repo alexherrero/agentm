@@ -484,5 +484,19 @@ class TransparencyTests(unittest.TestCase):
         self.assertNotIn("NOTHING WAS SEARCHED", stderr)
 
 
+# Every test here gets its own engine state directory. A served recall records
+# its hits in `.heat.json` and `.lifecycle.json`, which have lived there since
+# the memory-root trims (agentm-vault plan 05), so a hand run wrote fixture
+# hits into the machine's own sidecars.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -24,29 +24,41 @@ if str(_HERE) not in sys.path:
 import detect_project as dp  # noqa: E402
 import project_config as pc  # noqa: E402
 import repo_registry  # noqa: E402
+import engine_state_isolation as esi  # noqa: E402
 
 
 @contextlib.contextmanager
 def no_vault_configured():
     """Resolve as if no vault existed, without reaching the operator's install.
 
-    Popping `$MEMORY_VAULT_PATH` alone does not achieve that. `vault_path()` has
-    a second resolution path — `$AGENTM_INSTALL_PREFIX/.agentm-config.json`,
-    defaulting to `~/.claude` — so a test that pops only the env var still
-    resolves the real vault, and `register()` then writes its throwaway fixture
-    into the live repo registry under a `/var/folders/.../T/tmpXXXX/repo` path
-    that is dead the moment the test exits. That churn re-dirties
-    `Agent/_meta/repos.json` on every run, and since the daemon commits markdown
-    only it sits uncommitted and holds `agentmd gate corpus-write` shut.
+    Three settings reach the operator's install, and each has let a throwaway
+    fixture into the live repo registry under a `/var/folders/.../T/tmpXXXX/repo`
+    path that is dead the moment the test exits:
 
-    Both variables have to be redirected for "no vault" to mean it. Use this
-    rather than hand-rolling the pop; `check-registry-hygiene` fails the battery
-    if a leak reaches the live registry anyway.
+    - `$MEMORY_ROOT`, and `$MEMORY_VAULT_PATH`, its deprecated alias. Popping
+      them is the obvious step, and it is not enough on its own.
+    - `$AGENTM_INSTALL_PREFIX`. `vault_path()` has a second resolution path,
+      `$AGENTM_INSTALL_PREFIX/.agentm-config.json` defaulting to `~/.claude`,
+      so a test that pops only the variables still resolves the real vault.
+      That is how three entries reached the registry by 2026-08-10, while it
+      lived in the vault.
+    - `$AGENTM_STATE_DIR`. Since the memory-root trims (agentm-vault plan 05)
+      the registry lives at `engine_state_dir() / "repos.json"`, which is
+      `~/.local/state/agentm/repos.json` unless this variable says otherwise,
+      and `register()` writes it whether or not a vault resolves. The two
+      redirects above do not reach it, so until 2026-09-13 a hand run of this
+      file wrote four entries through this helper. The battery never saw it,
+      because `run_unit_suite.py` gives every test its own state directory.
+
+    This redirects all three for the block, the state directory through
+    `engine_state_isolation`. Use it rather than hand-rolling the pop;
+    `check-registry-hygiene` fails the battery if a leak reaches the live
+    registry anyway.
     """
     import harness_memory as hm
     old_vault = os.environ.get("MEMORY_VAULT_PATH")
     old_prefix = os.environ.get("AGENTM_INSTALL_PREFIX")
-    with tempfile.TemporaryDirectory() as prefix:
+    with tempfile.TemporaryDirectory() as prefix, esi.isolated_engine_state():
         os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
         os.environ["AGENTM_INSTALL_PREFIX"] = prefix
@@ -658,6 +670,14 @@ class TestShouldNudgeGit(unittest.TestCase):
                 if old_env is not None:
                     os.environ["MEMORY_VAULT_PATH"] = old_env
             self.assertEqual(rc, 0)
+
+
+# Every test here gets its own engine state directory, where the repo registry
+# has lived since the memory-root trims (agentm-vault plan 05). `register()`
+# writes it whether or not a vault resolves, so a hand run added five throwaway
+# entries to the machine's registry, and the `demo` one came from tests that
+# never enter `no_vault_configured()`.
+esi.isolate_module(globals())
 
 
 if __name__ == "__main__":

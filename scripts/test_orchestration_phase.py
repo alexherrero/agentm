@@ -227,5 +227,19 @@ class TestPostRelease(unittest.TestCase):
         self.assertEqual(out["status"], "ran")
 
 
+# Every test here gets its own engine state directory. The phase records each
+# fire in `auto-orchestration-state.json` there, so on a hand run the first
+# test's fire put the rest in cooldown, which failed ten of the sixteen, and
+# the fires landed in the machine's own cooldown state.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()

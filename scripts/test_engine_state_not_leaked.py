@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import re
+import site
 import subprocess
 import sys
 import tempfile
@@ -175,6 +176,51 @@ class TheRunnersGuardActuallyRotates(unittest.TestCase):
         self.assertIn("ok", r.stdout)
 
 
+def _fingerprint(directory: Path) -> dict:
+    """Every file under `directory`, with its modification time and a hash of its bytes."""
+    return {
+        f.relative_to(directory).as_posix():
+            (f.stat().st_mtime_ns, hashlib.sha256(f.read_bytes()).hexdigest())
+        for f in sorted(directory.rglob("*")) if f.is_file()
+    }
+
+
+def _hand_run_env(home: str) -> dict:
+    """The environment a person runs a suite in, with the home directory moved to `home`."""
+    env = dict(os.environ)
+    env.pop("AGENTM_STATE_DIR", None)
+    # `Path.home()` reads HOME on POSIX and USERPROFILE on Windows. Moving the
+    # home also moves the user site directory, where a person's own packages
+    # can live (PyYAML, on a machine that installed it with `pip install
+    # --user`), so the child is pointed back at the real one rather than
+    # failing an import that a hand run passes.
+    env.update(HOME=home, USERPROFILE=home, PYTHONIOENCODING="utf-8",
+               PYTHONUSERBASE=site.getuserbase())
+    return env
+
+
+def _seed_default_state(case: unittest.TestCase, env: dict, home: str) -> Path:
+    """Seed a registry where the run's default state directory resolves.
+
+    Asks the resolver the registry writes through, under exactly the
+    environment the run gets. If the resolver ever stops following the home
+    directory, the registry written here would land on the machine's real one,
+    so this refuses before writing anything.
+    """
+    with mock.patch.dict(os.environ, env, clear=True):
+        state = harness_memory.engine_state_dir()
+    case.assertIn(
+        Path(os.path.realpath(home)), Path(os.path.realpath(state)).parents,
+        f"the default state directory no longer follows the home directory "
+        f"({state}); this check cannot run without touching the machine's own")
+    state.mkdir(parents=True)
+    (state / "repos.json").write_text(json.dumps({"version": 1, "repos": [
+        {"slug": "agentm", "root_path": "/srv/projects/agentm"},
+        {"slug": "sherwood", "root_path": "/srv/projects/sherwood"},
+    ]}, indent=2) + "\n", encoding="utf-8")
+    return state
+
+
 class TheRegistryCLITestsRunByHand(unittest.TestCase):
     """A hand run of `test_harness_memory.py`, under a home of its own.
 
@@ -199,40 +245,11 @@ class TheRegistryCLITestsRunByHand(unittest.TestCase):
     # running nothing.
     WRITERS = ("test_register_then_list_via_cli", "test_unregister_via_cli")
 
-    @staticmethod
-    def _fingerprint(directory: Path) -> dict:
-        """Every file under `directory`, with its modification time and a hash of its bytes."""
-        return {
-            f.relative_to(directory).as_posix():
-                (f.stat().st_mtime_ns, hashlib.sha256(f.read_bytes()).hexdigest())
-            for f in sorted(directory.rglob("*")) if f.is_file()
-        }
-
     def test_leave_the_default_registry_as_they_found_it(self):
         with tempfile.TemporaryDirectory() as home:
-            env = dict(os.environ)
-            env.pop("AGENTM_STATE_DIR", None)
-            # `Path.home()` reads HOME on POSIX and USERPROFILE on Windows.
-            env.update(HOME=home, USERPROFILE=home, PYTHONIOENCODING="utf-8")
-
-            # Where the run's default registry resolves: the resolver the
-            # registry writes through, under exactly the environment the run gets.
-            with mock.patch.dict(os.environ, env, clear=True):
-                state = harness_memory.engine_state_dir()
-            # If the resolver ever stops following the home directory, the
-            # registry written below would land on the machine's real one.
-            # Refuse before writing anything.
-            self.assertIn(
-                Path(os.path.realpath(home)), Path(os.path.realpath(state)).parents,
-                f"the default state directory no longer follows the home directory "
-                f"({state}); this check cannot run without touching the machine's own")
-
-            state.mkdir(parents=True)
-            (state / "repos.json").write_text(json.dumps({"version": 1, "repos": [
-                {"slug": "agentm", "root_path": "/srv/projects/agentm"},
-                {"slug": "sherwood", "root_path": "/srv/projects/sherwood"},
-            ]}, indent=2) + "\n", encoding="utf-8")
-            before = self._fingerprint(state)
+            env = _hand_run_env(home)
+            state = _seed_default_state(self, env, home)
+            before = _fingerprint(state)
 
             r = subprocess.run(
                 [sys.executable, str(_REPO / "scripts" / "test_harness_memory.py"), self.CLASS],
@@ -240,13 +257,111 @@ class TheRegistryCLITestsRunByHand(unittest.TestCase):
                 cwd=str(_REPO / "scripts"), env=env)
 
             self.assertEqual(
-                self._fingerprint(state), before,
+                _fingerprint(state), before,
                 f"a hand run of {self.CLASS} wrote into the default state directory, "
                 f"which on a real machine holds the live registry:\n{r.stderr[-3000:]}")
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             for name in self.WRITERS:
                 self.assertIn(name, r.stderr, "the run did not include a test that writes a registry")
             self.assertRegex(r.stderr, r"(?m)^OK$", "a test was skipped, so the run proves less than it says")
+
+
+class TheStateWritingSuitesRunByHand(unittest.TestCase):
+    """Hand runs of the other suites that wrote engine state, each under a home of its own.
+
+    Running every suite by hand the way the class above runs one found thirteen
+    more writing the machine's engine state directory (2026-09-13). Three wrote
+    the repo registry: `test_project_config` added five throwaway entries, and
+    the two conformance suites rewrote the file around a register-and-unregister.
+    The rest wrote the `.heat.json` and `.lifecycle.json` sidecars, the
+    auto-orchestration cooldown or the forward-learning watermarks, and four of
+    them also failed on a hand run, because in one shared directory each test
+    started from the last one's writes. The battery saw none of it: its runner
+    gives every test a state directory of its own.
+
+    Each suite runs by hand twice, with no `AGENTM_STATE_DIR`: whole, then only
+    the tests named against it, each of which wrote the machine's state before
+    the fix. Both runs must pass and leave the seeded default state directory
+    exactly as it was. The second run is what keeps the check from passing by
+    running nothing, since every named test has to run and none may be skipped.
+    """
+
+    WRITERS = {
+        "test_project_config.py": (
+            "TestRegisterIntegration.test_register_writes_block_and_registry",
+            "TestRedetectIntegration.test_surface_then_apply_lifecycle",
+        ),
+        "test_storage_conformance.py": (
+            "DeviceLocalConformance.test_routing_repo_registry",
+            "RoutingConformanceReport.test_run_conformance_vault_includes_routing",
+        ),
+        "test_storage_conformance_negative.py": (
+            "FaithfulDerivedConformance.test_routing_repo_registry",
+        ),
+        "test_auto_orchestration.py": (
+            "TestState.test_save_load_round_trip",
+        ),
+        "test_orchestration_phase.py": (
+            "TestPostWork.test_reflects_marks_and_records_fire",
+            "TestPostRelease.test_runs_index_then_discover_and_records",
+        ),
+        "test_forward_learning.py": (
+            "DryRunFixtureSourceSetTests.test_watermark_advances_after_scan",
+            "CrossScanDedupTests.test_rescan_does_not_rewrite_already_seen_candidate",
+        ),
+        "test_memory_heat_policy.py": (
+            "TestRecordHit.test_first_hit_creates_sidecar",
+            "TestRecallHitIntegration.test_prompt_submit_records_hits",
+        ),
+        "test_memory_lifecycle.py": (
+            "TestAccessDrivenReset.test_genuine_recall_access_resets_volatile_clock",
+            "TestSteppedDecayScore.test_genuine_recall_access_resets_the_stepped_clock_too",
+        ),
+        "test_recall_daemon_fast_path.py": (
+            "PromptSubmitIntegrationTests.test_the_daemon_answer_is_used_and_the_walk_never_runs",
+        ),
+        "test_recall_machine_prompt_skip.py": (
+            "AHumanPromptQuotingAMarkerIsStillServed.test_a_marker_quoted_mid_sentence_is_served",
+        ),
+        "test_recall_stream_admission.py": (
+            "TransparencyTests.test_a_matching_entry_is_injected_when_the_budget_is_sufficient",
+        ),
+        "test_recall_token_budget.py": (
+            "TestPromptSubmitTokenBudget.test_truncation_marker_in_prompt_submit",
+        ),
+        "test_recall_trace.py": (
+            "TestPackedCaptureAlignment.test_hits_carry_the_same_evidence_query_already_computed",
+        ),
+    }
+
+    def _run_by_hand(self, suite: str, names: tuple = ()) -> None:
+        what = " ".join(("a hand run of", suite) + names)
+        with tempfile.TemporaryDirectory() as home:
+            env = _hand_run_env(home)
+            state = _seed_default_state(self, env, home)
+            before = _fingerprint(state)
+
+            r = subprocess.run(
+                [sys.executable, str(_REPO / "scripts" / suite), *names],
+                capture_output=True, encoding="utf-8", errors="replace", timeout=300,
+                cwd=str(_REPO / "scripts"), env=env)
+
+            self.assertEqual(
+                _fingerprint(state), before,
+                f"{what} wrote into the default state directory, which on a real "
+                f"machine is the live one:\n{r.stderr[-3000:]}")
+            self.assertEqual(r.returncode, 0, f"{what} failed:\n{r.stdout[-2000:]}{r.stderr[-3000:]}")
+            if names:
+                self.assertRegex(r.stderr, rf"(?m)^Ran {len(names)} tests? in ",
+                                 f"{what} did not run every named test")
+                self.assertRegex(r.stderr, r"(?m)^OK$",
+                                 f"{what} skipped a named test, so the run proves less than it says")
+
+    def test_each_leaves_the_default_state_directory_as_it_found_it(self):
+        for suite, names in self.WRITERS.items():
+            with self.subTest(suite=suite):
+                self._run_by_hand(suite)
+                self._run_by_hand(suite, names)
 
 
 if __name__ == "__main__":

@@ -145,5 +145,19 @@ class RoutingConformanceReport(unittest.TestCase):
         self.assertEqual(report["routing"], [])
 
 
+# Every test here gets its own engine state directory. The routing check
+# registers and unregisters a slug through `repo_registry`, which has kept the
+# registry there since the memory-root trims (agentm-vault plan 05) whatever
+# backend it is handed, so a hand run rewrote the machine's `repos.json`.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()
