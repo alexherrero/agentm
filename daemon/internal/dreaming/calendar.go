@@ -22,11 +22,10 @@ import (
 // holds the bytes, edited on purpose where a decision has changed.
 
 const (
-	JobCalendar         = "calendar"
-	CalendarSpace       = "Calendar"
-	ReviewKind          = "calendar-review"
-	DefaultRollupWeeks  = 8
-	calendarPhraseChars = 120
+	JobCalendar        = "calendar"
+	CalendarSpace      = "Calendar"
+	ReviewKind         = "calendar-review"
+	DefaultRollupWeeks = 8
 )
 
 var (
@@ -106,29 +105,6 @@ func NotesForDay(calendarRoot string, facets []string, day time.Time) []DayNote 
 	return out
 }
 
-// phraseOf is calendar_index._phrase: the first entry's words cut on a
-// word boundary, and the entry count.
-func phraseOf(path string) (string, int) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", 0
-	}
-	_, body := ParseFrontmatter(string(raw))
-	entries := calendarEntryRe.FindAllStringSubmatch(body, -1)
-	if len(entries) == 0 {
-		return "", 0
-	}
-	first := strings.TrimSpace(entries[0][1])
-	if len(first) > calendarPhraseChars {
-		cut := first[:calendarPhraseChars]
-		if i := strings.LastIndex(cut, " "); i >= 0 {
-			cut = cut[:i]
-		}
-		first = cut + " …"
-	}
-	return first, len(entries)
-}
-
 // Correction is a correction note dated a day: (facet, corrected day, stem).
 type Correction struct {
 	Facet     string
@@ -200,17 +176,54 @@ func MonthDays(year, month int) []time.Time {
 	return out
 }
 
-func dayLine(calendarRoot string, facets []string, day time.Time) string {
-	notes := NotesForDay(calendarRoot, facets, day)
-	if len(notes) == 0 {
-		return ""
+// A line of the daily template records nothing: an embed, a thematic break or
+// a heading. Anything else in a facet note's body is written.
+var (
+	calendarEmbedRe   = regexp.MustCompile(`^!\[\[[^\]]*\]\]$`)
+	calendarRuleRe    = regexp.MustCompile(`^(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$`)
+	calendarHeadingRe = regexp.MustCompile(`^#{1,6}(?:[ \t]|$)`)
+)
+
+// facetContent is how many timed entries a facet note holds, and whether
+// anything is written in it at all. A note counts for the reviews when it holds
+// a timed entry or prose beyond the daily template, on the operator's ruling of
+// 2026-09-13: Obsidian's daily note is the diary facet, a diary day is written
+// in prose, and a note opened from the template and never written in records
+// nothing.
+func facetContent(path string) (entries int, written bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0, false
 	}
-	// Each facet note by its link, never the bare-date day index the design dropped.
+	_, body := ParseFrontmatter(string(raw))
+	entries = len(calendarEntryRe.FindAllStringIndex(body, -1))
+	for _, line := range strings.Split(body, "\n") {
+		l := strings.TrimSpace(line)
+		if l == "" || calendarEmbedRe.MatchString(l) || calendarRuleRe.MatchString(l) || calendarHeadingRe.MatchString(l) {
+			continue
+		}
+		return entries, true
+	}
+	return entries, false
+}
+
+func dayLine(calendarRoot string, facets []string, day time.Time) string {
+	// Each facet note by its link, never the bare-date day index the design
+	// dropped, with its count of timed entries. Prose alone carries no count,
+	// and a note with nothing written in it is not listed.
 	date := day.Format("2006-01-02")
 	var parts []string
-	for _, n := range notes {
-		_, count := phraseOf(n.Path)
-		parts = append(parts, fmt.Sprintf("[[%s-%s|%s]] (%d)", date, n.Facet, n.Facet, count))
+	for _, n := range NotesForDay(calendarRoot, facets, day) {
+		entries, written := facetContent(n.Path)
+		switch {
+		case entries > 0:
+			parts = append(parts, fmt.Sprintf("[[%s-%s|%s]] (%d)", date, n.Facet, n.Facet, entries))
+		case written:
+			parts = append(parts, fmt.Sprintf("[[%s-%s|%s]]", date, n.Facet, n.Facet))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
 	}
 	return fmt.Sprintf("- %s — %s", date, strings.Join(parts, ", "))
 }
@@ -228,7 +241,8 @@ func joinReview(lines []string) string {
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
 }
 
-// RenderWeek is calendar_rollups.render_week, byte for byte.
+// RenderWeek is calendar_rollups.render_week, byte for byte, apart from what
+// counts as a day's content (see facetContent).
 func RenderWeek(calendarRoot string, facets []string, year, week int) string {
 	days := WeekDays(year, week)
 	key := fmt.Sprintf("%04d-W%02d", year, week)
@@ -277,7 +291,8 @@ func RenderWeek(calendarRoot string, facets []string, year, week int) string {
 }
 
 // RenderMonth is calendar_rollups.render_month, byte for byte, against the
-// week reviews on disk.
+// week reviews on disk, apart from what counts as a day's content (see
+// facetContent).
 func RenderMonth(calendarRoot string, facets []string, year, month int) string {
 	return renderMonth(calendarRoot, facets, year, month, nil)
 }
@@ -319,7 +334,7 @@ func renderMonth(calendarRoot string, facets []string, year, month int, planned 
 		}
 		n := 0
 		for _, d := range inMonth {
-			if len(NotesForDay(calendarRoot, facets, d)) > 0 {
+			if dayLine(calendarRoot, facets, d) != "" {
 				n++
 			}
 		}
@@ -361,8 +376,9 @@ type CalendarPlan struct {
 // PlanCalendar is calendar_rollups.catch_up as intents: a review is an
 // intent only when its text differs from the file (or the file is missing);
 // an unchanged period costs nothing. `today` bounds the closed weeks.
-// WeekHasContent reports whether a week has anything to review: a day with a
-// facet entry, or a correction written during it.
+// WeekHasContent reports whether a week has anything to review: a day whose
+// facet note holds a timed entry or written prose, or a correction written
+// during it.
 //
 // A review of a week with neither is eight lines of frontmatter saying
 // "Nothing recorded this week. 0 of 7 days with entries." Ten of those existed
@@ -386,7 +402,8 @@ func WeekHasContent(calendarRoot string, facets []string, year, week int) bool {
 	return false
 }
 
-// MonthHasContent reports whether a month has any day with a facet entry.
+// MonthHasContent reports whether a month has any day whose facet note holds a
+// timed entry or written prose.
 //
 // Deliberately not "any of its weeks has content": a month's own body lists
 // days, and its week rows are a summary of what it links. A month whose only

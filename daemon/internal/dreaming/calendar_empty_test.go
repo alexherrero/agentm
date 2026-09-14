@@ -32,7 +32,7 @@ func emptyRegister(t *testing.T) (root, calendarRoot string) {
 }
 
 // writeDayFacet plants one facet file with one timed entry — the shape
-// NotesForDay looks for and phraseOf parses.
+// NotesForDay looks for and facetContent counts.
 func writeDayFacet(t *testing.T, calendarRoot, day, facet, text string) {
 	t.Helper()
 	dir := filepath.Join(calendarRoot, day[:4])
@@ -166,4 +166,68 @@ func TestAMonthLinksOnlyWeeksThatWereWritten(t *testing.T) {
 // parseWeekKey reads "2026-W35" into year and week.
 func parseWeekKey(key string, y, w *int) (int, error) {
 	return fmt.Sscanf(key, "%d-W%d", y, w)
+}
+
+// A facet note counts for the reviews when it holds a timed entry or prose
+// written beyond the daily template (the operator's ruling of 2026-09-13).
+// Obsidian's daily note is the diary facet, and one opened from the template
+// holds an embed, a rule and a heading, none of which records anything.
+const templateOnlyNote = "![[Agent/desk/briefs/20260826-digest-daily]]\n\n---\n\n## Today\n"
+
+func reviewText(plan CalendarPlan, stem string) string {
+	for _, in := range plan.Intents {
+		if strings.HasSuffix(in.Rel, "/"+stem+".md") {
+			return string(in.After)
+		}
+	}
+	return ""
+}
+
+func TestADailyNoteOpenedFromTheTemplateIsNotContent(t *testing.T) {
+	root, calendarRoot := emptyRegister(t)
+	writeAt(t, calendarRoot, "2026/2026-08-26-diary.md", templateOnlyNote)
+	f := Facets(nil)
+
+	if WeekHasContent(calendarRoot, f, 2026, 35) || MonthHasContent(calendarRoot, f, 2026, 8) {
+		t.Error("a daily note nobody wrote in reads as content")
+	}
+	plan, err := PlanCalendar(root, nil, planDay, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Written) != 0 {
+		t.Errorf("reviews written for a day holding only the template: %v", plan.Written)
+	}
+}
+
+func TestAProseDayIsContentAndItsLineCarriesNoCount(t *testing.T) {
+	root, calendarRoot := emptyRegister(t)
+	writeAt(t, calendarRoot, "2026/2026-08-26-diary.md", templateOnlyNote+"\nStage 1 of the migration ran today.\n")
+	writeAt(t, calendarRoot, "2026/2026-08-27-diary.md", templateOnlyNote)
+	writeDayFacet(t, calendarRoot, "2026-08-28", "docs", "A document came in.")
+
+	plan, err := PlanCalendar(root, nil, planDay, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	week := reviewText(plan, "2026-W35-review")
+	for _, want := range []string{
+		"- 2026-08-26 — [[2026-08-26-diary|diary]]\n",
+		"- 2026-08-28 — [[2026-08-28-docs|docs]] (1)\n",
+		"Nothing recorded on Mon, Tue, Thu, Sat, Sun.\n",
+		"2 of 7 days with entries.\n",
+	} {
+		if !strings.Contains(week, want) {
+			t.Errorf("the week review lacks %q:\n%s", want, week)
+		}
+	}
+	if strings.Contains(week, "(0)") || strings.Contains(week, "2026-08-27") {
+		t.Errorf("the week review counts a prose day as (0), or lists a day holding only the template:\n%s", week)
+	}
+	month := reviewText(plan, "2026-08-review")
+	for _, want := range []string{"- [[2026-W35-review]] — 2 of 7 days with entries\n", "2 of 31 days with entries.\n"} {
+		if !strings.Contains(month, want) {
+			t.Errorf("the month review lacks %q:\n%s", want, month)
+		}
+	}
 }

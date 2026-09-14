@@ -176,8 +176,8 @@ func printReport(rep dreaming.Report) {
 			changed++
 		}
 	}
-	fmt.Printf("mocs: %d page(s), %s%d regenerated, %d type(s) below the floor · dates: %s%d gloss(es) across %d aging note(s)\n",
-		len(rep.Mocs.Pages), would, changed, len(rep.Mocs.BelowFloor), would, len(rep.Dates.Glossed), rep.Dates.Aging)
+	fmt.Printf("mocs: %d page(s), %s%d regenerated, %d type(s) below the floor, %s%d page(s) removed · dates: %s%d gloss(es) across %d aging note(s)\n",
+		len(rep.Mocs.Pages), would, changed, len(rep.Mocs.BelowFloor), would, len(rep.Mocs.Removed), would, len(rep.Dates.Glossed), rep.Dates.Aging)
 	fmt.Printf("vocabulary: %d note(s) — %d unrecognized, %d malformed, %d retired\n", rep.Vocabulary.Considered,
 		len(rep.Vocabulary.Unrecognized), len(rep.Vocabulary.Malformed), len(rep.Vocabulary.Retired))
 	for _, f := range rep.Vocabulary.Unrecognized {

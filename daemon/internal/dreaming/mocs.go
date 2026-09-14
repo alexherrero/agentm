@@ -86,7 +86,10 @@ type MocsPlan struct {
 	Intents    []Intent       `json:"-"`
 	Pages      []MocPage      `json:"pages"`
 	BelowFloor map[string]int `json:"below_floor"`
-	Considered int            `json:"considered"`
+	// Removed is every type's page the pass deletes because its type fell
+	// below the floor, memory-root relative.
+	Removed    []string `json:"removed,omitempty"`
+	Considered int      `json:"considered"`
 }
 
 // contextPhrase is the first prose line of a body, cut on a word boundary.
@@ -330,6 +333,40 @@ func PlanMocs(root string, r *rules.Rules, now time.Time) (MocsPlan, error) {
 		// Nothing typed to map. A map of nothing is not written, and one a
 		// fuller corpus left behind stays as it is.
 		return plan, nil
+	}
+	// A type's page exists only at or past the floor. A type that fell below
+	// it loses its page, on the operator's ruling of 2026-09-13: moc-memory.md
+	// lists its notes in full, and a page left behind goes stale and fails the
+	// maps gate. The contract's types count even with no live note left, and
+	// only a page this job wrote for the type is its to remove.
+	candidates := map[string]bool{}
+	for _, t := range types {
+		candidates[t] = true
+	}
+	if r != nil {
+		for _, t := range r.MemoryTypes {
+			candidates[t] = true
+		}
+	}
+	var fallen []string
+	for t := range candidates {
+		if len(byType[t]) < minMembers {
+			fallen = append(fallen, t)
+		}
+	}
+	sort.Strings(fallen)
+	for _, t := range fallen {
+		rel := MocRel(t)
+		cur, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		if fm, _ := ParseFrontmatter(string(cur)); strings.TrimSpace(fm["type_of_members"]) != t {
+			continue
+		}
+		plan.Removed = append(plan.Removed, rel)
+		plan.Intents = append(plan.Intents, Intent{Job: JobMocs, Rel: rel, Before: cur, Delete: true,
+			Summary: fmt.Sprintf("map of content for %s removed (%d members, under the floor of %d)", t, len(byType[t]), minMembers)})
 	}
 	if newestAll == "" {
 		newestAll = today.Format("2006-01-02")

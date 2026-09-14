@@ -46,8 +46,13 @@ SKIP_DIRS = {".git", ".obsidian", ".trash", "_harness"}
 OWNER_SPACES = {"Personal"}
 RETIRED_NAMES = {"home", "filing"}
 _WIKILINK = re.compile(r"\[\[([^\]\n]+?)\]\]")
-_MDLINK = re.compile(r"\]\(([^)\s]+?\.md)(?:#[^)]*)?\)", re.IGNORECASE)
-_INLINE_CODE = re.compile(r"(`+)[^\n]*?\1")
+# A markdown link to a note: `](path.md)`, or `](<path.md>)` whose path may hold
+# spaces, either with a `#heading` and a title after it.
+_MDLINK = re.compile(r"\]\(\s*(?:<([^<>\n]+?\.md)(?:#[^<>\n]*)?>|([^)\s<>]+?\.md)(?:#[^)\s]*)?)"
+                     r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?\s*\)", re.IGNORECASE)
+# A code span opens on a run of backticks no backslash escapes, and closes on a
+# run of the same length.
+_INLINE_CODE = re.compile(r"(?<![`\\])(`+)(?!`)[^\n]*?(?<!`)\1(?!`)")
 _TABLE_RULE = re.compile(r"^\s*\|?\s*:?-{3,}")
 
 
@@ -116,7 +121,7 @@ def retired_links(vault: Path, memory_root: Path):
             if target.strip() and names_retired(note, target):
                 yield note, text.count("\n", 0, m.start()) + 1, m.group(0)
         for m in _MDLINK.finditer(text):
-            target = m.group(1).replace("%20", " ")
+            target = (m.group(1) or m.group(2)).replace("%20", " ")
             if "://" not in target and names_retired(note, target):
                 yield note, text.count("\n", 0, m.start()) + 1, m.group(0)
 
