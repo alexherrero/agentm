@@ -104,6 +104,8 @@ jobs:
         # The Gemini half graceful-skips on a runner (no ~/.gemini); the tracked
         # Antigravity rule is checkable everywhere and never skips.
         run: python3 scripts/check-payload-parity.py
+      - name: check-no-title-case-roots (no literal spells a root space Title Case)
+        run: python3 scripts/check-no-title-case-roots.py
       - name: "check-vocabulary-membership (set-ratchet self-test — collision + membership fire)"
         # A runner has no vault, so the corpus ratchet half skips itself with a
         # named line; what runs in full here is the self-test — the collision
