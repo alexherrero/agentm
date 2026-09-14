@@ -95,6 +95,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reason now counts only from a cycle that started inside the night's window,
   apart from `disabled` and `watchdog-stop`, which a cycle reads before it looks
   at the window. Any other step reads `no reason on record for the night`.
+- **The morning note no longer drops a run for the length of its timestamp's
+  fraction.** agentmd writes a run's `at` the way Go writes any time, with the
+  fraction's trailing zeros trimmed, so the fraction runs from one digit to
+  nine. The note read it with `datetime.fromisoformat`, which before Python
+  3.11 takes three digits or six, and macOS's own `python3` is 3.9. A run whose
+  `at` failed that parse fell out of the note without a word, and its judged,
+  failed, verdicts and spend fell out with it. On 2026-09-13 the note read 61
+  judged over two runs and missed a third, which had judged 5 more, merged 4
+  project records and spent $3.16. On a clock that gives microseconds about
+  one run in ten was at risk, and on one that gives nanoseconds nearly every
+  run was. The note now cuts or pads the fraction to six digits before it
+  parses, and a timestamp that still does not parse is left out as before.
 - **A revert no longer loses what was written after its run.** `--revert` on the
   card backfill and on the maps and root notes migration wrote each saved copy
   back, and deleted each file the run had created, whatever the file held by
