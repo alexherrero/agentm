@@ -210,6 +210,7 @@ class TheNote(_Night):
         text, *_ = self.build()
         self.assertIn("- **Enrichment** — 118 judged · 97 filed active · 21 below the floor · 2 sank · "
                       "236 calls · 800,000 tokens against the line · opus.", text)
+        self.assertNotIn("project records", text)
         self.assertIn("- **The dreaming binary** — apply pass, outcome applied; gate: due.", text)
         self.assertIn("| lifecycle | sank 1, revived 0, archive candidates 1, held by cap 0 |", text)
         self.assertIn("| copies | 1 families collapsed, 0 deferred |", text)
@@ -219,6 +220,13 @@ class TheNote(_Night):
                       "facet(s) · lint 4 orphan(s), 0 contradiction(s), 1 mis-cased link(s) it would repair.", text)
         # Every step ran, so nothing is listed as skipped.
         self.assertNotIn("Did not run", text)
+
+    def test_a_night_that_merged_project_records_counts_them_beside_the_verdicts(self):
+        self.full_night()
+        self.runs(_run(TONIGHT, verdicts={"filed_active": 97, "below_floor": 21, "sank": 2, "records": 5}))
+        text, *_ = self.build()
+        self.assertIn("- **Enrichment** — 118 judged · 97 filed active · 21 below the floor · 2 sank · "
+                      "5 project records · 236 calls · ", text)
 
     def test_what_needs_you(self):
         self.full_night()

@@ -41,9 +41,33 @@ class PlanStatus(NamedTuple):
     progress_head: str  # most-recent progress entry, or a "(…)" placeholder
 
 
+def _plan_label(plan_path: Path) -> str:
+    """How a plan is named in the dashboard: `PLAN.md`, `PLAN-foo.md`, or
+    `tasks/foo/plan.md` for a task (agentm-vault plan 09)."""
+    if plan_path.name == "plan.md" and plan_path.parent.parent.name == hm._TASKS_DIRNAME:
+        return f"{hm._TASKS_DIRNAME}/{plan_path.parent.name}/plan.md"
+    return plan_path.name
+
+
 def _plan_sort_key(name: str) -> tuple[int, str]:
-    """Singleton `PLAN.md` first, then named plans alphabetically — deterministic."""
-    return (0, "") if name == "PLAN.md" else (1, name)
+    """Singleton `PLAN.md` first, then named plans alphabetically, then tasks —
+    deterministic."""
+    if name == "PLAN.md":
+        return (0, "")
+    return (2, name) if name.startswith(f"{hm._TASKS_DIRNAME}/") else (1, name)
+
+
+def _tracker_status(plan_path: Path) -> Optional[str]:
+    """A task's status from the tracker beside its plan, when one exists and
+    parses — the tracker, not the plan, carries status in the task layout."""
+    path = plan_path.parent / "tracker.md"
+    if plan_path.name != "plan.md" or not path.is_file():
+        return None
+    try:
+        import tracker  # the one tracker schema (agentm-vault plan 09)
+        return tracker.read(path)[0].status
+    except Exception:  # a tracker that does not parse is the gate's to report
+        return None
 
 
 def list_plan_files(harness_dir: Path) -> list[Path]:
@@ -62,7 +86,12 @@ def list_plan_files(harness_dir: Path) -> list[Path]:
     for p in harness_dir.glob("PLAN-*.md"):
         if p.is_file() and hm._conflict_family(p.name) is None:
             files.append(p)
-    return sorted(files, key=lambda p: _plan_sort_key(p.name))
+    # A task's plan beside a vault `_harness/` (agentm-vault plan 09).
+    if harness_dir.name == "_harness":
+        for p in (harness_dir.parent / hm._TASKS_DIRNAME).glob("*/plan.md"):
+            if p.is_file() and hm._is_safe_plan_slug(p.parent.name):
+                files.append(p)
+    return sorted(files, key=lambda p: _plan_sort_key(_plan_label(p)))
 
 
 def _extract_status(plan_text: str) -> str:
@@ -102,14 +131,19 @@ def collect_plan_statuses(harness_dir: Path) -> list[PlanStatus]:
     """
     rows: list[PlanStatus] = []
     for plan_path in list_plan_files(harness_dir):
-        plan_name = plan_path.name
+        plan_name = _plan_label(plan_path)
         try:
             plan_text = plan_path.read_text(encoding="utf-8")
         except OSError:
             plan_text = ""
-        status = _extract_status(plan_text)
-        progress_name = hm._plan_pair(hm._normalize_plan_name(plan_name))[1]
-        progress_head = _progress_head(harness_dir / progress_name)
+        status = _tracker_status(plan_path) or _extract_status(plan_text)
+        if plan_name.startswith(f"{hm._TASKS_DIRNAME}/"):
+            # A task's progress log sits beside its plan.
+            progress_name = plan_name[: -len("plan.md")] + "progress.md"
+            progress_head = _progress_head(plan_path.parent / "progress.md")
+        else:
+            progress_name = hm._plan_pair(hm._normalize_plan_name(plan_name))[1]
+            progress_head = _progress_head(harness_dir / progress_name)
         rows.append(PlanStatus(plan_name, status, progress_name, progress_head))
     return rows
 

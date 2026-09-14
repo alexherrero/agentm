@@ -11,8 +11,8 @@ The `/queue-status-lite` command provides a read-only dashboard. It lists every 
 | Invocation | `python3 scripts/queue_status_lite.py [--harness-dir PATH]` |
 | `--harness-dir PATH` | the `_harness/` directory to enumerate; omit to resolve from cwd via `harness_state_dir` |
 | Slash-command surface | `/queue-status-lite` — **crickets-provided** (development-lifecycle plugin), wraps this script |
-| Reads | every `PLAN*.md` in the resolved `_harness/` (named + unnamed) |
-| Per plan, reports | plan name · its `Status:` line · the head (most-recent entry) of the matching `progress*.md` |
+| Reads | every `PLAN*.md` in the resolved `_harness/` (named + unnamed), plus every `tasks/<slug>/plan.md` beside it (agentm-vault plan 09) |
+| Per plan, reports | plan name · its status (a task's tracker, else its `Status:` line) · the head (most-recent entry) of the matching `progress*.md` |
 | Writes | **none** — read-only; the fixture is byte-identical before/after a run |
 | Claim arbitration | **none** — informational dashboard only; the human arbitrates |
 | Missing-progress placeholder | `(no progress file)` (also `(empty)` / `(unreadable)`) |
@@ -20,13 +20,13 @@ The `/queue-status-lite` command provides a read-only dashboard. It lists every 
 
 ## What it lists
 
-The script reads every `PLAN*.md` file in the resolved `_harness/` directory — both the singleton `PLAN.md` and any named `PLAN-<name>.md` files. It prints the singleton first, then named plans alphabetically:
+The script reads every `PLAN*.md` file in the resolved `_harness/` directory — the singleton `PLAN.md`, any named `PLAN-<name>.md` file, and, beside a vault `_harness/`, any task's `tasks/<name>/plan.md` (agentm-vault plan 09). It prints the singleton first, then named plans alphabetically, then tasks:
 
 | Column | Source |
 |---|---|
-| Plan name | the filename (`PLAN.md` or `PLAN-<name>.md`) |
-| Status | the plan's `Status:` line (`**Status:**` and `Status:` both accepted; `—` if absent) |
-| Progress head | the last non-empty line of the matching `progress*.md` file, truncated to 120 chars with a trailing `…` |
+| Plan name | the filename (`PLAN.md` or `PLAN-<name>.md`), or `tasks/<name>/plan.md` for a task |
+| Status | a task's tracker `status`, when its `tracker.md` exists and parses; otherwise the plan's `Status:` line (`**Status:**` and `Status:` both accepted; `—` if absent) |
+| Progress head | the last non-empty line of the matching `progress*.md` file — beside the plan itself for a task, `progress-<name>.md` in `_harness/` otherwise — truncated to 120 chars with a trailing `…` |
 
 Archived plans (`PLAN.archive.*.md`) and GDrive conflict copies (`PLAN-foo (conflicted copy …).md`) are excluded — the former by the `PLAN-*` glob, the latter via `hm._conflict_family`.
 
@@ -54,15 +54,17 @@ A plan with no matching progress file still lists, with the head shown as `(no p
 
 | Surface | Location |
 |---|---|
-| CLI entry · single `--harness-dir` flag · both paths `return 0` | [`scripts/queue_status_lite.py#L137`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L137) |
-| Dir resolution — fall back to `harness_state_dir` when flag omitted | [`scripts/queue_status_lite.py#L130`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L130) |
-| `list_plan_files` — singleton-first sort, excludes archives + conflict copies; **canonical public copy** now in `harness_memory.py` (V5-5 task 3); `queue_status_lite.py` carries a local copy until the two converge | [`scripts/harness_memory.py#L588`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py#L588) (canonical), [`scripts/queue_status_lite.py#L49`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L49) (local copy) |
-| `list-plans` CLI verb — enumerates active plan files + emits `active-binding=<slug>` when `.harness/active-plan` is set; used by both session-start hooks for plan discovery | [`scripts/harness_memory.py#L1837`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py#L1837) (dispatch), locked by `TestListPlansCLI` in [`scripts/test_harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_harness_memory.py) (7 tests) |
-| `_extract_status` — bold + un-bold `Status:` | [`scripts/queue_status_lite.py#L68`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L68) |
-| `_progress_head` — `(no progress file)` / `(empty)` / `(unreadable)`, 120-char truncation | [`scripts/queue_status_lite.py#L78`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L78) |
-| `collect_plan_statuses` — `PlanStatus` rows; reuses `hm._normalize_plan_name` / `hm._plan_pair` | [`scripts/queue_status_lite.py#L95`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L95) |
-| `harness_state_dir` — directory companion to `vault_state_path` (local → `.harness`, vault → `_harness`, else None) | [`scripts/harness_memory.py#L567`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py#L567) |
-| Test suite (14 tests) | [`scripts/test_queue_status_lite.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_queue_status_lite.py) |
+| CLI entry · single `--harness-dir` flag · both paths `return 0` | [`scripts/queue_status_lite.py#L171`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L171) |
+| Dir resolution — fall back to `harness_state_dir` when flag omitted | [`scripts/queue_status_lite.py#L164`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L164) |
+| `list_plan_files` — singleton-first sort, excludes archives + conflict copies, then every `tasks/<slug>/plan.md` beside a vault `_harness/` (agentm-vault plan 09); **canonical public copy** now in `harness_memory.py` (V5-5 task 3); `queue_status_lite.py` carries a local copy until the two converge | [`scripts/harness_memory.py#L962`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py#L962) (canonical), [`scripts/queue_status_lite.py#L73`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L73) (local copy) |
+| `list-plans` CLI verb — enumerates active plan files + emits `active-binding=<slug>` when `.harness/active-plan` is set; used by both session-start hooks for plan discovery | [`scripts/harness_memory.py#L2321`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py#L2321) (dispatch), locked by `TestListPlansCLI` in [`scripts/test_harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_harness_memory.py) (7 tests) |
+| `_plan_label` — the dashboard name for a plan: `PLAN.md`, `PLAN-foo.md`, or `tasks/foo/plan.md` for a task (agentm-vault plan 09) | [`scripts/queue_status_lite.py#L44`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L44) |
+| `_tracker_status` — a task's status from the tracker beside its plan, when one exists and parses; the plan's own `Status:` line is the fallback | [`scripts/queue_status_lite.py#L60`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L60) |
+| `_extract_status` — bold + un-bold `Status:` | [`scripts/queue_status_lite.py#L97`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L97) |
+| `_progress_head` — `(no progress file)` / `(empty)` / `(unreadable)`, 120-char truncation | [`scripts/queue_status_lite.py#L107`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L107) |
+| `collect_plan_statuses` — `PlanStatus` rows; reuses `hm._normalize_plan_name` / `hm._plan_pair` for a flat pair, a task's own `progress.md` beside its plan otherwise | [`scripts/queue_status_lite.py#L124`](https://github.com/alexherrero/agentm/blob/main/scripts/queue_status_lite.py#L124) |
+| `harness_state_dir` — directory companion to `vault_state_path` (local → `.harness`, vault → `_harness`, else None) | [`scripts/harness_memory.py#L941`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py#L941) |
+| Test suite (14 tests); the task-layout reading is covered together with `plan_graph.py` and `machinery_doctor.py` | [`scripts/test_queue_status_lite.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_queue_status_lite.py), [`scripts/test_projects_layout_readers.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_projects_layout_readers.py) |
 
 ## Related
 

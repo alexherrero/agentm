@@ -30,6 +30,9 @@ type enrichVerdicts struct {
 	Active     int `json:"filed_active"`
 	BelowFloor int `json:"below_floor"`
 	Sank       int `json:"sank"`
+	// Records are project records the night merged into (agentm-vault plan 09).
+	// Not filed, so counted apart from active and below the floor.
+	Records int `json:"records"`
 	// SankNotes names the notes that sank, for the morning note's list.
 	SankNotes []string `json:"sank_notes,omitempty"`
 }
@@ -227,6 +230,90 @@ func enrichQueue(idx *index.Index, dirs []string) ([]string, error) {
 	return out, nil
 }
 
+// enrichRecordQueue is every indexed project record, in path order: a project's
+// charter and the notes under its decisions/, designs/ and research/
+// (agentm-vault § Projects and tasks). Never a tracker, a plan or a progress
+// log — enrich.IsProjectRecord is the one place that says so.
+func enrichRecordQueue(idx *index.Index) ([]string, error) {
+	all, err := idx.Paths()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range all {
+		if enrich.IsProjectRecord(p) {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// queueAfter pages the queue by position: the `limit` paths after `cursor`, or
+// from the start when the cursor is empty. A cursor the queue no longer holds
+// resumes at the first path that sorts after it, which is where the path-ordered
+// pager this replaces would have started.
+func queueAfter(queue []string, cursor string, limit int) []string {
+	start := 0
+	if cursor != "" {
+		found := false
+		for i, p := range queue {
+			if p == cursor {
+				start, found = i+1, true
+				break
+			}
+		}
+		if !found {
+			start = len(queue)
+			for i, p := range queue {
+				if p > cursor {
+					start = i
+					break
+				}
+			}
+		}
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	end := start + limit
+	if end > len(queue) {
+		end = len(queue)
+	}
+	return append([]string{}, queue[start:end]...)
+}
+
+// projectOfRequest is the project a note's neighbours are drawn from first: a
+// record's by its path, a card's by its `project:` (agentm-vault § Projects and
+// tasks: a card with project: is enriched with its project's records as
+// neighbours first).
+func projectOfRequest(req enrich.Request) string {
+	if p := enrich.ProjectOf(req.Rel); p != "" {
+		return p
+	}
+	return enrich.FrontmatterValue(req.Raw, "project")
+}
+
+// projectFirst puts the project's own records ahead of every other neighbour,
+// keeping the ranker's order within each half, then caps the list.
+func projectFirst(ns []enrich.Neighbour, project string, max int) []enrich.Neighbour {
+	if project != "" {
+		var own, rest []enrich.Neighbour
+		for _, n := range ns {
+			if strings.EqualFold(enrich.ProjectOf(n.Rel), project) {
+				own = append(own, n)
+			} else {
+				rest = append(rest, n)
+			}
+		}
+		ns = append(own, rest...)
+	}
+	if len(ns) > max {
+		ns = ns[:max]
+	}
+	return ns
+}
+
 // sampleQueue draws n paths from the queue at random, seeded, in path order.
 func sampleQueue(queue []string, n int, seed int64) []string {
 	if n >= len(queue) {
@@ -260,7 +347,7 @@ func enrichNeighbours(cfg *config.Config, idx *index.Index,
 		if q == "" {
 			return nil
 		}
-		out, err := idx.Search(index.Query{Text: q, K: 20, Mode: index.ModeFusion})
+		out, err := idx.Search(index.Query{Text: q, K: 40, Mode: index.ModeFusion})
 		if err != nil {
 			return nil
 		}
@@ -290,11 +377,10 @@ func enrichNeighbours(cfg *config.Config, idx *index.Index,
 				continue
 			}
 			ns = append(ns, n)
-			if len(ns) == enrich.MaxRelated {
-				break
-			}
 		}
-		return ns
+		// The whole window is kept until here so a project's records, wherever
+		// they ranked in it, can lead before the list is cut to the nearest five.
+		return projectFirst(ns, projectOfRequest(req), enrich.MaxRelated)
 	}
 }
 

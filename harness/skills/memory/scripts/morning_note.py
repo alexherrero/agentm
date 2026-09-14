@@ -395,10 +395,15 @@ def _verdicts(runs: list, key: str) -> int:
 
 def _enrichment_line(runs: list) -> str:
     models = sorted({r.get("model") for r in runs if r.get("model")})
+    # Project records are merged into rather than filed (agentm-vault plan 09), so
+    # they sit beside the filing verdicts instead of inside them. A night that
+    # merged none reads as it always did.
+    records = _verdicts(runs, "records")
+    merged = f"{records} project records · " if records else ""
     line = (f"**Enrichment** — {_sum(runs, 'notes_sent')} judged · "
             f"{_verdicts(runs, 'filed_active')} filed active · "
             f"{_verdicts(runs, 'below_floor')} below the floor · "
-            f"{_verdicts(runs, 'sank')} sank · {_sum(runs, 'model_calls')} calls · "
+            f"{_verdicts(runs, 'sank')} sank · {merged}{_sum(runs, 'model_calls')} calls · "
             f"{sum(_tier_added(runs).values()):,} tokens against the line · "
             f"{', '.join(models) or 'no model recorded'}")
     failed = _sum(runs, "failed")

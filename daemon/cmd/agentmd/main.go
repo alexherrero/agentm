@@ -409,6 +409,9 @@ func cmdSearch(args []string) error {
 	lex3 := fs.Bool("lex3", false,
 		"widen `fusion`/`hybrid`'s lexical arm from 2-term to 2- and 3-term subsets "+
 			"(task 4, column `+lex3`); false reproduces `lexical-fusion`/`+question` exactly")
+	project := fs.String("project", "",
+		"the session's vault project: a note whose project: names another one, or none, ranks a little "+
+			"lower (agentm-vault, projects and tasks); empty ranks exactly as before")
 	includeArchived := fs.Bool("include-archived", false,
 		"also return notes whose lifecycle is archived or superseded — the contract's explicit archive query; "+
 			"off by default, both have left everyday search while staying on disk (a superseded note comes back demoted beside its successor)")
@@ -441,7 +444,7 @@ func cmdSearch(args []string) error {
 	}
 
 	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode, Lex3: *lex3,
-		IncludeArchived: *includeArchived}
+		IncludeArchived: *includeArchived, Project: *project}
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if innerMode == index.ModeHybrid {
@@ -1295,6 +1298,15 @@ func cmdEnrich(args []string) error {
 		return err
 	}
 	queue, err := enrichQueue(idx, dirs)
+	if err == nil {
+		// The project records queue after the cards, inside the same line
+		// (agentm-vault § Projects and tasks): no card waits for a record, and
+		// the lister pages this slice by position, so the order holds.
+		var records []string
+		if records, err = enrichRecordQueue(idx); err == nil {
+			queue = append(queue, records...)
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -1317,12 +1329,8 @@ func cmdEnrich(args []string) error {
 	// The lister reads the snapshot for identity and the disk for content. The
 	// index holds a cache of the frontmatter; the pass needs the bytes.
 	list := func(ctx context.Context, cursor string, limit int) ([]enrich.Candidate, error) {
-		var paths []string
-		for _, p := range queue {
-			if p > cursor && len(paths) < limit {
-				paths = append(paths, p)
-			}
-		}
+		// By position, not by path: the records queue after the cards.
+		paths := queueAfter(queue, cursor, limit)
 		out := make([]enrich.Candidate, 0, len(paths))
 		for _, rel := range paths {
 			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
@@ -1487,8 +1495,20 @@ func cmdEnrich(args []string) error {
 		// New frontmatter over the card's own text, byte for byte, and on a deep
 		// pass the dated section below it. Compose refuses a composition that
 		// would change a byte of what the session wrote.
-		next, verdict, err := enrich.Compose(string(previous), r, stamp, out.Depth,
-			out.Neighbours)
+		var (
+			next    string
+			verdict enrich.FilingVerdict
+		)
+		record := enrich.IsProjectRecord(rel)
+		if record {
+			// A project record is merged into, never rendered over, and never
+			// renamed: its path is the project's, not the pass's.
+			next, err = enrich.ComposeRecord(string(previous), r, stamp, out.Depth, out.Neighbours)
+			r.Slug = ""
+		} else {
+			next, verdict, err = enrich.Compose(string(previous), r, stamp, out.Depth,
+				out.Neighbours)
+		}
 		if err != nil {
 			return err
 		}
@@ -1509,7 +1529,11 @@ func cmdEnrich(args []string) error {
 			})
 			return err
 		}
-		verdicts.count(dest, verdict)
+		if record {
+			verdicts.Records++
+		} else {
+			verdicts.count(dest, verdict)
+		}
 		landed[rel] = next
 		// Whatever the post-gates once said about this card, they have now said
 		// otherwise. The row would stop matching on its own, because the write
@@ -1722,6 +1746,7 @@ func enrichRefused(cfg *config.Config, fp *enrich.Fingerprint,
 // model may see is never offered to one there either.
 func freeGates(cfg *config.Config) []enrich.Gate {
 	eligibility := enrich.DefaultEligibility(modelMayRead(cfg))
+	eligibility.ProjectRecord = enrich.IsProjectRecord
 	eligibility.IsRecordKind = func(kind string) bool {
 		loaded, err := cfg.Rules.Get()
 		// No contract, no way to tell a record from a card: refuse, the same

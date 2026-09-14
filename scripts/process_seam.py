@@ -64,9 +64,9 @@ if str(_HERE) not in sys.path:
 
 import harness_memory as _hm  # noqa: E402
 
-# Which `which` tokens state_path() accepts, mapped to the resolved (plan,
-# progress) pair index from `resolve_active_plan`.
-_STATE_WHICH = ("plan", "progress")
+# Which `which` tokens state_path() accepts: the resolved (plan, progress) pair
+# from `resolve_active_plan`, and the tracker it carries beside them.
+_STATE_WHICH = ("plan", "progress", "tracker")
 
 
 def _project_root(context: Optional[dict]) -> Path:
@@ -126,13 +126,16 @@ def state_path(context: Optional[dict], which: str) -> Path:
         context: the shared context dict; ``cwd`` selects the project root,
             ``plan`` (optional) names a plan (``"foo"`` → ``PLAN-foo.md`` /
             ``progress-foo.md``) via ``resolve_active_plan``'s explicit-arg path.
-        which: ``"plan"`` or ``"progress"`` — which file of the active pair.
+        which: ``"plan"``, ``"progress"`` or ``"tracker"`` — which file of the
+            active plan. The tracker sits beside the pair: ``tracker-foo.md`` in
+            ``_harness/``, or ``tracker.md`` inside a task directory.
 
     Returns:
-        The resolved ``Path`` (vault ``_harness/`` or repo-local ``.harness/``).
+        The resolved ``Path`` (vault ``_harness/``, a vault ``tasks/<slug>/``
+        directory when that task exists, or repo-local ``.harness/``).
 
     Raises:
-        ValueError: if ``which`` is not ``"plan"``/``"progress"`` — a caller bug,
+        ValueError: if ``which`` is not one of those three — a caller bug,
             distinct from the absent-memory degrade (which never raises).
         harness_memory.ActivePlanError / ValueError: propagated, **not**
             swallowed, when a present ``.harness/active-plan`` marker is dangling
@@ -146,15 +149,14 @@ def state_path(context: Optional[dict], which: str) -> Path:
         )
     ctx = context or {}
     resolution = _hm.resolve_project(ctx)
-    plan_name, progress_name = _hm.resolve_active_plan(
-        resolution, plan_arg=ctx.get("plan")
-    )
-    filename = plan_name if which == "plan" else progress_name
+    active = _hm.resolve_active_plan(resolution, plan_arg=ctx.get("plan"))
+    filename = {"plan": active[0], "progress": active[1], "tracker": active.tracker}[which]
 
     directory = _hm.harness_state_dir(resolution)
     if directory is None:
         # Vault-mode but no vault configured → repo-local degrade ([LC-3]).
         directory = _project_root(ctx) / ".harness"
+    # A task-layout name is already absolute, and joining an absolute path keeps it.
     return directory / filename
 
 
@@ -175,7 +177,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_state = sub.add_parser("state-path", help="resolve the active PLAN/progress path")
+    p_state = sub.add_parser("state-path", help="resolve the active plan, progress or tracker path")
     p_state.add_argument("which", choices=list(_STATE_WHICH))
     p_state.add_argument("--cwd", default=None, help="project root (default: cwd)")
     p_state.add_argument("--plan", default=None, help="named-plan slug (e.g. 'foo' → PLAN-foo.md)")

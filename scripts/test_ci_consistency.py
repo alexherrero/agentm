@@ -85,6 +85,9 @@ UNIT_WRAPPED = {
     # has none of; each rule and both states are unit-tested on fixtures.
     "check-root-notes.py": "test_map_gates.py",
     "check-calendar-root.py": "test_map_gates.py",
+    # agentm-vault plan 09: the tracker gate reads the live projects space, which
+    # CI has none of; its rules, places and self-test are unit-tested on fixtures.
+    "check-tracker-schema.py": "test_check_tracker_schema.py",
     "check-multi-plan-naming.sh": "test_check_multi_plan_naming.py",
     "check-no-auto-worktree.sh": "test_worktree_slug_probe.py",
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",

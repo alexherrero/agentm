@@ -93,7 +93,32 @@ else
 fi
 
 # ── Inject: named-plan mode → singleton (DC-7, locked) → nudge/skip ────────────
-if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
+# A task's plan is tasks/<slug>/plan.md beside a vault _harness/ (agentm-vault
+# plan 09); a flat plan is PLAN-<slug>.md. Each is labelled by the name a reader types.
+_plan_label() {
+    case "$1" in
+        */tasks/*/plan.md) _t="${1%/plan.md}"; printf 'tasks/%s\n' "${_t##*/}" ;;
+        *) basename "$1" ;;
+    esac
+}
+
+# The opening brief (project-brief-session-start, agentm-vault plan 09) owns the
+# plan block once it is registered: it prints a tracker brief, or this block by
+# running this hook with AGENTM_PLAN_BLOCK_ONLY=1. While it is registered this
+# hook leaves the block to it, so the block never prints twice.
+BRIEF_REGISTERED=""
+if [[ "${AGENTM_PLAN_BLOCK_ONLY:-}" != "1" ]]; then
+    for _settings in "$HOME/.claude/settings.json" "$EVENT_CWD/.claude/settings.json" "$EVENT_CWD/.claude/settings.local.json"; do
+        if [[ -f "$_settings" ]] && grep -q 'project-brief-session-start' "$_settings" 2>/dev/null; then
+            BRIEF_REGISTERED=1
+            break
+        fi
+    done
+fi
+
+if [[ -n "$BRIEF_REGISTERED" ]]; then
+    echo "[harness-context] plan block left to project-brief-session-start" >&2
+elif [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
     # Named-plan mode: surface every PLAN*.md + the .harness/active-plan binding.
     {
         echo "[agentm] Project state for this repo lives in .harness/:"
@@ -102,19 +127,21 @@ if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
         # Each plan's progress is its progress-<name>.md.
         [[ -n "$PLAN_PATH" ]] && printf '  %-22s %s\n' "PLAN.md" "$PLAN_PATH"
         for _pf in "${NAMED_PLANS[@]}"; do
-            printf '  %-22s %s\n' "$(basename "$_pf")" "$_pf"
+            printf '  %-22s %s\n' "$(_plan_label "$_pf")" "$_pf"
         done
         # Active-plan binding — resolved by list-plans from .harness/active-plan.
         # A binding whose plan file is absent in the output is dangling — surfaced, not fatal.
         if [[ -n "$ACTIVE_BINDING" ]]; then
             BOUND_PATH=""
             for _np in "${NAMED_PLANS[@]}"; do
-                [[ "$(basename "$_np")" == "PLAN-$ACTIVE_BINDING.md" ]] && { BOUND_PATH="$_np"; break; }
+                case "$_np" in
+                    */PLAN-"$ACTIVE_BINDING".md|*/tasks/"$ACTIVE_BINDING"/plan.md) BOUND_PATH="$_np"; break ;;
+                esac
             done
             if [[ -n "$BOUND_PATH" ]]; then
                 echo "Active plan (.harness/active-plan -> $ACTIVE_BINDING): $BOUND_PATH"
             else
-                echo "Active plan (.harness/active-plan -> $ACTIVE_BINDING): DANGLING - PLAN-$ACTIVE_BINDING.md not found; run doctor."
+                echo "Active plan (.harness/active-plan -> $ACTIVE_BINDING): DANGLING - PLAN-$ACTIVE_BINDING.md not found, nor tasks/$ACTIVE_BINDING/plan.md; run doctor."
             fi
         fi
         echo "Read the plan you own (or the .harness/active-plan one) before /work, /review, /release."
@@ -160,6 +187,9 @@ fi
 # script self-resolves the vault + telemetry paths, anti-fatigues itself, and is
 # graceful on every edge (missing vault, never-run ladder, GDrive stall). It
 # lives next to the digest/park writers whose delivered notes it reads.
+# The opening brief asking for the plan block alone gets nothing more.
+[[ "${AGENTM_PLAN_BLOCK_ONLY:-}" == "1" ]] && exit 0
+
 SESSION_BRIEF="$(dirname "$RESOLVER")/health/session_brief.py"
 if [[ -f "$SESSION_BRIEF" ]]; then
     BRIEF_TIMEOUT=""

@@ -259,6 +259,145 @@ class ResolveActivePlanCLI(unittest.TestCase):
         self._run("--plan", "foo")
         self.assertFalse((self.harness / "active-plan").exists())
 
+    # --- the tracker beside the pair (agentm-vault plan 09) ---
+
+    def test_with_tracker_appends_the_tracker_beside_the_pair(self) -> None:
+        rc, out, _ = self._run("--plan", "foo", "--with-tracker")
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            out.strip(), self._pair("PLAN-foo.md", "progress-foo.md", "tracker-foo.md")
+        )
+
+    def test_without_the_flag_the_output_is_still_the_pair(self) -> None:
+        rc, out, _ = self._run("--plan", "foo")
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(out.strip().split("\t")), 2)
+
+
+class ResolveActivePlanTaskLayout(unittest.TestCase):
+    """The task layout (agentm-vault plan 09, task 1).
+
+    On a synced backend a task at `tasks/<slug>/plan.md` wins over the flat
+    `PLAN-<slug>.md`, which stays the fallback until the migration; the tracker
+    path rides beside the pair in both layouts; slug safety holds in both.
+    """
+
+    def setUp(self) -> None:
+        from storage_seam import Locator
+        from vault_backend_stub import VaultBackend
+
+        self._tmp = tempfile.mkdtemp(prefix="agentm-task-layout-")
+        root = Path(self._tmp)
+        self.vault = root / "vault"
+        self.proj = root / "repo"
+        (self.proj / ".harness").mkdir(parents=True)
+        self.project_dir = self.vault / "Projects" / "fixture"
+        self.harness = self.project_dir / "_harness"
+        self.harness.mkdir(parents=True)
+        self.resolution = {
+            "backend": VaultBackend(root=self.vault, lock_root=root / "locks"),
+            "project_locator": Locator("Projects/fixture"),
+            "project_root": self.proj,
+            "slug": "fixture",
+        }
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_flat(self, slug: str = "foo", body: str = "# plan\n") -> None:
+        (self.harness / f"PLAN-{slug}.md").write_text(body, encoding="utf-8")
+
+    def _write_task(self, slug: str = "foo", body: str = "# plan\n") -> Path:
+        task = self.project_dir / "tasks" / slug
+        task.mkdir(parents=True, exist_ok=True)
+        (task / "plan.md").write_text(body, encoding="utf-8")
+        return task
+
+    def _write_marker(self, text: str) -> None:
+        (self.proj / ".harness" / "active-plan").write_text(text, encoding="utf-8")
+
+    def test_the_flat_layout_resolves_its_pair_and_tracker(self) -> None:
+        self._write_flat()
+        active = hm.resolve_active_plan(self.resolution, plan_arg="foo")
+        self.assertEqual(active, _NAMED)
+        self.assertEqual((active.layout, active.tracker), ("flat", "tracker-foo.md"))
+        self.assertEqual(
+            hm.active_plan_paths(self.resolution, plan_arg="foo"),
+            (self.harness / "PLAN-foo.md", self.harness / "progress-foo.md",
+             self.harness / "tracker-foo.md"),
+        )
+
+    def test_the_task_layout_resolves_the_task_directory(self) -> None:
+        task = self._write_task()
+        active = hm.resolve_active_plan(self.resolution, plan_arg="foo")
+        self.assertEqual(active.layout, "task")
+        self.assertEqual(
+            hm.active_plan_paths(self.resolution, plan_arg="foo"),
+            (task / "plan.md", task / "progress.md", task / "tracker.md"),
+        )
+
+    def test_both_layouts_resolve_the_same_plan(self) -> None:
+        # One slug names one piece of work in either layout: the plan path each
+        # layout resolves to holds that plan, and the tracker sits beside it.
+        for layout, write in (("flat", self._write_flat), ("task", self._write_task)):
+            with self.subTest(layout=layout):
+                shutil.rmtree(self.project_dir)
+                self.harness.mkdir(parents=True)
+                write(body="# the foo plan\n")
+                plan, progress, tracker = hm.active_plan_paths(self.resolution, plan_arg="foo")
+                self.assertEqual(plan.read_text(encoding="utf-8"), "# the foo plan\n")
+                self.assertEqual(progress.parent, plan.parent)
+                self.assertEqual(tracker.parent, plan.parent)
+                self.assertEqual(hm.resolve_active_plan(self.resolution, plan_arg="foo").slug, "foo")
+
+    def test_the_task_wins_over_the_flat_pair(self) -> None:
+        self._write_flat()
+        task = self._write_task()
+        plan, _progress, _tracker = hm.active_plan_paths(self.resolution, plan_arg="foo")
+        self.assertEqual(plan, task / "plan.md")
+
+    def test_a_blank_task_plan_falls_back_to_the_flat_pair(self) -> None:
+        self._write_flat()
+        self._write_task(body="   \n")
+        self.assertEqual(hm.resolve_active_plan(self.resolution, plan_arg="foo").layout, "flat")
+
+    def test_a_marker_bound_to_a_task_validates(self) -> None:
+        task = self._write_task()
+        self._write_marker("foo\n")
+        active = hm.resolve_active_plan(self.resolution)
+        self.assertEqual(active.layout, "task")
+        self.assertEqual(Path(active[0]), task / "plan.md")
+
+    def test_a_marker_bound_to_neither_layout_still_raises(self) -> None:
+        self._write_marker("foo\n")
+        with self.assertRaises(hm.ActivePlanError) as caught:
+            hm.resolve_active_plan(self.resolution)
+        self.assertIn("tasks/foo/plan.md", str(caught.exception))
+
+    def test_an_unsafe_slug_is_refused_in_both_layouts(self) -> None:
+        self._write_flat()
+        self._write_task()
+        for bad in ("../etc", "a/b", "..", "x\\y"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    hm.resolve_active_plan(self.resolution, plan_arg=bad)
+        self._write_marker("../escape")
+        with self.assertRaises(hm.ActivePlanError):
+            hm.resolve_active_plan(self.resolution)
+
+    def test_the_singleton_carries_its_tracker(self) -> None:
+        active = hm.resolve_active_plan(self.resolution)
+        self.assertEqual(active, _SINGLETON)
+        self.assertEqual(active.tracker, "tracker.md")
+
+    def test_a_device_local_harness_keeps_the_flat_layout(self) -> None:
+        # No synced backend: a tasks/ directory in the repo is not a task.
+        (self.proj / "tasks" / "foo").mkdir(parents=True)
+        (self.proj / "tasks" / "foo" / "plan.md").write_text("# plan\n", encoding="utf-8")
+        local = {"project_root": self.proj, "slug": "fixture"}
+        active = hm.resolve_active_plan(local, plan_arg="foo")
+        self.assertEqual((active, active.layout), (_NAMED, "flat"))
+
 
 # ── Plan-name contract — golden vectors shared with the crickets twin ───────────
 # These two tables are duplicated VERBATIM in the crickets fallback's test suite

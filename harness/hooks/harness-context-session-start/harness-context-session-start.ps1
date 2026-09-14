@@ -75,7 +75,7 @@ foreach ($line in ($plansOut -split "`n")) {
     if (-not $line) { continue }
     if ($line -like 'active-binding=*') {
         $activeBinding = $line.Substring('active-binding='.Length)
-    } elseif ($line -like '*PLAN.md') {
+    } elseif ($line -clike '*PLAN.md') {
         $planPath = $line
     } elseif ($line -like '*.md') {
         $namedPlans += $line
@@ -93,7 +93,21 @@ if ($planPath) {
 }
 
 # ── Inject: named-plan mode → singleton (DC-7, locked) → nudge/skip ──
-if ($namedPlans.Count -gt 0) {
+# The opening brief (project-brief-session-start, agentm-vault plan 09) owns the
+# plan block once it is registered; see the bash twin.
+$briefRegistered = $false
+if ($env:AGENTM_PLAN_BLOCK_ONLY -ne '1') {
+    foreach ($settings in @((Join-Path $HomeDir '.claude/settings.json'), (Join-Path $eventCwd '.claude/settings.json'), (Join-Path $eventCwd '.claude/settings.local.json'))) {
+        if ((Test-Path -LiteralPath $settings) -and (Select-String -LiteralPath $settings -SimpleMatch 'project-brief-session-start' -Quiet)) {
+            $briefRegistered = $true
+            break
+        }
+    }
+}
+
+if ($briefRegistered) {
+    [Console]::Error.WriteLine("[harness-context] plan block left to project-brief-session-start")
+} elseif ($namedPlans.Count -gt 0) {
     # Named-plan mode: surface every PLAN*.md + the .harness/active-plan binding.
     Write-Output "[agentm] Project state for this repo lives in .harness/:"
     Write-Output "Named-plan mode - this repo has more than one active plan:"
@@ -101,16 +115,17 @@ if ($namedPlans.Count -gt 0) {
         Write-Output ("  {0,-22} {1}" -f "PLAN.md", $planPath)
     }
     foreach ($pf in $namedPlans) {
-        $pfName = Split-Path $pf -Leaf
+        # A task's plan is tasks/<slug>/plan.md (agentm-vault plan 09).
+        $pfName = if ($pf -match '[\\/]tasks[\\/]([^\\/]+)[\\/]plan\.md$') { "tasks/$($Matches[1])" } else { Split-Path $pf -Leaf }
         Write-Output ("  {0,-22} {1}" -f $pfName, $pf)
     }
     # Active-plan binding — resolved by list-plans from .harness/active-plan.
     if ($activeBinding) {
-        $boundPath = $namedPlans | Where-Object { (Split-Path $_ -Leaf) -eq "PLAN-$activeBinding.md" } | Select-Object -First 1
+        $boundPath = $namedPlans | Where-Object { ((Split-Path $_ -Leaf) -eq "PLAN-$activeBinding.md") -or ($_ -match ('[\\/]tasks[\\/]' + [regex]::Escape($activeBinding) + '[\\/]plan\.md$')) } | Select-Object -First 1
         if ($boundPath) {
             Write-Output "Active plan (.harness/active-plan -> $activeBinding): $boundPath"
         } else {
-            Write-Output "Active plan (.harness/active-plan -> $activeBinding): DANGLING - PLAN-$activeBinding.md not found; run doctor."
+            Write-Output "Active plan (.harness/active-plan -> $activeBinding): DANGLING - PLAN-$activeBinding.md not found, nor tasks/$activeBinding/plan.md; run doctor."
         }
     }
     Write-Output "Read the plan you own (or the .harness/active-plan one) before /work, /review, /release."
@@ -158,6 +173,9 @@ if ($namedPlans.Count -gt 0) {
 # into a single unread <persisted-output> blob (2026-07-17 visibility fix). The
 # script self-resolves the vault + telemetry paths, anti-fatigues itself, and is
 # graceful on every edge. It lives next to the digest/park writers it reads.
+# The opening brief asking for the plan block alone gets nothing more.
+if ($env:AGENTM_PLAN_BLOCK_ONLY -eq '1') { exit 0 }
+
 $sessionBrief = Join-Path (Split-Path $resolver -Parent) "health/session_brief.py"
 if (Test-Path -LiteralPath $sessionBrief) {
     try { & $py $sessionBrief 2>$null } catch { }

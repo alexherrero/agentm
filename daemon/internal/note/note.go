@@ -28,6 +28,8 @@ var (
 	altitudeRe   = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
 	confidenceRe = regexp.MustCompile(`(?m)^confidence:[ \t]*([0-9.]+)[ \t\r]*$`)
 	createdRe    = regexp.MustCompile(`(?m)^created:[ \t]*(.+?)[ \t\r]*$`)
+	// The writer's project stamp (agentm-vault § Projects and tasks).
+	projectRe = regexp.MustCompile(`(?m)^project:[ \t]*(.+?)[ \t\r]*$`)
 	// The two frontmatter routes into durability — see isDurable.
 	lifecycleTierRe = regexp.MustCompile(`(?m)^lifecycle_tier:[ \t]*(.+?)[ \t\r]*$`)
 	kindRe          = regexp.MustCompile(`(?m)^kind:[ \t]*(.+?)[ \t\r]*$`)
@@ -159,6 +161,12 @@ type Note struct {
 	// notes' frontmatter, which would make every one of them look freshly
 	// updated to a curve reading the filesystem.
 	Updated string
+
+	// Project is the note's `project:` — the vault project the session that wrote
+	// it was bound to (agentm-vault § Projects and tasks), "" when it names none.
+	// A query that names the session's project ranks every other note a little
+	// lower; see ProjectMismatch.
+	Project string
 }
 
 // Parse turns one file's bytes into a Note. `rel` is the vault-relative POSIX
@@ -191,6 +199,9 @@ func Parse(rel, raw string, modTime time.Time) Note {
 
 	n.Status = parseStatus(head)
 	n.Lifecycle = parseLifecycle(head)
+	if m := projectRe.FindStringSubmatch(head); m != nil {
+		n.Project = strings.Trim(strings.TrimSpace(m[1]), `'"`)
+	}
 	n.Probe = parseProbe(head)
 	n.Captured, n.CapturedSource = parseCaptured(head, modTime)
 	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status, n.Lifecycle)

@@ -61,7 +61,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | Command | What it does |
 |---|---|
 | `serve` | Watch, index, serve MCP, commit. Prints `listening http://…` once the index is caught up. |
-| `search <terms>` | One-shot query against the index. `-k`, `-mode`, `-question`, `--after`, `--before`, `--json`. |
+| `search <terms>` | One-shot query against the index. `-k`, `-mode`, `-question`, `--after`, `--before`, `-project`, `--json`. |
 | `capture <text>` | One-shot capture. Reads stdin when given no argument. |
 | `reindex` | Full reconcile. `--from-scratch` deletes the index first, proving it rebuilds from the files. |
 | `status` | Ask a running daemon for its state. Exits 3 when anything is red. `--json` for the raw document. |
@@ -100,6 +100,8 @@ Both settings are measured rather than chosen. Porter stemming is worth +5.7 hit
 
 The index file is not in the vault. It is a cache, and a database on a synced mount is a known corruption pattern. Delete it and the next start rebuilds it: 8,864 files in about 2.6 seconds, or 39ms for an unchanged corpus.
 
+A progress log is indexed from its head rather than whole (agentm-vault § Projects and tasks): `progress.md` (a singleton pair's, or a task's) and `progress-<slug>.md` beside a flat plan are read through their first 88,192 bytes (`note.ProgressHeadBytes` — 20,000 tokens times four plus 8,192 bytes of slack, the bound the Python arm's prompt-submit recall already puts on its read of any one entry, where it counts characters), cut back to the last line break so no line is split. An append-only log grows for as long as its task runs, and read whole a megabyte of it would carry nearly every query's terms and outrank the notes it mentions.
+
 ## The embedder child
 
 Hybrid search is optional and additive: the daemon is still pure Go (`CGO_ENABLED=0`), and everything above works with no model installed at all. When one is, the daemon supervises exactly **one** child process — a `llama-server` running the pinned `embeddinggemma-300M-Q8_0.gguf` (768 dimensions, 2,048-token window) — never two. A cross-encoder reranker was built and bake-off-tested (`daemon/internal/rerank/`), but its rejection floor could not separate true answers from hard negatives on this corpus at any threshold; it is refuted, kept as quarantined research code behind an unpublished flag, and `agentmd serve` never spawns it. See [AgentM Hybrid Retrieval](agentm-hybrid-retrieval) for the measurement.
@@ -126,6 +128,7 @@ Miner fragments are short and quote the operator's own words, so BM25 ranks them
 | `lifecycle-archived` | 0.30 | frontmatter `lifecycle: archived` — also walled out of the default result set (see below) |
 | `lifecycle-superseded` | 0.30 | frontmatter `lifecycle: superseded` — the axis is now the only carrier of supersession for a memory; also walled out of the default result set like archived (see below), lifted by `include_archived`, counted in `superseded_hidden` |
 | `ingest-staged` | 0.30 | `status: ingest_staged` — a unit the ingest sweep fetched and has not yet promoted; walled out of the default result set like archived and superseded (see below), lifted by `include_archived`, counted in `staged_hidden` (`daemon/internal/note/classify.go:82-92,326-327`) |
+| `completed` | 0.30 | the note sits in a project's `completed/` folder — a closed task's leftover research, briefs and drafts (agentm-vault § Projects and tasks); earned by path, not by anything the note says |
 | `durable` | *none* | the note never ages: `lifecycle_tier: durable`, `lifecycle: pinned`, `kind: failure-incident`, a `decisions/` path segment, or a contract-exempt space |
 
 Four properties are load-bearing:
@@ -148,6 +151,12 @@ Four properties are load-bearing:
 The design makes `artifact` the default so `canonical` has to be earned. Capture used to write that default explicitly onto every new note (`DefaultAltitude`) rather than leaving the field absent for this ranker to read as a fallback. The card backfill (agentm-vault plan 06) retired `altitude` from the card entirely: capture no longer writes it, and the backfill drops it from every note still carrying it. The enrichment pass had already dropped `altitude` from its own response shape (agentm-vault plan 04 — see [Enrichment](#enrichment) below) and does not touch the field either. The `artifact` row above keys off the literal string `altitude: artifact`. No memory writer sets it any more; the calendar's day indexes, facet files and reviews still write it on their own records (`calendar_index.py`, `calendar_facets.py`, the dreaming binary's calendar job). So on the memory classes the class matches nothing, and the dampening stays behind `daemon.altitude_enabled`, off by default, until the ranker is re-audited against a field the card no longer carries.
 
 `durable` carries no weight and is not a penalty. It is the record of a decision, read by decay where the weights are not.
+
+### The project lift
+
+A query that names a vault project ranks every note whose own `project:` names a different project, or none, at `ProjectMismatch` (0.80) — inside the same multiplier as the classes above, so a matching card ranks 1.25x an equal unmatched one (agentm-vault § Projects and tasks). Nothing in this ranker may exceed 1.0, since the negative-IDF clamp depends on that ceiling, so the lift is spelled as a mild dampening of everything else. An empty or absent project ranks exactly as before. The lift applies in every search mode — `and`, `fusion`, and hybrid's dense arm alike — each reading the `project` the index stores alongside `flags` / `captured` / `updated` for every note.
+
+Nothing reaches this from `memory_search` — the MCP tool carries no `project` parameter. The two callers are `agentmd search -project <slug>` directly, and the prompt-submit recall hook, which resolves the session's project from its `.harness/project.json` + `.harness/active-plan` binding rather than taking a flag; `recall.py`'s own in-process and daemon-backed search paths apply the identical 0.80 weight (`_PROJECT_MISMATCH`) so a session sees the same lift whichever arm answers.
 
 ### Decay, and why it is off
 
@@ -190,7 +199,7 @@ Returns `{results, note, matched, archived_hidden, superseded_hidden, staged_hid
 | `why` | `str` | — | Why this was kept — what was happening, and what it decides later. Only write it when you actually know; a guessed reason is never invented downstream either. This is also the judgment signal — see `status` below. |
 | `importance` | `int` | — | 1-10. Written to both `importance` and `importance_proposed` — an operator's later edit to `importance` alone is what marks the value theirs from then on. |
 | `related` | `[str]` | — | Notes this one sits beside, by slug or `[[wikilink]]`. Rendered as a quoted flow list of wikilinks. |
-| `project`, `task` | `str` | — | The project slug and the task's verb-slug this was captured under, when the session has one. |
+| `project`, `task` | `str` | — | The vault project and task this session is bound to, when it has one — the session's opening brief names both (agentm-vault § Projects and tasks); pass them so the card is found with the project's work. |
 | `tags`, `aliases` | `[str]` | — | Both land in the `meta` column. |
 | `source` | `str` | — | The transport the memory arrived by — one of the contract's `sources` vocabulary (`operator-direct`, `conversation`, `external-fetch`, `email`). Sets the trust tier. As of the provenance ruling (2026-09-06) it is transport only; where the material came from goes in `source_id` or `source_url` below. |
 | `source_id` | `str` | — | A mined unit's registry identity, when the memory came from one. |
@@ -579,6 +588,55 @@ are unchanged at this pass, or unreadable, alongside the budget the run
 would run under. `--sample` draws from the same queue, and the coverage
 ledger's population (`pendingFor`) is the same queue too.
 
+The project records queue after the cards, inside the same line
+(agentm-vault § Projects and tasks): `enrichRecordQueue` walks the index
+for a project's charter and the notes under its `decisions/`, `designs/`
+and `research/` (`IsProjectRecord`, `daemon/internal/enrich/record.go`),
+and every one it finds is appended to the card queue. No card waits for a
+record, and the position-based pager (`queueAfter`, `enrich_run.go`)
+walks across the join without knowing where one half ends and the other
+begins.
+
+A record keeps its own eligibility rule rather than a card's: inside the
+projects space, `ProjectRecord` in the pre-gates (`pregates.go`) decides
+eligibility outright. A charter or a `decisions/`/`designs/`/`research/`
+note is offered; anything else there — a tracker, a plan, a progress log
+— is refused directly, never falling through to the `kind`-names-a-record
+check a note outside the projects space gets. See [Project
+records](#project-records) below for what happens once one is judged.
+
+### Project records
+
+Inside the projects space, three kinds of note are records rather than cards:
+
+- a project's charter at its root (`_index.md`, or `charter.md` once the migration renames it)
+- any note under its `decisions/` folder
+- any note under its `designs/` or `research/` folders
+
+Never a tracker, a plan or a progress log — those are the session's, and a nightly writer would race the session that owns them.
+
+A record's frontmatter belongs to whatever wrote it — a research bundle's
+`source_url` and fingerprint, a charter's `kind` — so a pass merges into
+it (`ComposeRecord`, `record.go`) rather than rendering a card over it,
+the same byte-for-byte-body guarantee `Compose` gives a card. It sets
+`summary` and `related`, keeps the record's own `tags` and `aliases` and
+adds the pass's after them, sets `importance_proposed` on a deep pass, and
+stamps `updated` and the `enriched_by` / `rules_hash` / `enriched_at`
+trio. Every other field the record already carried stays untouched.
+
+On a deep pass it also adds the dated `## Added by dreaming (YYYY-MM-DD)`
+section below the record's text, in place of any section an earlier deep
+pass added — the same mechanic a card gets. The light pass leaves the
+body as it was.
+
+`importance` itself, `title`, `type`, `status`, `filing_confidence`,
+`confidence` and `lifecycle` are never written, because a record is not
+filed. `write` (`main.go`) clears the response's `Slug` before applying a
+record's composition, so a record is never renamed. The run counts it in
+`verdicts.records` rather than in `filed_active` or `below_floor` — see
+[the morning note](#the-morning-note) below for where that count
+surfaces.
+
 ### The budget, and what stops a run
 
 `DefaultBudget` (`daemon/internal/enrich/batch.go:149-157`) is the
@@ -764,10 +822,17 @@ renders two more inputs: the contract's importance rubric — the prose under
 a title and a summary. Both are inputs like the card itself and sit outside
 the prompt hash: editing the rubric changes what the next deep pass proposes
 without re-owing a single already-judged card. The neighbours come from the
-daemon's own lexical search over the card's title and tags, top five,
-excluding the card itself, a derived class, a space no background model may
-read, and any neighbour whose title or summary carries a credential shape
-(`enrichNeighbours`, `daemon/cmd/agentmd/enrich_run.go:255-299`).
+daemon's own lexical search over the card's title and tags, over-fetching
+the top 40 (widened from 20 — agentm-vault plan 09) and excluding the card
+itself, a derived class, a space no background model may read, and any
+neighbour whose title or summary carries a credential shape.
+
+When the note belongs to a project — a record by its path, a card by its
+`project:` — that project's records then move to the front of what
+survives, keeping the search's order within each half, before the list is
+cut to five. A project's own decisions and research lead the neighbours of
+its cards and records, ahead of anything else the search turned up
+(`enrichNeighbours`, `projectFirst`, `daemon/cmd/agentmd/enrich_run.go`).
 
 What it does once it runs: add to a card rather than rewrite it. The card's
 own text is the evidence and stays exactly where the session left it; the
@@ -939,7 +1004,7 @@ agentmdream journal -tail 20                              # the mutation journal
 | `refile` | A memory whose `type:` the contract routes elsewhere moves under the same basename; a stale `near-duplicate` flag whose twin is gone gets cleared. |
 | `promote` | Reads every session trace's `## Captured` and `## Candidates` sections (agentm-vault plan 04, task 4); the recall hook's own `## Recalled` list is basenames, not judgments, and promote no longer reads it. A `## Candidates` line three or more distinct traces carry becomes a semantic candidate at `memory/semantic/candidate-<first-words>.md` — `status: unfiled`, no `why`, `derived_from` naming the traces — for the next enrichment batch to judge; capped at 10 new candidates a pass. A `## Captured` link three traces carry already has a card and is only reported. Nothing is ever written to `crystallized/`, which holds model syntheses made at a task's close or on request. |
 | `calendar` | Writes the daily register's weekly and monthly reviews, and, beside each year that has a facet note, that year's generated map (`moc-calendar-YYYY.md`, agentm-vault plan 07). |
-| `mocs` | A page per memory type, `<type>.md`, once it holds `moc_min_members` (5) live notes — past `moc_split_at` (40) it paginates inside itself, a section per 40 members, never into a second file (agentm-vault plan 07 retired the old numbered pages). `moc-memory.md` lists every type — a type at or past the floor by its page's link, a smaller one with its notes in full — and `moc-root.md` lists every area's map, both regenerated alongside it. A type's page is flagged `stale: true` past `moc_stale_after_days` (90). |
+| `mocs` | A page per memory type, `<type>.md`, once it holds `moc_min_members` (5) live notes — past `moc_split_at` (40) it paginates inside itself, a section per 40 members, never into a second file (agentm-vault plan 07 retired the old numbered pages). `moc-memory.md` lists every type — a type at or past the floor by its page's link, a smaller one with its notes in full — and `moc-root.md` lists every area's map, both regenerated alongside it. A type's page is flagged `stale: true` past `moc_stale_after_days` (90). Over the projects space (agentm-vault plan 09) the job also writes a map at each project's root, `moc-<slug>.md`: the project's tasks, in flight first by importance and the rest folded under the day they closed, then its decisions and designs, newest `created` first, and its research as a count per bundle. `Projects/moc-tasks.md` lists every project's tasks once any tracker exists, and `Projects/moc-projects.md` lists every project folder, leaving out `_archive/` and `completed/`, with its tracker's first State line or else its charter's What line. A task is a tracker in either layout: `tasks/<task>/tracker.md`, or `tracker-<task>.md` beside a flat plan pair. The root map lists a `Projects/moc-*.md` map on the night it is first written. |
 | `dates` | Additive relative-date glosses (`last week (the week of 2026-08-24)`) in notes older than `date_gloss_after_days` (30) — never a rewrite, never inside a fence. |
 
 Then three checks that write nothing: a vocabulary audit (every `type:`/`kind:` against the contract's own registers), trend flags (writes doubling week over week, a day at the cap, a class growing by half since the last pass), and a sampled re-classification diff (`reclassify_sample`, 30 notes) whenever the filing-pass version has changed since the last pass, or on `-reclassify`.
@@ -1004,7 +1069,7 @@ Each section is left out when it has nothing to say. When *What ran*, *What need
 
 | Line | What it says | Read from |
 |---|---|---|
-| What ran · enrichment | `N judged · N filed active · N below the floor · N sank · N calls · N tokens against the line · <model>`, then `N failed` and `Stopped by <reason>` when present; a note that sank also counts below the floor. Then `N card(s) stand refused at this pass`, with `, N of them skipped free rather than judged again` when the run declined any — silence means none stand, and the headline carries `, N refused` beside the judged count | `<engine state dir>/enrich-runs.jsonl`, the runs since the opening; the numbers are the run's own `refusals_open` and `refused` |
+| What ran · enrichment | `N judged · N filed active · N below the floor · N sank · N calls · N tokens against the line · <model>`, with `N project records ·` inserted just before the call count on a night that merged into any (agentm-vault plan 09 — project records are merged rather than filed, so they sit beside the filing verdicts instead of inside them), then `N failed` and `Stopped by <reason>` when present; a note that sank also counts below the floor. Then `N card(s) stand refused at this pass`, with `, N of them skipped free rather than judged again` when the run declined any — silence means none stand, and the headline carries `, N refused` beside the judged count | `<engine state dir>/enrich-runs.jsonl`, the runs since the opening; the numbers are the run's own `refusals_open` and `refused` |
 | What ran · the binary | the pass's mode, outcome and gate reason, then one table row per job (lifecycle, copies, refile, promote, calendar, mocs, dates); `ran, and its gate held; the last pass was N ago` when the runner started it and the gate held | `<engine state dir>/dreaming/last-report.json`, when written since the opening |
 | What ran · the Python cycle | possible twins, shared keys, proposed facets, and the orphan, contradiction and mis-cased-link counts from lint; `filing is halted` with the parse error when the contract did not parse | `<engine state dir>/dreaming/python-cycle.json`, when written since the opening |
 | What ran · did not run | `Did not run last night: <step> (<reason>)` for enrichment, the dreaming binary, the Python cycle or the corpus scorecard | the runner's per-job markers and `~/.cache/agentm/runner/last-cycle.json` |
@@ -1403,4 +1468,5 @@ There is no bearer token, on purpose. It would gate other processes running as t
 - [Vault write protocol](Vault-Write-Protocol) — the caller-facing shape of the same write-time stamps and gate refusal.
 - [Review flagged memories](Review-Flagged-Memories) — working the needs-review page this page's enrichment stamps feed.
 - [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) — reading the note the morning-note section above describes.
+- [Named plans](Named-Plans) — the task layout and the tracker this page's project records and project lift read alongside.
 - [CI gates](CI-Gates) — `check-daemon` runs the battery below.

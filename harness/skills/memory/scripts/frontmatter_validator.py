@@ -125,7 +125,10 @@ _EXCLUDE_DIRS = frozenset(
     # scratch space ("scratch"), not its "desk/scratch" spelling — a
     # two-segment entry here silently matches nothing.
     {"_idea-incubator", "_meta", "_harness", "_inbox", "scratch", "_archive",
-     "_opinions", "_crystallize-staging"}
+     "_opinions", "_crystallize-staging",
+     # A project's session-owned plan, progress and tracker, once `_harness/`
+     # dissolves into `tasks/<slug>/` (agentm-vault plan 09).
+     "tasks"}
 )
 
 

@@ -97,6 +97,7 @@ class Trace:
     # over a lone note never has.
     candidates: list = field(default_factory=list)
     project: str = ""
+    task: str = ""
     surface: str = ""
 
     @property
@@ -125,6 +126,8 @@ class Trace:
         ]
         if self.project:
             lines.append(f"project: {_yaml_scalar(self.project)}")
+        if self.task:
+            lines.append(f"task: {_yaml_scalar(self.task)}")
         lines += [
             f"day: {self.when:%Y-%m-%d}",
             f"session: {_yaml_scalar(self.session_id)}",
@@ -343,7 +346,7 @@ def mined_candidates(messages: list) -> list:
 
 
 def from_transcript(transcript_path: Path, *, session_id: str, when: date = None,
-                    history_path: Path = None, project: str = "", surface: str = "",
+                    history_path: Path = None, project: str = "", task: str = "", surface: str = "",
                     candidates: list = None) -> Trace:
     import reflect  # the sidecar's own transcript reader, so both read one shape
 
@@ -376,7 +379,7 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
                  captured=[t for t in captured if t in touched], recalled=[t for t in recalled if t in touched],
                  asked=asked[:ASKED_CHARS], outcome=_closing_recap(messages),
                  candidates=list(candidates or [])[:MAX_CANDIDATES],
-                 project=project, surface=surface)
+                 project=project, task=task, surface=surface)
 
 
 def write_trace(vault_path, trace: Trace) -> str | None:
@@ -398,6 +401,19 @@ def write_trace(vault_path, trace: Trace) -> str | None:
     return trace.rel
 
 
+def _stamps_for(transcript: Path, project: str, task: str) -> tuple:
+    """The trace's `project` and `task`: a flag when one is given, else the binding
+    of the directory the session ran in (agentm-vault plan 09). A task comes from
+    the binding only beside the binding's own project."""
+    import session_binding  # same skill dir
+    binding = session_binding.for_transcript(transcript)
+    if project:
+        default_task = binding.task if project == binding.project else None
+    else:
+        project, default_task = binding.project or "", binding.task
+    return project, task or default_task or ""
+
+
 def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser(description="write the session's episodic trace")
     ap.add_argument("transcript")
@@ -405,7 +421,8 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--vault-path", default=None, help="the memory root (default: $MEMORY_ROOT)")
     ap.add_argument("--day", default=None, help="YYYY-MM-DD (default: the transcript's first message)")
     ap.add_argument("--history", default=None, help="recall history JSONL (default: ~/.cache/agentm/telemetry/recall-history.jsonl)")
-    ap.add_argument("--project", default="")
+    ap.add_argument("--project", default="", help="the vault project (default: the session's binding)")
+    ap.add_argument("--task", default="", help="the task (default: the session's binding)")
     ap.add_argument("--surface", default=os.environ.get("AGENTM_SURFACE", "").strip(),
                     help="where the session ran, e.g. claude-code (default: $AGENTM_SURFACE)")
     a = ap.parse_args(argv)
@@ -413,11 +430,12 @@ def main(argv: list | None = None) -> int:
     if not vault:
         print("episodic_trace: no memory root (--vault-path or MEMORY_ROOT)", file=sys.stderr)
         return 0
+    project, task = _stamps_for(Path(a.transcript), a.project, a.task)
     try:
         trace = from_transcript(Path(a.transcript), session_id=a.session,
                                 when=date.fromisoformat(a.day) if a.day else None,
                                 history_path=Path(a.history) if a.history else None,
-                                project=a.project, surface=a.surface)
+                                project=project, task=task, surface=a.surface)
         rel = write_trace(vault, trace)
     except Exception as e:  # a hook never blocks session end on a trace
         print(f"episodic_trace: skipped ({e})", file=sys.stderr)

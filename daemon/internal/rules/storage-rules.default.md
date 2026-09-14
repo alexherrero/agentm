@@ -225,6 +225,9 @@ record_kinds:
   - standard
   - analysis
   - progress-log
+  # agentm-vault plan 09 (2026-09-12): a task's or a project's living head, one
+  # schema owned by scripts/tracker.py. A record, so no pass rewrites it.
+  - tracker
 
 deprecations:
   preferences: preference

@@ -52,6 +52,11 @@ type Eligibility struct {
 	// shape is its writer's, and a pass that re-rendered its frontmatter would
 	// drop the fields that shape is made of.
 	IsRecordKind func(string) bool
+	// ProjectRecord is the place rule inside the projects space (agentm-vault
+	// § Projects and tasks): a pass writes a project's charter and its
+	// decisions/, designs/ and research/ notes, and nothing else there.
+	// Supplied like MayRead; nil leaves the projects space to the other rules.
+	ProjectRecord func(rel string) bool
 }
 
 // DefaultEligibility is the shipped rule set.
@@ -76,6 +81,16 @@ func (g *Eligibility) Check(_ context.Context, req Request, body string) error {
 			return fmt.Errorf("%w: %s is a derived class enrichment may not write",
 				ErrNotEligible, seg)
 		}
+	}
+	if g.ProjectRecord != nil && InProjectsSpace(req.Rel) {
+		if !g.ProjectRecord(req.Rel) {
+			return fmt.Errorf("%w: %s is project state a pass does not write; only a "+
+				"charter and decisions/, designs/ and research/ notes take its section",
+				ErrNotEligible, req.Rel)
+		}
+		// A record keeps its writer's shape, so the record-kind refusal does not
+		// apply: ComposeRecord merges into the record rather than rendering a card.
+		return nil
 	}
 	if kind := strings.TrimSpace(frontmatterValue(body, "kind")); kind != "" &&
 		g.IsRecordKind != nil && g.IsRecordKind(kind) {
