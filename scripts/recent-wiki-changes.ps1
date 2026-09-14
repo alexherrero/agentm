@@ -1,13 +1,15 @@
 # recent-wiki-changes.ps1 — cross-repo "show me all my recent wiki changes" surface.
 #
-# Windows twin of recent-wiki-changes.sh. Walks repo_registry.list_repos()
-# from V4 #30 plan 1; for each registered repo's root_path, walks wiki/
-# subtree for files modified within the last N days; emits sorted table.
+# Windows twin of recent-wiki-changes.sh. Walks repo_registry.list_repos() (the
+# registry lives in engine state, at ~/.local/state/agentm/repos.json unless
+# $AGENTM_STATE_DIR says otherwise); for each registered repo's root_path, walks
+# wiki/ subtree for files modified within the last N days; emits sorted table.
 #
 # Usage:
 #   pwsh -File scripts\recent-wiki-changes.ps1 [-Repo <slug>] [-Days <N>] [-Limit <N>] [-VaultPath <path>]
 #
-# Env: MEMORY_ROOT (the memory root; MEMORY_VAULT_PATH is its deprecated alias), AGENTM_WIKI_RECENT_DAYS
+# Env: MEMORY_ROOT (optional: the memory root, where a vault's legacy registry copy sits;
+#      MEMORY_VAULT_PATH is its deprecated alias), AGENTM_WIKI_RECENT_DAYS
 #
 # Built as part of V4 #30 plan 2 task 6.
 
@@ -23,15 +25,17 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $VaultPath) { $VaultPath = if ($env:MEMORY_ROOT) { $env:MEMORY_ROOT } else { $env:MEMORY_VAULT_PATH } }
-# Fall back to the memory root the kernel config resolves to when env+CLI are empty
-# (the registry is <memory-root>/_meta/repos.json, so the bare vault_path is the wrong root on the split layout).
+# Fall back to the memory root the kernel config resolves to when env+CLI are empty.
+# None of them is required: the registry lives in engine state (engine_state_dir()/repos.json),
+# which needs no vault. A memory root matters while a vault holds the only copy of the registry,
+# read at <memory-root>/_meta/repos.json, so the bare vault_path is the wrong root on the split layout.
 if (-not $VaultPath) {
     try {
         $VaultPath = (& python3 '-c' 'import sys; sys.path.insert(0, sys.argv[1]); import harness_memory; print(harness_memory.memory_root() or "")' $PSScriptRoot 2>$null | Out-String).Trim()
     } catch { $VaultPath = '' }
 }
-if (-not $VaultPath -or -not (Test-Path -LiteralPath $VaultPath -PathType Container)) {
-    Write-Output '{"skipped": true, "reason": "MEMORY_ROOT unset AND no vault_path in .agentm-config.json (or resolved directory missing). Run agentm_config.py --vault-path <path> to set."}'
+if ($VaultPath -and -not (Test-Path -LiteralPath $VaultPath -PathType Container)) {
+    Write-Output '{"skipped": true, "reason": "The memory root (-VaultPath, $MEMORY_ROOT or the configured vault_path) is not a directory."}'
     exit 1
 }
 
@@ -61,8 +65,10 @@ if (-not $pythonCmd) {
 }
 
 # Set env for the Python child
-$env:MEMORY_ROOT = $VaultPath
-$env:MEMORY_VAULT_PATH = $VaultPath   # deprecated alias, same value
+if ($VaultPath) {
+    $env:MEMORY_ROOT = $VaultPath
+    $env:MEMORY_VAULT_PATH = $VaultPath   # deprecated alias, same value
+}
 $env:AGENTM_WIKI_RECENT_DAYS = $Days
 $env:_RWC_REPO_FILTER = $Repo
 $env:_RWC_LIMIT = $Limit
@@ -77,7 +83,6 @@ import sys
 import time
 from pathlib import Path
 
-vault = os.environ["MEMORY_ROOT"]
 days = int(os.environ.get("AGENTM_WIKI_RECENT_DAYS", "7"))
 filter_slug = os.environ.get("_RWC_REPO_FILTER", "")
 limit = int(os.environ.get("_RWC_LIMIT", "50"))
@@ -86,11 +91,17 @@ registry_py = os.environ["_RWC_REGISTRY_PY"]
 try:
     res = subprocess.run(
         [sys.executable, registry_py, "list"],
-        capture_output=True, text=True, env={**os.environ, "MEMORY_ROOT": vault, "MEMORY_VAULT_PATH": vault},
+        capture_output=True, text=True,
     )
     data = json.loads(res.stdout or '{"repos": []}')
 except Exception:
     data = {"repos": []}
+
+# The registry CLI prints a skip marker when it cannot select a storage backend;
+# relay it, so a misconfigured backend never reads as an empty registry.
+if data.get("skipped"):
+    print(json.dumps(data))
+    sys.exit(1)
 
 repos = data.get("repos", [])
 if filter_slug:
@@ -100,7 +111,7 @@ if not repos:
     if filter_slug:
         print(f"No repo registered with slug: {filter_slug}", file=sys.stderr)
     else:
-        print("No repos registered in <vault>/_meta/repos.json.", file=sys.stderr)
+        print("No repos registered in ~/.local/state/agentm/repos.json ($AGENTM_STATE_DIR/repos.json when set).", file=sys.stderr)
     sys.exit(0)
 
 cutoff = time.time() - (days * 86400)

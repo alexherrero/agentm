@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # recent-wiki-changes.sh — cross-repo "show me all my recent wiki changes" surface.
 #
-# Walks `repo_registry.list_repos()` (vault-backed at `<vault>/_meta/repos.json`
-# from V4 #30 plan 1); for each registered repo's `root_path`, walks the
-# `wiki/` subtree for files modified within the last N days; emits a
-# one-row-per-modified-page table sorted by mtime descending.
+# Walks `repo_registry.list_repos()` (the registry lives in engine state, at
+# `~/.local/state/agentm/repos.json` unless `$AGENTM_STATE_DIR` says otherwise);
+# for each registered repo's `root_path`, walks the `wiki/` subtree for files
+# modified within the last N days; emits a one-row-per-modified-page table
+# sorted by mtime descending.
 #
 # Built as part of V4 #30 plan 2 task 6 (Wiki I/O codification +
 # cross-repo views). Companion to the new `/recent-wiki-changes` slash
@@ -21,13 +22,15 @@
 #   --help, -h          Print this help and exit
 #
 # Env:
-#   MEMORY_ROOT               the memory root (required unless --vault-path passed);
+#   MEMORY_ROOT               the memory root (optional; a vault's legacy registry
+#                             copy sits at `<memory-root>/_meta/repos.json`);
 #                             MEMORY_VAULT_PATH is its deprecated alias
 #   AGENTM_WIKI_RECENT_DAYS   default recent-window in days (default: 7)
 #
 # Exit:
-#   0  success (may emit 0 rows if no recent changes)
-#   1  vault unavailable / registry empty (graceful-skip with JSON skip marker)
+#   0  success (may emit 0 rows if no recent changes or no registered repos)
+#   1  graceful skip with a JSON skip marker: the memory root is not a directory,
+#      or repo_registry.py cannot select a storage backend
 #   2  argument error
 
 set -euo pipefail
@@ -76,15 +79,20 @@ done
 
 # Resolution order: --vault-path CLI → $MEMORY_ROOT env (or its deprecated alias
 # $MEMORY_VAULT_PATH; set as $VAULT_PATH default above) → the memory root the
-# kernel config resolves to. The value is the MEMORY root, not the vault root:
-# the registry this reads is `<memory-root>/_meta/repos.json`, and exporting
-# the config's bare vault_path (as this did until 2026-09-11) pointed every
-# reader at `<vault>/_meta/` on the split layout.
+# kernel config resolves to. None of them is required: the registry lives in the
+# engine state directory (`harness_memory.engine_state_dir() / "repos.json"`),
+# which needs no vault. A memory root still matters while a vault holds the only
+# copy of the registry, because repo_registry.py then reads that legacy copy at
+# `<memory-root>/_meta/repos.json` through the vault backend, and an exported
+# $MEMORY_ROOT roots that backend there (and selects it when the config names no
+# backend). So the value exported is the memory root: the config's bare
+# vault_path (exported here until 2026-09-11) would point that read at
+# `<vault>/_meta/` on the split layout.
 if [[ -z "$VAULT_PATH" ]]; then
     VAULT_PATH="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import harness_memory; print(harness_memory.memory_root() or "")' "$(dirname "$0")" 2>/dev/null || true)"
 fi
-if [[ -z "$VAULT_PATH" || ! -d "$VAULT_PATH" ]]; then
-    echo '{"skipped": true, "reason": "MEMORY_ROOT unset AND no vault_path in .agentm-config.json (or resolved directory missing). Run agentm_config.py --vault-path <path> to set."}'
+if [[ -n "$VAULT_PATH" && ! -d "$VAULT_PATH" ]]; then
+    echo '{"skipped": true, "reason": "The memory root (--vault-path, $MEMORY_ROOT or the configured vault_path) is not a directory."}'
     exit 1
 fi
 
@@ -104,9 +112,12 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 # Delegate the heavy lifting to a Python script via stdin to avoid bash heredoc
-# quote-nesting hell. Exports env so child reads vault + registry.
-export MEMORY_ROOT="$VAULT_PATH"
-export MEMORY_VAULT_PATH="$VAULT_PATH"   # deprecated alias, same value
+# quote-nesting hell. Exports env so the registry CLI the child runs sees the
+# same memory root.
+if [[ -n "$VAULT_PATH" ]]; then
+    export MEMORY_ROOT="$VAULT_PATH"
+    export MEMORY_VAULT_PATH="$VAULT_PATH"   # deprecated alias, same value
+fi
 export AGENTM_WIKI_RECENT_DAYS="$DAYS"
 export _RWC_REPO_FILTER="$REPO_FILTER"
 export _RWC_LIMIT="$LIMIT"
@@ -120,7 +131,6 @@ import sys
 import time
 from pathlib import Path
 
-vault = os.environ["MEMORY_ROOT"]
 days = int(os.environ.get("AGENTM_WIKI_RECENT_DAYS", "7"))
 filter_slug = os.environ.get("_RWC_REPO_FILTER", "")
 limit = int(os.environ.get("_RWC_LIMIT", "50"))
@@ -130,11 +140,17 @@ registry_py = os.environ["_RWC_REGISTRY_PY"]
 try:
     res = subprocess.run(
         [sys.executable, registry_py, "list"],
-        capture_output=True, text=True, env={**os.environ, "MEMORY_ROOT": vault, "MEMORY_VAULT_PATH": vault},
+        capture_output=True, text=True,
     )
     data = json.loads(res.stdout or '{"repos": []}')
 except (subprocess.CalledProcessError, json.JSONDecodeError):
     data = {"repos": []}
+
+# The registry CLI prints a skip marker when it cannot select a storage backend;
+# relay it, so a misconfigured backend never reads as an empty registry.
+if data.get("skipped"):
+    print(json.dumps(data))
+    sys.exit(1)
 
 repos = data.get("repos", [])
 if filter_slug:
@@ -145,7 +161,7 @@ if not repos:
         print(f"No repo registered with slug: {filter_slug}", file=sys.stderr)
         print(f"Available: python3 {registry_py} list", file=sys.stderr)
     else:
-        print("No repos registered in <vault>/_meta/repos.json.", file=sys.stderr)
+        print("No repos registered in ~/.local/state/agentm/repos.json ($AGENTM_STATE_DIR/repos.json when set).", file=sys.stderr)
         print(f"Register one: python3 {registry_py} register <slug> --root <path>", file=sys.stderr)
     sys.exit(0)
 
