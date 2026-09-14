@@ -85,6 +85,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The routing conformance check reaches the backend it is handed, and leaves
+  the caller's registry alone.** Since the memory-root trims, the repo registry
+  has lived in the engine state directory whichever backend is active.
+  `check_routing_repo_registry` therefore passed for any backend at all, and
+  outside the battery it rewrote the registry in the caller's engine state
+  around a register and an unregister. It now proves what remains of V5-6's
+  LC-4: while a backend holds the only registry copy, the legacy
+  `_meta/repos.json`, `repo_registry` reads and writes it there. The check
+  seeds that copy through the backend's own verbs inside an empty engine state
+  directory of its own, and fails unless every write lands in the backend's
+  copy and the engine state ends without a registry.
+  `test_storage_conformance_negative.py` holds it to that with a backend whose
+  `exists` hides its registry, a backend that records its writes, and a caller
+  whose engine state already holds a registry. The seam design gains the
+  amendment the move never got.
 - **The enrichment dry run counts the cards and the project records apart, and
   sizes the night from where the cursor resumes.** Plan 09 queued the project
   records after the cards, and `--dry-run` went on reporting the whole queue as

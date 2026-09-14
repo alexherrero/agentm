@@ -17,7 +17,8 @@ cross-OS ``[T]`` CI matrix.
 V5-3 deleted the kernel ``storage_vault.VaultBackend``; the real vault plugin
 conformance suite runs crickets-side against the obsidian-vault plugin.
 ``RoutingConformanceReport`` still exercises routing against the
-``vault_backend_stub`` so the routing layer invariant (V5-6 LC-4) is proven here.
+``vault_backend_stub``, so what remains of the V5-6 LC-4 routing invariant is
+proven here: a registry the backend holds is read and written there.
 
 The negative/positive fixtures that prove the suite *bites* live in
 ``test_storage_conformance_negative`` (part 3 task 3).
@@ -113,12 +114,13 @@ def _make_scratch_vault_backend(case: unittest.TestCase) -> "vbs.VaultBackend":
 
 
 class RoutingConformanceReport(unittest.TestCase):
-    """``run_conformance(include_routing=True)`` proves ``repo_registry`` on both backends.
+    """``run_conformance(include_routing=True)`` proves the registry's legacy copy on both backends.
 
-    The routing-layer invariant (V5-6 LC-4): ``repo_registry`` operations produce
-    identical semantic outcomes on every conforming backend. Exercises both the
-    one-call importable driver (``include_routing=True``) and checks the report
-    contains a ``routing`` key naming what ran.
+    What remains of the V5-6 LC-4 routing invariant since the memory-root trims
+    (agentm-vault plan 05): while a backend holds the only registry copy, at
+    ``_meta/repos.json``, ``repo_registry`` reads and writes it there, with the
+    same outcome on every conforming backend. Exercises the one-call importable
+    driver (``include_routing=True``) and checks the report names what ran.
     """
 
     def test_run_conformance_device_local_includes_routing(self) -> None:
