@@ -55,7 +55,8 @@ class TestMemoryReflectIdleHook(unittest.TestCase):
         (self.vault / "_inbox").mkdir(parents=True)
         # Neutralize the detached idle chain (enable_idle_chain=false) so it exits
         # fast without corpus-mining writes that would race tearDown.
-        (self.vault / "memory" / "auto-orchestration-config.md").write_text(
+        (self.vault / "Projects" / "agentm").mkdir(parents=True, exist_ok=True)
+        (self.vault / "Projects" / "agentm" / "auto-orchestration-config.md").write_text(
             "```settings\nenable_idle_chain = false\n```\n", encoding="utf-8",
         )
         self.proj = self.root / "proj"

@@ -49,6 +49,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A feature's state is read and written only in `Projects/agentm/`.**
+  `vault_layout.feature_state_candidates()` no longer offers the retired
+  `memory/<name>` spelling, so the two watchlists, the settings files and the
+  skill-discovery sources resolve to the project on every vault, for readers
+  and writers alike. Until now a vault that still had `memory/_watchlist` and
+  no project copy had its new entries written there. The adapt-evaluator agent
+  wrote skill-watchlist entries to `personal-private/_skill-watchlist/`, two
+  renames out of date; it now writes to `Projects/agentm/_skill-watchlist/`.
+  `check-memory-root-shape.py` still names a retired location that comes back,
+  and the `standards/` spelling of the forward-learning sources file is still
+  read as a fallback.
+
 - **Last night's enrichment no longer holds tonight's.** The fleet ceiling
   counts a job's last reported cost for 20 hours from the start of the cycle
   that ran it, not 24. At 24 hours the batch, about $22 a night against the $5

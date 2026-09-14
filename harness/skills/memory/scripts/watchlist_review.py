@@ -2,9 +2,9 @@
 # watchlist_review.py — /memory watchlist review command (plan #7b task 5).
 #
 # Walks two watchlist roots' `<source-slug>/<pattern-slug>.md` entries as
-# ONE review surface: `<vault>/personal/_skill-watchlist/` (adapt-don't-
+# ONE review surface: `Projects/agentm/_skill-watchlist/` (adapt-don't-
 # import candidate skills, the original consumer) and
-# `<vault>/personal/_watchlist/` (AG Wave E experience-plan task 1's
+# `Projects/agentm/_watchlist/` (AG Wave E experience-plan task 1's
 # generalized forward-learning findings — ideas/patterns/references from
 # operator-approved sources, written by `forward_learning.py`). Same entry
 # shape, same review verbs — "the broader loop generalizes this same

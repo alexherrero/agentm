@@ -12,7 +12,7 @@
 # Pass 2 (sub-agent — see `agents/adapt-evaluator.md`): reads each enriched
 # candidate JSON; outputs final HIGH/MEDIUM/LOW classification + adaptation
 # notes; writes the final watchlist entry to
-# <vault>/personal/_skill-watchlist/<source-slug>/<pattern-slug>.md.
+# Projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md.
 #
 # Adapt-don't-import contract (locked from plan #7b PLAN.md):
 #   - Never writes to `crickets/skills/<x>/SKILL.md`.

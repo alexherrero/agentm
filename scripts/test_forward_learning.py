@@ -129,11 +129,22 @@ class DryRunFixtureSourceSetTests(_ForwardLearningTestBase):
         changed_paths |= {p for p in pre_snapshot if pre_snapshot.get(p) != post_snapshot.get(p)}
         for rel in changed_paths:
             self.assertTrue(
-                rel.startswith(str(fl.WATCHLIST_REL))
-                or rel.startswith(str(fl.watchlist_root(self.vault).relative_to(self.vault)))
+                rel.startswith(str(fl.watchlist_root(self.vault).relative_to(self.vault)))
                 or rel.startswith(str(fl.STATE_REL.parent)),
                 f"unexpected write outside the watchlist/cache: {rel}",
             )
+
+    def test_a_retired_memory_watchlist_gets_no_entries(self) -> None:
+        retired = self.vault / "memory" / "_watchlist"
+        retired.mkdir(parents=True)
+
+        result = fl.run_forward_learning(self.vault, fetcher=self.fetcher, now=1_700_000_000.0)
+
+        home = self.vault / "Projects" / "agentm" / "_watchlist"
+        self.assertEqual(len(result.written), 2)
+        for path in result.written:
+            self.assertEqual(path.parents[1], home, f"entry written outside {home}: {path}")
+        self.assertEqual(list(retired.iterdir()), [], "an entry went to the retired memory/_watchlist")
 
     def test_low_scored_candidate_is_never_written(self) -> None:
         fl.run_forward_learning(self.vault, fetcher=self.fetcher, now=1_700_000_000.0)

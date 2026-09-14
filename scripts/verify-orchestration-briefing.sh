@@ -86,9 +86,9 @@ for i in $(seq 1 10); do
 done
 assert_contains "briefing: inbox over threshold surfaces"       "$(render)" "10 inbox entries to sort"
 
-mkdir -p "$SV/memory/_skill-watchlist/src"
+mkdir -p "$SV/Projects/agentm/_skill-watchlist/src"
 printf -- '---\nstatus: pending-review\nevaluator_classification: HIGH\n---\nb\n' \
-  > "$SV/memory/_skill-watchlist/src/p1.md"
+  > "$SV/Projects/agentm/_skill-watchlist/src/p1.md"
 assert_contains "briefing: HIGH skill-watchlist surfaces"       "$(render)" "1 HIGH skill-watchlist"
 
 mkdir -p "$SV/_idea-incubator/an-idea"
@@ -100,12 +100,12 @@ printf '{}' > "$AGENTM_STATE_DIR/skill-discovery-cache/adapt-state/src/newpat.js
 printf '{}' > "$AGENTM_STATE_DIR/skill-discovery-cache/adapt-state/evaluated.json"   # root file: must be skipped
 assert_contains "briefing: staged adapt candidate surfaces"     "$(render)" "1 skill candidate staged for adapt-evaluation"
 printf -- '---\nstatus: pending-review\n---\nb\n' \
-  > "$SV/memory/_skill-watchlist/src/newpat.md"   # Pass-2 verdict exists → clears
+  > "$SV/Projects/agentm/_skill-watchlist/src/newpat.md"   # Pass-2 verdict exists → clears
 assert_absent  "briefing: staged adapt clears once evaluated"   "$(render)" "staged for adapt-evaluation"
 
 # ── D. nudges (f + g) ───────────────────────────────────────────────────────
 printf -- '---\nstatus: promoted\npromoted_at: 2026-01-01T00:00:00+00:00\n---\nb\n' \
-  > "$SV/memory/_skill-watchlist/src/stale.md"
+  > "$SV/Projects/agentm/_skill-watchlist/src/stale.md"
 assert_contains "nudge: stale-promotion (>30d) surfaces"        "$(render)" "promoted >30d ago"
 
 TODAY="$(date -u +%Y-%m-%d)"   # today → never idea-ledger-stale; isolates the promote-suggest signal
