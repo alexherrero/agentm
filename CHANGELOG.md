@@ -204,9 +204,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it with the device-local root, and `engine_state_isolation` sets that variable
   for every test it governs. The five suites it did not govern now call it. The
   nested-layout snapshot test moved above its file's `unittest.main()` guard,
-  where a hand run reaches it. `test_engine_state_not_leaked` runs all eight
-  suites by hand to prove the default root is left as it was. The directories
-  already on a machine stay until they are removed by hand.
+  where a hand run reaches it. Two battery gates that run the dream cycle,
+  `verify-dreaming.sh` and `verify-auto-org-meters.sh`, moved the engine state
+  directory into their scratch root and not the device-local root, so each
+  battery run added two more directories; both now export
+  `AGENTM_DEVICE_LOCAL_ROOT` there too. `test_engine_state_not_leaked` runs all
+  eight suites and both gates under a home of their own to prove the default
+  root is left as it was. The directories already on a machine stay until they
+  are removed by hand.
 
 ### Internal
 

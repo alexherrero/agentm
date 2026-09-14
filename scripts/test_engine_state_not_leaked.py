@@ -605,5 +605,44 @@ class TheGraphSnapshotSuitesRunByHand(unittest.TestCase):
                 self._run_by_hand(suite, names)
 
 
+@unittest.skipIf(os.name == "nt", "the battery's shell gates run on Linux and macOS only")
+class TheDreamingGatesRunUnderAHomeOfTheirOwn(unittest.TestCase):
+    """The two battery gates that run the dream cycle, each under a home of its own.
+
+    `verify-dreaming.sh` and `verify-auto-org-meters.sh` run the cycle against a
+    scratch vault, and its lint stage rebuilds a graph snapshot. Both moved the
+    engine state directory into their scratch root and left the device-local
+    root at its default, so every battery run added two directories to the
+    operator's `~/.agentm/memory/_meta`. On 2026-09-13 each of the battery's
+    sixteen shell gates ran under a throwaway home, and these two were the only
+    ones that wrote there. Each runs the same way here, from the repository root
+    as `check-all.sh` runs it, and must pass and leave the seeded snapshot root
+    exactly as it was.
+    """
+
+    GATES = ("verify-dreaming.sh", "verify-auto-org-meters.sh")
+
+    def test_each_leaves_the_default_snapshot_root_as_it_found_it(self):
+        for gate in self.GATES:
+            with self.subTest(gate=gate), tempfile.TemporaryDirectory() as home:
+                env = _hand_run_env(home)
+                env.pop("AGENTM_DEVICE_LOCAL_ROOT", None)
+                root = _seed_snapshot_root(self, env, home)
+                before = _fingerprint(root)
+
+                r = subprocess.run(
+                    ["bash", f"scripts/{gate}"],
+                    capture_output=True, encoding="utf-8", errors="replace", timeout=300,
+                    cwd=str(_REPO), env=env)
+
+                after = _fingerprint(root)
+                changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+                self.assertEqual(
+                    after, before,
+                    f"{gate} wrote into the default graph snapshot root, which on a real "
+                    f"machine holds the real vault's snapshot: {changed}\n{r.stdout[-2000:]}")
+                self.assertEqual(r.returncode, 0, f"{gate} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
+
+
 if __name__ == "__main__":
     unittest.main()

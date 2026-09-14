@@ -61,6 +61,10 @@ V="$(mktemp -d)"
 # default; phases needing distinct state override per-invocation.
 export AGENTM_STATE_DIR="$V/engine-state"
 mkdir -p "$AGENTM_STATE_DIR"
+# The cycle's lint stage rebuilds a graph snapshot, whose root follows the
+# device-local root. Left at its default, every run of this gate added a
+# directory to the operator's own ~/.agentm/memory/_meta.
+export AGENTM_DEVICE_LOCAL_ROOT="$V/device-local"
 
 cleanup() { rm -rf "$V"; }
 trap cleanup EXIT
