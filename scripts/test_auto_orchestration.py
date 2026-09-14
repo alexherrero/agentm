@@ -216,5 +216,18 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(cfg["inbox_threshold"], 7)
 
 
+# Every test here gets its own engine state directory, where
+# `auto-orchestration-state.json` records each fire for the cooldown to read,
+# so a hand run no longer writes the machine's own.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()

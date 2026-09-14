@@ -151,6 +151,21 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         # machine's registry on 2026-09-12. test_engine_state_not_leaked runs
         # that class by hand to prove it stays off the machine.
         "test_harness_memory",
+        # Running every suite by hand the same way found thirteen more writing
+        # the machine's engine state (2026-09-13). Three wrote the registry:
+        # `test_project_config` added five throwaway entries, and the two
+        # conformance suites rewrote it around a register-and-unregister. The
+        # rest wrote the heat and lifecycle sidecars, the auto-orchestration
+        # cooldown or the forward-learning watermarks, and four of those failed
+        # on a hand run because each test started from the last one's writes.
+        # test_engine_state_not_leaked runs every one of them by hand.
+        "test_project_config", "test_storage_conformance",
+        "test_storage_conformance_negative", "test_auto_orchestration",
+        "test_orchestration_phase", "test_forward_learning",
+        "test_memory_heat_policy", "test_memory_lifecycle",
+        "test_recall_daemon_fast_path", "test_recall_machine_prompt_skip",
+        "test_recall_stream_admission", "test_recall_token_budget",
+        "test_recall_trace",
     )
 
     def test_each_named_suite_calls_the_helper(self):

@@ -396,5 +396,20 @@ class TestRecallHitIntegration(unittest.TestCase):
         # test is a smoke check, not a recall-correctness assertion.
 
 
+# Every test here gets its own engine state directory, where `.heat.json` and
+# `.lifecycle.json` have lived since the memory-root trims (agentm-vault plan
+# 05). On a hand run every test recorded into one shared sidecar, which failed
+# eight tests, and the hits and sessions landed in the machine's `.heat.json`,
+# whose session count the demotion policy reads.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()
