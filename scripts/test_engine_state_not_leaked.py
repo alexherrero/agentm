@@ -21,6 +21,8 @@ actually reach the disk.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -28,11 +30,15 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
+if str(_REPO / "scripts") not in sys.path:
+    sys.path.append(str(_REPO / "scripts"))
 
 import engine_state  # noqa: E402
+import harness_memory  # noqa: E402 — the resolver the repo registry writes through
 
 # The real one. Nothing in a test run may resolve here.
 _MACHINE_STATE = Path.home() / ".local" / "state" / "agentm"
@@ -167,6 +173,80 @@ class TheRunnersGuardActuallyRotates(unittest.TestCase):
                            cwd=str(_REPO / "scripts"))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("ok", r.stdout)
+
+
+class TheRegistryCLITestsRunByHand(unittest.TestCase):
+    """A hand run of `test_harness_memory.py`, under a home of its own.
+
+    The repo registry has lived at `engine_state_dir() / "repos.json"` since
+    the memory-root trims (agentm-vault plan 05). The CLI tests went on
+    redirecting the storage backend and never the state directory, so on
+    2026-09-12 a hand run of that file registered two `/tmp/fixture-*` repos
+    into the machine's registry, overwriting the real `sherwood` entry, and
+    then unregistered the real `agentm`. The battery never saw it, because
+    `run_unit_suite.py` gives every test its own state directory; the damage
+    surfaced later as a `check-registry-hygiene` failure.
+
+    This runs those tests the way a person does, with no `AGENTM_STATE_DIR`,
+    but with the home directory pointed somewhere this test owns and a
+    registry already in place where the default resolves. A leak rewrites
+    that registry instead of the machine's, so the check can fail without
+    doing the damage it looks for.
+    """
+
+    CLASS = "TestRepoRegistryCLI"
+    # The two tests that write a registry. Named so the check cannot pass by
+    # running nothing.
+    WRITERS = ("test_register_then_list_via_cli", "test_unregister_via_cli")
+
+    @staticmethod
+    def _fingerprint(directory: Path) -> dict:
+        """Every file under `directory`, with its modification time and a hash of its bytes."""
+        return {
+            f.relative_to(directory).as_posix():
+                (f.stat().st_mtime_ns, hashlib.sha256(f.read_bytes()).hexdigest())
+            for f in sorted(directory.rglob("*")) if f.is_file()
+        }
+
+    def test_leave_the_default_registry_as_they_found_it(self):
+        with tempfile.TemporaryDirectory() as home:
+            env = dict(os.environ)
+            env.pop("AGENTM_STATE_DIR", None)
+            # `Path.home()` reads HOME on POSIX and USERPROFILE on Windows.
+            env.update(HOME=home, USERPROFILE=home, PYTHONIOENCODING="utf-8")
+
+            # Where the run's default registry resolves: the resolver the
+            # registry writes through, under exactly the environment the run gets.
+            with mock.patch.dict(os.environ, env, clear=True):
+                state = harness_memory.engine_state_dir()
+            # If the resolver ever stops following the home directory, the
+            # registry written below would land on the machine's real one.
+            # Refuse before writing anything.
+            self.assertIn(
+                Path(os.path.realpath(home)), Path(os.path.realpath(state)).parents,
+                f"the default state directory no longer follows the home directory "
+                f"({state}); this check cannot run without touching the machine's own")
+
+            state.mkdir(parents=True)
+            (state / "repos.json").write_text(json.dumps({"version": 1, "repos": [
+                {"slug": "agentm", "root_path": "/srv/projects/agentm"},
+                {"slug": "sherwood", "root_path": "/srv/projects/sherwood"},
+            ]}, indent=2) + "\n", encoding="utf-8")
+            before = self._fingerprint(state)
+
+            r = subprocess.run(
+                [sys.executable, str(_REPO / "scripts" / "test_harness_memory.py"), self.CLASS],
+                capture_output=True, encoding="utf-8", errors="replace", timeout=300,
+                cwd=str(_REPO / "scripts"), env=env)
+
+            self.assertEqual(
+                self._fingerprint(state), before,
+                f"a hand run of {self.CLASS} wrote into the default state directory, "
+                f"which on a real machine holds the live registry:\n{r.stderr[-3000:]}")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            for name in self.WRITERS:
+                self.assertIn(name, r.stderr, "the run did not include a test that writes a registry")
+            self.assertRegex(r.stderr, r"(?m)^OK$", "a test was skipped, so the run proves less than it says")
 
 
 if __name__ == "__main__":

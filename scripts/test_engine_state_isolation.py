@@ -145,6 +145,12 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         # scorecard reads. The last two carried a by-hand copy of this helper.
         "test_enrichment_breaker", "test_health_score",
         "health/test_session_brief",
+        # The repo registry moved into engine state with the memory-root trims
+        # (agentm-vault plan 05), and `TestRepoRegistryCLI` went on redirecting
+        # the storage backend alone, so a hand run of this suite rewrote the
+        # machine's registry on 2026-09-12. test_engine_state_not_leaked runs
+        # that class by hand to prove it stays off the machine.
+        "test_harness_memory",
     )
 
     def test_each_named_suite_calls_the_helper(self):
