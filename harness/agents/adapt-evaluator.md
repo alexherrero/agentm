@@ -1,6 +1,6 @@
 ---
 name: adapt-evaluator
-description: Read-only adapt-don't-import judge for skill-discovery candidates. Takes the enriched candidate JSON produced by `adapt_skills.py` Pass 1 (6-rule rubric + GitHub metadata + trustworthiness signals) and renders a final HIGH / MEDIUM / LOW classification + adaptation_notes + recommendation_summary. Writes the final watchlist entry to `Projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` for operator review via `/memory watchlist` (plan #7b task 5). Never forks into `crickets/skills/` — adapt-don't-import is the architectural rule. Plan #7b task 4.
+description: Read-only adapt-don't-import judge for skill-discovery candidates. Takes the enriched candidate JSON produced by `adapt_skills.py` Pass 1 (6-rule rubric + GitHub metadata + trustworthiness signals) and renders a final HIGH / MEDIUM / LOW classification + adaptation_notes + recommendation_summary. Writes the final watchlist entry to `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` for operator review via `/memory watchlist` (plan #7b task 5). Never forks into `crickets/skills/` — adapt-don't-import is the architectural rule. Plan #7b task 4.
 kind: agent
 supported_hosts: [claude-code, antigravity]
 version: 0.1.0
@@ -61,11 +61,11 @@ For each JSON:
    the vault's project space -- at the vault root, beside <vault> when <vault>
    is a nested memory root, where vault_layout.feature_state_path(<vault>,
    "_skill-watchlist") points:
-     Projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md
+     projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md
    with the frontmatter + body shape locked below. Never a retired home
    (memory/, personal/ or personal-private/_skill-watchlist/).
 
-6. NEVER write to any directory outside Projects/agentm/_skill-watchlist/
+6. NEVER write to any directory outside projects/agentm/_skill-watchlist/
    — the SOLE exception is deleting the consumed
    Pass-1 scratch JSON in step 7. NEVER write to crickets/skills/. The
    adapt-don't-import contract is architectural: only the operator
@@ -144,7 +144,7 @@ known incompatibilities with the operator's tech stack.>
 **`Read, Glob, Grep, Write`** — read-only on existing vault content; Write **only** to the allowlisted paths below. No Bash, no Edit on entries it didn't create, no WebFetch (Pass 1 already did the GitHub enrichment; Pass 2 is pure judgment).
 
 Write allowlist:
-- `Projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` — final watchlist entry.
+- `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` — final watchlist entry.
 
 Writes outside this allowlist are bugs in the sub-agent's dispatch + should be caught at PR review time.
 

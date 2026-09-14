@@ -116,7 +116,7 @@ class FeatureStateTests(unittest.TestCase):
             (root / "memory").mkdir()
             (root / "memory" / "trusted-sources.md").write_text("x", encoding="utf-8")
             self.assertEqual(vl.feature_state_path(root, "trusted-sources.md"),
-                             root.parent / "Projects" / "agentm" / "trusted-sources.md")
+                             root.parent / "projects" / "agentm" / "trusted-sources.md")
 
     def test_flat_vault_keeps_the_project_inside_the_root(self):
         with tempfile.TemporaryDirectory() as td:

@@ -27,12 +27,12 @@ not a silent shortcut.
 
 Reuses `watchlist_review.py`'s operator review surface — the SAME CLI
 (list / review / promote / dismiss / defer) now scans BOTH
-`Projects/agentm/_skill-watchlist/` (skills, untouched) and the new
-`Projects/agentm/_watchlist/` (ideas/patterns/references, this module's
+`projects/agentm/_skill-watchlist/` (skills, untouched) and the new
+`projects/agentm/_watchlist/` (ideas/patterns/references, this module's
 output) — one review surface for both, per the design's "generalizes this
 same shape" framing. See `watchlist_review.py`'s `_watchlist_roots`.
 
-Contract: this module writes ONLY under `Projects/agentm/_watchlist/**`
+Contract: this module writes ONLY under `projects/agentm/_watchlist/**`
 (MEDIUM/HIGH candidates; LOW is dropped, never written) and the
 forward-learning cache in agentm's engine state dir (source watermarks). It
 never adopts a finding anywhere else — the whole point of "surfaced, never
@@ -131,7 +131,7 @@ _FETCH_TIMEOUT_SEC = 10
 
 # The sources whitelist is the operator's to edit, and it is this feature's
 # state rather than a standing rule, so it lives with the watchlist under
-# Projects/agentm/ (memory-root trims, plan 05). `standards/` — where filing-v2
+# projects/agentm/ (memory-root trims, plan 05). `standards/` — where filing-v2
 # part 2a put it — is read as the fallback while a vault still has it there.
 SOURCES_CONFIG_NAME = "forward-learning-sources.json"
 # The watermark cache is machine state; joined onto the engine state dir by
@@ -140,7 +140,7 @@ STATE_NAME = Path("forward-learning-cache") / "state.json"
 WATCHLIST_NAME = "_watchlist"
 # The pre-trims spelling of the sources whitelist, memory-root-relative.
 # Still read, as the fallback, by sources_config_path(); never written. The
-# watchlist has no fallback: watchlist_root() is `Projects/agentm/_watchlist`.
+# watchlist has no fallback: watchlist_root() is `projects/agentm/_watchlist`.
 SOURCES_CONFIG_REL = Path("standards") / SOURCES_CONFIG_NAME
 WATCHLIST_REL = Path("memory") / WATCHLIST_NAME  # the retired home; nothing writes here
 
@@ -232,14 +232,14 @@ def sources_config_path(vault_path: Path) -> Path:
 
 
 def watchlist_root(vault_path: Path) -> Path:
-    """`Projects/agentm/_watchlist/`, where every entry is written and read.
+    """`projects/agentm/_watchlist/`, where every entry is written and read.
     Never the retired `memory/_watchlist/`, even on a vault that still has it."""
     return vault_layout.feature_state_path(vault_path, WATCHLIST_NAME)
 
 
 def load_sources(vault_path: Path) -> list:
     # `vault_path` here is the memory root. The file lives with the feature's
-    # state (Projects/agentm/); a vault that still keeps it in standards/ is
+    # state (projects/agentm/); a vault that still keeps it in standards/ is
     # read from there.
     path = sources_config_path(Path(vault_path))
     if not path.exists():
@@ -958,8 +958,8 @@ def _score_candidate(candidate: Candidate, source: Source, *, existing_tags: set
 
 
 # -----------------------------------------------------------------------------
-# Watchlist write (Projects/agentm/_watchlist/ — the generalized sibling of
-# Projects/agentm/_skill-watchlist/; watchlist_review.py scans both)
+# Watchlist write (projects/agentm/_watchlist/ — the generalized sibling of
+# projects/agentm/_skill-watchlist/; watchlist_review.py scans both)
 # -----------------------------------------------------------------------------
 
 def _slugify(text: str) -> str:

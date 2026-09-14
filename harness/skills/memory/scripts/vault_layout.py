@@ -5,9 +5,9 @@ memory-root trims (agentm-vault plan 05, 2026-09-11).
 The trims moved four families of files out of the memory root:
 
   the always-load pen   memory/_always-load/        -> <vault>/standards/
-  the voice library     Projects/_global/wiki-style/ -> <vault>/standards/voice/
+  the voice library     projects/_global/wiki-style/ -> <vault>/standards/voice/
   a feature's state     memory/_watchlist/ (+ the skill watchlist and the
-                        three settings files)        -> Projects/agentm/
+                        three settings files)        -> projects/agentm/
   the engine's files    .heat.json .lifecycle.json
                         _meta/repos.json _dream/     -> the engine state dir
 
@@ -21,12 +21,12 @@ new path would miss everything a not-yet-migrated vault still holds.
 
 A feature's state no longer has that fallback. The vault moved, and nothing
 reads or writes `memory/<name>` any more, so feature_state_candidates()
-offers only `Projects/agentm/<name>`, to readers and writers alike;
+offers only `projects/agentm/<name>`, to readers and writers alike;
 `scripts/check-memory-root-shape.py` names a retired location that comes
 back.
 
-`root` is always the MEMORY root (`<vault>/Agent` on the shipped layout, the
-vault itself on a flat one). `standards/` and `Projects/` sit beside it at
+`root` is always the MEMORY root (`<vault>/agent` on the shipped layout, the
+vault itself on a flat one). `standards/` and `projects/` sit beside it at
 the vault root, so the sibling probe (`root.parent`) comes first and the
 flat probe (`root`) second — the two-probe order recall.py's loader already
 uses for standards/. The sibling is only believed when the parent looks like
@@ -56,7 +56,7 @@ import engine_state  # noqa: E402
 FEATURE_PROJECT = "agentm"
 STANDARDS_DIRNAME = "standards"
 VOICE_DIRNAME = "voice"
-PROJECTS_DIRNAME = "Projects"
+PROJECTS_DIRNAME = "projects"
 
 LEGACY_PEN_REL = ("memory", "_always-load")
 LEGACY_VOICE_REL = ("_global", "wiki-style")  # under the projects space
@@ -142,18 +142,18 @@ def voice_dir_candidates(root) -> list[Path]:
 
 def voice_dir(root) -> Path:
     """`<vault>/standards/voice/`, falling back to the retired
-    `Projects/_global/wiki-style/` while that is where the rules still are."""
+    `projects/_global/wiki-style/` while that is where the rules still are."""
     return _resolve(voice_dir_candidates(root))
 
 
-# ── Projects/agentm/ — a feature's working state ────────────────────────────
+# ── projects/agentm/ — a feature's working state ────────────────────────────
 
 def projects_dir_candidates(root) -> list[Path]:
     return [v / PROJECTS_DIRNAME for v in vault_root_candidates(root)]
 
 
 def feature_state_candidates(root, name: str) -> list[Path]:
-    """`Projects/agentm/<name>` under each vault-root spelling, newest first.
+    """`projects/agentm/<name>` under each vault-root spelling, newest first.
     The retired `memory/<name>` is not a candidate: nothing reads or writes it
     since the vault moved, even on a vault that still has one."""
     return [p / FEATURE_PROJECT / name for p in projects_dir_candidates(root)]
@@ -168,7 +168,7 @@ def feature_state_path(root, name: str) -> Path:
 
 
 def feature_state_dir(root) -> Path:
-    """The directory new feature state is created in: `Projects/agentm/`."""
+    """The directory new feature state is created in: `projects/agentm/`."""
     return projects_dir_candidates(root)[0] / FEATURE_PROJECT
 
 

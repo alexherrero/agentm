@@ -140,7 +140,7 @@ class DryRunFixtureSourceSetTests(_ForwardLearningTestBase):
 
         result = fl.run_forward_learning(self.vault, fetcher=self.fetcher, now=1_700_000_000.0)
 
-        home = self.vault / "Projects" / "agentm" / "_watchlist"
+        home = self.vault / "projects" / "agentm" / "_watchlist"
         self.assertEqual(len(result.written), 2)
         for path in result.written:
             self.assertEqual(path.parents[1], home, f"entry written outside {home}: {path}")
