@@ -85,6 +85,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`recent-wiki-changes` lists the registry on a machine with no vault.** The
+  memory-root trims moved the repo registry to the engine state directory, but
+  `scripts/recent-wiki-changes.sh` and its PowerShell twin still exited 1
+  whenever no memory root resolved, and still placed the registry at
+  `<vault>/_meta/repos.json` in their comments and in the message for an empty
+  registry. Both now list the registry with no memory root, and the message
+  names `~/.local/state/agentm/repos.json`. A memory root that resolves is
+  still exported, because a vault's legacy `_meta/repos.json` is read beneath
+  it while it is the only copy, and one that is set but is not a directory
+  still skips. When `repo_registry.py` cannot select a storage backend, the
+  scripts relay its skip marker and exit 1.
 - **The routing conformance check reaches the backend it is handed, and leaves
   the caller's registry alone.** Since the memory-root trims, the repo registry
   has lived in the engine state directory whichever backend is active.

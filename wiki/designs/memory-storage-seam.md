@@ -35,7 +35,7 @@ The storage seam is agentm's boundary between the memory engine and its backing 
 | Backend selection | 3-step chain: `storage.backend` config → `$MEMORY_VAULT_PATH` env → device-local; fail-loud on misconfiguration; capability-request matching (`required=`) | `backend_selection.py` |
 | Routing plane | `resolve_project` returns `{slug, project_locator, backend, …}` in `Locator`s; `repo_registry` keeps its registry in engine state, reading a backend's legacy copy only while it is the sole one; `state_mode: vault` → `backend` read-alias | `harness_memory.py`, `repo_registry.py` |
 | Harness state I/O | Backend-aware: synced backend (`capabilities.sync=True`) → vault `_harness/`; else device-local `<project>/.harness/`. `.project-mode=local` opt-out wins over a synced backend | `harness_memory.py` |
-| Gate enforcement | No-`Path`-leak (AST, return-type scan); no routing-import of capability plugins (LC-8); routing conformance suite | `check-storage-seam-no-path-leak.py`, `check-process-seam-import-direction.sh`, `storage_conformance.py` |
+| Gate enforcement | No-`Path`-leak (AST, return-type scan); no routing-import of capability plugins (LC-8); routing conformance suite | `check-storage-seam-no-path-leak.py`, `check-one-way-imports.py` (`lc8-storage-vault` rule), `storage_conformance.py` |
 
 ## Design
 
@@ -126,7 +126,7 @@ The state mode (vault-backed vs. device-local) is an on-host configuration:
 
 `repo_registry` keeps the registry in the engine state directory, as `repos.json` behind a `DeviceLocalBackend` rooted there, whichever backend is active. Its functions still take `backend: StorageBackend`, and they consult it for one thing: a legacy `_meta/repos.json`. While the backend holds the only copy, `registry_store()` reads and writes that copy in place, so a vault from before the memory-root trims keeps a single registry until its migration moves the file. Once an engine copy exists, the engine copy wins. V5-6 had the registry ride the active backend; the 2026-09-13 amendment below records the move.
 
-**LC-8 gate (import direction):** `check-process-seam-import-direction.sh` scans `harness_memory.py` and `repo_registry.py` for `import storage_vault` / `from storage_vault import` — the routing layer must never import capability plugins.
+**LC-8 gate (import direction):** the `lc8-storage-vault` rule of `check-one-way-imports.py` scans `harness_memory.py` and `repo_registry.py` for `import storage_vault` / `from storage_vault import` — the routing layer must never import capability plugins. `check-all.sh` runs the checker as `check-one-way-imports`.
 
 **Routing conformance suite:** `storage_conformance.py`'s `check_routing_repo_registry(make_backend)` proves the legacy case on any conforming backend. It seeds `_meta/repos.json` through the backend's own verbs, inside an empty engine state directory of its own, and fails unless register, list and unregister read and write that copy and leave the engine state without a registry. `RoutingConformanceReport` runs it against `DeviceLocalBackend` and `vault_backend_stub.VaultBackend`, the crickets `obsidian-vault` plugin runs it through the `ConformanceSuite` mixin, and the fixtures in `test_storage_conformance_negative.py` prove it fails when the registry never reaches the backend.
 
@@ -143,7 +143,7 @@ Writing T1 takes a **separate, explicit seam call**, distinct from `write`, that
 | Gate | What it checks |
 |---|---|
 | `check-storage-seam-no-path-leak` | Return types of seam verbs in `storage_*.py` — no `Path` escapes |
-| `check-process-seam-import-direction` (LC-8) | `harness_memory.py`, `repo_registry.py` never import `storage_vault` |
+| `check-one-way-imports`, `lc8-storage-vault` rule (LC-8) | `harness_memory.py`, `repo_registry.py` never import `storage_vault` |
 | `check-vault-lock-parity` | `vault_lock.py` byte-identical to vendored skill copy |
 | `storage_conformance` | Universal verb battery on any backend, plus the registry's legacy copy riding the backend that holds it |
 
@@ -161,6 +161,16 @@ Writing T1 takes a **separate, explicit seam call**, distinct from `write`, that
 ## Amendment log
 
 This log preserves the decision history from the six retired ADRs. Each entry records the original decision, why-not-the-alternative, re-audit triggers, and any later amendments. Entries appear **newest-first** (most recent at the top), matching the other designs; **0020** (backend-aware harness state) remains the current substantive truth for state routing.
+
+---
+
+### 2026-09-13 — The LC-8 gate is named by its rule in `check-one-way-imports.py`
+
+**Decision:** CONS-1 merged `check-process-seam-import-direction.sh` into `scripts/check-one-way-imports.py`. The LC-8 scan is now its `lc8-storage-vault` rule, and `check-all.sh` runs the checker as `check-one-way-imports`. The current-state table, §6 and §8 still named the retired script. They now name the rule, which scans the same two files for the same imports.
+
+**Why the rule and not only the checker:** the checker holds five one-way rules, and the rule name says which one guards LC-8. `--rule lc8-storage-vault` runs it alone.
+
+**Re-audit trigger:** `check-one-way-imports.py` renames, splits or drops the `lc8-storage-vault` rule.
 
 ---
 
