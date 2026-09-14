@@ -961,7 +961,7 @@ For each candidate that clears the rubric, Pass 1 enriches with:
 1. **GitHub metadata** (unauthenticated API; graceful-skip on rate-limit or no-github-link):
    - `github_owner`, `github_repo`, `github_stars`, `github_archived`, `github_last_commit_iso`, `github_license` (SPDX), `github_html_url`
 2. **Trustworthiness signals**:
-   - `from_trusted_org`: matches against operator-editable whitelist at `<vault>/personal-private/trusted-sources.md` (auto-seeded with curated defaults: anthropics / google / microsoft / hashicorp / etc.)
+   - `from_trusted_org`: matches against operator-editable whitelist at `Projects/agentm/trusted-sources.md` (auto-seeded with curated defaults: anthropics / google / microsoft / hashicorp / etc.)
    - `cross_citation_count`: how many of the 4 discovery sources reference this candidate (independent-validation signal)
    - `high_stars` (≥500) / `low_stars` (<50) / `archived_warning` / `activity_recent` (committed in last 365d) / `permissive_license` (MIT / Apache-2.0 / BSD / ISC / MPL)
 3. **Rubric verdict**: `rubric_score`, `rubric_rules_fired`, `rubric_confidence`
@@ -975,13 +975,13 @@ Caller dispatches `adapt-evaluator` (see [`agents/adapt-evaluator.md`](../../age
 1. **Reads** each enriched candidate JSON.
 2. **Cross-references** the operator's vault (`personal-skills/` / `personal-private/_always-load/` / `desk/projects/<repo>/conventions.md`) for fit.
 3. **Classifies** with semantic judgment (HIGH / MEDIUM / LOW) — overrides Pass 1's rubric verdict when context warrants.
-4. **Writes** the watchlist entry to `Projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` — the feature's state lives in its project since the memory-root trims; `memory/_skill-watchlist/` is read as the fallback on a vault that never moved (HIGH + MEDIUM only; LOW dropped silently).
+4. **Writes** the watchlist entry to `Projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` — the feature's state lives in its project since the memory-root trims, and the retired `memory/_skill-watchlist/` is neither read nor written (HIGH + MEDIUM only; LOW dropped silently).
 
 Watchlist entry shape locked in [`agents/adapt-evaluator.md`](../../agents/adapt-evaluator.md) under "Watchlist entry shape".
 
 #### Trusted-sources whitelist
 
-`<vault>/personal-private/trusted-sources.md` — operator-editable in Obsidian. Auto-seeds on first Pass 1 run with: anthropics, anthropic, google, googleworkspace, googlecloudplatform, microsoft, vercel, hashicorp, openai, cloudflare, github, supabase, redis, kubernetes, docker, pytorch, huggingface, modelcontextprotocol. Operator edits freely; one org-slug per non-comment line; case-insensitive match against GitHub URL owner.
+`Projects/agentm/trusted-sources.md` — operator-editable in Obsidian. Auto-seeds on first Pass 1 run with: anthropics, anthropic, google, googleworkspace, googlecloudplatform, microsoft, vercel, hashicorp, openai, cloudflare, github, supabase, redis, kubernetes, docker, pytorch, huggingface, modelcontextprotocol. Operator edits freely; one org-slug per non-comment line; case-insensitive match against GitHub URL owner.
 
 #### Failure modes (graceful)
 
@@ -1002,7 +1002,7 @@ Watchlist entry shape locked in [`agents/adapt-evaluator.md`](../../agents/adapt
 
 ### `/memory watchlist`
 
-Review pending entries in `<vault>/personal-private/_skill-watchlist/` — the output of `/memory adapt-skills`. Three actions per entry: **promote** (mark ready for operator's manual fork to `crickets/skills/<x>/`), **dismiss** (archive to `_skill-watchlist/_archive/`), **defer** (snooze with a `deferred_until` date). Plan #7b task 5 ships the body + the canonical Python implementation at `skills/memory/scripts/watchlist_review.py`.
+Review pending entries in `Projects/agentm/_skill-watchlist/` — the output of `/memory adapt-skills`. Three actions per entry: **promote** (mark ready for operator's manual fork to `crickets/skills/<x>/`), **dismiss** (archive to `_skill-watchlist/_archive/`), **defer** (snooze with a `deferred_until` date). Plan #7b task 5 ships the body + the canonical Python implementation at `skills/memory/scripts/watchlist_review.py`.
 
 **Adapt-don't-import contract enforcement**: this sub-command **never writes** to `crickets/skills/<x>/`. Promote is annotation-only — it marks the entry `status: promoted` + adds a `promoted_at` timestamp; the operator then manually authors the actual skill in a separate session. Adoption-by-agent is architecturally prevented.
 
@@ -1027,7 +1027,7 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/watchlist_review.py \
 #### Action semantics (locked)
 
 - **promote** → frontmatter `status: promoted` + `promoted_at: <iso ts>` + `updated: <today>`; removes `deferred_until` / `defer_reason` / `dismissed_at` if present. Entry stays in place — the operator's manual fork happens outside this script.
-- **dismiss** → frontmatter annotated with `status: dismissed` + `dismissed_at: <iso ts>`; then **moved** to `<vault>/personal-private/_skill-watchlist/_archive/<source-slug>/<pattern-slug>.md` (collision-safe `-N` suffix if needed). Preserves the audit trail; future passes can re-surface via direct file access.
+- **dismiss** → frontmatter annotated with `status: dismissed` + `dismissed_at: <iso ts>`; then **moved** to `Projects/agentm/_skill-watchlist/_archive/<source-slug>/<pattern-slug>.md` (collision-safe `-N` suffix if needed). Preserves the audit trail; future passes can re-surface via direct file access.
 - **defer** → frontmatter `status: deferred` + `deferred_until: <iso date>` + optional `defer_reason`; removes `dismissed_at` / `promoted_at`. Entry stays in place; future list operations can filter `deferred_until` to surface only re-eligible entries.
 - **skip** (default for non-TTY + unrecognized input) → no change; entry stays in pending-review state for next pass.
 

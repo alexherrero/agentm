@@ -99,24 +99,24 @@ class VoiceTests(unittest.TestCase):
 
 
 class FeatureStateTests(unittest.TestCase):
-    def test_feature_state_prefers_the_project_then_the_retired_memory_spelling(self):
+    def test_feature_state_is_the_project_even_where_the_retired_memory_spelling_exists(self):
         with tempfile.TemporaryDirectory() as td:
             root = _nested(Path(td))
             old = root / "memory" / "_watchlist"
             new = root.parent / "Projects" / "agentm" / "_watchlist"
             self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)  # nothing exists: the home
             old.mkdir(parents=True)
-            self.assertEqual(vl.feature_state_path(root, "_watchlist"), old)
+            self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
             new.mkdir(parents=True)
             self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
 
-    def test_a_settings_file_resolves_the_same_way(self):
+    def test_a_retired_settings_file_is_not_read(self):
         with tempfile.TemporaryDirectory() as td:
             root = _nested(Path(td))
             (root / "memory").mkdir()
             (root / "memory" / "trusted-sources.md").write_text("x", encoding="utf-8")
             self.assertEqual(vl.feature_state_path(root, "trusted-sources.md"),
-                             root / "memory" / "trusted-sources.md")
+                             root.parent / "Projects" / "agentm" / "trusted-sources.md")
 
     def test_flat_vault_keeps_the_project_inside_the_root(self):
         with tempfile.TemporaryDirectory() as td:

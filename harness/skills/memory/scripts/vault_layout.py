@@ -19,6 +19,12 @@ still spelled the retired path would recreate it under the reader's feet the
 first time it ran (the hazard named in the plan), and a reader pinned to the
 new path would miss everything a not-yet-migrated vault still holds.
 
+A feature's state no longer has that fallback. The vault moved, and nothing
+reads or writes `memory/<name>` any more, so feature_state_candidates()
+offers only `Projects/agentm/<name>`, to readers and writers alike;
+`scripts/check-memory-root-shape.py` names a retired location that comes
+back.
+
 `root` is always the MEMORY root (`<vault>/Agent` on the shipped layout, the
 vault itself on a flat one). `standards/` and `Projects/` sit beside it at
 the vault root, so the sibling probe (`root.parent`) comes first and the
@@ -147,10 +153,10 @@ def projects_dir_candidates(root) -> list[Path]:
 
 
 def feature_state_candidates(root, name: str) -> list[Path]:
-    """`Projects/agentm/<name>` first, then the retired `memory/<name>`."""
-    cands = [p / FEATURE_PROJECT / name for p in projects_dir_candidates(root)]
-    cands.append(Path(root) / "memory" / name)
-    return cands
+    """`Projects/agentm/<name>` under each vault-root spelling, newest first.
+    The retired `memory/<name>` is not a candidate: nothing reads or writes it
+    since the vault moved, even on a vault that still has one."""
+    return [p / FEATURE_PROJECT / name for p in projects_dir_candidates(root)]
 
 
 def feature_state_path(root, name: str) -> Path:

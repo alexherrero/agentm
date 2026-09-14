@@ -27,15 +27,16 @@ not a silent shortcut.
 
 Reuses `watchlist_review.py`'s operator review surface — the SAME CLI
 (list / review / promote / dismiss / defer) now scans BOTH
-`personal/_skill-watchlist/` (skills, untouched) and the new
-`personal/_watchlist/` (ideas/patterns/references, this module's output) —
-one review surface for both, per the design's "generalizes this same
-shape" framing. See `watchlist_review.py`'s `_watchlist_roots`.
+`Projects/agentm/_skill-watchlist/` (skills, untouched) and the new
+`Projects/agentm/_watchlist/` (ideas/patterns/references, this module's
+output) — one review surface for both, per the design's "generalizes this
+same shape" framing. See `watchlist_review.py`'s `_watchlist_roots`.
 
-Contract: this module writes ONLY under `personal/_watchlist/**` (MEDIUM/
-HIGH candidates; LOW is dropped, never written) and
-`_meta/forward-learning-cache/**` (source watermarks). It never adopts a
-finding anywhere else — the whole point of "surfaced, never auto-adopted".
+Contract: this module writes ONLY under `Projects/agentm/_watchlist/**`
+(MEDIUM/HIGH candidates; LOW is dropped, never written) and the
+forward-learning cache in agentm's engine state dir (source watermarks). It
+never adopts a finding anywhere else — the whole point of "surfaced, never
+auto-adopted".
 
 Public surface:
 
@@ -137,11 +138,11 @@ SOURCES_CONFIG_NAME = "forward-learning-sources.json"
 # its readers, not onto the vault.
 STATE_NAME = Path("forward-learning-cache") / "state.json"
 WATCHLIST_NAME = "_watchlist"
-# The pre-trims spellings, memory-root-relative. Still read, as fallbacks,
-# by sources_config_path() and watchlist_root(); never the write target of a
-# vault that has the new home.
+# The pre-trims spelling of the sources whitelist, memory-root-relative.
+# Still read, as the fallback, by sources_config_path(); never written. The
+# watchlist has no fallback: watchlist_root() is `Projects/agentm/_watchlist`.
 SOURCES_CONFIG_REL = Path("standards") / SOURCES_CONFIG_NAME
-WATCHLIST_REL = Path("memory") / WATCHLIST_NAME
+WATCHLIST_REL = Path("memory") / WATCHLIST_NAME  # the retired home; nothing writes here
 
 VALID_KINDS = ("idea", "pattern", "reference")
 VALID_TYPES = ("feed", "repo", "web")
@@ -223,7 +224,7 @@ def sources_config_path(vault_path: Path) -> Path:
     pre-trims `standards/` spelling, then the feature's state dir for a
     vault that has neither."""
     cands = vault_layout.feature_state_candidates(vault_path, SOURCES_CONFIG_NAME)
-    cands = cands[:-1] + [s / SOURCES_CONFIG_NAME for s in vault_layout.standards_dir_candidates(vault_path)]
+    cands = cands + [s / SOURCES_CONFIG_NAME for s in vault_layout.standards_dir_candidates(vault_path)]
     for c in cands:
         if c.is_file():
             return c
@@ -231,8 +232,8 @@ def sources_config_path(vault_path: Path) -> Path:
 
 
 def watchlist_root(vault_path: Path) -> Path:
-    """`Projects/agentm/_watchlist/`, or the retired `memory/_watchlist/`
-    while that is where the entries still are."""
+    """`Projects/agentm/_watchlist/`, where every entry is written and read.
+    Never the retired `memory/_watchlist/`, even on a vault that still has it."""
     return vault_layout.feature_state_path(vault_path, WATCHLIST_NAME)
 
 
@@ -957,8 +958,8 @@ def _score_candidate(candidate: Candidate, source: Source, *, existing_tags: set
 
 
 # -----------------------------------------------------------------------------
-# Watchlist write (reuses personal/_watchlist/ — the generalized sibling of
-# personal/_skill-watchlist/; watchlist_review.py scans both)
+# Watchlist write (Projects/agentm/_watchlist/ — the generalized sibling of
+# Projects/agentm/_skill-watchlist/; watchlist_review.py scans both)
 # -----------------------------------------------------------------------------
 
 def _slugify(text: str) -> str:
