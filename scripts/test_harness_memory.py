@@ -34,6 +34,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import harness_memory as hm  # noqa: E402
+import engine_state_isolation as esi  # noqa: E402
 
 
 # v4.5.1: sandbox AGENTM_INSTALL_PREFIX module-wide so vault_path()'s
@@ -2044,15 +2045,22 @@ class TestRepoRegistryCLI(unittest.TestCase):
         """Register two repos via CLI; list returns both with correct fields.
 
         Uses device-local backend via AGENTM_DEVICE_LOCAL_ROOT so the test
-        works in CI without the obsidian-vault plugin (V5-6 de-vaulting).
+        works in CI without the obsidian-vault plugin (V5-6 de-vaulting), and
+        its own engine state directory, where the registry has lived since
+        agentm-vault plan 05.
         """
         with tempfile.TemporaryDirectory() as tmp:
             dl_root = Path(tmp) / "device_local"
             dl_root.mkdir()
+            # `_run` copies `os.environ`, so the CLI inherits this state
+            # directory. Without it, a hand run of this file writes the
+            # machine's own registry.
+            state = esi.isolate_engine_state(self, root=tmp)
             # Use device-local backend: clear vault selection, redirect root,
             # sandbox AGENTM_INSTALL_PREFIX so no storage.backend config leaks.
             env = {
-                "MEMORY_VAULT_PATH": "",        # delete — no vault selection
+                "MEMORY_ROOT": "",              # delete — no vault selection
+                "MEMORY_VAULT_PATH": "",        # delete — its deprecated alias
                 "AGENTM_DEVICE_LOCAL_ROOT": str(dl_root),
                 "AGENTM_INSTALL_PREFIX": str(Path(tmp) / "install_prefix"),
             }
@@ -2065,6 +2073,8 @@ class TestRepoRegistryCLI(unittest.TestCase):
             )
             self.assertEqual(reg1.returncode, 0, reg1.stderr)
             self.assertEqual(reg1.stdout.strip(), "agentm")
+            self.assertTrue((state / "repos.json").is_file(),
+                            "the CLI wrote its registry outside this test's state directory")
 
             reg2 = self._run(
                 "register", "sherwood",
@@ -2088,18 +2098,26 @@ class TestRepoRegistryCLI(unittest.TestCase):
         """Unregister an existing repo via CLI; re-running is a no-op.
 
         Uses device-local backend via AGENTM_DEVICE_LOCAL_ROOT so the test
-        works in CI without the obsidian-vault plugin (V5-6 de-vaulting).
+        works in CI without the obsidian-vault plugin (V5-6 de-vaulting), and
+        its own engine state directory, where the registry has lived since
+        agentm-vault plan 05.
         """
         with tempfile.TemporaryDirectory() as tmp:
             dl_root = Path(tmp) / "device_local"
             dl_root.mkdir()
+            # As above: without this, a hand run unregisters the machine's
+            # real `agentm` entry.
+            state = esi.isolate_engine_state(self, root=tmp)
             env = {
-                "MEMORY_VAULT_PATH": "",        # delete — no vault selection
+                "MEMORY_ROOT": "",              # delete — no vault selection
+                "MEMORY_VAULT_PATH": "",        # delete — its deprecated alias
                 "AGENTM_DEVICE_LOCAL_ROOT": str(dl_root),
                 "AGENTM_INSTALL_PREFIX": str(Path(tmp) / "install_prefix"),
             }
 
             self._run("register", "agentm", "--root", "/a", env=env)
+            self.assertTrue((state / "repos.json").is_file(),
+                            "the CLI wrote its registry outside this test's state directory")
             res = self._run("unregister", "agentm", env=env)
             self.assertEqual(res.returncode, 0)
             self.assertEqual(res.stdout.strip(), "removed")
