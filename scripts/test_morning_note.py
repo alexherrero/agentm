@@ -44,6 +44,13 @@ def _iso(epoch: float) -> str:
     return datetime.fromtimestamp(epoch).astimezone().isoformat()
 
 
+def _go_stamp(epoch: float, fraction: str) -> str:
+    """An instant the way agentmd's run record writes it. Go's RFC3339Nano
+    drops a fraction's trailing zeros, so the fraction runs from one digit to
+    nine."""
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + f".{fraction}Z"
+
+
 def _run(at: float, **over) -> dict:
     run = {
         "at": _iso(at), "model": "opus", "pass_version": "enrich/2", "considered": 130,
@@ -272,6 +279,59 @@ class TheNote(_Night):
         self.assertNotIn("Last night:", text)
         self.assertIn("- Seven days: 800,000 tokens against the line · 812,334 processed across 1 run(s)",
                       text)
+
+    def test_a_run_counts_whatever_the_length_of_its_fraction(self):
+        # 2026-09-13. agentmd writes `at` as Go's RFC3339Nano, which trims a
+        # fraction's trailing zeros, and fromisoformat takes only three digits
+        # or six before Python 3.11. The note read 61 judged over two runs and
+        # missed a third, with its 4 project records and $3.16.
+        merged = _run(TONIGHT + 3600, notes_sent=4, model_calls=4, tokens=40000, total_cost_usd=3.16,
+                      verdicts={"records": 4},
+                      usage={"strong": {"input_tokens": 30000, "cache_creation_input_tokens": 0,
+                                        "cache_read_input_tokens": 0, "output_tokens": 10000}})
+        merged["at"] = _go_stamp(TONIGHT + 3600, "80599")
+        nano = _run(TONIGHT + 5400, notes_sent=3, model_calls=6, failed=1, tokens=21000, total_cost_usd=0.5,
+                    verdicts={"filed_active": 2, "below_floor": 1, "sank": 0},
+                    usage={"strong": {"input_tokens": 15000, "cache_creation_input_tokens": 1000,
+                                      "cache_read_input_tokens": 0, "output_tokens": 5000}})
+        nano["at"] = _go_stamp(TONIGHT + 5400, "805990123")
+        self.runs(_run(TONIGHT), merged, nano)
+        text, *_, head = self.build()
+        self.assertIn("- **Enrichment** — 125 judged · 99 filed active · 22 below the floor · 2 sank · "
+                      "4 project records · 246 calls · 861,000 tokens against the line · opus · 1 failed.",
+                      text)
+        self.assertIn("- Last night: 861,000 tokens against the line (strong 861,000 of 2,000,000) · "
+                      "873,334 processed · 246 calls of the 250-call guard · $7.87", text)
+        self.assertIn("- Seven days: 861,000 tokens against the line · 873,334 processed across "
+                      "3 run(s) · $7.87", text)
+        self.assertTrue(head.startswith("enrichment judged 125 (99 active, 2 sank) · "), head)
+
+    def test_a_run_whose_at_will_not_parse_is_still_left_out(self):
+        # Only the fraction's length is evened out. A day or an hour that does
+        # not exist stays unreadable, even with a fraction that is padded first.
+        for stamp in ("not a time", "2026-02-30T10:10:00.80599Z", "2026-09-12T25:10:00.80599Z"):
+            with self.subTest(stamp=stamp):
+                unreadable = _run(TONIGHT, notes_sent=500, total_cost_usd=99.0)
+                unreadable["at"] = stamp
+                self.runs(_run(TONIGHT), unreadable)
+                text, *_ = self.build()
+                self.assertIn("- **Enrichment** — 118 judged · ", text)
+                self.assertIn("across 1 run(s) · $4.21", text)
+
+    def test_a_fraction_is_read_to_the_microsecond_whatever_its_length(self):
+        # Nine digits are cut to six, not rounded, as fromisoformat itself does
+        # from Python 3.11 on.
+        def utc(microsecond):
+            return datetime(2026, 9, 14, 1, 26, 17, microsecond, tzinfo=timezone.utc).timestamp()
+
+        self.assertEqual(mn._epoch("2026-09-14T01:26:17Z"), utc(0))
+        self.assertEqual(mn._epoch("2026-09-14T01:26:17.8Z"), utc(800000))
+        self.assertEqual(mn._epoch("2026-09-14T01:26:17.80599Z"), utc(805990))
+        self.assertEqual(mn._epoch("2026-09-14T01:26:17.805990999Z"), utc(805990))
+        self.assertEqual(mn._epoch("2026-09-13T18:26:17.80599-07:00"), utc(805990))
+        self.assertIsNone(mn._epoch("2026-02-30T01:26:17.80599Z"))
+        self.assertIsNone(mn._epoch(""))
+        self.assertIsNone(mn._epoch(None))
 
     def test_a_hand_lowered_line_is_not_the_line_the_night_is_held_to(self):
         # A by-hand run may lower its line and guard with flags; the run record

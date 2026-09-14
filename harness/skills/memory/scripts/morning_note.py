@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -121,12 +122,23 @@ def _age(seconds: float) -> str:
     return f"{int(seconds // 86400)} d ago"
 
 
+# agentmd writes a run's `at` as Go's RFC3339Nano, which trims a fraction's
+# trailing zeros, so the fraction runs from one digit to nine
+# (`2026-09-14T01:26:17.80599Z`). fromisoformat takes only three or six before
+# Python 3.11, and macOS's python3 is 3.9, so on 2026-09-13 a run whose `at` did
+# not parse fell out of the note: it read 61 judged over two runs and missed a
+# third, with its $3.16. The fraction is cut or padded to six digits first.
+_FRACTION = re.compile(r"(\d{2}:\d{2}:\d{2})\.(\d+)")
+
+
 def _epoch(value) -> Optional[float]:
     if isinstance(value, (int, float)):
         return float(value)
     if isinstance(value, str) and value:
+        text = _FRACTION.sub(lambda m: f"{m.group(1)}.{m.group(2)[:6].ljust(6, '0')}",
+                             value.replace("Z", "+00:00"), count=1)
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+            return datetime.fromisoformat(text).timestamp()
         except ValueError:
             return None
     return None
