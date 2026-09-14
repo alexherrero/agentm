@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `project:`, and a record, see their project's records first among the
   neighbours. The run record counts records apart from the filing verdicts,
   and the morning note shows that count on nights that merged one.
+- **The projects space has maps.** The nightly mocs job writes a map at each
+  project's root, `moc-<slug>.md`: its tasks, in flight first by importance and
+  the rest folded under the day they closed; its decisions and designs, newest
+  first; and its research by bundle. `Projects/moc-tasks.md` lists every
+  project's tasks once any exists, and `Projects/moc-projects.md` lists every
+  project with its tracker's first State line or its charter's What line. It
+  carries what `Projects/index.md` said about the space, so that note can
+  retire. The root map lists a Projects map on the night it is first written.
 
 ### Changed
 

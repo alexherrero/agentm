@@ -98,8 +98,33 @@ func rootAreas(root string, planned []string) []rootArea {
 	add("Diagnostics", mapsIn(filepath.Join(root, "diagnostics"), "moc-"))
 	vault := vaultRootOf(root)
 	add("Standards", mapsIn(filepath.Join(vault, "standards"), "moc-"))
-	add("Projects", mapsIn(filepath.Join(vault, "Projects"), "moc-"))
+	projects := filepath.Join(vault, projectsSpaceName)
+	add("Projects", withPlannedMaps(mapsIn(projects, "moc-"), root, projects, has))
 	return areas
+}
+
+// withPlannedMaps adds to `slugs` the `moc-*` pages this pass plans directly in
+// `dir`, so a map written tonight is on tonight's root map rather than
+// tomorrow's. `planned` is keyed by memory-root relative paths, which climb out
+// of the memory root for a page at the vault root.
+func withPlannedMaps(slugs []string, root, dir string, planned map[string]bool) []string {
+	seen := map[string]bool{}
+	for _, slug := range slugs {
+		seen[slug] = true
+	}
+	for rel := range planned {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		base := filepath.Base(abs)
+		if filepath.Dir(abs) == filepath.Clean(dir) && strings.HasPrefix(base, "moc-") && strings.HasSuffix(base, ".md") {
+			seen[strings.TrimSuffix(base, ".md")] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for slug := range seen {
+		out = append(out, slug)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func renderRootMap(areas []rootArea, created, updated string) string {

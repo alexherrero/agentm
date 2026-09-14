@@ -233,6 +233,14 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	if err != nil {
 		return rep, err
 	}
+	// The projects space's maps ride in the same job (plan 09): their pages join
+	// the report's, and the root map counts the ones planned tonight.
+	projectMaps, err := PlanProjectMaps(root, now)
+	if err != nil {
+		return rep, err
+	}
+	mocs.Pages = append(mocs.Pages, projectMaps.Pages...)
+	mocs.Intents = append(mocs.Intents, projectMaps.Intents...)
 	planned := append([]string(nil), calendar.YearMaps...)
 	for _, p := range mocs.Pages {
 		planned = append(planned, p.Rel)
