@@ -249,30 +249,38 @@ func enrichRecordQueue(idx *index.Index) ([]string, error) {
 	return out, nil
 }
 
-// queueAfter pages the queue by position: the `limit` paths after `cursor`, or
-// from the start when the cursor is empty. A cursor the queue no longer holds
-// resumes at the first path that sorts after it, which is where the path-ordered
-// pager this replaces would have started.
-func queueAfter(queue []string, cursor string, limit int) []string {
-	start := 0
-	if cursor != "" {
-		found := false
-		for i, p := range queue {
-			if p == cursor {
-				start, found = i+1, true
-				break
-			}
-		}
-		if !found {
-			start = len(queue)
-			for i, p := range queue {
-				if p > cursor {
-					start = i
-					break
-				}
-			}
+// queueStart is the position a cursor resumes at: the one after the cursor's
+// own. A cursor the queue no longer holds resumes at the first path that sorts
+// after it, which is where the path-ordered pager this replaces would have
+// started, and at the end of the queue when nothing sorts after it.
+//
+// A function of its own because two callers have to agree on it — the lister,
+// which pages from here, and the dry run, which counts from here. The dry run
+// used to compare paths instead (`rel <= cursor`), and a path comparison is not
+// this: the records queue after the cards, so as soon as a card's path sorts
+// after a record's, the two answer with different populations and the dry run
+// sizes a night the run does not run.
+func queueStart(queue []string, cursor string) int {
+	if cursor == "" {
+		return 0
+	}
+	for i, p := range queue {
+		if p == cursor {
+			return i + 1
 		}
 	}
+	for i, p := range queue {
+		if p > cursor {
+			return i
+		}
+	}
+	return len(queue)
+}
+
+// queueAfter pages the queue by position: the `limit` paths after `cursor`, or
+// from the start when the cursor is empty.
+func queueAfter(queue []string, cursor string, limit int) []string {
+	start := queueStart(queue, cursor)
 	if limit < 0 {
 		limit = 0
 	}
