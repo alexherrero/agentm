@@ -61,10 +61,11 @@ fi
 
 echo "check-all: running the local gate battery…" >&2
 
-# run_unit_suite.py = unittest discover + a fresh $AGENTM_STATE_DIR per test,
-# the same hermetic guard scripts/conftest.py gives pytest — without it, tests
-# would read and write the machine's real ~/.local/state/agentm (filing-v2
-# part 2a moved machine state there).
+# run_unit_suite.py = unittest discover + a fresh $AGENTM_STATE_DIR and
+# $AGENTM_RECALL_HISTORY per test, the same hermetic guard scripts/conftest.py
+# gives pytest — without it, tests would read and write the machine's real
+# ~/.local/state/agentm (filing-v2 part 2a moved machine state there) and
+# append to the recall ledger under ~/.cache/agentm/telemetry.
 gate "unit tests (scripts/test_*.py)"          bash -c "cd scripts && $PY run_unit_suite.py"
 gate "check-syntax (bash -n every .sh)"        bash scripts/check-syntax.sh
 if command -v pwsh >/dev/null 2>&1; then

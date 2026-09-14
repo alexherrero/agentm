@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The unit suite, with per-test hermetic engine state.
+"""The unit suite, with per-test hermetic engine state and recall ledger.
 
 `scripts/conftest.py` gives every pytest-run test its own fresh
 `$AGENTM_STATE_DIR`; this runner is the same guard for the unittest harness
@@ -8,6 +8,15 @@ state-touching TestCase: the result object rotates a fresh temporary state
 directory before each test starts, so no test can read the machine's real
 `~/.local/state/agentm` or another test's leftovers (filing-v2 part 2a moved
 machine state there, which made this guard load-bearing).
+
+The recall ledger rotates with it, because it is not in the state directory:
+`recall_counter.default_history_path()` resolves to
+`~/.cache/agentm/telemetry/recall-history.jsonl` unless
+`$AGENTM_RECALL_HISTORY` says otherwise. Until it rotated, a test that reached
+`prompt_submit()` without mocking `record_recall` appended to the operator's
+ledger on every battery run (7,756 rows naming one fixture slug by
+2026-09-13), and since `record_recall` prunes that file in place, a run could
+drop real rows as well. Rotating it here covers suites nobody has found.
 
 Behaviorally identical to `python -m unittest discover -p 'test_*.py'` in
 every other respect — same discovery, same exit code, same output stream.
@@ -23,6 +32,8 @@ import unittest
 class _HermeticStateResult(unittest.TextTestResult):
     def startTest(self, test):  # noqa: N802 (unittest API)
         os.environ["AGENTM_STATE_DIR"] = tempfile.mkdtemp(prefix="agentm-unit-state-")
+        os.environ["AGENTM_RECALL_HISTORY"] = os.path.join(
+            tempfile.mkdtemp(prefix="agentm-unit-telemetry-"), "recall-history.jsonl")
         super().startTest(test)
 
 

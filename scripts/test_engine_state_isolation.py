@@ -15,6 +15,8 @@ for _p in (str(_HERE), str(_SKILL)):
 
 import engine_state_isolation as esi  # noqa: E402
 import engine_state  # noqa: E402  — the resolver the wrapper exists to redirect
+import episodic_trace  # noqa: E402  — reads the recall ledger
+import recall_counter  # noqa: E402  — writes the recall ledger
 
 
 class TheContextManager(unittest.TestCase):
@@ -27,6 +29,17 @@ class TheContextManager(unittest.TestCase):
         with esi.isolated_engine_state() as second:
             self.assertNotEqual(first, second, "each block gets its own directory")
 
+    def test_the_recall_ledger_resolves_inside_the_block(self):
+        # Through the resolvers rather than the variable, so a rename on either
+        # side cannot leave the helper setting something nothing reads.
+        machine_ledger = Path.home() / ".cache" / "agentm" / "telemetry" / "recall-history.jsonl"
+        with esi.isolated_engine_state() as state:
+            written = recall_counter.default_history_path()
+            read = episodic_trace.default_history_path()
+        self.assertIn(state.parent, written.parents)
+        self.assertNotEqual(written, machine_ledger)
+        self.assertEqual(read, written, "the trace reads a different ledger from the one recall writes")
+
     def test_it_restores_a_variable_that_was_set(self):
         os.environ["AGENTM_STATE_DIR"] = "/outer/state"
         self.addCleanup(os.environ.pop, "AGENTM_STATE_DIR", None)
@@ -36,12 +49,14 @@ class TheContextManager(unittest.TestCase):
                          "a battery that sets the variable from outside gets it back")
 
     def test_it_removes_a_variable_that_was_not_set(self):
-        os.environ.pop("AGENTM_STATE_DIR", None)
-        os.environ.pop("XDG_CACHE_HOME", None)
+        for name in ("AGENTM_STATE_DIR", "XDG_CACHE_HOME", "AGENTM_RECALL_HISTORY"):
+            os.environ.pop(name, None)
         with esi.isolated_engine_state():
             self.assertIn("AGENTM_STATE_DIR", os.environ)
+            self.assertIn("AGENTM_RECALL_HISTORY", os.environ)
         self.assertNotIn("AGENTM_STATE_DIR", os.environ)
         self.assertNotIn("XDG_CACHE_HOME", os.environ)
+        self.assertNotIn("AGENTM_RECALL_HISTORY", os.environ)
 
 
 class ThePerTestHelper(unittest.TestCase):
@@ -166,6 +181,11 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         "test_recall_daemon_fast_path", "test_recall_machine_prompt_skip",
         "test_recall_stream_admission", "test_recall_token_budget",
         "test_recall_trace",
+        # The recall ledger joined the governed variables when the same hand
+        # runs found four suites appending to the operator's real ledger
+        # (2026-09-13). Three are named above; this one writes the ledger and
+        # nothing else. test_engine_state_not_leaked runs all four by hand.
+        "test_recall_temporal",
     )
 
     def test_each_named_suite_calls_the_helper(self):

@@ -312,7 +312,10 @@ def recalled_between(history_path: Path, start, end) -> list:
 
 
 def default_history_path() -> Path:
-    return Path.home() / ".cache" / "agentm" / "telemetry" / "recall-history.jsonl"
+    """The ledger `recall_counter` writes, override included, so a test that
+    redirects the ledger reads back the one it wrote."""
+    import recall_counter  # same skill dir
+    return recall_counter.default_history_path()
 
 
 def mined_candidates(messages: list) -> list:
@@ -420,7 +423,7 @@ def main(argv: list | None = None) -> int:
     ap.add_argument("--session", required=True)
     ap.add_argument("--vault-path", default=None, help="the memory root (default: $MEMORY_ROOT)")
     ap.add_argument("--day", default=None, help="YYYY-MM-DD (default: the transcript's first message)")
-    ap.add_argument("--history", default=None, help="recall history JSONL (default: ~/.cache/agentm/telemetry/recall-history.jsonl)")
+    ap.add_argument("--history", default=None, help="recall history JSONL (default: $AGENTM_RECALL_HISTORY, else ~/.cache/agentm/telemetry/recall-history.jsonl)")
     ap.add_argument("--project", default="", help="the vault project (default: the session's binding)")
     ap.add_argument("--task", default="", help="the task (default: the session's binding)")
     ap.add_argument("--surface", default=os.environ.get("AGENTM_SURFACE", "").strip(),

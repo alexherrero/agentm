@@ -423,5 +423,17 @@ class TransparencyLineTests(unittest.TestCase):
         self.assertNotIn("temporal:", err)
 
 
+# `TransparencyLineTests` drives `prompt_submit()`, which records every recall
+# in the ledger at `recall_counter.default_history_path()`. That resolves under
+# the home directory unless `AGENTM_RECALL_HISTORY` says otherwise, so a hand
+# run appended this suite's fixture queries to the operator's own ledger
+# (2026-09-13). The helper gives every test a ledger of its own.
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()
