@@ -34,16 +34,16 @@ func TestAProgressLogIsIndexedFromItsHead(t *testing.T) {
 	tail := "\n2026-09-13 zanzibar quokka arrived in the tail.\n"
 	oneMegabyte := head + filler(1<<20) + tail
 
-	writeAndIndex(t, x, "Projects/demo/_harness/progress-big.md", oneMegabyte)
-	writeAndIndex(t, x, "Projects/demo/_harness/progress-small.md", head)
+	writeAndIndex(t, x, "projects/demo/_harness/progress-big.md", oneMegabyte)
+	writeAndIndex(t, x, "projects/demo/_harness/progress-small.md", head)
 	// The same megabyte under a name that is not a progress log is read whole.
-	writeAndIndex(t, x, "Projects/demo/research/dump.md", oneMegabyte)
+	writeAndIndex(t, x, "projects/demo/research/dump.md", oneMegabyte)
 
 	tailHits, err := x.Search(Query{Text: "zanzibar quokka", K: 5})
 	if err != nil {
 		t.Fatalf("tail search: %v", err)
 	}
-	if got := resultPaths(tailHits.Results); len(got) != 1 || got[0] != "Projects/demo/research/dump.md" {
+	if got := resultPaths(tailHits.Results); len(got) != 1 || got[0] != "projects/demo/research/dump.md" {
 		t.Errorf("a term only in a progress log's tail was found, or the dump lost its tail: %v", got)
 	}
 
@@ -55,8 +55,8 @@ func TestAProgressLogIsIndexedFromItsHead(t *testing.T) {
 	for _, r := range headHits.Results {
 		scores[r.Path] = r.Score
 	}
-	bigScore, bigOK := scores["Projects/demo/_harness/progress-big.md"]
-	smallScore, smallOK := scores["Projects/demo/_harness/progress-small.md"]
+	bigScore, bigOK := scores["projects/demo/_harness/progress-big.md"]
+	smallScore, smallOK := scores["projects/demo/_harness/progress-small.md"]
 	if !bigOK || !smallOK {
 		t.Fatalf("both logs should match their shared head: %v", resultPaths(headHits.Results))
 	}
@@ -64,7 +64,7 @@ func TestAProgressLogIsIndexedFromItsHead(t *testing.T) {
 		t.Errorf("a 1 MB log outranks its own head: %.6f > %.6f", bigScore, smallScore)
 	}
 
-	_, body, ok, err := x.DocText("Projects/demo/_harness/progress-big.md")
+	_, body, ok, err := x.DocText("projects/demo/_harness/progress-big.md")
 	if err != nil || !ok {
 		t.Fatalf("DocText: ok=%v err=%v", ok, err)
 	}
@@ -76,7 +76,7 @@ func TestAProgressLogIsIndexedFromItsHead(t *testing.T) {
 func TestACompletedRecordRanksAtThirtyPercentOfItsTwin(t *testing.T) {
 	x := newTestIndex(t)
 	body := "The release gate waits for the checks to finish before the tag.\n"
-	for _, rel := range []string{"Projects/agentm/completed/a-brief.md", "Projects/agentm/research/b-brief.md"} {
+	for _, rel := range []string{"projects/agentm/completed/a-brief.md", "projects/agentm/research/b-brief.md"} {
 		raw := "---\ntitle: Gate\nstatus: active\n---\n\n" + body
 		n := note.Parse(rel, raw, time.Now())
 		if err := x.Upsert(n, 1, int64(len(raw))); err != nil {
@@ -89,7 +89,7 @@ func TestACompletedRecordRanksAtThirtyPercentOfItsTwin(t *testing.T) {
 	}
 	got := resultPaths(out.Results)
 	// The completed twin sorts first by path, so a tie would put it on top.
-	if len(got) != 2 || got[0] != "Projects/agentm/research/b-brief.md" {
+	if len(got) != 2 || got[0] != "projects/agentm/research/b-brief.md" {
 		t.Fatalf("the completed record was not demoted below its twin: %v", got)
 	}
 	done := out.Results[1]

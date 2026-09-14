@@ -31,19 +31,19 @@ func indexNote(t *testing.T, idx *Index, rel, title, body string) {
 
 func TestADampenedSpaceIsFlaggedOnTheIndexedRow(t *testing.T) {
 	before := note.DampenedSpaces()
-	note.SetDampenedSpaces([]string{"Personal"})
+	note.SetDampenedSpaces([]string{"personal"})
 	t.Cleanup(func() { note.SetDampenedSpaces(before) })
 
 	idx := openScratch(t)
-	indexNote(t, idx, "Personal/Church/lesson.md", "A lesson", "Notes about the lesson.\n")
-	indexNote(t, idx, "Agent/memory/semantic/fact.md", "A fact", "Notes about the lesson.\n")
+	indexNote(t, idx, "personal/Church/lesson.md", "A lesson", "Notes about the lesson.\n")
+	indexNote(t, idx, "agent/memory/semantic/fact.md", "A fact", "Notes about the lesson.\n")
 
 	for _, tc := range []struct {
 		rel     string
 		flagged bool
 	}{
-		{"Personal/Church/lesson.md", true},
-		{"Agent/memory/semantic/fact.md", false},
+		{"personal/Church/lesson.md", true},
+		{"agent/memory/semantic/fact.md", false},
 	} {
 		var flags string
 		err := idx.db.QueryRow(`SELECT flags FROM docmeta WHERE path = ?`, tc.rel).Scan(&flags)
@@ -62,13 +62,13 @@ func TestADampenedSpaceIsFlaggedOnTheIndexedRow(t *testing.T) {
 // bodies, so the only thing separating them is the space.
 func TestTheDampenedNoteRanksBelowAnIdenticalOne(t *testing.T) {
 	before := note.DampenedSpaces()
-	note.SetDampenedSpaces([]string{"Personal"})
+	note.SetDampenedSpaces([]string{"personal"})
 	t.Cleanup(func() { note.SetDampenedSpaces(before) })
 
 	idx := openScratch(t)
 	body := "The staging gate runs before the deployment finishes.\n"
-	indexNote(t, idx, "Personal/Home/plan.md", "Plan", body)
-	indexNote(t, idx, "Agent/memory/semantic/plan.md", "Plan", body)
+	indexNote(t, idx, "personal/Home/plan.md", "Plan", body)
+	indexNote(t, idx, "agent/memory/semantic/plan.md", "Plan", body)
 
 	outcome, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
 	if err != nil {
@@ -78,11 +78,11 @@ func TestTheDampenedNoteRanksBelowAnIdenticalOne(t *testing.T) {
 	if len(results) < 2 {
 		t.Fatalf("expected both notes, got %d — the fixture cannot show an ordering", len(results))
 	}
-	if !strings.HasPrefix(results[0].Path, "Agent/") {
+	if !strings.HasPrefix(results[0].Path, "agent/") {
 		t.Errorf("the dampened note ranked first: %s (then %s)",
 			results[0].Path, results[1].Path)
 	}
-	if !strings.HasPrefix(results[1].Path, "Personal/") {
+	if !strings.HasPrefix(results[1].Path, "personal/") {
 		t.Errorf("the dampened note is not present at all; demote never means exclude: %v",
 			[]string{results[0].Path, results[1].Path})
 	}
@@ -93,13 +93,13 @@ func TestTheDampenedNoteRanksBelowAnIdenticalOne(t *testing.T) {
 // the reason the boundary was worth replacing.
 func TestADampenedNoteIsStillReturnedWhenItIsTheOnlyAnswer(t *testing.T) {
 	before := note.DampenedSpaces()
-	note.SetDampenedSpaces([]string{"Personal"})
+	note.SetDampenedSpaces([]string{"personal"})
 	t.Cleanup(func() { note.SetDampenedSpaces(before) })
 
 	idx := openScratch(t)
-	indexNote(t, idx, "Personal/Home/Recipes/turkey.md", "Turkey",
+	indexNote(t, idx, "personal/Home/Recipes/turkey.md", "Turkey",
 		"Brine the turkey overnight before roasting.\n")
-	indexNote(t, idx, "Agent/memory/semantic/unrelated.md", "Unrelated",
+	indexNote(t, idx, "agent/memory/semantic/unrelated.md", "Unrelated",
 		"Filing is a frontmatter edit.\n")
 
 	outcome, err := idx.Search(Query{Text: "brine turkey roasting", K: 5})
@@ -107,7 +107,7 @@ func TestADampenedNoteIsStillReturnedWhenItIsTheOnlyAnswer(t *testing.T) {
 		t.Fatalf("search: %v", err)
 	}
 	results := outcome.Results
-	if len(results) == 0 || !strings.HasPrefix(results[0].Path, "Personal/") {
+	if len(results) == 0 || !strings.HasPrefix(results[0].Path, "personal/") {
 		t.Errorf("a distinctive match in a dampened space did not surface: %+v", results)
 	}
 }
@@ -119,11 +119,11 @@ func TestNoDampenedSpacesLeavesRankingUnchanged(t *testing.T) {
 	t.Cleanup(func() { note.SetDampenedSpaces(before) })
 
 	idx := openScratch(t)
-	indexNote(t, idx, "Personal/Home/plan.md", "Plan", "The staging gate runs first.\n")
+	indexNote(t, idx, "personal/Home/plan.md", "Plan", "The staging gate runs first.\n")
 
 	var flags string
 	if err := idx.db.QueryRow(`SELECT flags FROM docmeta WHERE path = ?`,
-		"Personal/Home/plan.md").Scan(&flags); err != nil {
+		"personal/Home/plan.md").Scan(&flags); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(flags, note.ClassSpace) {

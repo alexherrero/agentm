@@ -11,17 +11,17 @@ import (
 
 // A period with nothing in it gets no review.
 //
-// Every weekly and monthly review under Calendar/2026/ — all ten of them — said
+// Every weekly and monthly review under calendar/2026/ — all ten of them — said
 // "Nothing recorded this week. 0 of 7 days with entries." and nothing else. No
 // facet file existed anywhere in the register, so the rollup had produced ten
 // notes and zero records. A register whose only contents are notes saying it is
 // empty reads, at a glance, like a register that is being kept.
 
-// emptyRegister is a vault with a Calendar/ space and nothing in it.
+// emptyRegister is a vault with a calendar/ space and nothing in it.
 func emptyRegister(t *testing.T) (root, calendarRoot string) {
 	t.Helper()
 	root = t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "Calendar", "2026"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "calendar", "2026"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	calendarRoot = CalendarRoot(root)
@@ -172,7 +172,7 @@ func parseWeekKey(key string, y, w *int) (int, error) {
 // written beyond the daily template (the operator's ruling of 2026-09-13).
 // Obsidian's daily note is the diary facet, and one opened from the template
 // holds an embed, a rule and a heading, none of which records anything.
-const templateOnlyNote = "![[Agent/desk/briefs/20260826-digest-daily]]\n\n---\n\n## Today\n"
+const templateOnlyNote = "![[agent/desk/briefs/20260826-digest-daily]]\n\n---\n\n## Today\n"
 
 func reviewText(plan CalendarPlan, stem string) string {
 	for _, in := range plan.Intents {

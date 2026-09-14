@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Gate: the calendar root holds years and their maps (agentm-vault plan 07).
 
-`Calendar/` is facet notes under year directories, with each year's generated
+`calendar/` is facet notes under year directories, with each year's generated
 map, `moc-calendar-YYYY.md`, beside its directory. Anything else at the calendar
 root is a finding, and so is a year map with no year beside it.
 
 Two things stay allowed there until plan 10 moves the daily note into its year:
 Obsidian's daily-notes setting still names `Calendar` as its folder and
-`Calendar/_daily-template` as its template, so the template stays, and the next
+`calendar/_daily-template` as its template, so the template stays, and the next
 bare-date note you open (`YYYY-MM-DD.md`) lands at the root. Both are reported
 as notes. So is a year whose map the night has not written yet: its first
 facet note can land during the day, and the map follows that night.
@@ -38,7 +38,7 @@ import drive_artifacts  # noqa: E402
 import maps_shape as ms  # noqa: E402
 import vault_layout  # noqa: E402
 
-CALENDAR = "Calendar"
+CALENDAR = "calendar"
 IGNORABLE = {".DS_Store", ".gitkeep"}
 DAILY_TEMPLATE = "_daily-template.md"
 YEAR = re.compile(r"^\d{4}$")
@@ -55,7 +55,7 @@ def _is_dir_exact(path: Path) -> bool:
 
 
 def calendar_root(memory_root: Path) -> Path | None:
-    """The `Calendar/` space the dreaming binary writes: directly under the
+    """The `calendar/` space the dreaming binary writes: directly under the
     memory root, else beside it when the memory root sits inside an Obsidian
     vault. Discovered, never conjured."""
     memory_root = Path(memory_root)
@@ -82,20 +82,20 @@ def findings(memory_root: Path) -> tuple[list, list]:
             if YEAR.match(name):
                 years.add(name)
             else:
-                failures.append(f"Calendar/{name}/: not a year directory")
+                failures.append(f"calendar/{name}/: not a year directory")
             continue
         m = YEAR_MAP.match(name)
         if m:
             maps.add(m.group(1))
         elif name == DAILY_TEMPLATE or BARE_DAY.match(name):
-            notes.append(f"Calendar/{name}: allowed at the root until plan 10 moves the daily note into its year")
+            notes.append(f"calendar/{name}: allowed at the root until plan 10 moves the daily note into its year")
         else:
-            failures.append(f"Calendar/{name}: the calendar root holds years and their maps")
+            failures.append(f"calendar/{name}: the calendar root holds years and their maps")
     for year in sorted(maps - years):
-        failures.append(f"Calendar/moc-calendar-{year}.md: a year map with no {year}/ beside it")
+        failures.append(f"calendar/moc-calendar-{year}.md: a year map with no {year}/ beside it")
     for year in sorted(years - maps):
         if any(FACET_NOTE.match(p.name) for p in (cal / year).iterdir()):
-            notes.append(f"Calendar/{year}/: no moc-calendar-{year}.md yet; the night writes it")
+            notes.append(f"calendar/{year}/: no moc-calendar-{year}.md yet; the night writes it")
     return failures, notes
 
 

@@ -82,9 +82,9 @@ func TestEnrichmentCannotWriteIntoADerivedClass(t *testing.T) {
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
 	for _, rel := range []string{
-		"Agent/memory/entities/person-alex.md",
-		"Agent/memory/crystallized/lesson.md",
-		"Agent/memory/mocs/index.md",
+		"agent/memory/entities/person-alex.md",
+		"agent/memory/crystallized/lesson.md",
+		"agent/memory/mocs/index.md",
 	} {
 		if _, err := a.Apply(context.Background(), WriteRequest{
 			Rel: rel, Next: "new body",
@@ -105,7 +105,7 @@ func TestARenameCannotLandInADerivedClass(t *testing.T) {
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
 	_, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/note.md", Next: "body", NewSlug: "x",
+		Rel: "agent/memory/semantic/note.md", Next: "body", NewSlug: "x",
 	})
 	if err != nil {
 		t.Fatalf("an ordinary rename was refused: %v", err)
@@ -113,7 +113,7 @@ func TestARenameCannotLandInADerivedClass(t *testing.T) {
 	// Now one whose destination directory is derived, reached by path rather
 	// than by slug. This one is caught by the *source* check.
 	if _, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/mocs/note.md", Next: "body", NewSlug: "y",
+		Rel: "agent/memory/mocs/note.md", Next: "body", NewSlug: "y",
 	}); err == nil {
 		t.Error("a write into a derived class was allowed via rename")
 	}
@@ -124,7 +124,7 @@ func TestARenameCannotLandInADerivedClass(t *testing.T) {
 	// only the destination check can stop this one — which is how the negative
 	// pass found that the check was untested.
 	if _, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/note.md", Next: "body", NewSlug: "../mocs/x",
+		Rel: "agent/memory/semantic/note.md", Next: "body", NewSlug: "../mocs/x",
 	}); err == nil {
 		t.Error("a traversal slug walked the note into a derived class")
 	}
@@ -137,16 +137,16 @@ func TestASlugIsRenamedOnlyWhileNothingLinksToIt(t *testing.T) {
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
 	dest, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/badly-named.md", Next: "body",
+		Rel: "agent/memory/semantic/badly-named.md", Next: "body",
 		NewSlug: "well-named",
 	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if dest != "Agent/memory/semantic/well-named.md" {
+	if dest != "agent/memory/semantic/well-named.md" {
 		t.Errorf("the rename did not happen: %s", dest)
 	}
-	if _, ok := v.files["Agent/memory/semantic/badly-named.md"]; ok {
+	if _, ok := v.files["agent/memory/semantic/badly-named.md"]; ok {
 		t.Error("the old path survived the rename")
 	}
 }
@@ -159,13 +159,13 @@ func TestARenameIsRefusedOnceSomethingLinksToIt(t *testing.T) {
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return true, nil })
 
 	dest, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/badly-named.md", Next: "body",
+		Rel: "agent/memory/semantic/badly-named.md", Next: "body",
 		NewSlug: "well-named",
 	})
 	if err != nil {
 		t.Fatalf("the enrichment was refused over a slug: %v", err)
 	}
-	if dest != "Agent/memory/semantic/badly-named.md" {
+	if dest != "agent/memory/semantic/badly-named.md" {
 		t.Errorf("a linked note was renamed to %s, breaking every reference", dest)
 	}
 	// And the enrichment still landed. A refused rename is not a refused
@@ -186,12 +186,12 @@ func TestWithoutALinkGraphNothingIsRenamed(t *testing.T) {
 		Put:        v.put, Move: v.move,
 	}
 	dest, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/a.md", Next: "body", NewSlug: "b",
+		Rel: "agent/memory/semantic/a.md", Next: "body", NewSlug: "b",
 	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if dest != "Agent/memory/semantic/a.md" {
+	if dest != "agent/memory/semantic/a.md" {
 		t.Errorf("a rename happened with no way to prove it safe: %s", dest)
 	}
 }
@@ -200,12 +200,12 @@ func TestARenameToTheSameSlugIsNotARename(t *testing.T) {
 	v := newVault()
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return true, nil })
 	dest, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/same.md", Next: "body", NewSlug: "same",
+		Rel: "agent/memory/semantic/same.md", Next: "body", NewSlug: "same",
 	})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if dest != "Agent/memory/semantic/same.md" {
+	if dest != "agent/memory/semantic/same.md" {
 		t.Errorf("dest = %s", dest)
 	}
 	for _, op := range v.ops {
@@ -226,7 +226,7 @@ func TestEveryWriteIsJournalledWithWhatItReplaced(t *testing.T) {
 	a := applier(t, v, j, func(string) (bool, error) { return false, nil })
 
 	if _, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/n.md", Previous: "the old body",
+		Rel: "agent/memory/semantic/n.md", Previous: "the old body",
 		Next: "the new body", Trigger: TriggerBatch, Version: "v1",
 	}); err != nil {
 		t.Fatal(err)
@@ -239,7 +239,7 @@ func TestEveryWriteIsJournalledWithWhatItReplaced(t *testing.T) {
 	if e.Previous != "the old body" {
 		t.Errorf("the entry does not carry what was replaced: %q", e.Previous)
 	}
-	if e.Next != "the new body" || e.Rel != "Agent/memory/semantic/n.md" {
+	if e.Next != "the new body" || e.Rel != "agent/memory/semantic/n.md" {
 		t.Errorf("entry = %+v", e)
 	}
 	if e.Trigger != "batch" || e.Version != "v1" {
@@ -258,15 +258,15 @@ func TestARenameIsRecordedWithBothPaths(t *testing.T) {
 	a := applier(t, v, j, func(string) (bool, error) { return false, nil })
 
 	if _, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/old.md", Next: "body", NewSlug: "new",
+		Rel: "agent/memory/semantic/old.md", Next: "body", NewSlug: "new",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	e := j.all()[0]
-	if e.Renamed != "Agent/memory/semantic/old.md" {
+	if e.Renamed != "agent/memory/semantic/old.md" {
 		t.Errorf("the entry does not record where the note came from: %+v", e)
 	}
-	if e.Rel != "Agent/memory/semantic/new.md" {
+	if e.Rel != "agent/memory/semantic/new.md" {
 		t.Errorf("the entry does not record where it went: %+v", e)
 	}
 }
@@ -280,7 +280,7 @@ func TestAnUnrecordableWriteIsNotPerformed(t *testing.T) {
 	a := applier(t, v, j, func(string) (bool, error) { return false, nil })
 
 	_, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/n.md", Previous: "old", Next: "new",
+		Rel: "agent/memory/semantic/n.md", Previous: "old", Next: "new",
 	})
 	if err == nil {
 		t.Fatal("a write proceeded with no way to record it")
@@ -318,7 +318,7 @@ func TestTheJournalIsWrittenBeforeTheBytes(t *testing.T) {
 		Move: v.move,
 	}
 	if _, err := a.Apply(context.Background(), WriteRequest{
-		Rel: "Agent/memory/semantic/n.md", Next: "body",
+		Rel: "agent/memory/semantic/n.md", Next: "body",
 	}); err != nil {
 		t.Fatal(err)
 	}

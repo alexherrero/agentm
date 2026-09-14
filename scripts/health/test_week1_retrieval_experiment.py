@@ -1581,21 +1581,21 @@ class TestExpectedPathPrefix(unittest.TestCase):
 
     def test_prefix_is_prepended(self):
         with tempfile.TemporaryDirectory() as td:
-            entries = w1.load_gold_set(self._gold_file(td), "Agent")
+            entries = w1.load_gold_set(self._gold_file(td), "agent")
         self.assertEqual(entries[0]["expected_note_paths"],
-                         ["Agent/personal/_always-load/vault-path.md"])
+                         ["agent/personal/_always-load/vault-path.md"])
 
     def test_prefix_slashes_do_not_double_up(self):
         with tempfile.TemporaryDirectory() as td:
-            entries = w1.load_gold_set(self._gold_file(td), "/Agent/")
+            entries = w1.load_gold_set(self._gold_file(td), "/agent/")
         self.assertEqual(entries[0]["expected_note_paths"],
-                         ["Agent/personal/_always-load/vault-path.md"])
+                         ["agent/personal/_always-load/vault-path.md"])
 
     def test_negative_stratum_stays_empty_under_a_prefix(self):
         """An empty expected list means 'no note answers this' — prefixing it
         must not invent a path, or the negative stratum stops being negative."""
         with tempfile.TemporaryDirectory() as td:
-            entries = w1.load_gold_set(self._gold_file(td), "Agent")
+            entries = w1.load_gold_set(self._gold_file(td), "agent")
         self.assertEqual(entries[1]["expected_note_paths"], [])
 
 
@@ -1612,22 +1612,22 @@ class TestMissingPrefixHint(unittest.TestCase):
 
     def test_names_the_subtree_that_would_resolve(self):
         with tempfile.TemporaryDirectory() as td:
-            v = self._vault(td, "Agent/personal/a.md", "Agent/personal/b.md")
+            v = self._vault(td, "agent/personal/a.md", "agent/personal/b.md")
             hint = w1.hint_for_missing_prefix(
                 ["personal/a.md", "personal/b.md"], v, "")
-        self.assertIn("--expected-path-prefix Agent", hint)
+        self.assertIn("--expected-path-prefix agent", hint)
 
     def test_tells_you_to_drop_a_prefix_that_should_not_be_there(self):
         with tempfile.TemporaryDirectory() as td:
             v = self._vault(td, "personal/a.md")
-            hint = w1.hint_for_missing_prefix(["Agent/personal/a.md"], v, "Agent")
+            hint = w1.hint_for_missing_prefix(["agent/personal/a.md"], v, "agent")
         self.assertIn("Drop --expected-path-prefix", hint)
 
     def test_real_drift_is_not_reported_as_a_root_mismatch(self):
         """No single top-level directory resolves them — that is label drift,
         and calling it a prefix problem would send the reader the wrong way."""
         with tempfile.TemporaryDirectory() as td:
-            v = self._vault(td, "Agent/personal/a.md", "Other/thing.md")
+            v = self._vault(td, "agent/personal/a.md", "Other/thing.md")
             hint = w1.hint_for_missing_prefix(
                 ["memory/a.md", "memory/gone.md"], v, "")
         self.assertIn("real label drift", hint)

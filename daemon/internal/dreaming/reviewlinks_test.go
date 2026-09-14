@@ -11,9 +11,9 @@ import (
 // whose note arrived by a move has none, so the link would dangle.
 func TestReviewDayLinesLinkTheFacetNotesNeverABareDate(t *testing.T) {
 	_, vault := rootMapVault(t)
-	writeAt(t, vault, "Calendar/2026/2026-08-25-meetings.md", "---\nkind: calendar-facet\n---\n\n09:00 — standup\n10:00 — review\n")
-	writeAt(t, vault, "Calendar/2026/2026-08-25-diary.md", "---\nkind: calendar-facet\n---\n\n21:00 — a quiet evening\n")
-	cal := filepath.Join(vault, "Calendar")
+	writeAt(t, vault, "calendar/2026/2026-08-25-meetings.md", "---\nkind: calendar-facet\n---\n\n09:00 — standup\n10:00 — review\n")
+	writeAt(t, vault, "calendar/2026/2026-08-25-diary.md", "---\nkind: calendar-facet\n---\n\n21:00 — a quiet evening\n")
+	cal := filepath.Join(vault, "calendar")
 	want := "- 2026-08-25 — [[2026-08-25-meetings|meetings]] (2), [[2026-08-25-diary|diary]] (1)\n"
 	for name, text := range map[string]string{
 		"week":  RenderWeek(cal, Facets(nil), 2026, 35),

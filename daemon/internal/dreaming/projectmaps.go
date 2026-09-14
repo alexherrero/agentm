@@ -12,7 +12,7 @@ import (
 
 // Job "mocs", over the projects space (agentm-vault § Projects and tasks,
 // plan 09). Beside the type maps, the same nightly job writes three kinds of
-// map into the vault root's `Projects/`:
+// map into the vault root's `projects/`:
 //
 //	<slug>/moc-<slug>.md  a project's map, at its root beside the charter: its
 //	                      tasks, in flight first by importance and the rest
@@ -22,7 +22,7 @@ import (
 //	                      project has one
 //	moc-projects.md       every project, with its tracker's first State line
 //	                      or else its charter's What line, under what the
-//	                      space is for, which `Projects/index.md` used to say
+//	                      space is for, which `projects/index.md` used to say
 //
 // A task is a tracker: `tasks/<task>/tracker.md`, or `tracker-<task>.md` beside
 // a flat plan pair in `_harness/` until the migration moves it. A record is
@@ -31,15 +31,15 @@ import (
 // a regeneration over unchanged inputs is byte-identical and writes nothing, and
 // `created` survives. A map of nothing is not written, and nothing here
 // deletes. Paths are memory-root relative, the way the calendar's year maps are
-// named, so a page at the vault root is `../Projects/...` in the nested layout.
+// named, so a page at the vault root is `../projects/...` in the nested layout.
 
 const (
 	MocProjectsSlug   = "moc-projects"
 	MocTasksSlug      = "moc-tasks"
-	projectsSpaceName = "Projects"
+	projectsSpaceName = "projects"
 )
 
-// projectsSpaceText is what `Projects/index.md` said about the space, carried
+// projectsSpaceText is what `projects/index.md` said about the space, carried
 // into the map that retires it (plan 09, operator ruling 2).
 const projectsSpaceText = "One tree per project. A project's working life lives in its folder here: " +
 	"its charter, its tracker and tasks, its plans and progress, its decisions, designs, research and " +

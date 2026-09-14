@@ -9,7 +9,7 @@ Fails if any non-test file under the repo root embeds:
       ($HOME/Library/CloudStorage) are not literals and are excluded.
 
   (B) the retired pre-V5-3 vault root name as a path component:
-      /Obsidian/AgentMemory — renamed to /Obsidian/Agent at v5.5.0. Only the
+      /Obsidian/AgentMemory — renamed to /Obsidian/Agent at v5.5.0. Only the  # root-casing: the v5.5.0 rename's spelling, history
       slash-prefixed form is flagged (prose references like ``Obsidian/AgentMemory``
       in backtick notation without a path prefix are not literals).
 

@@ -120,8 +120,8 @@ class TheArtifactRoot(unittest.TestCase):
     pass either way and prove nothing.
     """
 
-    STATUS = {"vault": None, "spaces": {"memory": "Agent/memory",
-                                        "projects": "Projects"}}
+    STATUS = {"vault": None, "spaces": {"memory": "agent/memory",
+                                        "projects": "projects"}}
 
     def _status(self, vault: Path) -> dict:
         st = dict(self.STATUS)
@@ -133,7 +133,7 @@ class TheArtifactRoot(unittest.TestCase):
             vault = Path(d)
             with mock.patch.object(sc, "_agentmd", return_value=self._status(vault)):
                 got = job.artifact_path()
-            self.assertEqual(got, vault / "Agent" / "diagnostics" / "health"
+            self.assertEqual(got, vault / "agent" / "diagnostics" / "health"
                              / job.ARTIFACT_NAME)
 
     def test_nothing_is_written_at_the_vault_root(self):

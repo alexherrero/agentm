@@ -114,9 +114,9 @@ func TestTheDryRunCountsCardsAndRecordsApartAndSizesWhatTheCursorWouldServe(t *t
 	const (
 		firstCard = "agent/memory/semantic/a-card.md"
 		lastCard  = "agent/memory/semantic/b-card.md"
-		charter   = "Projects/agentm/_index.md"
-		decision  = "Projects/agentm/decisions/keep-the-wall.md"
-		research  = "Projects/agentm/research/wall/sources.md"
+		charter   = "projects/agentm/_index.md"
+		decision  = "projects/agentm/decisions/keep-the-wall.md"
+		research  = "projects/agentm/research/wall/sources.md"
 	)
 	// Stamped by this pass, so it is owed the light pass while everything else is
 	// owed the deep one: a count that took the cards for the records, or the
@@ -130,9 +130,9 @@ func TestTheDryRunCountsCardsAndRecordsApartAndSizesWhatTheCursorWouldServe(t *t
 		decision:  stamped,
 		research:  "---\ntype: reference\n---\n\nWhat the sources said.\n",
 		// A session's files, which are in the projects space and in neither count.
-		"Projects/agentm/tracker.md":          "---\nkind: tracker\n---\n\n## State\n\nBuilding.\n",
-		"Projects/agentm/tasks/t/plan.md":     "# Build it\n\n- [ ] the first step\n",
-		"Projects/agentm/tasks/t/progress.md": "# Progress\n\n- started\n",
+		"projects/agentm/tracker.md":          "---\nkind: tracker\n---\n\n## State\n\nBuilding.\n",
+		"projects/agentm/tasks/t/plan.md":     "# Build it\n\n- [ ] the first step\n",
+		"projects/agentm/tasks/t/progress.md": "# Progress\n\n- started\n",
 	}
 	idxPath := filepath.Join(t.TempDir(), "index.db")
 	x, err := index.Open(idxPath, vault, "agent", false)
@@ -165,7 +165,7 @@ func TestTheDryRunCountsCardsAndRecordsApartAndSizesWhatTheCursorWouldServe(t *t
 			[]string{firstCard, lastCard, charter, decision, research}},
 		// The cursor plan 09 made possible: the cards are done and the records
 		// are what is left. Comparing paths counted none of them, because every
-		// `Projects/…` path sorts before every `agent/…` one.
+		// `projects/…` path sorts before every `agent/…` one.
 		{"a cursor on the last card", lastCard, [4]int{2, 1, 0, 0},
 			[]string{charter, decision, research}},
 		// And inside the records, where comparing paths counted the two cards

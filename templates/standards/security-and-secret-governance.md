@@ -39,7 +39,7 @@ does anything else in this vault.
 - `standards/` and the root notes are yours. Under plan authority the
   packaged contract's lines are mirrored into the live `storage-rules.md`;
   nothing else is written here without you saying so in the session.
-- `Personal/` and `Projects/` content is yours. Designs shape policy for
+- `personal/` and `projects/` content is yours. Designs shape policy for
   those spaces; an agent does not move, rewrite or delete their files.
 - Purge and deletion are yours alone, with a manifest first. Deletion is
   never a policy outcome — a lifecycle pass demotes and archives, it does

@@ -46,7 +46,7 @@ class TestPromoteIdea(unittest.TestCase):
         self.assertTrue(result["promoted"])
         project_dir = self.vault / "desk" / "projects" / self.slug
         incubator_dir = self.vault / "memory" / "_idea-incubator" / self.slug
-        self.assertTrue(project_dir.is_dir(), "promoted idea must land in the project space (desk/projects on a flat fixture with no vault-root Projects/; the old memory/projects target was a pre-four-space path nothing read)")
+        self.assertTrue(project_dir.is_dir(), "promoted idea must land in the project space (desk/projects on a flat fixture with no vault-root projects/; the old memory/projects target was a pre-four-space path nothing read)")
         self.assertFalse(incubator_dir.exists(), "promoted idea must no longer live in _idea-incubator/")
 
     def test_promote_preserves_skeleton_files(self):
@@ -71,7 +71,7 @@ class TestPromoteIdea(unittest.TestCase):
 class TestResolveIdeasPathDefault(unittest.TestCase):
     """Pins the same derivation as ideas_surface.py: Ideas.md defaults to
     the PARENT of the resolved vault path, not vault_path() itself (which
-    resolves to the `Agent/` subfolder) — and never a cached
+    resolves to the `agent/` subfolder) — and never a cached
     `~/Obsidian/Ideas.md` literal."""
 
     def setUp(self):
@@ -88,18 +88,18 @@ class TestResolveIdeasPathDefault(unittest.TestCase):
                 os.environ.pop(k, None)
 
     def test_default_derives_from_passed_vault_parent(self):
-        vault = Path("/fake/Obsidian/Agent")
+        vault = Path("/fake/Obsidian/agent")
         result = ideas_promote._resolve_ideas_path(None, vault=vault)
         self.assertEqual(result, Path("/fake/Obsidian/Ideas.md"))
 
     def test_default_falls_back_to_resolve_vault_root_when_vault_omitted(self):
-        with mock.patch.object(ideas_promote, "_resolve_vault_root", return_value=Path("/fake/Obsidian/Agent")):
+        with mock.patch.object(ideas_promote, "_resolve_vault_root", return_value=Path("/fake/Obsidian/agent")):
             result = ideas_promote._resolve_ideas_path(None)
         self.assertEqual(result, Path("/fake/Obsidian/Ideas.md"))
 
     def test_explicit_arg_wins_over_vault_derivation(self):
         result = ideas_promote._resolve_ideas_path(
-            "/explicit/Ideas.md", vault=Path("/fake/Obsidian/Agent")
+            "/explicit/Ideas.md", vault=Path("/fake/Obsidian/agent")
         )
         self.assertEqual(result, Path("/explicit/Ideas.md"))
 
@@ -111,13 +111,13 @@ class TestResolveIdeasPathDefault(unittest.TestCase):
 
 class TestPromoteAnnotatesDerivedIdeasPath(unittest.TestCase):
     """End-to-end: promote_idea must annotate the Ideas.md sitting at the
-    real Obsidian vault root (sibling of `Agent/`), not inside the
+    real Obsidian vault root (sibling of `agent/`), not inside the
     MemoryVault itself — the exact layout the stale hardcoded default got
     wrong."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.vault = Path(self._tmp.name) / "Obsidian" / "Agent"
+        self.vault = Path(self._tmp.name) / "Obsidian" / "agent"
         self.vault.mkdir(parents=True)
         target = ideas_incubator.create_incubator_skeleton(
             "Promote Me", "A pitch worth promoting.", vault_path=self.vault, slug="promote-me",

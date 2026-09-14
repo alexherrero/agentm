@@ -47,7 +47,7 @@ class TheAssistantText(unittest.TestCase):
         # for tidiness is most of why the first pass saw almost nothing — and
         # thinking is where a model actually works over injected material.
         got = rt._assistant_text(assistant("a", [
-            {"type": "thinking", "thinking": "the vault lives at Agent/"},
+            {"type": "thinking", "thinking": "the vault lives at agent/"},
         ]))
         self.assertIn("vault lives", got)
 

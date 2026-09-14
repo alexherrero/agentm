@@ -251,6 +251,47 @@ def cmd_set_memory_root(prefix: Path, raw: str) -> int:
     return 0
 
 
+_DAEMON_SPACES_KEY = "daemon.spaces"
+
+
+def cmd_set_daemon_space(prefix: Path, name: str, raw: str) -> int:
+    """Set `daemon.spaces.<name>` — the vault-relative directory the daemon
+    writes a logical space to (`memory`, `projects`, `diagnostics`).
+
+    The key is a nested object under the literal flat key `daemon.spaces`, so
+    `--get daemon.spaces.memory` finds nothing and a hand edit is the only
+    other way in; this setter is what the root casing (agentm-vault plan 08)
+    changes `agent/memory` and `projects` through, since that file also holds
+    the mail door's credential and is never rewritten by hand. The value is a
+    vault-relative prefix like `memory_root`'s: no absolute path, no upward
+    traversal. Idempotent: a silent no-op when the value is already set.
+    """
+    name = name.strip()
+    rel = raw.strip().replace("\\", "/").strip("/")
+    if not name or not rel:
+        print("[agentm_config] refusing to set a daemon space: both the space name and a "
+              "non-empty vault-relative directory are required", file=sys.stderr)
+        return 2
+    if raw.strip().startswith("/") or ":" in rel or ".." in rel.split("/"):
+        print(f"[agentm_config] refusing to set daemon.spaces.{name} to {raw.strip()!r}: it "
+              "must be a relative directory inside the vault, not an absolute path "
+              "and not an upward traversal", file=sys.stderr)
+        return 2
+    config = _read_config(prefix) or {}
+    spaces = config.get(_DAEMON_SPACES_KEY)
+    if not isinstance(spaces, dict):
+        spaces = {}
+    if spaces.get(name) == rel:
+        return 0
+    spaces = dict(spaces)
+    spaces[name] = rel
+    config[_DAEMON_SPACES_KEY] = spaces
+    written = _write_config(prefix, config)
+    print(f"{_DAEMON_SPACES_KEY}.{name} = {rel}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_set_storage_backend(prefix: Path, name: str) -> int:
     """Set the device-level `storage.backend` field — the selected backend protocol name (V5-1 part 5).
 
@@ -539,7 +580,10 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--memory-root", metavar="REL",
                     help="set plugins.obsidian-vault.memory_root — the "
                          "vault-relative prefix where the agent's own tree "
-                         "begins (e.g. 'Agent'); unset means the vault root")
+                         "begins (e.g. 'agent'); unset means the vault root")
+    op.add_argument("--set-space", nargs=2, metavar=("NAME", "REL"),
+                    help="set daemon.spaces.NAME — the vault-relative directory the "
+                         "daemon writes that space to (e.g. memory agent/memory)")
     op.add_argument("--state-mode", metavar="MODE", choices=_STATE_MODES,
                     help="set state_mode field (how harness state is stored: local|backend; 'vault' is a deprecated alias for 'backend')")
     op.add_argument("--storage-backend", metavar="NAME",
@@ -570,6 +614,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_vault_path(prefix, args.vault_path)
     if args.memory_root is not None:
         return cmd_set_memory_root(prefix, args.memory_root)
+    if args.set_space is not None:
+        return cmd_set_daemon_space(prefix, args.set_space[0], args.set_space[1])
     if args.state_mode is not None:
         return cmd_set_state_mode(prefix, args.state_mode)
     if args.storage_backend is not None:

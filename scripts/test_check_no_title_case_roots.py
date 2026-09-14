@@ -132,6 +132,13 @@ class TestInventory(unittest.TestCase):
             self.assertIn("scripts/b.sh:1 [path]", out)
             self.assertIn("3 literal(s) to repoint in 2 file(s); 0 allowed", out)
 
+    def test_the_real_repo_is_clean(self):
+        """The repoint has been applied: the tree the gate ships in passes it."""
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            rc = _mod.main([])
+        self.assertEqual(rc, 0, err.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,9 +35,9 @@ func TestAMatchingProjectRanksAboveItsEqualTwin(t *testing.T) {
 	idx := openScratch(t)
 	// The unmatched twin sorts first by path, so a tie would put it on top: the
 	// order below is the boost, not the tiebreak.
-	indexProjectNote(t, idx, "Agent/memory/semantic/a-crickets.md", "Gate", "crickets", projectBody)
-	indexProjectNote(t, idx, "Agent/memory/semantic/b-agentm.md", "Gate", "agentm", projectBody)
-	indexProjectNote(t, idx, "Agent/memory/semantic/c-unstamped.md", "Gate", "", projectBody)
+	indexProjectNote(t, idx, "agent/memory/semantic/a-crickets.md", "Gate", "crickets", projectBody)
+	indexProjectNote(t, idx, "agent/memory/semantic/b-agentm.md", "Gate", "agentm", projectBody)
+	indexProjectNote(t, idx, "agent/memory/semantic/c-unstamped.md", "Gate", "", projectBody)
 
 	for _, mode := range []string{ModeAnd, ModeFusion} {
 		out, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: mode, Project: "agentm"})
@@ -61,8 +61,8 @@ func TestAMatchingProjectRanksAboveItsEqualTwin(t *testing.T) {
 
 func TestAQueryWithoutAProjectRanksAsBefore(t *testing.T) {
 	idx := openScratch(t)
-	indexProjectNote(t, idx, "Agent/memory/semantic/a-crickets.md", "Gate", "crickets", projectBody)
-	indexProjectNote(t, idx, "Agent/memory/semantic/b-agentm.md", "Gate", "agentm", projectBody)
+	indexProjectNote(t, idx, "agent/memory/semantic/a-crickets.md", "Gate", "crickets", projectBody)
+	indexProjectNote(t, idx, "agent/memory/semantic/b-agentm.md", "Gate", "agentm", projectBody)
 
 	for _, mode := range []string{ModeAnd, ModeFusion} {
 		out, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: mode})
@@ -84,9 +84,9 @@ func TestAQueryWithoutAProjectRanksAsBefore(t *testing.T) {
 // Modest, not a wall: a clearly better match from another project keeps its place.
 func TestTheProjectBoostDoesNotOverturnAClearlyBetterMatch(t *testing.T) {
 	idx := openScratch(t)
-	indexProjectNote(t, idx, "Agent/memory/semantic/a-better.md", "Release gate checks", "crickets",
+	indexProjectNote(t, idx, "agent/memory/semantic/a-better.md", "Release gate checks", "crickets",
 		"The release gate checks the release. "+projectBody)
-	indexProjectNote(t, idx, "Agent/memory/semantic/b-agentm.md", "Unrelated", "agentm",
+	indexProjectNote(t, idx, "agent/memory/semantic/b-agentm.md", "Unrelated", "agentm",
 		"A note that mentions the gate, the release and checks once.\n")
 
 	out, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: ModeAnd, Project: "agentm"})
@@ -101,8 +101,8 @@ func TestTheProjectBoostDoesNotOverturnAClearlyBetterMatch(t *testing.T) {
 
 func TestAProjectMatchesWithoutRegardToCase(t *testing.T) {
 	idx := openScratch(t)
-	indexProjectNote(t, idx, "Agent/memory/semantic/a-crickets.md", "Gate", "crickets", projectBody)
-	indexProjectNote(t, idx, "Agent/memory/semantic/b-agentm.md", "Gate", "AgentM", projectBody)
+	indexProjectNote(t, idx, "agent/memory/semantic/a-crickets.md", "Gate", "crickets", projectBody)
+	indexProjectNote(t, idx, "agent/memory/semantic/b-agentm.md", "Gate", "AgentM", projectBody)
 
 	out, err := idx.Search(Query{Text: "release gate checks", K: 5, Project: "agentm"})
 	if err != nil {
@@ -154,10 +154,10 @@ func TestTheProjectBoostRunsInsideTheDenseArm(t *testing.T) {
 
 func TestTheProjectIsIndexedFromFrontmatter(t *testing.T) {
 	idx := openScratch(t)
-	indexProjectNote(t, idx, "Agent/memory/semantic/b-agentm.md", "Gate", `"agentm"`, projectBody)
+	indexProjectNote(t, idx, "agent/memory/semantic/b-agentm.md", "Gate", `"agentm"`, projectBody)
 	var project string
 	if err := idx.db.QueryRow(`SELECT project FROM docmeta WHERE path = ?`,
-		"Agent/memory/semantic/b-agentm.md").Scan(&project); err != nil {
+		"agent/memory/semantic/b-agentm.md").Scan(&project); err != nil {
 		t.Fatalf("reading the project column: %v", err)
 	}
 	if project != "agentm" {

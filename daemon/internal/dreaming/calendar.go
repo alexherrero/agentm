@@ -23,7 +23,7 @@ import (
 
 const (
 	JobCalendar        = "calendar"
-	CalendarSpace      = "Calendar"
+	CalendarSpace      = "calendar"
 	ReviewKind         = "calendar-review"
 	DefaultRollupWeeks = 8
 )
@@ -34,7 +34,7 @@ var (
 	dowNames        = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 )
 
-// CalendarRoot is calendar_facets.calendar_root: the `Calendar/` space
+// CalendarRoot is calendar_facets.calendar_root: the `calendar/` space
 // beside the memory root when the memory root is nested inside a vault
 // (`.obsidian/` at the parent, none at the root), else directly under the
 // root; discovered never conjured — "" when no register exists.
@@ -382,7 +382,7 @@ type CalendarPlan struct {
 //
 // A review of a week with neither is eight lines of frontmatter saying
 // "Nothing recorded this week. 0 of 7 days with entries." Ten of those existed
-// under Calendar/2026/ — every weekly and monthly review the rollup had ever
+// under calendar/2026/ — every weekly and monthly review the rollup had ever
 // written — because the pass wrote every closed period in its window whether
 // or not the period had anything in it. A register whose only contents are
 // notes saying it is empty is worse than an empty register: it reads, at a
@@ -422,7 +422,7 @@ func PlanCalendar(root string, r *rules.Rules, today time.Time, weeks int) (Cale
 	var plan CalendarPlan
 	calendarRoot := CalendarRoot(root)
 	if calendarRoot == "" {
-		plan.Skipped = "no Calendar/ space"
+		plan.Skipped = "no calendar/ space"
 		return plan, nil
 	}
 	if weeks <= 0 {

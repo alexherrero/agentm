@@ -14,11 +14,40 @@ stdlib only -- no pytest.
 """
 from __future__ import annotations
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 import model_effort_routing_refresh as merr
+
+# The crickets engine this module drives loads agentm's own scripts through
+# the maintenance plugin's bridge, which puts the checkout it resolves — the
+# conventional clone at ~/Antigravity/agentm, not the tree under test — at the
+# front of `sys.path` and swaps its modules into `sys.modules`. Left in place,
+# every later test module that imports `promote`, `harness_memory` or their
+# siblings by name gets that other checkout's copy: found by agentm-vault plan
+# 08, where the primary clone still spelled the vault's roots the old way and
+# two projects-layout tests failed in the full run while passing on their own.
+# Snapshot both here and put them back after the module, so what this module
+# loads never outlives it.
+_SYS_PATH_BEFORE: list = []
+_SYS_MODULES_BEFORE: dict = {}
+
+
+def setUpModule():
+    _SYS_PATH_BEFORE[:] = list(sys.path)
+    _SYS_MODULES_BEFORE.clear()
+    _SYS_MODULES_BEFORE.update(sys.modules)
+
+
+def tearDownModule():
+    sys.path[:] = _SYS_PATH_BEFORE
+    for name in [n for n in sys.modules if n not in _SYS_MODULES_BEFORE]:
+        del sys.modules[name]
+    for name, module in _SYS_MODULES_BEFORE.items():
+        if sys.modules.get(name) is not module:
+            sys.modules[name] = module
 
 
 class TestChecklist(unittest.TestCase):

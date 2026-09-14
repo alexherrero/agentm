@@ -341,12 +341,12 @@ class HandoffPackStaysOutOfTheCheckoutTests(unittest.TestCase):
         resolution = {
             "slug": "repo", "layout": "root", "project_root": self.checkout,
             "backend": VaultBackend(root=vault, lock_root=self.tmp / "locks"),
-            "project_locator": Locator("Projects/repo"),
+            "project_locator": Locator("projects/repo"),
         }
         builder = _recording_handoff_builder()
         with mock.patch.object(hm, "resolve_project", return_value=resolution):
             self._run(self.checkout, builder)
-        self.assertEqual(builder.targets[0], vault / "Projects" / "repo" / "_harness" / "n1-handoff")
+        self.assertEqual(builder.targets[0], vault / "projects" / "repo" / "_harness" / "n1-handoff")
         self.assertOutsideCheckout(builder.targets[0], self.checkout)
 
     def test_this_repositorys_own_checkout(self):

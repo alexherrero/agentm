@@ -35,22 +35,22 @@ class _Nested(unittest.TestCase):
         self.top = Path(tempfile.mkdtemp(prefix="calendar-index-"))
         self.addCleanup(shutil.rmtree, self.top, ignore_errors=True)
         (self.top / ".obsidian").mkdir()
-        self.vault = self.top / "Agent"
+        self.vault = self.top / "agent"
         (self.vault / "memory" / "episodic").mkdir(parents=True)
-        (self.top / "Calendar").mkdir()
+        (self.top / "calendar").mkdir()
         self.rules = _Rules()
 
     def _files(self):
-        return sorted(p.relative_to(self.top).as_posix() for p in (self.top / "Calendar").rglob("*.md"))
+        return sorted(p.relative_to(self.top).as_posix() for p in (self.top / "calendar").rglob("*.md"))
 
     def _index(self):
-        return (self.top / "Calendar" / "2026" / "2026-09-04.md").read_text(encoding="utf-8")
+        return (self.top / "calendar" / "2026" / "2026-09-04.md").read_text(encoding="utf-8")
 
 
 class TheDayIndex(_Nested):
     def test_a_one_meeting_day_yields_exactly_two_files(self):
         cf.append(self.vault, "meetings", "Sync with the team about the release.", day=DAY, now=NOON, rules=self.rules)
-        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-meetings.md", "Calendar/2026/2026-09-04.md"])
+        self.assertEqual(self._files(), ["calendar/2026/2026-09-04-meetings.md", "calendar/2026/2026-09-04.md"])
         text = self._index()
         self.assertIn("kind: day-index\n", text)
         self.assertIn("slug: 2026-09-04\n", text)
@@ -66,7 +66,7 @@ class TheDayIndex(_Nested):
 
     def test_regeneration_is_a_no_op_on_an_unchanged_day(self):
         cf.append(self.vault, "diary", "A line.", day=DAY, now=NOON, rules=self.rules)
-        p = self.top / "Calendar" / "2026" / "2026-09-04.md"
+        p = self.top / "calendar" / "2026" / "2026-09-04.md"
         before = p.read_text(encoding="utf-8"); mtime = p.stat().st_mtime_ns
         ci.regenerate(self.vault, DAY)
         self.assertEqual(p.read_text(encoding="utf-8"), before)
@@ -97,14 +97,14 @@ class TheDayIndex(_Nested):
         self.assertIn("## Session traces\n", text)
         self.assertIn("- [[session-abc]] — the release session\n", text)
         self.assertNotIn("session-old", text)
-        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04.md"])
+        self.assertEqual(self._files(), ["calendar/2026/2026-09-04.md"])
 
     def test_the_digest_is_embedded_vault_root_relative_when_it_exists(self):
         dg = self.vault / "diagnostics" / "digests"; dg.mkdir(parents=True)
         (dg / "20260904-digest-daily.md").write_text("# digest\n", encoding="utf-8")
         cf.append(self.vault, "diary", "A line.", day=DAY, now=NOON, rules=self.rules)
         text = self._index()
-        self.assertIn("## Digest\n\n![[Agent/diagnostics/digests/20260904-digest-daily]]\n", text)
+        self.assertIn("## Digest\n\n![[agent/diagnostics/digests/20260904-digest-daily]]\n", text)
 
     def test_the_index_never_lists_a_facet_that_has_no_note(self):
         cf.append(self.vault, "correspondence", "Replied to the vendor.", day=DAY, now=NOON, rules=self.rules)

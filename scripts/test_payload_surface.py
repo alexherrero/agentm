@@ -58,7 +58,7 @@ class LayoutFreeGate(unittest.TestCase):
         # guide has to explain. The scan is case-sensitive so the two do not
         # collide — and the shipped template really does name the lowercase one.
         self.assertEqual(LAYOUT_FREE.scan("a note under `agent/archive/` is finished work"), [])
-        self.assertTrue(LAYOUT_FREE.scan("a note under `Agent/archive/` is finished work"))
+        self.assertTrue(LAYOUT_FREE.scan("a note under `Agent/archive/` is finished work"))  # root-casing: the forbidden spelling, on purpose
         self.assertIn("agent/archive/", TEMPLATE.read_text(encoding="utf-8"))
 
 

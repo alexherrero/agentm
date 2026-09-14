@@ -34,39 +34,39 @@ class _Rules:
 
 
 class _Nested(unittest.TestCase):
-    """The operator's layout: `<vault>/.obsidian`, the memory root at `<vault>/Agent`,
-    the register at `<vault>/Calendar`."""
+    """The operator's layout: `<vault>/.obsidian`, the memory root at `<vault>/agent`,
+    the register at `<vault>/calendar`."""
 
     def setUp(self):
         self.top = Path(tempfile.mkdtemp(prefix="calendar-"))
         self.addCleanup(shutil.rmtree, self.top, ignore_errors=True)
         (self.top / ".obsidian").mkdir()
-        self.vault = self.top / "Agent"
+        self.vault = self.top / "agent"
         (self.vault / "memory").mkdir(parents=True)
-        (self.top / "Calendar").mkdir()
+        (self.top / "calendar").mkdir()
         self.rules = _Rules()
 
     def _files(self):
-        return sorted(p.relative_to(self.top).as_posix() for p in (self.top / "Calendar").rglob("*.md"))
+        return sorted(p.relative_to(self.top).as_posix() for p in (self.top / "calendar").rglob("*.md"))
 
 
 class TheSpace(_Nested):
     def test_the_register_is_the_vault_root_sibling_under_the_witness(self):
-        self.assertEqual(cf.calendar_root(self.vault), self.top / "Calendar")
+        self.assertEqual(cf.calendar_root(self.vault), self.top / "calendar")
         self.assertEqual(cf.vault_root_of(self.vault), self.top)
 
     def test_a_flat_layout_finds_the_register_beside_memory(self):
         flat = Path(tempfile.mkdtemp(prefix="calendar-flat-"))
         self.addCleanup(shutil.rmtree, flat, ignore_errors=True)
-        (flat / "memory").mkdir(); (flat / "Calendar").mkdir()
-        self.assertEqual(cf.calendar_root(flat), flat / "Calendar")
+        (flat / "memory").mkdir(); (flat / "calendar").mkdir()
+        self.assertEqual(cf.calendar_root(flat), flat / "calendar")
 
     def test_the_register_is_never_conjured(self):
-        shutil.rmtree(self.top / "Calendar")
+        shutil.rmtree(self.top / "calendar")
         self.assertIsNone(cf.calendar_root(self.vault))
         with self.assertRaises(FileNotFoundError):
             cf.append(self.vault, "meetings", "a meeting", day=DAY, now=NOON, rules=self.rules)
-        self.assertFalse((self.top / "Calendar").exists())
+        self.assertFalse((self.top / "calendar").exists())
 
     def test_without_the_witness_a_parent_calendar_is_not_ours(self):
         (self.top / ".obsidian").rmdir()
@@ -77,10 +77,10 @@ class TheFacetNotes(_Nested):
     def test_a_one_meeting_day_yields_exactly_the_meetings_note(self):
         r = cf.append(self.vault, "meetings", "Sync with the team about the release.", day=DAY, now=NOON, rules=self.rules)
         self.assertTrue(r.created)
-        self.assertEqual(r.rel, "Calendar/2026/2026-09-04-meetings.md")
+        self.assertEqual(r.rel, "calendar/2026/2026-09-04-meetings.md")
         # The facet note and the generated day index, nothing else (task 2
         # brought the index; the test's claim — no empty facet file, ever — stands).
-        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-meetings.md", "Calendar/2026/2026-09-04.md"])
+        self.assertEqual(self._files(), ["calendar/2026/2026-09-04-meetings.md", "calendar/2026/2026-09-04.md"])
         text = r.path.read_text(encoding="utf-8")
         for line in ("kind: calendar-facet", "status: active", "slug: 2026-09-04-meetings",
                      "day: 2026-09-04", "facet: meetings", "group: calendar", "tags: [calendar, meetings]"):
@@ -97,12 +97,12 @@ class TheFacetNotes(_Nested):
         after = second.path.read_text(encoding="utf-8")
         self.assertTrue(after.startswith(before), "the earlier text must be byte-identical")
         self.assertEqual(after[len(before):], "\n14:37 — Second meeting, spanning two lines.\n")
-        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-meetings.md", "Calendar/2026/2026-09-04.md"])
+        self.assertEqual(self._files(), ["calendar/2026/2026-09-04-meetings.md", "calendar/2026/2026-09-04.md"])
 
     def test_quick_capture_lands_in_todays_diary(self):
         r = cf.quick(self.vault, "Realised the purge count had drifted.", now=NOON, rules=self.rules)
         self.assertEqual(r.facet, "diary")
-        self.assertEqual(self._files(), ["Calendar/2026/2026-09-04-diary.md", "Calendar/2026/2026-09-04.md"])
+        self.assertEqual(self._files(), ["calendar/2026/2026-09-04-diary.md", "calendar/2026/2026-09-04.md"])
 
     def test_an_unregistered_facet_is_refused_with_the_registry_named(self):
         with self.assertRaises(cf.UnknownFacet) as cm:
@@ -123,9 +123,9 @@ class TheFacetNotes(_Nested):
         self.assertEqual(cf.notes_for_day(self.vault, date(2026, 9, 5)), [])
 
     def test_the_year_directory_is_created_lazily(self):
-        self.assertFalse((self.top / "Calendar" / "2027").exists())
+        self.assertFalse((self.top / "calendar" / "2027").exists())
         cf.append(self.vault, "docs", "Shipped the thing.", day=date(2027, 1, 2), now=NOON, rules=self.rules)
-        self.assertTrue((self.top / "Calendar" / "2027" / "2027-01-02-docs.md").is_file())
+        self.assertTrue((self.top / "calendar" / "2027" / "2027-01-02-docs.md").is_file())
 
 
 class TheRegistry(unittest.TestCase):

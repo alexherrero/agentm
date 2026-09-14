@@ -186,7 +186,7 @@ def resolve_vault(arg_path: "str | None" = None) -> "Path | None":
     `diagnostics/` — which is what `$MEMORY_ROOT` names. The config's
     vault path is the vault root, so the fallback joins the configured
     `plugins.obsidian-vault.memory_root` onto it when there is one. Without the
-    join the hook looked for `<vault>/diagnostics/` beside `Agent/` and reported
+    join the hook looked for `<vault>/diagnostics/` beside `agent/` and reported
     "no digest note delivered" over a ladder that was delivering fine."""
     if arg_path:
         p = Path(arg_path).expanduser()

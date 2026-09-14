@@ -10,7 +10,7 @@ what it answered.
         --gold-set scripts/health/fixtures/week1-gold/gold-set.json --arm A
 
     # against the live vault or any post-2026-08-10 snapshot, whose root is the
-    # whole Obsidian folder and which therefore answers `Agent/desk/projects/…`:
+    # whole Obsidian folder and which therefore answers `agent/desk/projects/…`:
     python3 scripts/health/week1_retrieval_experiment.py \
         --gold-set scripts/health/fixtures/week1-gold/gold-set.json \
         --expected-path-prefix Agent --arm A
@@ -107,7 +107,7 @@ _ARM_TOOLS = {"mcp__week1__search_lexical", "mcp__week1__search_vector"}
 # actually called.
 _DENIED_TOOLS = [
     "Bash", "Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit",
-    "Task", "Agent", "Workflow", "Skill", "Artifact", "SendUserFile",
+    "Task", "Agent", "Workflow", "Skill", "Artifact", "SendUserFile",  # root-casing: the Claude Code tool's name, not the root
     "Monitor", "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
     "TaskUpdate", "ScheduleWakeup", "CronCreate", "CronList", "CronDelete",
     "RemoteTrigger", "SendMessage", "PushNotification", "DesignSync",
@@ -138,7 +138,7 @@ def resolve_vault(arg_vault_path=None):
         raise SystemExit(
             "[week1] no reachable vault. Set plugins.obsidian-vault.vault_path via "
             "`agentm_config --vault-path`, export $MEMORY_ROOT to the memory "
-            "root (Agent/), or pass --vault-path."
+            "root (agent/), or pass --vault-path."
         )
     return Path(p)
 
@@ -150,8 +150,8 @@ def load_gold_set(path, expected_path_prefix=""):
     The labels are written relative to the agent's own tree — `personal/…`,
     `projects/…` — which was the vault root until the 2026-08-10 git-transport
     cutover moved the root up to the whole Obsidian folder. A daemon serving the
-    new root answers `Agent/desk/projects/…`, and `score_at_k` matches by exact string
-    equality, so the same labels need `Agent/` in front of them to score that
+    new root answers `agent/desk/projects/…`, and `score_at_k` matches by exact string
+    equality, so the same labels need `agent/` in front of them to score that
     corpus and nothing in front of them to score a pre-cutover snapshot.
 
     Keeping one labeled set and varying the prefix is deliberate. A second copy
@@ -220,7 +220,7 @@ def hint_for_missing_prefix(missing, vault, current_prefix=""):
     the difference between the two is one directory level, so say which.
 
     Searches the corpus's own top-level directories rather than assuming
-    `Agent/`, so it keeps working if the tree is ever renamed again.
+    `agent/`, so it keeps working if the tree is ever renamed again.
     """
     if not missing:
         return ""
@@ -804,7 +804,7 @@ def main(argv=None):
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--gold-set", required=True, help="path to the gold-set JSON")
     ap.add_argument("--expected-path-prefix", default="",
-                    help="prepended to every expected path; pass 'Agent' when the "
+                    help="prepended to every expected path; pass 'agent' when the "
                          "corpus root is the whole vault rather than the agent tree "
                          "(post-2026-08-10 layout)")
     ap.add_argument("--arm", required=True, choices=("A", "B"))

@@ -479,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--path-prefix", default="",
                    help=("prepended to a journal path before comparing against search "
                          "results, which are vault-root-relative while journals are "
-                         "memory-root-relative (e.g. 'Agent/')"))
+                         "memory-root-relative (e.g. 'agent/')"))
     f.set_defaults(func=cmd_filter)
 
     a = sub.add_parser("apply", help="apply a reviewed propose journal to a target vault")

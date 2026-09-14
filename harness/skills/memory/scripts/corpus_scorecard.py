@@ -53,7 +53,7 @@ _TIMEOUT_SECONDS = 300
 # the vault root — joining onto the vault path instead produces a new top-level
 # directory beside it, which is what the first run of this file did. Filing-v2
 # part 2a promoted diagnostics out of the desk: per-system subdirectories under
-# `Agent/diagnostics/`, this writer's being `health/`.
+# `agent/diagnostics/`, this writer's being `health/`.
 DIAGNOSTICS_DIR = Path("diagnostics") / "health"
 STABLE_NAME = "latest_health_scorecard.md"
 COMPLETENESS_RESULT_NAME = "latest_completeness.json"
@@ -416,7 +416,7 @@ def completeness_result_path(out_dir: Path = None) -> Path:
 
     Taken from the directory `build` already resolved, not rebuilt from a root.
     The first version of this joined `desk/diagnostics` onto the vault path and
-    looked under `/…/Vault/desk/` while the file sat in `/…/Vault/Agent/desk/` —
+    looked under `/…/Vault/desk/` while the file sat in `/…/Vault/agent/desk/` —
     the same vault-root-versus-memory-root confusion `diagnostics_dir` was
     written to stop, arrived at by a different door.
     """
@@ -679,12 +679,12 @@ def diagnostics_dir() -> Path:
     """Where the two scorecards go, vault-relative.
 
     Derived from the configured `projects` space, whose parent is the desk the
-    design puts these beside: `Agent/desk/projects` gives `Agent/desk`, so the
-    reports land at `Agent/desk/diagnostics`.
+    design puts these beside: `agent/desk/projects` gives `agent/desk`, so the
+    reports land at `agent/desk/diagnostics`.
 
     Asked of the daemon rather than reassembled from a root, and never cached.
     The first version of this joined `desk/diagnostics` straight onto the vault
-    path and wrote a brand-new top-level directory beside `Agent/` — the vault
+    path and wrote a brand-new top-level directory beside `agent/` — the vault
     root and the memory root are different directories, and every vault-relative
     path built from the wrong one lands somewhere plausible that nothing reads.
     """
@@ -701,7 +701,7 @@ def diagnostics_dir() -> Path:
 
 def memory_root_from_daemon() -> str:
     """Where the daemon says the memory root is: its vault plus the parent of
-    its `memory` space (`Agent/memory` → `<vault>/Agent`). The vault root and
+    its `memory` space (`agent/memory` → `<vault>/agent`). The vault root and
     the memory root are different directories, and `class_populations` and
     everything beside it read `<memory-root>/memory/`; handing them the vault
     root lands every walk somewhere plausible that holds nothing."""

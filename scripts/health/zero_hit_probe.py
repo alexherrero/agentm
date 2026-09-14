@@ -94,10 +94,10 @@ def pick_control(binary: str) -> tuple:
             "no vault resolved — set MEMORY_ROOT or point the kernel "
             "config at one; the probe will not guess a path")
     vault = pathlib.Path(resolved)
-    if vault.name != "Agent" and (vault / "Agent").is_dir():
-        vault = vault / "Agent"
+    if vault.name != "agent" and (vault / "agent").is_dir():
+        vault = vault / "agent"
     for p in sorted((vault / "memory").rglob("*.md"))[:400]:
-        rel = f"Agent/{p.relative_to(vault).as_posix()}"
+        rel = f"agent/{p.relative_to(vault).as_posix()}"
         words = [w for w in p.read_text(encoding="utf-8", errors="replace").split()
                  if w.isalpha() and len(w) > 6]
         if len(words) >= 3:

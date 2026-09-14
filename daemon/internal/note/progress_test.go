@@ -9,14 +9,14 @@ import (
 
 func TestAProgressLogIsKnownByItsName(t *testing.T) {
 	cases := map[string]bool{
-		"Projects/agentm/_harness/progress.md":                    true,
-		"Projects/agentm/_harness/progress-online-recall.md":      true,
-		"Projects/agentm/tasks/measure-online-recall/progress.md": true,
-		"Agent/memory/semantic/progress-report.md":                true,
-		"Projects/agentm/_harness/PLAN-online-recall.md":          false,
-		"Agent/memory/semantic/my-progress.md":                    false,
-		"Projects/agentm/_harness/PROGRESS.md":                    false,
-		"Projects/agentm/_harness/progress.txt":                   false,
+		"projects/agentm/_harness/progress.md":                    true,
+		"projects/agentm/_harness/progress-online-recall.md":      true,
+		"projects/agentm/tasks/measure-online-recall/progress.md": true,
+		"agent/memory/semantic/progress-report.md":                true,
+		"projects/agentm/_harness/PLAN-online-recall.md":          false,
+		"agent/memory/semantic/my-progress.md":                    false,
+		"projects/agentm/_harness/PROGRESS.md":                    false,
+		"projects/agentm/_harness/progress.txt":                   false,
 	}
 	for rel, want := range cases {
 		if got := IsProgressLog(rel); got != want {

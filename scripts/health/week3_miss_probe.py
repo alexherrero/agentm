@@ -99,7 +99,7 @@ def main(argv=None):
     ap.add_argument("--al-vault", required=True)
     ap.add_argument("--gold-set", required=True)
     ap.add_argument("--expected-path-prefix", default="",
-                    help="prepended to every expected path; pass 'Agent' when the "
+                    help="prepended to every expected path; pass 'agent' when the "
                          "corpus root is the whole vault rather than the agent tree "
                          "(post-2026-08-10 layout)")
     ap.add_argument("--week1-report", required=True,

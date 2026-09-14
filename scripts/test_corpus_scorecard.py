@@ -48,8 +48,8 @@ def answers(**by_command):
 
 HEALTHY = {
     "status": {
-        "spaces": {"memory": "Agent/memory", "projects": "Agent/desk/projects",
-                   "diagnostics": "Agent/diagnostics"},
+        "spaces": {"memory": "agent/memory", "projects": "agent/desk/projects",
+                   "diagnostics": "agent/diagnostics"},
         "index_detail": {"documents": 1200},
         "health": {"queue": {"unfiled": 40, "oldest_age": "2d1h"}},
     },
@@ -344,12 +344,12 @@ class ScorecardTests(unittest.TestCase):
         """The vault root and the memory root are different directories.
 
         Building the path from the wrong one wrote a whole new top-level
-        directory beside `Agent/` on the first live run, which is the usual shape
+        directory beside `agent/` on the first live run, which is the usual shape
         of this mistake: a plausible path nothing reads.
         """
         with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
             self.assertEqual(sc.diagnostics_dir(),
-                             Path("Agent/diagnostics/health"))
+                             Path("agent/diagnostics/health"))
 
     def test_a_flat_layout_keeps_desk_at_the_top(self):
         flat = dict(HEALTHY)

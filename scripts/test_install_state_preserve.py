@@ -46,7 +46,7 @@ _spec.loader.exec_module(install_state)
 # values. `notify_enabled` is a bool on purpose — a preservation fix that
 # stringifies or truthiness-filters values must fail here.
 _LIVE_KEYS = {
-    "plugins.obsidian-vault.vault_path": "/srv/vaults/Agent",
+    "plugins.obsidian-vault.vault_path": "/srv/vaults/agent",
     "storage.backend": "vault",
     "plugins.autonomy.notify_enabled": True,
     "plugins.autonomy.email_to": "ops@example.com",

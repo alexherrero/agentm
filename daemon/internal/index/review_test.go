@@ -28,9 +28,9 @@ func indexScored(t *testing.T, idx *Index, rel, status string, conf string) {
 // nobody triages it.
 func TestTheReviewQueueIsAQueryOverUnfiledNotes(t *testing.T) {
 	idx := openScratch(t)
-	indexScored(t, idx, "Agent/memory/semantic/doubtful.md", "unfiled", "0.20")
-	indexScored(t, idx, "Agent/memory/semantic/shaky.md", "unfiled", "0.45")
-	indexScored(t, idx, "Agent/memory/semantic/settled.md", "active", "0.95")
+	indexScored(t, idx, "agent/memory/semantic/doubtful.md", "unfiled", "0.20")
+	indexScored(t, idx, "agent/memory/semantic/shaky.md", "unfiled", "0.45")
+	indexScored(t, idx, "agent/memory/semantic/settled.md", "active", "0.95")
 
 	got, err := idx.ReviewQueue(context.Background(), 10)
 	if err != nil {
@@ -60,9 +60,9 @@ func TestTheReviewQueueIsAQueryOverUnfiledNotes(t *testing.T) {
 // least sure about is the one a person adds the most by looking at.
 func TestTheQueueIsOrderedLeastConfidentFirst(t *testing.T) {
 	idx := openScratch(t)
-	indexScored(t, idx, "Agent/memory/semantic/c.md", "unfiled", "0.55")
-	indexScored(t, idx, "Agent/memory/semantic/a.md", "unfiled", "0.10")
-	indexScored(t, idx, "Agent/memory/semantic/b.md", "unfiled", "0.30")
+	indexScored(t, idx, "agent/memory/semantic/c.md", "unfiled", "0.55")
+	indexScored(t, idx, "agent/memory/semantic/a.md", "unfiled", "0.10")
+	indexScored(t, idx, "agent/memory/semantic/b.md", "unfiled", "0.30")
 
 	got, err := idx.ReviewQueue(context.Background(), 10)
 	if err != nil {
@@ -82,8 +82,8 @@ func TestTheQueueIsOrderedLeastConfidentFirst(t *testing.T) {
 // every unreached note at the front of a list nobody can act on.
 func TestAnUnscoredNoteSortsAfterAScoredOne(t *testing.T) {
 	idx := openScratch(t)
-	indexScored(t, idx, "Agent/memory/semantic/unreached.md", "unfiled", "")
-	indexScored(t, idx, "Agent/memory/semantic/doubted.md", "unfiled", "0.10")
+	indexScored(t, idx, "agent/memory/semantic/unreached.md", "unfiled", "")
+	indexScored(t, idx, "agent/memory/semantic/doubted.md", "unfiled", "0.10")
 
 	got, err := idx.ReviewQueue(context.Background(), 10)
 	if err != nil {
@@ -107,8 +107,8 @@ func TestAnUnscoredNoteSortsAfterAScoredOne(t *testing.T) {
 // A note that genuinely scored zero is scored, and sorts first.
 func TestAZeroScoreIsAScore(t *testing.T) {
 	idx := openScratch(t)
-	indexScored(t, idx, "Agent/memory/semantic/zero.md", "unfiled", "0.00")
-	indexScored(t, idx, "Agent/memory/semantic/none.md", "unfiled", "")
+	indexScored(t, idx, "agent/memory/semantic/zero.md", "unfiled", "0.00")
+	indexScored(t, idx, "agent/memory/semantic/none.md", "unfiled", "")
 
 	got, err := idx.ReviewQueue(context.Background(), 10)
 	if err != nil {
@@ -122,7 +122,7 @@ func TestAZeroScoreIsAScore(t *testing.T) {
 // There is no inbox directory, and nothing in this pass creates one.
 func TestNoInboxDirectoryIsCreated(t *testing.T) {
 	idx := openScratch(t)
-	indexScored(t, idx, "Agent/memory/semantic/doubtful.md", "unfiled", "0.20")
+	indexScored(t, idx, "agent/memory/semantic/doubtful.md", "unfiled", "0.20")
 
 	var paths []string
 	rows, err := idx.db.Query(`SELECT path FROM docmeta`)

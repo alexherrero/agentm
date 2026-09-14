@@ -15,9 +15,9 @@ func note(status, body string) string {
 // --- eligibility ------------------------------------------------------------
 
 func TestEligibilityRefusesWhatIsNotEnrichmentsBusiness(t *testing.T) {
-	// The rule the contract supplies: `Personal/` is never read by a background
+	// The rule the contract supplies: `personal/` is never read by a background
 	// model pass. Stated here rather than imported so the test says what it tests.
-	mayRead := func(rel string) bool { return !strings.HasPrefix(rel, "Personal/") }
+	mayRead := func(rel string) bool { return !strings.HasPrefix(rel, "personal/") }
 	g := DefaultEligibility(mayRead)
 	// The contract's `record_kinds` register, as the command wires it.
 	g.IsRecordKind = func(k string) bool { return k == "session-trace" || k == "dir-index" }
@@ -28,22 +28,22 @@ func TestEligibilityRefusesWhatIsNotEnrichmentsBusiness(t *testing.T) {
 		name, rel, body string
 		want            bool // eligible
 	}{
-		{"an unfiled memory", "Agent/memory/semantic/x.md", note("unfiled", "b"), true},
+		{"an unfiled memory", "agent/memory/semantic/x.md", note("unfiled", "b"), true},
 		// Status is no longer a reason to refuse. A card is `active` because a
 		// writer that knew said why, which says nothing about whether the pass
 		// has ever run over it — and 283 notes in the corpus had been enriched
 		// and scored below the floor while sitting `unfiled`.
-		{"already active", "Agent/memory/semantic/x.md", note("active", "b"), true},
-		{"superseded", "Agent/memory/semantic/x.md", note("superseded", "b"), true},
-		{"no status at all", "Agent/memory/semantic/x.md", "no frontmatter", true},
-		{"the operator's own space", "Personal/Church/x.md", note("unfiled", "b"), false},
-		{"a derived class — entities", "Agent/memory/entities/x.md", note("unfiled", "b"), false},
-		{"a derived class — crystallized", "Agent/memory/crystallized/x.md", note("unfiled", "b"), false},
-		{"a derived class — mocs", "Agent/memory/mocs/x.md", note("unfiled", "b"), false},
+		{"already active", "agent/memory/semantic/x.md", note("active", "b"), true},
+		{"superseded", "agent/memory/semantic/x.md", note("superseded", "b"), true},
+		{"no status at all", "agent/memory/semantic/x.md", "no frontmatter", true},
+		{"the operator's own space", "personal/Church/x.md", note("unfiled", "b"), false},
+		{"a derived class — entities", "agent/memory/entities/x.md", note("unfiled", "b"), false},
+		{"a derived class — crystallized", "agent/memory/crystallized/x.md", note("unfiled", "b"), false},
+		{"a derived class — mocs", "agent/memory/mocs/x.md", note("unfiled", "b"), false},
 		// A record is its writer's shape, not a card: a pass that re-rendered a
 		// trace's frontmatter would drop its session, day and touched fields.
-		{"a session trace (a record kind)", "Agent/memory/episodic/t.md", trace, false},
-		{"a card whose kind is not a record", "Agent/memory/semantic/c.md", card, true},
+		{"a session trace (a record kind)", "agent/memory/episodic/t.md", trace, false},
+		{"a card whose kind is not a record", "agent/memory/semantic/c.md", card, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := g.Check(context.Background(), Request{Rel: tc.rel}, tc.body)
@@ -350,7 +350,7 @@ func TestTheFiveGatesRunInTheSpecifiedOrder(t *testing.T) {
 		wrap(NewCycleBudget(10, 0)),
 	)
 	if _, err := p.Run(context.Background(), Request{
-		Rel: "Agent/memory/x.md", Raw: note("unfiled", "b"),
+		Rel: "agent/memory/x.md", Raw: note("unfiled", "b"),
 	}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -370,7 +370,7 @@ func TestAnEarlyDeclineShortCircuitsTheRest(t *testing.T) {
 	out, err := p.Run(context.Background(), Request{
 		// A derived class: produced by another pass from notes enrichment
 		// already touched, so enriching it feeds a pass its own output.
-		Rel: "Agent/memory/mocs/x.md", Raw: note("unfiled", "b"),
+		Rel: "agent/memory/mocs/x.md", Raw: note("unfiled", "b"),
 	})
 	if err != nil {
 		t.Fatalf("run: %v", err)

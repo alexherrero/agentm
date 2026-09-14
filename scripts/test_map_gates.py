@@ -165,7 +165,7 @@ class MocsShape(_Memory):
 roots = _load("check-root-notes")
 
 INDEX = ("# Vault\n\n| space | what it holds | authority |\n|---|---|---|\n"
-         "| `Agent/` | memory | FRIDAY writes freely |\n\nFRIDAY's own entry point is [[moc-root]].\n")
+         "| `agent/` | memory | FRIDAY writes freely |\n\nFRIDAY's own entry point is [[moc-root]].\n")
 
 
 class RootNotes(unittest.TestCase):
@@ -174,7 +174,7 @@ class RootNotes(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.vault = Path(self._tmp.name)
         (self.vault / ".obsidian").mkdir()
-        self.root = self.vault / "Agent"
+        self.root = self.vault / "agent"
         (self.root / "memory" / "mocs").mkdir(parents=True)
 
     def write(self, rel: str, text: str) -> Path:
@@ -185,10 +185,10 @@ class RootNotes(unittest.TestCase):
 
     def retired_shape(self):
         self.write("index.md", INDEX)
-        self.write("Agent/memory/mocs/moc-root.md", "# root\n")
-        self.write("Projects/index.md", "Lands as one revertible commit. See [[../index|Filing]].\n")
-        self.write("Projects/agentm/decisions/scan.md", "| 6 | our wiki + [[moc-root\\|Home]] MOC | core |\n")
-        self.write("Agent/memory/semantic/blog-author.md", "- [[moc-root|Home]] — vault map.\n")
+        self.write("agent/memory/mocs/moc-root.md", "# root\n")
+        self.write("projects/index.md", "Lands as one revertible commit. See [[../index|Filing]].\n")
+        self.write("projects/agentm/decisions/scan.md", "| 6 | our wiki + [[moc-root\\|Home]] MOC | core |\n")
+        self.write("agent/memory/semantic/blog-author.md", "- [[moc-root|Home]] — vault map.\n")
 
     def data_run_done(self):
         ms.marker_path(self.root).write_text("run m\n", encoding="utf-8")
@@ -206,41 +206,41 @@ class RootNotes(unittest.TestCase):
 
     def test_the_retired_notes_on_disk_fail(self):
         self.retired_shape()
-        self.write("Agent/Home.md", "# Home\n")
+        self.write("agent/Home.md", "# Home\n")
         self.write("Filing.md", "# Filing\n\n| space | authority |\n|---|---|\n")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 1, out)
-        self.assertIn("Agent/Home.md: still exists", out)
+        self.assertIn("agent/Home.md: still exists", out)
         self.assertIn("Filing.md: still exists", out)
 
     def test_a_link_left_to_either_fails_by_its_text(self):
         self.retired_shape()
-        self.write("Projects/agentm/pattern/funnel.md",
-                   "- [[Home]] — vault map.\n- see [[Filing]]\n- [[Agent/Home]]\n- [[home|the map]]\n"
+        self.write("projects/agentm/pattern/funnel.md",
+                   "- [[Home]] — vault map.\n- see [[Filing]]\n- [[agent/Home]]\n- [[home|the map]]\n"
                    "- [the table](../../../Filing.md)\n")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 1, out)
-        for line, link in ((1, "[[Home]]"), (2, "[[Filing]]"), (3, "[[Agent/Home]]"), (4, "[[home|the map]]")):
-            self.assertIn(f"Projects/agentm/pattern/funnel.md:{line}: {link}", out)
-        self.assertIn("Projects/agentm/pattern/funnel.md:5:", out)
+        for line, link in ((1, "[[Home]]"), (2, "[[Filing]]"), (3, "[[agent/Home]]"), (4, "[[home|the map]]")):
+            self.assertIn(f"projects/agentm/pattern/funnel.md:{line}: {link}", out)
+        self.assertIn("projects/agentm/pattern/funnel.md:5:", out)
 
     def test_code_a_record_and_your_own_space_are_not_findings(self):
         self.retired_shape()
-        self.write("Agent/memory/episodic/trace.md",
+        self.write("agent/memory/episodic/trace.md",
                    "- **The `[[Home]]` trap:** a bare link would open the personal note.\n\n"
                    "```\n[[Filing]]\n```\n")
-        self.write("Projects/agentm/_harness/progress-x.md", "Links [[Home]] and [[Filing]] as written then.\n")
-        self.write("Personal/Home/To Do, Lists, Specs/list.md", "Back to [[Home]].\n")
-        self.write("Projects/other.md", "My list: [[Personal/Home/To Do, Lists, Specs/Home]].\n")
+        self.write("projects/agentm/_harness/progress-x.md", "Links [[Home]] and [[Filing]] as written then.\n")
+        self.write("personal/Home/To Do, Lists, Specs/list.md", "Back to [[Home]].\n")
+        self.write("projects/other.md", "My list: [[personal/Home/To Do, Lists, Specs/Home]].\n")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 0, out)
 
     def test_the_authority_table_appears_once(self):
         self.retired_shape()
-        self.write("index.md", INDEX + "\n| space | authority |\n|---|---|\n| `Calendar/` | shared |\n")
+        self.write("index.md", INDEX + "\n| space | authority |\n|---|---|\n| `calendar/` | shared |\n")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 1, out)
@@ -251,28 +251,28 @@ class RootNotes(unittest.TestCase):
 
     def test_before_the_data_run_it_reports_and_passes(self):
         self.retired_shape()
-        self.write("Agent/Home.md", "# Home\n")
-        self.write("Projects/p.md", "[[Home]]\n")
+        self.write("agent/Home.md", "# Home\n")
+        self.write("projects/p.md", "[[Home]]\n")
         code, out = self.gate()
         self.assertEqual(code, 0, out)
         self.assertIn("before the maps data run — 2 finding(s)", out)
-        self.assertIn("pending: Projects/p.md:1: [[Home]] names a retired note", out)
+        self.assertIn("pending: projects/p.md:1: [[Home]] names a retired note", out)
 
     def test_a_link_after_a_longer_or_tilde_fence_holding_three_backticks_fails(self):
         # A three-backtick line inside a longer backtick fence, or a tilde fence,
         # is that fence's content. Read as a fence of its own, it hid what followed.
         self.retired_shape()
-        self.write("Projects/agentm/pattern/longer-fence.md", "````\n```\n````\n\n[[Home]]\n")
-        self.write("Projects/agentm/pattern/tilde-fence.md", "~~~\n```\n~~~\n\n[[Filing]]\n")
+        self.write("projects/agentm/pattern/longer-fence.md", "````\n```\n````\n\n[[Home]]\n")
+        self.write("projects/agentm/pattern/tilde-fence.md", "~~~\n```\n~~~\n\n[[Filing]]\n")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 1, out)
-        self.assertIn("Projects/agentm/pattern/longer-fence.md:5: [[Home]]", out)
-        self.assertIn("Projects/agentm/pattern/tilde-fence.md:5: [[Filing]]", out)
+        self.assertIn("projects/agentm/pattern/longer-fence.md:5: [[Home]]", out)
+        self.assertIn("projects/agentm/pattern/tilde-fence.md:5: [[Filing]]", out)
 
     def test_a_link_inside_a_longer_or_tilde_fence_is_not_a_finding(self):
         self.retired_shape()
-        self.write("Agent/memory/episodic/fenced.md",
+        self.write("agent/memory/episodic/fenced.md",
                    "````markdown\n```\n[[Home]]\n```\n````\n\n~~~\n[[Filing]]\n~~~\n")
         self.data_run_done()
         code, out = self.gate()
@@ -280,21 +280,21 @@ class RootNotes(unittest.TestCase):
 
     def test_a_link_in_angle_brackets_or_with_a_title_fails(self):
         self.retired_shape()
-        self.write("Projects/agentm/pattern/links.md",
-                   "- [the table](<Filing.md>)\n- [the map](../../../Agent/Home.md \"the old map\")\n")
+        self.write("projects/agentm/pattern/links.md",
+                   "- [the table](<Filing.md>)\n- [the map](../../../agent/Home.md \"the old map\")\n")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 1, out)
-        self.assertIn("Projects/agentm/pattern/links.md:1: ](<Filing.md>)", out)
-        self.assertIn("Projects/agentm/pattern/links.md:2: ](../../../Agent/Home.md \"the old map\")", out)
+        self.assertIn("projects/agentm/pattern/links.md:1: ](<Filing.md>)", out)
+        self.assertIn("projects/agentm/pattern/links.md:2: ](../../../agent/Home.md \"the old map\")", out)
 
     def test_a_link_between_escaped_backticks_fails(self):
         self.retired_shape()
-        self.write("Projects/agentm/pattern/escaped.md", "A literal \\`[[Home]]\\` is still a link.\n")
+        self.write("projects/agentm/pattern/escaped.md", "A literal \\`[[Home]]\\` is still a link.\n")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 1, out)
-        self.assertIn("Projects/agentm/pattern/escaped.md:1: [[Home]]", out)
+        self.assertIn("projects/agentm/pattern/escaped.md:1: [[Home]]", out)
 
 
 calroot = _load("check-calendar-root")
@@ -306,12 +306,12 @@ class CalendarRoot(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.vault = Path(self._tmp.name)
         (self.vault / ".obsidian").mkdir()
-        self.root = self.vault / "Agent"
+        self.root = self.vault / "agent"
         (self.root / "memory").mkdir(parents=True)
-        (self.vault / "Calendar").mkdir()
+        (self.vault / "calendar").mkdir()
 
     def write(self, rel: str, text: str = "x\n") -> Path:
-        p = self.vault / "Calendar" / rel
+        p = self.vault / "calendar" / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding="utf-8")
         return p
@@ -331,8 +331,8 @@ class CalendarRoot(unittest.TestCase):
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 0, out)
-        self.assertIn("note — Calendar/_daily-template.md: allowed at the root until plan 10", out)
-        self.assertIn("note — Calendar/2026-09-13.md: allowed at the root until plan 10", out)
+        self.assertIn("note — calendar/_daily-template.md: allowed at the root until plan 10", out)
+        self.assertIn("note — calendar/2026-09-13.md: allowed at the root until plan 10", out)
         self.assertIn("clean", out)
 
     def test_a_stray_note_or_folder_at_the_root_fails(self):
@@ -343,32 +343,32 @@ class CalendarRoot(unittest.TestCase):
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 1, out)
-        self.assertIn("Calendar/notes.md: the calendar root holds years and their maps", out)
-        self.assertIn("Calendar/drafts/: not a year directory", out)
+        self.assertIn("calendar/notes.md: the calendar root holds years and their maps", out)
+        self.assertIn("calendar/drafts/: not a year directory", out)
 
     def test_a_year_map_with_no_year_fails(self):
         self.write("moc-calendar-2025.md")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 1, out)
-        self.assertIn("Calendar/moc-calendar-2025.md: a year map with no 2025/ beside it", out)
+        self.assertIn("calendar/moc-calendar-2025.md: a year map with no 2025/ beside it", out)
 
     def test_a_year_still_waiting_for_its_map_is_a_note_not_a_failure(self):
         self.write("2027/2027-01-01-diary.md")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 0, out)
-        self.assertIn("note — Calendar/2027/: no moc-calendar-2027.md yet; the night writes it", out)
+        self.assertIn("note — calendar/2027/: no moc-calendar-2027.md yet; the night writes it", out)
 
     def test_before_the_data_run_it_reports_and_passes(self):
         self.write("notes.md")
         code, out = self.gate()
         self.assertEqual(code, 0, out)
         self.assertIn("before the maps data run — 1 finding(s)", out)
-        self.assertIn("pending: Calendar/notes.md", out)
+        self.assertIn("pending: calendar/notes.md", out)
 
     def test_no_calendar_is_nothing_to_check(self):
-        (self.vault / "Calendar").rmdir()
+        (self.vault / "calendar").rmdir()
         code, out = self.gate()
         self.assertEqual(code, 0, out)
 

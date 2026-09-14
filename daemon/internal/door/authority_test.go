@@ -22,26 +22,26 @@ func TestAuthorityMatrix(t *testing.T) {
 		whyHas string
 	}{
 		{"the agent's own half is standing",
-			"Agent/memory/semantic/some-fact.md", false, none, Standing, "agent's own half"},
+			"agent/memory/semantic/some-fact.md", false, none, Standing, "agent's own half"},
 		{"the calendar is a shared surface, no grant needed",
-			"Calendar/2026/2026-09-01-diary.md", false, none, Standing, "shared surface"},
+			"calendar/2026/2026-09-01-diary.md", false, none, Standing, "shared surface"},
 		{"a project write without a grant asks, and names the grant phrase",
-			"Projects/agentm/_harness/PLAN.md", true, none, Alignment,
+			"projects/agentm/_harness/PLAN.md", true, none, Alignment,
 			`open the files for project agentm`},
 		{"a grant admits the working bulk",
-			"Projects/agentm/_harness/PLAN.md", true, agentm, Standing, "session grant for agentm"},
+			"projects/agentm/_harness/PLAN.md", true, agentm, Standing, "session grant for agentm"},
 		{"a grant does not waive the face rule — changing a root document still asks",
-			"Projects/agentm/README.md", true, agentm, Alignment, "visible face"},
+			"projects/agentm/README.md", true, agentm, Alignment, "visible face"},
 		{"a new root document under a grant is standing, per the no-cap rule",
-			"Projects/agentm/decisions.md", false, agentm, Standing, "as many"},
+			"projects/agentm/decisions.md", false, agentm, Standing, "as many"},
 		{"a grant is per project, not per space",
-			"Projects/crickets/notes.md", false, agentm, Alignment, "crickets"},
+			"projects/crickets/notes.md", false, agentm, Alignment, "crickets"},
 		{"the projects space itself stays the operator's even under a grant",
-			"Projects", false, agentm, Alignment, "only the operator creates"},
+			"projects", false, agentm, Alignment, "only the operator creates"},
 		{"the operator's personal space always asks",
-			"Personal/Home/recipes/soup.md", false, none, Alignment, "per-task instruction"},
+			"personal/Home/recipes/soup.md", false, none, Alignment, "per-task instruction"},
 		{"a grant never reaches Personal",
-			"Personal/Home/recipes/soup.md", false, agentm, Alignment, "per-task instruction"},
+			"personal/Home/recipes/soup.md", false, agentm, Alignment, "per-task instruction"},
 		{"standards are operator-owned — propose, never apply unasked",
 			"standards/storage-rules.md", true, none, Alignment, "operator-owned"},
 		{"a root file is the operator's",
@@ -57,7 +57,7 @@ func TestAuthorityMatrix(t *testing.T) {
 		{"a lowercase project write without a grant still names the grant phrase",
 			"projects/agentm/x.md", false, none, Alignment, "open the files for project agentm"},
 		{"an unreadable path asks",
-			"Projects/../standards/storage-rules.md", true, agentm, Alignment, "unreadable"},
+			"projects/../standards/storage-rules.md", true, agentm, Alignment, "unreadable"},
 	}
 
 	for _, tc := range cases {
@@ -92,11 +92,11 @@ func TestGrantsNormalize(t *testing.T) {
 // per-file-class judgment, and the decision says both halves' reasons.
 func TestGrantComposesWithFileClassJudgment(t *testing.T) {
 	a := DefaultAuthority()
-	d := a.JudgeSpace("Projects/agentm/wiki/designs/notes.md", false, NewGrants("agentm"))
+	d := a.JudgeSpace("projects/agentm/wiki/designs/notes.md", false, NewGrants("agentm"))
 	if d.Permission != Standing {
 		t.Fatalf("subfolder under a grant = %s (%s); want standing", d.Permission, d.Why)
 	}
-	if d.Space != "Projects" || d.Level != GrantRequired || d.Project != "agentm" {
+	if d.Space != "projects" || d.Level != GrantRequired || d.Project != "agentm" {
 		t.Errorf("composed decision lost its vault-level context: %+v", d)
 	}
 	if !strings.Contains(d.Why, "grant") || !strings.Contains(d.Why, "maintains freely") {

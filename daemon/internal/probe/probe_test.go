@@ -66,14 +66,14 @@ func (f *fakeDaemon) handler(t *testing.T) http.HandlerFunc {
 }
 
 // newProbeHarness builds a runner against a vault whose memory space sits at
-// `Agent/memory` — the live shape, and the one the resolution bug needed. The
+// `agent/memory` — the live shape, and the one the resolution bug needed. The
 // note the fake daemon claims to have written is created on disk, because the
 // probe checks the file exists before it believes any search.
 func newProbeHarness(t *testing.T, capturePath string) (*Runner, *fakeDaemon) {
 	t.Helper()
 	dir := t.TempDir()
 	vault := filepath.Join(dir, "vault")
-	if err := os.MkdirAll(filepath.Join(vault, "Agent", "memory"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(vault, "agent", "memory"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	abs := filepath.Join(vault, filepath.FromSlash(capturePath))
@@ -93,7 +93,7 @@ func newProbeHarness(t *testing.T, capturePath string) (*Runner, *fakeDaemon) {
 		IndexPath: filepath.Join(dir, "index.db"),
 		StateDir:  filepath.Join(dir, "state"),
 		Rules:     holder,
-		Spaces:    map[string]string{"memory": "Agent/memory"},
+		Spaces:    map[string]string{"memory": "agent/memory"},
 	}
 	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
 	if err != nil {
@@ -110,7 +110,7 @@ func newProbeHarness(t *testing.T, capturePath string) (*Runner, *fakeDaemon) {
 
 // The exact path the live daemon wrote on 2026-09-07. Findable, on disk, and
 // one directory deeper than it belongs.
-const misrootedPath = "Agent/memory/memory/semantic/agentm-self-probe-2026-09-07t08-09-04z.md"
+const misrootedPath = "agent/memory/memory/semantic/agentm-self-probe-2026-09-07t08-09-04z.md"
 
 func TestProbeFailsWhenTheCaptureLandsOutsideItsClass(t *testing.T) {
 	r, fake := newProbeHarness(t, misrootedPath)
@@ -126,7 +126,7 @@ func TestProbeFailsWhenTheCaptureLandsOutsideItsClass(t *testing.T) {
 	if !strings.Contains(st.Detail, misrootedPath) {
 		t.Errorf("the failure does not name the path it objected to: %q", st.Detail)
 	}
-	if !strings.Contains(st.Detail, "Agent/memory/semantic/") {
+	if !strings.Contains(st.Detail, "agent/memory/semantic/") {
 		t.Errorf("the failure does not say where the note belonged: %q", st.Detail)
 	}
 	// Placement is checked before the sideways questions: a note in the wrong
@@ -139,7 +139,7 @@ func TestProbeFailsWhenTheCaptureLandsOutsideItsClass(t *testing.T) {
 }
 
 func TestProbeAcceptsTheCaptureInItsClass(t *testing.T) {
-	const good = "Agent/memory/semantic/agentm-self-probe-2026-09-07t08-09-04z.md"
+	const good = "agent/memory/semantic/agentm-self-probe-2026-09-07t08-09-04z.md"
 	r, _ := newProbeHarness(t, good)
 
 	st, err := r.Run(time.Now())
@@ -158,14 +158,14 @@ func TestProbeAcceptsTheCaptureInItsClass(t *testing.T) {
 // routing change moves the probe's expectation with it instead of turning the
 // probe into a second, staler copy of the routing table.
 func TestClassPrefixTracksTheContractsRouting(t *testing.T) {
-	r, _ := newProbeHarness(t, "Agent/memory/semantic/x.md")
+	r, _ := newProbeHarness(t, "agent/memory/semantic/x.md")
 
 	got, err := r.classPrefix()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "Agent/memory/semantic/" {
-		t.Fatalf("classPrefix() = %q, want Agent/memory/semantic/", got)
+	if got != "agent/memory/semantic/" {
+		t.Fatalf("classPrefix() = %q, want agent/memory/semantic/", got)
 	}
 
 	contract, err := r.cfg.Rules.Get()

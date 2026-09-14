@@ -38,15 +38,15 @@ func TestOpenWithSidecarFallsBackToTheMemoryRoot(t *testing.T) {
 	dir := t.TempDir()
 	vault := filepath.Join(dir, "vault")
 	engine := filepath.Join(dir, "engine")
-	writeLifecycle(t, filepath.Join(vault, "Agent"), map[string]string{"legacy-slug": "2026-09-01"})
+	writeLifecycle(t, filepath.Join(vault, "agent"), map[string]string{"legacy-slug": "2026-09-01"})
 
-	idx, err := OpenWithSidecar(filepath.Join(dir, "index.db"), vault, "Agent", engine, true)
+	idx, err := OpenWithSidecar(filepath.Join(dir, "index.db"), vault, "agent", engine, true)
 	if err != nil {
 		t.Fatalf("OpenWithSidecar: %v", err)
 	}
 	defer idx.Close()
 	log := idx.accessLog()
-	if got := log.SidecarPath(); got != filepath.Join(vault, "Agent", ".lifecycle.json") {
+	if got := log.SidecarPath(); got != filepath.Join(vault, "agent", ".lifecycle.json") {
 		t.Fatalf("sidecar read from %s, want the memory root while the engine dir holds none", got)
 	}
 	if _, ok := log.LastAccess("legacy-slug"); !ok {

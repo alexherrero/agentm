@@ -6,13 +6,13 @@ import "testing"
 // and ranks it at x0.30 by its path segment, penalized rather than excluded.
 func TestAProjectsCompletedRecordEarnsTheClass(t *testing.T) {
 	cases := map[string]bool{
-		"Projects/agentm/completed/research-note.md":     true,
+		"projects/agentm/completed/research-note.md":     true,
 		"projects/agentm/completed/deep/nested/brief.md": true,
-		"Projects/agentm/Completed/brief.md":             true,
-		"Projects/agentm/decisions/a-ruling.md":          false,
-		"Projects/agentm/completed.md":                   false,
-		"Projects/completed/x.md":                        false,
-		"Agent/memory/semantic/completed/x.md":           false,
+		"projects/agentm/Completed/brief.md":             true,
+		"projects/agentm/decisions/a-ruling.md":          false,
+		"projects/agentm/completed.md":                   false,
+		"projects/completed/x.md":                        false,
+		"agent/memory/semantic/completed/x.md":           false,
 	}
 	for rel, want := range cases {
 		got := false

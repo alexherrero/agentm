@@ -70,7 +70,7 @@ func TestLifecycleClasses(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		n := Parse("Agent/memory/semantic/n.md", c.raw, time.Now())
+		n := Parse("agent/memory/semantic/n.md", c.raw, time.Now())
 		got := append([]string(nil), n.Flags...)
 		want := append([]string(nil), c.want...)
 		sort.Strings(got)

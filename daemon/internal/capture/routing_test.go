@@ -58,9 +58,9 @@ func TestCaptureFilesAnUntypedNoteAtTheDefaultClassAtLowConfidence(t *testing.T)
 
 // The contract's routing values are written from three vantage points and all
 // three have to land in the same class directory inside the space. The middle
-// one is the case that shipped broken: the live space is `Agent/memory` and the
+// one is the case that shipped broken: the live space is `agent/memory` and the
 // live routing value is `memory/procedural`, relative to the memory root, and
-// joining it onto the space built `Agent/memory/memory/procedural` — a second
+// joining it onto the space built `agent/memory/memory/procedural` — a second
 // class tree the index walked as readily as the real one, which is why the
 // daily round-trip probe passed for eight weeks from inside it.
 func TestClassDirResolvesEveryRoutingVantagePointIntoTheSpace(t *testing.T) {
@@ -71,7 +71,7 @@ func TestClassDirResolvesEveryRoutingVantagePointIntoTheSpace(t *testing.T) {
 	}
 	for _, c := range []struct{ name, space, want string }{
 		{"space names the value's own root", "memory", "memory/procedural"},
-		{"relative to the memory root (the live shape)", "Agent/memory", "Agent/memory/procedural"},
+		{"relative to the memory root (the live shape)", "agent/memory", "agent/memory/procedural"},
 		{"nested memory root", "a/b/memory", "a/b/memory/procedural"},
 	} {
 		if got := classDir(contract, nil, "workflow", c.space); got != c.want {
@@ -81,7 +81,7 @@ func TestClassDirResolvesEveryRoutingVantagePointIntoTheSpace(t *testing.T) {
 	// Whatever the vantage point, the answer is inside the space. This is the
 	// invariant the bug broke: a routing value must not be able to place a note
 	// in a directory the space does not contain.
-	for _, space := range []string{"memory", "Agent/memory", "a/b/memory"} {
+	for _, space := range []string{"memory", "agent/memory", "a/b/memory"} {
 		got := classDir(contract, nil, "workflow", space)
 		if got != space && !strings.HasPrefix(got, space+"/") {
 			t.Errorf("space %q: routed outside the space, to %q", space, got)
@@ -100,7 +100,7 @@ func TestClassDirResolvesEveryRoutingVantagePointIntoTheSpace(t *testing.T) {
 
 // A space-relative routing value still resolves, and still lands in the space.
 // It is the form the memory-root branch must not swallow: read from the memory
-// root, "procedural" would resolve to `Agent/procedural` — outside the space,
+// root, "procedural" would resolve to `agent/procedural` — outside the space,
 // and the reason that branch checks its answer before returning it.
 //
 // The contract is written to a vault and read back through the holder the
@@ -134,7 +134,7 @@ func TestClassDirKeepsSpaceRelativeRoutingInsideTheSpace(t *testing.T) {
 	}
 	for _, c := range []struct{ space, want string }{
 		{"memory", "memory/procedural"},
-		{"Agent/memory", "Agent/memory/procedural"},
+		{"agent/memory", "agent/memory/procedural"},
 	} {
 		if got := classDir(contract, nil, "workflow", c.space); got != c.want {
 			t.Errorf("classDir(workflow, %q) = %q, want %q", c.space, got, c.want)

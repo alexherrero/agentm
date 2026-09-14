@@ -25,6 +25,7 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | [Run the memory-root trims migration](Run-The-Memory-Root-Trims-Migration) | Move an existing vault onto the post-plan-05 shape — `standards/`, `Projects/agentm/`, and the engine's own files out of the vault. |
 | [Run the card backfill](Run-The-Card-Backfill) | Bring every surviving note in the class directories to the card's shape — locked field order, required fields stamped, retired fields dropped, counter slugs renamed. |
 | [Run the maps and root notes migration](Run-The-Maps-And-Root-Notes-Migration) | Retire `Home.md` and `Filing.md` for the generated root map, collapse numbered map pages into pages that paginate in place, and map each calendar year. |
+| [Run the root casing migration](Run-The-Root-Casing-Migration) | Rename the four vault root spaces to their lowercase form — `agent`, `calendar`, `personal`, `projects` beside `standards` — to match the code that already spells them that way. |
 
 ## Use it anywhere
 

@@ -265,19 +265,19 @@ class TheSearchMatchesTheHook(unittest.TestCase):
         # `_inbox` paths, and would now return an empty list. The hook asks for
         # 4, drops the two, and still fills both slots.
         patcher, _seen = self._daemon_returning([
-            "Agent/memory/_inbox/noise-one.md",
-            "Agent/memory/_inbox/noise-two.md",
-            "Agent/memory/2026/08/real-one.md",
-            "Agent/memory/2026/08/real-two.md",
+            "agent/memory/_inbox/noise-one.md",
+            "agent/memory/_inbox/noise-two.md",
+            "agent/memory/2026/08/real-one.md",
+            "agent/memory/2026/08/real-two.md",
         ])
         with patcher:
             got = ev.search("agentmd", "what did we decide about the ranker", k=2)
-        self.assertEqual(got, ["Agent/memory/2026/08/real-one.md",
-                               "Agent/memory/2026/08/real-two.md"],
+        self.assertEqual(got, ["agent/memory/2026/08/real-one.md",
+                               "agent/memory/2026/08/real-two.md"],
                          "an inadmissible path was kept, or its slot was lost")
 
     def test_the_overfetch_multiplier_is_the_hook_s(self):
-        patcher, seen = self._daemon_returning(["Agent/memory/2026/08/a.md"])
+        patcher, seen = self._daemon_returning(["agent/memory/2026/08/a.md"])
         with patcher:
             ev.search("agentmd", "what did we decide about the ranker", k=5)
         argv = seen["argv"]
@@ -286,7 +286,7 @@ class TheSearchMatchesTheHook(unittest.TestCase):
 
     def test_the_result_is_still_truncated_to_k(self):
         patcher, _ = self._daemon_returning(
-            [f"Agent/memory/2026/08/n{i}.md" for i in range(10)])
+            [f"agent/memory/2026/08/n{i}.md" for i in range(10)])
         with patcher:
             got = ev.search("agentmd", "what did we decide about the ranker", k=3)
         self.assertEqual(len(got), 3, "over-fetch leaked past k into the result")
@@ -298,7 +298,7 @@ class TheSearchMatchesTheHook(unittest.TestCase):
         bound = recall._extract_temporal_bound(question)
         if bound is None:
             self.skipTest("this phrasing carries no bound for the extractor")
-        patcher, seen = self._daemon_returning(["Agent/memory/2026/07/a.md"])
+        patcher, seen = self._daemon_returning(["agent/memory/2026/07/a.md"])
         with patcher:
             ev.search("agentmd", question, k=5)
         argv = seen["argv"]
@@ -308,7 +308,7 @@ class TheSearchMatchesTheHook(unittest.TestCase):
     def test_an_undated_question_carries_no_temporal_bound(self):
         # The guard on the rule above: passing a bound unconditionally would
         # silently narrow every other question in the set.
-        patcher, seen = self._daemon_returning(["Agent/memory/2026/08/a.md"])
+        patcher, seen = self._daemon_returning(["agent/memory/2026/08/a.md"])
         with patcher:
             ev.search("agentmd", "how does the ranker weight titles", k=5)
         argv = seen["argv"]
@@ -339,7 +339,7 @@ class TheInstrumentControls(unittest.TestCase):
         # `expected_note_paths` parses every entry to an empty list, and a
         # "clean 0 of N" ships as a finding. Twice, in this arc.
         with self._gold([{"id": "pp99", "question": "q", "stratum": "pure-paraphrase",
-                          "expected": ["Agent/memory/a.md"]}]):
+                          "expected": ["agent/memory/a.md"]}]):
             with self.assertRaises(ev.Control) as caught:
                 ev.load_gold()
         self.assertIn("pp99", str(caught.exception))
@@ -347,7 +347,7 @@ class TheInstrumentControls(unittest.TestCase):
 
     def test_a_prefix_only_entry_gets_the_specific_message(self):
         with self._gold([{"id": "pp09", "question": "q", "stratum": "pure-paraphrase",
-                          "expected_note_prefixes": ["Agent/external/x/"]}]):
+                          "expected_note_prefixes": ["agent/external/x/"]}]):
             with self.assertRaises(ev.Control) as caught:
                 ev.load_gold()
         self.assertIn("expected_note_prefixes", str(caught.exception))
@@ -371,7 +371,7 @@ class TheInstrumentControls(unittest.TestCase):
         self.assertIn("canary", str(caught.exception))
 
     def test_the_wrong_note_at_rank_1_fails_the_canary(self):
-        with self._daemon([{"path": "Agent/memory/2026/08/not-the-canary.md",
+        with self._daemon([{"path": "agent/memory/2026/08/not-the-canary.md",
                             "score": 9.9}]):
             with self.assertRaises(ev.Control):
                 ev.check_canary("agentmd")
@@ -404,10 +404,10 @@ class TheInstrumentControls(unittest.TestCase):
     def test_flat_scores_abort_instead_of_scoring(self):
         entries = [{"id": f"q{i}", "question": f"question number {i} here",
                     "stratum": "pure-paraphrase",
-                    "expected_note_paths": ["Agent/memory/a.md"]}
+                    "expected_note_paths": ["agent/memory/a.md"]}
                    for i in range(3)]
-        rows = [{"path": "Agent/memory/a.md", "score": 7.0},
-                {"path": "Agent/memory/b.md", "score": 7.0}]
+        rows = [{"path": "agent/memory/a.md", "score": 7.0},
+                {"path": "agent/memory/b.md", "score": 7.0}]
         with self._daemon(rows):
             with self.assertRaises(ev.Control) as caught:
                 ev.score("agentmd", entries, 5)
@@ -416,9 +416,9 @@ class TheInstrumentControls(unittest.TestCase):
     def test_distinct_scores_score_normally(self):
         entries = [{"id": "q0", "question": "question zero here now",
                     "stratum": "pure-paraphrase",
-                    "expected_note_paths": ["Agent/memory/a.md"]}]
-        rows = [{"path": "Agent/memory/a.md", "score": 7.0},
-                {"path": "Agent/memory/b.md", "score": 3.2}]
+                    "expected_note_paths": ["agent/memory/a.md"]}]
+        rows = [{"path": "agent/memory/a.md", "score": 7.0},
+                {"path": "agent/memory/b.md", "score": 3.2}]
         with self._daemon(rows):
             got = ev.score("agentmd", entries, 5)
         self.assertEqual(got["hits"], 1)
@@ -503,9 +503,9 @@ class RAtOne(unittest.TestCase):
     def test_a_rank_2_hit_counts_for_r5_and_not_r1(self):
         entries = [{"id": "q0", "question": "a question with words here",
                     "stratum": "pure-paraphrase",
-                    "expected_note_paths": ["Agent/memory/target.md"]}]
-        rows = [{"path": "Agent/memory/decoy.md", "score": 9.0},
-                {"path": "Agent/memory/target.md", "score": 5.0}]
+                    "expected_note_paths": ["agent/memory/target.md"]}]
+        rows = [{"path": "agent/memory/decoy.md", "score": 9.0},
+                {"path": "agent/memory/target.md", "score": 5.0}]
         with self._daemon(rows):
             got = ev.score("agentmd", entries, 5)
         self.assertEqual(got["hits"], 1)
@@ -516,9 +516,9 @@ class RAtOne(unittest.TestCase):
     def test_a_rank_1_hit_counts_for_both(self):
         entries = [{"id": "q0", "question": "a question with words here",
                     "stratum": "pure-paraphrase",
-                    "expected_note_paths": ["Agent/memory/target.md"]}]
-        rows = [{"path": "Agent/memory/target.md", "score": 9.0},
-                {"path": "Agent/memory/decoy.md", "score": 5.0}]
+                    "expected_note_paths": ["agent/memory/target.md"]}]
+        rows = [{"path": "agent/memory/target.md", "score": 9.0},
+                {"path": "agent/memory/decoy.md", "score": 5.0}]
         with self._daemon(rows):
             got = ev.score("agentmd", entries, 5)
         self.assertEqual((got["hits"], got["hits_at_1"]), (1, 1))
@@ -542,7 +542,7 @@ class TheHardNegatives(unittest.TestCase):
              "stratum": "negative", "expected_note_paths": []},
             {"id": "ngh01", "question": "a hard negative question here",
              "stratum": "negative", "hardness": "near-miss",
-             "expected_note_paths": ["Agent/memory/banned.md"]},
+             "expected_note_paths": ["agent/memory/banned.md"]},
         ]
 
     def _daemon(self, rows):
@@ -554,8 +554,8 @@ class TheHardNegatives(unittest.TestCase):
         return mock.patch.object(subprocess, "run", side_effect=fake_run)
 
     def test_a_served_banned_note_counts_as_a_hard_fp(self):
-        rows = [{"path": "Agent/memory/banned.md", "score": 5.0},
-                {"path": "Agent/memory/other.md", "score": 2.0}]
+        rows = [{"path": "agent/memory/banned.md", "score": 5.0},
+                {"path": "agent/memory/other.md", "score": 2.0}]
         with self._daemon(rows):
             got = ev.score("agentmd", self._entries(), 5)
         self.assertEqual(got["negatives_hard"], 1)
@@ -567,8 +567,8 @@ class TheHardNegatives(unittest.TestCase):
     def test_a_withheld_banned_note_is_a_clean_hard_negative(self):
         # The future-floor direction: the day something knows when it doesn't
         # know, this is the case that lets the dial move down.
-        rows = [{"path": "Agent/memory/other.md", "score": 5.0},
-                {"path": "Agent/memory/third.md", "score": 2.0}]
+        rows = [{"path": "agent/memory/other.md", "score": 5.0},
+                {"path": "agent/memory/third.md", "score": 2.0}]
         with self._daemon(rows):
             got = ev.score("agentmd", self._entries(), 5)
         self.assertEqual(got["false_positives_hard"], 0)
@@ -711,7 +711,7 @@ class TheCorpusFingerprint(unittest.TestCase):
         # the task-3 controls, and a fake that returns nothing is a dead
         # instrument by the eval's own (correct) reading.
         search = {"results": [{"path": ev.CANARY_PATH, "score": 9.9},
-                              {"path": "Agent/memory/other.md", "score": 3.3}]}
+                              {"path": "agent/memory/other.md", "score": 3.3}]}
 
         def fake_run(argv, *a, **kw):
             payload = status if "status" in argv else search
@@ -739,7 +739,7 @@ class TheCorpusFingerprint(unittest.TestCase):
                   "index_detail": {"documents": 4321}}
 
         search = {"results": [{"path": ev.CANARY_PATH, "score": 9.9},
-                              {"path": "Agent/memory/other.md", "score": 3.3}]}
+                              {"path": "agent/memory/other.md", "score": 3.3}]}
 
         def fake_run(argv, *a, **kw):
             payload = status if "status" in argv else search

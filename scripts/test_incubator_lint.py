@@ -75,7 +75,7 @@ group: _idea-incubator/doom-llm-npcs
 class _Vault:
     """A scratch vault with the ledger at the ROOT, matching the live layout.
 
-    The vault is nested one level down (`<tmp>/Obsidian/Agent`) exactly as the
+    The vault is nested one level down (`<tmp>/Obsidian/agent`) exactly as the
     real one is, so that `vault.parent` — where Ideas.md resolves to — stays
     inside the temp dir. A flat `<tmp>` vault would resolve Ideas.md to the
     shared system temp dir, leaking one test's Ideas.md into every other.
@@ -87,7 +87,7 @@ class _Vault:
     def __enter__(self) -> Path:
         self._td = tempfile.TemporaryDirectory()
         self._prev = os.environ.pop("IDEAS_SURFACE_PATH", None)
-        self.root = Path(self._td.name) / "Obsidian" / "Agent"
+        self.root = Path(self._td.name) / "Obsidian" / "agent"
         (self.root / "memory").mkdir(parents=True)
         (self.root / "desk/projects").mkdir(parents=True)
         # The real layout: the memory vault sits inside the Obsidian vault, and

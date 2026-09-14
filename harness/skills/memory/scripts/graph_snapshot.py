@@ -88,7 +88,7 @@ def _local_index_dir(vault: Path) -> Path:
 
 
 def _vault_rel(path: Path, vault: Path) -> str:
-    """Vault-relative key; a root-space path (the `Projects/` sibling of the
+    """Vault-relative key; a root-space path (the `projects/` sibling of the
     memory root) is keyed relative to the vault root instead."""
     try:
         rel = path.relative_to(vault)
@@ -98,22 +98,22 @@ def _vault_rel(path: Path, vault: Path) -> str:
 
 
 def _root_projects_dir(vault):
-    """The vault-root `Projects/` space, discovered never conjured (filing-v2
-    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    """The vault-root `projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/projects`. Nested layout — the memory
     root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
     parent and none at the memory root itself: the sibling
-    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    `<vault-root>/projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
     the vault's). None when no root space exists. Both rungs match the
     directory's exact case."""
     vault = Path(vault)
-    flat = vault / "Projects"
+    flat = vault / "projects"
     if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
-        sibling = parent / "Projects"
+        sibling = parent / "projects"
         if _is_dir_exact(sibling):
             return sibling
     return None
@@ -121,7 +121,7 @@ def _root_projects_dir(vault):
 
 def _is_dir_exact(path):
     """`path` is a directory whose name matches exactly — on a case-insensitive
-    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    filesystem a directory still spelled the retired way, `Projects` with the capital, would otherwise answer for it, and a vault the casing rename has not reached would read as renamed."""
     try:
         return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
     except OSError:
@@ -199,7 +199,7 @@ def _extract_meta_from_file(file_path: Path) -> dict:
     # The slug is the first segment AFTER the projects space, on either
     # generation. (The previous fixed index returned the literal "projects"
     # for `desk/projects/<slug>` — the same miss recall.py fixed earlier.)
-    for prefix in ("desk/projects/", "Projects/", "projects/"):
+    for prefix in ("desk/projects/", "projects/", "projects/"):
         if group_value and group_value.startswith(prefix):
             slug = group_value[len(prefix):].split("/", 1)[0]
             meta["project"] = slug or None
@@ -260,7 +260,7 @@ def _walk_vault_paths(vault: Path) -> list[str]:
     private = vault / "memory"
     if private.is_dir():
         walk_roots.append(private)
-    # Filing-v2 2b: the vault-root `Projects/` generation is a SIBLING of the
+    # Filing-v2 2b: the vault-root `projects/` generation is a SIBLING of the
     # memory root; during the merge window both spaces may hold projects.
     for projects in (_vault_projects_dir(vault), _root_projects_dir(vault)):
         if projects is not None and _is_dir_exact(projects) and projects not in walk_roots:
@@ -282,7 +282,7 @@ def _walk_vault_paths(vault: Path) -> list[str]:
 
 def _abs_path(vault: Path, rel_path: str) -> Path:
     """The inverse of `_vault_rel`: a key the walk made relative to the
-    memory root joins onto it; a root-space key (the `Projects/` sibling of a
+    memory root joins onto it; a root-space key (the `projects/` sibling of a
     nested memory root, filing-v2 2b) joins onto the vault root instead.
     Joining every key onto the memory root sent the sibling's notes to a
     path that does not exist and crashed the nightly cycle in the lint

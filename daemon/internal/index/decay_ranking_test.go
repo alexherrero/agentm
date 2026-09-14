@@ -79,7 +79,7 @@ func TestDecayIsOffUnlessAskedFor(t *testing.T) {
 	idx := openScratch(t)
 	old := time.Now().AddDate(-4, 0, 0).Format("2006-01-02")
 	body := "The staging gate runs before the deployment finishes.\n"
-	indexDated(t, idx, "Agent/memory/semantic/stale.md", "Gate", old, body)
+	indexDated(t, idx, "agent/memory/semantic/stale.md", "Gate", old, body)
 
 	out, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
 	if err != nil {
@@ -101,8 +101,8 @@ func TestAStaleNoteRanksBelowAFreshOneWithTheSameWords(t *testing.T) {
 	idx := openScratchDecay(t)
 	body := "The staging gate runs before the deployment finishes.\n"
 	old := time.Now().AddDate(-4, 0, 0).Format("2006-01-02")
-	indexDated(t, idx, "Agent/memory/semantic/stale.md", "Gate", old, body)
-	indexDated(t, idx, "Agent/memory/semantic/fresh.md", "Gate",
+	indexDated(t, idx, "agent/memory/semantic/stale.md", "Gate", old, body)
+	indexDated(t, idx, "agent/memory/semantic/fresh.md", "Gate",
 		time.Now().Format("2006-01-02"), body)
 
 	out, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
@@ -131,9 +131,9 @@ func TestAStaleNoteRanksBelowAFreshOneWithTheSameWords(t *testing.T) {
 func TestAStaleNoteIsStillTheAnswerWhenItIsTheOnlyOne(t *testing.T) {
 	idx := openScratchDecay(t)
 	old := time.Now().AddDate(-6, 0, 0).Format("2006-01-02")
-	indexDated(t, idx, "Agent/memory/semantic/ancient.md", "Turkey", old,
+	indexDated(t, idx, "agent/memory/semantic/ancient.md", "Turkey", old,
 		"Brine the turkey overnight before roasting.\n")
-	indexDated(t, idx, "Agent/memory/semantic/other.md", "Other",
+	indexDated(t, idx, "agent/memory/semantic/other.md", "Other",
 		time.Now().Format("2006-01-02"), "Filing is a frontmatter edit.\n")
 
 	out, err := idx.Search(Query{Text: "brine turkey roasting", K: 5})
@@ -157,7 +157,7 @@ func TestAStaleNoteIsStillTheAnswerWhenItIsTheOnlyOne(t *testing.T) {
 // space the contract does not govern is exempt wholesale.
 func TestADurableNoteDoesNotAge(t *testing.T) {
 	before := note.DecayExemptSpaces()
-	note.SetDecayExemptSpaces([]string{"Personal"})
+	note.SetDecayExemptSpaces([]string{"personal"})
 	t.Cleanup(func() { note.SetDecayExemptSpaces(before) })
 
 	old := time.Now().AddDate(-4, 0, 0).Format("2006-01-02")
@@ -166,10 +166,10 @@ func TestADurableNoteDoesNotAge(t *testing.T) {
 		rel   string
 		extra string
 	}{
-		{"kind", "Agent/memory/episodic/incident.md", "kind: failure-incident\n"},
-		{"lifecycle_tier", "Agent/memory/semantic/tagged.md", "lifecycle_tier: durable\n"},
-		{"decisions/ segment", "Agent/desk/projects/x/decisions/adr.md", ""},
-		{"contract-exempt space", "Personal/Church/lesson.md", ""},
+		{"kind", "agent/memory/episodic/incident.md", "kind: failure-incident\n"},
+		{"lifecycle_tier", "agent/memory/semantic/tagged.md", "lifecycle_tier: durable\n"},
+		{"decisions/ segment", "agent/desk/projects/x/decisions/adr.md", ""},
+		{"contract-exempt space", "personal/Church/lesson.md", ""},
 	} {
 		t.Run(tc.route, func(t *testing.T) {
 			idx := openScratchDecay(t)
@@ -209,8 +209,8 @@ func TestARecordedRecallOutranksTheFileStamp(t *testing.T) {
 	writeLifecycle(t, idx.vault, map[string]string{"recalled": recent})
 
 	body := "The staging gate runs before the deployment finishes.\n"
-	indexDated(t, idx, "Agent/memory/semantic/recalled.md", "Gate", old, body)
-	indexDated(t, idx, "Agent/memory/semantic/forgotten.md", "Gate", old, body)
+	indexDated(t, idx, "agent/memory/semantic/recalled.md", "Gate", old, body)
+	indexDated(t, idx, "agent/memory/semantic/forgotten.md", "Gate", old, body)
 
 	out, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
 	if err != nil {
@@ -233,21 +233,21 @@ func TestARecordedRecallOutranksTheFileStamp(t *testing.T) {
 func TestTheSidecarIsReadFromTheMemoryRootNotTheVaultRoot(t *testing.T) {
 	dir := t.TempDir()
 	vault := filepath.Join(dir, "vault")
-	idx, err := Open(filepath.Join(dir, "index.db"), vault, "Agent", true)
+	idx, err := Open(filepath.Join(dir, "index.db"), vault, "agent", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { idx.Close() })
 
 	// Planted where the shipped layout puts it.
-	writeLifecycle(t, filepath.Join(vault, "Agent"), map[string]string{
+	writeLifecycle(t, filepath.Join(vault, "agent"), map[string]string{
 		"recalled": time.Now().AddDate(0, -1, 0).Format("2006-01-02"),
 	})
 
 	old := time.Now().AddDate(-4, 0, 0).Format("2006-01-02")
 	body := "The staging gate runs before the deployment finishes.\n"
-	indexDated(t, idx, "Agent/memory/semantic/recalled.md", "Gate", old, body)
-	indexDated(t, idx, "Agent/memory/semantic/forgotten.md", "Gate", old, body)
+	indexDated(t, idx, "agent/memory/semantic/recalled.md", "Gate", old, body)
+	indexDated(t, idx, "agent/memory/semantic/forgotten.md", "Gate", old, body)
 
 	out, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
 	if err != nil {

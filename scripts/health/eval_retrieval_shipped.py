@@ -64,19 +64,19 @@ GOLD_SET = _HERE / "fixtures" / "week1-gold" / "gold-set-v3.json"
 EXPECTED_FIELD = "expected_note_paths"
 
 # Filing-v2 2b (2026-09-03): the project space moved from the memory root's
-# desk/projects/ to the vault-root Projects/ (and desk/labelling into
-# Projects/agentm/labelling/). The gold set is frozen evidence and keeps its
+# desk/projects/ to the vault-root projects/ (and desk/labelling into
+# projects/agentm/labelling/). The gold set is frozen evidence and keeps its
 # pinned paths; the move is corrected here at score time, the same way the
 # archive moves are corrected in eval_v6_retrieval. Paths on both sides are
 # vault-root-relative, so this is a prefix swap.
 _MERGE_REMAPS = (
-    ("Agent/desk/labelling/", "Projects/agentm/labelling/"),
-    ("Agent/desk/projects/", "Projects/"),
+    ("Agent/desk/labelling/", "Projects/agentm/labelling/"),  # root-casing: the gold set's frozen spelling on the old side
+    ("Agent/desk/projects/", "Projects/"),  # root-casing: the gold set's frozen spelling on the old side
     # Filing-v2 part 3 (2026-09-03): the operator's whole-tree moves, which the
     # migration's disposition reports do not record (they were not routes).
-    ("Agent/external/primos/", "Projects/primos/"),
-    ("Agent/_vault-archive/ag-design-history/", "Projects/agentm/_harness/archive/designs/ag-design-history/"),
-    ("Agent/memory/_inbox/20260711-digest-daily.md", "Agent/diagnostics/digests/20260711-digest-daily.md"),
+    ("Agent/external/primos/", "Projects/primos/"),  # root-casing: the gold set's frozen spelling on the old side
+    ("Agent/_vault-archive/ag-design-history/", "Projects/agentm/_harness/archive/designs/ag-design-history/"),  # root-casing: the gold set's frozen spelling on the old side
+    ("Agent/memory/_inbox/20260711-digest-daily.md", "Agent/diagnostics/digests/20260711-digest-daily.md"),  # root-casing: the gold set's frozen spelling on the old side
 )
 
 
@@ -94,9 +94,9 @@ def _remap_merged(path: str) -> str:
 # holds the destination; with no vault (CI) the eval stays pre-trims. Keyed
 # on the paths as the 2b remap leaves them.
 _TRIMS_REMAPS = (
-    ("Projects/_global/wiki-style/", "standards/voice/"),
-    ("Agent/memory/skill-discovery-sources.md", "Projects/agentm/skill-discovery-sources.md"),
-    ("Agent/memory/trusted-sources.md", "Projects/agentm/trusted-sources.md"),
+    ("Projects/_global/wiki-style/", "standards/voice/"),  # root-casing: the gold set's frozen spelling on the old side
+    ("Agent/memory/skill-discovery-sources.md", "Projects/agentm/skill-discovery-sources.md"),  # root-casing: the gold set's frozen spelling on the old side
+    ("Agent/memory/trusted-sources.md", "Projects/agentm/trusted-sources.md"),  # root-casing: the gold set's frozen spelling on the old side
 )
 _VAULT_ROOT: "Path | None | bool" = False  # False = not resolved yet
 
@@ -133,9 +133,25 @@ def _remap_trims(path: str, vault_root: "Path | None | bool" = False) -> str:
     for old, new in _TRIMS_REMAPS:
         if path.startswith(old):
             candidate = new + path[len(old):]
-            if (Path(root) / candidate).exists():
+            # The vault on disk spells its roots lowercase (the root casing);
+            # the remap's own spelling is the gold set's, folded at the end.
+            if (Path(root) / _remap_casing(candidate)).exists():
                 return candidate
             return path
+    return path
+
+
+# The root casing (agentm-vault plan 08, 2026-09-14): the four root spaces are
+# lowercase. The gold set is frozen and keeps `agent/...`; the daemon returns
+# what is on disk. The first segment is folded here, at score time, after the
+# other corrections, so a pinned path compares with the path the vault has.
+_ROOT_CASINGS = {name: name.lower() for name in ("Agent", "Calendar", "Personal", "Projects")}  # root-casing: the frozen spellings
+
+
+def _remap_casing(path: str) -> str:
+    first, sep, rest = path.partition("/")
+    if sep and first in _ROOT_CASINGS:
+        return _ROOT_CASINGS[first] + sep + rest
     return path
 
 
@@ -158,7 +174,7 @@ def _disposition_map(memory_root: "Path | None") -> dict:
     """`{pre-migration memory-root-relative path: destination}` from every
     run's dispositions.csv under the memory root, later runs overriding
     earlier. Keys are spelled as the reports spell them (`memory/...`); the
-    vault-relative prefix the daemon adds (`Agent/`) is matched by suffix in
+    vault-relative prefix the daemon adds (`agent/`) is matched by suffix in
     `_migrated`, so nothing here has to know how the vault is laid out."""
     table: dict = {}
     if memory_root is None:
@@ -286,7 +302,7 @@ class Control(Exception):
 # dead or detached, which is the state that produced the arc's "clean 0 of 5"
 # false null. Checked before any question is scored.
 CANARY_QUERY = "canary-eval-liveness-q7g3xz"
-CANARY_PATH = "Agent/memory/2026/08/eval-canary.md"
+CANARY_PATH = "agent/memory/2026/08/eval-canary.md"
 
 
 class Refused(Exception):
@@ -511,7 +527,7 @@ def score(binary: str, entries: list, k: int) -> dict:
     all_scores = []
     for e in entries:
         question = e["question"]
-        expected = [_migrated(_remap_trims(_remap_merged(p))) for p in (e.get(EXPECTED_FIELD) or []) if p]
+        expected = [_remap_casing(_migrated(_remap_trims(_remap_merged(p)))) for p in (e.get(EXPECTED_FIELD) or []) if p]
         rows = _search_rows(binary, question, k)
         got = [path for path, _score in rows]
         all_scores.extend(s for _path, s in rows if s is not None)

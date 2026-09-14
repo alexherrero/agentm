@@ -17,6 +17,7 @@
 - [Back the vault with Google Drive](Back-The-Vault-With-Drive)
 - [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault)
 - [Run the memory-root trims migration](Run-The-Memory-Root-Trims-Migration)
+- [Run the root casing migration](Run-The-Root-Casing-Migration)
 - [Run the card backfill](Run-The-Card-Backfill)
 - [Run the maps and root notes migration](Run-The-Maps-And-Root-Notes-Migration)
 - [Persist a morning report](Persist-A-Morning-Report)

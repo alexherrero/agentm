@@ -28,30 +28,30 @@ from kind_registry import is_kebab, is_known, REQUIRED_UNIVERSAL_FIELDS  # noqa:
 # otherwise false-positive against.
 _DEFAULT_SCOPE_DIRS = ("memory", "desk/projects")
 
-# Filing-v2 2b: the vault-root `Projects/` generation is a SIBLING of the memory
+# Filing-v2 2b: the vault-root `projects/` generation is a SIBLING of the memory
 # root; when the scope names the project space, the root sibling joins the walk
 # (union across the merge window). Root-space entries are keyed relative to
 # the vault root.
-_ROOT_PROJECTS_DIRNAME = "Projects"
+_ROOT_PROJECTS_DIRNAME = "projects"
 
 
 def _root_projects_dir(vault):
-    """The vault-root `Projects/` space, discovered never conjured (filing-v2
-    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    """The vault-root `projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/projects`. Nested layout — the memory
     root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
     parent and none at the memory root itself: the sibling
-    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    `<vault-root>/projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
     the vault's). None when no root space exists. Both rungs match the
     directory's exact case."""
     vault = Path(vault)
-    flat = vault / "Projects"
+    flat = vault / "projects"
     if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
-        sibling = parent / "Projects"
+        sibling = parent / "projects"
         if _is_dir_exact(sibling):
             return sibling
     return None
@@ -59,7 +59,7 @@ def _root_projects_dir(vault):
 
 def _is_dir_exact(path):
     """`path` is a directory whose name matches exactly — on a case-insensitive
-    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    filesystem a directory still spelled the retired way, `Projects` with the capital, would otherwise answer for it, and a vault the casing rename has not reached would read as renamed."""
     try:
         return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
     except OSError:
@@ -167,12 +167,12 @@ def _is_contract_exempt(path: Path, vault: Path | None = None) -> bool:
     A space is a *top-level* directory, so the check needs the path as the vault
     sees it. Without a vault to relativize against there is no top level, and the
     first version of this got that wrong in a way a test caught: it tested every
-    path segment, which made `Agent/desk/projects/x/personal/notes.md` exempt
+    path segment, which made `agent/desk/projects/x/personal/notes.md` exempt
     because one of its directories happened to be called `personal`. A space is a
     space, not a word.
 
     Falls back to `$MEMORY_ROOT` and its parent — the split layout keeps
-    memory under `<vault>/Agent/` and the operator's spaces beside it, so the
+    memory under `<vault>/agent/` and the operator's spaces beside it, so the
     exempt space is a sibling of the memory root rather than inside it.
 
     Returns False when no vault can be determined. That direction is deliberate:
@@ -222,7 +222,7 @@ def validate(note_path: Path | str, *, vault: Path | str | None = None) -> list[
     # vault is validated rather than skipped.
     #
     # This was already true by accident: the scope dirs sit under the memory root
-    # and `Personal/` sits outside it, so nothing walked it. That is a fragile
+    # and `personal/` sits outside it, so nothing walked it. That is a fragile
     # kind of correct — widen a scope and 385 documents become findings with no
     # rule saying they should not. The rule now exists.
     #

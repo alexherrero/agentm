@@ -44,7 +44,7 @@ class RetiredLanesTests(unittest.TestCase):
             shutil.copy(_FIXTURE / name, self.vault / "memory" / "procedural" / name)
         # A register with closed weeks behind it: the rollups would have
         # written reviews here.
-        (self.vault / "Calendar").mkdir()
+        (self.vault / "calendar").mkdir()
         # A memory silent for 500 days: the policy would have sunk it.
         created = (dt.date.today() - dt.timedelta(days=500)).isoformat()
         self.silent = self.vault / "memory" / "procedural" / "silent.md"
@@ -74,7 +74,7 @@ class RetiredLanesTests(unittest.TestCase):
         for name in _FAMILY:
             self.assertEqual(self._field(self.vault / "memory" / "procedural" / name, "status"), "active", name)
         # The rollups: no review written into the register.
-        self.assertEqual(sorted(p.name for p in (self.vault / "Calendar").rglob("*-review.md")), [])
+        self.assertEqual(sorted(p.name for p in (self.vault / "calendar").rglob("*-review.md")), [])
         # The policy: the silent memory is still active, and nothing was journaled.
         self.assertEqual(self._field(self.silent, "lifecycle"), "active")
         import lifecycle_transitions as lt

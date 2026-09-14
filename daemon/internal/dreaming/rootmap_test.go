@@ -9,13 +9,13 @@ import (
 	"time"
 )
 
-// rootMapVault is the shipped nested layout: the memory root `Agent/` inside a
+// rootMapVault is the shipped nested layout: the memory root `agent/` inside a
 // vault Obsidian opens, with every directory an area map lives in.
 func rootMapVault(t *testing.T) (root, vault string) {
 	t.Helper()
 	vault = t.TempDir()
-	root = filepath.Join(vault, "Agent")
-	for _, d := range []string{".obsidian", "Agent/memory/mocs", "Agent/diagnostics", "Calendar/2026", "standards", "Projects"} {
+	root = filepath.Join(vault, "agent")
+	for _, d := range []string{".obsidian", "agent/memory/mocs", "agent/diagnostics", "calendar/2026", "standards", "projects"} {
 		if err := os.MkdirAll(filepath.Join(vault, d), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -46,13 +46,13 @@ func rootMapText(plan MocsPlan) string {
 func TestRootMapListsEveryAreaMapAndNothingElse(t *testing.T) {
 	root, vault := rootMapVault(t)
 	now := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
-	for _, rel := range []string{"Agent/memory/mocs/moc-memory.md", "Agent/memory/mocs/needs-review.md",
-		"Agent/diagnostics/moc-diagnostics.md", "Calendar/moc-calendar-2025.md", "Calendar/moc-calendar-2026.md",
-		"standards/moc-standards.md", "Projects/moc-projects.md"} {
+	for _, rel := range []string{"agent/memory/mocs/moc-memory.md", "agent/memory/mocs/needs-review.md",
+		"agent/diagnostics/moc-diagnostics.md", "calendar/moc-calendar-2025.md", "calendar/moc-calendar-2026.md",
+		"standards/moc-standards.md", "projects/moc-projects.md"} {
 		writeAt(t, vault, rel, "---\nkind: moc\n---\n\n# a map\n")
 	}
-	for _, rel := range []string{"Agent/diagnostics/notes.md", "standards/storage-rules.md",
-		"Calendar/2026/2026-08-10-diary.md", "Projects/index.md", "Agent/memory/mocs/workflow.md"} {
+	for _, rel := range []string{"agent/diagnostics/notes.md", "standards/storage-rules.md",
+		"calendar/2026/2026-08-10-diary.md", "projects/index.md", "agent/memory/mocs/workflow.md"} {
 		writeAt(t, vault, rel, "---\ntitle: not an area map\n---\n")
 	}
 	plan, err := PlanRootMap(root, nil, now)
@@ -84,7 +84,7 @@ func TestRootMapListsEveryAreaMapAndNothingElse(t *testing.T) {
 func TestRootMapRewritesOnlyWhenTheListChanges(t *testing.T) {
 	root, vault := rootMapVault(t)
 	day := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
-	writeAt(t, vault, "Agent/memory/mocs/moc-memory.md", "---\nkind: moc\n---\n")
+	writeAt(t, vault, "agent/memory/mocs/moc-memory.md", "---\nkind: moc\n---\n")
 	first, _ := PlanRootMap(root, nil, day)
 	if len(first.Intents) != 1 {
 		t.Fatalf("the first plan writes the root map, got %d intent(s)", len(first.Intents))
@@ -96,7 +96,7 @@ func TestRootMapRewritesOnlyWhenTheListChanges(t *testing.T) {
 	if again, _ := PlanRootMap(root, nil, day.AddDate(0, 0, 3)); len(again.Intents) != 0 {
 		t.Errorf("an unchanged list three days later writes nothing, got %d intent(s)", len(again.Intents))
 	}
-	writeAt(t, vault, "Projects/moc-tasks.md", "---\nkind: moc\n---\n")
+	writeAt(t, vault, "projects/moc-tasks.md", "---\nkind: moc\n---\n")
 	changed, _ := PlanRootMap(root, nil, day.AddDate(0, 0, 5))
 	text := rootMapText(changed)
 	for _, want := range []string{"- [[moc-tasks]]\n", "updated: 2026-09-18\n", "created: 2026-09-13\n"} {
@@ -108,7 +108,7 @@ func TestRootMapRewritesOnlyWhenTheListChanges(t *testing.T) {
 
 func TestRootMapCountsAMapThisPassPlans(t *testing.T) {
 	root, _ := rootMapVault(t)
-	plan, _ := PlanRootMap(root, []string{MocRel(MocMemorySlug), "../Calendar/moc-calendar-2026.md"},
+	plan, _ := PlanRootMap(root, []string{MocRel(MocMemorySlug), "../calendar/moc-calendar-2026.md"},
 		time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC))
 	text := rootMapText(plan)
 	for _, want := range []string{"- [[moc-memory]]\n", "- [[moc-calendar-2026]]\n"} {

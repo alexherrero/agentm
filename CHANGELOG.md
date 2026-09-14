@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A gate keeps a root space's retired spelling out of the code (agentm-vault
+  plan 08).** `check-no-title-case-roots` fails on any literal that names
+  `agent/`, `calendar/`, `personal/` or `projects/` by its Title Case
+  spelling: the path form anywhere (a root before a slash, or closing a path
+  after one) and the bare quoted name in code. Comment lines are skipped; the
+  wiki, the changelog, every `_harness/` tree, the frozen health fixtures, the
+  finished migrations with their tests and any line carrying a
+  `root-casing: <why>` marker are allowed and reported as such. `--inventory`
+  prints every hit with a count. Registered in the battery and in Linux CI,
+  where the same open a case-insensitive disk hides actually fails.
+- **The root casing has a migration script.** `scripts/migrate/root_casing.py`
+  renames the four roots through a temporary name, one `git mv` two-step per
+  root so the index moves with the tree, with a pause between roots for Drive:
+  a dry run with a manifest (each rename, its command and its reverse), an
+  `--apply` refused unless the root listing still matches, the count is
+  confirmed, nothing is staged and no writer is live (the daemon and runner
+  jobs, Obsidian, a reflect hook), a `--finish` that checks the listing, the
+  index counts, the Obsidian settings, the config keys, the exports and the
+  resolvers before writing `agent/memory/.root-casing-complete`, and a
+  `--revert` that is the two-step in reverse, refused when the listing or a
+  rewritten settings file no longer holds what the run left.
+- **`agentm_config.py --set-space NAME REL`** writes `daemon.spaces.NAME`, the
+  nested key the root casing changes (`memory` to `agent/memory`, `projects`
+  to `projects`), through the tool rather than a hand edit of a file that also
+  holds the mail door's credential.
+
 - **A task can live in its own directory, and the resolver finds either
   layout (agentm-vault plan 09).** `resolve_active_plan` looks for
   `tasks/<slug>/plan.md` first and falls back to the flat `PLAN-<slug>.md`
@@ -61,6 +87,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the `standards/` spelling of the forward-learning sources file is still
   read as a fallback.
 
+- **Every literal that named a root space now spells it lowercase (agentm-vault
+  plan 08).** The daemon's embed scope and default spaces, the door's project
+  root, the dreaming binary's calendar and projects space names, the Python
+  stack's projects-space probes, `harness_memory`'s default `../projects`,
+  the calendar gate, the memory-root consistency gate's sibling name, the
+  root-notes gate's owner space, the packaged contract's prose (the block is
+  untouched, so the rules hash does not move), the skill's instructions and
+  the tests and fixtures that pin these paths, the dreaming-parity fixture's
+  `calendar/` directory among them. The retrieval eval keeps the frozen gold
+  set's `Agent/...` spelling and folds the first segment at score time, after
+  the merge and trims corrections, with the canary path lowercase; the trims
+  remap tests the folded candidate's existence. The root map's `Calendar` and
+  `Projects` headings stay Title Case: they are headings, not paths, and carry
+  the marker. The exact-name probes keep their job with a new reason: a
+  directory still spelled the retired way is not the root space, so a vault the
+  rename has not reached reads as unrenamed.
 - **Last night's enrichment no longer holds tonight's.** The fleet ceiling
   counts a job's last reported cost for 20 hours from the start of the cycle
   that ran it, not 24. At 24 hours the batch, about $22 a night against the $5
@@ -215,6 +257,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `test_model_effort_routing_refresh` snapshots `sys.path` and `sys.modules`
+  around the module and puts both back after it. The crickets maintenance
+  engine it drives loads agentm's scripts through that plugin's bridge, which
+  puts the checkout it resolves — the conventional clone at
+  `~/Antigravity/agentm`, not the tree under test — at the front of `sys.path`
+  and swaps its modules in, so every later module that imported `promote` or
+  `harness_memory` by name got the other checkout's copy. Found by the root
+  casing, where that clone still spelled the roots the old way and two
+  projects-layout tests failed only in the full local run; CI, with no clone
+  and no crickets sibling, never saw it.
 - A test holds `Run` to handing the root map the year maps the calendar job
   plans the same night. Replacing that list with nothing had left every test
   green.

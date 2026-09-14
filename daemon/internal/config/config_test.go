@@ -6,12 +6,12 @@ import (
 )
 
 // The vector arm's scope is derived from `memory_root`, never written as a
-// literal. The root has moved twice, and a hardcoded `Agent/memory` would resolve
+// literal. The root has moved twice, and a hardcoded `agent/memory` would resolve
 // to nothing on the next move — silently, because an empty scope embeds zero
 // notes and a vector arm with no vectors looks exactly like one that is cold.
 func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
-	got := defaultEmbedScope("Agent")
-	want := []string{"Agent/memory", "Agent/desk", "Agent/external", "Agent/diagnostics", "Projects", "Calendar", "standards/voice"}
+	got := defaultEmbedScope("agent")
+	want := []string{"agent/memory", "agent/desk", "agent/external", "agent/diagnostics", "projects", "calendar", "standards/voice"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,7 +23,7 @@ func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 	for _, root := range []string{"", "  ", "/"} {
 		got := defaultEmbedScope(root)
-		want := "memory,desk,external,diagnostics,Projects,Calendar,standards/voice"
+		want := "memory,desk,external,diagnostics,projects,calendar,standards/voice"
 		if strings.Join(got, ",") != want {
 			t.Errorf("memory_root %q gave %v, want %s", root, got, want)
 		}
@@ -34,20 +34,20 @@ func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 // digests and scorecards it holds lived under `desk` before the move and were
 // dense-retrievable; the move must not silently drop them from the vector arm.
 func TestDefaultEmbedScopeIncludesDiagnostics(t *testing.T) {
-	for _, s := range defaultEmbedScope("Agent") {
-		if s == "Agent/diagnostics" {
+	for _, s := range defaultEmbedScope("agent") {
+		if s == "agent/diagnostics" {
 			return
 		}
 	}
-	t.Fatalf("diagnostics missing from default embed scope: %v", defaultEmbedScope("Agent"))
+	t.Fatalf("diagnostics missing from default embed scope: %v", defaultEmbedScope("agent"))
 }
 
 // The voice library is IN the default scope (agentm-vault plan 05): its rules
-// were dense-retrievable under Projects/ and moved to the vault-root
+// were dense-retrievable under projects/ and moved to the vault-root
 // `standards/voice/`; the first retrieval gate after the move flipped the
 // questions that expect them to misses. The rest of `standards/` stays out.
 func TestDefaultEmbedScopeIncludesTheVoiceLibraryOnly(t *testing.T) {
-	scope := defaultEmbedScope("Agent")
+	scope := defaultEmbedScope("agent")
 	voice := false
 	for _, s := range scope {
 		if s == "standards/voice" {
@@ -62,33 +62,33 @@ func TestDefaultEmbedScopeIncludesTheVoiceLibraryOnly(t *testing.T) {
 	}
 }
 
-// Captures into the projects space land at the vault-root `Projects/` — the
+// Captures into the projects space land at the vault-root `projects/` — the
 // default is unprefixed because the space is a sibling of the memory root, not
 // under it (filing-v2 2b, after the move).
 func TestDefaultSpacesProjectsIsTheVaultRootSibling(t *testing.T) {
-	got := defaultSpaces("Agent")["projects"]
-	if got != "Projects" {
-		t.Fatalf("projects space = %q, want %q", got, "Projects")
+	got := defaultSpaces("agent")["projects"]
+	if got != "projects" {
+		t.Fatalf("projects space = %q, want %q", got, "projects")
 	}
 }
 
-// The vault-root `Projects/` space is IN the default scope, unprefixed (filing-v2
+// The vault-root `projects/` space is IN the default scope, unprefixed (filing-v2
 // 2b): it is a sibling of the memory root, not under it, and the project trees
 // were dense-retrievable under `desk` before the merge.
 func TestDefaultEmbedScopeIncludesRootProjects(t *testing.T) {
-	for _, s := range defaultEmbedScope("Agent") {
-		if s == "Projects" {
+	for _, s := range defaultEmbedScope("agent") {
+		if s == "projects" {
 			return
 		}
 	}
-	t.Fatalf("root Projects missing from default embed scope: %v", defaultEmbedScope("Agent"))
+	t.Fatalf("root Projects missing from default embed scope: %v", defaultEmbedScope("agent"))
 }
 
 // `_meta` must never be in the default scope. Its notes run to 200,000 tokens and
 // would be embedded as a single centroid; that is the case a chunking policy
 // exists for, and there is no chunking policy.
 func TestDefaultEmbedScopeExcludesMeta(t *testing.T) {
-	for _, s := range defaultEmbedScope("Agent") {
+	for _, s := range defaultEmbedScope("agent") {
 		if strings.Contains(s, "_meta") || strings.Contains(s, "_vault-archive") {
 			t.Errorf("default scope includes %q, which has no chunking policy", s)
 		}
@@ -96,15 +96,15 @@ func TestDefaultEmbedScopeExcludesMeta(t *testing.T) {
 }
 
 // A trailing slash in the configured root must not produce a doubled separator —
-// the scope is matched as a path prefix, and `Agent//memory` matches nothing.
+// the scope is matched as a path prefix, and `agent//memory` matches nothing.
 func TestDefaultEmbedScopeNormalizesRoot(t *testing.T) {
-	got := defaultEmbedScope("Agent/")
+	got := defaultEmbedScope("agent/")
 	for _, s := range got {
 		if strings.Contains(s, "//") {
 			t.Fatalf("scope %q contains a doubled separator", s)
 		}
 	}
-	if got[0] != "Agent/memory" {
-		t.Fatalf("got %v, want Agent/memory first", got)
+	if got[0] != "agent/memory" {
+		t.Fatalf("got %v, want agent/memory first", got)
 	}
 }

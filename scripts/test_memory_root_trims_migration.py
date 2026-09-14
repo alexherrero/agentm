@@ -56,7 +56,7 @@ def build_pre_trims_vault(td: Path) -> Path:
     """`<td>/Vault` in the 2026-09-07 shape the draft measured."""
     vault = td / "Vault"
     (vault / ".obsidian").mkdir(parents=True)
-    root = vault / "Agent"
+    root = vault / "agent"
     for d in ("memory/semantic", "memory/procedural", "memory/episodic", "memory/entities",
               "memory/crystallized", "memory/mocs", "diagnostics/health",
               "memory/_always-load", "memory/_watchlist/anthropic-research",
@@ -82,10 +82,10 @@ def build_pre_trims_vault(td: Path) -> Path:
     (vault / "standards").mkdir()
     (vault / "standards" / "storage-rules.md").write_text("---\nkind: reference\n---\n\n# rules\n", encoding="utf-8")
     (vault / "standards" / "forward-learning-sources.json").write_text('{"sources": []}', encoding="utf-8")
-    (vault / "Projects" / "_global" / "wiki-style").mkdir(parents=True)
-    (vault / "Projects" / "_global" / "wiki-style" / "2026-07-05-docs-prose-style.md").write_text(
+    (vault / "projects" / "_global" / "wiki-style").mkdir(parents=True)
+    (vault / "projects" / "_global" / "wiki-style" / "2026-07-05-docs-prose-style.md").write_text(
         "---\ntrigger: docs\n---\n\nplain prose\n", encoding="utf-8")
-    (vault / "Projects" / "agentm").mkdir()
+    (vault / "projects" / "agentm").mkdir()
     (vault / "index.md").write_text("---\ntitle: index\n---\n\n# Vault\n\nthe map\n", encoding="utf-8")
     return root
 
@@ -113,7 +113,7 @@ class MigrationTests(unittest.TestCase):
         joined = "\n".join(t.pending).replace("\\", "/")  # Windows spells the paths with backslashes
         for needle in ("user-preferences.md", "security-and-secret-governance.md",
                        "standards/voice/2026-07-05-docs-prose-style.md", "moc-standards.md",
-                       "Projects/agentm/_watchlist", "Projects/agentm/forward-learning-sources.json",
+                       "projects/agentm/_watchlist", "projects/agentm/forward-learning-sources.json",
                        ".heat.json", ".lifecycle.json", "repos.json", "dream-insights",
                        "index.md", "how-to-use-agentmemory.md", "desk", "memory/memory"):
             self.assertIn(needle, joined, needle)
@@ -131,7 +131,7 @@ class MigrationTests(unittest.TestCase):
         moc = (s / "moc-standards.md").read_text(encoding="utf-8")
         self.assertIn("[[user-preferences]]", moc)
         self.assertIn("[[2026-07-05-docs-prose-style]]", moc)
-        feature = self.vault / "Projects" / "agentm"
+        feature = self.vault / "projects" / "agentm"
         self.assertTrue((feature / "_watchlist" / "anthropic-research" / "one.md").is_file())
         self.assertTrue((feature / "_skill-watchlist").is_dir())
         for name in ("auto-orchestration-config.md", "skill-discovery-sources.md",
@@ -143,7 +143,7 @@ class MigrationTests(unittest.TestCase):
         for gone in ("memory/_always-load", "_meta", "_dream", "desk", "memory/memory",
                      ".heat.json", ".lifecycle.json"):
             self.assertFalse((self.root / gone).exists(), gone)
-        self.assertFalse((self.vault / "Projects" / "_global").exists())
+        self.assertFalse((self.vault / "projects" / "_global").exists())
         index = (self.vault / "index.md").read_text(encoding="utf-8")
         self.assertIn("## How to read this vault", index)
         self.assertIn("`standards/storage-rules.md` decides where a capture goes", index)
@@ -169,7 +169,7 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(shape.check(self.root, out=io.StringIO()), 1, "the gate names the residue")
 
     def test_a_collision_leaves_the_vault_copy(self):
-        feature = self.vault / "Projects" / "agentm"
+        feature = self.vault / "projects" / "agentm"
         (feature / "trusted-sources.md").write_text("the project's own\n", encoding="utf-8")
         t = self._run(apply=True)
         self.assertEqual((feature / "trusted-sources.md").read_text(encoding="utf-8"), "the project's own\n")

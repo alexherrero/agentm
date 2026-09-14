@@ -134,7 +134,7 @@ class TestAgentMemoryExcluded(unittest.TestCase):
         # `vault` argument's own directory name (was a hardcoded "AgentMemory"
         # literal, the retired pre-V5-3 vault root name), so this fixture
         # nests the vault ONE LEVEL below the Obsidian root (as it is in
-        # production — e.g. `<Obsidian>/Agent/` alongside sibling personal
+        # production — e.g. `<Obsidian>/agent/` alongside sibling personal
         # notes) rather than flattening vault == Obsidian root.
         with _Vault() as obsidian_root:
             _write(obsidian_root, "Church/baptism.md",
@@ -143,10 +143,10 @@ class TestAgentMemoryExcluded(unittest.TestCase):
                    "Confirmation is a covenant ordinance conferring the sacrament gift.")
             # An agent entry that shares the SAME distinctive vocabulary — must
             # still never appear as a source or target (hard domain boundary).
-            _write(obsidian_root, "Agent/memory/agent-note.md",
+            _write(obsidian_root, "agent/memory/agent-note.md",
                    "Covenant ordinance sacrament covenant ordinance sacrament.",
                    fm={"kind": "convention", "status": "active", "created": "2026-05-29"})
-            vault = obsidian_root / "Agent"
+            vault = obsidian_root / "agent"
             notes, sugg = nld.discover(vault, min_score=0.05, top=40)
             rels = {n.rel for n in notes}
             self.assertNotIn("memory/agent-note", rels,

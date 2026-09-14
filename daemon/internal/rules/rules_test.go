@@ -206,7 +206,7 @@ func TestResolution(t *testing.T) {
 	t.Run("the split layout is probed from the memory root", func(t *testing.T) {
 		clearEnv(t)
 		vault := t.TempDir()
-		memoryRoot := filepath.Join(vault, "Agent")
+		memoryRoot := filepath.Join(vault, "agent")
 		if err := os.MkdirAll(memoryRoot, 0o755); err != nil {
 			t.Fatal(err)
 		}

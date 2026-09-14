@@ -118,23 +118,23 @@ if [[ -z "$SLUG" ]]; then
 fi
 
 # Newest layout first, then each older one it might still be sitting in.
-# Filing-v2 2b lifts the projects space to the vault-root Projects/ — a SIBLING
+# Filing-v2 2b lifts the projects space to the vault-root projects/ — a SIBLING
 # of the memory root this script is handed — probed per slug, so a project
 # already living there is found and one not yet moved keeps its desk home. The
 # stage-2 four-space migration (2026-08-10) had moved the space down a level to
 # desk/projects/; V4 #26 had already renamed personal-projects/ to projects/. A
 # vault that has not been migrated keeps working on its own rung.
-# The root space is discovered, never conjured: flat `<memory-root>/Projects`,
-# or the sibling `<vault-root>/Projects` only when the memory root is nested
+# The root space is discovered, never conjured: flat `<memory-root>/projects`,
+# or the sibling `<vault-root>/projects` only when the memory root is nested
 # inside an Obsidian vault (`.obsidian/` at the parent, none at the memory
-# root) — a flat vault's parent is the operator's home, where a `Projects/`
+# root) — a flat vault's parent is the operator's home, where a `projects/`
 # is common and is not the vault's.
-if [[ -d "$VAULT_PATH/Projects/$SLUG" ]]; then
-    PROJECT_DIR="$VAULT_PATH/Projects/$SLUG"
-    PROJECTS_SEGMENT="Projects"
-elif [[ -d "$VAULT_PATH/../Projects/$SLUG" && -d "$VAULT_PATH/../.obsidian" && ! -d "$VAULT_PATH/.obsidian" ]]; then
-    PROJECT_DIR="$VAULT_PATH/../Projects/$SLUG"
-    PROJECTS_SEGMENT="../Projects"
+if [[ -d "$VAULT_PATH/projects/$SLUG" ]]; then
+    PROJECT_DIR="$VAULT_PATH/projects/$SLUG"
+    PROJECTS_SEGMENT="projects"
+elif [[ -d "$VAULT_PATH/../projects/$SLUG" && -d "$VAULT_PATH/../.obsidian" && ! -d "$VAULT_PATH/.obsidian" ]]; then
+    PROJECT_DIR="$VAULT_PATH/../projects/$SLUG"
+    PROJECTS_SEGMENT="../projects"
 elif [[ -d "$VAULT_PATH/desk/projects" ]]; then
     PROJECT_DIR="$VAULT_PATH/desk/projects/$SLUG"
     PROJECTS_SEGMENT="desk/projects"

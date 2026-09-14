@@ -34,7 +34,7 @@ looks fine and is wrong.
 
 ## The six classes
 
-A class is a directory under `<vault>/Agent/memory/`, and it answers *what kind
+A class is a directory under `<vault>/agent/memory/`, and it answers *what kind
 of knowing this is*. That rarely changes once a memory is written, which is why
 it is the one axis the layout encodes as a path.
 

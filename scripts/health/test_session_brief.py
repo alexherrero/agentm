@@ -350,7 +350,7 @@ class ResolveMemoryRootTests(unittest.TestCase):
         self.prefix = self.tmp / "prefix"
         self.prefix.mkdir()
         self.vault = self.tmp / "Vault"
-        (self.vault / "Agent").mkdir(parents=True)
+        (self.vault / "agent").mkdir(parents=True)
         self._env = {k: os.environ.get(k) for k in ("MEMORY_VAULT_PATH", "AGENTM_INSTALL_PREFIX")}
         os.environ.pop("MEMORY_ROOT", None)
         os.environ.pop("MEMORY_VAULT_PATH", None)
@@ -369,8 +369,8 @@ class ResolveMemoryRootTests(unittest.TestCase):
 
     def test_the_configured_memory_root_is_joined(self):
         self._config(**{"plugins.obsidian-vault.vault_path": str(self.vault),
-                        "plugins.obsidian-vault.memory_root": "Agent"})
-        self.assertEqual(sb.resolve_vault(None), self.vault / "Agent")
+                        "plugins.obsidian-vault.memory_root": "agent"})
+        self.assertEqual(sb.resolve_vault(None), self.vault / "agent")
 
     def test_no_memory_root_keeps_the_vault(self):
         self._config(**{"plugins.obsidian-vault.vault_path": str(self.vault)})
@@ -383,8 +383,8 @@ class ResolveMemoryRootTests(unittest.TestCase):
 
     def test_the_hook_finds_a_morning_note_under_the_memory_root(self):
         self._config(**{"plugins.obsidian-vault.vault_path": str(self.vault),
-                        "plugins.obsidian-vault.memory_root": "Agent"})
-        _write_morning(self.vault / "Agent", "2026-07-17", "last night")
+                        "plugins.obsidian-vault.memory_root": "agent"})
+        _write_morning(self.vault / "agent", "2026-07-17", "last night")
         vault = sb.resolve_vault(None)
         self.assertIsNotNone(sb.latest_morning_note(vault))
 

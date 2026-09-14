@@ -104,30 +104,30 @@ _WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
 
 
 # Filing-v2 2b: the newest project-space generation is the vault-root
-# `Projects/`, a SIBLING of the memory root this module is handed. During the
+# `projects/`, a SIBLING of the memory root this module is handed. During the
 # merge window both it and `desk/projects/` exist and either may hold projects,
 # so walkers take the union. A root-space path cannot be keyed relative to the
-# memory root; it is keyed relative to the vault root ("Projects/<slug>/…").
-_ROOT_PROJECTS_DIRNAME = "Projects"
+# memory root; it is keyed relative to the vault root ("projects/<slug>/…").
+_ROOT_PROJECTS_DIRNAME = "projects"
 
 
 def _root_projects_dir(vault):
-    """The vault-root `Projects/` space, discovered never conjured (filing-v2
-    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    """The vault-root `projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/projects`. Nested layout — the memory
     root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
     parent and none at the memory root itself: the sibling
-    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    `<vault-root>/projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
     the vault's). None when no root space exists. Both rungs match the
     directory's exact case."""
     vault = Path(vault)
-    flat = vault / "Projects"
+    flat = vault / "projects"
     if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
-        sibling = parent / "Projects"
+        sibling = parent / "projects"
         if _is_dir_exact(sibling):
             return sibling
     return None
@@ -135,7 +135,7 @@ def _root_projects_dir(vault):
 
 def _is_dir_exact(path):
     """`path` is a directory whose name matches exactly — on a case-insensitive
-    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    filesystem a directory still spelled the retired way, `Projects` with the capital, would otherwise answer for it, and a vault the casing rename has not reached would read as renamed."""
     try:
         return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
     except OSError:

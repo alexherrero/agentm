@@ -5,7 +5,7 @@
 // The promotion-door doctrine this replaces had one write path into the
 // operator's spaces. Filing v2's ruling is finer: each space carries an
 // explicit authority level, and the only level that changes within a session
-// is Projects/ — the operator grants management of one project for one
+// is projects/ — the operator grants management of one project for one
 // session by saying so, and the grant is session state, never configuration.
 //
 // # Which direction this fails in
@@ -85,7 +85,7 @@ func DefaultAuthority() Authority {
 			"personal":  PerTask,
 			"standards": OperatorOwned,
 		},
-		ProjectRoots: Roots{Projects: "Projects"},
+		ProjectRoots: Roots{Projects: "projects"},
 	}
 }
 
