@@ -169,10 +169,10 @@ corruption to prevent. It would not help the append case at all, since appenders
 do not take it, and making every prompt-submit acquire a lock to protect a
 monthly rewrite is the wrong trade.
 
-### Test isolation, and why an escape hatch still earns its place
+### Test isolation
 
-`recall.py:1614` calls `record_recall` with no `history_path`, so anything
-exercising `prompt_submit()` writes the real ledger. Three suites did, and the
+`recall.py`'s `prompt_submit()` calls `record_recall` with no `history_path`,
+so anything exercising it writes the real ledger. Three suites did, and the
 result is visible in production: the operator's ledger holds
 `personal/recall-entry-00.md`, `recall-entry-01.md`, and `test-convention.md` —
 test fixtures, not real notes.
@@ -182,13 +182,23 @@ append-only it was. Pruning changes that: an unmocked caller no longer just adds
 a row, it read-modify-writes the file and can drop real ones.
 
 **PR #390 fixed it independently, before this branch, by mocking
-`record_recall` in all three suites.** That mocking is the primary guard and
-this design does not duplicate it. What lands here is the layer underneath:
-`default_history_path()` honors an `AGENTM_RECALL_HISTORY` override (mirroring
-`MEMORY_VAULT_PATH`, `AGENTM_TELEMETRY_DIR`, and `XDG_CACHE_HOME`). Mocking
-protects the call sites someone remembered to mock; redirecting the path
-protects the ones nobody did. Cheap, and it is also the seam this design's own
+`record_recall` in all three suites.** What landed here was the layer
+underneath: `default_history_path()` honors an `AGENTM_RECALL_HISTORY` override
+(mirroring `MEMORY_VAULT_PATH`, `AGENTM_TELEMETRY_DIR`, and `XDG_CACHE_HOME`).
+Mocking protects the call sites someone remembered to mock; redirecting the
+path protects the ones nobody did, and it is also the seam this design's own
 tests use.
+
+The override is what every test runs under now. Mocking missed four more
+suites, and by 2026-09-13 the ledger held 7,756 rows naming a fixture slug.
+The battery's runner (`scripts/run_unit_suite.py`) and `scripts/conftest.py`
+give every test its own `AGENTM_RECALL_HISTORY` beside its own
+`AGENTM_STATE_DIR`, so a suite nobody has found writes a disposable ledger.
+`scripts/engine_state_isolation.py` governs the variable too, which covers a
+hand run of any suite that calls `isolate_module(globals())`, since a hand run
+reaches neither runner. `scripts/test_engine_state_not_leaked.py` runs the four
+suites by hand under a throwaway home and checks that a seeded ledger keeps its
+bytes and its mtime.
 
 ### Growth, measured
 
@@ -271,6 +281,20 @@ check, and the integration tests that must stop writing the real ledger) ·
 ## Amendment log
 
 *Newest first.*
+
+**2026-09-13 — The override is set for every test.** Running every suite by
+hand under a throwaway home
+([PR #630](https://github.com/alexherrero/agentm/pull/630)) found four suites
+writing the real ledger through `prompt_submit()`, three of them already under
+`isolate_module(globals())`. The battery wrote it too, because its runner
+rotated only `AGENTM_STATE_DIR`. `run_unit_suite.py` and `conftest.py` now set
+`AGENTM_RECALL_HISTORY` per test, and `engine_state_isolation.GOVERNED`
+includes it. Why not mock `record_recall` in the four suites: a mock protects
+only the call site it names, which is how these four were missed. Why not make
+the default follow `XDG_CACHE_HOME`: that would move the live ledger for anyone
+who sets the variable, and the dreaming gate and `recall_traffic.py` compute
+the default on their own. Re-audit when a test can reach another writer under
+`~/.cache/agentm/telemetry/`, or when the ledger's default path changes.
 
 **2026-08-01 — Rebased onto v9.5.0; isolation credit corrected.** Main gained
 [PR #390](https://github.com/alexherrero/agentm/pull/390) while this branch was

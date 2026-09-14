@@ -46,18 +46,20 @@ def default_history_path() -> Path:
     `recall.py`'s `prompt_submit()` calls `record_recall` with no
     `history_path`, so anything exercising that function writes the operator's
     REAL ledger. Three test suites did exactly that; PR #390 fixed them by
-    mocking `record_recall`, and that mocking is the primary guard -- this
-    override does not replace it.
+    mocking `record_recall`.
 
-    The override is the standing escape hatch underneath it. Mocking protects
-    the call sites someone remembered to mock, which was enough while the
-    ledger was append-only (stray rows landed and sat there). It is a thinner
-    guarantee now that `record_recall` can prune, because a future unmocked
-    caller no longer just adds a row -- it read-modify-writes the file and can
-    drop real ones. Redirecting the path protects whatever the mocks miss.
+    Mocking protects the call sites someone remembered to mock, and four more
+    suites reached `prompt_submit()` without it (2026-09-13). The override is
+    the guard now: the battery's runner (`scripts/run_unit_suite.py`),
+    `scripts/conftest.py` and `scripts/engine_state_isolation.py` point it at
+    a path of each test's own. That matters more than it did while the ledger
+    was append-only, because `record_recall` can prune: a caller that is not
+    redirected does not just add a row -- it read-modify-writes the file and
+    can drop real ones.
 
-    Mirrors the `$MEMORY_ROOT` / `$AGENTM_TELEMETRY_DIR` /
-    `$XDG_CACHE_HOME` escape hatches this codebase already uses.
+    The default ignores `$XDG_CACHE_HOME`. `episodic_trace`,
+    `scripts/health/recall_traffic.py` and the daemon's dreaming gate read the
+    same path and honor the same override.
     """
     override = os.environ.get("AGENTM_RECALL_HISTORY")
     if override:

@@ -18,6 +18,13 @@ Two things are checked, because they fail differently. That both runners set
 the variable is a property of the runners. That `engine_state_dir()` obeys it
 is a property of the code every writer goes through — and the writers are what
 actually reach the disk.
+
+The recall ledger is checked the same way, because it sits outside the state
+directory. `recall_counter.default_history_path()` answers
+`$AGENTM_RECALL_HISTORY` and otherwise
+`~/.cache/agentm/telemetry/recall-history.jsonl`, so rotating the state
+directory never reached it. By 2026-09-13 the operator's ledger held 7,756
+rows naming `zorbulax`, a fixture slug the recall suites use.
 """
 from __future__ import annotations
 
@@ -40,9 +47,11 @@ if str(_REPO / "scripts") not in sys.path:
 
 import engine_state  # noqa: E402
 import harness_memory  # noqa: E402 — the resolver the repo registry writes through
+import recall_counter  # noqa: E402 — the resolver the recall ledger writes through
 
-# The real one. Nothing in a test run may resolve here.
+# The real ones. Nothing in a test run may resolve here.
 _MACHINE_STATE = Path.home() / ".local" / "state" / "agentm"
+_MACHINE_LEDGER = Path.home() / ".cache" / "agentm" / "telemetry" / "recall-history.jsonl"
 
 
 class TheGuardIsWiredOnBothRunners(unittest.TestCase):
@@ -60,6 +69,14 @@ class TheGuardIsWiredOnBothRunners(unittest.TestCase):
         text = (_REPO / "scripts" / "run_unit_suite.py").read_text(encoding="utf-8")
         self.assertIn("AGENTM_STATE_DIR", text)
         self.assertIn("startTest", text)
+
+    def test_both_redirect_the_recall_ledger_too(self):
+        # The ledger is not in the state directory, so rotating that never
+        # reached it. The statements that set it, since both docstrings name it.
+        conftest = (_REPO / "scripts" / "conftest.py").read_text(encoding="utf-8")
+        self.assertIn('monkeypatch.setenv("AGENTM_RECALL_HISTORY"', conftest)
+        runner = (_REPO / "scripts" / "run_unit_suite.py").read_text(encoding="utf-8")
+        self.assertIn('os.environ["AGENTM_RECALL_HISTORY"] =', runner)
 
     def test_the_battery_invokes_that_runner_and_not_bare_unittest(self):
         text = (_REPO / "scripts" / "check-all.sh").read_text(encoding="utf-8")
@@ -175,6 +192,39 @@ class TheRunnersGuardActuallyRotates(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("ok", r.stdout)
 
+    def test_each_test_gets_its_own_recall_ledger(self):
+        # Read back through the resolver the ledger writes through. Nothing is
+        # recorded, so a broken runner fails this without touching the ledger.
+        probe = (
+            "import os, sys, unittest\n"
+            "sys.path.insert(0, %r)\n"
+            "sys.path.insert(0, %r)\n"
+            "from run_unit_suite import _HermeticStateResult\n"
+            "import recall_counter\n"
+            "seen = []\n"
+            "class T(unittest.TestCase):\n"
+            "    def test_a(self):\n"
+            "        seen.append(str(recall_counter.default_history_path()))\n"
+            "    def test_b(self):\n"
+            "        seen.append(str(recall_counter.default_history_path()))\n"
+            "suite = unittest.TestLoader().loadTestsFromTestCase(T)\n"
+            "unittest.TextTestRunner(resultclass=_HermeticStateResult,\n"
+            "                        stream=open(os.devnull, 'w')).run(suite)\n"
+            "assert len(seen) == 2, seen\n"
+            "assert seen[0] != seen[1], 'both tests shared one ledger: %%s' %% seen\n"
+            "for p in seen:\n"
+            "    assert p != %r, 'a test resolved the machine ledger: ' + p\n"
+            "print('ok')\n"
+        ) % (str(_REPO / "scripts"), str(_REPO / "harness" / "skills" / "memory" / "scripts"),
+             str(_MACHINE_LEDGER))
+        # Without the battery's own setting, so the probe sees the runner alone.
+        env = {k: v for k, v in os.environ.items() if k != "AGENTM_RECALL_HISTORY"}
+        r = subprocess.run([sys.executable, "-c", probe],
+                           capture_output=True, text=True, timeout=120,
+                           cwd=str(_REPO / "scripts"), env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("ok", r.stdout)
+
 
 def _fingerprint(directory: Path) -> dict:
     """Every file under `directory`, with its modification time and a hash of its bytes."""
@@ -188,7 +238,10 @@ def _fingerprint(directory: Path) -> dict:
 def _hand_run_env(home: str) -> dict:
     """The environment a person runs a suite in, with the home directory moved to `home`."""
     env = dict(os.environ)
-    env.pop("AGENTM_STATE_DIR", None)
+    # The battery's runner sets both for every test, this one included, and a
+    # person's shell sets neither.
+    for name in ("AGENTM_STATE_DIR", "AGENTM_RECALL_HISTORY"):
+        env.pop(name, None)
     # `Path.home()` reads HOME on POSIX and USERPROFILE on Windows. Moving the
     # home also moves the user site directory, where a person's own packages
     # can live (PyYAML, on a machine that installed it with `pip install
@@ -219,6 +272,62 @@ def _seed_default_state(case: unittest.TestCase, env: dict, home: str) -> Path:
         {"slug": "sherwood", "root_path": "/srv/projects/sherwood"},
     ]}, indent=2) + "\n", encoding="utf-8")
     return state
+
+
+def _seed_default_ledger(case: unittest.TestCase, env: dict, home: str) -> Path:
+    """Seed a recall ledger where the run's default one resolves; return its directory.
+
+    The same guard as `_seed_default_state`, asked of the resolver the ledger
+    writes through. `_hand_run_env` drops `$AGENTM_RECALL_HISTORY`; were a
+    redirect still in place, the ledger would resolve outside `home` and this
+    would refuse, rather than watch a directory the run never writes.
+    """
+    with mock.patch.dict(os.environ, env, clear=True):
+        ledger = recall_counter.default_history_path()
+    case.assertIn(
+        Path(os.path.realpath(home)), Path(os.path.realpath(ledger)).parents,
+        f"the default recall ledger no longer follows the home directory "
+        f"({ledger}); this check cannot run without touching the machine's own")
+    ledger.parent.mkdir(parents=True)
+    ledger.write_text("".join(json.dumps(row) + "\n" for row in (
+        {"ts": "2026-09-13T08:00:00+00:00", "query_hash": "feedfacecafebeef",
+         "hit_slugs": ["a-real-note"], "hit_count": 1},
+        {"ts": "2026-09-13T09:00:00+00:00", "query_hash": "deadbeefdeadbeef",
+         "hit_slugs": [], "hit_count": 0},
+    )), encoding="utf-8")
+    return ledger.parent
+
+
+def _run_by_hand(case: unittest.TestCase, suite: str, names: tuple, seed, place: str) -> None:
+    """Run `suite` by hand, or only the tests `names` in it, under a home of its own.
+
+    `seed(case, env, home)` puts a live file where the run's default resolves
+    and returns the directory holding it, and every file in that directory must
+    keep its mtime and SHA-256. With `names`, the run must also report exactly
+    that many tests and a plain OK, so it cannot pass by running nothing or by
+    skipping the tests that wrote.
+    """
+    what = " ".join(("a hand run of", suite) + names)
+    with tempfile.TemporaryDirectory() as home:
+        env = _hand_run_env(home)
+        watched = seed(case, env, home)
+        before = _fingerprint(watched)
+
+        r = subprocess.run(
+            [sys.executable, str(_REPO / "scripts" / suite), *names],
+            capture_output=True, encoding="utf-8", errors="replace", timeout=300,
+            cwd=str(_REPO / "scripts"), env=env)
+
+        case.assertEqual(
+            _fingerprint(watched), before,
+            f"{what} wrote into {place}, which on a real machine is the live "
+            f"one:\n{r.stderr[-3000:]}")
+        case.assertEqual(r.returncode, 0, f"{what} failed:\n{r.stdout[-2000:]}{r.stderr[-3000:]}")
+        if names:
+            case.assertRegex(r.stderr, rf"(?m)^Ran {len(names)} tests? in ",
+                             f"{what} did not run every named test")
+            case.assertRegex(r.stderr, r"(?m)^OK$",
+                             f"{what} skipped a named test, so the run proves less than it says")
 
 
 class TheRegistryCLITestsRunByHand(unittest.TestCase):
@@ -334,34 +443,55 @@ class TheStateWritingSuitesRunByHand(unittest.TestCase):
         ),
     }
 
-    def _run_by_hand(self, suite: str, names: tuple = ()) -> None:
-        what = " ".join(("a hand run of", suite) + names)
-        with tempfile.TemporaryDirectory() as home:
-            env = _hand_run_env(home)
-            state = _seed_default_state(self, env, home)
-            before = _fingerprint(state)
-
-            r = subprocess.run(
-                [sys.executable, str(_REPO / "scripts" / suite), *names],
-                capture_output=True, encoding="utf-8", errors="replace", timeout=300,
-                cwd=str(_REPO / "scripts"), env=env)
-
-            self.assertEqual(
-                _fingerprint(state), before,
-                f"{what} wrote into the default state directory, which on a real "
-                f"machine is the live one:\n{r.stderr[-3000:]}")
-            self.assertEqual(r.returncode, 0, f"{what} failed:\n{r.stdout[-2000:]}{r.stderr[-3000:]}")
-            if names:
-                self.assertRegex(r.stderr, rf"(?m)^Ran {len(names)} tests? in ",
-                                 f"{what} did not run every named test")
-                self.assertRegex(r.stderr, r"(?m)^OK$",
-                                 f"{what} skipped a named test, so the run proves less than it says")
-
     def test_each_leaves_the_default_state_directory_as_it_found_it(self):
         for suite, names in self.WRITERS.items():
             with self.subTest(suite=suite):
-                self._run_by_hand(suite)
-                self._run_by_hand(suite, names)
+                _run_by_hand(self, suite, (), _seed_default_state, "the default state directory")
+                _run_by_hand(self, suite, names, _seed_default_state, "the default state directory")
+
+
+class TheLedgerWritingSuitesRunByHand(unittest.TestCase):
+    """Hand runs of the suites that wrote the recall ledger, each under a home of its own.
+
+    The ledger is not engine state. `recall_counter.default_history_path()`
+    answers `$AGENTM_RECALL_HISTORY` and otherwise
+    `~/.cache/agentm/telemetry/recall-history.jsonl`, whatever `XDG_CACHE_HOME`
+    says. So the hand runs that found the suites above also found four writing
+    the operator's ledger through `prompt_submit()` (2026-09-13), three of them
+    with `isolate_module(globals())` already in place. The battery wrote it as
+    well, because its runner rotated only the state directory. By then the
+    ledger held 7,756 rows naming `zorbulax`, a fixture slug, and because
+    `record_recall` prunes the file in place, a run could drop real rows too.
+
+    Each suite runs by hand twice, as above: whole, then only the tests named
+    against it, each of which wrote the ledger before the fix. A ledger is
+    seeded where the default resolves, and every file in its directory must
+    keep its mtime and SHA-256.
+    """
+
+    WRITERS = {
+        "test_recall_daemon_fast_path.py": (
+            "HookCutoverInjectionTests.test_the_daemons_note_is_surfaced_on_the_transparency_line",
+            "PromptSubmitIntegrationTests.test_the_daemon_answer_is_used_and_the_walk_never_runs",
+        ),
+        "test_recall_machine_prompt_skip.py": (
+            "AHumanPromptQuotingAMarkerIsStillServed.test_a_marker_quoted_mid_sentence_is_served",
+            "AnEmptyPromptKeepsItsExistingBehavior.test_an_empty_prompt_still_reaches_the_engine",
+        ),
+        "test_recall_stream_admission.py": (
+            "TransparencyTests.test_a_blocked_search_is_labelled_unsearched",
+        ),
+        "test_recall_temporal.py": (
+            "TransparencyLineTests.test_a_resolved_bound_is_named_on_the_transparency_line",
+            "TransparencyLineTests.test_no_match_leaves_the_transparency_line_unchanged",
+        ),
+    }
+
+    def test_each_leaves_the_default_ledger_as_it_found_it(self):
+        for suite, names in self.WRITERS.items():
+            with self.subTest(suite=suite):
+                _run_by_hand(self, suite, (), _seed_default_ledger, "the default recall ledger's directory")
+                _run_by_hand(self, suite, names, _seed_default_ledger, "the default recall ledger's directory")
 
 
 if __name__ == "__main__":

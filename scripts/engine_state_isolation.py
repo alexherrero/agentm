@@ -29,6 +29,13 @@ because a class whose own `setUp` forgets to call `super().setUp()` would
 silently skip an injected one, and that is the failure this helper exists to
 make impossible. Wrapping `run` covers `setUp`, the test, `tearDown` and
 every registered cleanup.
+
+The recall ledger is governed too, though it is not engine state.
+`recall_counter.default_history_path()` answers `$AGENTM_RECALL_HISTORY` and
+otherwise `~/.cache/agentm/telemetry/recall-history.jsonl`, following neither
+of the other two variables, so a test that reached `prompt_submit()` wrote the
+operator's real ledger from inside this helper. Three suites did, found by
+running every suite by hand under a throwaway home (2026-09-13).
 """
 from __future__ import annotations
 
@@ -38,10 +45,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# Every variable that moves engine state or cache off its default. Keep this
-# list beside `engine_state.py`'s own resolution order: a variable that lands
-# there and not here is a leak this helper silently fails to close.
-GOVERNED = ("AGENTM_STATE_DIR", "XDG_CACHE_HOME")
+# Every variable that moves engine state, cache or the recall ledger off its
+# default. Keep this list beside the resolvers it redirects, `engine_state.py`
+# and `recall_counter.default_history_path()`: a variable that lands there and
+# not here is a leak this helper silently fails to close.
+GOVERNED = ("AGENTM_STATE_DIR", "XDG_CACHE_HOME", "AGENTM_RECALL_HISTORY")
 
 _WRAPPED = "_agentm_engine_state_isolated"
 
@@ -60,6 +68,9 @@ def _apply(base: Path) -> dict:
     cache.mkdir(parents=True, exist_ok=True)
     os.environ["AGENTM_STATE_DIR"] = str(state)
     os.environ["XDG_CACHE_HOME"] = str(cache)
+    # Where the ledger's default would sit if it followed XDG_CACHE_HOME. The
+    # file is not created: `record_recall` makes the directory it writes into.
+    os.environ["AGENTM_RECALL_HISTORY"] = str(cache / "agentm" / "telemetry" / "recall-history.jsonl")
     return previous
 
 
@@ -73,7 +84,7 @@ def _restore(previous: dict) -> None:
 
 @contextlib.contextmanager
 def isolated_engine_state():
-    """A fresh engine state and cache directory for the enclosed block."""
+    """A fresh engine state directory, cache and recall ledger for the enclosed block."""
     with tempfile.TemporaryDirectory(prefix="agentm-engine-state-") as tmp:
         previous = _apply(Path(tmp))
         try:
@@ -83,7 +94,7 @@ def isolated_engine_state():
 
 
 def isolate_engine_state(testcase: unittest.TestCase, *, root: "Path | str | None" = None) -> Path:
-    """Point the engine's state and cache at a fresh directory for one test.
+    """Point the engine's state, cache and recall ledger at a fresh directory for one test.
 
     Returns the state directory. `root` reuses a directory the test already
     owns (its own `TemporaryDirectory`, say) rather than making a second one;

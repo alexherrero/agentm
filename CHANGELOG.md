@@ -111,6 +111,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `exists` hides its registry, a backend that records its writes, and a caller
   whose engine state already holds a registry. The seam design gains the
   amendment the move never got.
+- **Tests no longer write the operator's recall ledger.** Four suites reached
+  `prompt_submit()` without mocking `record_recall`, and the ledger resolves to
+  `~/.cache/agentm/telemetry/recall-history.jsonl` unless
+  `$AGENTM_RECALL_HISTORY` says otherwise, so every battery run and every hand
+  run of them appended fixture rows. By 2026-09-13 the live ledger held 7,756
+  rows naming the fixture slug `zorbulax`, and because `record_recall` prunes
+  the file in place, a run could drop real rows too. The battery's runner and
+  `scripts/conftest.py` now give every test a ledger of its own beside its own
+  engine state directory. `engine_state_isolation` governs the variable as
+  well, so a hand run of a suite that calls `isolate_module(globals())` is
+  covered, and `test_recall_temporal` now calls it. `episodic_trace` reads the
+  ledger through the same override. `test_engine_state_not_leaked` runs the
+  four suites by hand under a throwaway home and asserts that a seeded ledger
+  keeps its bytes and its mtime. The fixture rows already in the live ledger
+  are left for the operator to remove.
 - **The enrichment dry run counts the cards and the project records apart, and
   sizes the night from where the cursor resumes.** Plan 09 queued the project
   records after the cards, and `--dry-run` went on reporting the whole queue as
