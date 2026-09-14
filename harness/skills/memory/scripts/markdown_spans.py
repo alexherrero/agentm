@@ -22,18 +22,34 @@ import re
 RELATED_LINE_RE = re.compile(r"^\*\*Related:\*\* (.+)$", re.MULTILINE)
 RELATED_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
-_FENCE_MARKER_RE = re.compile(r"^```", re.MULTILINE)
+_FENCE_OPEN_RE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
 
 
 def fenced_ranges(content: str) -> list[tuple[int, int]]:
-    """(start, end) char-offset ranges covered by fenced code blocks
-    (paired ``` markers). An unterminated final fence extends to
-    end-of-string — conservative: better to wrongly treat trailing content
-    as fenced than to wrongly mutate inside an unterminated fence."""
-    markers = [m.start() for m in _FENCE_MARKER_RE.finditer(content)]
-    ranges = [(markers[i], markers[i + 1]) for i in range(0, len(markers) - 1, 2)]
-    if len(markers) % 2 == 1:
-        ranges.append((markers[-1], len(content)))
+    """(start, end) char-offset ranges covered by fenced code blocks.
+
+    A fence opens on a line of three or more backticks or tildes, indented at
+    most three spaces; a backtick fence's info string holds no backtick. It
+    closes on a line of the same character, at least as long, with nothing
+    after it but spaces. Anything else inside is content, so a three-backtick
+    line inside a four-backtick or tilde fence does not end it. An
+    unterminated final fence extends to end-of-string — conservative: better
+    to wrongly treat trailing content as fenced than to wrongly mutate inside
+    an unterminated fence."""
+    ranges: list[tuple[int, int]] = []
+    start, fence, pos = None, "", 0
+    for line in content.split("\n"):
+        text = line.rstrip("\r")
+        if start is None:
+            m = _FENCE_OPEN_RE.fullmatch(text)
+            if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+                start, fence = pos, m.group(1)
+        elif re.fullmatch(r" {0,3}" + re.escape(fence[0]) + "{%d,}[ \t]*" % len(fence), text):
+            ranges.append((start, pos + len(text)))
+            start = None
+        pos += len(line) + 1
+    if start is not None:
+        ranges.append((start, len(content)))
     return ranges
 
 

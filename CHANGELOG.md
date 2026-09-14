@@ -97,6 +97,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still had to hold its exact count of links to `Home` or `Filing`, and after
   the run it holds none. A pinned note with no link to a retired note now counts
   as done, and the dry run lists it. One holding any other count still refuses.
+- **A type's map no longer outlives its type.** When a memory type fell below
+  the page floor, the dreaming pass stopped regenerating its page and left it in
+  place, and the maps gate failed on it with nothing to repair it. The pass now
+  removes the page it wrote for that type, through its journal, which keeps the
+  page's bytes, and `moc-memory.md` lists the type's notes in full. A page
+  without `type_of_members` for that type is left alone, and nothing is removed
+  when no note is typed at all. The dreaming journal gained a delete for this.
+- **A day of prose counts, and a day holding only the daily template does
+  not.** A week or month review counted any facet note, so a diary day written
+  in prose produced a review reading `(0)`, and a daily note opened from the
+  template and never written in would have produced one too. A facet note now
+  counts when it holds a timed entry or prose beyond the template, and a day of
+  prose alone is listed without an entry count.
+- **`check-root-notes` reads five link forms it missed.** A retired link after a
+  longer backtick fence or a tilde fence holding a three-backtick line, in
+  `[t](<Filing.md>)`, in `[t](Filing.md "title")`, or between escaped backticks
+  now fails the gate. The fence helper that the maps migration, lint and the
+  Python dreaming cycle share now pairs a fence by its character and length, so
+  a link inside a longer or tilde fence is no longer a false finding.
+
+### Internal
+
+- A test holds `Run` to handing the root map the year maps the calendar job
+  plans the same night. Replacing that list with nothing had left every test
+  green.
 
 ## [9.23.0] - 2026-09-13
 

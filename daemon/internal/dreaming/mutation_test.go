@@ -414,6 +414,57 @@ func TestTheJournalResumesMovesAndCreations(t *testing.T) {
 	}
 }
 
+// A delete journals the bytes it takes, so a page it removes can be put back
+// from the journal alone. It resolves on resume the way a creation does in
+// reverse: gone is applied, still at `before` is removed now, and anything
+// else is a conflict left alone.
+func TestTheJournalCommitsAndResumesADelete(t *testing.T) {
+	root := t.TempDir()
+	state := t.TempDir()
+	j, _ := OpenJournal(state)
+	now := time.Now().UTC()
+	rel := "memory/mocs/fact.md"
+	page := []byte("---\nkind: moc\nslug: fact\n---\n\n# fact\n")
+	writeRaw(t, root, rel, string(page))
+	in := Intent{Job: JobMocs, Rel: rel, Before: page, Delete: true, Summary: "the map of content for fact removed"}
+
+	if kind, err := j.Commit(root, "r", "r-1", in, now); err != nil || kind != KindApplied {
+		t.Fatalf("a delete of a page still at `before` is applied: kind=%s err=%v", kind, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, rel)); !os.IsNotExist(err) {
+		t.Errorf("the page should be gone")
+	}
+	entries, _ := j.Read()
+	if len(entries) != 2 || !entries[0].Delete || entries[0].Create || entries[0].Removed != base64.StdEncoding.EncodeToString(page) {
+		t.Fatalf("the intent line marks the delete and carries the bytes it takes: %+v", entries)
+	}
+	del := entries[0]
+	if kind, _ := j.Resolve(root, del, now); kind != KindApplied {
+		t.Errorf("a delete already made is found applied on resume: %s", kind)
+	}
+	writeRaw(t, root, rel, string(page))
+	if kind, _ := j.Resolve(root, del, now); kind != KindApplied {
+		t.Errorf("a page still at `before` is removed on resume: %s", kind)
+	}
+	if _, err := os.Stat(filepath.Join(root, rel)); !os.IsNotExist(err) {
+		t.Errorf("the resumed delete should remove the page")
+	}
+	writeRaw(t, root, rel, "rewritten since the plan\n")
+	if kind, _ := j.Resolve(root, del, now); kind != KindSkipped {
+		t.Errorf("a page rewritten since the plan is a conflict, skipped: %s", kind)
+	}
+	if kind, err := j.Commit(root, "r", "r-2", in, now); err != nil || kind != KindSkipped {
+		t.Errorf("a delete of a page rewritten since the plan skips: kind=%s err=%v", kind, err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(root, rel)); string(got) != "rewritten since the plan\n" {
+		t.Errorf("a skipped delete must leave the page untouched: %q", got)
+	}
+	os.Remove(filepath.Join(root, rel))
+	if kind, err := j.Commit(root, "r", "r-3", in, now); err != nil || kind != KindSkipped {
+		t.Errorf("a delete of a page already gone skips without failing the run: kind=%s err=%v", kind, err)
+	}
+}
+
 // governanceLines counts the parseable governance-journal lines for one note.
 func governanceLines(t *testing.T, state, rel string) int {
 	t.Helper()

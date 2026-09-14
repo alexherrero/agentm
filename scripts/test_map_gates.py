@@ -258,6 +258,44 @@ class RootNotes(unittest.TestCase):
         self.assertIn("before the maps data run — 2 finding(s)", out)
         self.assertIn("pending: Projects/p.md:1: [[Home]] names a retired note", out)
 
+    def test_a_link_after_a_longer_or_tilde_fence_holding_three_backticks_fails(self):
+        # A three-backtick line inside a longer backtick fence, or a tilde fence,
+        # is that fence's content. Read as a fence of its own, it hid what followed.
+        self.retired_shape()
+        self.write("Projects/agentm/pattern/longer-fence.md", "````\n```\n````\n\n[[Home]]\n")
+        self.write("Projects/agentm/pattern/tilde-fence.md", "~~~\n```\n~~~\n\n[[Filing]]\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("Projects/agentm/pattern/longer-fence.md:5: [[Home]]", out)
+        self.assertIn("Projects/agentm/pattern/tilde-fence.md:5: [[Filing]]", out)
+
+    def test_a_link_inside_a_longer_or_tilde_fence_is_not_a_finding(self):
+        self.retired_shape()
+        self.write("Agent/memory/episodic/fenced.md",
+                   "````markdown\n```\n[[Home]]\n```\n````\n\n~~~\n[[Filing]]\n~~~\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+
+    def test_a_link_in_angle_brackets_or_with_a_title_fails(self):
+        self.retired_shape()
+        self.write("Projects/agentm/pattern/links.md",
+                   "- [the table](<Filing.md>)\n- [the map](../../../Agent/Home.md \"the old map\")\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("Projects/agentm/pattern/links.md:1: ](<Filing.md>)", out)
+        self.assertIn("Projects/agentm/pattern/links.md:2: ](../../../Agent/Home.md \"the old map\")", out)
+
+    def test_a_link_between_escaped_backticks_fails(self):
+        self.retired_shape()
+        self.write("Projects/agentm/pattern/escaped.md", "A literal \\`[[Home]]\\` is still a link.\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("Projects/agentm/pattern/escaped.md:1: [[Home]]", out)
+
 
 calroot = _load("check-calendar-root")
 

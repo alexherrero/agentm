@@ -46,7 +46,11 @@ type Entry struct {
 	// To is set on a move: the note leaves Rel and lands at To with After.
 	To string `json:"to,omitempty"`
 	// Create is set when Rel did not exist before: the intent makes a note.
-	Create     bool   `json:"create,omitempty"`
+	Create bool `json:"create,omitempty"`
+	// Delete is set when the intent removes Rel. Removed is the bytes it takes,
+	// base64, so the note can be put back from the journal alone.
+	Delete     bool   `json:"delete,omitempty"`
+	Removed    string `json:"removed,omitempty"`
 	BeforeHash string `json:"before_hash,omitempty"`
 	AfterHash  string `json:"after_hash,omitempty"`
 	// After is the whole new content, base64 — small notes, exact replay.
@@ -188,13 +192,16 @@ func Hash(b []byte) string {
 
 // Intent describes one mutation before it is made: an edit of Rel in
 // place (Before → After), a move (Rel leaves, To lands with After — the
-// re-file), or a creation (Before nil: Rel did not exist — the promotion).
+// re-file), a creation (Before nil: Rel did not exist — the promotion), or a
+// deletion (Delete: Rel, still at Before, is removed — a type's map whose type
+// fell below the floor).
 type Intent struct {
 	Job     string
 	Rel     string
 	To      string
 	Before  []byte
 	After   []byte
+	Delete  bool
 	Summary string
 	Meta    map[string]string
 }
@@ -209,7 +216,8 @@ var ErrConflict = errors.New("target changed since the intent was journaled")
 // is a conflict. A move resolves on both paths (the source gone and the
 // destination at `after` is applied; the source at `before` and no
 // destination is applied now; anything else is left alone), a creation on
-// the one path it makes. Returns the outcome kind written to the journal.
+// the one path it makes, and a deletion on the one path it removes. Returns the
+// outcome kind written to the journal.
 func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) {
 	settle := func(kind, note string) (string, error) {
 		if kind == KindApplied {
@@ -228,6 +236,19 @@ func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) 
 	}
 	src := filepath.Join(vault, filepath.FromSlash(e.Rel))
 	switch {
+	case e.Delete:
+		cur, err := os.ReadFile(src)
+		switch {
+		case os.IsNotExist(err):
+			return settle(KindApplied, "found applied on resume")
+		case err == nil && Hash(cur) == e.BeforeHash:
+			if err := os.Remove(src); err != nil {
+				return "", err
+			}
+			return settle(KindApplied, "applied on resume")
+		default:
+			return settle(KindSkipped, ErrConflict.Error())
+		}
 	case e.To != "":
 		dst := filepath.Join(vault, filepath.FromSlash(e.To))
 		cur, srcErr := os.ReadFile(src)
@@ -300,11 +321,14 @@ func (j *Journal) governance(e Entry, now time.Time) error {
 // written — that a resume, which only revisits pending intents, could
 // never close.
 func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Time) (string, error) {
-	create := in.Before == nil
+	create := in.Before == nil && !in.Delete
 	intent := Entry{
 		Kind: KindIntent, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To, Create: create,
-		BeforeHash: Hash(in.Before), AfterHash: Hash(in.After),
+		Delete: in.Delete, BeforeHash: Hash(in.Before), AfterHash: Hash(in.After),
 		After: base64.StdEncoding.EncodeToString(in.After), Summary: in.Summary, Meta: in.Meta,
+	}
+	if in.Delete {
+		intent.Removed = base64.StdEncoding.EncodeToString(in.Before)
 	}
 	if err := j.Append(intent); err != nil {
 		return "", err
@@ -322,6 +346,22 @@ func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Tim
 		return KindApplied, j.Append(Entry{Kind: KindApplied, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To})
 	}
 	src := filepath.Join(vault, filepath.FromSlash(in.Rel))
+	if in.Delete {
+		cur, err := os.ReadFile(src)
+		if os.IsNotExist(err) {
+			return skipped("the note this intent would remove is already gone")
+		}
+		if err != nil {
+			return "", err
+		}
+		if Hash(cur) != Hash(in.Before) {
+			return skipped(ErrConflict.Error())
+		}
+		if err := os.Remove(src); err != nil {
+			return "", err
+		}
+		return applied()
+	}
 	if create {
 		if _, err := os.Stat(src); err == nil {
 			return skipped("a note already exists at the path this intent would create")
