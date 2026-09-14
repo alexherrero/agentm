@@ -34,10 +34,15 @@ import eval_retrieval_shipped as ev  # noqa: E402
 # instrument must never consult the operator's live reports.
 def setUpModule():
     ev._MIGRATION_TABLE = {}
+    # The same for the root casing's fold: the stubs spell the roots lowercase,
+    # the designed layout, and the module must never read the operator's live
+    # vault root to decide how to spell an expectation.
+    ev._ROOT_SPELLINGS = {}
 
 
 def tearDownModule():
     ev._MIGRATION_TABLE = None
+    ev._ROOT_SPELLINGS = None
 
 import recall  # noqa: E402
 

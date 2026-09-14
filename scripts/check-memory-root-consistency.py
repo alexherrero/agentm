@@ -96,14 +96,17 @@ def check(config_path: Path) -> int:
         if not memory_root:
             # Memory root is the vault root — every space is beneath it.
             continue
-        if name == "projects" and space == _ROOT_PROJECTS_SIBLING:
+        if name == "projects" and space.lower() == _ROOT_PROJECTS_SIBLING:
             # Filing-v2 2b: the project space is the vault-root projects/, a
             # SIBLING of memory_root by design — the one space allowed outside
             # it. Agreement still has to hold: the Python side must name the
-            # same sibling (its memory-root-relative form is ../Projects), or
-            # leave the key to its default, which is that form.
+            # same sibling (its memory-root-relative form is ../projects), or
+            # leave the key to its default, which is that form. Either
+            # spelling of the name passes: the root casing (agentm-vault plan
+            # 08) lowercases it, and a config on the far side of that rename
+            # still names the same directory.
             py_raw = py_spaces.get(name)
-            if py_raw is None or _norm(str(py_raw)) == "../" + _ROOT_PROJECTS_SIBLING:
+            if py_raw is None or _norm(str(py_raw)).lower() == "../" + _ROOT_PROJECTS_SIBLING:
                 continue
             failures.append(
                 f'  {_SPACES_KEY}["{name}"] = "{space}" (the vault-root sibling) but '

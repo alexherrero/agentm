@@ -51,8 +51,8 @@ func TestMatchingIsOnTheFirstSegmentOnly(t *testing.T) {
 
 func TestMatchingIsCaseInsensitive(t *testing.T) {
 	withDampened(t, []string{"personal"})
-	if !inDampenedSpace("Personal/Home/a.md") {  // root-casing: the fold's other spelling, on purpose
-		t.Error("case mismatch defeated the match; the vault writes `Personal/`")  // root-casing: the fold's other spelling, on purpose
+	if !inDampenedSpace("Personal/Home/a.md") { // root-casing: the fold's other spelling, on purpose
+		t.Error("case mismatch defeated the match; the vault writes `Personal/`") // root-casing: the fold's other spelling, on purpose
 	}
 }
 

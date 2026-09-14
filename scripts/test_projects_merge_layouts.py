@@ -253,6 +253,20 @@ class ConsistencyGateKnowsTheSibling(unittest.TestCase):
         self.assertEqual(self._run({**base, "plugins.obsidian-vault.spaces":
                                     {"memory": "memory", "projects": "../projects"}}), 0)
 
+    def test_either_spelling_of_the_sibling_passes(self):
+        """The root casing (agentm-vault plan 08) lowercases the sibling's name;
+        a config on the far side of that rename still names the same directory,
+        so the gate reads both spellings, on either side."""
+        old = {"plugins.obsidian-vault.memory_root": "Agent",  # root-casing: the config before the rename
+               "daemon.spaces": {"memory": "Agent/memory", "projects": "Projects"}}  # root-casing: the config before the rename
+        self.assertEqual(self._run(old), 0)
+        self.assertEqual(self._run({**old, "plugins.obsidian-vault.spaces":
+                                    {"memory": "memory", "projects": "../Projects"}}), 0)  # root-casing: the config before the rename
+        new = {"plugins.obsidian-vault.memory_root": "agent",
+               "daemon.spaces": {"memory": "agent/memory", "projects": "projects"}}
+        self.assertEqual(self._run({**new, "plugins.obsidian-vault.spaces":
+                                    {"memory": "memory", "projects": "../Projects"}}), 0)  # root-casing: the config before the rename
+
     def test_sibling_projects_space_fails_when_the_halves_disagree(self):
         self.assertEqual(self._run({
             "plugins.obsidian-vault.memory_root": "agent",

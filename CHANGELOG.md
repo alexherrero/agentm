@@ -97,8 +97,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the tests and fixtures that pin these paths, the dreaming-parity fixture's
   `calendar/` directory among them. The retrieval eval keeps the frozen gold
   set's `Agent/...` spelling and folds the first segment at score time, after
-  the merge and trims corrections, with the canary path lowercase; the trims
-  remap tests the folded candidate's existence. The root map's `Calendar` and
+  the merge and trims corrections, to the spelling the vault root lists —
+  lowercase once the rename has run, the old spelling on a vault it has not
+  reached, so the gate reads true on both sides of the data run — with the
+  canary path lowercase and compared the same way; the trims remap probes
+  with the given root's own listing. The memory-root consistency gate reads
+  either spelling of the projects sibling, since a config on the far side of
+  the rename names the same directory. The root map's `Calendar` and
   `Projects` headings stay Title Case: they are headings, not paths, and carry
   the marker. The exact-name probes keep their job with a new reason: a
   directory still spelled the retired way is not the root space, so a vault the

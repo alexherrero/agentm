@@ -95,17 +95,25 @@ class MigratedPaths(unittest.TestCase):
                          "Projects/agentm/_harness/archive/designs/ag-design-history/a.md")  # root-casing: the gold set's spelling
         self.assertEqual(ev._remap_merged("Agent/memory/semantic/a.md"), "Agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
 
-    def test_the_casing_is_folded_last_and_only_on_the_first_segment(self):
-        """agentm-vault plan 08: the roots are lowercase on disk, the gold set
-        keeps `agent/...`, and the fold is at score time after the other
-        corrections. A path inside a space keeps its own casing."""
-        self.assertEqual(ev._remap_casing("Agent/memory/semantic/a.md"), "agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
-        self.assertEqual(ev._remap_casing("Projects/agentm/Personal/x.md"), "projects/agentm/Personal/x.md")  # root-casing: the gold set's spelling
-        self.assertEqual(ev._remap_casing("standards/voice/a.md"), "standards/voice/a.md")
-        self.assertEqual(ev._remap_casing("agent/memory/a.md"), "agent/memory/a.md")
+    def test_the_casing_is_folded_last_to_the_spelling_the_vault_lists(self):
+        """agentm-vault plan 08: the roots are lowercase on disk once the rename
+        has run, the gold set keeps the old spelling, and the fold is at score
+        time after the other corrections — to the name the vault root lists,
+        so the gate reads true on either side of the data run, and to
+        lowercase when no vault resolves. A path inside a space keeps its own
+        casing."""
+        renamed = {"agent": "agent", "calendar": "calendar", "personal": "personal", "projects": "projects", "standards": "standards"}
+        old = {"agent": "Agent", "calendar": "Calendar", "personal": "Personal", "projects": "Projects", "standards": "standards"}  # root-casing: the spelling before the rename
+        self.assertEqual(ev._remap_casing("Agent/memory/semantic/a.md", renamed), "agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing("Agent/memory/semantic/a.md", old), "Agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing("Agent/memory/semantic/a.md", {}), "agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing("agent/memory/a.md", old), "Agent/memory/a.md")  # root-casing: the vault's spelling before the rename
+        self.assertEqual(ev._remap_casing("Projects/agentm/Personal/x.md", renamed), "projects/agentm/Personal/x.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing("standards/voice/a.md", renamed), "standards/voice/a.md")
         merged = ev._remap_merged("Agent/external/primos/decisions/x.md")  # root-casing: the gold set's spelling
-        self.assertEqual(ev._remap_casing(merged), "projects/primos/decisions/x.md")
-        self.assertEqual(ev.CANARY_PATH, ev._remap_casing(ev.CANARY_PATH))
+        self.assertEqual(ev._remap_casing(merged, renamed), "projects/primos/decisions/x.md")
+        self.assertEqual(ev.CANARY_PATH, ev._remap_casing(ev.CANARY_PATH, renamed))
+        self.assertEqual(ev._remap_casing(ev.CANARY_PATH, old).split("/")[0], "Agent")  # root-casing: the vault's spelling before the rename
 
     def test_the_trims_remaps_fire_only_where_the_vault_has_moved(self):
         """agentm-vault plan 05: the migration runs at deploy time, so the
@@ -123,7 +131,7 @@ class MigratedPaths(unittest.TestCase):
                              "Agent/memory/trusted-sources.md")  # root-casing: the gold set's spelling
             (vault / "projects" / "agentm").mkdir(parents=True)
             (vault / "projects" / "agentm" / "trusted-sources.md").write_text("x", encoding="utf-8")
-            self.assertEqual(ev._remap_casing(ev._remap_trims("Agent/memory/trusted-sources.md", vault)),  # root-casing: the gold set's spelling
+            self.assertEqual(ev._remap_casing(ev._remap_trims("Agent/memory/trusted-sources.md", vault), {"projects": "projects"}),  # root-casing: the gold set's spelling
                              "projects/agentm/trusted-sources.md")
             self.assertEqual(ev._remap_trims("agent/memory/semantic/a.md", vault), "agent/memory/semantic/a.md")
             self.assertEqual(ev._remap_trims(old, None), old, "no vault: the eval stays pre-trims")

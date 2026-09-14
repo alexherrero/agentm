@@ -133,26 +133,55 @@ def _remap_trims(path: str, vault_root: "Path | None | bool" = False) -> str:
     for old, new in _TRIMS_REMAPS:
         if path.startswith(old):
             candidate = new + path[len(old):]
-            # The vault on disk spells its roots lowercase (the root casing);
-            # the remap's own spelling is the gold set's, folded at the end.
-            if (Path(root) / _remap_casing(candidate)).exists():
+            # The remap's own spelling is the gold set's; the probe folds it
+            # to the spelling this root lists (the root casing), so it reads
+            # the file on either side of the rename and on any disk.
+            try:
+                import os
+                spellings = {n.lower(): n for n in os.listdir(root)}
+            except OSError:
+                spellings = {}
+            if (Path(root) / _remap_casing(candidate, spellings)).exists():
                 return candidate
             return path
     return path
 
 
 # The root casing (agentm-vault plan 08, 2026-09-14): the four root spaces are
-# lowercase. The gold set is frozen and keeps `agent/...`; the daemon returns
-# what is on disk. The first segment is folded here, at score time, after the
-# other corrections, so a pinned path compares with the path the vault has.
+# lowercase. The gold set is frozen and keeps the old spelling; the daemon
+# returns what is on disk. The first segment is folded here, at score time,
+# after the other corrections, to the spelling the vault root lists — lowercase
+# once the rename has run, the old spelling on a vault it has not reached, so
+# the gate reads true on both sides of the data run — and to lowercase, the
+# designed layout, when no vault resolves.
 _ROOT_CASINGS = {name: name.lower() for name in ("Agent", "Calendar", "Personal", "Projects")}  # root-casing: the frozen spellings
+_ROOT_SPELLINGS: "dict | None" = None  # {lowercase root: the name the vault root lists}
 
 
-def _remap_casing(path: str) -> str:
+def _root_spellings() -> dict:
+    global _ROOT_SPELLINGS
+    if _ROOT_SPELLINGS is None:
+        import os
+        root = _vault_root()
+        names = {}
+        if root is not None:
+            try:
+                names = {n.lower(): n for n in os.listdir(root)}
+            except OSError:
+                names = {}
+        _ROOT_SPELLINGS = names
+    return _ROOT_SPELLINGS
+
+
+def _remap_casing(path: str, spellings: "dict | None" = None) -> str:
+    """`path` with its first segment, when it names a root space in either
+    spelling, spelled as the vault lists it (lowercase with no vault)."""
     first, sep, rest = path.partition("/")
-    if sep and first in _ROOT_CASINGS:
-        return _ROOT_CASINGS[first] + sep + rest
-    return path
+    key = first.lower()
+    if not sep or key not in _ROOT_CASINGS.values():
+        return path
+    names = _root_spellings() if spellings is None else spellings
+    return names.get(key, key) + sep + rest
 
 
 # Filing-v2 part 3 (2026-09-03): the corpus migration routed every memory out
@@ -428,7 +457,7 @@ def check_canary(binary: str) -> None:
     """
     got = [path for path, _ in _search_rows(binary, CANARY_QUERY, 3,
                                             mode="and")]
-    if not got or got[0] != _migrated(CANARY_PATH):
+    if not got or got[0] != _remap_casing(_migrated(CANARY_PATH)):
         raise Control(
             f"the canary query returned {got[:2] or 'nothing'} instead of "
             f"{CANARY_PATH} at rank 1 — the index is dead, detached, or serving "
