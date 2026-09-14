@@ -60,7 +60,9 @@ _ROOT_PARTS = (".agentm", "memory")
 #: Env-var override for the device-local root. Set in CI / tests to redirect
 #: away from the real ``~/.agentm/memory`` without the vault plugin or a vault
 #: path. Never set by operators in production — this is a test-isolation escape
-#: hatch only.
+#: hatch only. ``graph_snapshot.py`` keeps its snapshots in ``_meta/`` under this
+#: root, so the override moves them too, and ``engine_state_isolation`` sets it
+#: for every test it governs.
 _AGENTM_DEVICE_LOCAL_ROOT_ENV = "AGENTM_DEVICE_LOCAL_ROOT"
 
 

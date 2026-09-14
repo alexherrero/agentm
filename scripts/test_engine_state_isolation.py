@@ -25,6 +25,15 @@ class TheContextManager(unittest.TestCase):
             self.assertEqual(os.environ["AGENTM_STATE_DIR"], str(state))
             self.assertTrue(os.environ["XDG_CACHE_HOME"].endswith("cache"))
             self.assertNotEqual(Path(state), Path.home() / ".local" / "state" / "agentm")
+            # One place per governed variable, none shared, each inside this
+            # block's own directory. The recall ledger is a file the helper
+            # names and does not create; the directories it does create.
+            places = [Path(os.environ[name]) for name in esi.GOVERNED]
+            self.assertEqual(len(set(places)), len(esi.GOVERNED), places)
+            for place in places:
+                self.assertIn(Path(state).parent, place.parents, place)
+            for name in ("AGENTM_STATE_DIR", "XDG_CACHE_HOME", "AGENTM_DEVICE_LOCAL_ROOT"):
+                self.assertTrue(Path(os.environ[name]).is_dir(), name)
             first = state
         with esi.isolated_engine_state() as second:
             self.assertNotEqual(first, second, "each block gets its own directory")
@@ -40,6 +49,16 @@ class TheContextManager(unittest.TestCase):
         self.assertNotEqual(written, machine_ledger)
         self.assertEqual(read, written, "the trace reads a different ledger from the one recall writes")
 
+    def test_it_moves_the_graph_snapshot_root_with_the_device_local_root(self):
+        # A test that lints, dreams or rebuilds a snapshot writes under this
+        # root, which is the operator's `~/.agentm/memory/_meta` by default.
+        import graph_snapshot
+
+        with esi.isolated_engine_state():
+            root = graph_snapshot._local_index_root()
+            self.assertEqual(root, Path(os.environ["AGENTM_DEVICE_LOCAL_ROOT"]) / "_meta")
+            self.assertNotEqual(root, Path.home() / ".agentm" / "memory" / "_meta")
+
     def test_it_restores_a_variable_that_was_set(self):
         os.environ["AGENTM_STATE_DIR"] = "/outer/state"
         self.addCleanup(os.environ.pop, "AGENTM_STATE_DIR", None)
@@ -49,14 +68,13 @@ class TheContextManager(unittest.TestCase):
                          "a battery that sets the variable from outside gets it back")
 
     def test_it_removes_a_variable_that_was_not_set(self):
-        for name in ("AGENTM_STATE_DIR", "XDG_CACHE_HOME", "AGENTM_RECALL_HISTORY"):
+        for name in esi.GOVERNED:
             os.environ.pop(name, None)
         with esi.isolated_engine_state():
-            self.assertIn("AGENTM_STATE_DIR", os.environ)
-            self.assertIn("AGENTM_RECALL_HISTORY", os.environ)
-        self.assertNotIn("AGENTM_STATE_DIR", os.environ)
-        self.assertNotIn("XDG_CACHE_HOME", os.environ)
-        self.assertNotIn("AGENTM_RECALL_HISTORY", os.environ)
+            for name in esi.GOVERNED:
+                self.assertIn(name, os.environ)
+        for name in esi.GOVERNED:
+            self.assertNotIn(name, os.environ)
 
 
 class ThePerTestHelper(unittest.TestCase):
@@ -186,6 +204,16 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         # (2026-09-13). Three are named above; this one writes the ledger and
         # nothing else. test_engine_state_not_leaked runs all four by hand.
         "test_recall_temporal",
+        # The graph snapshot's root follows the device-local root, which this
+        # helper governs since 2026-09-13. Before that the root was fixed at
+        # import, and eight suites rebuilt a snapshot per fixture vault into
+        # the operator's `~/.agentm/memory/_meta`, from the battery and hand
+        # runs alike: 77,431 directories on one machine. Two of the eight,
+        # `test_dream_storage_rules` and `test_lint`, are named above.
+        # test_engine_state_not_leaked runs all eight by hand.
+        "test_a2_index_invariant", "test_dream", "test_dream_job",
+        "test_dream_retired_lanes", "test_graph_snapshot",
+        "test_lifecycle_transitions",
     )
 
     def test_each_named_suite_calls_the_helper(self):

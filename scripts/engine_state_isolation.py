@@ -45,11 +45,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# Every variable that moves engine state, cache or the recall ledger off its
-# default. Keep this list beside the resolvers it redirects, `engine_state.py`
-# and `recall_counter.default_history_path()`: a variable that lands there and
-# not here is a leak this helper silently fails to close.
-GOVERNED = ("AGENTM_STATE_DIR", "XDG_CACHE_HOME", "AGENTM_RECALL_HISTORY")
+# Every variable that moves engine state, cache, the recall ledger or the
+# device-local root off its default. Keep this list beside the resolvers it
+# redirects, `engine_state.py`, `recall_counter.default_history_path()` and
+# `storage_device_local._default_root()`: a variable that lands there and not
+# here is a leak this helper silently fails to close. The device-local root
+# holds `graph_snapshot.py`'s snapshots in its `_meta/`, one directory per
+# vault, so a test that lints, dreams or rebuilds a snapshot writes under it.
+GOVERNED = ("AGENTM_STATE_DIR", "XDG_CACHE_HOME", "AGENTM_RECALL_HISTORY", "AGENTM_DEVICE_LOCAL_ROOT")
 
 _WRAPPED = "_agentm_engine_state_isolated"
 
@@ -64,13 +67,16 @@ def _apply(base: Path) -> dict:
     not whether it has one."""
     previous = {name: os.environ.get(name) for name in GOVERNED}
     state, cache = base / "state", base / "cache"
+    device_local = base / "device-local"
     state.mkdir(parents=True, exist_ok=True)
     cache.mkdir(parents=True, exist_ok=True)
+    device_local.mkdir(parents=True, exist_ok=True)
     os.environ["AGENTM_STATE_DIR"] = str(state)
     os.environ["XDG_CACHE_HOME"] = str(cache)
     # Where the ledger's default would sit if it followed XDG_CACHE_HOME. The
     # file is not created: `record_recall` makes the directory it writes into.
     os.environ["AGENTM_RECALL_HISTORY"] = str(cache / "agentm" / "telemetry" / "recall-history.jsonl")
+    os.environ["AGENTM_DEVICE_LOCAL_ROOT"] = str(device_local)
     return previous
 
 

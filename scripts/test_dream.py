@@ -454,5 +454,20 @@ class SupersededNotesStayOutOfTheStages(_DreamTestBase):
         self.assertEqual([p for p in digest.proposals if p.stage == "contradiction_triage"], [])
 
 
+# Every test here gets its own engine state, cache and device-local root. The
+# base class redirects the first two by hand. The cycle's lint stage rebuilds a
+# graph snapshot, whose root follows the third, so twenty tests here each left
+# a `vault-*` snapshot in the operator's `~/.agentm/memory/_meta` on every run,
+# by hand and in the battery alike.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()

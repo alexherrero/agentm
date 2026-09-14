@@ -194,6 +194,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now fails the gate. The fence helper that the maps migration, lint and the
   Python dreaming cycle share now pairs a fence by its character and length, so
   a link inside a longer or tilde fence is no longer a false finding.
+- **Tests no longer write graph snapshots into the machine's device-local
+  root.** `graph_snapshot.py` fixed its root, `~/.agentm/memory/_meta`, when it
+  was imported, with no override. Eight suites that lint, dream or rebuild a
+  snapshot left a directory there for every fixture vault, in the battery and on
+  hand runs alike: 77,431 directories and 2.4 GB on one machine by 2026-09-13,
+  with the real vault's snapshot among them. The root is now read on every call
+  from the device-local backend's resolver, so `AGENTM_DEVICE_LOCAL_ROOT` moves
+  it with the device-local root, and `engine_state_isolation` sets that variable
+  for every test it governs. The five suites it did not govern now call it. The
+  nested-layout snapshot test moved above its file's `unittest.main()` guard,
+  where a hand run reaches it. `test_engine_state_not_leaked` runs all eight
+  suites by hand to prove the default root is left as it was. The directories
+  already on a machine stay until they are removed by hand.
 
 ### Internal
 

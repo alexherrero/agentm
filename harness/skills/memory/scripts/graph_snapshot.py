@@ -48,15 +48,28 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import graph  # noqa: E402
+import storage_device_local  # noqa: E402
 
 _SNAPSHOT_FILENAME = "graph-snapshot.db"
+
 
 # Device-local store root: SQLite on cloud-sync is a known corruption pattern,
 # so the snapshot never lives in the vault. Mirrors the V5-1 storage-seam
 # Tier.LOCAL_INDEX "never sync" contract. These three helpers were imported
 # from `vec_index.py` until that module was removed; none of them was ever
 # vector-specific, so they moved here rather than going with it.
-_LOCAL_INDEX_ROOT = Path.home() / ".agentm" / "memory" / "_meta"
+def _local_index_root() -> Path:
+    """The `_meta/` directory under the device-local root.
+
+    That is `~/.agentm/memory/_meta` unless `$AGENTM_DEVICE_LOCAL_ROOT` moves
+    the root. It is asked of the device-local backend's own resolver on every
+    call, so the two keep one default and one override. The root used to be
+    fixed at import with no override, and every test that rebuilt a snapshot
+    left a directory in the operator's own root, beside the real vault's;
+    `engine_state_isolation` now moves the override for each test it governs.
+    """
+    return storage_device_local._default_root() / "_meta"
+
 
 # The metadata columns extracted from an entry's frontmatter.
 _META_COLUMNS: tuple[str, ...] = (
@@ -71,7 +84,7 @@ def _local_index_dir(vault: Path) -> Path:
     suffix to survive vault-root renames without breaking the namespace.
     """
     key = f"{vault.resolve().name}-{hashlib.sha256(str(vault.resolve()).encode()).hexdigest()[:8]}"
-    return _LOCAL_INDEX_ROOT / key
+    return _local_index_root() / key
 
 
 def _vault_rel(path: Path, vault: Path) -> str:
