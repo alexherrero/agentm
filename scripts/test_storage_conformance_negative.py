@@ -18,6 +18,12 @@ derived layer).
     byte-for-byte ⇒ the gated case passes, both called directly and run as an
     auto-discovered `ConformanceSuite` subclass (so the gated case is proven to
     execute, not skip).
+  - **A backend blind to its own registry** — `exists` never admits the legacy
+    `_meta/repos.json` it holds, so `repo_registry` keeps the registry in engine
+    state, where every operation succeeds ⇒ the routing check fails anyway,
+    naming registry routing. Beside it, a write-recording backend proves the
+    check writes the registry through the backend, and a caller whose engine
+    state already holds a registry proves the check leaves that registry alone.
 
 These fixtures live in the test tree (`test_*.py`), so they are out of the
 `check-storage-seam-no-path-leak` glob (`storage_*.py`) and never break the
@@ -29,9 +35,13 @@ Run directly:
 """
 from __future__ import annotations
 
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -45,6 +55,7 @@ from storage_conformance import (  # noqa: E402
     check_lf_exact_round_trip,
     check_list_on_absent,
     check_rebuildable,
+    check_routing_repo_registry,
 )
 from storage_seam import DerivedMaintenance, Locator, Tier  # noqa: E402
 
@@ -170,6 +181,34 @@ class _CheatingDerivedBackend(InMemoryBackend):
 
 
 # -----------------------------------------------------------------------------
+# Routing fixtures — backends handed the registry's legacy copy.
+# -----------------------------------------------------------------------------
+class _BlindToItsRegistryBackend(InMemoryBackend):
+    """Stores ``_meta/repos.json`` like any file, but ``exists`` never admits it.
+
+    ``repo_registry`` asks the backend whether it holds the legacy copy. Told no,
+    it keeps the registry in the engine state directory, where register, list and
+    unregister all succeed without the backend. A check that judged the cycle by
+    its outcomes alone would pass this backend.
+    """
+
+    def exists(self, locator: Locator) -> bool:
+        return locator.key != "_meta/repos.json" and super().exists(locator)
+
+
+class _WriteRecordingBackend(InMemoryBackend):
+    """Records the key of every ``write``, so a test can see what reached the backend."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.written: list[str] = []
+
+    def write(self, locator: Locator, content: str) -> Locator:
+        self.written.append(locator.key)
+        return super().write(locator, content)
+
+
+# -----------------------------------------------------------------------------
 # The proofs.
 # -----------------------------------------------------------------------------
 class SuiteBites(unittest.TestCase):
@@ -216,6 +255,15 @@ class SuiteBites(unittest.TestCase):
         self.assertIn("rebuildability", msg)
         self.assertIn("after a source change", msg)
 
+    def test_backend_blind_to_its_registry_fails_routing(self) -> None:
+        # Every registry operation succeeds here, in the engine state. The check
+        # must fail anyway, because none of them reached the backend.
+        with self.assertRaises(ConformanceFailure) as cm:
+            check_routing_repo_registry(_BlindToItsRegistryBackend)
+        msg = str(cm.exception)
+        self.assertIn("registry routing", msg)
+        self.assertIn("routed to another store", msg)
+
 
 class SuiteRunsGreenWhenSatisfied(unittest.TestCase):
     """The gated rebuildability case is proven to *run green*, not merely skip.
@@ -229,6 +277,41 @@ class SuiteRunsGreenWhenSatisfied(unittest.TestCase):
         check_rebuildable(
             _FaithfulDerivedBackend, source_root=_SOURCE_ROOT, derived_root=_DERIVED_ROOT
         )
+
+
+class RoutingCheckReachesTheBackend(unittest.TestCase):
+    """The routing check writes through the backend it is handed, and never the caller's registry."""
+
+    def test_registry_writes_land_on_the_backend(self) -> None:
+        made: list[_WriteRecordingBackend] = []
+
+        def make() -> _WriteRecordingBackend:
+            made.append(_WriteRecordingBackend())
+            return made[-1]
+
+        check_routing_repo_registry(make)
+        self.assertEqual(len(made), 1)
+        # The check's seed, then register_repo's write and unregister_repo's. A
+        # check that stops reaching the backend records fewer.
+        self.assertEqual(made[0].written, ["_meta/repos.json"] * 3)
+
+    def test_callers_engine_state_is_left_alone(self) -> None:
+        # A registry already in the caller's engine state would win over the
+        # backend's copy, so the check brings an empty directory of its own. The
+        # caller's registry comes back byte for byte, and so does the variable.
+        with tempfile.TemporaryDirectory() as state:
+            registry = Path(state) / "repos.json"
+            # Compact on purpose: a rewrite by repo_registry would indent it.
+            original = json.dumps({"version": 1, "repos": [
+                {"slug": "agentm", "root_path": "/srv/projects/agentm"},
+            ]}).encode("utf-8")
+            registry.write_bytes(original)
+            mtime = registry.stat().st_mtime_ns
+            with mock.patch.dict(os.environ, {"AGENTM_STATE_DIR": state}):
+                check_routing_repo_registry(InMemoryBackend)
+                self.assertEqual(os.environ["AGENTM_STATE_DIR"], state)
+            self.assertEqual(registry.read_bytes(), original)
+            self.assertEqual(registry.stat().st_mtime_ns, mtime)
 
 
 class FaithfulDerivedConformance(ConformanceSuite, unittest.TestCase):

@@ -33,7 +33,7 @@ The storage seam is agentm's boundary between the memory engine and its backing 
 | Vault backend (plugin) | crickets `obsidian-vault` plugin — loaded on demand; kernel built-in **deleted** (V5-3, 2026-06-21) | `crickets/src/obsidian-vault/scripts/storage_vault.py` |
 | Vault write protocol | `vault_mutex` + content-hash CAS + atomic `fsync→rename`; vendored to `/memory` skill | `vault_lock.py` |
 | Backend selection | 3-step chain: `storage.backend` config → `$MEMORY_VAULT_PATH` env → device-local; fail-loud on misconfiguration; capability-request matching (`required=`) | `backend_selection.py` |
-| Routing plane | `resolve_project` returns `{slug, project_locator, backend, …}` in `Locator`s; `repo_registry` rides the active backend; `state_mode: vault` → `backend` read-alias | `harness_memory.py`, `repo_registry.py` |
+| Routing plane | `resolve_project` returns `{slug, project_locator, backend, …}` in `Locator`s; `repo_registry` keeps its registry in engine state, reading a backend's legacy copy only while it is the sole one; `state_mode: vault` → `backend` read-alias | `harness_memory.py`, `repo_registry.py` |
 | Harness state I/O | Backend-aware: synced backend (`capabilities.sync=True`) → vault `_harness/`; else device-local `<project>/.harness/`. `.project-mode=local` opt-out wins over a synced backend | `harness_memory.py` |
 | Gate enforcement | No-`Path`-leak (AST, return-type scan); no routing-import of capability plugins (LC-8); routing conformance suite | `check-storage-seam-no-path-leak.py`, `check-process-seam-import-direction.sh`, `storage_conformance.py` |
 
@@ -124,11 +124,11 @@ The state mode (vault-backed vs. device-local) is an on-host configuration:
 - `_vault_projects_dir(backend: StorageBackend) -> Locator` calls `backend.resolve("projects")` — the desk-generation rung, kept as a documented fallback.
 - **Vault-level spaces resolve through a second backend instance** (filing-v2 part 2b, 2026-09-03). The project space now lives at the vault root — `Projects/`, a *sibling* of the memory root the backend is rooted in — and a `Locator` cannot reach it: Locators are root-confined by construction, with no `..`. `_root_projects_candidates(backend)` therefore yields `(backend, parts)` pairs: the primary backend's own flat `Projects` first, then a **second instance of the same backend class rooted one level up** (`type(backend)(root.parent, …)`), built from the backend's own root — never from global config — and only when that backend reports `capabilities.sync`, the root is nested inside an Obsidian vault (`.obsidian/` at the parent, none at the root itself: the witness that makes "sibling" mean *vault-root* sibling, because a flat vault's parent is the operator's home, where a `Projects/` directory is common and is not the vault's), and the sibling directory already exists ("discovered, never conjured"). `resolve_project` probes those candidates before the desk and legacy rungs and reports `layout: "root"` on a hit; `_project_group_segment` names the matching group prefix for writers. `_DEFAULT_SPACES["projects"]` is `../Projects` — a memory-root-relative *spelling* consumed by path builders and the consistency gate, never a Locator; the daemon spells the same place `Projects` from the vault root, and a test pins both.
 
-`repo_registry` functions take `backend: StorageBackend` and call `backend.resolve("_meta", "repos.json")` for the registry locator. On vault this resolves to `<vault>/_meta/repos.json` (same bytes as before V5-6); on device-local to `~/.agentm/memory/_meta/repos.json`.
+`repo_registry` keeps the registry in the engine state directory, as `repos.json` behind a `DeviceLocalBackend` rooted there, whichever backend is active. Its functions still take `backend: StorageBackend`, and they consult it for one thing: a legacy `_meta/repos.json`. While the backend holds the only copy, `registry_store()` reads and writes that copy in place, so a vault from before the memory-root trims keeps a single registry until its migration moves the file. Once an engine copy exists, the engine copy wins. V5-6 had the registry ride the active backend; the 2026-09-13 amendment below records the move.
 
 **LC-8 gate (import direction):** `check-process-seam-import-direction.sh` scans `harness_memory.py` and `repo_registry.py` for `import storage_vault` / `from storage_vault import` — the routing layer must never import capability plugins.
 
-**Routing conformance suite:** `storage_conformance.py`'s `check_routing_repo_registry(make_backend)` proves the register/list/unregister cycle on any conforming backend; exercised by `RoutingConformanceReport` against both `DeviceLocalBackend` and `vault_backend_stub.VaultBackend`.
+**Routing conformance suite:** `storage_conformance.py`'s `check_routing_repo_registry(make_backend)` proves the legacy case on any conforming backend. It seeds `_meta/repos.json` through the backend's own verbs, inside an empty engine state directory of its own, and fails unless register, list and unregister read and write that copy and leave the engine state without a registry. `RoutingConformanceReport` runs it against `DeviceLocalBackend` and `vault_backend_stub.VaultBackend`, the crickets `obsidian-vault` plugin runs it through the `ConformanceSuite` mixin, and the fixtures in `test_storage_conformance_negative.py` prove it fails when the registry never reaches the backend.
 
 ### 7. Writing user space (T1) — a separate seam call
 
@@ -145,7 +145,7 @@ Writing T1 takes a **separate, explicit seam call**, distinct from `write`, that
 | `check-storage-seam-no-path-leak` | Return types of seam verbs in `storage_*.py` — no `Path` escapes |
 | `check-process-seam-import-direction` (LC-8) | `harness_memory.py`, `repo_registry.py` never import `storage_vault` |
 | `check-vault-lock-parity` | `vault_lock.py` byte-identical to vendored skill copy |
-| `storage_conformance` | Universal verb battery + routing contract on any backend |
+| `storage_conformance` | Universal verb battery on any backend, plus the registry's legacy copy riding the backend that holds it |
 
 ## §2b In-body resolutions
 
@@ -161,6 +161,20 @@ Writing T1 takes a **separate, explicit seam call**, distinct from `write`, that
 ## Amendment log
 
 This log preserves the decision history from the six retired ADRs. Each entry records the original decision, why-not-the-alternative, re-audit triggers, and any later amendments. Entries appear **newest-first** (most recent at the top), matching the other designs; **0020** (backend-aware harness state) remains the current substantive truth for state routing.
+
+---
+
+### 2026-09-13 — The registry lives in engine state, and the routing check proves the legacy copy
+
+**Decision:** The memory-root trims (agentm-vault plan 05, deployed 2026-09-12) moved the repo registry from the active backend's `_meta/repos.json` to `repos.json` in the engine state directory. That supersedes LC-4, which had settled V5-6's one open fork as "the registry rides the active backend". The move shipped without an amendment here, and this entry records it. A backend still matters in one case. While it holds the only copy of the registry, `registry_store()` reads and writes that copy in place. `check_routing_repo_registry` now proves exactly that case: it seeds the legacy copy on a fresh backend, inside an engine state directory of its own, and fails unless register, list and unregister read and write the backend's copy and leave the engine state without a registry. See §6.
+
+**Why the registry left the backend:** it is a machine's index of its own clones. Its `root_path` values only make sense on the machine that wrote them, which is the device-coherence concern LC-4 deferred. Plan 05 took the alternative LC-4 declined, a registry per device, once the vault became the place for knowledge and the engine state directory the place for machine state.
+
+**Why not retire the check:** after the move it passed for any backend at all, because a fresh backend is never asked about the registry, and outside the battery it rewrote the caller's own registry. Retiring it would have fixed both. The legacy case is still live code on any machine whose vault has not been migrated, though, and there the registry is only as sound as the backend that holds it. Narrowed to that case, the check now proves it on every conforming backend, including the real `obsidian-vault` plugin, whose suite inherits the check through the `ConformanceSuite` mixin.
+
+**Why the check owns its engine state:** an engine copy wins over the backend's, so on a machine that already has a registry the legacy case is unreachable. An empty directory of the check's own makes the case reachable and leaves the caller's registry byte-identical, whichever suite imports the check.
+
+**Re-audit triggers:** (1) `registry_store()` stops consulting the backend, once no vault still carries a legacy registry. The check then fails by design, so retire it in that change, together with `ROUTING_CHECKS` and `run_conformance(include_routing=…)`. (2) Cross-machine work designs a shared registry, which reopens LC-4's question of where the registry lives.
 
 ---
 
@@ -223,6 +237,8 @@ Two corrections, landed in the same commit:
 ### 2026-06-18 — ADR 0019: V5-6 routing-plane de-vaulting
 
 **Decisions:** (task 1) `resolve_project` / `_vault_projects_dir` speak `Locator`s: signature change from `(vault: Path) -> Path` to `(backend: StorageBackend) -> Locator`; `resolve_project` returns `{slug, project_locator, backend, project_root, layout}`. (task 2) `repo_registry` rides the active backend: `registry_locator(backend) -> Locator`, all five public functions take `backend: StorageBackend`. (task 3) `state_mode: vault` → `"backend"` read-alias at both `_read_config_state_mode` and `_read_project_mode`; canonical value is `"backend"`; no file rewrite. (task 4) Gate extensions: no-`Path`-leak Pass 2 on routing functions; LC-8 block on routing-to-plugin imports; `storage_conformance.py` routing suite.
+
+**Task 2 amendment — 2026-09-13 (the registry left the backend):** the memory-root trims moved the registry to the engine state directory, taking the device-local alternative LC-4 had declined, and a backend now holds it only as a legacy copy. See the 2026-09-13 entry above.
 
 **Why not preserve `vault_path: Path` in the resolve_project return value:** V5-7 removed implicit vault selection from a bare `vault_path` config key (a configured path ≠ a chosen backend). Honoring a bare path would resurrect implicit inference and route state to a vault the selection chain deliberately did not pick — the exact split-brain ADR 0018 DC-4/DC-5 guard against.
 

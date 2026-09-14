@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """repo_registry — seam-backed registry of agent-aware repos (V5-6).
 
-The registry lives at `_meta/repos.json` in the active storage backend.
-On the `obsidian-vault` backend this is `<vault>/_meta/repos.json` —
-byte-identical to the pre-V5-6 location; on `device-local` it lives at
-`~/.agentm/memory/_meta/repos.json`.
+The registry lives at `repos.json` in the engine state directory
+(`harness_memory.engine_state_dir()`), behind the seam's device-local backend.
+V5-6 put it at `_meta/repos.json` in the active storage backend (LC-4), and the
+memory-root trims (agentm-vault plan 05) moved it out. A backend that still
+holds that legacy copy as the only one is read and written in place until the
+migration moves it (`registry_store()`).
 
 It holds **no run configuration** — how the harness runs (vault vs local state
 mode) is on-host config in `.agentm-config.json` + the per-repo `.project-mode`

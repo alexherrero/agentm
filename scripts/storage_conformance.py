@@ -55,6 +55,7 @@ Two ways to drive it, both built on the same ``check_*`` functions:
 """
 from __future__ import annotations
 
+import json
 from typing import Callable
 
 import storage_seam as ss
@@ -418,56 +419,116 @@ UNIVERSAL_CHECKS: tuple[tuple[str, Callable[[BackendFactory], None]], ...] = (
 
 
 # -----------------------------------------------------------------------------
-# The routing layer contract — prove repo_registry works on any conforming backend.
+# The routing layer contract — a registry the backend holds is read and written there.
 # -----------------------------------------------------------------------------
-def check_routing_repo_registry(make_backend: BackendFactory) -> None:
-    """``repo_registry`` operations produce consistent outcomes on any conforming backend.
+#: Where a vault from before the memory-root trims keeps the repo registry. It is
+#: the on-disk shape an unmigrated vault carries, so the check spells it out
+#: rather than borrowing ``repo_registry``'s private constant.
+_LEGACY_REGISTRY_PARTS = ("_meta", "repos.json")
 
-    Proves the V5-6 routing-plane invariant (LC-4): register a slug, confirm it
-    appears in ``list_repos``, unregister it, confirm it disappears. The same
-    cycle must produce the same semantic outcome on every backend that passes the
-    universal storage contract — it is the executable proof that ``repo_registry``
-    rides the active backend, not the vault path.
+
+def check_routing_repo_registry(make_backend: BackendFactory) -> None:
+    """A registry the backend holds is read and written through that backend.
+
+    V5-6 LC-4 had ``repo_registry`` ride the active backend. The memory-root
+    trims (agentm-vault plan 05) moved the registry's home to the engine state
+    directory, so a fresh backend is never asked about it, and a register/list/
+    unregister cycle run against one passes for any backend at all. What remains
+    of LC-4 is the legacy copy. While a backend holds the only registry, at
+    ``_meta/repos.json``, ``repo_registry`` reads and writes it there, so an
+    unmigrated vault's registry is only as sound as its backend.
+
+    This check proves that case. It seeds the legacy copy through the backend's
+    own verbs, inside an empty engine state directory of its own, and runs
+    register → list → unregister. The registry must route to the backend it was
+    handed, every write must land in the backend's copy, and the engine state
+    must hold no registry at the end. Owning the engine state is what makes the
+    case reachable, because a registry already in the caller's engine state
+    wins over the backend's copy. It also leaves that registry untouched,
+    whichever suite imports this check.
+
+    Once ``repo_registry`` stops consulting the backend, the routing assertion
+    fails by design; retire this check in that change.
 
     ``repo_registry`` is imported lazily — contexts where the routing layer is
     unavailable (e.g. the V5-2 vault plugin's minimally-installed conformance
     run) skip this check via :exc:`ImportError` propagation (the mixin catches it
     as a ``skipTest``).
     """
+    import engine_state_isolation as esi  # lazy: ships beside repo_registry
     import repo_registry as rr  # lazy: routing layer, not always present
 
-    b = make_backend()
+    seed = "conformance-seed"
     slug = "conformance-test-repo"
     root_path = "/tmp/conformance-test"
 
-    # register_repo returns the full registry dict (version + repos list).
-    result = rr.register_repo(b, slug, root_path)
-    found_in_result = any(r.get("slug") == slug for r in result.get("repos", []))
-    if not found_in_result:
-        raise ConformanceFailure(
-            f"register_repo must return a registry dict whose 'repos' list contains "
-            f"slug {slug!r}, got repos={result.get('repos', [])!r}"
-        )
+    with esi.isolated_engine_state():
+        b = make_backend()
+        legacy = b.resolve(*_LEGACY_REGISTRY_PARTS)
+        b.write(legacy, json.dumps(
+            {"version": 1, "repos": [{"slug": seed, "root_path": "/conformance/seed"}]},
+            indent=2,
+        ) + "\n")
 
-    repos = rr.list_repos(b)
-    slugs = [r.get("slug") for r in repos]
-    if slug not in slugs:
-        raise ConformanceFailure(
-            f"list_repos after register must contain {slug!r}, got slugs={slugs!r}"
-        )
+        def slugs_in(repos: list[dict]) -> list[object]:
+            return [r.get("slug") for r in repos]
 
-    removed = rr.unregister_repo(b, slug)
-    if not removed:
-        raise ConformanceFailure(
-            f"unregister_repo must return True when the slug exists, got {removed!r}"
-        )
+        def require_backend_holds(expected: list[str], step: str) -> None:
+            held = slugs_in(json.loads(b.read(legacy)).get("repos", []))
+            if held != expected:
+                raise ConformanceFailure(
+                    f"registry routing violated: after {step} the backend's copy at "
+                    f"{legacy!r} must hold slugs {expected!r}, but it holds {held!r}"
+                )
 
-    repos_after = rr.list_repos(b)
-    slugs_after = [r.get("slug") for r in repos_after]
-    if slug in slugs_after:
-        raise ConformanceFailure(
-            f"list_repos after unregister must not contain {slug!r}, got slugs={slugs_after!r}"
-        )
+        store, loc = rr.registry_store(b)
+        if store is not b:
+            raise ConformanceFailure(
+                f"registry routing violated: the backend holds the only registry copy at "
+                f"{legacy!r}, but repo_registry routed to another store ({loc!r})"
+            )
+        if loc != legacy:
+            raise ConformanceFailure(
+                f"registry routing violated: repo_registry must address the backend's copy "
+                f"at {legacy!r}, got {loc!r}"
+            )
+
+        # register_repo returns the full registry dict (version + repos list).
+        returned = slugs_in(rr.register_repo(b, slug, root_path).get("repos", []))
+        if returned != [seed, slug]:
+            raise ConformanceFailure(
+                f"register_repo must return the backend's registry with {slug!r} appended "
+                f"after {seed!r}, got slugs={returned!r}"
+            )
+        require_backend_holds([seed, slug], "register_repo")
+
+        listed = slugs_in(rr.list_repos(b))
+        if listed != [seed, slug]:
+            raise ConformanceFailure(
+                f"list_repos after register must read the backend's copy: expected slugs "
+                f"{[seed, slug]!r}, got {listed!r}"
+            )
+
+        removed = rr.unregister_repo(b, slug)
+        if removed is not True:
+            raise ConformanceFailure(
+                f"unregister_repo must return True when the slug exists, got {removed!r}"
+            )
+        require_backend_holds([seed], "unregister_repo")
+
+        listed_after = slugs_in(rr.list_repos(b))
+        if listed_after != [seed]:
+            raise ConformanceFailure(
+                f"list_repos after unregister must read the backend's copy: expected slugs "
+                f"{[seed]!r}, got {listed_after!r}"
+            )
+
+        engine, engine_loc = rr.registry_store(None)
+        if engine.exists(engine_loc):
+            raise ConformanceFailure(
+                "registry routing violated: the cycle created a registry in the engine state "
+                f"directory, although the backend held the only copy at {legacy!r}"
+            )
 
 
 #: The routing layer checks. Gated separately from universal checks — requires
