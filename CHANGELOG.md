@@ -73,6 +73,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The enrichment dry run counts the cards and the project records apart, and
+  sizes the night from where the cursor resumes.** Plan 09 queued the project
+  records after the cards, and `--dry-run` went on reporting the whole queue as
+  cards: on the live vault of 2026-09-13 it said `503 card(s) under
+  Agent/memory/procedural/, Agent/memory/semantic/` for 211 cards and 292
+  records. The summary line now names both counts. Its deep · light · unchanged
+  sizing walked every path sorting after `--after`, while the lister the night
+  pages with walks the queue by position. The two agree only while every card's
+  path sorts before every record's, as the live `Agent` root does under
+  `Projects`; a memory root sorting the other way made a cursor on the last card
+  size nothing at all, and a cursor on a record size the cards the night had
+  already passed. The sizing now starts at the position the lister would page
+  from, and both halves are pinned against the page the queue would serve.
 - **The morning note no longer gives a stale cycle's reason for a step that did
   not run.** The runner writes `last-cycle.json` when a cycle ends, and the note
   runs inside a cycle, so it read the cycle before its own. On 2026-09-13 that

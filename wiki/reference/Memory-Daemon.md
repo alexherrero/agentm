@@ -583,9 +583,13 @@ directory index — is refused as a record rather than a card
 is a snapshot taken once per run (`enrichQueue`, `enrich_run.go:201-228`)
 — a note captured mid-night waits for the next run rather than moving the
 cursor underneath the one in progress. `--dry-run` sizes the night against
-this same queue: how many cards are owed the deep pass, the light pass,
-are unchanged at this pass, or unreadable, alongside the budget the run
-would run under. `--sample` draws from the same queue, and the coverage
+this same queue: how many of its notes are owed the deep pass, the light
+pass, are unchanged at this pass, or unreadable, alongside the budget the
+run would run under. It counts the cards and the project records apart —
+one number over both reads as a card count and is not — and it sizes from
+the position a cursor resumes at (`queueStart`, `enrich_run.go`), which is
+where the lister pages from, rather than from every path that sorts after
+`--after`. `--sample` draws from the same queue, and the coverage
 ledger's population (`pendingFor`) is the same queue too.
 
 The project records queue after the cards, inside the same line

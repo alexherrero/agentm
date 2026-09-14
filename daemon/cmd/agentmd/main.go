@@ -1347,14 +1347,28 @@ func cmdEnrich(args []string) error {
 	}
 
 	if *dryRun {
-		// The night sized before anything is spent: what each card is owed,
-		// read the same way the pass will read it, and the line it runs under.
+		// The night sized before anything is spent: what each note is owed, read
+		// the same way the pass will read it, and the line it runs under.
 		fp := enrichFingerprint(cfg, led)
-		var deep, light, unchanged, unreadable int
+		// Counted apart, because they are two populations under one queue: the
+		// cards come from the contract's class directories and the records from
+		// the projects space. One number over both read as a card count and was
+		// not — on the live vault of 2026-09-13 it said 503 cards where there
+		// were 211 and 292 records.
+		var cards, records int
 		for _, rel := range queue {
-			if rel <= *after {
-				continue
+			if enrich.IsProjectRecord(rel) {
+				records++
+			} else {
+				cards++
 			}
+		}
+		var deep, light, unchanged, unreadable int
+		// From the position the lister would page from, not from every path that
+		// sorts after the cursor: the queue serves the records after the cards,
+		// so the two are different populations the moment a card's path sorts
+		// after a record's.
+		for _, rel := range queue[queueStart(queue, *after):] {
 			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
 			if err != nil {
 				unreadable++
@@ -1369,7 +1383,8 @@ func cmdEnrich(args []string) error {
 				light++
 			}
 		}
-		fmt.Printf("dry run: %d card(s) under %s\n", len(queue), strings.Join(dirs, ", "))
+		fmt.Printf("dry run: %d card(s) under %s and %d project record(s)\n",
+			cards, strings.Join(dirs, ", "), records)
 		fmt.Printf("  owed the deep pass %d · the light pass %d · unchanged at this "+
 			"pass %d · unreadable %d\n", deep, light, unchanged, unreadable)
 		fmt.Printf("  budget: the %d-call guard · strong %s tokens · cheap %s tokens · %s\n",
