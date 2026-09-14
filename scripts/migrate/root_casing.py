@@ -147,9 +147,11 @@ def build_plan(vault) -> dict:
     for rel in SETTINGS_REL:
         p = vault / rel
         if p.is_file():
-            text = p.read_text(encoding="utf-8")
-            new_text = rewrite_settings(rel, text)
-            settings[rel] = {"changes": new_text != text, "before_sha": _sha(text.encode("utf-8"))}
+            # Bytes in and out: a text-mode read on Windows would translate
+            # the line endings and the digest would no longer name the file.
+            raw = p.read_bytes()
+            new_text = rewrite_settings(rel, raw.decode("utf-8"))
+            settings[rel] = {"changes": new_text.encode("utf-8") != raw, "before_sha": _sha(raw)}
     pending = [r for r in renames if r["state"] == "pending"]
     return {"vault": str(vault), "listing": names, "renames": renames, "settings": settings,
             "counts": {"renames": len(pending), "tracked": sum(r["tracked"] for r in pending)}}
@@ -270,14 +272,15 @@ def apply(vault, recorded: dict, confirm_count: int, out_dir, *, pause: float = 
             if not s["changes"]:
                 continue
             p = vault / rel
-            text = p.read_text(encoding="utf-8")
-            if _sha(text.encode("utf-8")) != s["before_sha"]:
+            raw = p.read_bytes()
+            if _sha(raw) != s["before_sha"]:
                 journal["landed"] = False
                 journal["settings"][rel] = {"landed": False, "why": "changed since the dry run"}
                 continue
-            new_text = rewrite_settings(rel, text)
-            p.write_text(new_text, encoding="utf-8")
-            journal["settings"][rel] = {"landed": True, "before": text, "after_sha": _sha(new_text.encode("utf-8"))}
+            new_text = rewrite_settings(rel, raw.decode("utf-8"))
+            p.write_bytes(new_text.encode("utf-8"))
+            journal["settings"][rel] = {"landed": True, "before": raw.decode("utf-8"),
+                                        "after_sha": _sha(new_text.encode("utf-8"))}
     journal["listing_after"] = listing(vault)
     journal["returned"] = [old for old, _new in RENAMES if old in journal["listing_after"]
                            and _CASING[old] in journal["listing_after"]]
@@ -427,7 +430,7 @@ def revert(vault, run_id: str, out_dir, *, run=None, sleep=time.sleep, pause: fl
             raise Refused(f"moving {r['new']}/ back to {r['old']}/ failed: {(result.stderr or result.stdout).strip()[:300]}")
     for rel, s in journal.get("settings", {}).items():
         if s.get("landed"):
-            (vault / rel).write_text(s["before"], encoding="utf-8")
+            (vault / rel).write_bytes(s["before"].encode("utf-8"))
     marker = vault / MARKER_REL
     if marker.exists():
         marker.unlink()
