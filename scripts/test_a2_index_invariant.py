@@ -18,10 +18,12 @@ Runs entirely from path arithmetic — no backend required.
 """
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # graph_snapshot lives in harness/skills/memory/scripts/.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -52,12 +54,16 @@ class TestA2IndexInvariant(unittest.TestCase):
                 pass  # relative_to raises ValueError when not a descendant
 
     def test_snapshot_path_is_device_local(self) -> None:
-        """The snapshot path must be under ~/.agentm/memory/_meta/."""
+        """With no override, the snapshot path is under ~/.agentm/memory/_meta/."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "TestVault"
             vault.mkdir()
-            snap = graph_snapshot._snapshot_path(vault)
-            expected_root = Path.home() / ".agentm" / "memory" / "_meta"
+            home = Path(tmp) / "home"
+            unset = {k: v for k, v in os.environ.items() if k != "AGENTM_DEVICE_LOCAL_ROOT"}
+            with mock.patch.dict(os.environ, unset, clear=True), \
+                    mock.patch.object(Path, "home", return_value=home):
+                snap = graph_snapshot._snapshot_path(vault)
+            expected_root = home / ".agentm" / "memory" / "_meta"
             try:
                 snap.relative_to(expected_root)
             except ValueError:
@@ -65,6 +71,28 @@ class TestA2IndexInvariant(unittest.TestCase):
                     f"_snapshot_path({vault}) = {snap} is not under "
                     f"{expected_root}. Derived stores must be device-local."
                 )
+
+    def test_the_device_local_override_moves_a_rebuild_off_the_home_directory(self) -> None:
+        """`$AGENTM_DEVICE_LOCAL_ROOT` moves the snapshot root with the
+        device-local root, read when a snapshot is opened rather than when
+        this module was imported. The root used to be fixed at import, so no
+        test could keep a rebuild out of the operator's own
+        `~/.agentm/memory/_meta`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "TestVault"
+            (vault / "memory" / "reference").mkdir(parents=True)
+            (vault / "memory" / "reference" / "note.md").write_text(
+                "---\nkind: reference\nslug: note\n---\n\nbody\n", encoding="utf-8"
+            )
+            home, moved = Path(tmp) / "home", Path(tmp) / "device-local"
+            with mock.patch.dict(os.environ, {"AGENTM_DEVICE_LOCAL_ROOT": str(moved)}), \
+                    mock.patch.object(Path, "home", return_value=home):
+                graph_snapshot.rebuild(vault)
+            written = sorted(p.relative_to(moved).as_posix() for p in moved.rglob("*.db"))
+            self.assertEqual(len(written), 1, written)
+            self.assertRegex(written[0], r"^_meta/TestVault-[0-9a-f]{8}/graph-snapshot\.db$")
+            self.assertFalse((home / ".agentm").exists(),
+                             "the rebuild wrote under the home directory despite the override")
 
     def test_two_vaults_have_distinct_store_paths(self) -> None:
         """Different vault paths must produce different local store dirs."""
@@ -100,6 +128,19 @@ class TestA2IndexInvariant(unittest.TestCase):
                 f"rebuild() wrote SQLite file(s) inside the vault: {strays}. "
                 "Derived stores must be device-local only.",
             )
+
+
+# Every test here gets its own device-local root, which the snapshot root
+# follows. The rebuild test left a `TestVault-*` snapshot in the operator's
+# `~/.agentm/memory/_meta` on every run until the root could be moved.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
 
 
 if __name__ == "__main__":

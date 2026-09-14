@@ -46,6 +46,7 @@ if str(_REPO / "scripts") not in sys.path:
     sys.path.append(str(_REPO / "scripts"))
 
 import engine_state  # noqa: E402
+import graph_snapshot  # noqa: E402 — the resolver every graph snapshot is written through
 import harness_memory  # noqa: E402 — the resolver the repo registry writes through
 import recall_counter  # noqa: E402 — the resolver the recall ledger writes through
 
@@ -492,6 +493,155 @@ class TheLedgerWritingSuitesRunByHand(unittest.TestCase):
             with self.subTest(suite=suite):
                 _run_by_hand(self, suite, (), _seed_default_ledger, "the default recall ledger's directory")
                 _run_by_hand(self, suite, names, _seed_default_ledger, "the default recall ledger's directory")
+
+
+def _seed_snapshot_root(case: unittest.TestCase, env: dict, home: str) -> Path:
+    """Seed a snapshot where the run's default graph snapshot root resolves.
+
+    Asks the resolver every snapshot is written through, under exactly the
+    environment the run gets. If that root ever stops following the home
+    directory, the snapshot written here would land among the machine's own,
+    so this refuses before writing anything. The seeded directory stands in
+    for the real vault's, which sits among the fixtures on a machine that has
+    run these suites.
+    """
+    with mock.patch.dict(os.environ, env, clear=True):
+        root = graph_snapshot._local_index_root()
+    case.assertIn(
+        Path(os.path.realpath(home)), Path(os.path.realpath(root)).parents,
+        f"the default snapshot root no longer follows the home directory "
+        f"({root}); this check cannot run without touching the machine's own")
+    seeded = root / "Agent-00000000" / "graph-snapshot.db"
+    seeded.parent.mkdir(parents=True)
+    seeded.write_bytes(b"stands in for the real vault's snapshot\n")
+    return root
+
+
+class TheGraphSnapshotSuitesRunByHand(unittest.TestCase):
+    """Hand runs of the suites that rebuild a graph snapshot, each under a home of its own.
+
+    `graph_snapshot.py` keeps one SQLite snapshot per vault in
+    `~/.agentm/memory/_meta/<vault name>-<hash>/`. Until 2026-09-13 it fixed
+    that root when the module was imported, with no override, so every fixture
+    vault these suites linted, dreamed over or rebuilt got a directory of its
+    own there, beside the real vault's: 77,431 of them on one machine, 2.4 GB in
+    all. The battery wrote them as surely as a hand run did, because its runner
+    redirects only the engine state directory.
+
+    The root now follows `AGENTM_DEVICE_LOCAL_ROOT`, read on every call, and
+    `engine_state_isolation` governs that variable. Each suite runs by hand
+    twice, with neither `AGENTM_STATE_DIR` nor `AGENTM_DEVICE_LOCAL_ROOT` set:
+    whole, then only the tests named against it, each of which wrote a snapshot
+    before the fix. Both runs must pass and leave the seeded snapshot root
+    exactly as it was. The second must run every named test and skip none, so
+    the check cannot pass by running nothing.
+    """
+
+    WRITERS = {
+        "test_a2_index_invariant.py": (
+            "TestA2IndexInvariant.test_rebuild_leaves_no_sqlite_file_in_the_vault",
+        ),
+        "test_dream.py": (
+            "FullPassFixtureTests.test_no_note_changes",
+            "CliTests.test_main_smoke_run",
+        ),
+        "test_dream_job.py": (
+            "SameShapeAsManualRunTests.test_job_invoked_command_matches_manual_run_shape",
+        ),
+        "test_dream_retired_lanes.py": (
+            "RetiredLanesTests.test_a_full_cycle_leaves_the_binarys_lanes_alone",
+        ),
+        "test_dream_storage_rules.py": (
+            "HaltTests.test_the_same_corpus_does_propose_when_the_rules_parse",
+            "HashWatchTests.test_the_digest_announces_a_changed_hash",
+        ),
+        "test_graph_snapshot.py": (
+            "TestGraphSnapshot.test_round_trip_incoming_and_orphans",
+            # Below the file's `unittest.main()` guard until 2026-09-13, where
+            # a hand run never reached it.
+            "TestNestedLayoutSiblingSpace.test_a_sibling_root_space_note_indexes_and_never_crashes_the_rebuild",
+        ),
+        "test_lifecycle_transitions.py": (
+            "TheCycle.test_the_cycle_never_moves_the_axis",
+        ),
+        "test_lint.py": (
+            "GraphSnapshotCrossCheckTests.test_second_scan_after_the_rebuild_finds_no_drift",
+            "SeededRotFixtureTests.test_orphan_reported",
+        ),
+    }
+
+    def _run_by_hand(self, suite: str, names: tuple = ()) -> None:
+        what = " ".join(("a hand run of", suite) + names)
+        with tempfile.TemporaryDirectory() as home:
+            env = _hand_run_env(home)
+            # A person's shell does not move the device-local root either, and
+            # one inherited from an outer run would let this pass vacuously.
+            env.pop("AGENTM_DEVICE_LOCAL_ROOT", None)
+            root = _seed_snapshot_root(self, env, home)
+            before = _fingerprint(root)
+
+            r = subprocess.run(
+                [sys.executable, str(_REPO / "scripts" / suite), *names],
+                capture_output=True, encoding="utf-8", errors="replace", timeout=300,
+                cwd=str(_REPO / "scripts"), env=env)
+
+            after = _fingerprint(root)
+            changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+            self.assertEqual(
+                after, before,
+                f"{what} wrote into the default graph snapshot root, which on a real "
+                f"machine holds the real vault's snapshot: {changed}\n{r.stderr[-2000:]}")
+            self.assertEqual(r.returncode, 0, f"{what} failed:\n{r.stdout[-2000:]}{r.stderr[-3000:]}")
+            if names:
+                self.assertRegex(r.stderr, rf"(?m)^Ran {len(names)} tests? in ",
+                                 f"{what} did not run every named test")
+                self.assertRegex(r.stderr, r"(?m)^OK$",
+                                 f"{what} skipped a named test, so the run proves less than it says")
+
+    def test_each_leaves_the_default_snapshot_root_as_it_found_it(self):
+        for suite, names in self.WRITERS.items():
+            with self.subTest(suite=suite):
+                self._run_by_hand(suite)
+                self._run_by_hand(suite, names)
+
+
+@unittest.skipIf(os.name == "nt", "the battery's shell gates run on Linux and macOS only")
+class TheDreamingGatesRunUnderAHomeOfTheirOwn(unittest.TestCase):
+    """The two battery gates that run the dream cycle, each under a home of its own.
+
+    `verify-dreaming.sh` and `verify-auto-org-meters.sh` run the cycle against a
+    scratch vault, and its lint stage rebuilds a graph snapshot. Both moved the
+    engine state directory into their scratch root and left the device-local
+    root at its default, so every battery run added two directories to the
+    operator's `~/.agentm/memory/_meta`. On 2026-09-13 each of the battery's
+    sixteen shell gates ran under a throwaway home, and these two were the only
+    ones that wrote there. Each runs the same way here, from the repository root
+    as `check-all.sh` runs it, and must pass and leave the seeded snapshot root
+    exactly as it was.
+    """
+
+    GATES = ("verify-dreaming.sh", "verify-auto-org-meters.sh")
+
+    def test_each_leaves_the_default_snapshot_root_as_it_found_it(self):
+        for gate in self.GATES:
+            with self.subTest(gate=gate), tempfile.TemporaryDirectory() as home:
+                env = _hand_run_env(home)
+                env.pop("AGENTM_DEVICE_LOCAL_ROOT", None)
+                root = _seed_snapshot_root(self, env, home)
+                before = _fingerprint(root)
+
+                r = subprocess.run(
+                    ["bash", f"scripts/{gate}"],
+                    capture_output=True, encoding="utf-8", errors="replace", timeout=300,
+                    cwd=str(_REPO), env=env)
+
+                after = _fingerprint(root)
+                changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+                self.assertEqual(
+                    after, before,
+                    f"{gate} wrote into the default graph snapshot root, which on a real "
+                    f"machine holds the real vault's snapshot: {changed}\n{r.stdout[-2000:]}")
+                self.assertEqual(r.returncode, 0, f"{gate} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
 
 
 if __name__ == "__main__":

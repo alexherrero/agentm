@@ -166,10 +166,6 @@ class TestGraphSnapshot(unittest.TestCase):
         self.assertEqual(stats.files_touched, 1)  # only real.md
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestNestedLayoutSiblingSpace(unittest.TestCase):
     """Filing-v2 2b: the vault-root `Projects/` space is a sibling of a nested
     memory root (`.obsidian/` at the vault root, none at the memory root).
@@ -201,3 +197,23 @@ class TestNestedLayoutSiblingSpace(unittest.TestCase):
         targeted = graph_snapshot.rebuild(self.vault, paths=["Projects/_global/style/howto.md"])
         self.assertEqual(targeted.files_touched, 1)
         self.assertEqual(targeted.nodes_removed, 0)
+
+
+# Every test here gets a device-local root of its own, and the snapshot root
+# follows it. Each test used to rebuild a snapshot into the operator's
+# `~/.agentm/memory/_meta`, by hand and in the battery alike. The nested layout
+# class used to sit below the `unittest.main()` guard, so a hand run never
+# reached it. It sits above the guard now, and above this call, which governs
+# only the classes defined before it.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
+if __name__ == "__main__":
+    unittest.main()

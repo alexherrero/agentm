@@ -255,5 +255,19 @@ class TheCycle(_Vault):
         self.assertEqual(self._journal(), [])
 
 
+# Every test here gets its own device-local root as well as the state directory
+# `_Vault` redirects. `TheCycle` runs the dream cycle, whose lint stage rebuilds
+# a graph snapshot under that root, so it left a `vault-*` snapshot in the
+# operator's `~/.agentm/memory/_meta` on every run.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()
