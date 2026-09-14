@@ -416,9 +416,6 @@ class ClassPopulationTests(ScorecardTests):
             row = next(l for l in self.read(Path(td)).splitlines() if "class populations" in l)
             self.assertIn("not measured: no memory/ under the vault", row)
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class DaemonSeamTests(unittest.TestCase):
     """`_agentmd` itself, which every other test here patches out.
@@ -577,3 +574,7 @@ class RetrievalTests(unittest.TestCase):
             rendered = sc.section_retrieval(repo).render()
 
         self.assertIn("not measured:", rendered)
+
+
+if __name__ == "__main__":
+    unittest.main()

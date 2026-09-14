@@ -200,10 +200,6 @@ class TestTheOverrideHasOneMeaning(MemoryRootBase):
         self.assertIsNone(hm.memory_root())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestSpaces(MemoryRootBase):
     """Space names, so moving a sub-tree is a config key rather than a sweep.
 
@@ -335,3 +331,7 @@ class TestSpaceNameAgreement(MemoryRootBase):
         res = self._run(cfg)
         self.assertEqual(res.returncode, 1)
         self.assertIn("outside memory_root", res.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()
