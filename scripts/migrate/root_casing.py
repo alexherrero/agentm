@@ -373,7 +373,9 @@ def finish(vault, recorded: dict, out_dir, *, config_reader=None, exports=None, 
         except (ValueError, OSError):
             env = {}
         value = str(env.get("MEMORY_VAULT_PATH") or env.get("MEMORY_ROOT") or "")
-        if value and not value.rstrip("/").endswith("/" + LOWER[0]):
+        # Read with either separator: an export written on Windows spells the
+        # path with backslashes, and the check is about the last segment's name.
+        if value and not value.replace("\\", "/").rstrip("/").endswith("/" + LOWER[0]):
             problems.append(f"{label} exports MEMORY_VAULT_PATH={value}; it must end in /{LOWER[0]}")
     if resolver is not False:
         resolved_vault, resolved_root = (resolver or _default_resolver)(vault)
