@@ -93,7 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rebuilds a fresh process's import state first, so the result no longer
   depends on test order. `orchestration_briefing.py`'s own `count_inbox()`
   never had the gap: that module puts its own directory on `sys.path` as it
-  loads.
+  loads. `test_engine_state_not_leaked` now runs the whole of `test_console.py`
+  by hand, where [#647](https://github.com/alexherrero/agentm/pull/647) had
+  held it to the console's CLI tests until this fix landed.
 
 ## [9.24.0] - 2026-09-14
 

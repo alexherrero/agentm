@@ -628,12 +628,6 @@ class TheRunnerStateReadingSuitesRunByHand(unittest.TestCase):
     mtime and SHA-256; and the named tests once more with nothing seeded,
     after which the root must not exist. The named runs must run every test
     and skip none, so the check cannot pass by running nothing.
-
-    `test_console.py` runs only its named tests, the two that made the root.
-    A hand run of the whole file fails `test_count_inbox_counts_the_review_queue`
-    for a reason that has nothing to do with runner state: `console.count_inbox`
-    imports `needs_review` without putting the memory skill's scripts on the
-    path, which #632 fixes. Once that lands, `NAMED_ONLY` empties.
     """
 
     READERS = {
@@ -653,9 +647,6 @@ class TheRunnerStateReadingSuitesRunByHand(unittest.TestCase):
             "TheSeams.test_the_session_brief_shows_the_first_section",
         ),
     }
-
-    # Suites that run only their named tests here; the class docstring says why.
-    NAMED_ONLY = ("test_console.py",)
 
     def _run_without_a_root(self, suite: str, names: tuple) -> None:
         """The named tests with nothing seeded: the default root must not exist afterwards."""
@@ -681,8 +672,7 @@ class TheRunnerStateReadingSuitesRunByHand(unittest.TestCase):
     def test_each_leaves_the_default_runner_root_as_it_found_it(self):
         for suite, names in self.READERS.items():
             with self.subTest(suite=suite):
-                if suite not in self.NAMED_ONLY:
-                    _run_by_hand(self, suite, (), _seed_default_runner_root, "the default runner state root")
+                _run_by_hand(self, suite, (), _seed_default_runner_root, "the default runner state root")
                 _run_by_hand(self, suite, names, _seed_default_runner_root, "the default runner state root")
                 self._run_without_a_root(suite, names)
 
