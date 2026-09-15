@@ -62,6 +62,11 @@ V="$(mktemp -d)"
 # default; phases needing distinct state override per-invocation.
 export AGENTM_STATE_DIR="$V/engine-state"
 mkdir -p "$AGENTM_STATE_DIR"
+# save.py takes the vault mutex, whose lock directory sits under
+# $XDG_CACHE_HOME/agentm/locks, ~/.cache by default. Left there, every run of
+# this gate left a hash-named directory for the scratch vault in the
+# operator's own cache.
+export XDG_CACHE_HOME="$V/cache"
 
 cleanup() { rm -rf "$V"; }
 trap cleanup EXIT

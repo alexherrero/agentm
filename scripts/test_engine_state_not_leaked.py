@@ -33,7 +33,10 @@ follow `$XDG_CACHE_HOME` into `~/.cache`. Until 2026-09-14 the runners moved
 the first two of the four the helper governs, so a suite that never asked for
 isolation could write the other two places from inside the battery, and the
 lock root was written: one run of the unit suite under the old runner left
-155 lock directories in a throwaway home's `~/.cache/agentm/locks`.
+155 lock directories in a throwaway home's `~/.cache/agentm/locks`. The
+battery's shell gates sit outside the runners altogether and move each
+variable themselves; the seven that lock a fixture vault moved the engine
+state and not the lock root, and are held to it below.
 """
 from __future__ import annotations
 
@@ -705,6 +708,85 @@ class TheDreamingGatesRunUnderAHomeOfTheirOwn(unittest.TestCase):
                     after, before,
                     f"{gate} wrote into the default graph snapshot root, which on a real "
                     f"machine holds the real vault's snapshot: {changed}\n{r.stdout[-2000:]}")
+                self.assertEqual(r.returncode, 0, f"{gate} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
+
+
+def _seed_lock_root(case: unittest.TestCase, env: dict, home: str) -> Path:
+    """Seed a lock directory where the run's default vault lock root resolves.
+
+    Asks the resolver every vault lock is taken through, under exactly the
+    environment the run gets. If that root ever stops following the home
+    directory, the directory made here would land among the machine's own,
+    so this refuses before writing anything. `vault_mutex` leaves the
+    hash-named directory of every vault it has locked behind, so the seeded
+    one stands in for the operator's real vaults' and the check is on the
+    root's entries rather than on file contents: a gate that locks a fixture
+    vault adds a directory beside it.
+    """
+    with mock.patch.dict(os.environ, env, clear=True):
+        root = vault_lock._default_lock_root()
+    case.assertIn(
+        Path(os.path.realpath(home)), Path(os.path.realpath(root)).parents,
+        f"the default vault lock root no longer follows the home directory "
+        f"({root}); this check cannot run without touching the machine's own")
+    seeded = root / hashlib.sha256(b"/srv/vaults/the-real-one").hexdigest()
+    seeded.mkdir(parents=True)
+    return root
+
+
+def _entries(directory: Path) -> list:
+    """The names directly under `directory`; none when it does not exist."""
+    return sorted(p.name for p in directory.iterdir()) if directory.is_dir() else []
+
+
+@unittest.skipIf(os.name == "nt", "the battery's shell gates run on Linux and macOS only")
+class TheLockTakingGatesRunUnderAHomeOfTheirOwn(unittest.TestCase):
+    """The battery gates that lock a fixture vault, each under a home of its own.
+
+    `vault_mutex` locks a vault by making `<lock root>/<sha256 of its real
+    path>/lock` and removes only the inner directory on release, so every
+    vault ever locked leaves its hash-named directory under the root, which is
+    `~/.cache/agentm/locks` unless `XDG_CACHE_HOME` moves it. Five of these
+    gates write a fixture vault under the mutex and moved their engine state
+    into a scratch root while leaving the lock root at its default, and
+    `validate-audit-coverage.sh` and `run-ablation-baseline.sh` reach the
+    mutex through the verify scripts they drive. So every battery run added
+    sixteen directories to the operator's own cache, where one machine's lock
+    root held 182,436 on 2026-09-14. Running each of the battery's gates under
+    a throwaway home found all seven. Each runs the same way here, from the
+    repository root as `check-all.sh` runs it, with no governed variable set,
+    and must pass and leave the seeded lock root's entries exactly as they
+    were.
+    """
+
+    GATES = (
+        "verify-idle-chain.sh",
+        "verify-state-routing.sh",
+        "verify-reflection.sh",
+        "verify-phases.sh",
+        "verify-memory-roundtrip.sh",
+        "health/validate-audit-coverage.sh",
+        "health/run-ablation-baseline.sh",
+    )
+
+    def test_each_leaves_the_default_lock_root_as_it_found_it(self):
+        for gate in self.GATES:
+            with self.subTest(gate=gate), tempfile.TemporaryDirectory() as home:
+                env = _hand_run_env(home)
+                root = _seed_lock_root(self, env, home)
+                before = _entries(root)
+
+                r = subprocess.run(
+                    ["bash", f"scripts/{gate}"],
+                    capture_output=True, encoding="utf-8", errors="replace", timeout=300,
+                    cwd=str(_REPO), env=env)
+
+                after = _entries(root)
+                self.assertEqual(
+                    after, before,
+                    f"{gate} locked a vault under the default lock root, which on a real "
+                    f"machine is the operator's own ~/.cache/agentm/locks: "
+                    f"{sorted(set(after) ^ set(before))}\n{r.stdout[-2000:]}")
                 self.assertEqual(r.returncode, 0, f"{gate} failed:\n{r.stdout[-2000:]}{r.stderr[-2000:]}")
 
 

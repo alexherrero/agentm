@@ -75,6 +75,11 @@ SCRATCH="$(mktemp -d)"
 # $AGENTM_STATE_DIR now, so the scratch run gets its own.
 export AGENTM_STATE_DIR="$SCRATCH/engine-state"
 mkdir -p "$AGENTM_STATE_DIR"
+# Every state write takes the vault mutex, whose lock directory sits under
+# $XDG_CACHE_HOME/agentm/locks, ~/.cache by default. Left there, every run of
+# this gate left a hash-named directory per fixture vault in the operator's
+# own cache.
+export XDG_CACHE_HOME="$SCRATCH/cache"
 
 cleanup() { rm -rf "$SCRATCH"; }
 trap cleanup EXIT

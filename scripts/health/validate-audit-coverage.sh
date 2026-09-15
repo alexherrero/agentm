@@ -80,6 +80,16 @@ RESULTS=()
 pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); emit_jsonl_check "$1" 1; }
 fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); emit_jsonl_check "$1" 0; }
 
+# ── scratch cache (isolated; auto-removed) ──────────────────────────────────
+# verify-state-routing.sh, driven below, writes state under the vault mutex,
+# whose lock directory sits under $XDG_CACHE_HOME/agentm/locks, ~/.cache by
+# default. That script moves the root itself now; this one moves it for
+# everything it runs, so a child that forgets cannot reach the operator's own
+# cache through this gate.
+SCRATCH="$(mktemp -d)"
+export XDG_CACHE_HOME="$SCRATCH/cache"
+trap 'rm -rf "$SCRATCH"' EXIT
+
 if [ "${ABLATE_GATES:-}" = "1" ]; then
   echo "validate-audit-coverage: ABLATE_GATES=1 — verify/check-all battery skipped; asserting all 4 in-scope blockers go uncaught" >&2
   # NB: the shell-level assertion ("confirmed uncaught") succeeding is
