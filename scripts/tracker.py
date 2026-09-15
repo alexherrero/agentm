@@ -12,6 +12,11 @@ tracker rewrites it in place. Its body has four sections:
   Next       the immediate steps in order; the first line is the next session's
   Outcome    written once, at close
 
+A step rewrites State and Next without moving the status: `transition` to a
+tracker's own status, when that status is not final, is that rewrite. It names
+State, Next or both and stamps `updated`; it never writes the Outcome or
+`closed`, and `done` and `dropped` are never rewritten.
+
 This module owns the schema so both plugins write it the same way. agentm
 imports it; crickets shells to its command line rather than re-deriving it.
 Standard library only.
@@ -24,8 +29,8 @@ Usage:
   python3 scripts/tracker.py transition PATH --to STATUS [--state TEXT] [--next TEXT]
                                  [--outcome TEXT] [--today YYYY-MM-DD]
   python3 scripts/tracker.py check PATH [PATH ...]
-Exit: 0 ok · 1 a finding, a refused transition or a file that changed under the
-write · 2 a usage or I/O error
+Exit: 0 ok · 1 a finding, a refused transition or rewrite, or a file that changed
+under the write · 2 a usage or I/O error
 """
 from __future__ import annotations
 
@@ -47,7 +52,9 @@ STATUSES = ("queued", "active", "parked", "done", "dropped")
 FINAL = frozenset({"done", "dropped"})
 # What each status may become. Open writes `queued`; the first step, `active`;
 # park and resume move between `active` and `parked`; close writes `done`, and a
-# withdrawal `dropped`. Both of those are final.
+# withdrawal `dropped`. Both of those are final. No status lists itself: a
+# `transition` to a non-final tracker's own status is not a move but a rewrite
+# of State and Next in place, which each later step writes under `active`.
 TRANSITIONS = {
     "queued": ("active", "dropped"),
     "active": ("parked", "done", "dropped"),
@@ -314,13 +321,27 @@ def transition(t: Tracker, to: str, *, today: str, state: Optional[str] = None,
                next_steps: Optional[str] = None, outcome: Optional[str] = None) -> Tracker:
     """The tracker after `t.status` becomes `to`, or TrackerError when the table
     does not allow it. `updated` becomes today; a final status stamps `closed`
-    and needs an Outcome."""
+    and needs an Outcome.
+
+    `to` equal to a non-final `t.status` is a rewrite in place: the State and
+    Next given replace the ones on file, `updated` becomes today, and nothing
+    else changes. A rewrite names `state`, `next_steps` or both, so a bare call
+    cannot stamp `updated` and read as progress, and it never names an Outcome,
+    which is written once, at close. A final tracker is not rewritten."""
     if to not in STATUSES:
         raise TrackerError(f"`{to}` is not a status")
     if not _is_date(today):
         raise TrackerError(f"`{today}` is not a date (YYYY-MM-DD)")
     allowed = TRANSITIONS.get(t.status, ())
-    if to not in allowed:
+    if to == t.status:
+        if to in FINAL:
+            raise TrackerError(f"a `{to}` tracker is final and is not rewritten")
+        if outcome is not None:
+            raise TrackerError(f"a rewrite under `{to}` does not write the Outcome, "
+                               "which is written once, at close")
+        if state is None and next_steps is None:
+            raise TrackerError(f"a rewrite under `{to}` names State, Next or both")
+    elif to not in allowed:
         may = ", ".join(f"`{s}`" for s in allowed) or "nothing, because it is final"
         raise TrackerError(f"a `{t.status}` tracker cannot become `{to}`; it may become {may}")
     changes: dict = {"status": to, "updated": today}
@@ -401,9 +422,11 @@ def _build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("show", help="print a tracker's fields and sections as JSON")
     s.add_argument("path")
 
-    t = sub.add_parser("transition", help="change a tracker's status in place")
+    t = sub.add_parser("transition", help="change a tracker's status in place, or rewrite "
+                                          "State and Next under its own status")
     t.add_argument("path")
-    t.add_argument("--to", required=True, choices=STATUSES)
+    t.add_argument("--to", required=True, choices=STATUSES,
+                   help="the new status, or the tracker's own to rewrite State and Next")
     t.add_argument("--state", default=None)
     t.add_argument("--next", dest="next_steps", default=None)
     t.add_argument("--outcome", default=None)

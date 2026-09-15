@@ -2,9 +2,11 @@
 """Tests for `scripts/tracker.py` — the one tracker schema (agentm-vault plan 09, task 2).
 
 A tracker round-trips through render and parse; every transition in the table
-is exercised and every other one refused; the schema's findings each fire; the
-file writes are atomic and refuse a file that changed under them; the command
-line crickets shells to behaves the same way.
+is exercised and every other status change refused; a non-final tracker's own
+status rewrites only State, Next and `updated`, and a final one, an Outcome or a
+bare call is refused; the schema's findings each fire; the file writes are
+atomic and refuse a file that changed under them; the command line crickets
+shells to behaves the same way.
 
 Run directly:
 
@@ -13,6 +15,7 @@ Run directly:
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import io
 import json
 import shutil
@@ -20,6 +23,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -113,10 +117,10 @@ class Transitions(unittest.TestCase):
     def test_every_other_transition_is_refused(self) -> None:
         for frm in tk.STATUSES:
             for to in tk.STATUSES:
-                if to in tk.TRANSITIONS[frm]:
-                    continue
+                if to in tk.TRANSITIONS[frm] or to == frm:
+                    continue  # a status to itself is the rewrite contract (Rewrites)
                 with self.subTest(frm=frm, to=to):
-                    with self.assertRaises(tk.TrackerError):
+                    with self.assertRaisesRegex(tk.TrackerError, "cannot become"):
                         tk.transition(_at(frm), to, today=TODAY, outcome="x")
 
     def test_the_final_statuses_go_nowhere(self) -> None:
@@ -139,6 +143,53 @@ class Transitions(unittest.TestCase):
             tk.transition(_at("active"), "complete", today=TODAY)
         with self.assertRaises(tk.TrackerError):
             tk.transition(_at("active"), "parked", today="12/09/2026")
+
+
+class Rewrites(unittest.TestCase):
+    """`transition` to a non-final tracker's own status rewrites State and Next in place."""
+
+    OPEN = ("queued", "active", "parked")
+
+    def assertOnlyChanged(self, before: tk.Tracker, after: tk.Tracker, **changed) -> None:
+        was, now = dataclasses.asdict(before), dataclasses.asdict(after)
+        for name, value in changed.items():
+            self.assertNotEqual(was.pop(name), value, f"the fixture already holds {name}")
+            self.assertEqual(now.pop(name), value, name)
+        self.assertEqual(now, was)
+
+    def test_a_rewrite_changes_only_what_it_names_and_updated(self) -> None:
+        self.assertEqual(set(self.OPEN), set(tk.STATUSES) - tk.FINAL)
+        for status in self.OPEN:
+            for given in ({"state": "Step 2 landed."},
+                          {"next_steps": "1. Open the PR."},
+                          {"state": "Step 2 landed.", "next_steps": "1. Open the PR."}):
+                with self.subTest(status=status, names=sorted(given)):
+                    before = _at(status)
+                    after = tk.transition(before, status, today=TODAY, **given)
+                    self.assertOnlyChanged(before, after, updated=TODAY, **given)
+                    self.assertEqual(tk.findings(after), [])
+
+    def test_a_final_tracker_is_not_rewritten(self) -> None:
+        for status in tk.FINAL:
+            for given in ({"state": "Reopened."}, {"next_steps": "Ship it again."},
+                          {"outcome": "It shipped twice."}):
+                with self.subTest(status=status, names=sorted(given)):
+                    with self.assertRaisesRegex(tk.TrackerError, "final and is not rewritten"):
+                        tk.transition(_at(status), status, today=TODAY, **given)
+
+    def test_a_rewrite_that_names_an_outcome_is_refused(self) -> None:
+        for status in self.OPEN:
+            for outcome in ("It shipped.", ""):
+                with self.subTest(status=status, outcome=outcome):
+                    with self.assertRaisesRegex(tk.TrackerError, "does not write the Outcome"):
+                        tk.transition(_at(status), status, today=TODAY,
+                                      state="Step 2 landed.", outcome=outcome)
+
+    def test_a_rewrite_that_names_no_section_is_refused(self) -> None:
+        for status in self.OPEN:
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(tk.TrackerError, "names State, Next or both"):
+                    tk.transition(_at(status), status, today=TODAY)
 
 
 class Findings(unittest.TestCase):
@@ -265,6 +316,52 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("cannot become `done`", err)
         self.assertEqual(self.path.read_bytes(), before)
+
+    def test_a_rewrite_keeps_the_status_and_closed(self) -> None:
+        self._new()
+        self.assertEqual(self._main("transition", str(self.path), "--to", "active",
+                                    "--state", "s1", "--today", "2026-09-13")[0], 0)
+        rc, out, _err = self._main("transition", str(self.path), "--to", "active",
+                                   "--state", "s2", "--next", "n2", "--today", "2026-09-14")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, f"{self.path}: active -> active\n")
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn("\nstatus: active\n", text)
+        self.assertIn("\nclosed:\n", text)
+        shown = json.loads(self._main("show", str(self.path))[1])
+        self.assertEqual((shown["status"], shown["closed"], shown["opened"], shown["updated"]),
+                         ("active", None, TODAY, "2026-09-14"))
+        self.assertEqual(shown["sections"], {"Objective": "Twenty lines.", "State": "s2",
+                                             "Next": "n2", "Outcome": ""})
+        self.assertEqual(self._main("check", str(self.path))[0], 0)
+
+    def test_a_refused_rewrite_leaves_the_file_alone(self) -> None:
+        self._new()
+        before = self.path.read_bytes()
+        for argv in (("--to", "queued"), ("--to", "queued", "--state", "s", "--outcome", "x")):
+            with self.subTest(argv=argv):
+                rc, _out, err = self._main("transition", str(self.path), *argv)
+                self.assertEqual(rc, 1)
+                self.assertIn("a rewrite under `queued`", err)
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_a_rewrite_of_a_file_that_changed_since_it_was_read_is_refused(self) -> None:
+        self._new()
+        real = tk.transition
+
+        def another_writer_first(*args, **kwargs):
+            text = self.path.read_text(encoding="utf-8")
+            self.path.write_text(text.replace("Read the hook.", "Their step."), encoding="utf-8")
+            return real(*args, **kwargs)
+
+        with mock.patch.object(tk, "transition", another_writer_first):
+            rc, _out, err = self._main("transition", str(self.path), "--to", "queued",
+                                       "--next", "My step.", "--today", "2026-09-13")
+        self.assertEqual(rc, 1)
+        self.assertIn("changed since it was read", err)
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn("Their step.", text)
+        self.assertNotIn("My step.", text)
 
     def test_check_reports_a_malformed_tracker(self) -> None:
         self.path.write_text("---\nkind: tracker\ntitle: x\n---\n", encoding="utf-8")
