@@ -79,14 +79,39 @@ The script `scripts/migrate/root_casing.py` renames the four root spaces on disk
    python3 scripts/check-memory-root-consistency.py
    ```
 
-8. **Fast-forward the primary clone and rebuild.** The code half catches up to the data half you just moved.
+8. **Fast-forward the primary clone and rebuild.** The code half catches up to the data half you just moved. Leave the daemon down — the next step reindexes before it comes back.
 
    ```bash
    git -C ~/Antigravity/agentm pull
    bash ~/Antigravity/agentm/install.sh --daemon
    ```
 
-   This rebuilds both `agentmd` and `agentmdream` from the post-rename source. The build uses `CGO_ENABLED=0` for pure Go. See [Memory daemon reference § Building it](Memory-Daemon#building-it). It reloads `agentmd`. Bring the daemon back. Confirm it runs.
+   This rebuilds both `agentmd` and `agentmdream` from the post-rename source. The build uses `CGO_ENABLED=0` for pure Go. See [Memory daemon reference § Building it](Memory-Daemon#building-it). Confirm the dreaming binary actually rebuilt — nothing else checks it by name. A Go binary's string constants don't carry their quotes, so grepping for `"projects"` finds nothing either way; grep for a literal the new code carries instead:
+
+   ```bash
+   strings ~/.local/bin/agentmdream | grep -c 'no calendar/ space'
+   strings ~/.local/bin/agentmdream | grep -c 'no Calendar/ space'
+   ```
+
+   The first wants `1` — the lowercase-aware message the new code carries. The second wants `0` — the retired Title Case message. Anything else means the installed binary predates this rebuild.
+
+9. **Reindex, rebuild the ledger, and only then bring the daemon back.** The index and the ledger are both keyed by the vault-relative path. Right after the rename, the index still holds every one of those paths under its old Title Case spelling — nothing has told it otherwise yet — and the ledger recovery below only reads true once the index agrees with the new names.
+
+   ```bash
+   agentmd reindex
+   ```
+
+   Run this with the daemon still down. On this run it took 9 seconds over 2,507 documents. Then measure what the night owes again:
+
+   ```bash
+   agentmd ledger --rebuild
+   agentmd ledger --forget <target>   # once per target in step 2's pending list, under its new path
+   agentmd enrich -dry-run
+   ```
+
+   The deep, light, and unchanged counts must match step 2's. On this run they did: 339 deep, 124 light, 47 unchanged. Any other movement means something wrote outside this plan. Skip the reindex and this dry run tells a false story instead: on this run, without it, the same command read deep 289, light 4, unchanged 0, and an empty pending list — the ledger's lowercase keys matched none of the index's still-Title-Case rows.
+
+   Only once these counts match step 2's, bring the daemon back:
 
    ```bash
    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentm.daemon.plist
@@ -95,33 +120,17 @@ The script `scripts/migrate/root_casing.py` renames the four root spaces on disk
    /doctor --live
    ```
 
-   The `agentmd status` command and the doctor's install rows check `agentmd`'s own freshness. They do not check `agentmdream`'s freshness. The dreaming binary ships in the same rebuild. Nothing checks it by name. Confirm it separately.
-
-   ```bash
-   strings ~/.local/bin/agentmdream | grep -c '"projects"'
-   ```
-
-   A zero count means the installed binary predates this rebuild.
-
-9. **Rebuild the ledger.** Measure what the night owes again.
-
-   ```bash
-   agentmd ledger --rebuild
-   agentmd ledger --forget <target>   # once per target in step 2's pending list, under its new path
-   agentmd enrich -dry-run
-   ```
-
-   The deep, light, and unchanged counts must match step 2. Any other movement means something wrote outside this plan.
+   `agentmd status` and the doctor's install rows confirm the daemon itself came back current.
 
 10. **Re-key the two live state files the migration ignores.** History files keep the spelling of the day they were written. Examples include `enrich-runs.jsonl`, `tier-audits.jsonl`, and a finished migration's recorded plan. Do not edit them. Two files hold live pointers instead of history. They need a hand edit to the new spelling:
 
     - `~/.local/state/agentm/enrich-refusals.jsonl` — edit the `rel` field on each line.
     - `graph-snapshot-cross-check-state.json` (in the same engine state directory) — edit the `attempted` list.
 
-11. **Finish the migration.**
+11. **Finish the migration.** Run this from the deployed clone, not a worktree. `--finish` reads the `MEMORY_VAULT_PATH` export from the `.harness/project.json` beside the script it runs from, and a worktree's gitignored copy of that file can still export the old name.
 
     ```bash
-    python3 scripts/migrate/root_casing.py --finish --plan <PLAN>
+    python3 ~/Antigravity/agentm/scripts/migrate/root_casing.py --finish --plan <PLAN>
     ```
 
     This checks every post-condition at once. It looks for five lowercase root spaces. It confirms no Title Case or temporary directory remains. It verifies the index counts, the three settings files, and the three config keys. It checks both `MEMORY_VAULT_PATH` exports. It ensures the Python stack resolves the vault and the memory root correctly without an environment override. It writes `agent/memory/.root-casing-complete` only when all post-conditions hold. It prints the exact `git add`/`git commit` for that marker. Run the commands exactly as printed. A failure lists what is still wrong and writes nothing. Fix the failure. Run `--finish` again against the same plan.
