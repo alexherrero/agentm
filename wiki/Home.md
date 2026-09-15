@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.23.0](https://github.com/alexherrero/agentm/releases/tag/v9.23.0).** The maps are named for what they map. One root map is the agent's entry point and lists every area's map, a memory map lists every type, and each calendar year has a map of its own. `Home.md` retires, `Filing.md` folds into `index.md`, and a calendar review links the notes it was built from.
+> **Latest release: [v9.24.0](https://github.com/alexherrero/agentm/releases/tag/v9.24.0).** The vault's root spaces are lowercase, `agent`, `calendar`, `personal` and `projects` beside `standards`, renamed in one data run with a gate that keeps the old spelling out of the code. A task can live in its own directory, one tracker schema holds every tracker, captures and traces carry their project and task, the projects space has maps, and the night enriches project records after the cards.

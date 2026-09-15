@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.24.0] - 2026-09-14
+
+The vault-perfection series lands plans 08 and 09: the vault's root spaces are lowercase, and agentm reads and writes the project shape. `Agent`, `Calendar`, `Personal` and `Projects` became `agent`, `calendar`, `personal` and `projects` beside `standards` in one data run under quiesce, each through a temporary name in a `git mv` two-step, with a gate that keeps the retired spelling out of the code and a runbook written as the run ran it; crickets [v3.38.1](https://github.com/alexherrero/crickets/releases/tag/v3.38.1) shipped first so its resolvers accept both spellings. The resolver finds a task in either layout, one tracker schema holds every tracker behind a gate, captures and traces carry `project:` and `task:`, the projects space has maps, and the night enriches project records after the cards.
+
 ### Added
 
 - **A gate keeps a root space's retired spelling out of the code (agentm-vault
