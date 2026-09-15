@@ -12,7 +12,7 @@ import (
 func seedQueue(t *testing.T, idx *Index, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		rel := "Agent/memory/semantic/n" + string(rune('a'+i/26)) + string(rune('a'+i%26)) + ".md"
+		rel := "agent/memory/semantic/n" + string(rune('a'+i/26)) + string(rune('a'+i%26)) + ".md"
 		raw := "---\ntitle: A note\nstatus: unfiled\n---\n\nThe staging gate runs.\n"
 		if err := idx.Upsert(note.Parse(rel, raw, time.Now()),
 			time.Now().UnixNano(), int64(len(raw))); err != nil {
@@ -89,7 +89,7 @@ func TestASampleOnlyDrawsUnfiledNotes(t *testing.T) {
 	idx := openScratch(t)
 	seedQueue(t, idx, 20)
 	active := "---\ntitle: Settled\nstatus: active\n---\n\nAlready judged.\n"
-	if err := idx.Upsert(note.Parse("Agent/memory/semantic/settled.md", active, time.Now()),
+	if err := idx.Upsert(note.Parse("agent/memory/semantic/settled.md", active, time.Now()),
 		time.Now().UnixNano(), int64(len(active))); err != nil {
 		t.Fatal(err)
 	}

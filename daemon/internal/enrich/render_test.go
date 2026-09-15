@@ -143,7 +143,7 @@ func TestTheFileJournalAppendsOnePerWrite(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		if err := j.Record(nil, JournalEntry{
-			Rel: "Agent/memory/n.md", Previous: "old", Next: "new",
+			Rel: "agent/memory/n.md", Previous: "old", Next: "new",
 		}); err != nil {
 			t.Fatal(err)
 		}

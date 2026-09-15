@@ -26,7 +26,7 @@ import (
 func TestTheQueueWalksTheContractsClassDirectories(t *testing.T) {
 	vault := t.TempDir()
 	cfg := configOverRules(t, vault, "preference", "workflow")
-	cfg.MemoryRoot = "Agent"
+	cfg.MemoryRoot = "agent"
 	// writeRules routes every type to memory/semantic; a second destination
 	// proves the list is read from routing rather than assumed.
 	body, err := os.ReadFile(filepath.Join(vault, "standards", "storage-rules.md"))
@@ -47,7 +47,7 @@ func TestTheQueueWalksTheContractsClassDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(dirs, ","); got != "Agent/memory/procedural/,Agent/memory/semantic/" {
+	if got := strings.Join(dirs, ","); got != "agent/memory/procedural/,agent/memory/semantic/" {
 		t.Fatalf("queue directories %s, want procedural and semantic from routing", got)
 	}
 
@@ -57,9 +57,9 @@ func TestTheQueueWalksTheContractsClassDirectories(t *testing.T) {
 	}
 	t.Cleanup(func() { x.Close() })
 	for _, rel := range []string{
-		"Agent/memory/semantic/a.md", "Agent/memory/procedural/b.md",
-		"Agent/memory/episodic/2026-09-11-trace.md", "Agent/memory/_watchlist/src/w.md",
-		"Agent/memory/mocs/moc.md", "Agent/memory/semantic-extra/nope.md",
+		"agent/memory/semantic/a.md", "agent/memory/procedural/b.md",
+		"agent/memory/episodic/2026-09-11-trace.md", "agent/memory/_watchlist/src/w.md",
+		"agent/memory/mocs/moc.md", "agent/memory/semantic-extra/nope.md",
 	} {
 		if err := x.Upsert(note.Note{Rel: rel, Title: "t", Body: "b",
 			Captured: time.Now().UTC(), CapturedSource: "mtime"}, 1, 1); err != nil {
@@ -70,7 +70,7 @@ func TestTheQueueWalksTheContractsClassDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(q, ","); got != "Agent/memory/procedural/b.md,Agent/memory/semantic/a.md" {
+	if got := strings.Join(q, ","); got != "agent/memory/procedural/b.md,agent/memory/semantic/a.md" {
 		t.Errorf("the queue offered %s; want only the two cards", got)
 	}
 }
@@ -136,32 +136,32 @@ func TestTheNeighboursNeverOfferWhatAModelMayNotRead(t *testing.T) {
 		}
 	}
 	card := "---\ntitle: Keep git out of Google Drive\ntags: [git, drive]\n---\n\nDrive corrupts git.\n"
-	put("Agent/memory/semantic/keep-git-out-of-drive.md", card)
-	put("Agent/memory/procedural/drive-churns-git.md",
+	put("agent/memory/semantic/keep-git-out-of-drive.md", card)
+	put("agent/memory/procedural/drive-churns-git.md",
 		"---\ntitle: Drive churns git index files\nsummary: Drive rewrites .git/index.\n---\n\ngit drive\n")
-	put("Agent/memory/mocs/moc-git.md", "---\ntitle: Git drive map\n---\n\ngit drive\n")
-	put("Personal/Home/git-drive-passwords.md", "---\ntitle: Git drive secrets\n---\n\ngit drive\n")
-	put("Agent/memory/semantic/leaky.md",
+	put("agent/memory/mocs/moc-git.md", "---\ntitle: Git drive map\n---\n\ngit drive\n")
+	put("personal/Home/git-drive-passwords.md", "---\ntitle: Git drive secrets\n---\n\ngit drive\n")
+	put("agent/memory/semantic/leaky.md",
 		"---\ntitle: Git drive token\nsummary: token ghp_"+strings.Repeat("a", 36)+"\n---\n\ngit drive\n")
 	for i := 0; i < 8; i++ {
-		put(fmt.Sprintf("Agent/memory/semantic/git-drive-%d.md", i),
+		put(fmt.Sprintf("agent/memory/semantic/git-drive-%d.md", i),
 			fmt.Sprintf("---\ntitle: Git and Drive note %d\n---\n\ngit drive %d\n", i, i))
 	}
 
-	mayRead := func(rel string) bool { return !strings.HasPrefix(rel, "Personal/") }
+	mayRead := func(rel string) bool { return !strings.HasPrefix(rel, "personal/") }
 	got := enrichNeighbours(cfg, x, mayRead)(context.Background(), enrich.Request{
-		Rel: "Agent/memory/semantic/keep-git-out-of-drive.md", Raw: card,
+		Rel: "agent/memory/semantic/keep-git-out-of-drive.md", Raw: card,
 	})
 	if len(got) == 0 || len(got) > enrich.MaxRelated {
 		t.Fatalf("offered %d neighbours, want between 1 and %d", len(got), enrich.MaxRelated)
 	}
 	for _, n := range got {
 		switch {
-		case n.Rel == "Agent/memory/semantic/keep-git-out-of-drive.md":
+		case n.Rel == "agent/memory/semantic/keep-git-out-of-drive.md":
 			t.Error("the card was offered as its own neighbour")
 		case strings.Contains(n.Rel, "/mocs/"):
 			t.Errorf("a derived class was offered: %s", n.Rel)
-		case strings.HasPrefix(n.Rel, "Personal/"):
+		case strings.HasPrefix(n.Rel, "personal/"):
 			t.Errorf("a space no model may read was offered: %s", n.Rel)
 		case n.ID == "leaky":
 			t.Error("a neighbour carrying a credential shape was offered")
@@ -215,7 +215,7 @@ func TestARefusedCardIsDeclinedByTheGateThatReadsTheRowBack(t *testing.T) {
 	cfg.EngineStateDir = t.TempDir()
 
 	raw := "---\ntype: reference\nstatus: unfiled\n---\n\nA card the judge said no to.\n"
-	req := enrich.Request{Rel: "Agent/memory/semantic/a.md", Raw: raw}
+	req := enrich.Request{Rel: "agent/memory/semantic/a.md", Raw: raw}
 	out := enrich.Outcome{Rel: req.Rel, RefusedBy: "grounding"}
 
 	keyer := enrichFingerprint(cfg, nil)

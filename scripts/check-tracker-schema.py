@@ -115,7 +115,7 @@ def projects_findings(projects: Path) -> tuple:
 
 
 def resolve_projects_spaces() -> list:
-    """The projects spaces this machine's vault holds: the root `Projects/`, and
+    """The projects spaces this machine's vault holds: the root `projects/`, and
     the memory-root layouts older vaults used."""
     try:
         import harness_memory as hm  # noqa: E402
@@ -127,7 +127,7 @@ def resolve_projects_spaces() -> list:
     except Exception:
         vault = None
     if vault:
-        candidates.append(Path(vault) / getattr(hm, "_VAULT_ROOT_PROJECTS_REL", "Projects"))
+        candidates.append(Path(vault) / getattr(hm, "_VAULT_ROOT_PROJECTS_REL", "projects"))
     try:
         memory = hm.memory_root()
     except Exception:

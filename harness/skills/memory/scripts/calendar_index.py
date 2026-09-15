@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """calendar_index.py — the generated day index of the daily register.
 
-Filing v2 part 5, task 2. The bare-date file `Calendar/YYYY/YYYY-MM-DD.md`
+Filing v2 part 5, task 2. The bare-date file `calendar/YYYY/YYYY-MM-DD.md`
 is generated, never authored: it lists exactly the facet notes that exist for
 the day, each with a context phrase (the first entry's words and how many
 entries the note holds), links to the day's episodic session traces when any
@@ -103,7 +103,7 @@ def episodic_traces(vault: "Path | str", day: date) -> list:
 
 def digest_embed(vault: "Path | str", day: date) -> "str | None":
     """The Obsidian embed for the day's digest, when the digest exists —
-    written vault-root-relative, so the nested layout's `Agent/` prefix
+    written vault-root-relative, so the nested layout's `agent/` prefix
     comes from the layout rather than a remembered path."""
     vault = Path(vault)
     name = f"{day.strftime('%Y%m%d')}-digest-daily"

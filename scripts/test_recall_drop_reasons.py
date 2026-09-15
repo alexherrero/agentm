@@ -35,7 +35,7 @@ class TheDropCounters(unittest.TestCase):
         drops: dict = {}
         with tempfile.TemporaryDirectory() as d:
             vault = pathlib.Path(d)
-            (vault / "Agent" / "memory").mkdir(parents=True)
+            (vault / "agent" / "memory").mkdir(parents=True)
             with daemon_returning(paths):
                 got = recall._daemon_search(
                     vault=vault, query_text="a real question here",
@@ -54,7 +54,7 @@ class TheDropCounters(unittest.TestCase):
         # results found, none survived — indistinguishable from the case above
         # in the ledger as it stood.
         got, drops = self._search([
-            f"Agent/memory/_inbox/n{i}.md" for i in range(5)])
+            f"agent/memory/_inbox/n{i}.md" for i in range(5)])
         self.assertEqual(drops["returned"], 5)
         self.assertEqual(drops["inadmissible"], 5)
         self.assertFalse(got)
@@ -70,7 +70,7 @@ class TheDropCounters(unittest.TestCase):
             [], 0, stdout=json.dumps(payload), stderr="")
         with tempfile.TemporaryDirectory() as d:
             vault = pathlib.Path(d)
-            (vault / "Agent" / "memory").mkdir(parents=True)
+            (vault / "agent" / "memory").mkdir(parents=True)
             with mock.patch.object(recall.subprocess, "run", return_value=done):
                 recall._daemon_search(
                     vault=vault, query_text="a real question here",
@@ -84,12 +84,12 @@ class TheDropCounters(unittest.TestCase):
         drops: dict = {}
         with tempfile.TemporaryDirectory() as d:
             vault = pathlib.Path(d)
-            (vault / "Agent" / "memory").mkdir(parents=True)
-            (vault / "Agent" / "memory" / "a.md").write_text("x", encoding="utf-8")
-            with daemon_returning(["Agent/memory/a.md"]):
+            (vault / "agent" / "memory").mkdir(parents=True)
+            (vault / "agent" / "memory" / "a.md").write_text("x", encoding="utf-8")
+            with daemon_returning(["agent/memory/a.md"]):
                 recall._daemon_search(
                     vault=vault, query_text="a real question here", k=5,
-                    dedup_paths={"Agent/memory/a.md"}, drops=drops)
+                    dedup_paths={"agent/memory/a.md"}, drops=drops)
         self.assertEqual(drops["returned"], 1)
         self.assertEqual(drops["deduped"], 1)
 
@@ -98,8 +98,8 @@ class TheDropCounters(unittest.TestCase):
         # required argument or a crash when unwired.
         with tempfile.TemporaryDirectory() as d:
             vault = pathlib.Path(d)
-            (vault / "Agent" / "memory").mkdir(parents=True)
-            with daemon_returning(["Agent/memory/_inbox/x.md"]):
+            (vault / "agent" / "memory").mkdir(parents=True)
+            with daemon_returning(["agent/memory/_inbox/x.md"]):
                 recall._daemon_search(
                     vault=vault, query_text="a real question here", k=5)
 
@@ -116,8 +116,8 @@ class TheDropCounters(unittest.TestCase):
         drops: dict = {}
         with tempfile.TemporaryDirectory() as d:
             vault = pathlib.Path(d)
-            (vault / "Agent" / "memory").mkdir(parents=True)
-            with daemon_returning(["Agent/memory/a.md"]) as ran:
+            (vault / "agent" / "memory").mkdir(parents=True)
+            with daemon_returning(["agent/memory/a.md"]) as ran:
                 got = recall._daemon_search(vault=vault, query_text="ok do it",
                                             k=5, drops=drops)
                 self.assertFalse(ran.called, "the daemon was queried anyway")

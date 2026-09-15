@@ -57,8 +57,8 @@ func loadExempt(t *testing.T, block string) *Rules {
 func TestABackgroundPassMayNotReadAnExemptSpace(t *testing.T) {
 	r := loadExempt(t, exemptBlock)
 	for _, rel := range []string{
-		"Personal/Church/lesson.md",
-		"Personal/Home/Recipes/turkey.md",
+		"personal/Church/lesson.md",
+		"personal/Home/Recipes/turkey.md",
 		"personal/Tech/pages.md", // macOS treats the two spellings as one directory
 	} {
 		if r.MayReadWithModel(rel) {
@@ -70,10 +70,10 @@ func TestABackgroundPassMayNotReadAnExemptSpace(t *testing.T) {
 func TestABackgroundPassMayReadEverythingElse(t *testing.T) {
 	r := loadExempt(t, exemptBlock)
 	for _, rel := range []string{
-		"Agent/memory/semantic/a-fact.md",
-		"Calendar/2026/2026-08-20_day.md",
+		"agent/memory/semantic/a-fact.md",
+		"calendar/2026/2026-08-20_day.md",
 		"standards/storage-rules.md",
-		"Projects/blog/post.md",
+		"projects/blog/post.md",
 	} {
 		if !r.MayReadWithModel(rel) {
 			t.Errorf("a background model pass was refused %q, which is not exempt", rel)
@@ -85,7 +85,7 @@ func TestABackgroundPassMayReadEverythingElse(t *testing.T) {
 // about the operator's own space. The rule is about a space, not a word.
 func TestANestedFolderNamedPersonalIsNotTheSpace(t *testing.T) {
 	r := loadExempt(t, exemptBlock)
-	if !r.MayReadWithModel("Agent/desk/projects/x/personal/notes.md") {
+	if !r.MayReadWithModel("agent/desk/projects/x/personal/notes.md") {
 		t.Error("a nested folder named `personal` was treated as the Personal space")
 	}
 }
@@ -98,14 +98,14 @@ func TestTheTwoExemptionsAreIndependent(t *testing.T) {
 	block = replaceOnce(block, "model_exempt_spaces: [Personal]", "model_exempt_spaces: [Calendar]")
 	r := loadExempt(t, block)
 
-	if r.MayReadWithModel("Calendar/2026/day.md") {
+	if r.MayReadWithModel("calendar/2026/day.md") {
 		t.Error("Calendar is model-exempt in this contract and was allowed")
 	}
-	if !r.MayReadWithModel("Personal/Church/lesson.md") {
+	if !r.MayReadWithModel("personal/Church/lesson.md") {
 		t.Error("Personal is not model-exempt in this contract and was refused — the " +
 			"two lists are not the same list")
 	}
-	if !r.IsContractExempt("Personal/Church/lesson.md") {
+	if !r.IsContractExempt("personal/Church/lesson.md") {
 		t.Error("Personal is contract-exempt in this contract and was not treated so")
 	}
 }
@@ -119,10 +119,10 @@ func TestAContractWithNoExemptionsBarsNothing(t *testing.T) {
 	block = replaceOnce(block, "contract_exempt_spaces: [Personal]\n", "")
 	r := loadExempt(t, block)
 
-	if !r.MayReadWithModel("Personal/Church/lesson.md") {
+	if !r.MayReadWithModel("personal/Church/lesson.md") {
 		t.Error("a contract naming no model exemption barred something")
 	}
-	if r.IsContractExempt("Personal/Church/lesson.md") {
+	if r.IsContractExempt("personal/Church/lesson.md") {
 		t.Error("a contract naming no contract exemption exempted something")
 	}
 }
@@ -136,11 +136,11 @@ func TestTheShippedContractExemptsPersonal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the shipped contract does not parse: %v", err)
 	}
-	if r.MayReadWithModel("Personal/Church/lesson.md") {
-		t.Error("the shipped contract lets a background model pass read Personal/")
+	if r.MayReadWithModel("personal/Church/lesson.md") {
+		t.Error("the shipped contract lets a background model pass read personal/")
 	}
-	if !r.IsContractExempt("Personal/Church/lesson.md") {
-		t.Error("the shipped contract holds Personal/ to the memory contract")
+	if !r.IsContractExempt("personal/Church/lesson.md") {
+		t.Error("the shipped contract holds personal/ to the memory contract")
 	}
 }
 

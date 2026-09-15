@@ -8,7 +8,7 @@ own formula only proves the formula equals itself; these pin the contract.
 Background: on 2026-08-10 the vault path moved to the Obsidian root so the
 corpus-write gate could see the git root. The Python stack read that same key as
 its memory root and began writing memories to `<vault>/personal/` while the
-daemon kept writing `<vault>/Agent/memory/`. Same slugs, different bodies.
+daemon kept writing `<vault>/agent/memory/`. Same slugs, different bodies.
 These tests are the regression floor for that split.
 """
 from __future__ import annotations
@@ -34,7 +34,7 @@ class MemoryRootBase(unittest.TestCase):
         self.prefix = Path(self._tmp.name) / "prefix"
         self.prefix.mkdir()
         self.vault = Path(self._tmp.name) / "Vault"
-        (self.vault / "Agent" / "memory").mkdir(parents=True)
+        (self.vault / "agent" / "memory").mkdir(parents=True)
         (self.vault / "Church").mkdir()
         self._env = dict(os.environ)
         os.environ["AGENTM_INSTALL_PREFIX"] = str(self.prefix)
@@ -63,23 +63,23 @@ class TestResolution(MemoryRootBase):
         self.assertEqual(hm.memory_root(), self.vault)
 
     def test_set_key_puts_the_memory_root_one_level_down(self):
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
-        # Hand-written, not self.vault / "Agent" — pin the contract.
-        expected = Path(str(self.vault) + "/Agent")
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
+        # Hand-written, not self.vault / "agent" — pin the contract.
+        expected = Path(str(self.vault) + "/agent")
         self.assertEqual(hm.memory_root(), expected)
 
     def test_vault_path_is_unmoved_by_the_key(self):
         """The gate resolves the repository from vault_path; it must not shift."""
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
         self.assertEqual(hm.vault_path(), self.vault)
         self.assertNotEqual(hm.vault_path(), hm.memory_root())
 
     def test_env_is_taken_as_the_memory_root_not_re_joined(self):
         """$MEMORY_VAULT_PATH already names a memory tree — joining again would
-        address <vault>/Agent/Agent. This is what the hooks now export."""
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
-        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "Agent")
-        self.assertEqual(hm.memory_root(), Path(str(self.vault) + "/Agent"))
+        address <vault>/agent/agent. This is what the hooks now export."""
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
+        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "agent")
+        self.assertEqual(hm.memory_root(), Path(str(self.vault) + "/agent"))
 
     def test_nested_prefix_resolves_every_segment(self):
         (self.vault / "a" / "b").mkdir(parents=True)
@@ -89,7 +89,7 @@ class TestResolution(MemoryRootBase):
     def test_absolute_and_traversal_values_are_refused_not_honoured(self):
         """A bad value must mean 'unchanged', never a guess that relocates the
         corpus or escapes the vault."""
-        for bad in ("/etc", "../../etc", "Agent/../.."):
+        for bad in ("/etc", "../../etc", "agent/../.."):
             with self.subTest(bad=bad):
                 self.write_config(**{"plugins.obsidian-vault.memory_root": bad})
                 self.assertEqual(hm.memory_root(), self.vault)
@@ -107,9 +107,9 @@ class TestConsistencyGate(MemoryRootBase):
 
     def test_spaces_beneath_memory_root_pass(self):
         cfg = self.write_config(**{
-            "plugins.obsidian-vault.memory_root": "Agent",
-            "daemon.spaces": {"memory": "Agent/personal",
-                              "projects": "Agent/projects"},
+            "plugins.obsidian-vault.memory_root": "agent",
+            "daemon.spaces": {"memory": "agent/personal",
+                              "projects": "agent/projects"},
         })
         self.assertEqual(self.run_gate(cfg).returncode, 0)
 
@@ -117,7 +117,7 @@ class TestConsistencyGate(MemoryRootBase):
         """memory_root=Agent while the daemon writes memory to a root-level
         personal/ is exactly the configuration that forked the corpus."""
         cfg = self.write_config(**{
-            "plugins.obsidian-vault.memory_root": "Agent",
+            "plugins.obsidian-vault.memory_root": "agent",
             "daemon.spaces": {"memory": "memory"},
         })
         result = self.run_gate(cfg)
@@ -138,31 +138,31 @@ class TestTheOverrideHasOneMeaning(MemoryRootBase):
     """
 
     def test_memory_root_is_the_export_under_either_name(self):
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
-        os.environ["MEMORY_ROOT"] = str(self.vault / "Agent")
-        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
+        os.environ["MEMORY_ROOT"] = str(self.vault / "agent")
+        self.assertEqual(hm.memory_root(), self.vault / "agent")
         del os.environ["MEMORY_ROOT"]
-        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "Agent")
-        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "agent")
+        self.assertEqual(hm.memory_root(), self.vault / "agent")
 
     def test_vault_path_is_what_sits_above_the_configured_prefix(self):
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
-        os.environ["MEMORY_ROOT"] = str(self.vault / "Agent")
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
+        os.environ["MEMORY_ROOT"] = str(self.vault / "agent")
         self.assertEqual(hm.vault_path(), self.vault)
-        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+        self.assertEqual(hm.memory_root(), self.vault / "agent")
 
     def test_the_alias_derives_the_same_vault(self):
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
-        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "Agent")
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
+        os.environ["MEMORY_VAULT_PATH"] = str(self.vault / "agent")
         self.assertEqual(hm.vault_path(), self.vault)
 
     def test_the_new_name_wins_when_both_are_set(self):
-        other = Path(self._tmp.name) / "Other" / "Agent"
+        other = Path(self._tmp.name) / "Other" / "agent"
         other.mkdir(parents=True)
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
-        os.environ["MEMORY_ROOT"] = str(self.vault / "Agent")
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
+        os.environ["MEMORY_ROOT"] = str(self.vault / "agent")
         os.environ["MEMORY_VAULT_PATH"] = str(other)
-        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+        self.assertEqual(hm.memory_root(), self.vault / "agent")
         self.assertEqual(hm.vault_path(), self.vault)
 
     def test_an_export_without_the_prefix_is_a_flat_layout(self):
@@ -171,16 +171,16 @@ class TestTheOverrideHasOneMeaning(MemoryRootBase):
         that would land a scratch run in the operator's real vault."""
         scratch = Path(self._tmp.name) / "scratch"
         scratch.mkdir()
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
         os.environ["MEMORY_ROOT"] = str(scratch)
         self.assertEqual(hm.vault_path(), scratch)
         self.assertEqual(hm.memory_root(), scratch)
 
     def test_no_configured_prefix_means_the_export_is_both_roots(self):
         self.write_config()
-        os.environ["MEMORY_ROOT"] = str(self.vault / "Agent")
-        self.assertEqual(hm.vault_path(), self.vault / "Agent")
-        self.assertEqual(hm.memory_root(), self.vault / "Agent")
+        os.environ["MEMORY_ROOT"] = str(self.vault / "agent")
+        self.assertEqual(hm.vault_path(), self.vault / "agent")
+        self.assertEqual(hm.memory_root(), self.vault / "agent")
 
     def test_a_nested_prefix_is_taken_off_whole(self):
         deep = Path(self._tmp.name) / "V" / "a" / "b"
@@ -190,7 +190,7 @@ class TestTheOverrideHasOneMeaning(MemoryRootBase):
         self.assertEqual(hm.vault_path(), Path(self._tmp.name) / "V")
 
     def test_a_broken_export_is_no_vault_under_either_name(self):
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
         os.environ["MEMORY_ROOT"] = str(self.vault / "gone")
         self.assertIsNone(hm.vault_path())
         self.assertIsNone(hm.memory_root())
@@ -210,53 +210,53 @@ class TestSpaces(MemoryRootBase):
 
     def test_defaults_are_the_four_space_layout(self):
         """The names the stage-2 migration settled on, pinned by hand."""
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
         self.assertEqual(hm.space("memory"), "memory")
         # filing-v2 2b: the project space is the vault-root sibling of the
         # memory root, expressed in this memory-root-relative table as `..`.
-        self.assertEqual(hm.space("projects"), "../Projects")
+        self.assertEqual(hm.space("projects"), "../projects")
         self.assertEqual(hm.space("briefs"), "diagnostics/digests")
         self.assertEqual(hm.space("scratch"), "desk/scratch")
 
     def test_config_overrides_a_single_space(self):
         self.write_config(**{
-            "plugins.obsidian-vault.memory_root": "Agent",
+            "plugins.obsidian-vault.memory_root": "agent",
             "plugins.obsidian-vault.spaces": {"memory": "elsewhere"},
         })
         self.assertEqual(hm.space("memory"), "elsewhere")
         # Untouched spaces keep their defaults rather than disappearing. The
         # projects default is the vault-root sibling since filing-v2 2b.
-        self.assertEqual(hm.space("projects"), "../Projects")
+        self.assertEqual(hm.space("projects"), "../projects")
 
     def test_a_nested_space_path_is_honoured(self):
         self.write_config(**{
-            "plugins.obsidian-vault.memory_root": "Agent",
+            "plugins.obsidian-vault.memory_root": "agent",
             "plugins.obsidian-vault.spaces": {"desk/projects": "desk/projects"},
         })
         # The default for `projects` is the vault-root sibling of the memory
         # root (filing-v2 2b) — joined under the memory root, it climbs out.
-        self.assertEqual(hm.space("projects"), "../Projects")
+        self.assertEqual(hm.space("projects"), "../projects")
         self.assertEqual(hm.space_dir("projects"),
-                         Path(str(self.vault) + "/Agent/../Projects"))
+                         Path(str(self.vault) + "/agent/../projects"))
 
     def test_space_dir_joins_under_the_memory_root_not_the_vault_root(self):
         """The 2026-08-10 split in one assertion."""
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
         self.assertEqual(hm.space_dir("memory"),
-                         Path(str(self.vault) + "/Agent/memory"))
+                         Path(str(self.vault) + "/agent/memory"))
         self.assertNotEqual(hm.space_dir("memory"),
                             Path(str(self.vault) + "/memory"))
 
     def test_an_unknown_space_resolves_to_its_own_name(self):
         """A space nobody has migrated yet still lands where it already is."""
-        self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
+        self.write_config(**{"plugins.obsidian-vault.memory_root": "agent"})
         self.assertEqual(hm.space("_opinions"), "_opinions")
 
     def test_an_escaping_value_is_refused_rather_than_honoured(self):
         for bad in ("/etc", "C:/windows", "../../elsewhere", "", "   "):
             with self.subTest(bad=bad):
                 self.write_config(**{
-                    "plugins.obsidian-vault.memory_root": "Agent",
+                    "plugins.obsidian-vault.memory_root": "agent",
                     "plugins.obsidian-vault.spaces": {"memory": bad},
                 })
                 # Falls back to the default rather than escaping the tree.
@@ -266,7 +266,7 @@ class TestSpaces(MemoryRootBase):
         for bad in ("not-a-dict", 17, ["memory"], None):
             with self.subTest(bad=bad):
                 self.write_config(**{
-                    "plugins.obsidian-vault.memory_root": "Agent",
+                    "plugins.obsidian-vault.memory_root": "agent",
                     "plugins.obsidian-vault.spaces": bad,
                 })
                 self.assertEqual(hm.space("memory"), "memory")
@@ -282,8 +282,8 @@ class TestSpaceNameAgreement(MemoryRootBase):
     """Invariant 2: containment is not agreement.
 
     The stage-2 migration produced a fork the containment rule passed straight
-    through — the daemon on `Agent/memory` and the Python stack on
-    `Agent/personal`, both beneath memory_root `Agent`. Every expectation here
+    through — the daemon on `agent/memory` and the Python stack on
+    `agent/personal`, both beneath memory_root `Agent`. Every expectation here
     is a hand-written path, not one rebuilt with the checker's own join.
     """
 
@@ -293,8 +293,8 @@ class TestSpaceNameAgreement(MemoryRootBase):
 
     def test_matching_names_pass(self):
         cfg = self.write_config(**{
-            "plugins.obsidian-vault.memory_root": "Agent",
-            "daemon.spaces": {"memory": "Agent/memory"},
+            "plugins.obsidian-vault.memory_root": "agent",
+            "daemon.spaces": {"memory": "agent/memory"},
             "plugins.obsidian-vault.spaces": {"memory": "memory"},
         })
         res = self._run(cfg)
@@ -304,20 +304,20 @@ class TestSpaceNameAgreement(MemoryRootBase):
     def test_the_stage_2_fork_is_caught(self):
         """Both beneath memory_root, both healthy-looking, different trees."""
         cfg = self.write_config(**{
-            "plugins.obsidian-vault.memory_root": "Agent",
-            "daemon.spaces": {"memory": "Agent/memory"},
+            "plugins.obsidian-vault.memory_root": "agent",
+            "daemon.spaces": {"memory": "agent/memory"},
             "plugins.obsidian-vault.spaces": {"memory": "personal"},
         })
         res = self._run(cfg)
         self.assertEqual(res.returncode, 1)
-        self.assertIn("Agent/memory", res.stderr)
-        self.assertIn("Agent/personal", res.stderr)
+        self.assertIn("agent/memory", res.stderr)
+        self.assertIn("agent/personal", res.stderr)
 
     def test_an_unnamed_space_is_not_compared(self):
         """Unset on the Python side means 'use the built-in default', not 'disagree'."""
         cfg = self.write_config(**{
-            "plugins.obsidian-vault.memory_root": "Agent",
-            "daemon.spaces": {"memory": "Agent/memory", "projects": "Agent/desk/projects"},
+            "plugins.obsidian-vault.memory_root": "agent",
+            "daemon.spaces": {"memory": "agent/memory", "projects": "agent/desk/projects"},
             "plugins.obsidian-vault.spaces": {"memory": "memory"},
         })
         res = self._run(cfg)
@@ -325,7 +325,7 @@ class TestSpaceNameAgreement(MemoryRootBase):
 
     def test_containment_is_still_enforced(self):
         cfg = self.write_config(**{
-            "plugins.obsidian-vault.memory_root": "Agent",
+            "plugins.obsidian-vault.memory_root": "agent",
             "daemon.spaces": {"memory": "Elsewhere/memory"},
         })
         res = self._run(cfg)

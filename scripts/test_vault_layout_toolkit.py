@@ -25,9 +25,9 @@ import vault_layout as vl  # noqa: E402
 
 
 def _nested(td: Path) -> Path:
-    """`<td>/Vault/Agent` inside an Obsidian vault at `<td>/Vault`."""
+    """`<td>/Vault/agent` inside an Obsidian vault at `<td>/Vault`."""
     (td / "Vault" / ".obsidian").mkdir(parents=True)
-    root = td / "Vault" / "Agent"
+    root = td / "Vault" / "agent"
     root.mkdir()
     return root
 
@@ -40,7 +40,7 @@ class VaultRootTests(unittest.TestCase):
 
     def test_nested_root_is_witnessed_by_a_standards_sibling(self):
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td) / "Agent"
+            root = Path(td) / "agent"
             root.mkdir()
             (Path(td) / "standards").mkdir()
             self.assertEqual(vl.vault_root_candidates(root)[0], root.parent)
@@ -86,7 +86,7 @@ class VoiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = _nested(Path(td))
             new = root.parent / "standards" / "voice"
-            old = root.parent / "Projects" / "_global" / "wiki-style"
+            old = root.parent / "projects" / "_global" / "wiki-style"
             old.mkdir(parents=True)
             self.assertEqual(vl.voice_dir(root), old)
             new.mkdir(parents=True)
@@ -103,7 +103,7 @@ class FeatureStateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = _nested(Path(td))
             old = root / "memory" / "_watchlist"
-            new = root.parent / "Projects" / "agentm" / "_watchlist"
+            new = root.parent / "projects" / "agentm" / "_watchlist"
             self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)  # nothing exists: the home
             old.mkdir(parents=True)
             self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
@@ -116,13 +116,13 @@ class FeatureStateTests(unittest.TestCase):
             (root / "memory").mkdir()
             (root / "memory" / "trusted-sources.md").write_text("x", encoding="utf-8")
             self.assertEqual(vl.feature_state_path(root, "trusted-sources.md"),
-                             root.parent / "Projects" / "agentm" / "trusted-sources.md")
+                             root.parent / "projects" / "agentm" / "trusted-sources.md")
 
     def test_flat_vault_keeps_the_project_inside_the_root(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "Vault"
             (root / ".obsidian").mkdir(parents=True)
-            self.assertEqual(vl.feature_state_dir(root), root / "Projects" / "agentm")
+            self.assertEqual(vl.feature_state_dir(root), root / "projects" / "agentm")
 
 
 class SidecarTests(unittest.TestCase):

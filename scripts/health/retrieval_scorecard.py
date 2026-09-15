@@ -152,9 +152,9 @@ def search_via_hook(question_text: str, k: int, vault: str, index: str,
     (never the live vault — see main()'s enforcement). They reach the daemon
     as `_daemon_search`'s `daemon_vault`/`daemon_index` escape hatch, and
     `vault` doubles as `_daemon_search`'s own relativization root: passing the
-    corpus ROOT rather than its `Agent/` subdirectory is deliberate — it is
+    corpus ROOT rather than its `agent/` subdirectory is deliberate — it is
     what makes `_daemon_search`'s returned paths come back
-    `Agent/...`-prefixed, comparable to `expected_note_paths` with no second
+    `agent/...`-prefixed, comparable to `expected_note_paths` with no second
     transform (see `_daemon_root_for`'s own root-or-parents search: `vault`
     resolves on the first try instead of stripping a level).
 

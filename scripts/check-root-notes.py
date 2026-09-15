@@ -10,9 +10,9 @@ run has gone:
   - `index.md` carries the write-authority table once.
 
 A link is matched by its text, not by where it resolves. With the map gone, a
-bare `[[Home]]` quietly opens `Personal/Home/…/Home.md`, and a dangling-link
+bare `[[Home]]` quietly opens `personal/Home/…/Home.md`, and a dangling-link
 check reads that as green. A record under a `_harness/` directory keeps the
-names it was written with, `Personal/` is yours, and a link shown inside code
+names it was written with, `personal/` is yours, and a link shown inside code
 is not a link, so none of those is a finding.
 
 It reads the live vault, resolved at runtime. Until the maps data run writes
@@ -43,7 +43,7 @@ import markdown_spans  # noqa: E402
 import vault_layout  # noqa: E402
 
 SKIP_DIRS = {".git", ".obsidian", ".trash", "_harness"}
-OWNER_SPACES = {"Personal"}
+OWNER_SPACES = {"personal"}
 RETIRED_NAMES = {"home", "filing"}
 _WIKILINK = re.compile(r"\[\[([^\]\n]+?)\]\]")
 # A markdown link to a note: `](path.md)`, or `](<path.md>)` whose path may hold

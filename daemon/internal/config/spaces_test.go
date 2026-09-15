@@ -73,9 +73,9 @@ func loadWith(t *testing.T, vault string, keys map[string]any) (*Config, error) 
 // would pass the day somebody renames the private space, and the thing that
 // matters is that capture does not write where no pass may read.
 func TestTheDefaultMemorySpaceIsOneAPassMayRead(t *testing.T) {
-	vault := vaultWithContract(t, "Personal")
+	vault := vaultWithContract(t, "personal")
 	cfg, err := loadWith(t, vault, map[string]any{
-		"plugins.obsidian-vault.memory_root": "Agent",
+		"plugins.obsidian-vault.memory_root": "agent",
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -97,7 +97,7 @@ func TestTheDefaultMemorySpaceIsOneAPassMayRead(t *testing.T) {
 func TestTheDefaultSpacesFollowTheMemoryRoot(t *testing.T) {
 	vault := vaultWithContract(t)
 	cfg, err := loadWith(t, vault, map[string]any{
-		"plugins.obsidian-vault.memory_root": "Agent",
+		"plugins.obsidian-vault.memory_root": "agent",
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -105,13 +105,13 @@ func TestTheDefaultSpacesFollowTheMemoryRoot(t *testing.T) {
 	// Exactly what this operator's own hand-written config says, which is the
 	// evidence that the derivation is the right one rather than merely a
 	// different literal.
-	if got := cfg.Spaces["memory"]; got != "Agent/memory" {
-		t.Errorf("memory space = %q, want Agent/memory", got)
+	if got := cfg.Spaces["memory"]; got != "agent/memory" {
+		t.Errorf("memory space = %q, want agent/memory", got)
 	}
 	// The projects space is the one exception to "follow the memory root":
-	// since filing-v2 2b it is the vault-root `Projects/`, a sibling of the
+	// since filing-v2 2b it is the vault-root `projects/`, a sibling of the
 	// memory root, so the derivation names it unprefixed.
-	if got := cfg.Spaces["projects"]; got != "Projects" {
+	if got := cfg.Spaces["projects"]; got != "projects" {
 		t.Errorf("projects space = %q, want Projects", got)
 	}
 }
@@ -133,7 +133,7 @@ func TestWithNoMemoryRootTheSpacesSitAtTheTop(t *testing.T) {
 func TestAConfiguredSpaceBeatsTheDerivedDefault(t *testing.T) {
 	vault := vaultWithContract(t)
 	cfg, err := loadWith(t, vault, map[string]any{
-		"plugins.obsidian-vault.memory_root": "Agent",
+		"plugins.obsidian-vault.memory_root": "agent",
 		"daemon.spaces":                      map[string]any{"memory": "somewhere/else"},
 	})
 	if err != nil {
@@ -163,7 +163,7 @@ func TestSpacesWithoutAMemorySpaceAreStillRefused(t *testing.T) {
 // quietly. This is the shape the old default had, and the reason it went
 // unnoticed for two vault moves is that it works in every visible way.
 func TestAMemorySpaceNoPassMayReadIsRefused(t *testing.T) {
-	vault := vaultWithContract(t, "Personal")
+	vault := vaultWithContract(t, "personal")
 	_, err := loadWith(t, vault, map[string]any{
 		"daemon.spaces": map[string]any{"memory": "personal"},
 	})
@@ -177,7 +177,7 @@ func TestAMemorySpaceNoPassMayReadIsRefused(t *testing.T) {
 	}
 }
 
-// Case does not get a pass, in either direction. macOS treats `Personal/` and
+// Case does not get a pass, in either direction. macOS treats `personal/` and
 // `personal/` as one directory, so a case-sensitive check here would be a hazard
 // rather than a precision.
 //
@@ -186,8 +186,8 @@ func TestAMemorySpaceNoPassMayReadIsRefused(t *testing.T) {
 // is folded, and a battery run showed exactly that.
 func TestTheRefusalIsCaseInsensitive(t *testing.T) {
 	for _, tc := range []struct{ contract, configured string }{
-		{contract: "personal", configured: "Personal"},
-		{contract: "Personal", configured: "personal"},
+		{contract: "personal", configured: "personal"},
+		{contract: "personal", configured: "personal"},
 		{contract: "PERSONAL", configured: "personal"},
 	} {
 		vault := vaultWithContract(t, tc.contract)
@@ -203,9 +203,9 @@ func TestTheRefusalIsCaseInsensitive(t *testing.T) {
 // A memory space nested *inside* an exempt one is caught too — the exemption is
 // on the top-level space, and everything under it inherits.
 func TestANestedMemorySpaceInsideAnExemptOneIsRefused(t *testing.T) {
-	vault := vaultWithContract(t, "Personal")
+	vault := vaultWithContract(t, "personal")
 	if _, err := loadWith(t, vault, map[string]any{
-		"daemon.spaces": map[string]any{"memory": "Personal/notes"},
+		"daemon.spaces": map[string]any{"memory": "personal/notes"},
 	}); err == nil {
 		t.Error("a memory space beneath an exempt space was accepted")
 	}

@@ -128,7 +128,7 @@ class StandardsUnionTests(unittest.TestCase):
     def test_standards_files_load_beside_legacy_entries(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            vault = root / "Agent"
+            vault = root / "agent"
             _write_entry(vault, "legacy-entry", "the legacy pen still loads")
             standards = root / "standards"
             standards.mkdir(parents=True)
@@ -144,7 +144,7 @@ class StandardsUnionTests(unittest.TestCase):
     def test_generated_mocs_are_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            vault = root / "Agent"
+            vault = root / "agent"
             vault.mkdir(parents=True)
             standards = root / "standards"
             standards.mkdir(parents=True)
@@ -164,7 +164,7 @@ class StandardsUnionTests(unittest.TestCase):
         once, and the standards copy is the one that loads."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            vault = root / "Agent"
+            vault = root / "agent"
             _write_entry(vault, "token-discipline", "STALE pen copy")
             standards = root / "standards"
             standards.mkdir(parents=True)

@@ -25,12 +25,12 @@ func plan(frags ...SplitFragment) SplitPlan {
 // and judgments are wrong sometimes.
 func TestASplitSupersedesRatherThanDeletes(t *testing.T) {
 	v := newVault()
-	v.files["Agent/memory/semantic/blob.md"] = "---\ntitle: A blob\n---\n\nthe original text\n"
+	v.files["agent/memory/semantic/blob.md"] = "---\ntitle: A blob\n---\n\nthe original text\n"
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
 	written, err := a.ApplySplit(context.Background(),
-		"Agent/memory/semantic/blob.md",
-		v.files["Agent/memory/semantic/blob.md"],
+		"agent/memory/semantic/blob.md",
+		v.files["agent/memory/semantic/blob.md"],
 		plan(frag("first", "First", "one"), frag("second", "Second", "two")),
 		TriggerBatch, Stamp{})
 	if err != nil {
@@ -40,7 +40,7 @@ func TestASplitSupersedesRatherThanDeletes(t *testing.T) {
 		t.Fatalf("wrote %d fragments, want 2: %v", len(written), written)
 	}
 
-	orig, ok := v.files["Agent/memory/semantic/blob.md"]
+	orig, ok := v.files["agent/memory/semantic/blob.md"]
 	if !ok {
 		t.Fatal("the original was deleted; a split is additive")
 	}
@@ -63,7 +63,7 @@ func TestASplitSupersedesRatherThanDeletes(t *testing.T) {
 // Every fragment records where it came from, so the relationship is walkable.
 func TestEveryFragmentCarriesDerivedFrom(t *testing.T) {
 	v := newVault()
-	parent := "Agent/memory/semantic/blob.md"
+	parent := "agent/memory/semantic/blob.md"
 	v.files[parent] = "---\ntitle: A blob\n---\n\ntext\n"
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
@@ -90,7 +90,7 @@ func TestEveryFragmentCarriesDerivedFrom(t *testing.T) {
 // is the same information the parent edge already carries, once.
 func TestFragmentsDoNotCrossLink(t *testing.T) {
 	v := newVault()
-	parent := "Agent/memory/semantic/blob.md"
+	parent := "agent/memory/semantic/blob.md"
 	v.files[parent] = "---\ntitle: A blob\n---\n\ntext\n"
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
@@ -115,7 +115,7 @@ func TestFragmentsDoNotCrossLink(t *testing.T) {
 // round leaves a note claiming to be replaced by files that do not exist.
 func TestFragmentsLandBeforeTheOriginalIsSuperseded(t *testing.T) {
 	v := newVault()
-	parent := "Agent/memory/semantic/blob.md"
+	parent := "agent/memory/semantic/blob.md"
 	v.files[parent] = "---\ntitle: A blob\n---\n\ntext\n"
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
@@ -133,7 +133,7 @@ func TestFragmentsLandBeforeTheOriginalIsSuperseded(t *testing.T) {
 func TestASplitIsFullyJournalled(t *testing.T) {
 	v := newVault()
 	j := &recorder{}
-	parent := "Agent/memory/semantic/blob.md"
+	parent := "agent/memory/semantic/blob.md"
 	v.files[parent] = "---\ntitle: A blob\n---\n\nthe original text\n"
 	a := applier(t, v, j, func(string) (bool, error) { return false, nil })
 
@@ -215,7 +215,7 @@ func TestEachFragmentIsSchemaChecked(t *testing.T) {
 // A fragment cannot claim the path it came from — the original has to survive.
 func TestAFragmentCannotCollideWithItsParent(t *testing.T) {
 	v := newVault()
-	parent := "Agent/memory/semantic/blob.md"
+	parent := "agent/memory/semantic/blob.md"
 	v.files[parent] = "---\ntitle: A blob\n---\n\ntext\n"
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
@@ -232,7 +232,7 @@ func TestAFragmentCannotCollideWithItsParent(t *testing.T) {
 // A split into a derived class is refused like any other write into one.
 func TestASplitCannotWriteIntoADerivedClass(t *testing.T) {
 	v := newVault()
-	parent := "Agent/memory/mocs/blob.md"
+	parent := "agent/memory/mocs/blob.md"
 	v.files[parent] = "---\ntitle: A blob\n---\n\ntext\n"
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 

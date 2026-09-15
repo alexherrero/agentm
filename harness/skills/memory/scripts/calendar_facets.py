@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """calendar_facets.py — the daily register's facet writers.
 
-Filing v2 part 5, the calendar (design §DD5). `Calendar/YYYY/` holds one
+Filing v2 part 5, the calendar (design §DD5). `calendar/YYYY/` holds one
 note per day per facet — `YYYY-MM-DD-<facet>.md` for the facets the contract
 registers (meetings, correspondence, docs, diary) — and a facet note exists
 only on a day that had content for it. Facet membership is the selection
@@ -17,10 +17,10 @@ trajectory rather than a document that was tidied later. The frontmatter is
 written once, at creation, and never touched again by an append.
 
 The register is a vault-root space, a sibling of the memory root like
-`Projects/`: discovered, never conjured. Flat layout — `<memory-root>/Calendar`;
+`projects/`: discovered, never conjured. Flat layout — `<memory-root>/calendar`;
 nested layout — the memory root sits inside an Obsidian vault, witnessed by
 `.obsidian/` at the parent and none at the memory root itself, so the
-register is `<vault-root>/Calendar`. The year directory and the day's facet
+register is `<vault-root>/calendar`. The year directory and the day's facet
 file are created lazily; the space itself is not.
 
 Usage:
@@ -45,7 +45,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from vault_lock import atomic_write, vault_mutex  # noqa: E402
 
-SPACE = "Calendar"
+SPACE = "calendar"
 FACET_KIND = "calendar-facet"
 DIARY = "diary"
 # The registry when no contract answers: the four facets the operator ruled
@@ -69,7 +69,7 @@ class UnknownFacet(ValueError):
 @dataclass
 class Appended:
     path: Path
-    rel: str          # vault-root-relative, e.g. Calendar/2026/2026-09-04-meetings.md
+    rel: str          # vault-root-relative, e.g. calendar/2026/2026-09-04-meetings.md
     day: date
     facet: str
     created: bool     # True when this append brought the note into being
@@ -85,7 +85,7 @@ def _is_dir_exact(path: Path) -> bool:
 
 
 def calendar_root(vault: "Path | str") -> "Path | None":
-    """The vault-root `Calendar/` space, discovered never conjured — the same
+    """The vault-root `calendar/` space, discovered never conjured — the same
     two rungs the projects space uses. None when no register exists yet."""
     vault = Path(vault)
     flat = vault / SPACE
@@ -100,7 +100,7 @@ def calendar_root(vault: "Path | str") -> "Path | None":
 
 
 def vault_root_of(vault: "Path | str") -> Path:
-    """The directory `Calendar/` sits under — the vault root in the nested
+    """The directory `calendar/` sits under — the vault root in the nested
     layout, the memory root in the flat one."""
     root = calendar_root(vault)
     return root.parent if root is not None else Path(vault)
@@ -177,7 +177,7 @@ def append(vault: "Path | str", facet: str, text: str, *, day: "date | None" = N
     root = calendar_root(vault)
     if root is None:
         raise FileNotFoundError(
-            f"no Calendar/ space beside {vault}: the register is discovered, never conjured — "
+            f"no calendar/ space beside {vault}: the register is discovered, never conjured — "
             "create the directory once at the vault root.")
     day = day or now.date()
     rel = facet_rel(day, facet)
@@ -253,7 +253,7 @@ def correct(vault: "Path | str", facet: str, corrected: date, text: str, *, now:
     vault = Path(vault)
     root = calendar_root(vault)
     if root is None:
-        raise FileNotFoundError(f"no Calendar/ space beside {vault}: the register is discovered, never conjured.")
+        raise FileNotFoundError(f"no calendar/ space beside {vault}: the register is discovered, never conjured.")
     now = now or datetime.now(timezone.utc).astimezone()
     today = now.date()
     if corrected >= today:

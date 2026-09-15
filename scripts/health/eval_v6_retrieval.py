@@ -86,12 +86,12 @@ _ARCHIVED_PATH_CORRECTIONS = {
 
 
 # Filing-v2 2b (2026-09-03): the project space moved from the memory root's
-# desk/projects/ to the vault-root Projects/, a sibling of the memory root.
+# desk/projects/ to the vault-root projects/, a sibling of the memory root.
 # Same non-mutation policy: v0 keeps its pinned paths; the move is corrected
 # here, after the archive corrections, and recall keys such notes
 # vault-root-relative — which is exactly what these become.
 _MERGED_PREFIX = "desk/projects/"
-_MERGED_REAL_PREFIX = "../Projects/"
+_MERGED_REAL_PREFIX = "../projects/"
 
 
 def _resolve_expected_path(raw: str) -> str:

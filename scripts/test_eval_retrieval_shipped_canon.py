@@ -34,7 +34,7 @@ class MigratedPaths(unittest.TestCase):
     def _root(self, td: Path) -> Path:
         vault = td / "Vault"
         (vault / ".obsidian").mkdir(parents=True)
-        root = vault / "Agent"
+        root = vault / "agent"
         root.mkdir()
         return root
 
@@ -46,8 +46,8 @@ class MigratedPaths(unittest.TestCase):
                 ("memory/_inbox/workflow-bash-13.md", "inbox", "route", "memory/procedural/workflow-bash-13.md"),
             ])
             table = ev._disposition_map(root)
-            self.assertEqual(ev._migrated("Agent/memory/2026/08/eval-canary.md", table), "Agent/memory/semantic/eval-canary.md")
-            self.assertEqual(ev._migrated("Agent/memory/_inbox/workflow-bash-13.md", table), "Agent/memory/procedural/workflow-bash-13.md")
+            self.assertEqual(ev._migrated("agent/memory/2026/08/eval-canary.md", table), "agent/memory/semantic/eval-canary.md")
+            self.assertEqual(ev._migrated("agent/memory/_inbox/workflow-bash-13.md", table), "agent/memory/procedural/workflow-bash-13.md")
 
     def test_two_notes_that_shared_a_basename_stay_two_notes(self):
         with tempfile.TemporaryDirectory() as td:
@@ -57,10 +57,10 @@ class MigratedPaths(unittest.TestCase):
                 ("memory/2026/03/meeting-notes.md", "dated", "route", "memory/semantic/meeting-notes~dup.md"),
             ])
             table = ev._disposition_map(root)
-            a = ev._migrated("Agent/memory/2026/08/meeting-notes.md", table)
-            b = ev._migrated("Agent/memory/2026/03/meeting-notes.md", table)
+            a = ev._migrated("agent/memory/2026/08/meeting-notes.md", table)
+            b = ev._migrated("agent/memory/2026/03/meeting-notes.md", table)
             self.assertNotEqual(a, b)
-            self.assertEqual(b, "Agent/memory/semantic/meeting-notes~dup.md")
+            self.assertEqual(b, "agent/memory/semantic/meeting-notes~dup.md")
 
     def test_a_later_run_overrides_an_earlier_one(self):
         with tempfile.TemporaryDirectory() as td:
@@ -68,49 +68,72 @@ class MigratedPaths(unittest.TestCase):
             _report(root, "20260903T1200-route", [("memory/_inbox/x.md", "inbox", "route", "memory/semantic/x.md")])
             _report(root, "20260903T1500-route", [("memory/_inbox/x.md", "inbox", "route", "memory/semantic/x~dup.md")])
             table = ev._disposition_map(root)
-            self.assertEqual(ev._migrated("Agent/memory/_inbox/x.md", table), "Agent/memory/semantic/x~dup.md")
+            self.assertEqual(ev._migrated("agent/memory/_inbox/x.md", table), "agent/memory/semantic/x~dup.md")
 
     def test_paths_no_report_moved_compare_as_they_are(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._root(Path(td))
             table = ev._disposition_map(root)  # no reports at all
             self.assertEqual(table, {})
-            for path in ("Projects/agentm/_harness/PLAN.md", "Agent/memory/semantic/a.md",
-                         "Agent/memory/2026/03/meeting-notes.md", ev.CANARY_PATH):
+            for path in ("projects/agentm/_harness/PLAN.md", "agent/memory/semantic/a.md",
+                         "agent/memory/2026/03/meeting-notes.md", ev.CANARY_PATH):
                 self.assertEqual(ev._migrated(path, table), path)
             self.assertEqual(ev._migrated("anything", {}), "anything")
 
     def test_the_report_key_matches_as_a_suffix_on_a_path_boundary(self):
         table = {"memory/2026/08/x.md": "memory/semantic/x.md"}
-        self.assertEqual(ev._migrated("Agent/memory/2026/08/x.md", table), "Agent/memory/semantic/x.md")
+        self.assertEqual(ev._migrated("agent/memory/2026/08/x.md", table), "agent/memory/semantic/x.md")
         self.assertEqual(ev._migrated("memory/2026/08/x.md", table), "memory/semantic/x.md")
-        self.assertEqual(ev._migrated("Agent/memory/2026/08/notx.md", table), "Agent/memory/2026/08/notx.md")
-        self.assertEqual(ev._migrated("Agent/old-memory/2026/08/x.md", table), "Agent/old-memory/2026/08/x.md")
+        self.assertEqual(ev._migrated("agent/memory/2026/08/notx.md", table), "agent/memory/2026/08/notx.md")
+        self.assertEqual(ev._migrated("agent/old-memory/2026/08/x.md", table), "agent/old-memory/2026/08/x.md")
 
     def test_the_operators_whole_tree_moves_are_prefix_remaps(self):
-        self.assertEqual(ev._remap_merged("Agent/external/primos/decisions/x.md"), "Projects/primos/decisions/x.md")
-        self.assertEqual(ev._remap_merged("Agent/_vault-archive/ag-design-history/a.md"),
-                         "Projects/agentm/_harness/archive/designs/ag-design-history/a.md")
-        self.assertEqual(ev._remap_merged("Agent/memory/semantic/a.md"), "Agent/memory/semantic/a.md")
+        """The gold set is frozen and spells the roots the way it was labeled;
+        the merge remap keeps that spelling, and the casing is folded last."""
+        self.assertEqual(ev._remap_merged("Agent/external/primos/decisions/x.md"), "Projects/primos/decisions/x.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_merged("Agent/_vault-archive/ag-design-history/a.md"),  # root-casing: the gold set's spelling
+                         "Projects/agentm/_harness/archive/designs/ag-design-history/a.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_merged("Agent/memory/semantic/a.md"), "Agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
+
+    def test_the_casing_is_folded_last_to_the_spelling_the_vault_lists(self):
+        """agentm-vault plan 08: the roots are lowercase on disk once the rename
+        has run, the gold set keeps the old spelling, and the fold is at score
+        time after the other corrections — to the name the vault root lists,
+        so the gate reads true on either side of the data run, and to
+        lowercase when no vault resolves. A path inside a space keeps its own
+        casing."""
+        renamed = {"agent": "agent", "calendar": "calendar", "personal": "personal", "projects": "projects", "standards": "standards"}
+        old = {"agent": "Agent", "calendar": "Calendar", "personal": "Personal", "projects": "Projects", "standards": "standards"}  # root-casing: the spelling before the rename
+        self.assertEqual(ev._remap_casing("Agent/memory/semantic/a.md", renamed), "agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing("Agent/memory/semantic/a.md", old), "Agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing("Agent/memory/semantic/a.md", {}), "agent/memory/semantic/a.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing("agent/memory/a.md", old), "Agent/memory/a.md")  # root-casing: the vault's spelling before the rename
+        self.assertEqual(ev._remap_casing("Projects/agentm/Personal/x.md", renamed), "projects/agentm/Personal/x.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing("standards/voice/a.md", renamed), "standards/voice/a.md")
+        merged = ev._remap_merged("Agent/external/primos/decisions/x.md")  # root-casing: the gold set's spelling
+        self.assertEqual(ev._remap_casing(merged, renamed), "projects/primos/decisions/x.md")
+        self.assertEqual(ev.CANARY_PATH, ev._remap_casing(ev.CANARY_PATH, renamed))
+        self.assertEqual(ev._remap_casing(ev.CANARY_PATH, old).split("/")[0], "Agent")  # root-casing: the vault's spelling before the rename
 
     def test_the_trims_remaps_fire_only_where_the_vault_has_moved(self):
         """agentm-vault plan 05: the migration runs at deploy time, so the
         gold set's voice-rule and settings paths follow the move only on a
-        vault that holds the destination, and stay pre-trims elsewhere."""
+        vault that holds the destination, and stay pre-trims elsewhere. The
+        paths are the gold set's, spelled as it was labeled."""
         with tempfile.TemporaryDirectory() as td:
             vault = Path(td)
-            old = "Projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+            old = "Projects/_global/wiki-style/2026-07-05-docs-prose-style.md"  # root-casing: the gold set's spelling
             self.assertEqual(ev._remap_trims(old, vault), old)
             (vault / "standards" / "voice").mkdir(parents=True)
             (vault / "standards" / "voice" / "2026-07-05-docs-prose-style.md").write_text("x", encoding="utf-8")
             self.assertEqual(ev._remap_trims(old, vault), "standards/voice/2026-07-05-docs-prose-style.md")
-            self.assertEqual(ev._remap_trims("Agent/memory/trusted-sources.md", vault),
-                             "Agent/memory/trusted-sources.md")
-            (vault / "Projects" / "agentm").mkdir(parents=True)
-            (vault / "Projects" / "agentm" / "trusted-sources.md").write_text("x", encoding="utf-8")
-            self.assertEqual(ev._remap_trims("Agent/memory/trusted-sources.md", vault),
-                             "Projects/agentm/trusted-sources.md")
-            self.assertEqual(ev._remap_trims("Agent/memory/semantic/a.md", vault), "Agent/memory/semantic/a.md")
+            self.assertEqual(ev._remap_trims("Agent/memory/trusted-sources.md", vault),  # root-casing: the gold set's spelling
+                             "Agent/memory/trusted-sources.md")  # root-casing: the gold set's spelling
+            (vault / "projects" / "agentm").mkdir(parents=True)
+            (vault / "projects" / "agentm" / "trusted-sources.md").write_text("x", encoding="utf-8")
+            self.assertEqual(ev._remap_casing(ev._remap_trims("Agent/memory/trusted-sources.md", vault), {"projects": "projects"}),  # root-casing: the gold set's spelling
+                             "projects/agentm/trusted-sources.md")
+            self.assertEqual(ev._remap_trims("agent/memory/semantic/a.md", vault), "agent/memory/semantic/a.md")
             self.assertEqual(ev._remap_trims(old, None), old, "no vault: the eval stays pre-trims")
 
     def test_purged_and_held_rows_do_not_enter_the_table(self):

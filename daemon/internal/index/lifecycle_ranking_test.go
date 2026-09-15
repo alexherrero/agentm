@@ -30,8 +30,8 @@ func TestADormantTwinRanksBelowItsActiveTwinAndStaysPresent(t *testing.T) {
 	body := "The release gate waits for the checks to finish before the tag.\n"
 	// The dormant twin sorts first by path, so a tie would put it on top: the
 	// ordering below is the demotion, not the tiebreak.
-	indexLifecycle(t, idx, "Agent/memory/semantic/a-dormant.md", "Gate", "dormant", body)
-	indexLifecycle(t, idx, "Agent/memory/semantic/b-active.md", "Gate", "active", body)
+	indexLifecycle(t, idx, "agent/memory/semantic/a-dormant.md", "Gate", "dormant", body)
+	indexLifecycle(t, idx, "agent/memory/semantic/b-active.md", "Gate", "active", body)
 
 	for _, mode := range []string{ModeAnd, ModeFusion} {
 		out, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: mode})
@@ -56,8 +56,8 @@ func TestADormantTwinRanksBelowItsActiveTwinAndStaysPresent(t *testing.T) {
 func TestAnArchivedNoteIsWalledFromEverydaySearchAndBackOnTheExplicitQuery(t *testing.T) {
 	idx := openScratch(t)
 	body := "The release gate waits for the checks to finish before the tag.\n"
-	indexLifecycle(t, idx, "Agent/memory/semantic/a-archived.md", "Gate", "archived", body)
-	indexLifecycle(t, idx, "Agent/memory/semantic/b-active.md", "Gate", "active", body)
+	indexLifecycle(t, idx, "agent/memory/semantic/a-archived.md", "Gate", "archived", body)
+	indexLifecycle(t, idx, "agent/memory/semantic/b-active.md", "Gate", "active", body)
 
 	for _, mode := range []string{ModeAnd, ModeFusion} {
 		everyday, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: mode})
@@ -95,7 +95,7 @@ func TestAnArchivedNoteIsWalledFromEverydaySearchAndBackOnTheExplicitQuery(t *te
 // says so rather than returning nothing silently.
 func TestTheWallIsVisibleWhenItEmptiesTheResult(t *testing.T) {
 	idx := openScratch(t)
-	indexLifecycle(t, idx, "Agent/memory/semantic/only.md", "Only", "archived",
+	indexLifecycle(t, idx, "agent/memory/semantic/only.md", "Only", "archived",
 		"The obsolete deployment runbook named the old bastion host.\n")
 	out, err := idx.Search(Query{Text: "bastion runbook", K: 5})
 	if err != nil {
@@ -109,8 +109,8 @@ func TestTheWallIsVisibleWhenItEmptiesTheResult(t *testing.T) {
 func TestAPinnedTwinIsNeitherDemotedNorWalled(t *testing.T) {
 	idx := openScratch(t)
 	body := "The release gate waits for the checks to finish before the tag.\n"
-	indexLifecycle(t, idx, "Agent/memory/semantic/a-pinned.md", "Gate", "pinned", body)
-	indexLifecycle(t, idx, "Agent/memory/semantic/b-active.md", "Gate", "active", body)
+	indexLifecycle(t, idx, "agent/memory/semantic/a-pinned.md", "Gate", "pinned", body)
+	indexLifecycle(t, idx, "agent/memory/semantic/b-active.md", "Gate", "active", body)
 	out, err := idx.Search(Query{Text: "release gate checks", K: 5})
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -173,8 +173,8 @@ func TestTheWallReachesTheDenseArm(t *testing.T) {
 func TestASupersededNoteIsWalledLikeAnArchivedOne(t *testing.T) {
 	idx := openScratch(t)
 	body := "The release gate waits for the checks to finish before the tag.\n"
-	indexLifecycle(t, idx, "Agent/memory/semantic/a-superseded.md", "Gate", "superseded", body)
-	indexLifecycle(t, idx, "Agent/memory/semantic/b-active.md", "Gate", "active", body)
+	indexLifecycle(t, idx, "agent/memory/semantic/a-superseded.md", "Gate", "superseded", body)
+	indexLifecycle(t, idx, "agent/memory/semantic/b-active.md", "Gate", "active", body)
 
 	for _, mode := range []string{ModeAnd, ModeFusion} {
 		everyday, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: mode})

@@ -348,7 +348,7 @@ def in_space(rel, spaces) -> bool:
     Matched on the first path segment, case-insensitively. A space is a top-level
     directory: matching deeper would let a folder named `personal` anywhere in
     the tree inherit a rule written about the operator's own, and macOS treats
-    `Personal/` and `personal/` as one directory, so a case-sensitive rule would
+    `personal/` and `personal/` as one directory, so a case-sensitive rule would
     be a hazard rather than a precision.
     """
     if not spaces:

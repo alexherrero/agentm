@@ -127,7 +127,7 @@ class TestViolations(unittest.TestCase):
         """Baked-in /Library/CloudStorage/ absolute path literal must be flagged."""
         content = (
             "# Hardcoded — this must NOT pass the gate\n"
-            'VAULT = "/Users/x/Library/CloudStorage/GoogleDrive-y/My Drive/Obsidian/Agent"\n'
+            'VAULT = "/Users/x/Library/CloudStorage/GoogleDrive-y/My Drive/Obsidian/agent"\n'
         )
         with tempfile.TemporaryDirectory() as tmp:
             rc = _run(tmp, "config.py", content)
@@ -153,7 +153,7 @@ class TestViolations(unittest.TestCase):
     def test_stderr_names_file_and_line(self) -> None:
         """Violation output must include the filename and line number."""
         import io
-        content = 'ROOT = "/Library/CloudStorage/GoogleDrive-x/My Drive/Obsidian/Agent"\n'
+        content = 'ROOT = "/Library/CloudStorage/GoogleDrive-x/My Drive/Obsidian/agent"\n'
         with tempfile.TemporaryDirectory() as tmp:
             scripts = Path(tmp) / "scripts"
             scripts.mkdir()

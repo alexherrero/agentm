@@ -39,11 +39,11 @@ func loadUnderEnv(t *testing.T, keys map[string]any, env map[string]string) (*Co
 	return Load(Options{ConfigPath: path})
 }
 
-// nestedVault lays out <tmp>/Vault/Agent and returns both directories.
+// nestedVault lays out <tmp>/Vault/agent and returns both directories.
 func nestedVault(t *testing.T) (vault, memory string) {
 	t.Helper()
 	vault = filepath.Join(t.TempDir(), "Vault")
-	memory = filepath.Join(vault, "Agent")
+	memory = filepath.Join(vault, "agent")
 	if err := os.MkdirAll(memory, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestTheMemoryRootExportYieldsTheVaultAboveIt(t *testing.T) {
 	elsewhere := t.TempDir()
 	cfg, err := loadUnderEnv(t, map[string]any{
 		"plugins.obsidian-vault.vault_path":  elsewhere,
-		"plugins.obsidian-vault.memory_root": "Agent",
+		"plugins.obsidian-vault.memory_root": "agent",
 	}, map[string]string{"MEMORY_ROOT": memory})
 	if err != nil {
 		t.Fatal(err)
@@ -63,10 +63,10 @@ func TestTheMemoryRootExportYieldsTheVaultAboveIt(t *testing.T) {
 	if cfg.VaultPath != vault {
 		t.Fatalf("vault = %q, want the directory above the export, %q", cfg.VaultPath, vault)
 	}
-	if cfg.MemoryRoot != "Agent" {
+	if cfg.MemoryRoot != "agent" {
 		t.Fatalf("memory root = %q, want the configured prefix kept", cfg.MemoryRoot)
 	}
-	if got := cfg.Spaces["memory"]; got != "Agent/memory" {
+	if got := cfg.Spaces["memory"]; got != "agent/memory" {
 		t.Fatalf("memory space = %q, want it under the prefix", got)
 	}
 	if !strings.Contains(cfg.VaultSource, "$MEMORY_ROOT") || !strings.Contains(cfg.VaultSource, "memory root") {
@@ -77,7 +77,7 @@ func TestTheMemoryRootExportYieldsTheVaultAboveIt(t *testing.T) {
 func TestAFlatExportIsBothRootsAtOnce(t *testing.T) {
 	scratch := t.TempDir()
 	cfg, err := loadUnderEnv(t, map[string]any{
-		"plugins.obsidian-vault.memory_root": "Agent",
+		"plugins.obsidian-vault.memory_root": "agent",
 	}, map[string]string{"MEMORY_ROOT": scratch})
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestAFlatExportIsBothRootsAtOnce(t *testing.T) {
 	}
 	if cfg.MemoryRoot != "" {
 		t.Fatalf("memory root = %q, want empty: the export does not end in the prefix, "+
-			"so walking <export>/Agent would find nothing", cfg.MemoryRoot)
+			"so walking <export>/agent would find nothing", cfg.MemoryRoot)
 	}
 	if got := cfg.Spaces["memory"]; got != "memory" {
 		t.Fatalf("memory space = %q, want it at the top of the flat layout", got)
@@ -100,12 +100,12 @@ func TestAFlatExportIsBothRootsAtOnce(t *testing.T) {
 func TestTheDeprecatedNameStillMeansTheMemoryRoot(t *testing.T) {
 	vault, memory := nestedVault(t)
 	cfg, err := loadUnderEnv(t, map[string]any{
-		"plugins.obsidian-vault.memory_root": "Agent",
+		"plugins.obsidian-vault.memory_root": "agent",
 	}, map[string]string{"MEMORY_VAULT_PATH": memory})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.VaultPath != vault || cfg.MemoryRoot != "Agent" {
+	if cfg.VaultPath != vault || cfg.MemoryRoot != "agent" {
 		t.Fatalf("vault = %q, memory root = %q; the alias must resolve exactly as the new name",
 			cfg.VaultPath, cfg.MemoryRoot)
 	}
@@ -118,7 +118,7 @@ func TestTheNewNameWinsWhenBothAreSet(t *testing.T) {
 	vault, memory := nestedVault(t)
 	_, stale := nestedVault(t)
 	cfg, err := loadUnderEnv(t, map[string]any{
-		"plugins.obsidian-vault.memory_root": "Agent",
+		"plugins.obsidian-vault.memory_root": "agent",
 	}, map[string]string{"MEMORY_ROOT": memory, "MEMORY_VAULT_PATH": stale})
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func TestTheVaultFlagBeatsTheExport(t *testing.T) {
 		os.Unsetenv(n)
 	}
 	t.Setenv("MEMORY_ROOT", memory)
-	blob, _ := json.Marshal(map[string]any{"plugins.obsidian-vault.memory_root": "Agent"})
+	blob, _ := json.Marshal(map[string]any{"plugins.obsidian-vault.memory_root": "agent"})
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, blob, 0o644); err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func TestTheVaultFlagBeatsTheExport(t *testing.T) {
 	if cfg.VaultPath != filepath.Clean(flagged) || cfg.VaultSource != "--vault flag" {
 		t.Fatalf("vault = %q from %q; the flag must win outright", cfg.VaultPath, cfg.VaultSource)
 	}
-	if cfg.MemoryRoot != "Agent" {
+	if cfg.MemoryRoot != "agent" {
 		t.Fatalf("memory root = %q; the configured prefix stands when the flag is given", cfg.MemoryRoot)
 	}
 }
@@ -166,8 +166,8 @@ func TestWithNoConfiguredPrefixTheExportIsTheVault(t *testing.T) {
 }
 
 func TestSplitMemoryRootNeverStripsToNothing(t *testing.T) {
-	vault, rel := splitMemoryRoot(string(filepath.Separator)+"Agent", "Agent")
-	if rel != "" || vault != string(filepath.Separator)+"Agent" {
+	vault, rel := splitMemoryRoot(string(filepath.Separator)+"agent", "agent")
+	if rel != "" || vault != string(filepath.Separator)+"agent" {
 		t.Fatalf("got %q / %q; an export that IS the prefix has nothing above it", vault, rel)
 	}
 }

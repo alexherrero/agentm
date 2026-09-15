@@ -68,7 +68,7 @@ class TestAppendIdeaToSurface(unittest.TestCase):
 class TestResolveIdeasPathDefault(unittest.TestCase):
     """Pins the default Ideas.md derivation: the real Obsidian vault root is
     the PARENT of the resolved MemoryVault path, not vault_path() itself
-    (which resolves to the `Agent/` subfolder) — and never a cached
+    (which resolves to the `agent/` subfolder) — and never a cached
     `~/Obsidian/Ideas.md` literal."""
 
     def setUp(self):
@@ -85,19 +85,19 @@ class TestResolveIdeasPathDefault(unittest.TestCase):
                 os.environ.pop(k, None)
 
     def test_default_derives_from_vault_parent(self):
-        fake_vault = Path("/fake/Obsidian/Agent")
+        fake_vault = Path("/fake/Obsidian/agent")
         with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=fake_vault):
             result = ideas_surface._resolve_ideas_path(None)
         self.assertEqual(result, Path("/fake/Obsidian/Ideas.md"))
 
     def test_explicit_arg_wins_over_vault_derivation(self):
-        with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=Path("/fake/Obsidian/Agent")):
+        with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=Path("/fake/Obsidian/agent")):
             result = ideas_surface._resolve_ideas_path("/explicit/Ideas.md")
         self.assertEqual(result, Path("/explicit/Ideas.md"))
 
     def test_env_override_wins_over_vault_derivation(self):
         os.environ["IDEAS_SURFACE_PATH"] = "/env/Ideas.md"
-        with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=Path("/fake/Obsidian/Agent")):
+        with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=Path("/fake/Obsidian/agent")):
             result = ideas_surface._resolve_ideas_path(None)
         self.assertEqual(result, Path("/env/Ideas.md"))
 
@@ -108,7 +108,7 @@ class TestResolveIdeasPathDefault(unittest.TestCase):
 
     def test_append_idea_writes_to_derived_default_path(self):
         with tempfile.TemporaryDirectory() as td:
-            vault = Path(td) / "Obsidian" / "Agent"
+            vault = Path(td) / "Obsidian" / "agent"
             vault.mkdir(parents=True)
             with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=vault):
                 result = ideas_surface.append_idea_to_surface(

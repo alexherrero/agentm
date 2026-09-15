@@ -40,15 +40,15 @@ class _Nested(unittest.TestCase):
         self.top = Path(tempfile.mkdtemp(prefix="calendar-corr-"))
         self.addCleanup(shutil.rmtree, self.top, ignore_errors=True)
         (self.top / ".obsidian").mkdir()
-        self.vault = self.top / "Agent"
+        self.vault = self.top / "agent"
         (self.vault / "memory").mkdir(parents=True)
-        (self.top / "Calendar").mkdir()
+        (self.top / "calendar").mkdir()
         self.rules = _Rules()
         # Yesterday's meeting, written yesterday.
         self.orig = cf.append(self.vault, "meetings", "Agreed the release date: Friday.", day=YESTERDAY, now=THEN, rules=self.rules).path
 
     def _files(self):
-        return sorted(p.relative_to(self.top).as_posix() for p in (self.top / "Calendar").rglob("*.md"))
+        return sorted(p.relative_to(self.top).as_posix() for p in (self.top / "calendar").rglob("*.md"))
 
 
 class TheClosedDayGuard(_Nested):
@@ -61,7 +61,7 @@ class TheClosedDayGuard(_Nested):
     def test_today_and_the_future_stay_open(self):
         cf.append(self.vault, "meetings", "Today's meeting.", day=TODAY, now=NOW, rules=self.rules)
         cf.append(self.vault, "docs", "Planned for tomorrow.", day=date(2026, 9, 5), now=NOW, rules=self.rules)
-        self.assertIn("Calendar/2026/2026-09-05-docs.md", self._files())
+        self.assertIn("calendar/2026/2026-09-05-docs.md", self._files())
 
 
 class TheCorrection(_Nested):
@@ -69,12 +69,12 @@ class TheCorrection(_Nested):
         before = self.orig.read_bytes(); mtime = self.orig.stat().st_mtime_ns
         r = cf.correct(self.vault, "meetings", YESTERDAY, "The release date is Thursday, not Friday.", now=NOW, rules=self.rules)
         self.assertTrue(r.created)
-        self.assertEqual(r.rel, "Calendar/2026/2026-09-04-meetings-corrects-2026-09-03.md")
+        self.assertEqual(r.rel, "calendar/2026/2026-09-04-meetings-corrects-2026-09-03.md")
         self.assertEqual(self.orig.read_bytes(), before)
         self.assertEqual(self.orig.stat().st_mtime_ns, mtime)
         text = r.path.read_text(encoding="utf-8")
         for line in ("kind: calendar-facet", "day: 2026-09-04", "facet: meetings", "corrects: 2026-09-03",
-                     "supersedes: Calendar/2026/2026-09-03-meetings.md", "tags: [calendar, meetings, correction]"):
+                     "supersedes: calendar/2026/2026-09-03-meetings.md", "tags: [calendar, meetings, correction]"):
             self.assertIn(line + "\n", text)
         self.assertTrue(text.endswith("09:30 — The release date is Thursday, not Friday.\n"), text)
 
@@ -87,8 +87,8 @@ class TheCorrection(_Nested):
 
     def test_both_days_indexes_show_the_correction(self):
         cf.correct(self.vault, "meetings", YESTERDAY, "Thursday.", now=NOW, rules=self.rules)
-        y = (self.top / "Calendar" / "2026" / "2026-09-03.md").read_text(encoding="utf-8")
-        t = (self.top / "Calendar" / "2026" / "2026-09-04.md").read_text(encoding="utf-8")
+        y = (self.top / "calendar" / "2026" / "2026-09-03.md").read_text(encoding="utf-8")
+        t = (self.top / "calendar" / "2026" / "2026-09-04.md").read_text(encoding="utf-8")
         self.assertIn("## Corrected later\n\n- [[2026-09-04-meetings-corrects-2026-09-03]] (meetings)\n", y)
         self.assertIn("## Corrections made today\n\n- [[2026-09-04-meetings-corrects-2026-09-03]] — corrects 2026-09-03 (meetings): Thursday.\n", t)
 

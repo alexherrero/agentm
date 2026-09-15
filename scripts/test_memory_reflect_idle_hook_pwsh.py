@@ -63,8 +63,8 @@ class TestMemoryReflectIdleHookPwsh(unittest.TestCase):
         self.vault = self.root / "vault"
         (self.vault / "memory").mkdir(parents=True)
         (self.vault / "_inbox").mkdir(parents=True)
-        (self.vault / "Projects" / "agentm").mkdir(parents=True, exist_ok=True)
-        (self.vault / "Projects" / "agentm" / "auto-orchestration-config.md").write_text(
+        (self.vault / "projects" / "agentm").mkdir(parents=True, exist_ok=True)
+        (self.vault / "projects" / "agentm" / "auto-orchestration-config.md").write_text(
             "```settings\nenable_idle_chain = false\n```\n", encoding="utf-8",
         )
         self.proj = self.root / "proj"

@@ -78,12 +78,12 @@ func TestGit_PhoneEditIsMarkedPhoneOriginated(t *testing.T) {
 	bin := buildDaemon(t)
 	env := newVault(t)
 	gitInit(t, env.vault)
-	env.setConfigKey(t, "daemon.phone_paths", []string{"Calendar"})
+	env.setConfigKey(t, "daemon.phone_paths", []string{"calendar"})
 
 	d := start(t, bin, env)
 	defer d.kill(t)
 
-	rel := "Calendar/2026-08-08.md"
+	rel := "calendar/2026-08-08.md"
 	env.write(t, rel, `---
 type: idea
 status: unfiled
@@ -386,7 +386,7 @@ func TestGit_ATrackedDotDirectoryFileIsMaintained(t *testing.T) {
 	defer d.kill(t)
 
 	env.write(t, ".obsidian/app.json",
-		"{\"alwaysUpdateLinks\": true, \"userIgnoreFilters\": [\"Agent/personal\"]}\n")
+		"{\"alwaysUpdateLinks\": true, \"userIgnoreFilters\": [\"agent/personal\"]}\n")
 
 	// Nothing wakes on a dot directory — a long Drive sync would keep resetting
 	// the debounce and starve the commit — so this arrives on the reconcile

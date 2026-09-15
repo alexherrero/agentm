@@ -588,10 +588,10 @@ class ProjectJsonPointerTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
         self.vault = root / "Vault"
-        self.mem = self.vault / "Agent"
+        self.mem = self.vault / "agent"
         self.mem.mkdir(parents=True)
         # A real, populated tree OUTSIDE the vault -- the retired vault root.
-        self.stale = root / "OldDrive" / "Agent"
+        self.stale = root / "OldDrive" / "agent"
         self.stale.mkdir(parents=True)
         (self.stale / "board-items.json").write_text("[]", encoding="utf-8")
         self.cfg = root / "project.json"
@@ -646,7 +646,7 @@ class ProjectJsonPointerTests(unittest.TestCase):
         stray.write_text("# Ideas", encoding="utf-8")
         ok = self._check({"env": {"IDEAS_SURFACE_PATH": str(stray)}})
         self.assertEqual(ok.status, "OK")
-        board = self.vault / "Projects" / "agentm" / "_harness" / "board-items.json"
+        board = self.vault / "projects" / "agentm" / "_harness" / "board-items.json"
         board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text("[]", encoding="utf-8")
         ok = self._check({"items_source": str(board)})

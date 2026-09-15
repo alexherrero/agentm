@@ -26,7 +26,7 @@ func queue(notes []Candidate) Lister {
 func fixture(n int) []Candidate {
 	out := make([]Candidate, n)
 	for i := range out {
-		out[i] = Candidate{Rel: fmt.Sprintf("Agent/memory/n%03d.md", i), Raw: "raw"}
+		out[i] = Candidate{Rel: fmt.Sprintf("agent/memory/n%03d.md", i), Raw: "raw"}
 	}
 	return out
 }

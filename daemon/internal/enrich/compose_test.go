@@ -39,9 +39,9 @@ const card = "---\n" +
 	"> user: the vault's .git broke again after Drive synced\n"
 
 var offered = []Neighbour{
-	{ID: "drive-upload-staging-churns", Rel: "Agent/memory/procedural/drive-upload-staging-churns.md",
+	{ID: "drive-upload-staging-churns", Rel: "agent/memory/procedural/drive-upload-staging-churns.md",
 		Title: "Drive upload staging churns transient files", Summary: "Drive re-uploads files mid-write."},
-	{ID: "vault-location", Rel: "Agent/memory/semantic/vault-location.md",
+	{ID: "vault-location", Rel: "agent/memory/semantic/vault-location.md",
 		Title: "Where the vault lives", Summary: "The vault is a plain local path synced to Drive."},
 }
 

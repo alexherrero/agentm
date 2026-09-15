@@ -14,35 +14,35 @@ import (
 
 func TestAProjectRecordIsKnownByItsPlace(t *testing.T) {
 	cases := map[string]bool{
-		"Projects/agentm/_index.md":                          true,
-		"Projects/agentm/charter.md":                         true,
-		"Projects/agentm/decisions/a-ruling.md":              true,
+		"projects/agentm/_index.md":                          true,
+		"projects/agentm/charter.md":                         true,
+		"projects/agentm/decisions/a-ruling.md":              true,
 		"projects/crickets/designs/x.md":                     true,
-		"Projects/agentm/research/bundle/notes/finding.md":   true,
-		"Projects/agentm/tracker.md":                         false,
-		"Projects/agentm/tasks/build-it/tracker.md":          false,
-		"Projects/agentm/tasks/build-it/plan.md":             false,
-		"Projects/agentm/tasks/build-it/progress.md":         false,
-		"Projects/agentm/decisions/plan.md":                  false,
-		"Projects/agentm/_harness/PLAN-online-recall.md":     false,
-		"Projects/agentm/_harness/progress-online-recall.md": false,
-		"Projects/agentm/desk/briefs/b.md":                   false,
-		"Projects/agentm/completed/research-note.md":         false,
-		"Projects/agentm/roadmap.md":                         false,
-		"Projects/agentm/research/.obsidian/workspace.md":    false,
-		"Projects/_archive/old-project/decisions/d.md":       false,
-		"Agent/memory/semantic/keep-git-out-of-drive.md":     false,
-		"Projects/agentm/decisions/a-ruling.txt":             false,
+		"projects/agentm/research/bundle/notes/finding.md":   true,
+		"projects/agentm/tracker.md":                         false,
+		"projects/agentm/tasks/build-it/tracker.md":          false,
+		"projects/agentm/tasks/build-it/plan.md":             false,
+		"projects/agentm/tasks/build-it/progress.md":         false,
+		"projects/agentm/decisions/plan.md":                  false,
+		"projects/agentm/_harness/PLAN-online-recall.md":     false,
+		"projects/agentm/_harness/progress-online-recall.md": false,
+		"projects/agentm/desk/briefs/b.md":                   false,
+		"projects/agentm/completed/research-note.md":         false,
+		"projects/agentm/roadmap.md":                         false,
+		"projects/agentm/research/.obsidian/workspace.md":    false,
+		"projects/_archive/old-project/decisions/d.md":       false,
+		"agent/memory/semantic/keep-git-out-of-drive.md":     false,
+		"projects/agentm/decisions/a-ruling.txt":             false,
 	}
 	for rel, want := range cases {
 		if got := IsProjectRecord(rel); got != want {
 			t.Errorf("IsProjectRecord(%q) = %v, want %v", rel, got, want)
 		}
 	}
-	if got := ProjectOf("Projects/agentm/decisions/a.md"); got != "agentm" {
+	if got := ProjectOf("projects/agentm/decisions/a.md"); got != "agentm" {
 		t.Errorf("ProjectOf = %q, want agentm", got)
 	}
-	if got := ProjectOf("Agent/memory/semantic/a.md"); got != "" {
+	if got := ProjectOf("agent/memory/semantic/a.md"); got != "" {
 		t.Errorf("ProjectOf a card = %q, want empty", got)
 	}
 }
@@ -55,18 +55,18 @@ func TestTheEligibilityGateKeepsSessionFilesAndReadsRecordsAsRecords(t *testing.
 		return g.Check(context.Background(), Request{Rel: rel, Raw: body}, body)
 	}
 	design := "---\nkind: design\nstatus: final\n---\n\n# A design\n"
-	if err := check("Projects/crickets/designs/a-design.md", design); err != nil {
+	if err := check("projects/crickets/designs/a-design.md", design); err != nil {
 		t.Errorf("a design record with a record kind was refused: %v", err)
 	}
-	for _, rel := range []string{"Projects/agentm/tasks/build-it/tracker.md",
-		"Projects/agentm/tasks/build-it/plan.md", "Projects/agentm/_harness/progress.md",
-		"Projects/agentm/desk/board.md"} {
+	for _, rel := range []string{"projects/agentm/tasks/build-it/tracker.md",
+		"projects/agentm/tasks/build-it/plan.md", "projects/agentm/_harness/progress.md",
+		"projects/agentm/desk/board.md"} {
 		if err := check(rel, "---\ntitle: t\n---\n\nbody\n"); !errors.Is(err, ErrNotEligible) {
 			t.Errorf("%s was eligible: %v", rel, err)
 		}
 	}
 	// A card outside the projects space keeps the record-kind refusal.
-	if err := check("Agent/memory/semantic/a.md", design); !errors.Is(err, ErrNotEligible) {
+	if err := check("agent/memory/semantic/a.md", design); !errors.Is(err, ErrNotEligible) {
 		t.Errorf("a record kind in a class directory was eligible: %v", err)
 	}
 }
@@ -89,7 +89,7 @@ func recordStamp() Stamp {
 
 func TestADeepPassAddsASectionAndKeepsEveryFieldTheRecordCarried(t *testing.T) {
 	next, err := ComposeRecord(decisionRecord, deepResponse(), recordStamp(), DepthDeep,
-		[]Neighbour{{ID: "wall-note", Rel: "Projects/agentm/decisions/wall-note.md"}})
+		[]Neighbour{{ID: "wall-note", Rel: "projects/agentm/decisions/wall-note.md"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,18 +9,18 @@ from `plugins.obsidian-vault.memory_root` plus the space names in
 
 Nothing structural forces those two answers to agree, and twice on 2026-08-10
 they did not. First the roots disagreed: the daemon kept writing to
-`Agent/personal/` while the Python reflection hooks wrote a shadow `personal/`
+`agent/personal/` while the Python reflection hooks wrote a shadow `personal/`
 at the vault root — same slugs, different bodies, 102 files. Then, during the
 stage-2 migration, the *names* disagreed while both roots were correct, and the
-runner re-seeded a config and five inbox entries into an `Agent/memory/` that
+runner re-seeded a config and five inbox entries into an `agent/memory/` that
 was not yet the real one. Both halves looked healthy in isolation both times.
 
 Two invariants, because the first one alone did not catch the second failure:
 
 1. Every `daemon.spaces` value lives at or beneath `memory_root`.
 2. Where both stacks name a space, they must resolve it to the same directory.
-   `daemon.spaces["memory"] = Agent/memory` sits beneath memory_root `Agent`
-   perfectly well while the Python stack writes `Agent/personal`. Containment is
+   `daemon.spaces["memory"] = agent/memory` sits beneath memory_root `Agent`
+   perfectly well while the Python stack writes `agent/personal`. Containment is
    not agreement.
 
 Absent keys are not failures. An install that never set `memory_root` has a
@@ -47,7 +47,7 @@ _MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
 _SPACES_KEY = "daemon.spaces"
 _PY_SPACES_KEY = "plugins.obsidian-vault.spaces"
 # The one space that lives BESIDE memory_root by design (filing-v2 2b).
-_ROOT_PROJECTS_SIBLING = "Projects"
+_ROOT_PROJECTS_SIBLING = "projects"
 
 
 def _norm(rel: str) -> str:
@@ -96,14 +96,17 @@ def check(config_path: Path) -> int:
         if not memory_root:
             # Memory root is the vault root — every space is beneath it.
             continue
-        if name == "projects" and space == _ROOT_PROJECTS_SIBLING:
-            # Filing-v2 2b: the project space is the vault-root Projects/, a
+        if name == "projects" and space.lower() == _ROOT_PROJECTS_SIBLING:
+            # Filing-v2 2b: the project space is the vault-root projects/, a
             # SIBLING of memory_root by design — the one space allowed outside
             # it. Agreement still has to hold: the Python side must name the
-            # same sibling (its memory-root-relative form is ../Projects), or
-            # leave the key to its default, which is that form.
+            # same sibling (its memory-root-relative form is ../projects), or
+            # leave the key to its default, which is that form. Either
+            # spelling of the name passes: the root casing (agentm-vault plan
+            # 08) lowercases it, and a config on the far side of that rename
+            # still names the same directory.
             py_raw = py_spaces.get(name)
-            if py_raw is None or _norm(str(py_raw)) == "../" + _ROOT_PROJECTS_SIBLING:
+            if py_raw is None or _norm(str(py_raw)).lower() == "../" + _ROOT_PROJECTS_SIBLING:
                 continue
             failures.append(
                 f'  {_SPACES_KEY}["{name}"] = "{space}" (the vault-root sibling) but '
@@ -117,9 +120,9 @@ def check(config_path: Path) -> int:
             )
             continue
 
-        # Containment is not agreement. `daemon.spaces["memory"] = Agent/memory`
+        # Containment is not agreement. `daemon.spaces["memory"] = agent/memory`
         # sits beneath memory_root `Agent` perfectly well while the Python stack
-        # writes to `Agent/personal`, and the corpus forks with both halves
+        # writes to `agent/personal`, and the corpus forks with both halves
         # looking healthy. That is not hypothetical: the stage-2 migration
         # produced exactly that fork for fourteen minutes on 2026-08-10, and the
         # containment rule above passed throughout. Compare the names.

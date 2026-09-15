@@ -70,7 +70,7 @@ type Config struct {
 	Port int
 
 	// Spaces maps a logical space name to a vault-relative directory. This is
-	// the seam the later Agent/memory + Agent/desk migration turns on — a config
+	// the seam the later agent/memory + agent/desk migration turns on — a config
 	// change, not a rewrite. Defaults describe the CURRENT layout.
 	Spaces map[string]string
 
@@ -332,7 +332,7 @@ func (c *Config) applyDampenedSpaces() {
 //
 // It is derived from `memory_root` rather than written as a literal, for the same
 // reason no vault path is ever a constant here: the root has moved twice, and a
-// hardcoded `Agent/memory` would resolve to nothing on the next move — silently,
+// hardcoded `agent/memory` would resolve to nothing on the next move — silently,
 // because an empty scope embeds zero notes and a vector arm with no vectors looks
 // exactly like one that is merely cold.
 //
@@ -357,20 +357,20 @@ func defaultEmbedScope(memoryRoot string) []string {
 		}
 		out = append(out, root+"/"+n)
 	}
-	// The vault-root `Projects/` space (filing-v2 2b) is a SIBLING of the
+	// The vault-root `projects/` space (filing-v2 2b) is a SIBLING of the
 	// memory root, so it is named unprefixed. The project trees lived under
 	// `desk` before the merge and were dense-retrievable; the move must not
 	// silently drop them from the vector arm.
-	out = append(out, "Projects")
-	// The vault-root `Calendar/` register (filing-v2 part 5) is the same kind
+	out = append(out, "projects")
+	// The vault-root `calendar/` register (filing-v2 part 5) is the same kind
 	// of sibling. Its facet notes, day indexes and reviews were lexically
 	// indexed from the start; the dense arm reaches them too now (filing-v2
 	// remainders task 3).
-	out = append(out, "Calendar")
+	out = append(out, "calendar")
 	// The voice library (agentm-vault plan 05, the memory-root trims) moved
-	// from `Projects/_global/wiki-style/` to the vault-root `standards/voice/`.
+	// from `projects/_global/wiki-style/` to the vault-root `standards/voice/`.
 	// Its nine rules are on-demand notes recall surfaces by keyword, and they
-	// were dense-retrievable under Projects/; the first gate after the move
+	// were dense-retrievable under projects/; the first gate after the move
 	// read five gold questions flipping to a miss because the sibling was
 	// outside this scope. The rest of `standards/` stays out on purpose: the
 	// rule files are read whole by the loader every session, and plan 12
@@ -404,9 +404,9 @@ func defaultSpaces(memoryRoot string) map[string]string {
 	}
 	return map[string]string{
 		"memory": under("memory"),
-		// Filing-v2 2b: the project space is the vault-root `Projects/`, a
+		// Filing-v2 2b: the project space is the vault-root `projects/`, a
 		// SIBLING of the memory root — named unprefixed, like the embed scope.
-		"projects": "Projects",
+		"projects": "projects",
 		// Diagnostics is first-class under the memory root as of filing-v2
 		// part 2a: scorecards, digests, and dated audits — records living in
 		// the area they serve, not in a desk drawer.
@@ -472,7 +472,7 @@ func Load(opts Options) (*Config, error) {
 	//
 	// Until 2026-09-11 the export was read as the vault root outright. Under
 	// the runner, which exports the memory root, every class directory was
-	// then sought at `<memory-root>/Agent/memory/...`, and the nightly batch
+	// then sought at `<memory-root>/agent/memory/...`, and the nightly batch
 	// found nothing to judge — no error, an empty queue.
 	c.MemoryRoot = strings.Trim(
 		filepath.ToSlash(strings.TrimSpace(strVal(raw, "plugins.obsidian-vault.memory_root"))), "/")

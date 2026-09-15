@@ -48,9 +48,9 @@ class _Nested(unittest.TestCase):
         self.top = Path(tempfile.mkdtemp(prefix="calendar-promo-"))
         self.addCleanup(shutil.rmtree, self.top, ignore_errors=True)
         (self.top / ".obsidian").mkdir()
-        self.vault = self.top / "Agent"
+        self.vault = self.top / "agent"
         (self.vault / "memory").mkdir(parents=True)
-        (self.top / "Calendar").mkdir()
+        (self.top / "calendar").mkdir()
         (self.top / "standards").mkdir()
         self.contract = self.top / "standards" / "storage-rules.md"
         self.contract.write_text(CONTRACT, encoding="utf-8")

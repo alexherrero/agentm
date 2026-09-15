@@ -166,7 +166,7 @@ class TestParseVerdict(unittest.TestCase):
 
 class TestLabel(unittest.TestCase):
     def candidates(self, n=3):
-        return [al.Candidate(path=f"Agent/n{i}.md", text=f"note {i} body")
+        return [al.Candidate(path=f"agent/n{i}.md", text=f"note {i} body")
                 for i in range(1, n + 1)]
 
     def test_every_candidate_comes_back_labelled(self):
@@ -176,7 +176,7 @@ class TestLabel(unittest.TestCase):
         self.assertEqual([c.verdict for c in res.candidates],
                          [al.VERDICT_RELATED, al.VERDICT_ANSWERS, al.VERDICT_RELATED])
         self.assertTrue(res.labelled)
-        self.assertEqual([c.path for c in res.answering], ["Agent/n2.md"])
+        self.assertEqual([c.path for c in res.answering], ["agent/n2.md"])
 
     def test_nothing_answers_is_said_out_loud(self):
         res = al.label("q", self.candidates(),
@@ -247,7 +247,7 @@ class TestLabel(unittest.TestCase):
 
         def prompt_with(df, n):
             al.label("agentm splitting",
-                     [al.Candidate(path="Agent/n.md", text=text)],
+                     [al.Candidate(path="agent/n.md", text=text)],
                      caller=caller, df=df, n_docs=n)
             return seen["prompt"]
 

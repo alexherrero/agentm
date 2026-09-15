@@ -887,5 +887,59 @@ class TestAutonomyDeliveryConfig(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class TestSetDaemonSpace(unittest.TestCase):
+    """`--set-space NAME REL` writes `daemon.spaces.NAME` (agentm-vault plan 08):
+    the nested key the root casing changes, through the tool rather than a
+    hand edit of a file that also holds a credential."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-config-space-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self) -> None:
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, *argv: str) -> tuple[int, str, str]:
+        return _capture_main(["--install-prefix", str(self.prefix), *argv])
+
+    def _config(self) -> dict:
+        return json.loads((self.prefix / ".agentm-config.json").read_text(encoding="utf-8"))
+
+    def test_sets_a_space_and_keeps_the_others(self) -> None:
+        rc, _, _ = self._run("--set-space", "memory", "agent/memory")
+        self.assertEqual(rc, 0)
+        rc, out, _ = self._run("--set-space", "projects", "projects")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "daemon.spaces.projects = projects")
+        self.assertEqual(self._config()["daemon.spaces"], {"memory": "agent/memory", "projects": "projects"})
+        # A second write of the same value is a silent no-op.
+        rc, out, _ = self._run("--set-space", "projects", "projects")
+        self.assertEqual((rc, out), (0, ""))
+
+    def test_other_keys_survive_the_write(self) -> None:
+        (Path(self.tmp) / "v").mkdir()
+        rc, _, _ = self._run("--vault-path", str(Path(self.tmp) / "v"))
+        self.assertEqual(rc, 0)
+        self._run("--set-space", "memory", "agent/memory")
+        cfg = self._config()
+        self.assertIn("plugins.obsidian-vault.vault_path", cfg)
+        self.assertEqual(cfg["daemon.spaces"]["memory"], "agent/memory")
+
+    def test_refuses_an_absolute_path_and_an_upward_traversal(self) -> None:
+        for bad in ("/abs/memory", "../memory", "c:/memory"):
+            rc, _, err = self._run("--set-space", "memory", bad)
+            self.assertEqual(rc, 2, bad)
+            self.assertIn("refusing", err)
+        self.assertFalse((self.prefix / ".agentm-config.json").exists())
+
+    def test_get_reads_the_nested_object_back(self) -> None:
+        self._run("--set-space", "memory", "agent/memory")
+        rc, out, _ = self._run("--get", "daemon.spaces")
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out), {"memory": "agent/memory"})
+
+
 if __name__ == "__main__":
     unittest.main()

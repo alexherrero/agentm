@@ -291,12 +291,12 @@ class ResolveActivePlanTaskLayout(unittest.TestCase):
         self.vault = root / "vault"
         self.proj = root / "repo"
         (self.proj / ".harness").mkdir(parents=True)
-        self.project_dir = self.vault / "Projects" / "fixture"
+        self.project_dir = self.vault / "projects" / "fixture"
         self.harness = self.project_dir / "_harness"
         self.harness.mkdir(parents=True)
         self.resolution = {
             "backend": VaultBackend(root=self.vault, lock_root=root / "locks"),
-            "project_locator": Locator("Projects/fixture"),
+            "project_locator": Locator("projects/fixture"),
             "project_root": self.proj,
             "slug": "fixture",
         }

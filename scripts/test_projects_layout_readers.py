@@ -51,7 +51,7 @@ class _Project(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp(prefix="agentm-layouts-"))
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
-        self.project = self.root / "Projects" / "demo"
+        self.project = self.root / "projects" / "demo"
         self.harness = self.project / "_harness"
         self.harness.mkdir(parents=True)
 
@@ -182,26 +182,26 @@ class _HookStub(unittest.TestCase):
         raise NotImplementedError
 
     def test_a_task_plan_is_labelled_and_binds(self) -> None:
-        self._listing("/v/Projects/demo/_harness/PLAN-foo.md", "/v/Projects/demo/tasks/bar/plan.md", "active-binding=bar")
+        self._listing("/v/projects/demo/_harness/PLAN-foo.md", "/v/projects/demo/tasks/bar/plan.md", "active-binding=bar")
         out = self._run().stdout
         self.assertIn("Named-plan mode", out)
-        self.assertRegex(out, r"\n  tasks/bar +/v/Projects/demo/tasks/bar/plan\.md\n")
-        self.assertIn("Active plan (.harness/active-plan -> bar): /v/Projects/demo/tasks/bar/plan.md", out)
+        self.assertRegex(out, r"\n  tasks/bar +/v/projects/demo/tasks/bar/plan\.md\n")
+        self.assertIn("Active plan (.harness/active-plan -> bar): /v/projects/demo/tasks/bar/plan.md", out)
         self.assertNotIn("DANGLING", out)
 
     def test_a_flat_binding_still_binds(self) -> None:
-        self._listing("/v/Projects/demo/_harness/PLAN-foo.md", "/v/Projects/demo/tasks/bar/plan.md", "active-binding=foo")
+        self._listing("/v/projects/demo/_harness/PLAN-foo.md", "/v/projects/demo/tasks/bar/plan.md", "active-binding=foo")
         out = self._run().stdout
-        self.assertIn("Active plan (.harness/active-plan -> foo): /v/Projects/demo/_harness/PLAN-foo.md", out)
+        self.assertIn("Active plan (.harness/active-plan -> foo): /v/projects/demo/_harness/PLAN-foo.md", out)
 
     def test_a_binding_to_neither_layout_is_dangling(self) -> None:
-        self._listing("/v/Projects/demo/tasks/bar/plan.md", "active-binding=ghost")
+        self._listing("/v/projects/demo/tasks/bar/plan.md", "active-binding=ghost")
         out = self._run().stdout
         # The historic phrase stays, so a reader that matched it still does.
         self.assertIn("DANGLING - PLAN-ghost.md not found, nor tasks/ghost/plan.md", out)
 
     def test_a_lone_task_plan_is_not_mistaken_for_the_singleton(self) -> None:
-        self._listing("/v/Projects/demo/tasks/bar/plan.md")
+        self._listing("/v/projects/demo/tasks/bar/plan.md")
         self.assertIn("Named-plan mode", self._run().stdout)
 
 

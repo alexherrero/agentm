@@ -402,7 +402,7 @@ class TransparencyLineTests(unittest.TestCase):
         import io
 
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "Agent"
+            vault = Path(tmp) / "agent"
             vault.mkdir(parents=True)
             out, err = io.StringIO(), io.StringIO()
             with unittest.mock.patch.object(recall.subprocess, "run", fake):

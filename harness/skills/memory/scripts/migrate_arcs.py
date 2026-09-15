@@ -185,22 +185,22 @@ def _infer_arc_from_tags(tags: list[str]) -> tuple[str, str, str] | None:
 
 
 def _root_projects_dir(vault):
-    """The vault-root `Projects/` space, discovered never conjured (filing-v2
-    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    """The vault-root `projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/projects`. Nested layout — the memory
     root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
     parent and none at the memory root itself: the sibling
-    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    `<vault-root>/projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
     the vault's). None when no root space exists. Both rungs match the
     directory's exact case."""
     vault = Path(vault)
-    flat = vault / "Projects"
+    flat = vault / "projects"
     if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
-        sibling = parent / "Projects"
+        sibling = parent / "projects"
         if _is_dir_exact(sibling):
             return sibling
     return None
@@ -208,7 +208,7 @@ def _root_projects_dir(vault):
 
 def _is_dir_exact(path):
     """`path` is a directory whose name matches exactly — on a case-insensitive
-    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    filesystem a directory still spelled the retired way, `Projects` with the capital, would otherwise answer for it, and a vault the casing rename has not reached would read as renamed."""
     try:
         return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
     except OSError:
@@ -217,7 +217,7 @@ def _is_dir_exact(path):
 
 def _project_root(vault: Path, project: str) -> Path:
     """The project's tree on whichever generation holds it: the vault-root
-    `Projects/` sibling first (filing-v2 2b), else `desk/projects/`."""
+    `projects/` sibling first (filing-v2 2b), else `desk/projects/`."""
     space = _root_projects_dir(vault)
     if space is not None and (space / project).is_dir():
         return space / project
@@ -225,7 +225,7 @@ def _project_root(vault: Path, project: str) -> Path:
 
 
 def _vault_rel(path: Path, vault: Path) -> str:
-    """Memory-root-relative key; a root-space path (the `Projects/` sibling
+    """Memory-root-relative key; a root-space path (the `projects/` sibling
     of the memory root) is keyed relative to the vault root instead."""
     try:
         return path.relative_to(vault).as_posix()

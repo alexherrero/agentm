@@ -47,8 +47,8 @@ func TestAnArtifactRanksBelowACanonicalNoteWithTheSameWords(t *testing.T) {
 
 	idx := openScratch(t)
 	body := "The staging gate runs before the deployment finishes.\n"
-	indexAltitude(t, idx, "Agent/memory/semantic/exhaust.md", "Gate", "artifact", body)
-	indexAltitude(t, idx, "Agent/memory/semantic/rule.md", "Gate", "canonical", body)
+	indexAltitude(t, idx, "agent/memory/semantic/exhaust.md", "Gate", "artifact", body)
+	indexAltitude(t, idx, "agent/memory/semantic/rule.md", "Gate", "canonical", body)
 
 	out, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
 	if err != nil {
@@ -79,7 +79,7 @@ func TestAQuestionAskingForTheShapeUndampensIt(t *testing.T) {
 
 	idx := openScratch(t)
 	body := "The staging gate runs before the deployment finishes in the meeting.\n"
-	indexAltitude(t, idx, "Agent/memory/episodic/exhaust.md", "Gate", "artifact", body)
+	indexAltitude(t, idx, "agent/memory/episodic/exhaust.md", "Gate", "artifact", body)
 
 	general, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
 	if err != nil {
@@ -124,12 +124,12 @@ func TestAQuestionAskingForTheShapeUndampensIt(t *testing.T) {
 func TestANoteWithNoAltitudeIsNotTreatedAsAnArtifact(t *testing.T) {
 	idx := openScratch(t)
 	body := "The staging gate runs before the deployment finishes.\n"
-	indexAltitude(t, idx, "Agent/memory/semantic/silent.md", "Gate", "", body)
-	indexAltitude(t, idx, "Agent/memory/semantic/stated.md", "Gate", "canonical", body)
+	indexAltitude(t, idx, "agent/memory/semantic/silent.md", "Gate", "", body)
+	indexAltitude(t, idx, "agent/memory/semantic/stated.md", "Gate", "canonical", body)
 
 	var flags string
 	if err := idx.db.QueryRow(`SELECT flags FROM docmeta WHERE path = ?`,
-		"Agent/memory/semantic/silent.md").Scan(&flags); err != nil {
+		"agent/memory/semantic/silent.md").Scan(&flags); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(flags, note.ClassArtifact) {
@@ -191,11 +191,11 @@ func TestTheDampeningIsOffUnlessAskedFor(t *testing.T) {
 	}
 	idx := openScratch(t)
 	body := "The staging gate runs before the deployment finishes.\n"
-	indexAltitude(t, idx, "Agent/memory/semantic/exhaust.md", "Gate", "artifact", body)
+	indexAltitude(t, idx, "agent/memory/semantic/exhaust.md", "Gate", "artifact", body)
 
 	var flags string
 	if err := idx.db.QueryRow(`SELECT flags FROM docmeta WHERE path = ?`,
-		"Agent/memory/semantic/exhaust.md").Scan(&flags); err != nil {
+		"agent/memory/semantic/exhaust.md").Scan(&flags); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(flags, note.ClassArtifact) {

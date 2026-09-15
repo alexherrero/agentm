@@ -74,7 +74,7 @@ def _note(path: Path, fm: str, body: str) -> None:
 def _vault(td: Path) -> Path:
     root = td / "Vault"
     (root / ".obsidian").mkdir(parents=True)
-    v = root / "Agent"
+    v = root / "agent"
     m = v / "memory"
     for cls in fe.CLASS_DIRS:
         _note(m / cls / "_index.md", f"kind: dir-index\nstatus: active\nslug: {cls}-index\n", f"# {cls}")

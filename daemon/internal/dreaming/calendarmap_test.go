@@ -11,7 +11,7 @@ const facetBody = "---\nkind: calendar-facet\n---\n\n09:00 — an entry\n"
 
 func yearMapText(plan CalendarPlan, year string) string {
 	for _, in := range plan.Intents {
-		if strings.HasSuffix(in.Rel, "Calendar/"+calendarMapPrefix+year+".md") {
+		if strings.HasSuffix(in.Rel, "calendar/"+calendarMapPrefix+year+".md") {
 			return string(in.After)
 		}
 	}
@@ -21,11 +21,11 @@ func yearMapText(plan CalendarPlan, year string) string {
 func TestYearMapListsEveryFacetNoteOfTheYearAndNothingElse(t *testing.T) {
 	root, vault := rootMapVault(t)
 	for _, name := range []string{"2026-08-10-diary.md", "2026-08-10-meetings.md", "2026-09-01-docs.md"} {
-		writeAt(t, vault, "Calendar/2026/"+name, facetBody)
+		writeAt(t, vault, "calendar/2026/"+name, facetBody)
 	}
 	for _, name := range []string{"2026-W36-review.md", "2026-09-review.md", "notes.md", "2025-12-31-diary.md",
 		"2026-08-11-lunch.md", "2026-13-40-diary.md"} {
-		writeAt(t, vault, "Calendar/2026/"+name, "---\ntitle: not a facet note of the year\n---\n")
+		writeAt(t, vault, "calendar/2026/"+name, "---\ntitle: not a facet note of the year\n---\n")
 	}
 	plan, err := PlanCalendar(root, nil, time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC), DefaultRollupWeeks)
 	if err != nil {
@@ -48,7 +48,7 @@ func TestYearMapListsEveryFacetNoteOfTheYearAndNothingElse(t *testing.T) {
 			t.Errorf("year map carries %q:\n%s", unwanted, text)
 		}
 	}
-	if len(plan.YearMaps) != 1 || plan.YearMaps[0] != "../Calendar/moc-calendar-2026.md" {
+	if len(plan.YearMaps) != 1 || plan.YearMaps[0] != "../calendar/moc-calendar-2026.md" {
 		t.Errorf("the pass reports the year map it keeps, memory-root relative: %v", plan.YearMaps)
 	}
 	if len(plan.MapsWritten) != 1 || plan.MapsWritten[0] != "moc-calendar-2026.md" {
@@ -63,7 +63,7 @@ func TestYearMapListsEveryFacetNoteOfTheYearAndNothingElse(t *testing.T) {
 
 func TestYearMapRegeneratesByteIdentically(t *testing.T) {
 	root, vault := rootMapVault(t)
-	writeAt(t, vault, "Calendar/2026/2026-08-10-diary.md", facetBody)
+	writeAt(t, vault, "calendar/2026/2026-08-10-diary.md", facetBody)
 	now := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
 	first, _ := PlanCalendar(root, nil, now, DefaultRollupWeeks)
 	if yearMapText(first, "2026") == "" {
@@ -86,7 +86,7 @@ func TestYearMapRegeneratesByteIdentically(t *testing.T) {
 
 func TestNoYearMapForAYearWithoutAFacetNote(t *testing.T) {
 	root, vault := rootMapVault(t)
-	writeAt(t, vault, "Calendar/2027/2027-W01-review.md", "---\nkind: calendar-review\n---\n")
+	writeAt(t, vault, "calendar/2027/2027-W01-review.md", "---\nkind: calendar-review\n---\n")
 	plan, _ := PlanCalendar(root, nil, time.Date(2027, 1, 13, 9, 0, 0, 0, time.UTC), DefaultRollupWeeks)
 	if text := yearMapText(plan, "2027"); text != "" || len(plan.YearMaps) != 0 {
 		t.Errorf("a year with no facet note gets no map: %v\n%s", plan.YearMaps, text)

@@ -32,7 +32,7 @@ Recent progress:
   2026-09-12 23:05 PDT /work — completed task 3
   ...
 Open follow-ups: 8 · unfiled captures with project agentm: 2
-Plan: <vault>/Projects/agentm/tasks/build-the-brief/plan.md
+Plan: <vault>/projects/agentm/tasks/build-the-brief/plan.md
 ```
 
 ## Install

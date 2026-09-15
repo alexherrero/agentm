@@ -37,25 +37,25 @@ import storage_rules  # noqa: E402
 # One table, both implementations. Every row is a claim about a real vault path.
 CASES = [
     # (path, may a background model pass read it?)
-    ("Personal/Church/lesson.md", False),
-    ("Personal/Home/Recipes/turkey.md", False),
-    ("Personal/Tech/Pages/note.md", False),
+    ("personal/Church/lesson.md", False),
+    ("personal/Home/Recipes/turkey.md", False),
+    ("personal/Tech/Pages/note.md", False),
     # macOS treats the two spellings as one directory, so a case-sensitive rule
     # here would be a hazard rather than a precision.
     ("personal/Church/lesson.md", False),
     ("PERSONAL/Church/lesson.md", False),
     # Everything else is readable.
-    ("Agent/memory/semantic/a-fact.md", True),
-    ("Agent/desk/projects/agentm/plan.md", True),
-    ("Calendar/2026/2026-08-20_day.md", True),
+    ("agent/memory/semantic/a-fact.md", True),
+    ("agent/desk/projects/agentm/plan.md", True),
+    ("calendar/2026/2026-08-20_day.md", True),
     ("standards/storage-rules.md", True),
-    ("Projects/blog/post.md", True),
+    ("projects/blog/post.md", True),
     # A space is a top-level directory, not a word that appears in a path.
-    ("Agent/desk/projects/x/personal/notes.md", True),
-    ("Agent/memory/semantic/personal-preferences.md", True),
+    ("agent/desk/projects/x/personal/notes.md", True),
+    ("agent/memory/semantic/personal-preferences.md", True),
     # Degenerate inputs.
     ("", True),
-    ("./Personal/Church/lesson.md", False),
+    ("./personal/Church/lesson.md", False),
 ]
 
 _BUILD_DIR = None
@@ -135,8 +135,8 @@ class PythonSide(_Base):
         """A fresh install must not let an unattended model call read the
         operator's private space. That is not a default anyone should have to opt
         out of."""
-        self.assertFalse(storage_rules.may_read_with_model("Personal/Church/lesson.md"))
-        self.assertTrue(storage_rules.is_contract_exempt("Personal/Church/lesson.md"))
+        self.assertFalse(storage_rules.may_read_with_model("personal/Church/lesson.md"))
+        self.assertTrue(storage_rules.is_contract_exempt("personal/Church/lesson.md"))
 
     def test_contract_exemption_is_not_model_exemption(self):
         """Separate lists, separate questions. Asserted here so a later edit that

@@ -219,7 +219,7 @@ last week today yesterday tomorrow
 DAEMON_SCOPE_ENV = "RECALL_DAEMON_SCOPE"
 # Flipped to `vault` (filing-contract part 3): the boundary is replaced by rank
 # dampening. The leak that motivated `memory-root` was real — 13% of top-5 across
-# 20 prompts fell outside `Agent/`, and "what should I work on next" returned two
+# 20 prompts fell outside `agent/`, and "what should I work on next" returned two
 # Church notes — but it cured the leak by amputation, and an invisible space is
 # how this vault lost 9,786 notes once already. The daemon now demotes a dampened
 # space instead of recall hiding it, so a strong distinctive match still surfaces
@@ -344,17 +344,17 @@ def _stem(token: str) -> str:
 # plan 05); vault_layout.always_load_dirs() resolves it, and the retired pen
 # `memory/_always-load/` behind it while that still holds anything.
 
-# Filing-v2 2b: the project space is the vault-root `Projects/`, a SIBLING of
+# Filing-v2 2b: the project space is the vault-root `projects/`, a SIBLING of
 # the memory root recall is handed. Its notes are corpus: the walk reaches
 # them through a backend rooted one level up, their keys are vault-root-
-# relative ("Projects/<slug>/…"), and reads route through whichever backend
+# relative ("projects/<slug>/…"), and reads route through whichever backend
 # owns the path.
-_ROOT_PROJECTS_DIRNAME = "Projects"
+_ROOT_PROJECTS_DIRNAME = "projects"
 
 
 def _vault_rel(path: Path, vault: Path) -> str:
     """Entry key, always memory-root-relative: a root-space note keys as
-    `../Projects/<slug>/…` — joinable onto the vault like every other key,
+    `../projects/<slug>/…` — joinable onto the vault like every other key,
     and the same form `space("projects")` names."""
     try:
         return path.relative_to(vault).as_posix()
@@ -363,22 +363,22 @@ def _vault_rel(path: Path, vault: Path) -> str:
 
 
 def _root_projects_dir(vault):
-    """The vault-root `Projects/` space, discovered never conjured (filing-v2
-    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    """The vault-root `projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/projects`. Nested layout — the memory
     root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
     parent and none at the memory root itself: the sibling
-    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    `<vault-root>/projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
     the vault's). None when no root space exists. Both rungs match the
     directory's exact case."""
     vault = Path(vault)
-    flat = vault / "Projects"
+    flat = vault / "projects"
     if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
-        sibling = parent / "Projects"
+        sibling = parent / "projects"
         if _is_dir_exact(sibling):
             return sibling
     return None
@@ -386,7 +386,7 @@ def _root_projects_dir(vault):
 
 def _is_dir_exact(path):
     """`path` is a directory whose name matches exactly — on a case-insensitive
-    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    filesystem a directory still spelled the retired way, `Projects` with the capital, would otherwise answer for it, and a vault the casing rename has not reached would read as renamed."""
     try:
         return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
     except OSError:
@@ -394,7 +394,7 @@ def _is_dir_exact(path):
 
 
 def _under_root_projects(path: Path, vault: Path) -> bool:
-    """Whether `path` sits in the vault-root Projects/ sibling."""
+    """Whether `path` sits in the vault-root projects/ sibling."""
     root = _root_projects_dir(vault)
     if root is None or root.parent == Path(vault):
         return False  # no root space, or the flat one — inside the memory root
@@ -1106,7 +1106,7 @@ def _iter_entry_paths(
                 out.append(root.joinpath(*child.parts))
 
     _walk(backend, vault, backend.resolve())
-    # Filing-v2 2b: the vault-root Projects/ sibling is corpus too — walked
+    # Filing-v2 2b: the vault-root projects/ sibling is corpus too — walked
     # from a backend rooted one level up, starting at the space, under the
     # same exclusions. Discovered, never conjured: absent means nothing.
     root_space = _root_projects_dir(vault)
@@ -1435,12 +1435,12 @@ def parse_filter(expr: str | None) -> dict[str, str]:
 
 
 _PROJECTS_GROUP_PREFIX = "desk/projects/"
-# Filing-v2 2b: notes written into the vault-root `Projects/` space carry a
+# Filing-v2 2b: notes written into the vault-root `projects/` space carry a
 # vault-root-relative group; notes moved from desk/projects keep the group
 # they were stamped with (moves never rewrite frontmatter). Both derive.
-_ROOT_PROJECTS_GROUP_PREFIX = "Projects/"
+_ROOT_PROJECTS_GROUP_PREFIX = "projects/"
 # …and the lowercase form a root-space note is STAMPED with (group values
-# are kebab; save.py maps `projects/<slug>` onto the Projects/ directory).
+# are kebab; save.py maps `projects/<slug>` onto the projects/ directory).
 _ROOT_PROJECTS_GROUP_STAMP = "projects/"
 
 
@@ -2148,7 +2148,7 @@ def _daemon_root_for(vault: Path, rel_posix: str) -> Path | None:
 
     The daemon indexes from its own configured root, which since the
     git-transport cutover is the Obsidian root — one level above the memory
-    root recall is pointed at. So the daemon says `Agent/memory/x.md` where
+    root recall is pointed at. So the daemon says `agent/memory/x.md` where
     recall wants `personal/x.md`.
 
     Rather than re-reading the kernel config (recall.py resolves its vault from

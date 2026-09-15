@@ -48,10 +48,10 @@ func TestTheRecordQueueHoldsRecordsAndNeverSessionFiles(t *testing.T) {
 	vault := t.TempDir()
 	x := openRecordIndex(t, vault)
 	for _, rel := range []string{
-		"Agent/memory/semantic/a-card.md",
-		"Projects/agentm/_index.md", "Projects/agentm/decisions/d.md", "Projects/agentm/research/b/r.md",
-		"Projects/agentm/tracker.md", "Projects/agentm/tasks/t/plan.md", "Projects/agentm/tasks/t/progress.md",
-		"Projects/agentm/tasks/t/tracker.md", "Projects/agentm/_harness/PLAN-x.md", "Projects/agentm/desk/b.md",
+		"agent/memory/semantic/a-card.md",
+		"projects/agentm/_index.md", "projects/agentm/decisions/d.md", "projects/agentm/research/b/r.md",
+		"projects/agentm/tracker.md", "projects/agentm/tasks/t/plan.md", "projects/agentm/tasks/t/progress.md",
+		"projects/agentm/tasks/t/tracker.md", "projects/agentm/_harness/PLAN-x.md", "projects/agentm/desk/b.md",
 	} {
 		putNote(t, x, vault, rel, "---\ntitle: t\n---\n\nbody\n")
 	}
@@ -59,7 +59,7 @@ func TestTheRecordQueueHoldsRecordsAndNeverSessionFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"Projects/agentm/_index.md", "Projects/agentm/decisions/d.md", "Projects/agentm/research/b/r.md"}
+	want := []string{"projects/agentm/_index.md", "projects/agentm/decisions/d.md", "projects/agentm/research/b/r.md"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("record queue %v, want %v", got, want)
 	}
@@ -68,7 +68,7 @@ func TestTheRecordQueueHoldsRecordsAndNeverSessionFiles(t *testing.T) {
 func TestTheListerPagesByPositionSoCardsComeFirst(t *testing.T) {
 	// A memory root that sorts after the projects space, where path order would
 	// have served the records first.
-	queue := []string{"memory/semantic/a.md", "memory/semantic/b.md", "Projects/agentm/decisions/d.md"}
+	queue := []string{"memory/semantic/a.md", "memory/semantic/b.md", "projects/agentm/decisions/d.md"}
 	cases := []struct {
 		cursor string
 		limit  int
@@ -76,7 +76,7 @@ func TestTheListerPagesByPositionSoCardsComeFirst(t *testing.T) {
 	}{
 		{"", 2, queue[:2]},
 		{"memory/semantic/b.md", 5, queue[2:]},
-		{"Projects/agentm/decisions/d.md", 5, []string{}},
+		{"projects/agentm/decisions/d.md", 5, []string{}},
 	}
 	for _, c := range cases {
 		if got := queueAfter(queue, c.cursor, c.limit); !reflect.DeepEqual(got, c.want) {
@@ -92,32 +92,32 @@ func TestTheListerPagesByPositionSoCardsComeFirst(t *testing.T) {
 func TestAProjectCardsNeighboursLeadWithItsProjectsRecords(t *testing.T) {
 	vault := t.TempDir()
 	cfg := configOverRules(t, vault, "preference", "workflow")
-	cfg.MemoryRoot = "Agent"
+	cfg.MemoryRoot = "agent"
 	x := openRecordIndex(t, vault)
 	card := "---\ntitle: Keep git out of Google Drive\ntags: [git, drive]\nproject: agentm\n---\n\nDrive corrupts git.\n"
-	putNote(t, x, vault, "Agent/memory/semantic/keep-git-out-of-drive.md", card)
+	putNote(t, x, vault, "agent/memory/semantic/keep-git-out-of-drive.md", card)
 	for i := 0; i < 8; i++ {
-		putNote(t, x, vault, fmt.Sprintf("Agent/memory/semantic/git-drive-%d.md", i),
+		putNote(t, x, vault, fmt.Sprintf("agent/memory/semantic/git-drive-%d.md", i),
 			fmt.Sprintf("---\ntitle: Git and Drive note %d\nsummary: About git and drive.\n---\n\ngit drive %d\n", i, i))
 	}
-	putNote(t, x, vault, "Projects/crickets/decisions/git-drive-elsewhere.md",
+	putNote(t, x, vault, "projects/crickets/decisions/git-drive-elsewhere.md",
 		"---\ntitle: Git drive elsewhere\nsummary: Another project's ruling.\n---\n\ngit drive\n")
-	putNote(t, x, vault, "Projects/agentm/decisions/git-drive-ruling.md",
+	putNote(t, x, vault, "projects/agentm/decisions/git-drive-ruling.md",
 		"---\ntitle: Git drive ruling\nsummary: The project's ruling.\n---\n\ngit drive\n")
 
 	got := enrichNeighbours(cfg, x, func(string) bool { return true })(context.Background(),
-		enrich.Request{Rel: "Agent/memory/semantic/keep-git-out-of-drive.md", Raw: card})
+		enrich.Request{Rel: "agent/memory/semantic/keep-git-out-of-drive.md", Raw: card})
 	if len(got) == 0 || len(got) > enrich.MaxRelated {
 		t.Fatalf("offered %d neighbours, want between 1 and %d", len(got), enrich.MaxRelated)
 	}
-	if got[0].Rel != "Projects/agentm/decisions/git-drive-ruling.md" {
+	if got[0].Rel != "projects/agentm/decisions/git-drive-ruling.md" {
 		t.Errorf("the project's record does not lead: %+v", got)
 	}
 
 	// Without `project:` the card gets the ranker's order, and nothing is lifted.
 	plain := "---\ntitle: Keep git out of Google Drive\ntags: [git, drive]\n---\n\nDrive corrupts git.\n"
 	unbound := enrichNeighbours(cfg, x, func(string) bool { return true })(context.Background(),
-		enrich.Request{Rel: "Agent/memory/semantic/keep-git-out-of-drive.md", Raw: plain})
+		enrich.Request{Rel: "agent/memory/semantic/keep-git-out-of-drive.md", Raw: plain})
 	if len(unbound) == 0 {
 		t.Fatal("an unbound card was offered no neighbours")
 	}
@@ -207,10 +207,10 @@ func TestAFixtureNightMergesIntoARecordAfterTheCardsAndLeavesSessionFilesAlone(t
 
 	const (
 		card     = "agent/memory/semantic/keep-git-out-of-drive.md"
-		decision = "Projects/agentm/decisions/keep-the-wall.md"
-		tracker  = "Projects/agentm/tracker.md"
-		plan     = "Projects/agentm/tasks/build-it/plan.md"
-		progress = "Projects/agentm/tasks/build-it/progress.md"
+		decision = "projects/agentm/decisions/keep-the-wall.md"
+		tracker  = "projects/agentm/tracker.md"
+		plan     = "projects/agentm/tasks/build-it/plan.md"
+		progress = "projects/agentm/tasks/build-it/progress.md"
 	)
 	notes := map[string]string{
 		card: "---\ntype: reference\nstatus: unfiled\nproject: agentm\n---\n\nDrive corrupts git.\n",
@@ -286,7 +286,7 @@ func TestAFixtureNightMergesIntoARecordAfterTheCardsAndLeavesSessionFilesAlone(t
 		t.Errorf("the response's slug did not rename the card, so the record keeping "+
 			"its name shows nothing: %v", err)
 	}
-	if _, err := read("Projects/agentm/decisions/renamed-by-the-pass.md"); err == nil {
+	if _, err := read("projects/agentm/decisions/renamed-by-the-pass.md"); err == nil {
 		t.Error("the record was renamed")
 	}
 	got, err := read(decision)

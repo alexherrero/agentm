@@ -19,14 +19,14 @@ func TestAJudgedCardLeavesTheFilingQueueButNotTheReviewQueue(t *testing.T) {
 	fresh := time.Now().Add(-1 * time.Hour).UTC()
 	for _, n := range []note.Note{
 		// Judged below the floor ten days ago: enrichment wrote its number.
-		{Rel: "Agent/memory/semantic/judged.md", Title: "judged", Body: "b",
+		{Rel: "agent/memory/semantic/judged.md", Title: "judged", Body: "b",
 			Status: "unfiled", Confidence: 0.4, ConfidenceSet: true,
 			Captured: old, CapturedSource: "frontmatter"},
 		// Captured an hour ago, never judged.
-		{Rel: "Agent/memory/semantic/waiting.md", Title: "waiting", Body: "b",
+		{Rel: "agent/memory/semantic/waiting.md", Title: "waiting", Body: "b",
 			Status: "unfiled", Captured: fresh, CapturedSource: "frontmatter"},
 		// Filed.
-		{Rel: "Agent/memory/semantic/filed.md", Title: "filed", Body: "b",
+		{Rel: "agent/memory/semantic/filed.md", Title: "filed", Body: "b",
 			Status: "active", Confidence: 0.9, ConfidenceSet: true,
 			Captured: old, CapturedSource: "frontmatter"},
 	} {
@@ -60,7 +60,7 @@ func TestAJudgedCardLeavesTheFilingQueueButNotTheReviewQueue(t *testing.T) {
 	}
 	found := false
 	for _, it := range items {
-		if it.Path == "Agent/memory/semantic/judged.md" {
+		if it.Path == "agent/memory/semantic/judged.md" {
 			found = true
 		}
 	}

@@ -497,9 +497,9 @@ class OutcomeFilterTests(unittest.TestCase):
     # Only "a working alias" retrieves its own note; everything else returns
     # some other note, exactly as a lexically uncompetitive alias would.
     FAKE_RESULTS = {
-        "a working alias": ["Agent/desk/projects/works/_index.md", "Agent/other/x.md"],
-        "a useless alias": ["Agent/other/x.md", "Agent/other/y.md"],
-        "another useless alias": ["Agent/other/x.md"],
+        "a working alias": ["agent/desk/projects/works/_index.md", "agent/other/x.md"],
+        "a useless alias": ["agent/other/x.md", "agent/other/y.md"],
+        "another useless alias": ["agent/other/x.md"],
     }
 
     def _run_filter(self, tmp, k=5):
@@ -512,7 +512,7 @@ class OutcomeFilterTests(unittest.TestCase):
             alias_pilot.main(["--agentmd", "agentmd", "filter",
                               "--journal", str(journal), "--out-journal", str(out),
                               "--index", str(Path(tmp, "candidate.db")),
-                              "--k", str(k), "--path-prefix", "Agent/"])
+                              "--k", str(k), "--path-prefix", "agent/"])
         return [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines() if x.strip()]
 
     def test_an_alias_that_does_not_retrieve_its_own_note_is_dropped(self):

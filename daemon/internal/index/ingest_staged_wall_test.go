@@ -30,8 +30,8 @@ func TestAStagedUnitIsWalledInBothArms(t *testing.T) {
 	body := "The release gate waits for the checks to finish before the tag.\n"
 	// Sorts first by path, so a tie would put it on top: its absence below is
 	// the wall, not the tiebreak.
-	indexStaged(t, idx, "Agent/memory/semantic/a-staged.md", "Gate", "ingest_staged", body)
-	indexStaged(t, idx, "Agent/memory/semantic/b-active.md", "Gate", "active", body)
+	indexStaged(t, idx, "agent/memory/semantic/a-staged.md", "Gate", "ingest_staged", body)
+	indexStaged(t, idx, "agent/memory/semantic/b-active.md", "Gate", "active", body)
 
 	for _, mode := range []string{ModeAnd, ModeFusion} {
 		out, err := idx.Search(Query{Text: "release gate checks", K: 5, Mode: mode})
@@ -57,8 +57,8 @@ func TestAStagedUnitIsWalledInBothArms(t *testing.T) {
 func TestAStagedUnitComesBackOnTheExplicitQueryDemoted(t *testing.T) {
 	idx := openScratch(t)
 	body := "The release gate waits for the checks to finish before the tag.\n"
-	indexStaged(t, idx, "Agent/memory/semantic/a-staged.md", "Gate", "ingest_staged", body)
-	indexStaged(t, idx, "Agent/memory/semantic/b-active.md", "Gate", "active", body)
+	indexStaged(t, idx, "agent/memory/semantic/a-staged.md", "Gate", "ingest_staged", body)
+	indexStaged(t, idx, "agent/memory/semantic/b-active.md", "Gate", "active", body)
 
 	for _, mode := range []string{ModeAnd, ModeFusion} {
 		out, err := idx.Search(Query{
@@ -92,7 +92,7 @@ func TestTheStagedWallDoesNotCatchAnOrdinaryNote(t *testing.T) {
 	for _, status := range []string{"active", "unfiled", "ingested"} {
 		t.Run(status, func(t *testing.T) {
 			idx := idx
-			rel := "Agent/memory/semantic/" + status + ".md"
+			rel := "agent/memory/semantic/" + status + ".md"
 			indexStaged(t, idx, rel, "Gate "+status, status,
 				"The release gate for "+status+" waits for the checks.\n")
 			out, err := idx.Search(Query{Text: "release gate " + status, K: 5})

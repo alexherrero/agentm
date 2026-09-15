@@ -15,7 +15,7 @@
 
 set -uo pipefail
 
-DEFAULT_ROOTS=("$HOME/Antigravity" "$HOME/Claude" "$HOME/Projects")
+DEFAULT_ROOTS=("$HOME/Antigravity" "$HOME/Claude" "$HOME/Projects")  # root-casing: the operator's home, not the vault
 
 # ── arg parsing ─────────────────────────────────────────────────────────────
 

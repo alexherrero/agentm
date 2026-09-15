@@ -10,9 +10,10 @@ names three things that do not move — `index.md`, `standards/` and
 that keeps it that way: it fails when the template re-acquires any of the eight
 names the vault series retires, or the retired unfiled marker.
 
-The scan is CASE-SENSITIVE on purpose. `Agent/` is the capitalized root space
-the casing rename retires; `agent/archive/` is the lowercase path the card
-guide is *required* to explain, and the two differ only by that letter.
+The scan is CASE-SENSITIVE on purpose. `Agent` with the capital, followed by a
+slash, is the root space the casing rename retires; `agent/archive/` is the
+lowercase path the card guide is *required* to explain, and the two differ
+only by that letter.
 
 Usage:  python3 scripts/check-payload-layout-free.py [<template path>]
 Exit:   0 iff the template carries none of the forbidden names.
@@ -27,14 +28,14 @@ DEFAULT_TEMPLATE = REPO / "templates" / "agentmemory-context.md"
 
 # The design's own list, in its order. Each entry is (needle, why it is out).
 FORBIDDEN = [
-    ("Agent/", "the capitalized root space; the casing rename retires it"),
-    ("Projects/", "the capitalized projects space; it becomes projects/"),
+    ("Agent/", "the capitalized root space; the casing rename retires it"),  # root-casing: the forbidden spelling the payload gate looks for
+    ("Projects/", "the capitalized projects space; it becomes projects/"),  # root-casing: the forbidden spelling the payload gate looks for
     ("_inbox", "there is no inbox; the metadata is the inbox"),
     ("_always-load", "the always-load pen folds into standards/"),
     ("_index.md", "the project anchor becomes tracker.md / charter.md"),
     ("_harness", "harness state is not something a chat surface reads"),
-    ("Agent/desk", "the desk moves out of the capitalized root"),
-    ("Agent/_meta", "the machine directory and the payload twin retire"),
+    ("Agent/desk", "the desk moves out of the capitalized root"),  # root-casing: the forbidden spelling the payload gate looks for
+    ("Agent/_meta", "the machine directory and the payload twin retire"),  # root-casing: the forbidden spelling the payload gate looks for
     ("filing_confidence: low", "the unfiled marker is status: unfiled"),
 ]
 

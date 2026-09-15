@@ -230,7 +230,7 @@ def _vault_root_from_memory_root(root: Path) -> Path:
     """The vault root an exported memory root sits in.
 
     When the configured `plugins.obsidian-vault.memory_root` is the export's
-    trailing path — the shipped layout, `<vault>/Agent` under `memory_root:
+    trailing path — the shipped layout, `<vault>/agent` under `memory_root:
     Agent` — the vault root is what remains above it. Otherwise the layout is
     flat and the export is both roots at once: a scratch vault, or an install
     whose config names no prefix. The export never falls through to the
@@ -387,9 +387,9 @@ _PLUGIN_SPACES_KEY = "plugins.obsidian-vault.spaces"
 
 _DEFAULT_SPACES = {
     "memory": "memory",
-    # Filing-v2 2b: the project space is the vault-root Projects/, a sibling of
+    # Filing-v2 2b: the project space is the vault-root projects/, a sibling of
     # the memory root this table is joined onto — hence the `..`.
-    "projects": "../Projects",
+    "projects": "../projects",
     # Filing-v2 part 2a: diagnostics is first-class under the memory root, and
     # the daily digests live inside it — records in the area they serve.
     "briefs": "diagnostics/digests",
@@ -491,7 +491,7 @@ def memory_root() -> Optional[Path]:
     the memory tree to every consumer that reads it — `recall.py`, `reflect.py`
     and `capture.py` all join `personal/`, `projects/` and `_meta/` to it — so
     an export is already a memory root and joining a second prefix onto it would
-    address `<vault>/Agent/Agent`. The hooks are what supply it, and they supply
+    address `<vault>/agent/agent`. The hooks are what supply it, and they supply
     this. `vault_path()` derives the vault root from the same export.
 
     Returns None when no vault is accessible, matching `vault_path()`, so every
@@ -581,7 +581,7 @@ def vault_path() -> Optional[Path]:
          `$MEMORY_VAULT_PATH` — preserved as override for CI / debugging /
          per-session use. The export names the MEMORY root, so the vault root
          is derived from it: the configured `plugins.obsidian-vault.memory_root`
-         is taken off its end when it is there (`<vault>/Agent` → `<vault>`),
+         is taken off its end when it is there (`<vault>/agent` → `<vault>`),
          and otherwise the layout is flat and the export is the vault root too
          (see `_vault_root_from_memory_root`). Before this, the same value was
          read as the vault root outright, so under any live export
@@ -644,30 +644,30 @@ def is_available() -> bool:
 # remains as a fallback — see `_vault_projects_dir()` below.
 _VAULT_PROJECTS_REL_NEW = "desk/projects"
 _VAULT_PROJECTS_REL_LEGACY = "personal-projects"
-# Filing-v2 2b: the newest generation is the vault-ROOT `Projects/`, a sibling
+# Filing-v2 2b: the newest generation is the vault-ROOT `projects/`, a sibling
 # of the memory root. It is outside the memory-root backend (Locators are
 # root-confined), so it resolves on a backend rooted at the vault root — the
 # same backend when the layout is flat (memory root == vault root).
-_VAULT_ROOT_PROJECTS_REL = "Projects"
+_VAULT_ROOT_PROJECTS_REL = "projects"
 
 
 def _root_projects_dir(vault):
-    """The vault-root `Projects/` space, discovered never conjured (filing-v2
-    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    """The vault-root `projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/projects`. Nested layout — the memory
     root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
     parent and none at the memory root itself: the sibling
-    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    `<vault-root>/projects`. A memory root at the top of its own vault has no
     sibling, whatever directory named `Projects` sits beside it (its parent
     is the operator's home or a sync folder, where one is common and is not
     the vault's). None when no root space exists. Both rungs match the
     directory's exact case."""
     vault = Path(vault)
-    flat = vault / "Projects"
+    flat = vault / "projects"
     if _is_dir_exact(flat):
         return flat
     parent = vault.parent
     if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
-        sibling = parent / "Projects"
+        sibling = parent / "projects"
         if _is_dir_exact(sibling):
             return sibling
     return None
@@ -675,7 +675,7 @@ def _root_projects_dir(vault):
 
 def _is_dir_exact(path):
     """`path` is a directory whose name matches exactly — on a case-insensitive
-    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    filesystem a directory still spelled the retired way, `Projects` with the capital, would otherwise answer for it, and a vault the casing rename has not reached would read as renamed."""
     try:
         return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
     except OSError:
@@ -684,7 +684,7 @@ def _is_dir_exact(path):
 
 def _project_group_segment(vault: Path, project: str) -> str:
     """The group segment a writer stamps for `project`, from where it lives:
-    `projects` (the vault-root space, which save.py maps onto Projects/) when
+    `projects` (the vault-root space, which save.py maps onto projects/) when
     that space holds it or exists with nothing older holding it;
     `desk/projects` when desk holds it; else the legacy name."""
     root = _root_projects_dir(vault)
@@ -700,12 +700,12 @@ def _project_group_segment(vault: Path, project: str) -> str:
 
 
 def _root_projects_candidates(backend: "StorageBackend") -> list:
-    """(backend, locator-parts) pairs where the root `Projects/` space may sit,
+    """(backend, locator-parts) pairs where the root `projects/` space may sit,
     derived from the BACKEND's own root — never from global config — so a
     test fixture probes its own tree and the live machine probes the vault.
 
-    Flat layout: `<backend-root>/Projects` on the primary backend. Nested
-    layout (the designed one — memory root `Agent/` beside `Projects/`): a
+    Flat layout: `<backend-root>/projects` on the primary backend. Nested
+    layout (the designed one — memory root `agent/` beside `projects/`): a
     second instance of the same synced backend class rooted one level up.
     The sibling is offered only in the nested layout, witnessed by `.obsidian/`
     at the parent and none at the root itself: a flat vault's parent is the
@@ -720,8 +720,9 @@ def _root_projects_candidates(backend: "StorageBackend") -> list:
     except Exception:
         return out
     # The flat rung, only when the directory exists with exactly that name —
-    # a case-insensitive filesystem would otherwise answer for the V4-era
-    # `projects/` rung and resolve every legacy project as root-space.
+    # a case-insensitive filesystem would otherwise answer for a directory
+    # still spelled the retired way, `Projects` with the capital, and read a
+    # vault the casing rename has not reached as renamed.
     if _is_dir_exact(broot / _VAULT_ROOT_PROJECTS_REL):
         out.append((backend, (_VAULT_ROOT_PROJECTS_REL,)))
     try:
@@ -783,7 +784,7 @@ def resolve_project(context: Optional[dict] = None) -> dict:
       - `backend`: the active StorageBackend instance, or None if unavailable.
       - `project_root`: Path to the cwd / context-provided project root.
       - `layout`: "root" | "new" | "legacy" | "none" — which namespace layout
-                  was used ("root" = the vault-root `Projects/` generation).
+                  was used ("root" = the vault-root `projects/` generation).
 
     Pure function; no side effects. Safe to call from any phase / hook.
 

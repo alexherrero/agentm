@@ -63,7 +63,7 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual([r for r in sm.plan(self.vault) if r[1] == "convert"], [])
 
     def test_a_successor_that_is_not_in_the_vault_revives_the_note(self):
-        dead = "/somewhere/else/Obsidian/Agent/personal/_inbox/gone-successor-1.md"
+        dead = "/somewhere/else/Obsidian/agent/personal/_inbox/gone-successor-1.md"
         gone = self._w("gone-successor.md", f"title: g\nstatus: superseded\nlifecycle: active\nsupersedes: {dead}")
         rows = sm.plan(self.vault)
         self.assertEqual(rows, [("memory/semantic/gone-successor.md", "revive", dead)])

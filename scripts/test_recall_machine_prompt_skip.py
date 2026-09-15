@@ -125,13 +125,13 @@ class _SpyDaemon:
 
 
 class _Fixture(unittest.TestCase):
-    """A vault at `<root>/Agent`, matching the post-cutover layout."""
+    """A vault at `<root>/agent`, matching the post-cutover layout."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name) / "Vault"
-        self.vault = self.root / "Agent"
+        self.vault = self.root / "agent"
         _write(self.vault / "memory" / "zorbulax.md", "The zorbulax subsystem.")
 
     def _submit(self, prompt: str, *, daemon_stdout: str = ""):
@@ -251,7 +251,7 @@ class AHumanPromptQuotingAMarkerIsStillServed(_Fixture):
 
     def _assert_served(self, prompt: str):
         rc, out, err, daemon, _spy = self._submit(
-            prompt, daemon_stdout=_payload("Agent/memory/zorbulax.md")
+            prompt, daemon_stdout=_payload("agent/memory/zorbulax.md")
         )
         self.assertEqual(rc, 0)
         self.assertNotIn("skipped:", err, "a human prompt was silently skipped")
@@ -369,7 +369,7 @@ class TheTrafficReaderCanTellASkipFromAnEmptyRecall(unittest.TestCase):
         every future row."""
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        vault = Path(tmp.name) / "Vault" / "Agent"
+        vault = Path(tmp.name) / "Vault" / "agent"
         _write(vault / "memory" / "zorbulax.md", "The zorbulax subsystem.")
         err = io.StringIO()
         recall.prompt_submit(

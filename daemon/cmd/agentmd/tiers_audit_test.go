@@ -37,7 +37,7 @@ var auditNow = time.Date(2026, 9, 11, 22, 0, 0, 0, time.UTC)
 func auditConfig(t *testing.T) *config.Config {
 	t.Helper()
 	cfg := configOverRules(t, t.TempDir(), "preference")
-	cfg.MemoryRoot = "Agent"
+	cfg.MemoryRoot = "agent"
 	cfg.EngineStateDir = t.TempDir()
 	cfg.IndexPath = filepath.Join(t.TempDir(), "index.db")
 	return cfg
@@ -73,7 +73,7 @@ func fakeAuditCalls(disagree func(ref string) bool) (*auditCalls, *int) {
 }
 
 func auditSampleRef(i int) string {
-	return fmt.Sprintf("Agent/memory/semantic/card-%02d.md", i)
+	return fmt.Sprintf("agent/memory/semantic/card-%02d.md", i)
 }
 
 func auditSamplesN(n int) []tiers.Sample {
@@ -524,18 +524,18 @@ func TestTheAuditPoolIsTheCardsTheCurrentPassJudged(t *testing.T) {
 	huge := stampedCard(4) + strings.Repeat("padding to push the card over the size ceiling\n", 800)
 	putCards(t, cfg, map[string]string{
 		auditSampleRef(0):                     stampedCard(0),
-		"Agent/memory/semantic/old-stamp.md":  old,
-		"Agent/memory/semantic/unstamped.md":  unstamped,
-		"Agent/memory/semantic/a-record.md":   record,
-		"Agent/memory/semantic/leaky.md":      leaky,
-		"Agent/memory/semantic/huge.md":       huge,
-		"Agent/memory/mocs/moc-git.md":        stampedCard(5),
-		"Agent/memory/episodic/2026-trace.md": stampedCard(6),
+		"agent/memory/semantic/old-stamp.md":  old,
+		"agent/memory/semantic/unstamped.md":  unstamped,
+		"agent/memory/semantic/a-record.md":   record,
+		"agent/memory/semantic/leaky.md":      leaky,
+		"agent/memory/semantic/huge.md":       huge,
+		"agent/memory/mocs/moc-git.md":        stampedCard(5),
+		"agent/memory/episodic/2026-trace.md": stampedCard(6),
 		// The test contract routes every type to memory/semantic, so a
 		// procedural card is outside the queue here; the queue's own test
 		// proves a second routed class is walked.
-		"Agent/memory/procedural/not-routed.md": stampedCard(7),
-		"Agent/memory/semantic/second-ok.md":    stampedCard(8),
+		"agent/memory/procedural/not-routed.md": stampedCard(7),
+		"agent/memory/semantic/second-ok.md":    stampedCard(8),
 	})
 
 	x, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, false)
@@ -547,7 +547,7 @@ func TestTheAuditPoolIsTheCardsTheCurrentPassJudged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := auditSampleRef(0) + ",Agent/memory/semantic/second-ok.md"
+	want := auditSampleRef(0) + ",agent/memory/semantic/second-ok.md"
 	if got := strings.Join(pool, ","); got != want {
 		t.Errorf("the pool is %s\nwant %s", got, want)
 	}

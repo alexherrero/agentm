@@ -110,7 +110,7 @@ class _Night(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="morning-"))
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
-        self.vault = self.root / "Agent"
+        self.vault = self.root / "agent"
         (self.vault / "memory" / "semantic").mkdir(parents=True)
         self.engine = self.root / "state"
         (self.engine / "dreaming").mkdir(parents=True)
@@ -538,8 +538,8 @@ class TheNote(_Night):
         self.build()
         after = sorted(p.relative_to(self.root).as_posix() for p in self.root.rglob("*") if p.is_file())
         self.assertEqual(sorted(set(after) - set(before)),
-                         ["Agent/diagnostics/morning/2026-09-12.md",
-                          "Agent/diagnostics/morning/latest_morning_note.md"])
+                         ["agent/diagnostics/morning/2026-09-12.md",
+                          "agent/diagnostics/morning/latest_morning_note.md"])
 
 
 class TheSeams(_Night):
