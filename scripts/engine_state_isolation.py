@@ -60,6 +60,10 @@ from pathlib import Path
 # here is a leak this helper silently fails to close. The device-local root
 # holds `graph_snapshot.py`'s snapshots in its `_meta/`, one directory per
 # vault, so a test that lints, dreams or rebuilds a snapshot writes under it.
+# The cache root moves the vault locks, the dream revert log and the runner's
+# markers (`vault_lock._default_lock_root()`, `revert_log._default_log_root()`
+# and `runner.state.default_state_root()`), each reading `XDG_CACHE_HOME` on
+# every call; a resolver that read it once at import would sit still.
 GOVERNED = ("AGENTM_STATE_DIR", "XDG_CACHE_HOME", "AGENTM_RECALL_HISTORY", "AGENTM_DEVICE_LOCAL_ROOT")
 
 _WRAPPED = "_agentm_engine_state_isolated"

@@ -17,9 +17,11 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import yaml
 
+import vault_lock
 from runner import cycle, manifest, state, watchdog
 
 
@@ -948,6 +950,82 @@ class WindowTests(unittest.TestCase):
             cycle.run_cycle(jobs_dir, now=_local(2026, 9, 12, 2, 7), state_root=sr)
             self.assertEqual(log.read_text().split(),
                              ["sweep", "enrich-nightly", "dreaming", "dream", "corpus-scorecard"])
+
+
+class StateRootTests(unittest.TestCase):
+    """The default state root, and who may make it (2026-09-14).
+
+    The root was fixed at import from the home directory alone, and
+    `_state_dir` made it for every caller, readers included: a test that asked
+    after a marker or the cycle summary left `~/.cache/agentm/runner` under
+    whatever home it ran in, and the battery's `XDG_CACHE_HOME`, which moves
+    the vault locks, moved nothing here. The live runner writes that directory
+    on every cycle."""
+
+    def test_the_default_sits_beside_the_locks_under_the_cache_root(self):
+        with TemporaryDirectory() as td:
+            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": td}):
+                self.assertEqual(state.default_state_root(), Path(td) / "agentm" / "runner")
+                self.assertEqual(state.default_state_root().parent,
+                                 vault_lock._default_lock_root().parent,
+                                 "the runner's root and the lock root read the variable differently")
+
+    def test_with_no_variable_the_path_is_the_one_the_live_runner_writes(self):
+        # Byte-identical to the root that was fixed at import.
+        with TemporaryDirectory() as td:
+            without = {k: v for k, v in os.environ.items() if k != "XDG_CACHE_HOME"}
+            with mock.patch.dict(os.environ, without, clear=True), \
+                    mock.patch.object(Path, "home", return_value=Path(td)):
+                self.assertEqual(state.default_state_root(), Path(td) / ".cache" / "agentm" / "runner")
+                self.assertEqual(state.cycle_summary_path(),
+                                 Path(td) / ".cache" / "agentm" / "runner" / "last-cycle.json")
+
+    def test_the_root_is_read_on_every_call(self):
+        with TemporaryDirectory() as a, TemporaryDirectory() as b:
+            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": a}):
+                first = state.default_state_root()
+            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": b}):
+                second = state.default_state_root()
+        self.assertEqual(first, Path(a) / "agentm" / "runner")
+        self.assertEqual(second, Path(b) / "agentm" / "runner")
+
+    def test_a_reader_makes_nothing(self):
+        job = manifest.JobManifest(name="j", schedule="daily", lookback="6h", command="true",
+                                   tier="T3", dry_run=False)
+        with TemporaryDirectory() as td:
+            root = Path(td) / "never-made"
+            self.assertEqual(state.read_marker("j", state_root=root), {})
+            self.assertEqual(state.cycle_summary_path(root), root / "last-cycle.json")
+            self.assertEqual(watchdog.read_health("j", state_root=root)["rung"], "healthy")
+            self.assertFalse(watchdog.is_stopped("j", state_root=root))
+            self.assertEqual(watchdog.stopped_jobs(state_root=root), [])
+            self.assertEqual(cycle._spend_so_far(root, now=1000.0), 0.0)
+            due, reason = cycle.is_due(job, now=1000.0, state_root=root)
+            self.assertEqual((due, reason), (True, "never-run"))
+            self.assertFalse(root.exists(), "a reader made the state root")
+            # The same through the default, under a cache root of this test's own.
+            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": td}):
+                state.read_marker("j")
+                state.cycle_summary_path()
+                watchdog.read_health("j")
+                watchdog.stopped_jobs()
+                self.assertFalse(state.default_state_root().exists(), "a reader made the default state root")
+
+    def test_every_writer_makes_the_directory(self):
+        writers = {
+            "mark_start": lambda root: state.mark_start("j", now=1.0, state_root=root),
+            "mark_done": lambda root: state.mark_done("j", now=1.0, state_root=root),
+            "mark_missed": lambda root: state.mark_missed("j", now=1.0, state_root=root),
+            "record_outcome": lambda root: watchdog.record_outcome("j", succeeded=True, now=1.0, state_root=root),
+            "clear": lambda root: watchdog.clear("j", state_root=root),
+            "the cycle summary": lambda root: cycle.run_cycle(root.parent / "no-jobs", now=1.0, state_root=root),
+        }
+        for name, write in writers.items():
+            with self.subTest(writer=name), TemporaryDirectory() as td:
+                root = Path(td) / "made-on-first-write"
+                write(root)
+                self.assertTrue(root.is_dir(), f"{name} did not make the state root")
+                self.assertTrue(any(root.iterdir()), f"{name} wrote nothing under the root it made")
 
 
 if __name__ == "__main__":

@@ -785,5 +785,22 @@ class RunnerCycleRowTests(unittest.TestCase):
             self.assertIn("never a job target", row.detail)
 
 
+# Every test here gets its own engine state, cache root and recall ledger.
+# The doctor reads the runner's markers, watchdog records and last cycle
+# through the runner's default state root. That root follows `XDG_CACHE_HOME`
+# since 2026-09-14, so this keeps a hand run off the live runner's records;
+# test_engine_state_not_leaked runs this suite by hand.
+# The path insert is here rather than assumed: a hand run reaches this module
+# as `scripts.<name>`, which puts the repo root on the path and not `scripts/`.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()

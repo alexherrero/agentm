@@ -111,8 +111,23 @@ def default_history_path() -> Path:
     return _cache_root() / "digest-history.jsonl"
 
 
+def _runner_state():
+    """The runner's state module, imported the way `_runner_watchdog` is."""
+    scripts = Path(__file__).resolve().parent.parent
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from runner import state
+    return state
+
+
 def default_runner_cycle_path() -> Path:
-    return Path.home() / ".cache" / "agentm" / "runner" / "last-cycle.json"
+    """Where the runner leaves its last cycle's account, asked of the runner's
+    own resolver so the brief reads what the runner wrote: under a moved
+    `XDG_CACHE_HOME` as on a live machine, where it is
+    `~/.cache/agentm/runner/last-cycle.json`. Until 2026-09-14 this named the
+    home directory's path on its own, and a test's moved cache root left the
+    brief reading the live file."""
+    return _runner_state().cycle_summary_path()
 
 
 def runner_refusals(path: "Path | None" = None) -> list:
@@ -120,7 +135,16 @@ def runner_refusals(path: "Path | None" = None) -> list:
     Empty when no cycle has been recorded or none were refused. A refused
     manifest used to stop every scheduled job with only a launchd-log
     traceback to show for it; this is where it reaches the operator."""
-    p = Path(path) if path is not None else default_runner_cycle_path()
+    if path is not None:
+        p = Path(path)
+    else:
+        try:
+            p = default_runner_cycle_path()
+        except Exception:
+            # The runner package is out of reach, so there is no cycle to
+            # read. The brief is a line in a session start and never fails
+            # one, as `parked_jobs` says of the watchdog.
+            return []
     if not p.is_file():
         return []
     try:

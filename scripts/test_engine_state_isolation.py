@@ -59,6 +59,22 @@ class TheContextManager(unittest.TestCase):
             self.assertEqual(root, Path(os.environ["AGENTM_DEVICE_LOCAL_ROOT"]) / "_meta")
             self.assertNotEqual(root, Path.home() / ".agentm" / "memory" / "_meta")
 
+    def test_it_moves_the_runner_state_root_with_the_cache_root(self):
+        # The runner's per-job markers, watchdog records and last cycle's
+        # account sit under `~/.cache/agentm/runner`, which the live runner
+        # writes on every cycle. Until 2026-09-14 that root was fixed at import
+        # and made by every reader. Through the resolver, so the runner cannot
+        # drift back to a root this helper no longer moves.
+        from runner import state as runner_state
+
+        with esi.isolated_engine_state():
+            root = runner_state.default_state_root()
+            self.assertEqual(root, Path(os.environ["XDG_CACHE_HOME"]) / "agentm" / "runner")
+            self.assertNotEqual(root, Path.home() / ".cache" / "agentm" / "runner")
+            self.assertEqual(runner_state.cycle_summary_path(), root / "last-cycle.json")
+            self.assertEqual(runner_state.read_marker("never-run"), {})
+            self.assertFalse(root.exists(), "a read made the runner's state root")
+
     def test_it_restores_a_variable_that_was_set(self):
         os.environ["AGENTM_STATE_DIR"] = "/outer/state"
         self.addCleanup(os.environ.pop, "AGENTM_STATE_DIR", None)
@@ -214,6 +230,13 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         "test_a2_index_invariant", "test_dream", "test_dream_job",
         "test_dream_retired_lanes", "test_graph_snapshot",
         "test_lifecycle_transitions",
+        # The runner's state root reads `XDG_CACHE_HOME` on every call since
+        # 2026-09-14; before that it was fixed at import and made by every
+        # reader, and four suites left `~/.cache/agentm/runner` under a
+        # throwaway home by asking after markers. The doctor's and the brief's
+        # suites joined the helper then; the console's and the morning note's
+        # already carried it. test_engine_state_not_leaked runs all four by hand.
+        "test_machinery_doctor", "test_session_brief_runner", "test_morning_note",
     )
 
     def test_each_named_suite_calls_the_helper(self):

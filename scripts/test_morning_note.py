@@ -20,6 +20,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _SKILL = _HERE.parent / "harness" / "skills" / "memory" / "scripts"
@@ -597,6 +598,31 @@ class TheSeams(_Night):
         self.assertEqual((job.window, job.order, job.tier, job.dry_run),
                          ("02:00-06:00", 5, "T2", False))
         self.assertIn("morning_note.py", job.command)
+
+
+class TheRunnerDirectoryIsTheRunnersOwn(unittest.TestCase):
+    """`default_runner_state` copies `runner.state.default_state_root`,
+    because the skill's scripts stand alone once installed. The note reads the
+    night from where the runner writes it only while the two agree, so this
+    holds them equal with the cache root moved and with none set (2026-09-14).
+    """
+
+    def test_with_the_cache_root_moved(self):
+        from runner import state as runner_state
+
+        with tempfile.TemporaryDirectory() as td, mock.patch.dict(os.environ, {"XDG_CACHE_HOME": td}):
+            self.assertEqual(mn.default_runner_state(), Path(td) / "agentm" / "runner")
+            self.assertEqual(mn.default_runner_state(), runner_state.default_state_root())
+
+    def test_with_no_cache_root_set(self):
+        from runner import state as runner_state
+
+        without = {k: v for k, v in os.environ.items() if k != "XDG_CACHE_HOME"}
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.dict(os.environ, without, clear=True), \
+                mock.patch.object(Path, "home", return_value=Path(td)):
+            self.assertEqual(mn.default_runner_state(), Path(td) / ".cache" / "agentm" / "runner")
+            self.assertEqual(mn.default_runner_state(), runner_state.default_state_root())
 
 
 # Every test here gets its own engine state dir.

@@ -37,6 +37,14 @@ lock root was written: one run of the unit suite under the old runner left
 battery's shell gates sit outside the runners altogether and move each
 variable themselves; the seven that lock a fixture vault moved the engine
 state and not the lock root, and are held to it below.
+
+The runner's own state — per-job markers, watchdog records, the last cycle's
+account — sits under `~/.cache/agentm/runner`, where the live runner writes
+it on every cycle. Until 2026-09-14 `runner.state` fixed that root at import
+from the home directory alone, so `XDG_CACHE_HOME` moved nothing there, and
+made the directory for every reader: four suites left it under a throwaway
+home by asking after markers that did not exist. The root reads the variable
+on every call now, and only a write makes the directory.
 """
 from __future__ import annotations
 
@@ -65,6 +73,7 @@ import graph_snapshot  # noqa: E402 — the resolver every graph snapshot is wri
 import harness_memory  # noqa: E402 — the resolver the repo registry writes through
 import recall_counter  # noqa: E402 — the resolver the recall ledger writes through
 import vault_lock  # noqa: E402 — the resolver every vault lock is taken through
+from runner import state as runner_state  # noqa: E402 — the resolver the runner's markers are written through
 
 # The real one. Nothing in a test run may resolve here.
 _MACHINE_STATE = Path.home() / ".local" / "state" / "agentm"
@@ -75,6 +84,7 @@ _RESOLVERS = {
     "recall ledger": recall_counter.default_history_path,
     "graph snapshot root": graph_snapshot._local_index_root,
     "vault lock root": vault_lock._default_lock_root,
+    "runner state root": runner_state.default_state_root,
 }
 
 
@@ -564,6 +574,117 @@ class TheLedgerWritingSuitesRunByHand(unittest.TestCase):
             with self.subTest(suite=suite):
                 _run_by_hand(self, suite, (), _seed_default_ledger, "the default recall ledger's directory")
                 _run_by_hand(self, suite, names, _seed_default_ledger, "the default recall ledger's directory")
+
+
+def _seed_default_runner_root(case: unittest.TestCase, env: dict, home: str) -> Path:
+    """Seed the runner's records where the run's default state root resolves.
+
+    Asks the resolver every marker is written through, under exactly the
+    environment the run gets. `_hand_run_env` drops `XDG_CACHE_HOME`, so if the
+    root ever stopped following the home directory the records seeded here
+    would land among the live runner's, and this refuses before writing
+    anything. What is seeded stands in for those records — a job's marker, its
+    watchdog record and the last cycle's account, all of them clean — so a
+    suite that read them by their default path would read nothing alarming.
+    """
+    with mock.patch.dict(os.environ, env, clear=True):
+        root = runner_state.default_state_root()
+    case.assertIn(
+        Path(os.path.realpath(home)), Path(os.path.realpath(root)).parents,
+        f"the default runner state root no longer follows the home directory "
+        f"({root}); this check cannot run without touching the machine's own")
+    root.mkdir(parents=True)
+    (root / "dream.json").write_text(json.dumps({
+        "status": "done", "last_run": 1000.0, "last_cost_usd": 0.0, "last_real_run": 1000.0,
+    }), encoding="utf-8")
+    (root / "dream.watchdog.json").write_text(json.dumps({
+        "rung": "healthy", "consecutive_failures": 0, "last_success": 1000.0,
+    }), encoding="utf-8")
+    (root / "last-cycle.json").write_text(json.dumps({
+        "at": 1000.0, "loaded": 1, "refused": [], "budget_ceiling_hit": False,
+        "outcomes": [{"job": "dream", "ran": True, "exit_code": 0}],
+    }), encoding="utf-8")
+    return root
+
+
+class TheRunnerStateReadingSuitesRunByHand(unittest.TestCase):
+    """Hand runs of the suites that reached the runner's state root, each under a home of its own.
+
+    The runner keeps its per-job markers, its watchdog records and the last
+    cycle's account under `~/.cache/agentm/runner`, and the live runner writes
+    there on every cycle. Until 2026-09-14 `runner.state` fixed that root at
+    import from the home directory alone, so `XDG_CACHE_HOME` moved nothing
+    there, and `_state_dir` made the directory for every caller, readers
+    included. Four suites left it under a throwaway home by asking after
+    markers that did not exist — the console's CLI tests, the doctor's smoke
+    tests, the brief's refusal tests and the morning note's session-brief
+    seam — and a test that ever wrote there by the default root would have
+    written among the live records.
+
+    The root reads the variable on every call now, and only a write makes the
+    directory. Each suite runs by hand three times, with no governed variable
+    set: whole and then only the tests named against it, with the runner's
+    records seeded where the default resolves and every file there keeping its
+    mtime and SHA-256; and the named tests once more with nothing seeded,
+    after which the root must not exist. The named runs must run every test
+    and skip none, so the check cannot pass by running nothing.
+
+    `test_console.py` runs only its named tests, the two that made the root.
+    A hand run of the whole file fails `test_count_inbox_counts_the_review_queue`
+    for a reason that has nothing to do with runner state: `console.count_inbox`
+    imports `needs_review` without putting the memory skill's scripts on the
+    path, which #632 fixes. Once that lands, `NAMED_ONLY` empties.
+    """
+
+    READERS = {
+        "test_console.py": (
+            "CliTests.test_main_terminal_mode_runs_clean",
+            "CliTests.test_main_html_mode_writes_a_file",
+        ),
+        "test_machinery_doctor.py": (
+            "JobConfigTests.test_inventory_includes_a_config_row_per_autonomy_job",
+            "RealRepoSmokeTests.test_main_exits_zero",
+        ),
+        "test_session_brief_runner.py": (
+            "BriefCarriesRefusals.test_a_refusal_rides_the_fresh_line_and_its_signature",
+            "BriefCarriesRefusals.test_an_unreadable_or_absent_summary_is_no_refusal",
+        ),
+        "test_morning_note.py": (
+            "TheSeams.test_the_session_brief_shows_the_first_section",
+        ),
+    }
+
+    # Suites that run only their named tests here; the class docstring says why.
+    NAMED_ONLY = ("test_console.py",)
+
+    def _run_without_a_root(self, suite: str, names: tuple) -> None:
+        """The named tests with nothing seeded: the default root must not exist afterwards."""
+        what = " ".join(("a hand run of", suite) + names)
+        with tempfile.TemporaryDirectory() as home:
+            env = _hand_run_env(home)
+            with mock.patch.dict(os.environ, env, clear=True):
+                root = runner_state.default_state_root()
+            self.assertIn(
+                Path(os.path.realpath(home)), Path(os.path.realpath(root)).parents,
+                f"the default runner state root no longer follows the home directory ({root})")
+
+            r = subprocess.run(
+                [sys.executable, str(_REPO / "scripts" / suite), *names],
+                capture_output=True, encoding="utf-8", errors="replace", timeout=300,
+                cwd=str(_REPO / "scripts"), env=env)
+
+            self.assertEqual(r.returncode, 0, f"{what} failed:\n{r.stdout[-2000:]}{r.stderr[-3000:]}")
+            self.assertRegex(r.stderr, r"(?m)^OK$", f"{what} skipped a named test")
+            self.assertFalse(root.exists(),
+                             f"{what} made the default runner state root by reading from it: {root}")
+
+    def test_each_leaves_the_default_runner_root_as_it_found_it(self):
+        for suite, names in self.READERS.items():
+            with self.subTest(suite=suite):
+                if suite not in self.NAMED_ONLY:
+                    _run_by_hand(self, suite, (), _seed_default_runner_root, "the default runner state root")
+                _run_by_hand(self, suite, names, _seed_default_runner_root, "the default runner state root")
+                self._run_without_a_root(suite, names)
 
 
 def _seed_snapshot_root(case: unittest.TestCase, env: dict, home: str) -> Path:

@@ -2,8 +2,14 @@
 
 Lives at `~/.cache/agentm/runner/` by default — never inside the synced
 vault (mirrors `vault_lock.py`'s lockdir rule: the runner's own bookkeeping
-is not vault content). `state_root` is injectable so tests never touch the
-real cache dir.
+is not vault content). The default honours `XDG_CACHE_HOME`, read on every
+call the way `vault_lock._default_lock_root` reads it, so the battery's
+per-test cache root moves these markers with the locks; `state_root` is
+injectable so a test can name a directory of its own. Until 2026-09-14 the
+default was fixed at import from the home directory alone and every reader
+made the directory, so a suite that asked after a marker left
+`~/.cache/agentm/runner` under whatever home it ran in — the directory the
+live runner keeps its records in. Only a write makes it now.
 
 The marker is also the crash-recovery signal: a `mark_start` with no
 matching `mark_done` on the next cycle is an orphaned run (the idle-hook
@@ -13,21 +19,41 @@ retry rather than treat the job as merely "recently run."
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Optional
 
-_DEFAULT_STATE_ROOT = Path.home() / ".cache" / "agentm" / "runner"
+
+def default_state_root() -> Path:
+    """`~/.cache/agentm/runner`, honouring `XDG_CACHE_HOME` when set.
+
+    Resolved on every call, never cached at import: the battery points
+    `XDG_CACHE_HOME` at a fresh directory before each test, and a root fixed
+    when the module loaded would sit under the real home for the whole run.
+    With the variable unset the path is the one the live runner has always
+    written."""
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".cache"
+    return base / "agentm" / "runner"
 
 
 def _state_dir(state_root: Optional[Path]) -> Path:
-    d = Path(state_root) if state_root is not None else _DEFAULT_STATE_ROOT
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    """The directory the markers live in — resolved, not made. A reader asking
+    after a job that never ran leaves nothing behind; `_write` makes the
+    directory with the first marker."""
+    return Path(state_root) if state_root is not None else default_state_root()
 
 
 def _marker_path(job_name: str, state_root: Optional[Path]) -> Path:
     return _state_dir(state_root) / f"{job_name}.json"
+
+
+def _write(p: Path, payload: dict) -> None:
+    """Every marker is written here, and the directory is made here and
+    nowhere else."""
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def cycle_summary_path(state_root: Optional[Path] = None) -> Path:
@@ -48,11 +74,8 @@ def read_marker(job_name: str, *, state_root: Optional[Path] = None) -> dict:
 
 
 def mark_start(job_name: str, *, now: Optional[float] = None, state_root: Optional[Path] = None) -> None:
-    p = _marker_path(job_name, state_root)
-    p.write_text(
-        json.dumps({"status": "start", "started_at": now if now is not None else time.time()}),
-        encoding="utf-8",
-    )
+    _write(_marker_path(job_name, state_root),
+           {"status": "start", "started_at": now if now is not None else time.time()})
 
 
 def mark_done(
@@ -63,16 +86,12 @@ def mark_done(
     state_root: Optional[Path] = None,
 ) -> None:
     ts = now if now is not None else time.time()
-    p = _marker_path(job_name, state_root)
-    p.write_text(
-        json.dumps({
-            "status": "done",
-            "last_run": ts,
-            "last_cost_usd": cost_usd,
-            "last_real_run": ts,
-        }),
-        encoding="utf-8",
-    )
+    _write(_marker_path(job_name, state_root), {
+        "status": "done",
+        "last_run": ts,
+        "last_cost_usd": cost_usd,
+        "last_real_run": ts,
+    })
 
 
 def mark_missed(job_name: str, *, now: Optional[float] = None, state_root: Optional[Path] = None) -> None:
@@ -95,17 +114,13 @@ def mark_missed(job_name: str, *, now: Optional[float] = None, state_root: Optio
     that's *absent*, meaning "written before this existed", must not be
     conflated -- only the latter falls back)."""
     prior = read_marker(job_name, state_root=state_root)
-    p = _marker_path(job_name, state_root)
-    p.write_text(
-        json.dumps({
-            "status": "done",
-            "last_run": now if now is not None else time.time(),
-            "last_cost_usd": 0.0,
-            "last_real_run": prior.get("last_real_run", prior.get("last_run")),
-            "missed": True,
-        }),
-        encoding="utf-8",
-    )
+    _write(_marker_path(job_name, state_root), {
+        "status": "done",
+        "last_run": now if now is not None else time.time(),
+        "last_cost_usd": 0.0,
+        "last_real_run": prior.get("last_real_run", prior.get("last_run")),
+        "missed": True,
+    })
 
 
 def is_orphaned_start(marker: dict) -> bool:

@@ -12,10 +12,17 @@ from pathlib import Path
 
 from . import cycle as cycle_mod
 from . import manifest as manifest_mod
+from . import state as state_mod
 from . import watchdog as watchdog_mod
 
 _DEFAULT_JOBS_DIR = Path(".harness") / "jobs"
-_DEFAULT_REPORT_PATH = Path.home() / ".cache" / "agentm" / "runner" / "digest.jsonl"
+
+
+def _default_report_path() -> Path:
+    """`<state root>/digest.jsonl`, beside the markers: one resolver places
+    both, so a moved `XDG_CACHE_HOME` moves the digest with them and a machine
+    with no such variable keeps `~/.cache/agentm/runner/digest.jsonl`."""
+    return state_mod.default_state_root() / "digest.jsonl"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -24,9 +31,10 @@ def _build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="run one cycle now")
     run.add_argument("--jobs-dir", default=str(_DEFAULT_JOBS_DIR))
     run.add_argument("--harness-dir", default=".harness")
-    run.add_argument("--report-path", default=str(_DEFAULT_REPORT_PATH))
+    run.add_argument("--report-path", default=str(_default_report_path()))
     run.add_argument("--state-root", default=None,
-                     help="per-job markers and the cycle summary (default ~/.cache/agentm/runner)")
+                     help="per-job markers and the cycle summary "
+                          "(default ~/.cache/agentm/runner, or $XDG_CACHE_HOME/agentm/runner)")
     run.add_argument("--strict", action="store_true",
                      help="the old all-or-nothing load: exit 3 on the first refused manifest, run nothing")
 
