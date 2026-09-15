@@ -58,6 +58,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory seeded where the default lock root resolves and holds the root's
   entries unchanged, as it already does for the dreaming gates and the graph
   snapshot root.
+- **The runner's state root follows `XDG_CACHE_HOME`, and a read never makes
+  it.** `scripts/runner/state.py` fixed its default root at import from the
+  home directory alone and made the directory for every caller, readers
+  included, while the other cache-rooted defaults, the vault locks and the
+  dream revert log, read `XDG_CACHE_HOME` on every call. So the variable the
+  battery's runners rotate moved nothing there: a suite that asked after a
+  marker or the last cycle's account left `~/.cache/agentm/runner` under
+  whatever home it ran in, the directory the live runner keeps its records in,
+  and a test that ever wrote there by the default would have written among
+  them. Four suites did, all through readers (2026-09-14). The root reads the
+  variable on every call now, as `vault_lock._default_lock_root` does, and
+  with it unset the path is the one it always was; the runner CLI's digest,
+  the session brief's cycle path and the morning note's runner directory
+  resolve the same way; and only a write makes the directory.
+  `test_engine_state_isolation` holds the root to the isolated block through
+  the resolver, `test_engine_state_not_leaked` demands it of both runners and
+  runs the four suites by hand under a home of their own, and the brief's and
+  the morning note's suites hold their paths to the runner's resolver.
+  `test_machinery_doctor` and `test_session_brief_runner` carry the isolation
+  helper now, as the console's and the morning note's suites already did.
 
 ## [9.24.0] - 2026-09-14
 

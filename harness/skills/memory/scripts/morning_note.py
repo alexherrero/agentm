@@ -93,8 +93,18 @@ LAST_REPORT = Path("dreaming") / "last-report.json"
 # `dream.CYCLE_REPORT_NAME`; a test holds the two equal.
 CYCLE_REPORT = Path("dreaming") / "python-cycle.json"
 
-DEFAULT_RUNNER_STATE = Path.home() / ".cache" / "agentm" / "runner"
 DEFAULT_ROLLUP = Path.home() / ".cache" / "agentm" / "telemetry" / "rollup.db"
+
+
+def default_runner_state() -> Path:
+    """`~/.cache/agentm/runner`, honouring `XDG_CACHE_HOME`, read on every
+    call: the rule the runner's own `state.default_state_root` follows, kept
+    as a copy because the skill's scripts stand alone once installed. A test's
+    moved cache root moves the note's reading of the night with the runner's
+    markers; a machine with no such variable reads where it always has."""
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".cache"
+    return base / "agentm" / "runner"
 
 
 # ── the clock ────────────────────────────────────────────────────────────────
@@ -670,7 +680,7 @@ def build(vault: Path, *, now: Optional[float] = None, rel: Path = None,
     night = gather(
         vault, now=now,
         engine_dir=Path(engine_dir) if engine_dir is not None else engine_state.engine_state_dir(),
-        runner_dir=Path(runner_dir) if runner_dir is not None else DEFAULT_RUNNER_STATE,
+        runner_dir=Path(runner_dir) if runner_dir is not None else default_runner_state(),
         rollup=Path(rollup) if rollup is not None else DEFAULT_ROLLUP,
         out_dir=out_dir, ask=ask or corpus_scorecard._agentmd)
     text, head = render(night, vault=vault)

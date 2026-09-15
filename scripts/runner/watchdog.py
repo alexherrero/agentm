@@ -61,6 +61,9 @@ def record_outcome(job_name: str, *, succeeded: bool, now: float,
             "last_success": health.get("last_success"),
         }
     p = _watchdog_path(job_name, state_root)
+    # The writer makes the directory, as `clear` does: `state._state_dir`
+    # resolves it and no longer makes it for a reader.
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(health), encoding="utf-8")
     return health
 

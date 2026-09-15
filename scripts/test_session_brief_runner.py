@@ -10,17 +10,21 @@ operator sees at session start names what was refused.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
-if str(_HERE / "health") not in sys.path:
-    sys.path.insert(0, str(_HERE / "health"))
+for _p in (_HERE / "health", _HERE):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import session_brief  # noqa: E402
+from runner import state as runner_state  # noqa: E402
 
 NOW = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
 
@@ -70,6 +74,67 @@ class BriefCarriesRefusals(unittest.TestCase):
         self.cycle.write_text("{not json", encoding="utf-8")
         self.assertNotIn("refused", self._brief()["line"])
         self.assertEqual(session_brief.runner_refusals(self.root / "missing.json"), [])
+
+
+class TheBriefReadsTheCycleWhereTheRunnerWritesIt(unittest.TestCase):
+    """The brief's default cycle path is the runner's own resolver's answer.
+
+    Until 2026-09-14 the brief named `~/.cache/agentm/runner/last-cycle.json`
+    from the home directory on its own, while the runner could be pointed
+    elsewhere, so a moved cache root left the brief reading a file the runner
+    no longer wrote."""
+
+    def test_it_follows_the_cache_root(self):
+        with tempfile.TemporaryDirectory() as td, mock.patch.dict(os.environ, {"XDG_CACHE_HOME": td}):
+            self.assertEqual(session_brief.default_runner_cycle_path(),
+                             Path(td) / "agentm" / "runner" / "last-cycle.json")
+            self.assertEqual(session_brief.default_runner_cycle_path(), runner_state.cycle_summary_path())
+
+    def test_with_no_cache_root_it_is_the_path_the_live_runner_writes(self):
+        without = {k: v for k, v in os.environ.items() if k != "XDG_CACHE_HOME"}
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.dict(os.environ, without, clear=True), \
+                mock.patch.object(Path, "home", return_value=Path(td)):
+            self.assertEqual(session_brief.default_runner_cycle_path(),
+                             Path(td) / ".cache" / "agentm" / "runner" / "last-cycle.json")
+
+    def test_a_refusal_the_runner_left_reaches_the_brief_by_default(self):
+        with tempfile.TemporaryDirectory() as td, mock.patch.dict(os.environ, {"XDG_CACHE_HOME": td}):
+            cycle = runner_state.cycle_summary_path()
+            # Refuse before writing: were the runner's root ever to stop
+            # following the variable, this would write the live runner's own
+            # record on a real machine.
+            self.assertIn(Path(td), cycle.parents,
+                          f"the runner's cycle summary no longer follows XDG_CACHE_HOME ({cycle}); "
+                          "refusing to write where the live runner keeps its records")
+            cycle.parent.mkdir(parents=True)
+            cycle.write_text(json.dumps({"at": 1.0, "loaded": 0, "refused": [
+                {"file": "a.yaml", "reason": "x"}], "outcomes": []}), encoding="utf-8")
+            self.assertEqual([r["file"] for r in session_brief.runner_refusals()], ["a.yaml"])
+
+    def test_no_cycle_reads_as_no_refusal_and_makes_nothing(self):
+        with tempfile.TemporaryDirectory() as td, mock.patch.dict(os.environ, {"XDG_CACHE_HOME": td}):
+            self.assertEqual(session_brief.runner_refusals(), [])
+            self.assertEqual(session_brief.parked_jobs(), [])
+            self.assertFalse(runner_state.default_state_root().exists(),
+                             "the brief made the runner's state root by reading from it")
+
+
+# Every test here gets its own engine state, cache root and recall ledger.
+# The brief asks the runner's watchdog what is parked, and reads the last
+# cycle's account, through the runner's default state root. That root follows
+# `XDG_CACHE_HOME` since 2026-09-14, so this keeps a hand run off the live
+# runner's records; test_engine_state_not_leaked runs this suite by hand.
+# The path insert is here rather than assumed: a hand run reaches this module
+# as `scripts.<name>`, which puts the repo root on the path and not `scripts/`.
+import os.path as _osp  # noqa: E402
+import sys as _sys  # noqa: E402
+
+if _osp.dirname(_osp.abspath(__file__)) not in _sys.path:
+    _sys.path.insert(0, _osp.dirname(_osp.abspath(__file__)))
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
 
 
 if __name__ == "__main__":
