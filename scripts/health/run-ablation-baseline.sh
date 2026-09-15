@@ -45,6 +45,16 @@ done
 
 FAIL=0
 
+# ── scratch cache (isolated; auto-removed) ──────────────────────────────────
+# verify-reflection.sh and validate-audit-coverage.sh, driven below, write
+# under the vault mutex, whose lock directory sits under
+# $XDG_CACHE_HOME/agentm/locks, ~/.cache by default. Each moves the root
+# itself now; this one moves it for everything it runs, so a child that
+# forgets cannot reach the operator's own cache through this gate.
+SCRATCH="$(mktemp -d)"
+export XDG_CACHE_HOME="$SCRATCH/cache"
+trap 'rm -rf "$SCRATCH"' EXIT
+
 score_axis() {  # score_axis <jsonl-file> <axis>
   "$PY" -c "
 import sys

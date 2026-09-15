@@ -76,6 +76,11 @@ SCRATCH="$(mktemp -d)"
 # default; phases needing distinct state override per-invocation.
 export AGENTM_STATE_DIR="$SCRATCH/engine-state"
 mkdir -p "$AGENTM_STATE_DIR"
+# The write-state cases take the vault mutex, whose lock directory sits under
+# $XDG_CACHE_HOME/agentm/locks, ~/.cache by default. Left there, every run of
+# this gate left a hash-named directory per fixture vault in the operator's
+# own cache.
+export XDG_CACHE_HOME="$SCRATCH/cache"
 
 cleanup() { rm -rf "$SCRATCH" 2>/dev/null; rm -rf "$SCRATCH" 2>/dev/null || true; }
 trap cleanup EXIT

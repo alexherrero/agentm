@@ -84,6 +84,12 @@ assert_absent_in_tree() {  # assert_absent_in_tree <desc> <root> <needle>
 ROOT="$(mktemp -d)"
 cleanup() { rm -rf "$ROOT" 2>/dev/null || true; }
 trap cleanup EXIT
+# The corpus runs save what they mine under the vault mutex, whose lock
+# directory sits under $XDG_CACHE_HOME/agentm/locks, ~/.cache by default. Left
+# there, every run of this gate left a hash-named directory per lane vault in
+# the operator's own cache. The engine state moves per lane, below; the lock
+# root moves once, for the whole run.
+export XDG_CACHE_HOME="$ROOT/cache"
 echo "verify-reflection: scratch root = $ROOT"
 
 # ── fixture transcripts ─────────────────────────────────────────────────────

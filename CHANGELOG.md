@@ -28,6 +28,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test_storage_device_local`'s default-root test drops
   `AGENTM_DEVICE_LOCAL_ROOT` for its block, as `test_a2_index_invariant`'s
   already did.
+- **The battery's lock-taking gates keep their vault locks out of the
+  operator's cache.** `vault_mutex` locks a vault by making
+  `<lock root>/<sha256 of its real path>/lock` and removes only the inner
+  directory on release, so every vault ever locked leaves a hash-named
+  directory under the root, `~/.cache/agentm/locks` unless `XDG_CACHE_HOME`
+  moves it. Five battery gates lock fixture vaults and moved their engine
+  state into a scratch root while leaving the lock root where it was:
+  `verify-idle-chain`, `verify-state-routing`, `verify-reflection`,
+  `verify-phases` and `verify-memory-roundtrip`. `validate-audit-coverage`
+  and `run-ablation-baseline` reach the mutex through the verify scripts they
+  drive. Every battery run added sixteen directories to the operator's own
+  cache, where one machine's lock root held 182,436 on 2026-09-14; running
+  each gate under a throwaway home found the seven. Each now exports a
+  scratch `XDG_CACHE_HOME` under a scratch root of its own, and
+  `test_engine_state_not_leaked` runs each under a throwaway home with a
+  directory seeded where the default lock root resolves and holds the root's
+  entries unchanged, as it already does for the dreaming gates and the graph
+  snapshot root.
 
 ## [9.24.0] - 2026-09-14
 

@@ -119,6 +119,11 @@ SCRATCH="$(mktemp -d)"
 state_for() { echo "$1.engine-state"; }
 cleanup() { rm -rf "$SCRATCH"; }
 trap cleanup EXIT
+# The chain's writes take the vault mutex, whose lock directory sits under
+# $XDG_CACHE_HOME/agentm/locks, ~/.cache by default. Left there, every run of
+# this gate left a hash-named directory per phase vault in the operator's own
+# cache. The engine state moves per vault, above; the lock root moves once.
+export XDG_CACHE_HOME="$SCRATCH/cache"
 echo "verify-idle-chain: scratch root = $SCRATCH"
 
 FAULT="${VERIFY_IDLE_CHAIN_FAULT:-}"
