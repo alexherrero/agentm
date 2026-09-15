@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The battery's runners rotate every variable the isolation helper
+  governs.** `run_unit_suite.py` and `scripts/conftest.py` gave each test its
+  own engine state directory and recall ledger and named those two themselves,
+  while `engine_state_isolation.GOVERNED` held four. So a suite that never
+  asked for isolation could still write the operator's `~/.agentm/memory/_meta`
+  from inside the battery, which #639 closed only for the suites it named,
+  and whatever follows `XDG_CACHE_HOME` still landed in the real `~/.cache`:
+  one run of the unit suite under the old runner left 155 vault-lock
+  directories there (2026-09-14). Both runners now take the list from the
+  helper, so a variable added there is covered in the battery from then on,
+  and the unittest runner rotates once before the first test as well, where
+  the first class's `setUpClass` runs.
+  `test_engine_state_not_leaked` drives each runner over a two-test suite and
+  watches every governed variable move between the tests, with the writers'
+  resolvers following, rather than reading the runners for the right strings;
+  the pytest half skips where pytest is not installed, which CI's runners are.
+  `test_storage_device_local`'s default-root test drops
+  `AGENTM_DEVICE_LOCAL_ROOT` for its block, as `test_a2_index_invariant`'s
+  already did.
+
 ## [9.24.0] - 2026-09-14
 
 The vault-perfection series lands plans 08 and 09: the vault's root spaces are lowercase, and agentm reads and writes the project shape. `Agent`, `Calendar`, `Personal` and `Projects` became `agent`, `calendar`, `personal` and `projects` beside `standards` in one data run under quiesce, each through a temporary name in a `git mv` two-step, with a gate that keeps the retired spelling out of the code and a runbook written as the run ran it; crickets [v3.38.1](https://github.com/alexherrero/crickets/releases/tag/v3.38.1) shipped first so its resolvers accept both spellings. The resolver finds a task in either layout, one tracker schema holds every tracker behind a gate, captures and traces carry `project:` and `task:`, the projects space has maps, and the night enriches project records after the cards.

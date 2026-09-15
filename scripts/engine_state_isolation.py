@@ -24,6 +24,14 @@ Both restore the environment afterwards, including the case where a variable
 was not set before — so a suite run under a battery that sets the variable
 from outside gets its own directory and hands the outer one back.
 
+The battery's two runners are the third way in. `run_unit_suite.py` and
+`conftest.py` call `redirect()` before each test, so every variable this
+module governs moves for every test whether or not the suite asked; that is
+what keeps a suite nobody has found off the operator's directories under
+`check-all.sh`, and the two ways above are what keep it off them on a hand
+run. The runners name no variable themselves: one added to `GOVERNED` is
+covered in the battery from then on.
+
 `isolate_module` wraps `TestCase.run` rather than injecting a `setUp`,
 because a class whose own `setUp` forgets to call `super().setUp()` would
 silently skip an injected one, and that is the failure this helper exists to
@@ -57,8 +65,8 @@ GOVERNED = ("AGENTM_STATE_DIR", "XDG_CACHE_HOME", "AGENTM_RECALL_HISTORY", "AGEN
 _WRAPPED = "_agentm_engine_state_isolated"
 
 
-def _apply(base: Path) -> dict:
-    """Point the governed variables at `base`; return what they held.
+def redirect(base: Path) -> dict:
+    """Point the governed variables at `base`; return what they held, for `restore`.
 
     The directories are created, because a real deployment's are: a test that
     writes `<state>/<something>` with a plain `mkdir()` works against
@@ -80,7 +88,8 @@ def _apply(base: Path) -> dict:
     return previous
 
 
-def _restore(previous: dict) -> None:
+def restore(previous: dict) -> None:
+    """Put back what `redirect` found, removing a variable that was not set."""
     for name, value in previous.items():
         if value is None:
             os.environ.pop(name, None)
@@ -92,11 +101,11 @@ def _restore(previous: dict) -> None:
 def isolated_engine_state():
     """A fresh engine state directory, cache and recall ledger for the enclosed block."""
     with tempfile.TemporaryDirectory(prefix="agentm-engine-state-") as tmp:
-        previous = _apply(Path(tmp))
+        previous = redirect(Path(tmp))
         try:
             yield Path(tmp) / "state"
         finally:
-            _restore(previous)
+            restore(previous)
 
 
 def isolate_engine_state(testcase: unittest.TestCase, *, root: "Path | str | None" = None) -> Path:
@@ -113,8 +122,8 @@ def isolate_engine_state(testcase: unittest.TestCase, *, root: "Path | str | Non
     else:
         base = Path(root)
         base.mkdir(parents=True, exist_ok=True)
-    previous = _apply(base)
-    testcase.addCleanup(_restore, previous)
+    previous = redirect(base)
+    testcase.addCleanup(restore, previous)
     return base / "state"
 
 

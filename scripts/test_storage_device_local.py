@@ -25,6 +25,7 @@ Run directly:
 from __future__ import annotations
 
 import ast
+import os
 import sys
 import tempfile
 import unittest
@@ -195,9 +196,14 @@ class DeviceLocalDefaultRoot(unittest.TestCase):
     def test_default_root_is_home_agentm_memory(self) -> None:
         # Patch Path.home (not env) so the check is cross-platform; the temp home
         # is cleaned up, so the operator's real ~/.agentm/memory is never touched.
+        # The battery's runner points AGENTM_DEVICE_LOCAL_ROOT at a directory of
+        # its own for every test, so the default is reachable only with the
+        # variable dropped for this block.
         with tempfile.TemporaryDirectory() as tmp:
             fake_home = Path(tmp)
-            with mock.patch.object(Path, "home", return_value=fake_home):
+            unset = {k: v for k, v in os.environ.items() if k != "AGENTM_DEVICE_LOCAL_ROOT"}
+            with mock.patch.dict(os.environ, unset, clear=True), \
+                    mock.patch.object(Path, "home", return_value=fake_home):
                 b = sdl.DeviceLocalBackend()
                 self.assertEqual(b.root, fake_home / ".agentm" / "memory")
                 self.assertTrue(b.root.is_dir())

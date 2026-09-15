@@ -14,21 +14,31 @@ The guard exists on both runners now: `conftest.py` for pytest and
 2026-09-06 in #570 — a day *after* that leak. So this is not a hunt for an
 unguarded suite; it is the assertion that the guard holds, which nothing made.
 
-Two things are checked, because they fail differently. That both runners set
-the variable is a property of the runners. That `engine_state_dir()` obeys it
-is a property of the code every writer goes through — and the writers are what
+Two things are checked, because they fail differently. That both runners move
+every variable `engine_state_isolation` governs, for every test, is a property
+of the runners, and each is driven over a small suite here and watched rather
+than read for the right strings. That the resolvers obey the variables is a
+property of the code every writer goes through — and the writers are what
 actually reach the disk.
 
-The recall ledger is checked the same way, because it sits outside the state
-directory. `recall_counter.default_history_path()` answers
+The variables are four, not one. The recall ledger sits outside the state
+directory: `recall_counter.default_history_path()` answers
 `$AGENTM_RECALL_HISTORY` and otherwise
 `~/.cache/agentm/telemetry/recall-history.jsonl`, so rotating the state
-directory never reached it. By 2026-09-13 the operator's ledger held 7,756
-rows naming `zorbulax`, a fixture slug the recall suites use.
+directory never reached it, and by 2026-09-13 the operator's ledger held 7,756
+rows naming `zorbulax`, a fixture slug the recall suites use. Graph snapshots
+sit under the device-local root, `~/.agentm/memory/_meta` unless
+`$AGENTM_DEVICE_LOCAL_ROOT` moves it, and vault locks and the dream revert log
+follow `$XDG_CACHE_HOME` into `~/.cache`. Until 2026-09-14 the runners moved
+the first two of the four the helper governs, so a suite that never asked for
+isolation could write the other two places from inside the battery, and the
+lock root was written: one run of the unit suite under the old runner left
+155 lock directories in a throwaway home's `~/.cache/agentm/locks`.
 """
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -41,43 +51,168 @@ from pathlib import Path
 from unittest import mock
 
 _REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
+_SKILL = _REPO / "harness" / "skills" / "memory" / "scripts"
+sys.path.insert(0, str(_SKILL))
 if str(_REPO / "scripts") not in sys.path:
     sys.path.append(str(_REPO / "scripts"))
 
 import engine_state  # noqa: E402
+import engine_state_isolation  # noqa: E402 — names every variable both runners must move
 import graph_snapshot  # noqa: E402 — the resolver every graph snapshot is written through
 import harness_memory  # noqa: E402 — the resolver the repo registry writes through
 import recall_counter  # noqa: E402 — the resolver the recall ledger writes through
+import vault_lock  # noqa: E402 — the resolver every vault lock is taken through
 
-# The real ones. Nothing in a test run may resolve here.
+# The real one. Nothing in a test run may resolve here.
 _MACHINE_STATE = Path.home() / ".local" / "state" / "agentm"
-_MACHINE_LEDGER = Path.home() / ".cache" / "agentm" / "telemetry" / "recall-history.jsonl"
+
+# The resolver every writer of each place goes through.
+_RESOLVERS = {
+    "engine state directory": engine_state.engine_state_dir,
+    "recall ledger": recall_counter.default_history_path,
+    "graph snapshot root": graph_snapshot._local_index_root,
+    "vault lock root": vault_lock._default_lock_root,
+}
+
+
+def snapshot_engine_state() -> dict:
+    """What every governed variable holds now, and where each writer's resolver lands.
+
+    The probe suites below import this, so what they record and what the
+    assertions expect cannot drift apart."""
+    return {
+        "env": {name: os.environ.get(name) for name in engine_state_isolation.GOVERNED},
+        "resolved": {place: str(resolve()) for place, resolve in _RESOLVERS.items()},
+    }
+
+
+def _machine_defaults() -> dict:
+    """Where each resolver lands with no governed variable set: the machine's own places."""
+    outside = {k: v for k, v in os.environ.items() if k not in engine_state_isolation.GOVERNED}
+    with mock.patch.dict(os.environ, outside, clear=True):
+        return snapshot_engine_state()["resolved"]
+
+
+def _without_the_governed_variables() -> dict:
+    """This process's environment with every governed variable dropped, so a
+    probe sees its runner alone. Under the battery this test itself runs with
+    all of them set, and a child that inherited them could pass under a runner
+    that sets none."""
+    env = {k: v for k, v in os.environ.items() if k not in engine_state_isolation.GOVERNED}
+    env.pop("PYTEST_ADDOPTS", None)
+    return env
+
+
+def _assert_each_test_got_its_own(case: unittest.TestCase, what: str, first: dict, second: dict) -> None:
+    """`first` and `second` are two consecutive tests' snapshots under `what`.
+
+    Every governed variable is set for both and differs between them; one
+    test's values share a directory the other's do not, so each test's
+    directories sit under one base of their own; and every writer's resolver
+    lands inside that base and never at the machine's own place. The loop runs
+    over `GOVERNED` itself, so a variable added there is demanded of the
+    runners from then on.
+    """
+    defaults = _machine_defaults()
+    for name in engine_state_isolation.GOVERNED:
+        a, b = first["env"].get(name), second["env"].get(name)
+        case.assertTrue(a and b, f"{what} ran a test with {name} unset: {first['env']} / {second['env']}")
+        case.assertNotEqual(a, b, f"{what} gave two tests the same {name}: {a}")
+    bases = [Path(os.path.commonpath(list(seen["env"].values()))) for seen in (first, second)]
+    case.assertNotEqual(
+        bases[0], bases[1],
+        f"{what} did not keep each test's directories under a base of their own: "
+        f"the closest directory both tests' variables share is {bases[0]}")
+    for seen, base in zip((first, second), bases):
+        for place, path in seen["resolved"].items():
+            case.assertIn(base, Path(path).parents,
+                          f"under {what}, the {place} resolved outside the test's own base {base}: {path}")
+            case.assertNotEqual(Path(path), Path(defaults[place]),
+                                f"under {what}, the {place} resolved to the machine's own: {path}")
 
 
 class TheGuardIsWiredOnBothRunners(unittest.TestCase):
     """A test reaches this repository through pytest or through the battery's
-    own unittest runner, and only one of those reads conftest.py."""
+    own unittest runner, and only one of those reads conftest.py.
 
-    def test_conftest_sets_a_fresh_state_dir_per_test(self):
-        text = (_REPO / "scripts" / "conftest.py").read_text(encoding="utf-8")
-        self.assertIn("AGENTM_STATE_DIR", text)
-        self.assertIn("autouse=True", text)
+    Each runner is driven over a two-test suite here and watched, rather than
+    read for the right strings, which would go on passing with the guard
+    present and broken. The suite records what every governed variable holds
+    and where the writers' resolvers land, once per test, and the assertion is
+    that all of it moved between the two tests and none of it resolved to the
+    machine's own place.
+    """
 
-    def test_the_unittest_runner_sets_one_too(self):
+    def test_the_unittest_runner_moves_every_governed_variable_per_test(self):
         # The battery invokes run_unit_suite.py, which conftest.py never
         # reaches. This is the half that was missing when the leak happened.
-        text = (_REPO / "scripts" / "run_unit_suite.py").read_text(encoding="utf-8")
-        self.assertIn("AGENTM_STATE_DIR", text)
-        self.assertIn("startTest", text)
+        probe = (
+            "import json, os, sys, unittest\n"
+            "sys.path[:0] = [%(scripts)r, %(skill)r]\n"
+            "from run_unit_suite import _HermeticStateResult\n"
+            "from test_engine_state_not_leaked import snapshot_engine_state\n"
+            "seen = {}\n"
+            "class T(unittest.TestCase):\n"
+            "    @classmethod\n"
+            "    def setUpClass(cls):\n"
+            "        seen['setUpClass'] = snapshot_engine_state()\n"
+            "    def test_a(self):\n"
+            "        seen['test_a'] = snapshot_engine_state()\n"
+            "    def test_b(self):\n"
+            "        seen['test_b'] = snapshot_engine_state()\n"
+            "suite = unittest.TestLoader().loadTestsFromTestCase(T)\n"
+            "unittest.TextTestRunner(resultclass=_HermeticStateResult,\n"
+            "                        stream=open(os.devnull, 'w')).run(suite)\n"
+            "print(json.dumps(seen))\n"
+        ) % {"scripts": str(_REPO / "scripts"), "skill": str(_SKILL)}
+        r = subprocess.run([sys.executable, "-c", probe],
+                           capture_output=True, text=True, timeout=120,
+                           cwd=str(_REPO / "scripts"), env=_without_the_governed_variables())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        seen = json.loads(r.stdout)
+        self.assertEqual(sorted(seen), ["setUpClass", "test_a", "test_b"], "the probe suite did not run whole")
+        _assert_each_test_got_its_own(self, "the unittest runner", seen["test_a"], seen["test_b"])
+        # A class's fixtures run before startTest is called for any of its
+        # tests, so the runner rotates once before the run as well.
+        for name in engine_state_isolation.GOVERNED:
+            self.assertTrue(seen["setUpClass"]["env"].get(name),
+                            f"the unittest runner let the first setUpClass run with {name} unset")
 
-    def test_both_redirect_the_recall_ledger_too(self):
-        # The ledger is not in the state directory, so rotating that never
-        # reached it. The statements that set it, since both docstrings name it.
-        conftest = (_REPO / "scripts" / "conftest.py").read_text(encoding="utf-8")
-        self.assertIn('monkeypatch.setenv("AGENTM_RECALL_HISTORY"', conftest)
-        runner = (_REPO / "scripts" / "run_unit_suite.py").read_text(encoding="utf-8")
-        self.assertIn('os.environ["AGENTM_RECALL_HISTORY"] =', runner)
+    def test_pytest_moves_every_governed_variable_per_test(self):
+        if importlib.util.find_spec("pytest") is None:
+            self.skipTest("pytest is not installed for this interpreter, and "
+                          "conftest.py is reached through nothing else")
+        # The probe sits under scripts/, where pytest finds scripts/conftest.py
+        # the way it does for any suite here. Its name matches no discovery
+        # pattern, and its directory goes when this test ends.
+        with tempfile.TemporaryDirectory(dir=str(_REPO / "scripts"), prefix="pytest-guard-probe-") as td:
+            out = Path(td) / "seen.jsonl"
+            probe = Path(td) / "probe_conftest_guard.py"
+            probe.write_text((
+                "import json, os, sys\n"
+                "sys.path[:0] = [%(scripts)r, %(skill)r]\n"
+                "from test_engine_state_not_leaked import snapshot_engine_state\n"
+                "def _record(stage):\n"
+                "    with open(%(out)r, 'a', encoding='utf-8') as fh:\n"
+                "        fh.write(json.dumps({stage: snapshot_engine_state()}) + '\\n')\n"
+                "def test_a():\n"
+                "    _record('test_a')\n"
+                "def test_b():\n"
+                "    _record('test_b')\n"
+            ) % {"scripts": str(_REPO / "scripts"), "skill": str(_SKILL), "out": str(out)},
+                encoding="utf-8")
+            r = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                 "--rootdir", str(_REPO / "scripts"), str(probe)],
+                capture_output=True, text=True, timeout=300,
+                cwd=str(_REPO / "scripts"), env=_without_the_governed_variables())
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("2 passed", r.stdout, "pytest did not run both probe tests:\n" + r.stdout)
+            seen = {}
+            for line in out.read_text(encoding="utf-8").splitlines():
+                seen.update(json.loads(line))
+        self.assertEqual(sorted(seen), ["test_a", "test_b"], "the probe suite did not run whole")
+        _assert_each_test_got_its_own(self, "pytest with scripts/conftest.py", seen["test_a"], seen["test_b"])
 
     def test_the_battery_invokes_that_runner_and_not_bare_unittest(self):
         text = (_REPO / "scripts" / "check-all.sh").read_text(encoding="utf-8")
@@ -158,75 +293,6 @@ class TheMachineStateHoldsNoFixtures(unittest.TestCase):
             "by a suite:\n  " + "\n  ".join(odd[:20]))
 
 
-class TheRunnersGuardActuallyRotates(unittest.TestCase):
-    """The runner's mechanism, exercised rather than read.
-
-    The three checks above read the two runner files for the right strings,
-    which would go on passing if the guard were present and broken. This drives
-    the result class through two tests and watches the variable move.
-    """
-
-    def test_each_test_gets_its_own_fresh_state_dir(self):
-        probe = (
-            "import os, sys, unittest\n"
-            "sys.path.insert(0, %r)\n"
-            "from run_unit_suite import _HermeticStateResult\n"
-            "seen = []\n"
-            "class T(unittest.TestCase):\n"
-            "    def test_a(self):\n"
-            "        seen.append(os.environ['AGENTM_STATE_DIR'])\n"
-            "    def test_b(self):\n"
-            "        seen.append(os.environ['AGENTM_STATE_DIR'])\n"
-            "suite = unittest.TestLoader().loadTestsFromTestCase(T)\n"
-            "unittest.TextTestRunner(resultclass=_HermeticStateResult,\n"
-            "                        stream=open(os.devnull, 'w')).run(suite)\n"
-            "assert len(seen) == 2, seen\n"
-            "assert seen[0] != seen[1], 'both tests shared one state dir: %%s' %% seen\n"
-            "for d in seen:\n"
-            "    assert %r not in d, 'a test resolved the machine state: ' + d\n"
-            "print('ok')\n"
-        ) % (str(_REPO / "scripts"), str(_MACHINE_STATE))
-
-        r = subprocess.run([sys.executable, "-c", probe],
-                           capture_output=True, text=True, timeout=120,
-                           cwd=str(_REPO / "scripts"))
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("ok", r.stdout)
-
-    def test_each_test_gets_its_own_recall_ledger(self):
-        # Read back through the resolver the ledger writes through. Nothing is
-        # recorded, so a broken runner fails this without touching the ledger.
-        probe = (
-            "import os, sys, unittest\n"
-            "sys.path.insert(0, %r)\n"
-            "sys.path.insert(0, %r)\n"
-            "from run_unit_suite import _HermeticStateResult\n"
-            "import recall_counter\n"
-            "seen = []\n"
-            "class T(unittest.TestCase):\n"
-            "    def test_a(self):\n"
-            "        seen.append(str(recall_counter.default_history_path()))\n"
-            "    def test_b(self):\n"
-            "        seen.append(str(recall_counter.default_history_path()))\n"
-            "suite = unittest.TestLoader().loadTestsFromTestCase(T)\n"
-            "unittest.TextTestRunner(resultclass=_HermeticStateResult,\n"
-            "                        stream=open(os.devnull, 'w')).run(suite)\n"
-            "assert len(seen) == 2, seen\n"
-            "assert seen[0] != seen[1], 'both tests shared one ledger: %%s' %% seen\n"
-            "for p in seen:\n"
-            "    assert p != %r, 'a test resolved the machine ledger: ' + p\n"
-            "print('ok')\n"
-        ) % (str(_REPO / "scripts"), str(_REPO / "harness" / "skills" / "memory" / "scripts"),
-             str(_MACHINE_LEDGER))
-        # Without the battery's own setting, so the probe sees the runner alone.
-        env = {k: v for k, v in os.environ.items() if k != "AGENTM_RECALL_HISTORY"}
-        r = subprocess.run([sys.executable, "-c", probe],
-                           capture_output=True, text=True, timeout=120,
-                           cwd=str(_REPO / "scripts"), env=env)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("ok", r.stdout)
-
-
 def _fingerprint(directory: Path) -> dict:
     """Every file under `directory`, with its modification time and a hash of its bytes."""
     return {
@@ -239,9 +305,11 @@ def _fingerprint(directory: Path) -> dict:
 def _hand_run_env(home: str) -> dict:
     """The environment a person runs a suite in, with the home directory moved to `home`."""
     env = dict(os.environ)
-    # The battery's runner sets both for every test, this one included, and a
-    # person's shell sets neither.
-    for name in ("AGENTM_STATE_DIR", "AGENTM_RECALL_HISTORY"):
+    # The battery's runner sets every governed variable for every test, this
+    # one included, and a person's shell sets none. One inherited from the
+    # outer run would let a check pass vacuously, watching a directory the
+    # child was never going to write.
+    for name in engine_state_isolation.GOVERNED:
         env.pop(name, None)
     # `Path.home()` reads HOME on POSIX and USERPROFILE on Windows. Moving the
     # home also moves the user site directory, where a person's own packages
@@ -526,15 +594,15 @@ class TheGraphSnapshotSuitesRunByHand(unittest.TestCase):
     vault these suites linted, dreamed over or rebuilt got a directory of its
     own there, beside the real vault's: 77,431 of them on one machine, 2.4 GB in
     all. The battery wrote them as surely as a hand run did, because its runner
-    redirects only the engine state directory.
+    did not move the device-local root.
 
     The root now follows `AGENTM_DEVICE_LOCAL_ROOT`, read on every call, and
     `engine_state_isolation` governs that variable. Each suite runs by hand
-    twice, with neither `AGENTM_STATE_DIR` nor `AGENTM_DEVICE_LOCAL_ROOT` set:
-    whole, then only the tests named against it, each of which wrote a snapshot
-    before the fix. Both runs must pass and leave the seeded snapshot root
-    exactly as it was. The second must run every named test and skip none, so
-    the check cannot pass by running nothing.
+    twice, with no governed variable set: whole, then only the tests named
+    against it, each of which wrote a snapshot before the fix. Both runs must
+    pass and leave the seeded snapshot root exactly as it was. The second must
+    run every named test and skip none, so the check cannot pass by running
+    nothing.
     """
 
     WRITERS = {
@@ -574,9 +642,6 @@ class TheGraphSnapshotSuitesRunByHand(unittest.TestCase):
         what = " ".join(("a hand run of", suite) + names)
         with tempfile.TemporaryDirectory() as home:
             env = _hand_run_env(home)
-            # A person's shell does not move the device-local root either, and
-            # one inherited from an outer run would let this pass vacuously.
-            env.pop("AGENTM_DEVICE_LOCAL_ROOT", None)
             root = _seed_snapshot_root(self, env, home)
             before = _fingerprint(root)
 
@@ -626,7 +691,6 @@ class TheDreamingGatesRunUnderAHomeOfTheirOwn(unittest.TestCase):
         for gate in self.GATES:
             with self.subTest(gate=gate), tempfile.TemporaryDirectory() as home:
                 env = _hand_run_env(home)
-                env.pop("AGENTM_DEVICE_LOCAL_ROOT", None)
                 root = _seed_snapshot_root(self, env, home)
                 before = _fingerprint(root)
 
