@@ -16,6 +16,7 @@ Run: python3 scripts/test_console.py
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sys
@@ -290,6 +291,38 @@ class MemoryActivityTests(unittest.TestCase):
         d.mkdir(parents=True)
         (d / "a.md").write_text("---\nstatus: unfiled\n---\n\nx\n", encoding="utf-8")
         self.assertEqual(c.count_inbox(self.vault), 0)
+
+    def test_count_inbox_needs_nothing_an_earlier_call_left_behind(self):
+        """The count holds in a fresh process, whatever ran before it.
+
+        `needs_review` lives in the memory skill's scripts directory. The count
+        used to import it bare, so it counted only when an earlier call had
+        already put that directory on `sys.path`:
+        `test_count_inbox_counts_the_review_queue` passed in the full suite and
+        failed when run alone. Here every `sys.path` entry holding the module
+        is dropped and the module leaves the import cache, which is where a
+        fresh `console.py` process starts.
+        """
+        self._waiting("semantic", "a.md", "status: unfiled")
+        self._waiting("procedural", "b.md", "filing_confidence: low")
+        fresh = [p for p in sys.path if not os.path.isfile(os.path.join(p or ".", "needs_review.py"))]
+        with patch.object(sys, "path", fresh), patch.dict(sys.modules):
+            sys.modules.pop("needs_review", None)
+            self.assertIsNone(importlib.util.find_spec("needs_review"),
+                              "needs_review is still importable, so this proves nothing")
+            self.assertEqual(c.count_inbox(self.vault), 2)
+
+    def test_an_inbox_it_cannot_read_is_not_reported_empty(self):
+        """A queue the console could not read says n/a rather than zero."""
+        self._waiting("semantic", "a.md", "status: unfiled")
+        with patch.object(c, "_memory_scripts_dir", return_value=None):
+            self.assertIsNone(c.count_inbox(self.vault))
+            self.assertIn("Inbox: n/a", c.section_memory(self.vault))
+        with patch.object(sys, "path", [str(c._memory_scripts_dir()), *sys.path]):
+            import needs_review  # the module count_inbox asks
+
+            with patch.object(needs_review, "summary", side_effect=OSError("unreadable")):
+                self.assertIsNone(c.count_inbox(self.vault))
 
     def test_count_incubator_root_level(self):
         (self.vault / "_idea-incubator" / "idea-one").mkdir(parents=True)

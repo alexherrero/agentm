@@ -391,22 +391,38 @@ _INBOX_SKIP = {"_index.md", "readme.md", "_readme.md"}
 _CURATED_SKIP_DIRS = {"_inbox", "_skill-watchlist", "_watchlist", "_archive", "_opinions"}
 
 
-def count_inbox(vault: Path) -> int:
-    """How many memories are waiting to be looked at.
+def count_inbox(vault: Path) -> "int | None":
+    """How many memories are waiting to be looked at, or None when the queue
+    cannot be read.
 
     Filing v2 removed the staging directory this used to count: a capture
     lands in its class folder carrying `status: unfiled` or a low confidence
     stamp, and the review queue became a query. Reading `memory/_inbox/`
     returned zero from the day the directory went until 2026-09-06.
 
+    The query is the memory skill's `needs_review.py`, so the import puts
+    `_memory_scripts_dir()` on `sys.path` first, as `watchlist_summary()` and
+    `heat_policy_report()` do. Until 2026-09-13 it imported the module bare.
+    That worked only when an earlier call had already added the directory,
+    and the import error it hit otherwise was counted as an empty queue. A
+    queue this cannot read is None now, and `section_memory()` says n/a.
+
     NOTE: `orchestration_briefing.py` carries its own `count_inbox()`. The
     two are duplicates that agree, and console.py keeps its own rather than
-    importing across the seam."""
+    importing across the seam. That one needs no path step: the module puts
+    its own directory, which holds `needs_review.py`, on `sys.path` as it
+    loads."""
+    mem_dir = _memory_scripts_dir()
+    if mem_dir is None:
+        return None
+    if str(mem_dir) not in sys.path:
+        sys.path.insert(0, str(mem_dir))
     try:
-        import needs_review
+        import needs_review  # type: ignore
+
         return int(needs_review.summary(vault).get("total", 0))
     except Exception:
-        return 0
+        return None
 
 
 def count_incubator(vault: Path) -> int:
@@ -536,7 +552,10 @@ def section_memory(vault: "Path | None") -> str:
         )
     lines = []
     inbox_n = count_inbox(vault)
-    lines.append(f"Inbox: {inbox_n} unreviewed entr{'y' if inbox_n == 1 else 'ies'}")
+    if inbox_n is None:
+        lines.append("Inbox: n/a (the memory skill's review queue could not be read)")
+    else:
+        lines.append(f"Inbox: {inbox_n} unreviewed entr{'y' if inbox_n == 1 else 'ies'}")
     lines.append(watchlist_summary(vault))
     incubator_n = count_incubator(vault)
     lines.append(f"Incubator: {incubator_n} idea{'' if incubator_n == 1 else 's'} in research")

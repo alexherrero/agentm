@@ -78,6 +78,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the morning note's suites hold their paths to the runner's resolver.
   `test_machinery_doctor` and `test_session_brief_runner` carry the isolation
   helper now, as the console's and the morning note's suites already did.
+- **The console counts the review queue it shows, and says n/a when it cannot
+  read it.** `count_inbox()` in `harness/skills/console/scripts/console.py`
+  imported `needs_review` without putting the memory skill's scripts directory
+  on `sys.path`, and counted the import error as an empty queue. Since
+  [#571](https://github.com/alexherrero/agentm/pull/571) moved the count onto
+  `needs_review` on 2026-09-06, every console run has reported
+  `Inbox: 0 unreviewed entries`. Run against a fixture vault holding two waiting
+  notes, it said zero from inside an agentm checkout and from outside one. It
+  now resolves the module the way `watchlist_summary()` and
+  `heat_policy_report()` do, and a queue it cannot read renders `Inbox: n/a`.
+  `test_console.py`'s count passed in the full suite only because an earlier
+  test had already added the directory, and failed when run alone. A new test
+  rebuilds a fresh process's import state first, so the result no longer
+  depends on test order. `orchestration_briefing.py`'s own `count_inbox()`
+  never had the gap: that module puts its own directory on `sys.path` as it
+  loads. `test_engine_state_not_leaked` now runs the whole of `test_console.py`
+  by hand, where [#647](https://github.com/alexherrero/agentm/pull/647) had
+  held it to the console's CLI tests until this fix landed.
 
 ## [9.24.0] - 2026-09-14
 
