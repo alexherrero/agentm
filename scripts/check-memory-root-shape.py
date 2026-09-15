@@ -55,6 +55,7 @@ AGENT_DIRS = {"diagnostics", "memory", "archive"}
 AGENT_LOOSE_UNTIL_MAPS = {"Home.md"}  # retired by the maps data run (agentm-vault plan 07)
 IGNORABLE = {".DS_Store", "Icon\r", "Icon", ".rename-vault-root-complete", ".gitkeep",
              ".card-backfill-complete",  # the card backfill's marker (agentm-vault plan 06)
+             ".root-casing-complete",  # the root casing's marker (agentm-vault plan 08)
              ms.MARKER_NAME}  # the maps data run's marker (agentm-vault plan 07)
 STANDARDS_SET = ("storage-rules.md", "user-preferences.md",
                  "security-and-secret-governance.md", "moc-standards.md")

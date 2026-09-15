@@ -104,6 +104,16 @@ class ShapeGateTests(unittest.TestCase):
         rc, text = self._check()
         self.assertEqual(rc, 0, text)
 
+    def test_the_root_casings_marker_is_tolerated_in_memory(self):
+        # The root casing's data run (agentm-vault plan 08) writes
+        # `memory/.root-casing-complete` beside the other data runs' markers;
+        # the first battery after the run named it as a loose file.
+        mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
+        (self.root / "memory" / ".root-casing-complete").write_text("run r\nfinished t\n", encoding="utf-8")
+        rc, text = self._check()
+        self.assertEqual(rc, 0, text)
+        self.assertNotIn(".root-casing-complete", text, "the data run's own marker was named")
+
     def test_a_missing_standards_file_is_named(self):
         mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
         (self.vault / "standards" / "moc-standards.md").unlink()

@@ -132,6 +132,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`check-memory-root-shape` tolerates the root casing's marker.** The data
+  run writes `agent/memory/.root-casing-complete` beside the other data runs'
+  markers, and the first battery after the run named it as a loose file in
+  `memory/`; the gate's ignorable set now lists it, as it lists the card
+  backfill's and the maps run's (agentm-vault plan 08, found by the battery
+  after the data run).
 - **`recent-wiki-changes` lists the registry on a machine with no vault.** The
   memory-root trims moved the repo registry to the engine state directory, but
   `scripts/recent-wiki-changes.sh` and its PowerShell twin still exited 1
