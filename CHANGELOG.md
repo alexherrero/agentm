@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A tracker is rewritten under its own status (agentm-vault, the tracker
+  rewrite).** `tracker.py transition --to <status>` takes a queued, active or
+  parked tracker's own status as an in-place rewrite: the State and Next it
+  names replace the ones on file and `updated` is stamped, while the status,
+  `closed` and the Outcome stay as they were. A rewrite names `--state`,
+  `--next` or both; one that names neither, or names `--outcome`, is refused,
+  and `done` and `dropped` are never rewritten. It goes through the same
+  atomic, hash-checked write as a transition, so crickets' `/work` can keep a
+  tracker current at every step.
+
 ### Fixed
 
 - **The battery's runners rotate every variable the isolation helper
