@@ -434,6 +434,18 @@ class TheOpenTrackerGate(Fixture):
         self.open_trackers()
         self.assertEqual(mig.open_tracker_gate(self.vault, self.plan()), [])
 
+    def test_a_tracker_written_on_a_crlf_host_still_reads(self) -> None:
+        # `tracker.py` refuses a CRLF tracker outright — `no frontmatter block`,
+        # failing at the delimiter before any heading is reached — so the gate
+        # reported a perfectly good tracker as unreadable and refused the move
+        # (CI, 2026-09-16). A tracker written on a CRLF host is a real tracker.
+        self.open_trackers()
+        for path in (self.alpha / "_harness" / "tracker-build-the-widget.md",
+                     self.beta / "_harness" / "tracker.md"):
+            path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+            self.assertIn(b"\r\n", path.read_bytes())
+        self.assertEqual(mig.open_tracker_gate(self.vault, self.plan()), [])
+
     def test_a_closed_task_needs_no_hand_written_state(self) -> None:
         self.open_trackers()
         closed = [t for t in self.plan()["trackers"] if t["status"] == "done"]

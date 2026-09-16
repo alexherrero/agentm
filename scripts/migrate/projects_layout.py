@@ -153,6 +153,19 @@ def _load(path: Path) -> str:
     return path.read_bytes().decode("utf-8")
 
 
+def _parsed_text(path: Path) -> str:
+    """A note's text with its line endings normalised, for parsing.
+
+    Two different jobs were one function and should not have been. Rewriting a
+    file wants its bytes back unchanged, so `_load` decodes and does not
+    translate. *Parsing* one wants line endings out of the way: `tracker.py`
+    refuses a CRLF tracker outright — `no frontmatter block`, because the
+    delimiter line does not match before any heading is reached — and the gate
+    would report a perfectly good tracker as unreadable. A tracker written on a
+    CRLF host is a real tracker; the gate reads it."""
+    return _load(path).replace("\r\n", "\n")
+
+
 def _store(path: Path, text: str) -> bytes:
     """Write `text` as the bytes it is, and answer them, so the caller journals
     the digest of what is now on disk."""
@@ -810,7 +823,7 @@ def open_tracker_gate(vault: Path, plan: dict) -> list:
                 f"before the move")
             continue
         try:
-            parsed = tk.parse(_load(vault / src))
+            parsed = tk.parse(_parsed_text(vault / src))
         except (OSError, tk.TrackerError) as exc:
             problems.append(f"{src} does not read as a tracker: {exc}")
             continue
@@ -876,7 +889,7 @@ def _stamp_task(vault: Path, t: dict) -> Optional[dict]:
     after digests, or None when the tracker already named it."""
     path = vault / t["path"]
     try:
-        before = _load(path)
+        before = _parsed_text(path)
         parsed = tk.parse(before)
     except (OSError, tk.TrackerError):
         return None
@@ -1100,7 +1113,7 @@ def finish(vault, recorded: dict, out_dir) -> list:
                 problems.append(f"{p.name}/{TASKS}/{t.name} has no tracker.md")
                 continue
             try:
-                parsed = tk.parse(_load(tracker))
+                parsed = tk.parse(_parsed_text(tracker))
             except (OSError, tk.TrackerError) as exc:
                 problems.append(f"{p.name}/{TASKS}/{t.name}/tracker.md does not read: {exc}")
                 continue
