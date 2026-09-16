@@ -228,9 +228,11 @@ class TheTable(Fixture):
     def test_the_brief_the_prompt_and_the_probe_keep_their_own_names(self) -> None:
         # Three papers for one task are three files; one `brief.md` would collide.
         plan = self.plan()
-        task = Path(self.dest(plan, "_harness/PLAN-build-the-widget.md")).parent
-        self.assertEqual(self.dest(plan, "BRIEF-build-the-widget.md"), str(task / "brief.md"))
-        self.assertEqual(self.dest(plan, "PROMPT-build-the-widget.md"), str(task / "prompt.md"))
+        # A destination is a vault-relative, forward-slashed string; `str(Path)`
+        # would spell it the host's way and only match on a POSIX runner.
+        task = self.dest(plan, "_harness/PLAN-build-the-widget.md").rsplit("/", 1)[0]
+        self.assertEqual(self.dest(plan, "BRIEF-build-the-widget.md"), f"{task}/brief.md")
+        self.assertEqual(self.dest(plan, "PROMPT-build-the-widget.md"), f"{task}/prompt.md")
 
     def test_a_brief_with_no_task_goes_to_the_desk(self) -> None:
         self.assertTrue(self.dest(self.plan(), "BRIEF-unattached.md")
@@ -553,6 +555,24 @@ class Applying(Fixture):
         self.assertIn("|the thing]]", text)          # an alias that was there is kept
         self.assertIn("#Why|BRIEF-unattached]]", text)  # an anchor survives
         self.assertNotIn("[[PLAN-build-the-widget]]", text)
+
+    def test_every_journaled_digest_names_the_bytes_on_disk(self) -> None:
+        # The invariant `--revert` rests on. Text mode translates line endings on
+        # Windows, so a text-mode read-transform-write moved the bytes out from
+        # under the digest and the revert refused to restore anything (CI,
+        # 2026-09-16). Stated here directly, so it is checked on every runner.
+        import hashlib
+        for t in self.journal["trackers"]:
+            data = (self.vault / t["path"]).read_bytes()
+            self.assertEqual(hashlib.sha256(data).hexdigest(), t["sha"], t["path"])
+        for e in self.journal["links"]:
+            data = (self.vault / e["rel"]).read_bytes()
+            self.assertEqual(hashlib.sha256(data).hexdigest(), e["after_sha"], e["rel"])
+        for s in self.journal["stamped"]:
+            data = (self.vault / s["path"]).read_bytes()
+            self.assertEqual(hashlib.sha256(data).hexdigest(), s["after_sha"], s["path"])
+        self.assertTrue(self.journal["trackers"] and self.journal["links"]
+                        and self.journal["stamped"])
 
     def test_an_ambiguous_basename_is_left_alone_and_listed(self) -> None:
         self.assertIn("[[progress]]", self.note.read_text(encoding="utf-8"))

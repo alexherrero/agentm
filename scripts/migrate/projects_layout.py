@@ -142,6 +142,25 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _load(path: Path) -> str:
+    """A note's text, decoded from its bytes rather than read in text mode.
+
+    Every file this run rewrites is journaled by the digest of what it wrote, and
+    a digest only names a file if it is taken over the bytes on disk. Text mode
+    translates the line endings on Windows in both directions, so a text-mode
+    read-transform-write moves the bytes out from under the digest and the revert
+    then refuses to restore anything (CI, 2026-09-16). Bytes in, bytes out."""
+    return path.read_bytes().decode("utf-8")
+
+
+def _store(path: Path, text: str) -> bytes:
+    """Write `text` as the bytes it is, and answer them, so the caller journals
+    the digest of what is now on disk."""
+    data = text.encode("utf-8")
+    path.write_bytes(data)
+    return data
+
+
 def _git(vault: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(vault), *args], capture_output=True, text=True)
 
@@ -791,7 +810,7 @@ def open_tracker_gate(vault: Path, plan: dict) -> list:
                 f"before the move")
             continue
         try:
-            parsed = tk.parse((vault / src).read_text(encoding="utf-8"))
+            parsed = tk.parse(_load(vault / src))
         except (OSError, tk.TrackerError) as exc:
             problems.append(f"{src} does not read as a tracker: {exc}")
             continue
@@ -824,8 +843,7 @@ def _write_tracker(vault: Path, t: dict, today: str) -> str:
     ))
     path = vault / t["path"]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(rendered, encoding="utf-8")
-    return _sha(rendered.encode("utf-8"))
+    return _sha(_store(path, rendered))
 
 
 def _prune_empty(vault: Path, plan: dict) -> list:
@@ -858,7 +876,7 @@ def _stamp_task(vault: Path, t: dict) -> Optional[dict]:
     after digests, or None when the tracker already named it."""
     path = vault / t["path"]
     try:
-        before = path.read_text(encoding="utf-8")
+        before = _load(path)
         parsed = tk.parse(before)
     except (OSError, tk.TrackerError):
         return None
@@ -867,9 +885,8 @@ def _stamp_task(vault: Path, t: dict) -> Optional[dict]:
         return None
     parsed.task = t["task"]
     after = tk.render(parsed)
-    path.write_text(after, encoding="utf-8")
     return {"path": t["path"], "task": t["task"], "was": was, "before": before,
-            "after_sha": _sha(after.encode("utf-8"))}
+            "after_sha": _sha(_store(path, after))}
 
 
 def apply(vault, recorded: dict, confirm_count: int, out_dir, *,
@@ -944,15 +961,14 @@ def apply(vault, recorded: dict, confirm_count: int, out_dir, *,
     if journal["landed"]:
         for note in _vault_notes(vault):
             try:
-                before = note.read_text(encoding="utf-8")
+                before = _load(note)
             except (OSError, UnicodeDecodeError):
                 continue
             after, n = rewrite_links(before, moved)
             if n and after != before:
-                note.write_text(after, encoding="utf-8")
                 journal["links"].append({"rel": _rel(note, vault), "links": n,
                                          "before_sha": _sha(before.encode("utf-8")),
-                                         "after_sha": _sha(after.encode("utf-8"))})
+                                         "after_sha": _sha(_store(note, after))})
 
     # 4. The directories the moves emptied. Git does not track a directory, so
     #    `_harness/` and its subdirectories are still on disk with nothing in
@@ -1004,13 +1020,13 @@ def _repoint_markers(plan: dict, *, roots=None) -> list:
 
     def rewrite_marker(marker: Path) -> None:
         try:
-            text = marker.read_text(encoding="utf-8")
+            text = _load(marker)
         except OSError:
             return
         old = text.strip()
         if old not in renamed:
             return
-        marker.write_text(renamed[old] + "\n", encoding="utf-8")
+        _store(marker, renamed[old] + "\n")
         out.append({"kind": "marker", "path": str(marker), "before": text,
                     "after": renamed[old] + "\n"})
 
@@ -1021,7 +1037,7 @@ def _repoint_markers(plan: dict, *, roots=None) -> list:
         rewrite_marker(harness / "active-plan")  # a direct-mode session
         for pointer in sorted(harness.glob(f"{_POINTER_PREFIX}*")):
             try:
-                worktree = Path(pointer.read_text(encoding="utf-8").strip())
+                worktree = Path(_load(pointer).strip())
             except OSError:
                 continue
             rewrite_marker(worktree / ".harness" / "active-plan")
@@ -1084,7 +1100,7 @@ def finish(vault, recorded: dict, out_dir) -> list:
                 problems.append(f"{p.name}/{TASKS}/{t.name} has no tracker.md")
                 continue
             try:
-                parsed = tk.parse(tracker.read_text(encoding="utf-8"))
+                parsed = tk.parse(_load(tracker))
             except (OSError, tk.TrackerError) as exc:
                 problems.append(f"{p.name}/{TASKS}/{t.name}/tracker.md does not read: {exc}")
                 continue
@@ -1162,12 +1178,12 @@ def revert(vault, run_id: str, out_dir, *, run=None) -> None:
         p = vault / e["rel"]
         if not p.is_file():
             continue
-        restored, _n = restore_links(p.read_text(encoding="utf-8"), inverse)
-        p.write_text(restored, encoding="utf-8")
+        restored, _n = restore_links(_load(p), inverse)
+        _store(p, restored)
     for s in journal.get("stamped", []):
         p = vault / s["path"]
         if p.is_file():
-            p.write_text(s["before"], encoding="utf-8")
+            _store(p, s["before"])
     for t in journal.get("trackers", []):
         p = vault / t["path"]
         if p.is_file():
@@ -1180,7 +1196,7 @@ def revert(vault, run_id: str, out_dir, *, run=None) -> None:
                           f"{(result.stderr or result.stdout).strip()[:300]}")
     for entry in reversed(journal.get("markers", [])):
         if entry["kind"] == "marker":
-            Path(entry["path"]).write_text(entry["before"], encoding="utf-8")
+            _store(Path(entry["path"]), entry["before"])
         else:
             Path(entry["to"]).rename(entry["from"])
     marker = vault / MARKER_REL
