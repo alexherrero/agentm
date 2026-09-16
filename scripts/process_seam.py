@@ -49,6 +49,14 @@ Run directly for the shell shim:
 
     python3 scripts/process_seam.py state-path plan
     python3 scripts/process_seam.py offer-save-here --kind decision --slug foo --body-file -
+
+The shim's exit codes: 0 resolved, 2 a caller bug or a loud refusal the engine
+raised, and **4 name the task** — a bare ``state-path`` on a project that keeps
+its plans in numbered tasks, which has no singleton to answer with. Exit 4 puts
+nothing on stdout and one line on stderr; it is the code the crickets
+development-lifecycle release handles (agentm-vault plan 10, task 7(b)). It is
+not the [LC-3] degrade: [LC-3] is about a project with no vault, which still has
+a repo-local ``.harness/`` to name, and still exits 0.
 """
 from __future__ import annotations
 
@@ -142,6 +150,10 @@ def state_path(context: Optional[dict], which: str) -> Path:
             or names an unsafe slug. A corrupt/unsafe marker is a loud-fail
             safety property (V5-10 Risk #7), not the absent-memory degrade —
             silently degrading there could mis-bind the worker to another plan.
+        harness_memory.TaskNameRequired: propagated when ``context`` names no
+            plan and the project keeps its plans in numbered tasks — it has no
+            singleton, so there is no path to return. The shim answers exit 4;
+            an in-process caller catches it and asks which task.
     """
     if which not in _STATE_WHICH:
         raise ValueError(
@@ -209,7 +221,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         context = {"cwd": args.cwd} if args.cwd else {}
         if args.plan:
             context["plan"] = args.plan
-        print(state_path(context, args.which))
+        try:
+            resolved = state_path(context, args.which)
+        except _hm.TaskNameRequired as exc:
+            # Exit 4, nothing on stdout: a bare call on a project that keeps its
+            # plans in numbered tasks has no singleton to answer with. The
+            # crickets development-lifecycle release handles exactly this code
+            # and asks which task (agentm-vault plan 10, task 7(b)).
+            print(f"[process_seam] {exc}", file=sys.stderr)
+            return 4
+        print(resolved)
         return 0
 
     if args.cmd == "offer-save-here":

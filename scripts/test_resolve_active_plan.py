@@ -20,6 +20,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -442,6 +443,184 @@ class PlanNameContractParity(unittest.TestCase):
     def test_slug_safety_golden_vectors(self) -> None:
         for slug, expected in _PLAN_SLUG_SAFETY:
             self.assertEqual(hm._is_safe_plan_slug(slug), expected, f"slug={slug!r}")
+
+
+class TaskPlacementAndLookup(unittest.TestCase):
+    """A project that keeps its plans in numbered tasks (agentm-vault plan 10,
+    task 7).
+
+    The migration leaves a project with no `_harness/` and a `tasks/` full of
+    `NNN-<verb-slug>/` directories. Three things have to hold from that day on: a
+    new plan lands in a new numbered task rather than back in the directory the
+    migration removed; a task is found by its own name or by the verb slug inside
+    it, and two tasks sharing a verb slug are refused by name; and a bare call,
+    which has no singleton to answer with, exits 4 rather than naming a file that
+    will never exist.
+    """
+
+    def setUp(self) -> None:
+        from storage_seam import Locator
+        from vault_backend_stub import VaultBackend
+
+        self._tmp = tempfile.mkdtemp(prefix="agentm-task-placement-")
+        root = Path(self._tmp)
+        self.vault = root / "vault"
+        self.proj = root / "repo"
+        (self.proj / ".harness").mkdir(parents=True)
+        self.project_dir = self.vault / "projects" / "fixture"
+        self.harness = self.project_dir / "_harness"
+        self.tasks = self.project_dir / "tasks"
+        self.tasks.mkdir(parents=True)  # migrated: tasks/ exists, _harness/ does not
+        self.resolution = {
+            "backend": VaultBackend(root=self.vault, lock_root=root / "locks"),
+            "project_locator": Locator("projects/fixture"),
+            "project_root": self.proj,
+            "slug": "fixture",
+        }
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _task(self, name: str, body: str = "# plan\n") -> Path:
+        task = self.tasks / name
+        task.mkdir(parents=True, exist_ok=True)
+        (task / "plan.md").write_text(body, encoding="utf-8")
+        return task
+
+    def _run(self, *cli_args: str) -> tuple:
+        out, err = io.StringIO(), io.StringIO()
+        argv = ["resolve-active-plan", "--project-root", str(self.proj), *cli_args]
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            with unittest.mock.patch.object(hm, "resolve_project",
+                                            return_value=self.resolution):
+                rc = hm.main(argv)
+        return rc, out.getvalue(), err.getvalue()
+
+    # --- placement: a new plan lands in a new numbered task ---
+
+    def test_a_new_plan_takes_the_first_number_on_an_empty_project(self) -> None:
+        plan, progress, tracker = hm.active_plan_paths(
+            self.resolution, plan_arg="build-the-brief")
+        self.assertEqual(plan, self.tasks / "001-build-the-brief" / "plan.md")
+        self.assertEqual(progress, self.tasks / "001-build-the-brief" / "progress.md")
+        self.assertEqual(tracker, self.tasks / "001-build-the-brief" / "tracker.md")
+
+    def test_a_new_plan_takes_the_next_free_number(self) -> None:
+        self._task("001-first")
+        self._task("007-seventh")
+        self._task("003-third")
+        active = hm.resolve_active_plan(self.resolution, plan_arg="eighth")
+        self.assertEqual((active.layout, active.slug), ("task", "008-eighth"))
+
+    def test_placement_writes_nothing(self) -> None:
+        before = sorted(p.name for p in self.tasks.iterdir())
+        hm.active_plan_paths(self.resolution, plan_arg="build-the-brief")
+        self.assertEqual(sorted(p.name for p in self.tasks.iterdir()), before)
+        self.assertFalse((self.tasks / "001-build-the-brief").exists())
+
+    def test_a_number_the_operator_typed_is_not_prefixed_again(self) -> None:
+        active = hm.resolve_active_plan(self.resolution, plan_arg="042-build-the-brief")
+        self.assertEqual(active.slug, "042-build-the-brief")
+
+    def test_a_project_that_still_has_a_harness_keeps_the_flat_pair(self) -> None:
+        # The discriminator is the `_harness/` directory, so an unmigrated
+        # project's new plan still lands flat — placement is not retroactive.
+        self.harness.mkdir(parents=True)
+        active = hm.resolve_active_plan(self.resolution, plan_arg="build-the-brief")
+        self.assertEqual((active.layout, active[0]), ("flat", "PLAN-build-the-brief.md"))
+
+    def test_a_repo_with_no_vault_keeps_the_flat_pair(self) -> None:
+        local = {"project_root": self.proj, "slug": "fixture"}
+        active = hm.resolve_active_plan(local, plan_arg="build-the-brief")
+        self.assertEqual((active.layout, active[0]), ("flat", "PLAN-build-the-brief.md"))
+
+    # --- lookup: both forms of a task's name ---
+
+    def test_a_task_is_found_by_its_own_name(self) -> None:
+        task = self._task("042-build-the-brief")
+        active = hm.resolve_active_plan(self.resolution, plan_arg="042-build-the-brief")
+        self.assertEqual((Path(active[0]), active.slug),
+                         (task / "plan.md", "042-build-the-brief"))
+
+    def test_a_task_is_found_by_the_verb_slug_inside_it(self) -> None:
+        task = self._task("042-build-the-brief")
+        active = hm.resolve_active_plan(self.resolution, plan_arg="build-the-brief")
+        self.assertEqual((Path(active[0]), active.slug),
+                         (task / "plan.md", "042-build-the-brief"))
+
+    def test_both_forms_find_the_same_task(self) -> None:
+        self._task("042-build-the-brief", body="# the brief plan\n")
+        by_name = hm.active_plan_paths(self.resolution, plan_arg="042-build-the-brief")
+        by_slug = hm.active_plan_paths(self.resolution, plan_arg="build-the-brief")
+        self.assertEqual(by_name, by_slug)
+        self.assertEqual(by_name[0].read_text(encoding="utf-8"), "# the brief plan\n")
+
+    def test_a_duplicate_slug_is_refused_by_name(self) -> None:
+        self._task("012-build-the-brief")
+        self._task("043-build-the-brief")
+        with self.assertRaises(hm.ActivePlanError) as caught:
+            hm.resolve_active_plan(self.resolution, plan_arg="build-the-brief")
+        message = str(caught.exception)
+        self.assertIn("012-build-the-brief", message)
+        self.assertIn("043-build-the-brief", message)
+
+    def test_a_duplicate_slug_still_resolves_by_the_numbered_form(self) -> None:
+        # The refusal is the ambiguity, not the pair: naming one is unambiguous.
+        self._task("012-build-the-brief")
+        task = self._task("043-build-the-brief")
+        active = hm.resolve_active_plan(self.resolution, plan_arg="043-build-the-brief")
+        self.assertEqual(Path(active[0]), task / "plan.md")
+
+    def test_an_unnumbered_task_directory_is_still_found_by_its_name(self) -> None:
+        task = self._task("build-the-brief")
+        active = hm.resolve_active_plan(self.resolution, plan_arg="build-the-brief")
+        self.assertEqual(Path(active[0]), task / "plan.md")
+
+    def test_a_blank_task_plan_is_placed_rather_than_resolved(self) -> None:
+        # An empty plan.md is not a task, the same rule the flat layout applies;
+        # on a migrated project the slug is then placed, not answered flat.
+        self._task("042-build-the-brief", body="   \n")
+        active = hm.resolve_active_plan(self.resolution, plan_arg="build-the-brief")
+        self.assertEqual((active.layout, active.slug), ("task", "043-build-the-brief"))
+
+    # --- the bare call: exit 4 ---
+
+    def test_a_bare_call_refuses_on_a_migrated_project(self) -> None:
+        with self.assertRaises(hm.TaskNameRequired) as caught:
+            hm.resolve_active_plan(self.resolution)
+        self.assertIn("fixture", str(caught.exception))
+
+    def test_a_bare_call_answers_exit_4_with_nothing_on_stdout(self) -> None:
+        rc, out, err = self._run()
+        self.assertEqual(rc, 4)
+        self.assertEqual(out, "")
+        self.assertIn("numbered tasks", err)
+
+    def test_a_named_call_still_answers_0_and_the_line(self) -> None:
+        self._task("042-build-the-brief")
+        rc, out, err = self._run("--plan", "build-the-brief", "--with-tracker")
+        self.assertEqual((rc, err), (0, ""))
+        task = self.tasks / "042-build-the-brief"
+        self.assertEqual(out.strip().split("\t"),
+                         [str(task / "plan.md"), str(task / "progress.md"),
+                          str(task / "tracker.md")])
+
+    def test_a_duplicate_slug_answers_2_not_4(self) -> None:
+        # Exit 4 means "name the task"; an ambiguous name is the loud refusal the
+        # marker contract already owns, so it keeps 2 and never degrades to 4.
+        self._task("012-build-the-brief")
+        self._task("043-build-the-brief")
+        rc, out, err = self._run("--plan", "build-the-brief")
+        self.assertEqual((rc, out), (2, ""))
+        self.assertIn("043-build-the-brief", err)
+
+    def test_a_bare_call_on_a_project_with_a_harness_answers_the_singleton(self) -> None:
+        self.harness.mkdir(parents=True)
+        rc, out, err = self._run()
+        self.assertEqual((rc, err), (0, ""))
+        self.assertEqual(out.strip().split("\t"),
+                         [str(self.harness / "PLAN.md"),
+                          str(self.harness / "progress.md")])
 
 
 if __name__ == "__main__":
