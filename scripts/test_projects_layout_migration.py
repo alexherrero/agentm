@@ -442,8 +442,13 @@ class TheOpenTrackerGate(Fixture):
         self.open_trackers()
         for path in (self.alpha / "_harness" / "tracker-build-the-widget.md",
                      self.beta / "_harness" / "tracker.md"):
-            path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
-            self.assertIn(b"\r\n", path.read_bytes())
+            # Normalise before converting: the fixture writes in text mode, so on
+            # a CRLF host these are already CRLF and a bare `\n` -> `\r\n` would
+            # make `\r\r\n`, which is neither ending and tests nothing.
+            data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+            path.write_bytes(data)
+            self.assertIn(b"\r\n", data)
+            self.assertNotIn(b"\r\r", data)
         self.assertEqual(mig.open_tracker_gate(self.vault, self.plan()), [])
 
     def test_a_closed_task_needs_no_hand_written_state(self) -> None:
