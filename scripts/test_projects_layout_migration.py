@@ -86,6 +86,9 @@ class Fixture(unittest.TestCase):
         self.write(a / "BRIEF-unattached.md", "No task yet.\n")
         self.write(a / "designs" / "a-design" / "design-doc.md", "A design.\n")
         self.write(a / "research-old" / "finding.md", "A finding.\n")
+        # `research/` is already the destination and names no bundle; a bundle
+        # directory names one in its own name. Both are the research row.
+        self.write(a / "research" / "deep.md", "A deeper finding.\n")
         self.write(a / "FOLLOWUPS.md", "- one\n")
         self.write(a / "ROADMAP-MASTER.md", "# Roadmap\n")
         self.write(a / "ROADMAP.md", "# The open table\n")
@@ -190,6 +193,15 @@ class TheTable(Fixture):
             Path(self.dest(plan, "progress.archive.20260501-cut-the-rope.md")).parent,
             Path(self.dest(plan, "PLAN.archive.20260501-cut-the-rope.md")).parent)
 
+    def test_a_progress_log_with_no_plan_beside_it_goes_where_its_plan_went(self) -> None:
+        # crickets carries one of these: a `progress-<slug>.md` left in the
+        # harness root after its plan was archived. It belongs to that task.
+        self.write(self.alpha / "_harness" / "progress-cut-the-rope.md", "# Orphan\n")
+        plan = self.plan()
+        self.assertEqual(
+            Path(self.dest(plan, "_harness/progress-cut-the-rope.md")).parent,
+            Path(self.dest(plan, "PLAN.archive.20260501-cut-the-rope.md")).parent)
+
     def test_a_queued_draft_becomes_a_task_and_the_directory_dissolves(self) -> None:
         plan = self.plan()
         dst = self.dest(plan, "queued-plans/PLAN-trim-the-edges.md")
@@ -212,6 +224,7 @@ class TheTable(Fixture):
         for suffix, expected in (
             ("designs/a-design/design-doc.md", "alpha/designs/a-design/design-doc.md"),
             ("research-old/finding.md", "alpha/research/old/finding.md"),
+            ("_harness/research/deep.md", "alpha/research/deep.md"),
             ("_harness/FOLLOWUPS.md", "alpha/followups.md"),
             ("_harness/ROADMAP-MASTER.md", "alpha/roadmap.md"),
             ("_harness/ROADMAP.md", "alpha/completed/ROADMAP.md"),
@@ -242,6 +255,60 @@ class TheTable(Fixture):
         # The only tree the migration reads is `<vault>/projects/*/_harness/`.
         for m in self.plan()["moves"]:
             self.assertTrue(m["src"].startswith("projects/"), m["src"])
+
+
+class TheGoldSet(Fixture):
+    """The retrieval gate expects notes the move takes, so the eval gets a remap
+    row per expectation and the fixture is never edited. A moved question is
+    named with its cause before it is called drift."""
+
+    def _gold(self, *paths: str) -> Path:
+        p = self.vault.parent / "gold.json"
+        p.write_text(json.dumps({"entries": [
+            {"id": "q1", "expected_note_paths": list(paths)}]}), encoding="utf-8")
+        return p
+
+    def test_a_row_is_a_full_path_not_a_prefix(self) -> None:
+        # A prefix row could rewrite a note it was never measured against.
+        pairs, missing = mig.gold_remaps(
+            self.plan(), self._gold("Agent/desk/projects/alpha/_harness/designs/a-design/design-doc.md"))
+        self.assertEqual(missing, [])
+        self.assertEqual(pairs, [("projects/alpha/_harness/designs/a-design/design-doc.md",
+                                  "projects/alpha/designs/a-design/design-doc.md")])
+
+    def test_a_plan_that_becomes_a_numbered_task_carries_its_number(self) -> None:
+        # The number is only knowable from the recorded plan, which is why these
+        # are generated rather than written by hand.
+        pairs, _missing = mig.gold_remaps(
+            self.plan(), self._gold("Agent/desk/projects/beta/_harness/PLAN.md"))
+        self.assertEqual(len(pairs), 1)
+        old, new = pairs[0]
+        self.assertEqual(old, "projects/beta/_harness/PLAN.md")
+        self.assertRegex(new, r"^projects/beta/tasks/\d{3}-.+/plan\.md$")
+
+    def test_an_expectation_outside_a_harness_is_not_a_row(self) -> None:
+        pairs, missing = mig.gold_remaps(self.plan(), self._gold("agent/memory/semantic/a-card.md"))
+        self.assertEqual((pairs, missing), ([], []))
+
+    def test_an_expectation_the_table_cannot_place_is_reported_not_skipped(self) -> None:
+        pairs, missing = mig.gold_remaps(
+            self.plan(), self._gold("Agent/desk/projects/alpha/_harness/gone.md"))
+        self.assertEqual(pairs, [])
+        self.assertEqual(missing, ["projects/alpha/_harness/gone.md"])
+
+    def test_the_rows_are_stable_across_two_runs(self) -> None:
+        gold = self._gold("Agent/desk/projects/alpha/_harness/designs/a-design/design-doc.md",
+                          "Agent/desk/projects/beta/_harness/progress.md")
+        self.assertEqual(mig.gold_remaps(self.plan(), gold), mig.gold_remaps(self.plan(), gold))
+
+    def test_the_cli_prints_the_table_and_exits_nonzero_on_a_gap(self) -> None:
+        # A gap is the whole point of the mode: it says which expectation the
+        # table cannot place, rather than emitting a quietly short list.
+        pairs, missing = mig.gold_remaps(
+            self.plan(), self._gold("Agent/desk/projects/alpha/_harness/gone.md",
+                                    "Agent/desk/projects/alpha/_harness/FOLLOWUPS.md"))
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(len(missing), 1)
 
 
 class SlugsAndNumbers(Fixture):

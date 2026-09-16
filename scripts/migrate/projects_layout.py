@@ -444,8 +444,11 @@ def _destination(vault: Path, project: str, rel: str, row: str, units: list,
         if name.startswith(("RESEARCH-", "REFERENCE-")):
             return f"{base}/research/{leaf}"
         top, rest = (name.split("/", 1) + [""])[:2]
-        bundle = re.sub(r"^research-", "", top)
-        return f"{base}/research/{bundle}/{rest}" if rest else f"{base}/research/{bundle}/{leaf}"
+        # `research-filing-v2/` names its bundle in its own directory name;
+        # `research/` is already the destination and names no bundle, so
+        # re-prefixing it would give `research/research/`.
+        bundle = "" if top == "research" else re.sub(r"^research-", "", top) + "/"
+        return f"{base}/research/{bundle}{rest or leaf}"
     if row == "brief":
         owner = _brief_owner(units, leaf)
         if owner is None:
@@ -675,6 +678,56 @@ def restore_links(text: str, inverse: dict) -> tuple:
         return f"[[{stem}{anchor}]]" if alias == stem else f"[[{stem}{anchor}|{alias}]]"
 
     return pattern.sub(one, text), count
+
+
+# ── the gold set ───────────────────────────────────────────────────────────
+
+# The eval's own corrections, applied before this one: the gold set is frozen
+# evidence and keeps the paths it was labelled with, so its `Agent/desk/projects/`
+# prefix and its Title Case root are folded at score time, not edited here.
+_GOLD_2B_PREFIX = ("Agent/desk/projects/", "Projects/")
+
+
+def _post_2b(path: str) -> str:
+    """A gold-set path as the eval's existing remaps leave it: the projects
+    merge applied, and the first segment lowercase, which is what the vault
+    root lists after the root casing."""
+    if path.startswith(_GOLD_2B_PREFIX[0]):
+        path = _GOLD_2B_PREFIX[1] + path[len(_GOLD_2B_PREFIX[0]):]
+    first, _slash, rest = path.partition("/")
+    return f"{first.lower()}/{rest}" if rest else first.lower()
+
+
+def gold_remaps(plan: dict, gold_path: Path) -> list:
+    """The `(old, new)` pairs the retrieval eval needs for this move.
+
+    The gold set expects notes that live under a `_harness/`, and the move takes
+    them. A moved question is drift only if nobody named its cause, so the eval
+    is given a remap row per expectation and the fixture is never edited. Most
+    are a prefix swap; the ones whose plan becomes a numbered task are not, and
+    the number is only knowable from the plan the dry run recorded — which is
+    why these are generated rather than written by hand.
+
+    Each pair is a full path, not a prefix, so a row can never rewrite a note it
+    was not measured against. Pairs are sorted, so two runs over the same plan
+    emit the same table."""
+    try:
+        gold = json.loads(gold_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise Refused(f"cannot read the gold set at {gold_path}: {exc}") from exc
+    dest = {m["src"]: m["dst"] for m in plan["moves"]}
+    pairs, missing = {}, []
+    for entry in gold.get("entries", []):
+        for expected in entry.get("expected_note_paths", []):
+            if f"/{HARNESS}/" not in expected:
+                continue
+            now = _post_2b(expected)
+            new = dest.get(now)
+            if new is None:
+                missing.append(now)
+                continue
+            pairs[now] = new
+    return sorted(pairs.items()), sorted(set(missing))
 
 
 def link_targets(plan: dict) -> tuple:
@@ -1139,6 +1192,9 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--plan", help="the plan file the dry run recorded")
     ap.add_argument("--confirm-count", type=int, help="the plan's move count, typed by the operator")
     ap.add_argument("--revert", metavar="RUN_ID", help="put back every move a run made")
+    ap.add_argument("--gold-remap", metavar="PLAN", nargs="?", const="",
+                    help="print the retrieval eval's remap rows for a recorded plan "
+                         "(default: a fresh dry run), and exit")
     args = ap.parse_args(argv)
 
     vault = state_dir = None
@@ -1149,6 +1205,24 @@ def main(argv: Optional[list] = None) -> int:
     out_dir = state_dir / STAGE
 
     try:
+        if args.gold_remap is not None:
+            recorded = (json.loads(Path(args.gold_remap).read_text(encoding="utf-8"))
+                        if args.gold_remap else build_plan(vault))
+            gold = _REPO / "scripts" / "health" / "fixtures" / "week1-gold" / "gold-set-v3.json"
+            pairs, missing = gold_remaps(recorded, gold)
+            print("# agentm-vault plan 10: the gold set's `_harness/` expectations, each a full")
+            print("# path, generated from the recorded plan. Paste into eval_retrieval_shipped.py.")
+            print("_PROJECTS_REMAPS = (")
+            for old, new in pairs:
+                print(f'    ("{old}", "{new}"),')
+            print(")")
+            if missing:
+                print(f"\n# {len(missing)} expectation(s) the table names no destination for:",
+                      file=sys.stderr)
+                for m in missing:
+                    print(f"#   {m}", file=sys.stderr)
+            print(f"\n# {len(pairs)} row(s).")
+            return 1 if missing else 0
         if args.revert:
             revert(vault, args.revert, out_dir)
             print(f"projects layout: reverted {args.revert}")
