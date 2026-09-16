@@ -146,6 +146,17 @@ def _git(vault: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(vault), *args], capture_output=True, text=True)
 
 
+def _rel(path: Path, root: Path) -> str:
+    """`path` under `root` as one vault-relative string, always forward-slashed.
+
+    Every path in a plan, a manifest, a journal and the table itself is split on
+    `/`, and `str(Path.relative_to())` spells a separator the way the host does —
+    backslashes on Windows, where the split then finds one field and the table
+    reads nothing. The migration runs on one machine, but its tests run on three,
+    so the separator is normalised once, here, where a path becomes text."""
+    return "/".join(path.relative_to(root).parts)
+
+
 def _read(path: Path, limit: int = 0) -> str:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -311,7 +322,7 @@ def _harness_files(vault: Path, project: str) -> list:
     out = []
     for p in sorted(h.rglob("*")):
         if p.is_file() and not any(part in SKIP_DIRS for part in p.relative_to(h).parts):
-            out.append(str(p.relative_to(vault)))
+            out.append(_rel(p, vault))
     return out
 
 
@@ -529,10 +540,14 @@ def build_plan(vault, slugs: Optional[dict] = None) -> dict:
     if arch.is_dir():
         for p in sorted(arch.rglob("*")):
             if p.is_file():
-                rel = str(p.relative_to(vault))
+                rel = _rel(p, vault)
                 counts["archived-project"] = counts.get("archived-project", 0) + 1
+                # A loose file sitting directly in `_archive/` belongs to no
+                # project, so it keeps its own name under `completed/` rather
+                # than indexing past the end of its own path.
+                tail = _rel(p, arch)
                 moves.append({"project": ARCHIVED_PROJECTS, "row": "archived-project", "src": rel,
-                              "dst": f"{PROJECTS}/{COMPLETED}/" + rel.split("/", 2)[2]})
+                              "dst": f"{PROJECTS}/{COMPLETED}/{tail}"})
     destinations = {}
     for m in moves:
         destinations.setdefault(m["dst"], []).append(m["src"])
@@ -826,10 +841,10 @@ def _prune_empty(vault: Path, plan: dict) -> list:
                         key=lambda p: len(p.parts), reverse=True):
             if not any(d.iterdir()):
                 d.rmdir()
-                out.append(str(d.relative_to(vault)))
+                out.append(_rel(d, vault))
         if not any(root.iterdir()):
             root.rmdir()
-            out.append(str(root.relative_to(vault)))
+            out.append(_rel(root, vault))
     return out
 
 
@@ -935,7 +950,7 @@ def apply(vault, recorded: dict, confirm_count: int, out_dir, *,
             after, n = rewrite_links(before, moved)
             if n and after != before:
                 note.write_text(after, encoding="utf-8")
-                journal["links"].append({"rel": str(note.relative_to(vault)), "links": n,
+                journal["links"].append({"rel": _rel(note, vault), "links": n,
                                          "before_sha": _sha(before.encode("utf-8")),
                                          "after_sha": _sha(after.encode("utf-8"))})
 

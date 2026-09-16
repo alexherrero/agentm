@@ -115,8 +115,11 @@ class Fixture(unittest.TestCase):
         self.write(self.note,
                    "See [[PLAN-build-the-widget]] and [[PLAN-ship-the-thing|the thing]] "
                    "and [[BRIEF-unattached#Why]] and [[progress]].\n")
-        # Five archived projects become `projects/completed/`.
+        # Five archived projects become `projects/completed/`; a loose file
+        # sitting directly in `_archive/` belongs to no project and keeps its
+        # own name there.
         self.write(self.vault / "projects" / "_archive" / "old-thing" / "_index.md", "# Old\n")
+        self.write(self.vault / "projects" / "_archive" / "a-loose-note.md", "Loose.\n")
 
         _git(self.vault, "init", "-q")
         _git(self.vault, "add", "-A")
@@ -159,6 +162,20 @@ class Fixture(unittest.TestCase):
 class TheTable(Fixture):
     """Every file matches exactly one row, and each row lands where the design
     says. That is what makes "every file moves once" a property of the run."""
+
+    def test_every_path_in_the_plan_is_forward_slashed(self) -> None:
+        # The table, the manifest and the journal all split on `/`, and
+        # `str(Path.relative_to())` spells the separator the way the host does.
+        # On Windows a backslash made every split find one field, which read as
+        # an empty table rather than as a bug (CI, 2026-09-16).
+        plan = self.plan()
+        for m in plan["moves"]:
+            self.assertNotIn("\\", m["src"], m)
+            self.assertNotIn("\\", m["dst"], m)
+        for t in plan["trackers"]:
+            self.assertNotIn("\\", t["path"], t)
+        self.assertEqual(mig._rel(self.alpha / "_harness" / "PLAN.md", self.vault),
+                         "projects/alpha/_harness/PLAN.md")
 
     def test_nothing_is_unmapped_and_nothing_collides(self) -> None:
         plan = self.plan()
@@ -235,6 +252,7 @@ class TheTable(Fixture):
             ("_harness/archive/notes.md", "alpha/completed/notes.md"),
             ("alpha/_index.md", "alpha/charter.md"),
             ("_archive/old-thing/_index.md", "projects/completed/old-thing/_index.md"),
+            ("_archive/a-loose-note.md", "projects/completed/a-loose-note.md"),
         ):
             with self.subTest(suffix=suffix):
                 self.assertTrue(self.dest(plan, suffix).endswith(expected),
