@@ -105,6 +105,9 @@ class Fixture(unittest.TestCase):
         self.write(b / "PLAN.md", _plan_body("Beta — the only plan", "active", "2026-06-05"))
         self.write(b / "progress.md", "# Progress\n\nBeta.\n")
         self.write(self.beta / "_index.md", "# Beta\n")
+        # A project with no `_harness/` at all still has a charter, and the
+        # skeleton's name for it is `charter.md`.
+        self.write(self.vault / "projects" / "gamma" / "_index.md", "# Gamma\n")
 
         # A note elsewhere that links to what moves, and to an ambiguous name.
         self.note = self.vault / "agent" / "memory" / "semantic" / "a-card.md"
@@ -270,6 +273,14 @@ class TheTable(Fixture):
         self.assertTrue(self.dest(plan, "_harness/.project-mode")
                         .endswith("alpha/desk/.project-mode"))
         self.assertEqual(plan["counts"]["machine"], 2)
+
+    def test_a_project_with_no_harness_still_gets_its_charter(self) -> None:
+        # Three live projects carry no `_harness/`; leaving those on `_index.md`
+        # would give the vault two spellings of the same file.
+        plan = self.plan()
+        self.assertEqual(self.dest(plan, "gamma/_index.md"),
+                         "projects/gamma/charter.md")
+        self.assertEqual(plan["counts"]["charter"], 3)
 
     def test_the_repos_own_harness_is_never_walked(self) -> None:
         # The only tree the migration reads is `<vault>/projects/*/_harness/`.

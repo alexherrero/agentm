@@ -339,6 +339,18 @@ def _row_for(rel: str, name: str) -> str:
 
 # ── the plan ───────────────────────────────────────────────────────────────
 
+def live_projects(vault: Path) -> list:
+    """Every project under `projects/`, in the order the disk lists.
+
+    Wider than `harnessed_projects`: a project with no `_harness/` still has a
+    charter, and the skeleton's name for it is `charter.md`."""
+    root = vault / PROJECTS
+    if not root.is_dir():
+        raise Refused(f"{root} is not a directory; is {vault} the vault root?")
+    return sorted(p.name for p in root.iterdir()
+                  if p.is_dir() and not p.name.startswith("_"))
+
+
 def harnessed_projects(vault: Path) -> list:
     """Every project that carries a `_harness/`, in the order the disk lists."""
     root = vault / PROJECTS
@@ -543,12 +555,6 @@ def build_plan(vault, slugs: Optional[dict] = None) -> dict:
                 unmapped.append(rel)
                 continue
             moves.append({"project": project, "row": row, "src": rel, "dst": dst})
-        # `_index.md` is the charter, and the five archived projects move whole.
-        index = f"{PROJECTS}/{project}/_index.md"
-        if (vault / index).is_file():
-            counts["charter"] = counts.get("charter", 0) + 1
-            moves.append({"project": project, "row": "charter", "src": index,
-                          "dst": f"{PROJECTS}/{project}/charter.md"})
         for u in units:
             statuses.setdefault(u["status_raw"] or "(no line)", u["status"])
             trackers.append({
@@ -566,6 +572,17 @@ def build_plan(vault, slugs: Optional[dict] = None) -> dict:
                        "task": u["task"], "status": u["status"], "raw": u["status_raw"],
                        "needs_review": u["needs_review"]} for u in units],
         })
+    # `_index.md` becomes `charter.md` in **every** project, not only the ones
+    # that carry a `_harness/`: the charter is the project skeleton's file and
+    # three live projects have no harness directory at all. Leaving those on the
+    # old name would give the vault two spellings of the same thing.
+    for project in live_projects(vault):
+        index = f"{PROJECTS}/{project}/_index.md"
+        if (vault / index).is_file():
+            counts["charter"] = counts.get("charter", 0) + 1
+            moves.append({"project": project, "row": "charter", "src": index,
+                          "dst": f"{PROJECTS}/{project}/charter.md"})
+
     # Every archived project moves whole, one move per file, so the manifest
     # names each one and the reverse puts each one back.
     arch = vault / PROJECTS / ARCHIVED_PROJECTS
