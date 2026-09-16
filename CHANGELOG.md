@@ -7,7 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The projects migration, ready to run (agentm-vault plan 10).**
+  `scripts/migrate/projects_layout.py` dissolves every project's `_harness/` by
+  a table rather than a judgment: each plan unit becomes
+  `tasks/NNN-<verb-slug>/` with a `plan.md`, a `progress.md` and a
+  `tracker.md`; queued drafts become tasks at `queued` and `queued-plans/`
+  goes; archived plans become numbered tasks at `done` with `closed:` from
+  their archive date, never an `archive/tasks/`; briefs, prompts and probes
+  join their task or land in `desk/briefs/`; designs and research bundles merge
+  into the project's own folders; the ledgers and the vault-side machine files
+  go to `desk/`; `FOLLOWUPS.md` becomes `followups.md` and `ROADMAP-MASTER.md`
+  `roadmap.md`; `_index.md` becomes `charter.md`; and the archived projects
+  become `projects/completed/`. It follows `root_casing.py`'s shape — a dry run
+  that records a plan and prints a manifest with the reverse of every move, an
+  `--apply` under quiesce, a `--finish` that writes
+  `agent/memory/.projects-migration-complete` once every post-condition holds,
+  and a digest-checked `--revert`. Every file matches exactly one row, so a
+  file the table does not name is listed as unmapped and refuses the run, as
+  does any destination two files want. `--slugs` carries the operator's
+  corrections to the derived task names. On the live vault the dry run plans
+  896 moves across 8 projects with 291 trackers, nothing unmapped and nothing
+  colliding.
+
 ### Changed
+
+- **A new plan lands in a numbered task, and a bare call names the task
+  (agentm-vault plan 10, task 7).** On a project that keeps its plans in
+  numbered tasks — a synced backend whose `_harness/` is gone, which is what
+  the migration leaves — `resolve_active_plan` places a slug with no task at
+  `tasks/NNN-<verb-slug>/` with the next free number, composing the path and
+  writing nothing, so a plan written the day after the move does not land back
+  in the directory the move removed. A task is found by its own directory name
+  (`042-build-the-brief`) or by the verb slug inside it; two tasks sharing a
+  verb slug raise rather than resolve, naming both. A bare call has no
+  singleton to fall back to, so `harness_memory.py resolve-active-plan` and
+  `process_seam.py state-path` both answer **exit 4** with nothing on stdout
+  and one line on stderr — the code the crickets development-lifecycle release
+  handles. A project that still has a `_harness/`, a repo with no vault, and a
+  `.project-mode=local` opt-out all keep today's behaviour unchanged.
 
 - **A tracker is rewritten under its own status (agentm-vault, the tracker
   rewrite).** `tracker.py transition --to <status>` takes a queued, active or
