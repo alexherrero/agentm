@@ -27,6 +27,7 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | [Run the card backfill](Run-The-Card-Backfill) | Bring every surviving note in the class directories to the card's shape — locked field order, required fields stamped, retired fields dropped, counter slugs renamed. |
 | [Run the maps and root notes migration](Run-The-Maps-And-Root-Notes-Migration) | Retire `Home.md` and `Filing.md` for the generated root map, collapse numbered map pages into pages that paginate in place, and map each calendar year. |
 | [Run the root casing migration](Run-The-Root-Casing-Migration) | Rename the four vault root spaces to their lowercase form — `agent`, `calendar`, `personal`, `projects` beside `standards` — to match the code that already spells them that way. |
+| [Run the projects migration](Run-The-Projects-Migration) | Dissolve every project's `_harness/` into `tasks/NNN-<verb-slug>/` directories, trackers written or moved, and the rest of the harness folder into the project skeleton. |
 
 ## Use it anywhere
 

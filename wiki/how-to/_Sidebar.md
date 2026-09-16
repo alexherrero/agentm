@@ -19,6 +19,7 @@
 - [Find your way around the vault](Find-Your-Way-Around-The-Vault)
 - [Run the memory-root trims migration](Run-The-Memory-Root-Trims-Migration)
 - [Run the root casing migration](Run-The-Root-Casing-Migration)
+- [Run the projects migration](Run-The-Projects-Migration)
 - [Run the card backfill](Run-The-Card-Backfill)
 - [Run the maps and root notes migration](Run-The-Maps-And-Root-Notes-Migration)
 - [Persist a morning report](Persist-A-Morning-Report)
