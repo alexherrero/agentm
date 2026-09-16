@@ -685,7 +685,7 @@ def restore_links(text: str, inverse: dict) -> tuple:
 # The eval's own corrections, applied before this one: the gold set is frozen
 # evidence and keeps the paths it was labelled with, so its `Agent/desk/projects/`
 # prefix and its Title Case root are folded at score time, not edited here.
-_GOLD_2B_PREFIX = ("Agent/desk/projects/", "Projects/")
+_GOLD_2B_PREFIX = ("Agent/desk/projects/", "Projects/")  # root-casing: the gold set's frozen spelling on the old side
 
 
 def _post_2b(path: str) -> str:
