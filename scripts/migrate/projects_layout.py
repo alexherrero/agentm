@@ -600,7 +600,10 @@ def build_plan(vault, slugs: Optional[dict] = None) -> dict:
                 "project": project, "task": u["task"], "kind": u["kind"],
                 "path": f"{u['dir']}/tracker.md", "status": u["status"],
                 "title": u["slug"].replace("-", " "), "objective": u["goal"],
-                "closed": u["created"] if u["status"] == "done" else None,
+                # Both final statuses carry a close date, not just `done`: the
+                # schema requires one of every final tracker, and a withdrawn
+                # plan was closed on the day it was withdrawn like any other.
+                "closed": u["created"] if u["status"] in tk.FINAL else None,
                 "source": "moved" if u["tracker"] else "written",
                 "from": u["tracker"], "plan": u["plan"],
                 "needs_state": u["status"] in OPEN_STATUSES,
@@ -792,11 +795,25 @@ _GOLD_2B_PREFIX = ("Agent/desk/projects/", "Projects/")  # root-casing: the gold
 
 
 def _post_2b(path: str) -> str:
-    """A gold-set path as the eval's existing remaps leave it: the projects
-    merge applied, and the first segment lowercase, which is what the vault
-    root lists after the root casing."""
-    if path.startswith(_GOLD_2B_PREFIX[0]):
-        path = _GOLD_2B_PREFIX[1] + path[len(_GOLD_2B_PREFIX[0]):]
+    """A gold-set path as the eval's existing remaps leave it.
+
+    The eval's own `_remap_merged` is called rather than reimplemented. An
+    earlier version here open-coded one of its five rules, so a gold path under
+    the retired external-primos prefix never folded and primos' charter got no row — the
+    expectation then scored as a miss with nothing to point at. Reimplementing a
+    remap is how the two drift; consuming it is how they cannot."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_eval_remaps", _REPO / "scripts" / "health" / "eval_retrieval_shipped.py")
+        ev = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ev)
+        path = ev._remap_merged(path)
+    except Exception:
+        # The eval is not importable here (no daemon, no gold set): fall back to
+        # the one rule that covers most of the set, and say so by doing less.
+        if path.startswith(_GOLD_2B_PREFIX[0]):
+            path = _GOLD_2B_PREFIX[1] + path[len(_GOLD_2B_PREFIX[0]):]
     first, _slash, rest = path.partition("/")
     return f"{first.lower()}/{rest}" if rest else first.lower()
 
@@ -822,14 +839,16 @@ def gold_remaps(plan: dict, gold_path: Path) -> list:
     pairs, missing = {}, []
     for entry in gold.get("entries", []):
         for expected in entry.get("expected_note_paths", []):
-            if f"/{HARNESS}/" not in expected:
-                continue
             now = _post_2b(expected)
             new = dest.get(now)
-            if new is None:
+            if new is not None:
+                pairs[now] = new
+            elif (f"/{HARNESS}/" in now
+                  or now.startswith(f"{PROJECTS}/{ARCHIVED_PROJECTS}/")):
+                # It names a tree this migration dissolves but the table gives it
+                # no destination — the one shape worth reporting, because it
+                # would score as a miss with nobody able to say why.
                 missing.append(now)
-                continue
-            pairs[now] = new
     return sorted(pairs.items()), sorted(set(missing))
 
 

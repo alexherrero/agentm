@@ -160,6 +160,9 @@ def _remap_trims(path: str, vault_root: "Path | None | bool" = False) -> str:
 # Taken only when the vault holds the destination, so the gate reads true on
 # both sides of the data run and on CI, where no vault resolves at all.
 _PROJECTS_REMAPS = (
+    ("projects/_archive/agent-m-v4/_index.md", "projects/completed/agent-m-v4/_index.md"),
+    ("projects/_archive/experimental/onenote-migration-summary.md", "projects/completed/experimental/onenote-migration-summary.md"),
+    ("projects/_archive/memoryvault/conversations/2026-05-10-vault-design.md", "projects/completed/memoryvault/conversations/2026-05-10-vault-design.md"),
     ("projects/agentm/_harness/archive/PLAN.archive.20260725-eval-v6-retrieval-failloud.md", "projects/agentm/tasks/116-eval-v6-retrieval-failloud/plan.md"),
     ("projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md", "projects/agentm/completed/ROADMAP-AgentMemoryV4.md"),
     ("projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md", "projects/agentm/designs/consolidation-review/E0-coordinator-log.md"),
@@ -186,6 +189,10 @@ _PROJECTS_REMAPS = (
     ("projects/crickets/_harness/archive/progress-model-routing-and-levers.md", "projects/crickets/tasks/044-model-routing-and-levers/progress.md"),
     ("projects/crickets/_harness/archive/wave-c/PLAN.archive.20260706-wave-c-design-and-conventions.md", "projects/crickets/tasks/079-wave-c-design-and-conventions/plan.md"),
     ("projects/dev-setup/_harness/progress.md", "projects/dev-setup/desk/progress.md"),
+    ("projects/home-tech-next/_index.md", "projects/home-tech-next/charter.md"),
+    ("projects/primos/_index.md", "projects/primos/charter.md"),
+    ("projects/sherwood/_index.md", "projects/sherwood/charter.md"),
+    ("projects/shrimpi/_index.md", "projects/shrimpi/charter.md"),
 )
 
 
@@ -621,7 +628,12 @@ def score(binary: str, entries: list, k: int) -> dict:
     all_scores = []
     for e in entries:
         question = e["question"]
-        expected = [_remap_casing(_migrated(_remap_projects(_remap_trims(_remap_merged(p))))) 
+        # `_remap_projects` runs **outermost**, after the casing fold. The 2b
+        # remap emits the root Title Case and `_remap_casing` folds it to the
+        # spelling the vault lists, so a table keyed on the folded path only
+        # matches once that fold has happened. Placed inside, it matched nothing
+        # and every moved expectation scored as a miss (2026-09-16).
+        expected = [_remap_projects(_remap_casing(_migrated(_remap_trims(_remap_merged(p)))))
                     for p in (e.get(EXPECTED_FIELD) or []) if p]
         rows = _search_rows(binary, question, k)
         got = [path for path, _score in rows]
