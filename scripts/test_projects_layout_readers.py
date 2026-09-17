@@ -13,6 +13,8 @@ Run directly:
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -20,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -91,6 +94,81 @@ class TheListing(_Project):
         _write(repo / ".harness" / "PLAN-foo.md", "# Plan\n")
         _write(repo / "tasks" / "bar" / "plan.md", "# not plan state\n")
         self.assertEqual([p.name for p in hm.list_plan_files(repo / ".harness")], ["PLAN-foo.md"])
+
+
+class TheListPlansVerb(unittest.TestCase):
+    """`harness_memory.py list-plans` on a migrated project: open tasks only.
+
+    A finished plan used to leave the listing by moving into `archive/`; a task
+    never moves, so its tracker is what says it is over. Before this the verb
+    printed every task, and the session-start hook read 172 of them, 164 done,
+    as "more than one active plan" (2026-09-17)."""
+
+    def setUp(self) -> None:
+        from storage_seam import Locator
+        from vault_backend_stub import VaultBackend
+
+        self.root = Path(tempfile.mkdtemp(prefix="agentm-list-plans-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.vault = self.root / "vault"
+        self.repo = self.root / "repo"
+        (self.repo / ".harness").mkdir(parents=True)
+        self.tasks = self.vault / "projects" / "demo" / "tasks"
+        self.tasks.mkdir(parents=True)  # migrated: tasks/ and no _harness/
+        self.resolution = {
+            "backend": VaultBackend(root=self.vault, lock_root=self.root / "locks"),
+            "project_locator": Locator("projects/demo"),
+            "project_root": self.repo,
+            "slug": "demo",
+        }
+
+    def _task(self, name: str, status=None) -> None:
+        """A task, with its tracker walked to `status` through the schema's own
+        transitions (None writes no tracker)."""
+        task = self.tasks / name
+        _write(task / "plan.md", f"# Plan: {name}\n")
+        if status is None:
+            return
+        t = tk.new(title=name, project="demo", task=name, objective="Do it.",
+                   next_step="Start.", today="2026-09-10")
+        path = {"queued": (), "active": ("active",), "parked": ("active", "parked"),
+                "done": ("active", "done"), "dropped": ("dropped",)}[status]
+        for to in path:
+            t = tk.transition(t, to, today="2026-09-11",
+                              outcome="Finished." if to in tk.FINAL else None)
+        tk.write(task / "tracker.md", t)
+
+    def _listed(self) -> list:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), unittest.mock.patch.object(
+                hm, "resolve_project", return_value=self.resolution):
+            rc = hm.main(["list-plans", "--project-root", str(self.repo)])
+        self.assertEqual(rc, 0)
+        return [Path(line).parent.name for line in out.getvalue().splitlines() if line]
+
+    def test_done_and_dropped_tasks_are_left_out(self) -> None:
+        self._task("001-ship-it", "done")
+        self._task("002-abandon-it", "dropped")
+        self._task("003-build-it", "active")
+        self._task("004-plan-it", "queued")
+        self._task("005-pause-it", "parked")
+        self.assertEqual(self._listed(), ["003-build-it", "004-plan-it", "005-pause-it"])
+
+    def test_a_task_without_a_readable_tracker_is_still_listed(self) -> None:
+        self._task("001-no-tracker")
+        self._task("002-broken-tracker")
+        _write(self.tasks / "002-broken-tracker" / "tracker.md", "not a tracker\n")
+        self._task("003-ship-it", "done")
+        self.assertEqual(self._listed(), ["001-no-tracker", "002-broken-tracker"])
+
+    def test_the_listing_function_still_returns_every_task(self) -> None:
+        # The dashboards read `list_plan_files` and show finished work; only the
+        # verb leaves it out.
+        self._task("001-ship-it", "done")
+        self._task("002-build-it", "active")
+        harness = self.tasks.parent / "_harness"
+        names = [p.parent.name for p in hm.list_plan_files(harness)]
+        self.assertEqual(names, ["001-ship-it", "002-build-it"])
 
 
 class TheQueueDashboard(_Project):
