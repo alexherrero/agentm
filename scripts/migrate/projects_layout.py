@@ -316,6 +316,14 @@ def _row_for(rel: str, name: str) -> str:
         # Any other directory under `_harness/` is a record bundle: it keeps its
         # own directory under `research/`, where a bundle is read.
         return "research"
+    # An archived plan is an archived plan wherever it sits. Most projects keep
+    # theirs in `archive/`; dev-setup keeps two at the harness root, and reading
+    # those as loose records would drop two shipped plans into `completed/`
+    # instead of giving them the numbered tasks and `done` trackers they are.
+    if _ARCHIVE_NAME.match(name):
+        return "archived-plan"
+    if _ARCHIVE_PROGRESS.match(name):
+        return "archived-progress"
     if _PLAN_NAME.match(name) or name == "PLAN.md":
         return "plan"
     if _PROGRESS_NAME.match(name) or name == "progress.md":
@@ -415,10 +423,11 @@ def _units(vault: Path, project: str, files: list, slugs: dict) -> list:
             add("named", rel, name, default_status="active")
         elif name.startswith("queued-plans/") and _PLAN_NAME.match(leaf):
             add("queued", rel, name, default_status="queued")
-        elif name.startswith("archive/"):
-            m = _ARCHIVE_NAME.match(leaf)
-            if m:
-                add("archived", rel, name, archived_date=m.group(1), default_status="done")
+        elif _ARCHIVE_NAME.match(leaf):
+            # Wherever it sits: `archive/` in most projects, the harness root in
+            # dev-setup. The date in the name is what closes it, not the folder.
+            add("archived", rel, name,
+                archived_date=_ARCHIVE_NAME.match(leaf).group(1), default_status="done")
 
     # Number by creation order; a tie keeps the source order, so two units made
     # the same day never swap places between a dry run and the apply.
@@ -441,7 +450,7 @@ def _units(vault: Path, project: str, files: list, slugs: dict) -> list:
             owner = index.get("PLAN.md")
         elif _TRACKER_NAME.match(name):
             owner = index.get(f"PLAN-{_TRACKER_NAME.match(name).group(1)}.md")
-        elif name.startswith("archive/"):
+        else:
             m = _ARCHIVE_PROGRESS.match(leaf)
             if m:
                 twin = ("PLAN.archive." + m.group(1)

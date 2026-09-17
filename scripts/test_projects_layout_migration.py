@@ -81,6 +81,11 @@ class Fixture(unittest.TestCase):
         self.write(a / "archive" / "v3" / "PLAN.archive.20260503-fold-the-map.md",
                    _plan_body("Fold the map", "SUPERSEDED (2026-07-06) — never built"))
         self.write(a / "archive" / "notes.md", "A finished record.\n")
+        # dev-setup keeps two archived plans at the harness root rather than in
+        # `archive/`. The date in the name is what closes a plan, not the folder.
+        self.write(a / "PLAN.archive.20260504-raise-the-mast.md",
+                   _plan_body("Raise the mast", "done"))
+        self.write(a / "progress.archive.20260504-raise-the-mast.md", "# Progress\n\nDone.\n")
         self.write(a / "BRIEF-build-the-widget.md", "The brief.\n")
         self.write(a / "PROMPT-build-the-widget.md", "The prompt.\n")
         self.write(a / "BRIEF-unattached.md", "No task yet.\n")
@@ -206,6 +211,22 @@ class TheTable(Fixture):
         self.assertIn("/tasks/", dst)
         self.assertNotIn("/archive/", dst)
         self.assertTrue(mig._TASK_DIR.match(Path(dst).parent.name))
+
+    def test_an_archived_plan_at_the_harness_root_is_still_a_task(self) -> None:
+        # dev-setup keeps two there. Reading them as loose records would drop two
+        # shipped plans into `completed/` instead of giving them the numbered
+        # tasks and `done` trackers they are.
+        plan = self.plan()
+        dst = self.dest(plan, "_harness/PLAN.archive.20260504-raise-the-mast.md")
+        self.assertIn("/tasks/", dst)
+        self.assertTrue(dst.endswith("/plan.md"), dst)
+        self.assertEqual(
+            Path(self.dest(plan, "_harness/progress.archive.20260504-raise-the-mast.md")).parent,
+            Path(dst).parent)
+        task = Path(dst).parent.name
+        tracker = next(t for t in plan["trackers"] if t["task"] == task)
+        self.assertEqual(tracker["status"], "done")
+        self.assertEqual(tracker["closed"], "2026-05-04")
 
     def test_an_archived_progress_twin_joins_its_plan(self) -> None:
         plan = self.plan()
@@ -634,21 +655,30 @@ class BoundSessions(Fixture):
         self.pointer = self.repo / ".harness" / "worktree-for-build-the-widget"
         self.pointer.write_text(str(self.worktree) + "\n", encoding="utf-8")
 
+    RENAMED = {"PLAN-build-the-widget.md": "assemble-the-widget"}
+
     def _apply(self, slugs=None):
         self.recorded = self.plan(slugs=slugs)
         return self.apply(self.recorded, repo_roots=lambda: [self.repo])
 
+    def _task_name(self) -> str:
+        """The numbered name the widget plan actually got. Derived, not typed:
+        the number is the unit's place in creation order, so any fixture plan
+        made earlier shifts it."""
+        alpha = next(p for p in self.recorded["projects"] if p["project"] == "alpha")
+        return next(s["task"] for s in alpha["slugs"]
+                    if s["source"] == "PLAN-build-the-widget.md")
+
     def test_a_marker_follows_its_plan_into_the_numbered_task(self) -> None:
         journal = self._apply(slugs={"PLAN-build-the-widget.md": "assemble-the-widget"})
-        self.assertEqual(self.marker.read_text(encoding="utf-8").strip(),
-                         "004-assemble-the-widget")
+        self.assertEqual(self.marker.read_text(encoding="utf-8").strip(), self._task_name())
         self.assertTrue(any(e["kind"] == "marker" for e in journal["markers"]))
 
     def test_the_root_pointer_is_renamed_with_it(self) -> None:
         self._apply(slugs={"PLAN-build-the-widget.md": "assemble-the-widget"})
         self.assertFalse(self.pointer.exists())
         self.assertTrue((self.repo / ".harness"
-                         / "worktree-for-004-assemble-the-widget").is_file())
+                         / f"worktree-for-{self._task_name()}").is_file())
 
     def test_revert_puts_the_binding_back(self) -> None:
         self._apply(slugs={"PLAN-build-the-widget.md": "assemble-the-widget"})
@@ -676,7 +706,7 @@ class BoundSessions(Fixture):
         direct = self.repo / ".harness" / "active-plan"
         direct.write_text("build-the-widget\n", encoding="utf-8")
         self._apply(slugs={"PLAN-build-the-widget.md": "assemble-the-widget"})
-        self.assertEqual(direct.read_text(encoding="utf-8").strip(), "004-assemble-the-widget")
+        self.assertEqual(direct.read_text(encoding="utf-8").strip(), self._task_name())
 
     def test_a_pointer_whose_worktree_is_gone_does_not_stop_the_run(self) -> None:
         self.pointer.write_text("/no/such/worktree\n", encoding="utf-8")
