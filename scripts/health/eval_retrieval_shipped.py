@@ -147,6 +147,71 @@ def _remap_trims(path: str, vault_root: "Path | None | bool" = False) -> str:
     return path
 
 
+# The projects migration (agentm-vault plan 10, 2026-09-16): `_harness/`
+# dissolves and every plan unit becomes `tasks/NNN-<verb-slug>/`. The gold set
+# is frozen evidence and keeps its pinned paths; the move is corrected here at
+# score time, like the two above it.
+#
+# Each row is a whole path, not a prefix. Eleven of them carry a task number
+# that only the migration's own recorded plan knows, so the table is generated
+# by `scripts/migrate/projects_layout.py --gold-remap` rather than written by
+# hand — a hand-written number would be a guess that scores as a miss.
+#
+# Taken only when the vault holds the destination, so the gate reads true on
+# both sides of the data run and on CI, where no vault resolves at all.
+_PROJECTS_REMAPS = (
+    ("projects/agentm/_harness/archive/PLAN.archive.20260725-eval-v6-retrieval-failloud.md", "projects/agentm/tasks/116-eval-v6-retrieval-failloud/plan.md"),
+    ("projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md", "projects/agentm/completed/ROADMAP-AgentMemoryV4.md"),
+    ("projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md", "projects/agentm/designs/consolidation-review/E0-coordinator-log.md"),
+    ("projects/agentm/_harness/archive/friday/PLAN.archive.20260718-capture-article-ingestion.md", "projects/agentm/tasks/100-capture-article-ingestion/plan.md"),
+    ("projects/agentm/_harness/archive/friday/PLAN.archive.20260718-proactive-delivery.md", "projects/agentm/tasks/103-proactive-delivery/plan.md"),
+    ("projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-newcomer-onboarding.md", "projects/agentm/tasks/112-loose-ends-newcomer-onboarding/plan.md"),
+    ("projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-os-install-matrix.md", "projects/agentm/tasks/113-loose-ends-os-install-matrix/plan.md"),
+    ("projects/agentm/_harness/archive/v3/PLAN.archive.20260517-memoryvault-recall-loop.md", "projects/agentm/tasks/008-memoryvault-recall-loop/plan.md"),
+    ("projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md", "projects/agentm/designs/architecture-governance/PHASE-5B-wiki-transformation.md"),
+    ("projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md", "projects/agentm/designs/architecture-governance/abbreviated-design-template.md"),
+    ("projects/agentm/_harness/designs/architecture-governance/hld-template.md", "projects/agentm/designs/architecture-governance/hld-template.md"),
+    ("projects/agentm/_harness/designs/friday/F1-REAUDIT.md", "projects/agentm/designs/friday/F1-REAUDIT.md"),
+    ("projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md", "projects/agentm/designs/roadmap-finish/PROMPTS-FIN.md"),
+    ("projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md", "projects/agentm/designs/roadmap-finish/friday-surface-audit.md"),
+    ("projects/agentm/_harness/designs/roadmap-research-2026-06/R06-token-efficiency.md", "projects/agentm/designs/roadmap-research-2026-06/R06-token-efficiency.md"),
+    ("projects/agentm/_harness/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md", "projects/agentm/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md"),
+    ("projects/agentm/_harness/designs/v5-10-coordinator-team/design-doc.md", "projects/agentm/designs/v5-10-coordinator-team/design-doc.md"),
+    ("projects/agentm/_harness/designs/vault-backing/vault-drive.md", "projects/agentm/designs/vault-backing/vault-drive.md"),
+    ("projects/agentm/_harness/designs/vault-backing/vault-git.md", "projects/agentm/designs/vault-backing/vault-git.md"),
+    ("projects/agentm/_harness/research/SYNTHESIS-memory-ingestion.md", "projects/agentm/research/SYNTHESIS-memory-ingestion.md"),
+    ("projects/blog/_harness/PLAN.md", "projects/blog/tasks/015-write-the-assistant-arc/plan.md"),
+    ("projects/blog/_harness/progress.md", "projects/blog/tasks/015-write-the-assistant-arc/progress.md"),
+    ("projects/crickets/_harness/archive/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md", "projects/crickets/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md"),
+    ("projects/crickets/_harness/archive/progress-model-routing-and-levers.md", "projects/crickets/tasks/044-model-routing-and-levers/progress.md"),
+    ("projects/crickets/_harness/archive/wave-c/PLAN.archive.20260706-wave-c-design-and-conventions.md", "projects/crickets/tasks/079-wave-c-design-and-conventions/plan.md"),
+    ("projects/dev-setup/_harness/progress.md", "projects/dev-setup/desk/progress.md"),
+)
+
+
+def _remap_projects(path: str, vault_root: "Path | None | bool" = False) -> str:
+    """A gold-set path as the projects migration leaves it, when it has run.
+
+    Keyed on the paths as the 2b remap and the trims leave them, and matched
+    whole rather than by prefix: a prefix row could rewrite a note the move
+    never touched."""
+    root = _vault_root() if vault_root is False else vault_root
+    if root is None:
+        return path
+    for old, new in _PROJECTS_REMAPS:
+        if path != old:
+            continue
+        try:
+            import os
+            spellings = {n.lower(): n for n in os.listdir(root)}
+        except OSError:
+            spellings = {}
+        if (Path(root) / _remap_casing(new, spellings)).exists():
+            return new
+        return path
+    return path
+
+
 # The root casing (agentm-vault plan 08, 2026-09-14): the four root spaces are
 # lowercase. The gold set is frozen and keeps the old spelling; the daemon
 # returns what is on disk. The first segment is folded here, at score time,
@@ -556,7 +621,8 @@ def score(binary: str, entries: list, k: int) -> dict:
     all_scores = []
     for e in entries:
         question = e["question"]
-        expected = [_remap_casing(_migrated(_remap_trims(_remap_merged(p)))) for p in (e.get(EXPECTED_FIELD) or []) if p]
+        expected = [_remap_casing(_migrated(_remap_projects(_remap_trims(_remap_merged(p))))) 
+                    for p in (e.get(EXPECTED_FIELD) or []) if p]
         rows = _search_rows(binary, question, k)
         got = [path for path, _score in rows]
         all_scores.extend(s for _path, s in rows if s is not None)

@@ -1282,6 +1282,22 @@ _SINGLETON_TRACKER = "tracker.md"
 # one; until it has, the resolver reads both and the flat pair is the fallback.
 _TASKS_DIRNAME = "tasks"
 _TASK_FILES = ("plan.md", "progress.md", "tracker.md")
+# A task's name is its directory name, number included — `NNN-<verb-slug>`. The
+# number is its place in creation order; the slug is the part you remember. Both
+# forms find it, and `--name <verb-slug>` refuses by name when two tasks share
+# the slug (agentm-vault plan 10, the operator's ruling 9).
+_TASK_DIR = re.compile(r"^(\d{3})-(.+)$")
+
+
+class TaskNameRequired(RuntimeError):
+    """A bare call on a project that keeps its plans in numbered tasks.
+
+    Such a project has no singleton `PLAN.md` to fall back to — `_harness/` is
+    gone and every plan lives in its own `tasks/NNN-<verb-slug>/`. Answering with
+    the singleton pair would name a file that will never exist, so the resolver
+    refuses and the caller asks which task. Both entry points map it to exit 4,
+    which is the code the crickets development-lifecycle release handles.
+    """
 
 
 def _tracker_name(slug: Optional[str]) -> str:
@@ -1323,31 +1339,140 @@ def _flat_plan(slug: Optional[str]) -> ActivePlan:
     return ActivePlan(plan, progress, tracker=_tracker_name(slug), layout="flat", slug=slug)
 
 
+def _tasks_dir(resolution: dict) -> Optional[Path]:
+    """The project's `tasks/` directory, or None off a synced backend.
+
+    `tasks/` is the vault's projects shape; a device-local `.harness/` sits in a
+    repo and the repo's own `tasks/` is not plan state. Composed the way
+    `harness_state_dir` composes `_harness/` — from the backend's root and the
+    project locator — so both name the same tree."""
+    target = _state_backend_target(resolution)
+    locator = resolution.get("project_locator")
+    if target is None or locator is None:
+        return None
+    _backend, _harness_loc, backend_root = target
+    return backend_root.joinpath(*locator.child(_TASKS_DIRNAME).parts)
+
+
+def _task_dir_names(resolution: dict) -> list:
+    """Every task directory under the project, sorted — the names as they are."""
+    tasks = _tasks_dir(resolution)
+    if tasks is None or not tasks.is_dir():
+        return []
+    return sorted(
+        p.name for p in tasks.iterdir() if p.is_dir() and _is_safe_plan_slug(p.name)
+    )
+
+
+def _match_task_dirs(names: list, slug: str) -> list:
+    """Every task directory `slug` names: its own directory name when it is one,
+    else every directory whose number the slug is the remainder of. An exact
+    directory name is never ambiguous, so it short-circuits."""
+    if slug in names:
+        return [slug]
+    matched = []
+    for name in names:
+        m = _TASK_DIR.match(name)
+        if m is not None and m.group(2) == slug:
+            matched.append(name)
+    return matched
+
+
+def _resolve_task_dir(resolution: dict, slug: str) -> Optional[str]:
+    """The one task directory `slug` names, None when no task carries it.
+
+    Raises `ActivePlanError` when two do: two tasks sharing a verb slug is a real
+    ambiguity, and guessing which one a session meant is the mis-binding the
+    marker's loud-error contract exists to prevent. The message names both, so
+    the numbered form is there to copy."""
+    names = _task_dir_names(resolution)
+    matched = _match_task_dirs(names, slug)
+    if len(matched) > 1:
+        raise ActivePlanError(
+            f"{len(matched)} tasks share the slug {slug!r}: "
+            + ", ".join(matched)
+            + ". A task's name is its directory name, number included — name the "
+            "one you mean."
+        )
+    return matched[0] if matched else None
+
+
+def _task_at(resolution: dict, name: str) -> ActivePlan:
+    """The `ActivePlan` for the task directory `name`. Pure path construction."""
+    task_loc = resolution["project_locator"].child(_TASKS_DIRNAME, name)
+    _backend, _harness_loc, backend_root = _state_backend_target(resolution)
+    plan, progress, tracker = (
+        str(backend_root.joinpath(*task_loc.child(leaf).parts)) for leaf in _TASK_FILES
+    )
+    return ActivePlan(plan, progress, tracker=tracker, layout="task", slug=name)
+
+
 def _task_plan(resolution: dict, slug: Optional[str]) -> Optional[ActivePlan]:
     """The task-layout plan for `slug`, or None when that layout has none.
 
     Looked up only on a synced backend: `tasks/` is the vault's projects shape,
-    and a device-local `.harness/` has no project directory to hold it. A task
-    whose `plan.md` is absent or blank is not there, the same rule the marker
-    applies to `PLAN-<slug>.md`. Read through the backend verb, like every other
-    state read here."""
+    and a device-local `.harness/` has no project directory to hold it. `slug` is
+    a task's own directory name (`042-build-the-brief`) or the verb slug inside
+    it (`build-the-brief`); either finds the one task, and two tasks sharing a
+    verb slug raise rather than resolve. A task whose `plan.md` is absent or
+    blank is not there, the same rule the marker applies to `PLAN-<slug>.md`.
+    Read through the backend verb, like every other state read here."""
     if slug is None:
         return None
     target = _state_backend_target(resolution)
     if target is None:
         return None
-    backend, _harness_loc, backend_root = target
-    task_loc = resolution["project_locator"].child(_TASKS_DIRNAME, slug)
+    backend, _harness_loc, _backend_root = target
+    name = _resolve_task_dir(resolution, slug)
+    if name is None:
+        return None
+    task_loc = resolution["project_locator"].child(_TASKS_DIRNAME, name)
     try:
         body = backend.read(task_loc.child("plan.md"))
     except Exception:  # absent, unreadable or refused: not a task in this layout
         return None
     if not (body or "").strip():
         return None
-    plan, progress, tracker = (
-        str(backend_root.joinpath(*task_loc.child(name).parts)) for name in _TASK_FILES
-    )
-    return ActivePlan(plan, progress, tracker=tracker, layout="task", slug=slug)
+    return _task_at(resolution, name)
+
+
+def _next_task_number(names: list) -> str:
+    """The next free three-digit prefix: one past the highest a task carries, or
+    `001` on a project whose tasks are all unnumbered or absent."""
+    used = []
+    for name in names:
+        m = _TASK_DIR.match(name)
+        if m is not None:
+            used.append(int(m.group(1)))
+    return f"{(max(used) + 1) if used else 1:03d}"
+
+
+def _keeps_plans_in_tasks(resolution: dict) -> bool:
+    """Whether this project keeps its plans in numbered tasks rather than a flat
+    `_harness/`. True on a synced backend whose `_harness/` is gone — which is
+    what the migration leaves behind. A project that still has one, a repo with
+    no vault, and a `.project-mode=local` opt-out all read False, so nothing
+    changes for them."""
+    if _state_backend_target(resolution) is None:
+        return False
+    harness = harness_state_dir(resolution)
+    return harness is not None and not harness.is_dir()
+
+
+def _placed_task(resolution: dict, slug: Optional[str]) -> Optional[ActivePlan]:
+    """Where a new plan for `slug` goes on a project that keeps its plans in
+    tasks: a new `tasks/NNN-<verb-slug>/` with the next free number.
+
+    Composes the path and writes nothing — `/plan` writes the plan there, and the
+    directory is what makes the task exist. Without this a new plan after the
+    migration would land back in the `_harness/` the migration removed."""
+    if slug is None or not _keeps_plans_in_tasks(resolution):
+        return None
+    names = _task_dir_names(resolution)
+    # A slug the operator typed with its number already on it keeps that number;
+    # re-prefixing it would make `001-042-build-the-brief`.
+    name = slug if _TASK_DIR.match(slug) else f"{_next_task_number(names)}-{slug}"
+    return _task_at(resolution, name)
 
 
 def resolve_active_plan(
@@ -1369,10 +1494,19 @@ def resolve_active_plan(
          `tasks/<name>/plan.md` or `PLAN-<name>.md` in the resolved `_harness/`;
          otherwise ``ActivePlanError``. A present-but-blank, malformed, or
          dangling marker never degrades to the singleton (Risk #7).
-      3. **legacy singleton** — no arg, no marker file → ``("PLAN.md", "progress.md")``.
+      3. **legacy singleton** — no arg, no marker file → ``("PLAN.md", "progress.md")``,
+         unless the project keeps its plans in numbered tasks (a synced backend
+         with no `_harness/`), which has no singleton: ``TaskNameRequired``, which
+         both entry points answer with exit 4 (agentm-vault plan 10, task 7(b)).
 
-    Within a slug, a task at `tasks/<slug>/plan.md` on a synced backend wins, and
-    the flat `PLAN-<slug>.md` pair is the fallback (agentm-vault plan 09).
+    Within a slug, a task on a synced backend wins and the flat `PLAN-<slug>.md`
+    pair is the fallback (agentm-vault plan 09). A slug names a task by its own
+    directory name (`042-build-the-brief`) or by the verb slug inside it
+    (`build-the-brief`); two tasks sharing a verb slug raise ``ActivePlanError``
+    naming both. On a project that keeps its plans in tasks, a slug with no task
+    is **placed**: `tasks/NNN-<verb-slug>/` with the next free number, so a new
+    plan lands in a task rather than in the `_harness/` the migration removed
+    (plan 10, task 7(a)). Placement composes a path and writes nothing.
 
     Reader only: never writes the marker (component 2 owns the writer). Returns an
     ``ActivePlan``: the `(plan, progress)` pair — bare filenames in the flat
@@ -1387,7 +1521,11 @@ def resolve_active_plan(
                 f"unsafe plan name {plan_arg!r}: a plan slug must be a single "
                 f"path component (no '/', '\\', or '..')."
             )
-        return _task_plan(resolution, slug) or _flat_plan(slug)
+        return (
+            _task_plan(resolution, slug)
+            or _placed_task(resolution, slug)
+            or _flat_plan(slug)
+        )
 
     # 2. Worktree-local sticky binding. Present ⇒ must resolve, else raise loud.
     project_root = Path(resolution.get("project_root") or Path.cwd())
@@ -1418,7 +1556,15 @@ def resolve_active_plan(
             )
         return active
 
-    # 3. Legacy singleton default — no arg, no marker.
+    # 3. Legacy singleton default — no arg, no marker. A project that keeps its
+    #    plans in numbered tasks has no singleton to default to, so it refuses
+    #    and the caller names the task (agentm-vault plan 10, task 7(b)).
+    if _keeps_plans_in_tasks(resolution):
+        raise TaskNameRequired(
+            f"{resolution.get('slug') or 'this project'} keeps its plans in "
+            f"numbered tasks and has no singleton PLAN.md. Name the task: "
+            f"`--plan <NNN-verb-slug>` or `--plan <verb-slug>`."
+        )
     return _flat_plan(None)
 
 
@@ -2303,12 +2449,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         #   0 — resolved; pair printed.
         #   1 — state_dir is None (project_root absent from resolution): dead code
         #       post-V5-3 (harness_state_dir always resolves when project_root set).
-        #   2 — LOUD error: a dangling .harness/active-plan marker (Risk #7) or
-        #       an unsafe plan slug. Never a silent singleton fallback.
+        #   2 — LOUD error: a dangling .harness/active-plan marker (Risk #7), an
+        #       unsafe plan slug, or two tasks sharing one verb slug. Never a
+        #       silent singleton fallback.
+        #   4 — NAME THE TASK: a bare call on a project that keeps its plans in
+        #       numbered tasks, which has no singleton (agentm-vault plan 10).
+        #       Nothing on stdout; the caller asks which task, or proposes a name.
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
         resolution = resolve_project({"cwd": root})
         try:
             paths = active_plan_paths(resolution, plan_arg=args.plan)
+        except TaskNameRequired as exc:
+            print(f"[harness_memory] {exc}", file=sys.stderr)
+            return 4
         except (ActivePlanError, ValueError) as exc:
             print(f"[harness_memory] {exc}", file=sys.stderr)
             return 2

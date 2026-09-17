@@ -419,6 +419,28 @@ class CLIShim(_SeamFixture):
         self.assertEqual(rc, 0)
         self.assertEqual(out.strip(), str(self.harness / "PLAN.md"))
 
+    def test_a_bare_state_path_on_a_migrated_project_exits_4(self) -> None:
+        # agentm-vault plan 10, task 7(b): a project that keeps its plans in
+        # numbered tasks has no singleton, so the seam refuses rather than naming
+        # a `_harness/PLAN.md` the migration removed. Exit 4, nothing on stdout,
+        # one line on stderr — the shape the crickets release handles.
+        with unittest.mock.patch.object(
+            seam._hm, "resolve_active_plan",
+            side_effect=seam._hm.TaskNameRequired("fixture keeps its plans in numbered tasks"),
+        ):
+            rc, out, err = self._run("state-path", "plan", "--cwd", str(self.repo))
+        self.assertEqual(rc, 4)
+        self.assertEqual(out, "")
+        self.assertIn("numbered tasks", err)
+
+    def test_a_named_state_path_is_untouched_by_the_exit_4_path(self) -> None:
+        # Only the bare call has no answer; naming the plan still resolves.
+        self._local_mode()
+        rc, out, err = self._run(
+            "state-path", "tracker", "--cwd", str(self.repo), "--plan", "foo")
+        self.assertEqual((rc, err), (0, ""))
+        self.assertEqual(out.strip(), str(self.harness / "tracker-foo.md"))
+
     def test_offer_save_here_present_emits_json(self) -> None:
         self._set_vault()
         body = self.root / "body.txt"

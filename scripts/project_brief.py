@@ -184,7 +184,10 @@ def brief_for(cwd: Path) -> Optional[list]:
     project_dir = state_dir.parent if state_dir is not None and state_dir.name == "_harness" else None
     try:
         paths = hm.active_plan_paths(resolution)
-    except (hm.ActivePlanError, ValueError):
+    except (hm.ActivePlanError, hm.TaskNameRequired, ValueError):
+        # `TaskNameRequired` is the ordinary reading on a migrated project with
+        # no task bound: there is no singleton to name, and the brief renders the
+        # project's own lines without a plan. It is a shape, not a fault.
         paths = None
     plan_path, progress_path, tracker_path = paths if paths else (None, None, None)
     if binding.task is None:

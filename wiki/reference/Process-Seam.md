@@ -56,13 +56,14 @@ You use this to resolve the harness state path for `which` in the current contex
 | No vault / memory configured | Repo-local degrade `<project_root>/.harness/<file>` ([LC-3]) — **never `None`**. |
 | `which` not `"plan"`/`"progress"`/`"tracker"` | Raises `ValueError` — a caller bug, distinct from the absent-memory degrade. |
 | `.harness/active-plan` marker present but dangling / names an unsafe slug | Propagates `harness_memory.ActivePlanError` / `ValueError` — **not** swallowed. |
+| `context` names no plan and the project keeps its plans in numbered tasks (agentm-vault plan 10) | Propagates `harness_memory.TaskNameRequired` — the CLI shim answers **exit 4**, nothing on stdout, one line on stderr; an in-process caller catches it and asks which task. |
 
 > [!WARNING]
 > The corrupt-marker case acts as a deliberate loud-fail safety property (V5-10 Risk #7). It stays distinct from the absent-memory degrade. You could mis-bind the worker to another plan if it silently degraded there. The seam lets the exception propagate. It does not fall back to repo-local.
 
 ## `python -m` entrypoint
 
-This acts as a thin shell shim ([LC-1]). You use it to expose the same two functions to non-Python hosts. It always exits `0` on the graceful-no-op paths. This ensures your process never wedges on a memory-absent seam.
+This acts as a thin shell shim ([LC-1]). You use it to expose the same two functions to non-Python hosts. It always exits `0` on the graceful-no-op paths — the absent-memory degrade never wedges your process. `state-path` also exits **`4`** on one deliberate, non-graceful case: a bare call on a project that keeps its plans in numbered tasks, which has no singleton to answer with (agentm-vault plan 10). That's a refusal for the caller to act on, not a wedge — see the `TaskNameRequired` row above.
 
 | Subcommand | Flags | Emits |
 |---|---|---|
@@ -78,6 +79,7 @@ The Python module forms the contract. The entrypoint gives you a convenience for
 
 ## Related
 
+- [Named plans](Named-Plans) — the `resolve_active_plan` precedence, the task layout, and the exit-4 bare-call refusal `state_path` wraps.
 - [Memory↔process seam](Memory-Process-Seam) — This explains why the seam exists. It details the one-way dependency. It outlines the graceful-no-op philosophy.
 - [CI gates](CI-Gates) — This shows the `check-one-way-imports` gate's `process-seam` rule. This rule enforces the one-way edge. (CONS-1 merged the former standalone `check-process-seam-import-direction.sh` into this config-driven Python checker).
 - [AgentMemory context payload](AgentMemory-Context-Payload) — This defines the read-only memory contract the seam composes over.
