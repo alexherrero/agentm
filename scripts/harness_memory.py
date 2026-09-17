@@ -961,8 +961,10 @@ def harness_state_dir(resolution: dict) -> Optional[Path]:
 
 
 def list_plan_files(harness_dir: Path) -> list:
-    """Every active plan file in harness_dir: singleton PLAN.md plus named plans,
-    then each task's `tasks/<slug>/plan.md` beside a vault `_harness/`.
+    """Every plan file in harness_dir: singleton PLAN.md plus named plans, then
+    each task's `tasks/<slug>/plan.md` beside a vault `_harness/`, finished or
+    not. The ``list-plans`` verb leaves the finished tasks out
+    (``_task_is_finished``); the dashboards that call this want them.
 
     Sorting: singleton first, then named alphabetically, then tasks by slug —
     deterministic.
@@ -985,6 +987,29 @@ def list_plan_files(harness_dir: Path) -> list:
             if p.is_file() and _is_safe_plan_slug(p.parent.name):
                 files.append(p)
     return files
+
+
+def _task_is_finished(plan_path: Path) -> bool:
+    """True when `plan_path` is a task's plan and the tracker beside it is final
+    (`done` or `dropped`).
+
+    Before the projects migration a finished plan left the listing by moving
+    into `archive/`. A task never moves, so its tracker is the only thing that
+    says it is over, and the `list-plans` verb reads it: without this, every
+    session start in agentm listed 172 tasks, 164 of them done, as active plans
+    (2026-09-17). A flat plan is never judged here, and a missing tracker or
+    one that does not parse leaves the task listed: an unreadable tracker is
+    `check-tracker-schema`'s to report, not a reason to hide the work."""
+    if plan_path.name != "plan.md" or plan_path.parent.parent.name != _TASKS_DIRNAME:
+        return False
+    tracker_path = plan_path.parent / "tracker.md"
+    if not tracker_path.is_file():
+        return False
+    try:
+        import tracker  # the one tracker schema (agentm-vault plan 09)
+        return tracker.read(tracker_path)[0].status in tracker.FINAL
+    except Exception:
+        return False
 
 
 # -----------------------------------------------------------------------------
@@ -2267,8 +2292,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # shell path construction.
     p_lp = sub.add_parser(
         "list-plans",
-        help="list active plan files (PLAN.md + PLAN-*.md) for a project root; "
-             "also emits the active-plan binding when set (V5-5 task 3)",
+        help="list active plan files (PLAN.md + PLAN-*.md, and each task not yet "
+             "done or dropped) for a project root; also emits the active-plan "
+             "binding when set (V5-5 task 3)",
     )
     p_lp.add_argument(
         "--project-root", default=None,
@@ -2479,7 +2505,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         # harness_state_dir (V5-6 compat). Output format (one per line):
         #   <absolute-path-to-PLAN.md>           (singleton, first if present)
         #   <absolute-path-to-PLAN-<slug>.md>    (named plans, sorted)
-        #   <absolute-path-to-tasks/<slug>/plan.md> (tasks beside a vault _harness/, sorted)
+        #   <absolute-path-to-tasks/<slug>/plan.md> (tasks beside a vault _harness/, sorted;
+        #                                         a task whose tracker is done or dropped is left out)
         #   active-binding=<slug>                (only when .harness/active-plan set)
         # Always exits 0 — graceful-skip when no harness dir or no plans.
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
@@ -2492,7 +2519,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         # verb, had nothing to show. The globs are safe on an absent directory.
         if harness_dir is not None:
             for p in list_plan_files(harness_dir):
-                print(p)
+                if not _task_is_finished(p):
+                    print(p)
         try:
             present, raw = _read_active_plan_marker(root)
             if present and raw:
