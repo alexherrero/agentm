@@ -220,6 +220,22 @@ def map_status(raw: Optional[str]) -> str:
     return ""
 
 
+def declares_no_plan(path: Path) -> bool:
+    """Whether this plan file says there is no plan.
+
+    dev-setup keeps one: `# Plan: (no active plan)` under `Status: none — no plan
+    currently queued`, pointing at the roadmap where forward work actually
+    lives. It is a signpost, and making it a task would put a queued piece of
+    work in the tree whose own plan says it does not exist. Read from the Status
+    line's first word rather than the title, so a project that words the title
+    differently is caught the same way."""
+    m = _STATUS_LINE.search(_read(path, 4000))
+    if m is None:
+        return False
+    return re.split(r"[\s,(*.—–-]+", m.group(1).strip().strip("*").lower(),
+                    maxsplit=1)[0] == "none"
+
+
 def status_of(path: Path, *, default: str) -> tuple:
     """`(mapped, raw)` for a plan file: what its Status line says and what that
     maps onto. A file with no line maps onto `default`."""
@@ -393,6 +409,8 @@ def _units(vault: Path, project: str, files: list, slugs: dict) -> list:
 
     def add(kind, plan_rel, source_key, *, archived_date=None, default_status):
         plan_path = vault / plan_rel
+        if declares_no_plan(plan_path):
+            return  # a signpost, not a unit; `_destination` sends it to `desk/`
         derived, review = derive_slug(Path(source_key).name, title_of(plan_path),
                                       fallback=project)
         slug = slugs.get(f"{project}/{source_key}") or slugs.get(source_key) or derived
@@ -487,8 +505,13 @@ def _destination(vault: Path, project: str, rel: str, row: str, units: list,
     if row == "machine":
         return f"{base}/{DESK}/{leaf}"
     unit = by_source.get(name)
-    if row in ("plan", "queued-plan", "archived-plan") and unit is not None:
-        return f"{unit['dir']}/plan.md"
+    if row in ("plan", "queued-plan", "archived-plan"):
+        if unit is not None:
+            return f"{unit['dir']}/plan.md"
+        # A plan file that is no unit is a signpost that says there is no plan.
+        # It goes where what you do not open goes, beside the roadmap it points
+        # at, rather than becoming a task that contradicts itself.
+        return f"{base}/{DESK}/{leaf}"
     if row in ("progress", "archived-progress"):
         owner = next((u for u in units if u["progress"] == rel), None)
         if owner is not None:
@@ -498,7 +521,14 @@ def _destination(vault: Path, project: str, rel: str, row: str, units: list,
         stem = re.sub(r"^progress[-.]", "", Path(name).stem)
         stem = re.sub(r"^archive\.\d{8}-", "", stem)
         owner = next((u for u in units if u["derived"] == stem or u["slug"] == stem), None)
-        return f"{owner['dir']}/progress.md" if owner else f"{base}/{COMPLETED}/{leaf}"
+        if owner is not None:
+            return f"{owner['dir']}/progress.md"
+        # The singleton log of a project whose singleton plan is a signpost goes
+        # with it: they are a pair, and splitting them would leave the log
+        # looking like a finished record of work that never had a plan.
+        if name == "progress.md" and declares_no_plan(vault / f"{base}/{HARNESS}/PLAN.md"):
+            return f"{base}/{DESK}/{leaf}"
+        return f"{base}/{COMPLETED}/{leaf}"
     if row == "tracker":
         owner = next((u for u in units if u["tracker"] == rel), None)
         return f"{owner['dir']}/tracker.md" if owner else f"{base}/{DESK}/{leaf}"

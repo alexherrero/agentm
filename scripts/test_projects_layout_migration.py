@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -36,8 +37,12 @@ TODAY = "2026-09-16"
 
 
 def _git(vault: Path, *args: str) -> str:
+    # `gc.auto=0`: a commit can fork a background `git gc`, which was still
+    # holding `.git` when the scratch tree came down and failed one runner's
+    # cleanup with `Directory not empty` while three others passed (CI,
+    # 2026-09-17). A fixture should not race a garbage collector.
     r = subprocess.run(["git", "-C", str(vault), "-c", "user.name=t",
-                        "-c", "user.email=t@example.com", *args],
+                        "-c", "user.email=t@example.com", "-c", "gc.auto=0", *args],
                        capture_output=True, text=True)
     return r.stdout
 
@@ -51,9 +56,11 @@ class Fixture(unittest.TestCase):
     """Two projects: `alpha` in the full shape, `beta` with only a singleton."""
 
     def setUp(self) -> None:
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        base = Path(tmp.name)
+        base = Path(tempfile.mkdtemp(prefix="agentm-projects-layout-"))
+        # Tolerant of a straggler rather than failing the test that made it: this
+        # is a scratch tree, and a cleanup error says nothing about the behaviour
+        # under test. `gc.auto=0` above removes the cause; this removes the blast.
+        self.addCleanup(shutil.rmtree, base, True)
         self.vault, self.state = base / "Vault", base / "state"
         self.out = self.state / mig.STAGE
         self.alpha = self.vault / "projects" / "alpha"
@@ -294,6 +301,30 @@ class TheTable(Fixture):
         self.assertTrue(self.dest(plan, "_harness/.project-mode")
                         .endswith("alpha/desk/.project-mode"))
         self.assertEqual(plan["counts"]["machine"], 2)
+
+    def test_a_plan_that_says_there_is_no_plan_is_not_a_task(self) -> None:
+        # dev-setup keeps one: `# Plan: (no active plan)` under `Status: none`,
+        # pointing at the roadmap. Making it a task would put a queued piece of
+        # work in the tree whose own plan says it does not exist.
+        delta = self.vault / "projects" / "delta" / "_harness"
+        self.write(delta / "PLAN.md",
+                   "# Plan: (no active plan)\n\n**Status:** none — no plan currently queued.\n\n"
+                   "Forward work lives in `ROADMAP.md`.\n")
+        self.write(delta / "progress.md", "# Progress\n\nOlder work.\n")
+        plan = self.plan()
+        self.assertEqual(self.dest(plan, "delta/_harness/PLAN.md"),
+                         "projects/delta/desk/PLAN.md")
+        # Its log is the other half of the pair and goes with it.
+        self.assertEqual(self.dest(plan, "delta/_harness/progress.md"),
+                         "projects/delta/desk/progress.md")
+        self.assertFalse(any(t["project"] == "delta" for t in plan["trackers"]))
+
+    def test_a_real_plan_is_still_a_task(self) -> None:
+        # The rule reads the Status line's first word, so an ordinary plan — and
+        # one whose status merely starts with a different word — is untouched.
+        plan = self.plan()
+        self.assertIn("/tasks/", self.dest(plan, "_harness/PLAN-build-the-widget.md"))
+        self.assertIn("/tasks/", self.dest(plan, "beta/_harness/PLAN.md"))
 
     def test_a_project_with_no_harness_still_gets_its_charter(self) -> None:
         # Three live projects carry no `_harness/`; leaving those on `_index.md`
