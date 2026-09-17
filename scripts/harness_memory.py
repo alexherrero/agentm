@@ -2485,7 +2485,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
         resolution = resolve_project({"cwd": root})
         harness_dir = harness_state_dir(resolution)
-        if harness_dir is not None and harness_dir.is_dir():
+        # Not gated on the directory existing. After the projects migration there
+        # is no `_harness/` to find, and `list_plan_files` reads the task layout
+        # from its parent — so an `is_dir()` guard here returned nothing at all
+        # on a migrated project, and `/orient`, which lists plans through this
+        # verb, had nothing to show. The globs are safe on an absent directory.
+        if harness_dir is not None:
             for p in list_plan_files(harness_dir):
                 print(p)
         try:

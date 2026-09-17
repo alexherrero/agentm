@@ -73,6 +73,19 @@ class TheListing(_Project):
         names = [p.relative_to(self.project).as_posix() for p in hm.list_plan_files(self.harness)]
         self.assertEqual(names, ["_harness/PLAN-foo.md", "tasks/bar/plan.md"])
 
+    def test_the_tasks_are_listed_once_the_harness_directory_is_gone(self) -> None:
+        # What the projects migration leaves: `tasks/` with no `_harness/` beside
+        # it. The listing is composed against a path that no longer exists, and
+        # its globs have to be safe on one — the CLI gated on `is_dir()` and so
+        # returned nothing at all on a migrated project, which left `/orient`
+        # with no plans to show (2026-09-16).
+        self._task("bar")
+        self._task("baz")
+        shutil.rmtree(self.harness)
+        self.assertFalse(self.harness.exists())
+        names = [p.relative_to(self.project).as_posix() for p in hm.list_plan_files(self.harness)]
+        self.assertEqual(names, ["tasks/bar/plan.md", "tasks/baz/plan.md"])
+
     def test_a_device_local_harness_does_not_read_the_repos_tasks(self) -> None:
         repo = self.root / "repo"
         _write(repo / ".harness" / "PLAN-foo.md", "# Plan\n")
