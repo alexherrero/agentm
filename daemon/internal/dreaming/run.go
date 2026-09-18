@@ -59,9 +59,13 @@ type Report struct {
 	Applied    int              `json:"applied"`
 	Skipped    int              `json:"skipped"`
 	Outcome    string           `json:"outcome"`
-	Refused    string           `json:"refused,omitempty"`
-	Root       string           `json:"root,omitempty"`
-	seq        int
+	// DeletionManifest is where the record of tonight's deletions was written,
+	// before the files went. Empty when nothing was deleted; a pass that could
+	// not write it deletes nothing, and says so by leaving this empty.
+	DeletionManifest string `json:"deletion_manifest,omitempty"`
+	Refused          string `json:"refused,omitempty"`
+	Root             string `json:"root,omitempty"`
+	seq              int
 }
 
 // ErrRefused is returned (with a Report) when the pass could not take its
@@ -180,6 +184,20 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	rep.Plan = plan
 	intents = append(intents, plan.Intents...)
 	if opt.Apply {
+		// The manifest, before the files go. A deletion with no record is what
+		// the retired doctrine — "no policy outcome ever deletes a memory" —
+		// was protecting against, and it is still refused: if the record cannot
+		// be written, the deletions are dropped and the rest of the pass runs.
+		if rows := DeletionRows(root, intents, plan.Deleted); len(rows) > 0 {
+			manifest, mErr := WriteDeletionManifest(root, runID, rows, now)
+			if mErr != nil || manifest == "" {
+				intents = withoutDeletions(intents)
+				rep.Plan.Deleted = nil
+				rep.DeletionManifest = ""
+			} else {
+				rep.DeletionManifest = manifest
+			}
+		}
 		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
@@ -308,6 +326,19 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 // journal so both layers keep one record — Commit writes that line itself,
 // before the applied line, so a crash anywhere leaves a state Resolve can
 // finish.
+// withoutDeletions drops every deletion from a plan, leaving the rest of it to
+// run. The one caller is the manifest failure above.
+func withoutDeletions(intents []Intent) []Intent {
+	out := intents[:0:0]
+	for _, in := range intents {
+		if in.Delete {
+			continue
+		}
+		out = append(out, in)
+	}
+	return out
+}
+
 func applyAll(journal *Journal, root, runID string, intents []Intent, now time.Time, pace time.Duration, rep *Report) error {
 	for _, in := range intents {
 		rep.seq++

@@ -149,12 +149,25 @@ type accessRecord struct {
 	Version int `json:"version"`
 	Entries map[string]struct {
 		LastAccess string `json:"last_access"`
+		// Fingerprint is the note's body hash, written since version 2 so a
+		// file that moves can be followed to its new path. Read here so the
+		// shape round-trips; the pairing itself is the reconcile step's.
+		Fingerprint string `json:"fingerprint,omitempty"`
 	} `json:"entries"`
 }
 
-// accessRecordVersion is the sidecar shape this reader understands, matching
-// `lifecycle._load_sidecar`.
-const accessRecordVersion = 1
+// The sidecar shapes this reader understands, matching `lifecycle._load_sidecar`.
+//
+// Version 1 keyed an entry on a note's slug — its basename, or the `slug:` in
+// its frontmatter. That is not an identity: 26 keys in the live file matched
+// more than one file in the vault, `progress` matching eight, so eight notes
+// shared one clock and a recall of any of them read as a recall of all eight.
+// Version 2 keys on the note's path from the vault root, which is the key every
+// row in this index already carries.
+const (
+	accessRecordV1 = 1
+	accessRecordV2 = 2
+)
 
 // AccessLog is the recall-access sidecar, read once and cached.
 //
@@ -163,8 +176,13 @@ const accessRecordVersion = 1
 // data loss. It is deliberately not consulted per search — a 50KB parse on the
 // hot path would be the kind of thing the capture budget exists to catch.
 type AccessLog struct {
-	mu      sync.RWMutex
-	byslug  map[string]time.Time
+	mu sync.RWMutex
+	// byKey is keyed on whatever the sidecar keys on: a path in version 2, a
+	// slug in version 1. `version` says which, so a lookup knows whether the
+	// slug fallback is a compatibility read or a wrong answer waiting to be
+	// given.
+	byKey   map[string]time.Time
+	version int
 	loaded  bool
 	dirs    []string
 	modTime time.Time
@@ -179,7 +197,7 @@ type AccessLog struct {
 // refused to run because a cache was corrupt would be trading a small
 // inaccuracy for no answer at all.
 func NewAccessLog(dirs ...string) *AccessLog {
-	a := &AccessLog{byslug: map[string]time.Time{}}
+	a := &AccessLog{byKey: map[string]time.Time{}}
 	for _, d := range dirs {
 		if strings.TrimSpace(d) != "" {
 			a.dirs = append(a.dirs, d)
@@ -230,48 +248,61 @@ func (a *AccessLog) Refresh() {
 	if err := json.Unmarshal(blob, &rec); err != nil {
 		return
 	}
-	if rec.Version != accessRecordVersion {
+	if rec.Version != accessRecordV1 && rec.Version != accessRecordV2 {
 		return
 	}
 
 	parsed := make(map[string]time.Time, len(rec.Entries))
-	for slug, e := range rec.Entries {
+	for key, e := range rec.Entries {
 		if t, err := time.Parse("2006-01-02", strings.TrimSpace(e.LastAccess)); err == nil {
-			parsed[slug] = t
+			parsed[key] = t
 		}
 	}
 
 	a.mu.Lock()
-	a.byslug = parsed
+	a.byKey = parsed
+	a.version = rec.Version
 	a.loaded = true
 	a.modTime = info.ModTime()
 	a.mu.Unlock()
 }
 
-// LastAccess returns the recorded genuine-recall date for a slug.
-func (a *AccessLog) LastAccess(slug string) (time.Time, bool) {
+// LastAccess returns the recorded genuine-recall date for one note.
+//
+// By path, which is the note's identity. The slug is consulted only when the
+// sidecar on disk is still version 1, where it is the only key there is — and
+// not otherwise, because a slug lookup against a version-2 file would be a
+// basename collision reintroduced by the reader.
+func (a *AccessLog) LastAccess(rel, slug string) (time.Time, bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	t, ok := a.byslug[slug]
-	return t, ok
+	if t, ok := a.byKey[rel]; ok {
+		return t, true
+	}
+	if a.version == accessRecordV1 && slug != "" {
+		if t, ok := a.byKey[slug]; ok {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // Len is how many notes carry an access record.
 func (a *AccessLog) Len() int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return len(a.byslug)
+	return len(a.byKey)
 }
 
 // ElapsedDays resolves a note's age by the anchor chain the design specifies:
 // genuine recall first, then `updated`, then `captured`. Returns false when no
 // anchor resolves, which callers treat as no basis to decay rather than as
 // maximum age.
-func ElapsedDays(log *AccessLog, slug, updated, created, captured, capturedSrc string,
+func ElapsedDays(log *AccessLog, rel, slug, updated, created, captured, capturedSrc string,
 	now time.Time) (float64, bool) {
 	var anchor time.Time
 	if log != nil {
-		if t, ok := log.LastAccess(slug); ok {
+		if t, ok := log.LastAccess(rel, slug); ok {
 			anchor = t
 		}
 	}

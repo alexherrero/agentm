@@ -2776,6 +2776,7 @@ def prompt_submit(
     # itself, before the loop's own unreadable-file `continue` can skip an
     # entry. Computing rank from a loop-local counter instead would
     # silently renumber every hit after a skip.
+    servable_fm: dict = {}
     for rank, result in enumerate(results, start=1):
         md_path = vault / result["path"]
         try:
@@ -2811,18 +2812,15 @@ def prompt_submit(
                 "full_tokens": max(1, full_chars // 4),
             }
         )
-        # Record the on-demand hit for heat tracking (best-effort). Skipped for
-        # `external` hits — notes outside the memory root are readable context,
-        # not curated memory, and heat/decay bookkeeping on them would score a
-        # tree the memory engine does not own.
-        if _record_recall_hit is not None and not result.get("external"):
-            _record_recall_hit(vault, result["slug"])
-        # V6-1: genuine recall access resets the volatile-tier decay clock
-        # (best-effort, no-op for decay-exempt entries). This is the ONLY
-        # call site — a lint walk, index rebuild, or dreaming pass must
-        # never reach this function.
-        if _record_lifecycle_access is not None and not result.get("external"):
-            _record_lifecycle_access(vault, result["slug"], fm, result["path"])
+        # The note's frontmatter, kept for the one recording this function makes
+        # once the token budget has decided what was actually served. Recording
+        # here instead would reset the clock for a candidate the budget then
+        # dropped — a note nobody was shown, kept alive by having been ranked.
+        # `external` hits are excluded: notes outside the memory root are
+        # readable context, not curated memory, and heat and decay bookkeeping
+        # on them would score a tree the memory engine does not own.
+        if not result.get("external"):
+            servable_fm[result["path"]] = fm
 
     # Apply token budget: results are highest-salience first → truncation
     # drops the least-relevant tail entries, never the top hits. Each
@@ -2866,17 +2864,40 @@ def prompt_submit(
     kept_hits = [hit for _slug, hit in kept_pairs]
     token_budget_excerpted = sum(1 for _slug, hit in kept_pairs if hit.get("excerpt"))
 
-    # L1 (ledger ruling 6): one per-recall counter event, query hashed (never
-    # raw text) + the slugs actually surfaced after truncation. Best-effort,
-    # this function's sole call site — same discipline as the heat/lifecycle
-    # recordings above. `hits` (Loose Ends Release 8) carries the same
-    # evidence alongside, for the `memory-recall trace` reader.
+    # One record of one recall, and everything that reads a recall reads it.
+    #
+    # The ledger row, the decay clocks and the heat counters were three separate
+    # recordings on three different sets: the ledger wrote the slugs actually
+    # surfaced, while the clock and the counters were written per candidate
+    # inside the loop above, before the token budget had decided anything. So a
+    # note that was ranked and then dropped had its clock reset — kept alive by
+    # never being shown to anyone. The design's words are "the clock resets on
+    # any hit **served** to any surface", and this is the set that was served.
+    #
+    # `record_recall` is the single call site; the sidecar updates ride with it,
+    # batched, so the two files are read and written once each rather than once
+    # per hit under the vault mutex on a 300ms path.
+    served = [(hit["path"], slug) for slug, hit in kept_pairs
+              if hit.get("path") in servable_fm]
     try:
         from recall_counter import record_recall as _record_recall_event  # type: ignore
         _record_recall_event(prompt, loaded_slugs, hits=kept_hits,
                              drops=daemon_drops or None)
     except ImportError:
         pass
+    if _record_recall_hit is not None and served:
+        try:
+            from heat_policy import record_hits as _record_recall_hits  # type: ignore
+            _record_recall_hits(vault, served)
+        except ImportError:
+            pass
+    if _record_lifecycle_access is not None and served:
+        try:
+            from lifecycle import record_recall_accesses as _record_lifecycle_accesses  # type: ignore
+            _record_lifecycle_accesses(
+                vault, [(rel, servable_fm[rel]) for rel, _slug in served])
+        except ImportError:
+            pass
 
     # Output assembly: only print stdout when we have hits or a truncation notice.
     if blocks or token_budget_omitted > 0:

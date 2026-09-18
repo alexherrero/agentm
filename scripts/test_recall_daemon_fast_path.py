@@ -532,17 +532,20 @@ class PromptSubmitIntegrationTests(_VaultFixture):
         """
         import heat_policy
 
-        seen: list[str] = []
+        seen: list[tuple] = []
         with unittest.mock.patch.dict(
             recall.os.environ, {recall.DAEMON_SCOPE_ENV: "vault"}
         ), unittest.mock.patch.object(
-            heat_policy, "record_hit", lambda vault, slug: seen.append(slug)
+            heat_policy, "record_hits", lambda vault, served: seen.extend(served)
         ):
             _, _, err = self._submit(_FakeDaemon(stdout=_payload(
                 "Church/talk.md", "agent/memory/zorbulax.md"
             )))
         self.assertIn("Loaded 2 relevant", err)
-        self.assertEqual(seen, ["zorbulax"])
+        # One batched recording over what the recall actually served, rather
+        # than one call per candidate: the counters and the decay clocks now
+        # ride with the ledger row, on the same set it writes.
+        self.assertEqual([slug for _rel, slug in seen], ["zorbulax"])
 
 
 class SpaceLabelTests(unittest.TestCase):

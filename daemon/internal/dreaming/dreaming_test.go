@@ -354,8 +354,31 @@ func TestThePlanSinksTheSilentLiftsTheRecalledAndNamesTheCold(t *testing.T) {
 	if got := rels(plan.Previews); strings.Join(got, ",") != near {
 		t.Errorf("previews = %v, want the dormant note nearing the line", got)
 	}
-	if len(plan.Intents) != 3 {
-		t.Errorf("intents = %d, want 3 (two demotions, one revival; candidates are never moved)", len(plan.Intents))
+	// The candidate is moved now. It used to be named and left where it was —
+	// "entering `archived` is the confirm surface's" — and session 5 reversed
+	// that: a stage nobody confirms is a stage that never happens.
+	if got := rels(plan.Archived); strings.Join(got, ",") != cold {
+		t.Errorf("archived = %v, want the dormant note past the archive line", got)
+	}
+	// And `arch.md` carries `archived` while sitting in its class directory,
+	// which is where live notes are. The file's location wins: it returns to
+	// `active`.
+	if got := rels(plan.Returned); strings.Join(got, ",") != "memory/semantic/arch.md" {
+		t.Errorf("returned = %v, want the note stamped archived inside its class", got)
+	}
+	if len(plan.Intents) != 5 {
+		t.Errorf("intents = %d, want 5 (two demotions, one revival, one archive move, one return)",
+			len(plan.Intents))
+	}
+	for _, in := range plan.Intents {
+		if in.Rel == cold {
+			if in.To != "archive/"+cold {
+				t.Errorf("the archive intent moves to %q, want the mirrored archive path", in.To)
+			}
+			if !strings.Contains(string(in.After), "lifecycle: archived") {
+				t.Error("the archived note is moved without being stamped")
+			}
+		}
 	}
 	if plan.Considered != 10 {
 		t.Errorf("considered = %d, want 10", plan.Considered)

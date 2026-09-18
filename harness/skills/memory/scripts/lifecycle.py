@@ -41,6 +41,7 @@ stage, task 3 — dream.py):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -186,16 +187,70 @@ def is_decay_exempt(fm: dict[str, str], rel_path: str | Path) -> bool:
     return False
 
 
+# The sidecar's shapes. Version 1 keyed an entry on a note's slug — its
+# basename, or the `slug:` in its frontmatter. That is not an identity: 26 keys
+# in the live file matched more than one file in the vault, `progress` matching
+# eight of them, so eight notes shared one clock and a recall of any of them
+# read as a recall of all eight. Version 2 keys on the note's path from the
+# vault root, which is what the daemon already writes for every row it holds,
+# and carries the note's fingerprint so a file that moves can be followed to its
+# new path instead of losing its clock.
+SIDECAR_VERSION = 2
+_SIDECAR_VERSIONS = (1, 2)
+
+
+def sidecar_key(vault: Path, rel_path) -> str:
+    """The key an entry is stored under: the note's path from the vault root."""
+    return vault_layout.vault_rel(rel_path, vault)
+
+
+def fingerprint_of(path) -> str:
+    """A note's body hash — what a moved file is recognised by.
+
+    The body, not the whole file: frontmatter is rewritten by enrichment, the
+    backfills and the operator, and a fingerprint that changed every time a tag
+    was added would follow nothing. Empty string when the file cannot be read,
+    which reads as "no fingerprint" everywhere it is used.
+    """
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    body = raw
+    if raw.startswith("---"):
+        parts = raw.split("\n---", 1)
+        if len(parts) == 2:
+            body = parts[1]
+    return hashlib.sha256(body.strip().encode("utf-8")).hexdigest()[:16]
+
+
 def _load_sidecar(vault: Path) -> dict:
     path = vault_layout.sidecar_path(vault, LIFECYCLE_SIDECAR_NAME)
     try:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)
-        if isinstance(data, dict) and data.get("version") == 1:
+        if isinstance(data, dict) and data.get("version") in _SIDECAR_VERSIONS:
             return data
     except (OSError, json.JSONDecodeError):
         pass
-    return {"version": 1, "entries": {}}
+    return {"version": SIDECAR_VERSION, "entries": {}}
+
+
+def _lookup(data: dict, vault: Path, slug: str, rel_path) -> dict:
+    """One entry, by path, falling back to the slug a version-1 file keyed on.
+
+    The fallback is what lets a vault whose sidecar predates the re-keying keep
+    every clock it had until the migration runs — and it is deliberately only a
+    *read*: nothing writes a slug key any more, so the old keys drain as notes
+    are recalled rather than being carried forward.
+    """
+    entries = data.get("entries") or {}
+    entry = entries.get(sidecar_key(vault, rel_path))
+    if entry is not None:
+        return entry
+    if data.get("version") == 1 and slug:
+        return entries.get(slug) or {}
+    return {}
 
 
 def _save_sidecar(vault: Path, data: dict) -> None:
@@ -220,11 +275,12 @@ def record_recall_access(
     *,
     today: str | None = None,
 ) -> None:
-    """Record one genuine recall access for `slug` — resets the decay clock.
+    """Record one genuine recall access — resets the decay clock.
 
-    Only called from recall.py's prompt_submit() (mirrors heat_policy's
-    record_hit() call-site discipline exactly: a lint walk, an index rebuild,
-    or a dreaming/consolidation pass touching the file must never call this).
+    One note; `record_recall_accesses` is what the recall path calls, with
+    every note one recall served. Kept because a single-note reset is what a
+    command like `/memory revive` wants, and because it is the shape the
+    call-site discipline was written about.
 
     No-op for decay-exempt entries (durable tiers ignore access entirely —
     FABLE R1's explicit bound). Best-effort: exceptions are swallowed, since
@@ -232,7 +288,29 @@ def record_recall_access(
 
     `today` is injectable for tests (ISO date string YYYY-MM-DD).
     """
-    if is_decay_exempt(fm, rel_path):
+    record_recall_accesses(vault, [(rel_path, fm)], today=today)
+
+
+def record_recall_accesses(vault: Path, served, *, today: str | None = None) -> None:
+    """Record a genuine recall access for every note one recall actually served.
+
+    `served` is an iterable of `(rel_path, frontmatter)`.
+
+    Batched because the sidecar is one file: recording five hits one at a time
+    read and rewrote it five times, under the vault mutex each time, on a path
+    with a 300ms budget.
+
+    **Served, not merely found.** The design's words are "the clock resets on
+    any hit served to any surface", and a hit the token budget dropped before
+    the prompt was assembled was not served. The recall path used to reset the
+    clock for every candidate it ranked, which quietly meant a note could be
+    kept alive by never being shown to anyone.
+
+    Only the recall path calls this — a lint walk, an index rebuild or a
+    dreaming pass touching a file must never reach it.
+    """
+    pairs = [(rel, fm) for rel, fm in served if not is_decay_exempt(fm, rel)]
+    if not pairs:
         return
     try:
         if today is None:
@@ -248,10 +326,52 @@ def record_recall_access(
         with ctx:
             data = _load_sidecar(vault)
             entries = data.setdefault("entries", {})
-            entries[slug] = {"last_access": today}
+            for rel, _fm in pairs:
+                key = sidecar_key(vault, rel)
+                entry = dict(entries.get(key) or {})
+                entry["last_access"] = today
+                fp = fingerprint_of(Path(vault) / rel)
+                if fp:
+                    entry["fingerprint"] = fp
+                entries[key] = entry
+            data["version"] = SIDECAR_VERSION
             _save_sidecar(vault, data)
     except Exception:  # noqa: BLE001 — lifecycle tracking is best-effort
         pass
+
+
+def rekey(vault: Path, old_rel, new_rel) -> bool:
+    """Follow a note's clock to where the note went.
+
+    Called by the night's reconcile step when it pairs a path that vanished
+    with the file carrying its body — the one repair that keeps a hand move in
+    Obsidian or Finder from silently resetting a memory's age to nothing.
+
+    Returns whether an entry moved. Best-effort, like every other write here.
+    """
+    try:
+        try:
+            from vault_lock import vault_mutex  # type: ignore
+            ctx = vault_mutex(vault)
+        except ImportError:
+            from contextlib import nullcontext
+            ctx = nullcontext()
+        with ctx:
+            data = _load_sidecar(vault)
+            entries = data.setdefault("entries", {})
+            old_key = sidecar_key(vault, old_rel)
+            new_key = sidecar_key(vault, new_rel)
+            if old_key == new_key or old_key not in entries:
+                return False
+            entry = entries.pop(old_key)
+            # The destination wins if it somehow already has a clock: a note
+            # that is at the new path now is the note whose clock that is.
+            entries.setdefault(new_key, entry)
+            data["version"] = SIDECAR_VERSION
+            _save_sidecar(vault, data)
+            return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _days_between(earlier_iso: str, later_iso: str) -> float:
@@ -286,7 +406,7 @@ def days_since_last_genuine_access(
     if now is None:
         import datetime
         now = datetime.date.today().isoformat()
-    return _resolve_elapsed_days(vault, slug, fm, now)
+    return _resolve_elapsed_days(vault, slug, fm, now, rel_path)
 
 
 def _in_contract_exempt_space(rel_path: str | Path) -> bool:
@@ -340,7 +460,7 @@ def compute_decay_score(
         import datetime
         now = datetime.date.today().isoformat()
 
-    elapsed_days = _resolve_elapsed_days(vault, slug, fm, now)
+    elapsed_days = _resolve_elapsed_days(vault, slug, fm, now, rel_path)
     if elapsed_days is None:
         # No anchor, or a malformed one: no basis to compute decay. Fresh
         # rather than old — a note the system knows nothing about should not be
@@ -349,16 +469,16 @@ def compute_decay_score(
     return _score_from_bands(elapsed_days)
 
 
-def _resolve_elapsed_days(vault: Path, slug: str, fm: dict[str, str], now: str) -> float | None:
-    """Same last_access / updated / created anchor-resolution chain
-    compute_decay_score has always used, factored out so the stepped curve
-    resolves elapsed time identically — a shadow-mode delta between the two
-    curves must reflect the scoring formula alone, never a divergence in
-    which anchor was used. Returns None when there's no anchor or it's
-    malformed (both curves treat that as "no basis to compute decay").
+def _resolve_elapsed_days(vault: Path, slug: str, fm: dict[str, str], now: str,
+                          rel_path=None) -> float | None:
+    """The last_access / updated / created anchor chain, as elapsed days.
+
+    The access record is read by the note's path, falling back to the slug a
+    version-1 sidecar keyed on. Returns None when there is no anchor or it is
+    malformed, which the curve treats as "no basis to compute decay".
     """
     data = _load_sidecar(vault)
-    entry = data.get("entries", {}).get(slug, {})
+    entry = _lookup(data, vault, slug, rel_path if rel_path is not None else slug)
     anchor = entry.get("last_access") or fm.get("updated") or fm.get("created")
     if not anchor:
         return None

@@ -80,7 +80,7 @@ func TestAGenuineRecallWinsOverTheFrontmatterDates(t *testing.T) {
 	log := NewAccessLog(vault)
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 
-	days, ok := ElapsedDays(log, "read-recently", "2016-01-01", "", "2015-01-01",
+	days, ok := ElapsedDays(log, "read-recently", "read-recently", "2016-01-01", "", "2015-01-01",
 		"frontmatter:captured", now)
 	if !ok {
 		t.Fatal("no anchor resolved")
@@ -101,7 +101,7 @@ func TestUpdatedIsThePreferredFallback(t *testing.T) {
 	log := NewAccessLog(vault)
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 
-	days, ok := ElapsedDays(log, "no-record", "2026-08-19", "", "2015-01-01",
+	days, ok := ElapsedDays(log, "no-record", "no-record", "2026-08-19", "", "2015-01-01",
 		"frontmatter:captured", now)
 	if !ok {
 		t.Fatal("no anchor resolved")
@@ -116,7 +116,7 @@ func TestCapturedIsTheLastResort(t *testing.T) {
 	log := NewAccessLog(vault)
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 
-	days, ok := ElapsedDays(log, "no-record", "", "", "2026-08-19T05:00:00Z",
+	days, ok := ElapsedDays(log, "no-record", "no-record", "", "", "2026-08-19T05:00:00Z",
 		"frontmatter:captured", now)
 	if !ok {
 		t.Fatal("no anchor resolved from `captured`")
@@ -131,7 +131,7 @@ func TestCapturedIsTheLastResort(t *testing.T) {
 func TestNoAnchorIsNoBasisToDecay(t *testing.T) {
 	vault := t.TempDir()
 	log := NewAccessLog(vault)
-	if _, ok := ElapsedDays(log, "unknown", "", "", "", "mtime", time.Now()); ok {
+	if _, ok := ElapsedDays(log, "unknown", "unknown", "", "", "", "mtime", time.Now()); ok {
 		t.Error("an anchor resolved from nothing")
 	}
 }
@@ -141,7 +141,7 @@ func TestBothTimestampShapesParse(t *testing.T) {
 	log := NewAccessLog(vault)
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 	for _, stamp := range []string{"2026-08-19", "2026-08-19T05:43:48Z", "2026-08-19T05:43:48+00:00"} {
-		days, ok := ElapsedDays(log, "x", stamp, "", "", "mtime", now)
+		days, ok := ElapsedDays(log, "x", "x", stamp, "", "", "mtime", now)
 		if !ok {
 			t.Errorf("%q did not parse", stamp)
 			continue
@@ -167,7 +167,7 @@ func TestACorruptSidecarIsAnEmptyLogNotAnError(t *testing.T) {
 	}
 	// And the fallback chain still works.
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
-	if _, ok := ElapsedDays(log, "x", "2026-08-19", "", "", "mtime", now); !ok {
+	if _, ok := ElapsedDays(log, "x", "x", "2026-08-19", "", "", "mtime", now); !ok {
 		t.Error("a corrupt sidecar broke the frontmatter fallback")
 	}
 }
@@ -294,27 +294,70 @@ func TestMtimeIsNotAnAnchor(t *testing.T) {
 	log := NewAccessLog(vault)
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 
-	if _, ok := ElapsedDays(log, "no-record", "", "", "2015-01-01", "mtime", now); ok {
+	if _, ok := ElapsedDays(log, "no-record", "no-record", "", "", "2015-01-01", "mtime", now); ok {
 		t.Error("a decay age resolved from a filesystem timestamp")
 	}
 	// The same date, claimed by the note itself, does anchor.
-	if _, ok := ElapsedDays(log, "no-record", "", "", "2015-01-01",
+	if _, ok := ElapsedDays(log, "no-record", "no-record", "", "", "2015-01-01",
 		"frontmatter:captured", now); !ok {
 		t.Error("a note's own `captured` date failed to anchor")
 	}
 }
 
-// An unrecognised sidecar version reads as no sidecar rather than as a v1.
-// A wrong anchor ranks a note confidently; a missing one declines to.
+// An unrecognised sidecar version reads as no sidecar rather than as a shape it
+// understands. A wrong anchor ranks a note confidently; a missing one declines
+// to.
+//
+// Version 2 was the unknown shape when this was written, and is the shipped one
+// now: keys are paths, and an entry may carry a fingerprint. Version 3 stands in
+// for whatever comes next.
 func TestAnUnknownSidecarVersionIsIgnored(t *testing.T) {
 	vault := t.TempDir()
-	blob := `{"version":2,"entries":{"x":{"last_access":"2026-08-19"}}}`
+	blob := `{"version":3,"entries":{"x":{"last_access":"2026-08-19"}}}`
 	if err := os.WriteFile(filepath.Join(vault, ".lifecycle.json"),
 		[]byte(blob), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if n := NewAccessLog(vault).Len(); n != 0 {
-		t.Errorf("read %d entries from a v2 sidecar; the shape is not understood", n)
+		t.Errorf("read %d entries from a version-3 sidecar; the shape is not understood", n)
+	}
+}
+
+// The keying, and the fallback that keeps a vault whose sidecar predates it.
+func TestTheClockIsKeyedOnThePathAndFallsBackToTheSlugOnlyOnVersionOne(t *testing.T) {
+	// Two notes, one basename. The collision the re-keying exists to end: on
+	// the live sidecar 26 keys matched more than one file, `progress` eight.
+	v2 := t.TempDir()
+	blob := `{"version":2,"entries":{` +
+		`"projects/agentm/progress.md":{"last_access":"2026-09-10"},` +
+		`"projects/blog/progress.md":{"last_access":"2026-01-01"}}}`
+	if err := os.WriteFile(filepath.Join(v2, ".lifecycle.json"), []byte(blob), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	log := NewAccessLog(v2)
+	a, okA := log.LastAccess("projects/agentm/progress.md", "progress")
+	b, okB := log.LastAccess("projects/blog/progress.md", "progress")
+	if !okA || !okB {
+		t.Fatal("a path-keyed entry was not found by its path")
+	}
+	if a.Equal(b) {
+		t.Error("two notes sharing a basename share one clock")
+	}
+	// The slug is not a key in version 2, and asking by it finds nothing —
+	// otherwise the collision would come back through the reader.
+	if _, ok := log.LastAccess("projects/crickets/progress.md", "progress"); ok {
+		t.Error("a version-2 lookup fell back to the basename")
+	}
+
+	v1 := t.TempDir()
+	if err := os.WriteFile(filepath.Join(v1, ".lifecycle.json"),
+		[]byte(`{"version":1,"entries":{"a-fact":{"last_access":"2026-08-19"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := NewAccessLog(v1)
+	if _, ok := old.LastAccess("agent/memory/semantic/a-fact.md", "a-fact"); !ok {
+		t.Error("a version-1 sidecar lost its clocks; the fallback is what carries " +
+			"a vault from before the re-keying until the migration runs")
 	}
 }
 
@@ -330,7 +373,7 @@ func TestCreatedAnchorsWhenUpdatedIsAbsent(t *testing.T) {
 	log := NewAccessLog(vault)
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 
-	days, ok := ElapsedDays(log, "no-record", "", "2020-08-20", "", "mtime", now)
+	days, ok := ElapsedDays(log, "no-record", "no-record", "", "2020-08-20", "", "mtime", now)
 	if !ok {
 		t.Fatal("a note carrying only `created` resolved no anchor")
 	}
@@ -339,7 +382,7 @@ func TestCreatedAnchorsWhenUpdatedIsAbsent(t *testing.T) {
 	}
 	// And `updated` still wins when both are there: an entry substantively
 	// edited today is fresh however long ago it was first written.
-	days, ok = ElapsedDays(log, "no-record", "2026-08-19", "2015-01-01", "", "mtime", now)
+	days, ok = ElapsedDays(log, "no-record", "no-record", "2026-08-19", "2015-01-01", "", "mtime", now)
 	if !ok {
 		t.Fatal("no anchor resolved")
 	}

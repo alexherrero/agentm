@@ -337,13 +337,16 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 		// classes are: a note that is both stale and a fragment is demoted twice
 		// and still ranked, and nothing here can zero a score out.
 		if !now.IsZero() && !note.IsDecayExempt(flags) {
-			rel := rows[i].Path
-			if i := strings.LastIndexByte(rel, '/'); i >= 0 {
-				rel = rel[i+1:]
+			// The row's path is the clock's key. The slug rides along for a
+			// sidecar still on version 1, where the basename is the only key
+			// there is.
+			base := rows[i].Path
+			if i := strings.LastIndexByte(base, '/'); i >= 0 {
+				base = base[i+1:]
 			}
-			slug := strings.TrimSuffix(rel, ".md")
-			if days, ok := note.ElapsedDays(log, slug, rows[i].Updated, rows[i].Created,
-				rows[i].Captured, rows[i].CapturedSource, now); ok {
+			slug := strings.TrimSuffix(base, ".md")
+			if days, ok := note.ElapsedDays(log, rows[i].Path, slug, rows[i].Updated,
+				rows[i].Created, rows[i].Captured, rows[i].CapturedSource, now); ok {
 				d := note.DecayScore(days)
 				rows[i].Decay = d
 				mult *= d
