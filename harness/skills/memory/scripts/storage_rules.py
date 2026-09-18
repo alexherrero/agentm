@@ -262,11 +262,31 @@ def _ask(args: list) -> dict:
         raise StorageRulesError(detail)
 
     try:
-        return json.loads(proc.stdout)
+        answer = json.loads(proc.stdout)
     except ValueError as exc:
         raise StorageRulesError(
             f"{DAEMON_BIN} answered with something that is not JSON: {exc}"
         ) from exc
+
+    # It parsed, but is it a contract? Refuse anything that does not carry the
+    # two registers every contract has, rather than wrapping it and letting a
+    # caller find out by asking whether `preference` is a memory type and being
+    # told no.
+    #
+    # The failure this is written against is real and was not theoretical: a
+    # test that fakes the daemon by patching `subprocess.run` answers *every*
+    # invocation with its canned search payload, so the moment a hot path
+    # started reading the contract, `{"results": [...]}` came back here, was
+    # cached as the contract for the rest of the process, and forty modules
+    # later an unrelated suite failed because its register read empty. An
+    # answer with no registers in it is not a contract, whatever produced it.
+    if not isinstance(answer, dict) or not answer.get("classes") or not answer.get("memory_types"):
+        shape = ", ".join(sorted(answer)[:6]) if isinstance(answer, dict) else type(answer).__name__
+        raise StorageRulesError(
+            f"{DAEMON_BIN} answered with something that is not a filing contract "
+            f"(no `classes`/`memory_types`; it carried: {shape or 'nothing'})"
+        )
+    return answer
 
 
 def load(*, vault_path=None) -> StorageRules:
@@ -325,6 +345,19 @@ def is_memory(frontmatter: dict) -> bool:
 # ── module-level convenience, for the consumers ────────────────────────────
 
 _CACHE = None
+# What the cached answer was resolved from. The daemon's own resolution order
+# begins with `$AGENTM_STORAGE_RULES`, so a process in which that variable
+# changes is a process in which the cache is answering about a different file.
+_CACHE_KEY = None
+
+
+def _resolution_key() -> tuple:
+    """The inputs the daemon resolves the contract from, as a cache key.
+
+    `$AGENTM_STORAGE_RULES` picks the file; `DAEMON_BIN` picks the parser that
+    reads it. Either one moving means the cached answer is about something else.
+    """
+    return (os.environ.get("AGENTM_STORAGE_RULES"), DAEMON_BIN)
 
 
 def rules(*, refresh: bool = False) -> StorageRules:
@@ -333,10 +366,22 @@ def rules(*, refresh: bool = False) -> StorageRules:
     Cached because the enum consumers ask per note, and spawning a subprocess
     16,000 times in a lint pass is not a design. `refresh=True` re-asks, which is
     what a long-running pass does when the watcher sees the rules file change.
+
+    **The cache is keyed on what it was resolved from**, which it was not until
+    the axis-per-space landing. The cache is process-wide, and the first caller
+    to ask fills it — so a process that pointed `$AGENTM_STORAGE_RULES` at one
+    contract, asked, and then pointed it at another went on answering from the
+    first. That is invisible in ordinary use, where nothing moves the variable,
+    and it surfaced the moment a hot path started reading the contract: the unit
+    suite began failing in modules that had nothing to do with the change, with
+    a register that read empty because a fixture contract from forty modules
+    earlier was still cached.
     """
-    global _CACHE
-    if _CACHE is None or refresh:
+    global _CACHE, _CACHE_KEY
+    key = _resolution_key()
+    if _CACHE is None or refresh or key != _CACHE_KEY:
         _CACHE = load()
+        _CACHE_KEY = key
     return _CACHE
 
 

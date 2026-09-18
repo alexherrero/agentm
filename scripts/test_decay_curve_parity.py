@@ -92,6 +92,11 @@ def setUpModule() -> None:
     """
     global _BUILD_DIR
     if _can_answer(os.environ.get("AGENTMD", "").strip()):
+        # Point the contract reader at it too — see the note in
+        # test_eligibility_parity.setUpModule for what taking this exit without
+        # that leaves behind.
+        storage_rules.DAEMON_BIN = os.environ["AGENTMD"].strip()
+        storage_rules._CACHE = None
         return
     if shutil.which("go") is None:
         raise unittest.SkipTest("go is not on this machine; set $AGENTMD to a built binary")

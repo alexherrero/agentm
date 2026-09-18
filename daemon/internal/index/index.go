@@ -481,6 +481,14 @@ func (x *Index) Delete(rel string) error {
 
 // IndexFile reads one vault file and upserts it. `rel` is vault-relative POSIX.
 func (x *Index) IndexFile(rel string) error {
+	// The wall again, at the other door. Reconcile skips a walled area on its
+	// walk, but the filesystem notifier calls this directly on an event, so a
+	// file saved inside one would otherwise be indexed between passes. Delete
+	// rather than ignore: if a row is already there — from before the area was
+	// named, or from a file moved into it — this is the call that removes it.
+	if note.InRecallExemptArea(rel) {
+		return x.Delete(rel)
+	}
 	abs := filepath.Join(x.vault, filepath.FromSlash(rel))
 	info, err := os.Stat(abs)
 	if err != nil {
@@ -564,6 +572,21 @@ func (x *Index) Reconcile() (ReconcileReport, error) {
 			if abs != x.vault && strings.HasPrefix(name, ".") {
 				return fs.SkipDir
 			}
+			// The contract's `recall_exempt_areas`. Refused at the walk rather
+			// than at the write, so the files are never read at all — the folder
+			// this was written for holds certificates and recovery codes, and
+			// "indexed but filtered later" is a copy of them in a database the
+			// operator did not ask for.
+			//
+			// Nothing marks the rows this leaves behind: a path that stops being
+			// walked stops being `seen`, and the sweep at the end of Reconcile
+			// deletes every known path the walk did not see. So naming an area in
+			// the contract removes it from the index on the next pass, by the
+			// mechanism that already handles a deleted file.
+			if rel, err := filepath.Rel(x.vault, abs); err == nil &&
+				note.InRecallExemptArea(filepath.ToSlash(rel)) {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if !strings.HasSuffix(name, ".md") || strings.HasPrefix(name, ".") {
@@ -574,6 +597,9 @@ func (x *Index) Reconcile() (ReconcileReport, error) {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
+		if note.InRecallExemptArea(rel) {
+			return nil
+		}
 		seen[rel] = true
 		rep.Scanned++
 

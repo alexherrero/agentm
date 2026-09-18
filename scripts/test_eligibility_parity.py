@@ -77,6 +77,8 @@ NAMED_EXEMPT_CASES = [
     ("agent/desk/projects/x/personal/notes.md", True),
 ]
 
+SHIPPED = _REPO / "daemon" / "internal" / "rules" / "storage-rules.default.md"
+
 _BUILD_DIR = None
 
 
@@ -85,9 +87,43 @@ _BUILD_DIR = None
 _ORIGINAL_DAEMON_BIN = storage_rules.DAEMON_BIN
 
 
+def _can_answer(binary: str) -> bool:
+    """Whether `binary` parses the contract keys this module asks about.
+
+    Capability, not existence. Two things make the difference matter. A module
+    that ran earlier may have left `$AGENTMD` pointing at a temp binary it has
+    since deleted. And `test_corpus_migration_3.py` sets it to the *installed*
+    binary, which on this machine can be older than the tree — an older parser
+    ignores a contract key it does not know, so `recall_exempt_areas` reads
+    empty and the wall appears not to exist.
+    """
+    if not binary:
+        return False
+    if not (Path(binary).exists() or shutil.which(binary)):
+        return False
+    try:
+        proc = subprocess.run([binary, "rules", "--json", "--file", str(SHIPPED)],
+                              capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if proc.returncode != 0:
+        return False
+    try:
+        return bool(json.loads(proc.stdout).get("recall_exempt_areas"))
+    except ValueError:
+        return False
+
+
 def setUpModule() -> None:
     global _BUILD_DIR
-    if os.environ.get("AGENTMD", "").strip():
+    if _can_answer(os.environ.get("AGENTMD", "").strip()):
+        # Point the contract reader at it too. Taking this exit without doing so
+        # leaves `storage_rules.DAEMON_BIN` wherever an earlier module left it —
+        # which, in a full discover run, is sometimes a temp binary that module
+        # has since deleted, and then every contract read in this one fails for
+        # a reason that has nothing to do with what it is testing.
+        storage_rules.DAEMON_BIN = os.environ["AGENTMD"].strip()
+        storage_rules._CACHE = None
         return
     if shutil.which("go") is None:
         raise unittest.SkipTest("go is not on this machine; set $AGENTMD to a built binary")
@@ -120,9 +156,6 @@ def tearDownModule() -> None:
     os.environ.pop("AGENTMD", None)
     storage_rules.DAEMON_BIN = _ORIGINAL_DAEMON_BIN
     storage_rules._CACHE = None
-
-
-SHIPPED = _REPO / "daemon" / "internal" / "rules" / "storage-rules.default.md"
 
 
 class _Base(unittest.TestCase):

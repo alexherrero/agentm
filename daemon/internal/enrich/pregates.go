@@ -109,6 +109,13 @@ type Eligibility struct {
 	// decisions/, designs/ and research/ notes, and nothing else there.
 	// Supplied like MayRead; nil leaves the projects space to the other rules.
 	ProjectRecord func(rel string) bool
+	// IsWalled is `rules.IsRecallExempt` — the contract's `recall_exempt_areas`.
+	// Supplied like MayRead, and checked first: the wall is not a ranking rule
+	// or a space policy but an area the corpus does not hold at all, and a pass
+	// that read one to summarize it would be the exact leak the wall exists to
+	// prevent. The queue should never offer such a path, since the index holds
+	// no row for it — this is the refusal for the day something else does.
+	IsWalled func(rel string) bool
 }
 
 // DefaultEligibility is the shipped rule set.
@@ -124,6 +131,10 @@ func DefaultEligibility(mayRead func(string) bool) *Eligibility {
 func (g *Eligibility) Name() string { return "eligibility" }
 
 func (g *Eligibility) Check(_ context.Context, req Request, body string) error {
+	if g.IsWalled != nil && g.IsWalled(req.Rel) {
+		return fmt.Errorf("%w: %s is in an area walled from the corpus entirely",
+			ErrNotEligible, req.Rel)
+	}
 	if g.MayRead != nil && !g.MayRead(req.Rel) {
 		return fmt.Errorf("%w: %s is in a space no background model pass may read",
 			ErrNotEligible, req.Rel)

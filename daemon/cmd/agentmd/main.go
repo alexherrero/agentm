@@ -935,6 +935,9 @@ func cmdClassify(args []string) error {
 	asJSON := fs.Bool("json", false,
 		"emit one JSON object per note instead of the summary, so another tool can "+
 			"filter on the classifier's own verdict rather than guessing at it")
+	one := fs.String("path", "",
+		"classify this one vault-relative path and print its verdict, without "+
+			"walking the vault or needing one")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -943,6 +946,32 @@ func cmdClassify(args []string) error {
 		return err
 	}
 	enc := json.NewEncoder(os.Stdout)
+
+	// One path, no walk. The classes this prints are the ones a path earns from
+	// where it sits — the dampened areas, the archive family, the wall — which
+	// is what the Python recall arm has to agree with. Two implementations of a
+	// path rule is a drift surface, and the only honest way to check two
+	// implementations is to run both; this is the door the parity test knocks on.
+	if strings.TrimSpace(*one) != "" {
+		rel := filepath.ToSlash(strings.TrimSpace(*one))
+		n := note.Parse(rel, "---\ntitle: probe\n---\n\nA body.\n", time.Time{})
+		flags := n.Flags
+		if flags == nil {
+			flags = []string{}
+		}
+		row := map[string]any{
+			"path":          rel,
+			"flags":         flags,
+			"weight":        note.Multiplier(n.Flags),
+			"recall_walled": note.InRecallExemptArea(rel),
+		}
+		if *asJSON {
+			return enc.Encode(row)
+		}
+		fmt.Printf("%s  weight x%.4f  flags %s  walled %v\n",
+			rel, row["weight"], strings.Join(flags, ","), row["recall_walled"])
+		return nil
+	}
 
 	counts := map[string]int{}
 	samples := map[string][]string{}
@@ -1767,6 +1796,14 @@ func enrichRefused(cfg *config.Config, fp *enrich.Fingerprint,
 func freeGates(cfg *config.Config) []enrich.Gate {
 	eligibility := enrich.DefaultEligibility(modelMayRead(cfg))
 	eligibility.ProjectRecord = enrich.IsProjectRecord
+	eligibility.IsWalled = func(rel string) bool {
+		loaded, err := cfg.Rules.Get()
+		// No contract, no way to tell a walled path from an ordinary one. The
+		// wall is the one rule that refuses in that direction: every other gate
+		// here decides how a note is treated, and this one decides whether the
+		// operator's certificates can reach a model.
+		return err != nil || loaded.IsRecallExempt(rel)
+	}
 	eligibility.IsRecordKind = func(kind string) bool {
 		loaded, err := cfg.Rules.Get()
 		// No contract, no way to tell a record from a card: refuse, the same

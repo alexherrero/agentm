@@ -53,21 +53,29 @@ class TestIterEntryPathsExclusions(unittest.TestCase):
         self.assertIn("live-note.md", names)
         self.assertNotIn("123-proposal.md", names)
 
-    def test_archive_subtree_still_excluded(self):
+    def test_an_archive_subtree_is_walked_and_dampened_not_excluded(self):
+        # The axis-per-space landing retired the exclusion. A directory no
+        # longer hides a note: the archive class ranks it at x0.30 wherever it
+        # sits, which is what the daemon has always done and what this arm did
+        # not. An exclusion cannot be out-ranked by a better match, so a note
+        # the operator was looking for was unreachable in one arm and merely
+        # quiet in the other, and which arm answered depended on whether the
+        # daemon happened to be up.
         self._write("memory/reference/live-note.md")
         self._write("desk/projects/foo/_archive/old.md")
         paths = recall._iter_entry_paths(self.vault)
         names = {p.name for p in paths}
         self.assertIn("live-note.md", names)
-        self.assertNotIn("old.md", names)
-
-    def test_archive_subtree_reopens_with_include_archive(self):
-        # Task 5: _archive/ is independently reopenable, mirroring _inbox/'s
-        # existing include_inbox toggle exactly.
-        self._write("desk/projects/foo/_archive/old.md")
-        paths = recall._iter_entry_paths(self.vault, include_archive=True)
-        names = {p.name for p in paths}
         self.assertIn("old.md", names)
+
+    def test_the_archive_class_is_what_quiets_it(self):
+        self.assertTrue(recall.in_archive_class("desk/projects/foo/_archive/old.md"))
+        self.assertTrue(recall.in_archive_class("agent/archive/memory/semantic/a.md"))
+        self.assertTrue(recall.in_archive_class("projects/completed/blog/x.md"))
+        self.assertFalse(recall.in_archive_class("memory/reference/live-note.md"))
+        # A file is not a directory, and a word inside a name is not the name.
+        self.assertFalse(recall.in_archive_class("projects/agentm/completed.md"))
+        self.assertFalse(recall.in_archive_class("projects/agentm/archived-ideas/x.md"))
 
     def test_shelf_subtree_never_excluded(self):
         # Task 5: the shelf is a browse convention, not a search boundary —
@@ -102,19 +110,30 @@ class TestQueryEndToEndArchiveAndShelf(unittest.TestCase):
         paths = {r["path"] for r in results}
         self.assertIn("memory/_shelf/old-plan.md", paths)
 
-    def test_archived_memory_not_found_by_default_but_found_with_include_archive(self):
-        self._write("memory/_archive/old-widget.md", "widget subsystem retry logic notes")
-        default_results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
-        self.assertNotIn(
-            "memory/_archive/old-widget.md", {r["path"] for r in default_results}
-        )
+    def test_an_archived_memory_is_found_and_ranks_below_its_twin(self):
+        """The reversal, end to end.
 
-        reopened_results = recall.query(
-            vault=self.vault, query_text="widget subsystem", k=5, include_archive=True,
-        )
-        self.assertIn(
-            "memory/_archive/old-widget.md", {r["path"] for r in reopened_results}
-        )
+        This asserted that an `_archive/` note was absent from an ordinary
+        search and came back only with `include_archive=True`. The
+        axis-per-space landing retired that exclusion: the note is served, at
+        x0.30, below an equally-good live twin. Same intent — the archive does
+        not crowd the present — expressed as a rank rather than an absence, so
+        the note is still reachable when it is the only answer.
+        """
+        self._write("memory/_archive/old-widget.md", "widget subsystem retry logic notes")
+        self._write("memory/reference/live-widget.md", "widget subsystem retry logic notes")
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
+        paths = [r["path"] for r in results]
+        self.assertIn("memory/_archive/old-widget.md", paths)
+        self.assertEqual(paths[0], "memory/reference/live-widget.md",
+                         "the archived twin outranked the live note")
+        # The multiplier itself, asserted where it is not tangled up with RRF's
+        # own rank contributions: the two notes fuse at different ranks, so
+        # their combined scores are not in the ratio of their dampens.
+        self.assertEqual(
+            recall._area_demotion("memory/_archive/old-widget.md", self.vault), 0.30)
+        self.assertEqual(
+            recall._area_demotion("memory/reference/live-widget.md", self.vault), 1.0)
 
 
 class TestInboxExclusion(unittest.TestCase):

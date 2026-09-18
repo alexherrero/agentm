@@ -141,6 +141,11 @@ type SearchOutcome struct {
 	// IncludeArchived. Reported for the reason RawScore and Decay are: a row
 	// that is not there should be visible in the call log, not inferred.
 	ArchivedHidden int `json:"archived_hidden,omitempty"`
+	// RecallWalled is how many rows the contract's `recall_exempt_areas` removed.
+	// Unlike the three above it answers to no caller flag: an area named there is
+	// never served to anything, and this count exists so the wall firing is
+	// visible in a diagnostic rather than silent.
+	RecallWalled int `json:"recall_walled,omitempty"`
 	// StagedHidden is the same wall's count for `status: ingest_staged` — a
 	// unit the ingest sweep fetched and has not promoted. Reported for the
 	// same reason the other two are: an absence nobody can see is an absence
@@ -264,7 +269,10 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 	}
 	out.Note = note1
 	out.Matched = len(rows)
-	rows, out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = wallUnserved(rows, includeArchived)
+	var w walled
+	rows, w = wallUnserved(rows, includeArchived)
+	out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = w.archived, w.superseded, w.staged
+	out.RecallWalled = w.recallExempt
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
@@ -479,7 +487,10 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3, inc
 		rows = append(rows, c.row)
 		wonBy[path] = c.expr
 	}
-	rows, out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = wallUnserved(rows, includeArchived)
+	var w walled
+	rows, w = wallUnserved(rows, includeArchived)
+	out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = w.archived, w.superseded, w.staged
+	out.RecallWalled = w.recallExempt
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
@@ -548,17 +559,18 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// reads positions, so a demotion that lands after the ranks are taken would
 	// have no effect at all — the penalized note would already have contributed
 	// its rank-1 reciprocal.
-	var denseHidden, denseSuperseded, denseStaged int
-	dense, denseHidden, denseSuperseded, denseStaged = wallUnserved(dense, q.IncludeArchived)
+	var denseWalls walled
+	dense, denseWalls = wallUnserved(dense, q.IncludeArchived)
 	decayLog, decayNow := x.decayClock()
 	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
 		note.QueryWantsArtifact(text), project)
 
 	fused := fuseRRF(lexical.Results, dense)
 	out := SearchOutcome{Results: fused, Matched: len(fused),
-		ArchivedHidden:   lexical.ArchivedHidden + denseHidden,
-		SupersededHidden: lexical.SupersededHidden + denseSuperseded,
-		StagedHidden:     lexical.StagedHidden + denseStaged}
+		ArchivedHidden:   lexical.ArchivedHidden + denseWalls.archived,
+		SupersededHidden: lexical.SupersededHidden + denseWalls.superseded,
+		StagedHidden:     lexical.StagedHidden + denseWalls.staged,
+		RecallWalled:     lexical.RecallWalled + denseWalls.recallExempt}
 	if len(out.Results) > k {
 		out.Results = out.Results[:k]
 	}
@@ -897,29 +909,57 @@ func normalizeBound(s string) (string, error) {
 // comes back to any query that sets IncludeArchived (the contract's "explicit
 // archive query"). The counts of what was walled ride on the outcome so the
 // absence is visible in the call log.
-func wallUnserved(rows []Result, include bool) ([]Result, int, int, int) {
-	if include {
-		return rows, 0, 0, 0
-	}
+func wallUnserved(rows []Result, include bool) ([]Result, walled) {
+	var w walled
+	// The contract's `recall_exempt_areas`, first and unconditionally. Every
+	// other wall here is a state a caller may lift by asking; this one is a
+	// path rule the caller has no flag for, and `include` does not reach it.
+	//
+	// The index should hold no such row at all — the walk refuses them and the
+	// reconcile drops the ones it finds. This is the second reader, for the gap
+	// between the contract naming an area and the next reconcile removing what
+	// it already indexed: on the night the wall lands, the rows are still there.
 	kept := make([]Result, 0, len(rows))
-	archived, superseded, staged := 0, 0, 0
 	for _, r := range rows {
-		flags := splitFlags(r.Penalty)
-		if hasFlag(flags, note.ClassArchived) {
-			archived++
-			continue
-		}
-		if hasFlag(flags, note.ClassSuperseded) {
-			superseded++
-			continue
-		}
-		if hasFlag(flags, note.ClassIngestStaged) {
-			staged++
+		if note.InRecallExemptArea(r.Path) {
+			w.recallExempt++
 			continue
 		}
 		kept = append(kept, r)
 	}
-	return kept, archived, superseded, staged
+	rows = kept
+	if include {
+		return rows, w
+	}
+	kept = make([]Result, 0, len(rows))
+	for _, r := range rows {
+		flags := splitFlags(r.Penalty)
+		if hasFlag(flags, note.ClassArchived) {
+			w.archived++
+			continue
+		}
+		if hasFlag(flags, note.ClassSuperseded) {
+			w.superseded++
+			continue
+		}
+		if hasFlag(flags, note.ClassIngestStaged) {
+			w.staged++
+			continue
+		}
+		kept = append(kept, r)
+	}
+	return kept, w
+}
+
+// walled counts what each wall removed from one over-fetch window, so an
+// absence is visible in the call log rather than silent. It never leaves this
+// package: nothing outside reads these, and a count of matches inside a walled
+// area is not something to hand a model.
+type walled struct {
+	archived     int
+	superseded   int
+	staged       int
+	recallExempt int
 }
 
 func hasFlag(flags []string, want string) bool {
