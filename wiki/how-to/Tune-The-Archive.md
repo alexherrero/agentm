@@ -1,60 +1,58 @@
 # How to tune the archive
 
 > [!NOTE]
-> **Status: implemented** — shipped by `PLAN-auto-org-shelf-and-archive.md` (FRIDAY ladder feature 5, auto-organization part 1 of 3). The dreaming binary carries the lifecycle axis; the Python cycle's tidying stage retired in agentm-vault plan 04.
-> **Goal:** Understand what ages a memory — the lifecycle axis's two thresholds (a year of silence sinks a memory to `dormant`; five years names it an archive candidate, which you archive by hand, in place) and the pass's demotion cap — and how to bring a dormant or archived memory back.
-> **Prereqs:** None to read this page. Changing a threshold means editing the contract (`standards/storage-rules.md`) or a constant in code (see below).
+> **Status: implemented** — the per-space lifecycle policy landed in agentm-vault plan 11. The dreaming binary carries the axis; the Python cycle's tidying stage retired in plan 04.
+> **Goal:** Understand what ages a memory and what never does, read the contract's four numbers, and bring a note back — from `dormant`, from the archive, or from a deletion the manifest recorded.
+> **Prereqs:** None to read this page. Changing a threshold means editing the contract at `standards/storage-rules.md`.
 
-Aging runs on its own: the dreaming binary (`agentmdream`) sinks and lifts memories on its nightly pass. You don't have to do anything for it to work. This page is for understanding what it does, and for the rare case where the defaults don't fit.
+Aging runs on its own. The nightly `agentmdream` pass sinks, archives and — past the last line — deletes, each act journaled, each deletion with a manifest written before it. You do not have to do anything for it to work. This page is for knowing what it touches, and for the times the defaults do not fit.
 
 ## Steps
 
-1. **Know what moves and what stays.** A **memory** (any entry with a `kind:` frontmatter field) never moves. It ages in place on the `lifecycle:` axis (filing v2 part 6). Silent past `dormant_after_days` (365), it sinks to `dormant` and ranks below its active twins; the next genuine recall lifts it back.
+1. **Know what ages and what does not.** The machinery changes a note's state only where you said it may: the three observational classes (`memory/semantic`, `memory/procedural`, `memory/episodic`), the calendar, and the diagnostics. Everything else is permanent — `projects/`, `personal/`, `standards/`, crystallized lessons and the root notes. They rank and they receive enrichment; no pass demotes, archives or deletes them. You supersede or replace them.
 
-   Past `archive_after_days` (1825), the binary names a dormant memory as an archive candidate in its report and leaves it where it is. Archiving is yours: `lifecycle: archived`, written in place, hides the memory from everyday search and keeps it on disk. Every move lands in `<engine state dir>/lifecycle-journal.jsonl`.
+   Inside the three classes, four categories are exempt anyway: `lifecycle: pinned`; `type: preference` and `type: convention`, which decay but never sink — a rule unread for a year is still the rule; and any crystallized lesson.
 
-   An **artifact** (any entry with no `kind:` at all, such as a loose doc or a plan close-out) stays where you put it. Anything already under a `_shelf/` folder stays there too. Everyday search still finds it, and the browse-surface meter counts it as shelved.
+2. **Read the four numbers.** They live in the contract's `thresholds:` block, at `standards/storage-rules.md` (packaged default in `daemon/internal/rules/storage-rules.default.md`). Both ranking arms read the same block.
 
-2. **Read the current thresholds and caps.** The two lifecycle thresholds live in the contract; the rank curve and the cap live in code:
-
-   | Setting | Value | Where |
+   | What happens | After | Key |
    |---|---|---|
-   | Full strength through | 182 days (~6mo) | `_STEPPED_BANDS`, `lifecycle.py` |
-   | Half strength through | 365 days (~1y) | `_STEPPED_BANDS`, `lifecycle.py` |
-   | An eighth through | 1095 days (~3y) | `_STEPPED_BANDS`, `lifecycle.py` |
-   | A sixteenth through, then floor | 1825 days (~5y) | `_STEPPED_BANDS`, `lifecycle.py` |
-   | Dormant after (a memory sinks) | 365 days (1y) | `thresholds.dormant_after_days`, `standards/storage-rules.md` (the contract; packaged default in `daemon/internal/rules/storage-rules.default.md`) |
-   | Archive candidate after (named, never moved) | 1825 days (5y) — previewed from 90% of the line | `thresholds.archive_after_days`, the same contract; `PreviewFraction`, `daemon/internal/dreaming/lifecycle.go` |
-   | Demotion cap (memories sunk per pass) | 200 | `DefaultDemotionCap`, `daemon/internal/dreaming/lifecycle.go`; `-cap` on `agentmdream run` |
+   | Ranks at full weight through | 180 days | `decay_full_days` |
+   | Half weight through | 365 days | `decay_half_days` |
+   | An eighth through | 1,095 days | `decay_eighth_days` |
+   | The floor (0.0625), from | 1,825 days | `decay_floor_days`, `decay_floor_weight` |
+   | Sinks to `dormant`, in place, ×0.30 on top of the curve | 365 days | `dormant_after_days` |
+   | Moves to `archive/memory/<class>/`, stamped `archived` | 1,825 days | `archive_after_days` |
+   | Deleted, manifest first | 2,555 days **and** the archive wait served | `forget_after_days` |
+   | Most notes one pass may sink | 25 | `demotion_cap` |
 
-   These are calibration defaults. They lean conservative and have no real-use data behind them yet. Edit the contract line or the constant, then re-run the tests that cover it: `scripts/test_memory_lifecycle.py` for the stepped bands, and `go test ./internal/dreaming/` from `daemon/` for the thresholds and the cap. If you touch the stepped-curve constants, run the retrieval eval before you trust the new numbers in live ranking (see step 4).
+   A session trace runs on a shorter line — 90 · 365 · 1,095 — set in `lifecycle_overrides.episodic`. The diagnostics have their own `retention:` block, per file kind; migration and purge manifests are deliberately absent from it, because they are the record of what moved and what was forgotten.
 
-3. **Archive a memory, or bring one back.**
-   - **See the candidates.** `agentmdream run -force` prints what the next pass would do, each archive candidate included, and writes no note.
-   - **Archive a memory** with `python3 harness/skills/memory/scripts/lifecycle_transitions.py --vault <memory-root> set <rel> archived`. The journal records that you made the move.
-   - **A dormant memory** comes back on its own: a genuine recall lifts it to `active` on the binary's next pass.
-   - **An archived memory** stays archived until you act. Search for it with `--include-archive` (`python3 harness/skills/memory/scripts/recall.py query "<query>" --include-archive`; `include_archived` on the MCP surface; `-include-archived` on `agentmd search` — the same flag also brings back a superseded note, demoted, beside its successor). Then set it back with `lifecycle_transitions.py --vault <memory-root> set <rel> active`. A superseded note is a relation, not an aging state, so reviving one this way is rare; `supersession_migrate.py --apply` already does it automatically for a note whose named successor turns out not to be in the vault.
-   - **A shelved artifact** comes back when you move it out of `_shelf/` yourself. The vault's git history is the undo for any move you make by hand.
+3. **Know what the clock reads.** Only a genuine recall resets it. Opening a file, or reading it through a skill, does not. A recall before the archive line returns the note to day 0; after the archive move, serving it on an explicit archive query or moving it back returns it to `active` with its clock reset. A hand edit of `lifecycle:` counts as a touch, so a note you have just reconsidered does not sink the same night.
 
-4. **The stepped decay curve is shadow-mode only until the eval holds.** The stepped curve computes alongside the original 30-day exponential curve, but nothing wires it into live ranking yet — that's a deliberate, separate future step, not something this page's floors control. Run the comparison yourself: `python3 scripts/health/eval_v6_retrieval.py --vault-path <path> --decay-curve stepped`. It reports the same three signals (accuracy, compression, discovery-rate) the original RRF-retrieval eval does, comparing today's live exponential-decay ranking against the same ranking with the stepped curve substituted in.
+4. **Bring something back.**
+   - **See what is coming.** The morning note's *what needs you* lists *sinking within 30 days* and *archiving within 30 days* with how long each note has been silent. A threshold is easier to argue with while it is still thirty days off. `agentmdream run -force` prints what the next pass would do and writes nothing.
+   - **A dormant note** returns on its own: the next genuine recall lifts it.
+   - **An archived note** is still a file, at `archive/memory/<class>/<slug>.md`. Bring it back with `/memory revive <slug>`, which moves it to its class folder, sets `active` and resets the clock. Find it first with `/memory search --deep <words>` or `recall.py query "<words>" --include-archive`.
+   - **A deleted note** was named in a manifest under `diagnostics/migrations/purge/` before it went, and the vault's git history still holds it. `/memory search --deep <words>` reads both and prints the `git show` that recovers the file.
+   - **Pin something so none of this reaches it:** `/memory pin <slug>`.
 
-## Where an entry's cold clock resets
-
-The clock only resets on a genuine recall — `recall.py`'s `prompt_submit()` is the sole call site that resets it, by design (`lifecycle.py`'s own docstring). If you're wondering why an entry you just *read* (via a direct file open, a skill, or anything other than ordinary recall) still looks cold: that's expected. Only the recall pipeline counts as a touch.
+5. **Change a number, then prove it.** Edit the contract line, then run `bash scripts/check-all.sh`. The decay curve is one curve read by both arms from that block, so a change reaches the daemon and `recall.py` together; `scripts/test_decay_curve_parity.py` is what holds them to it. Before trusting a new curve in live ranking, run the retrieval gate: `python3 scripts/health/eval_v6_retrieval.py --vault-path <path>`.
 
 ## Verify
 
-- `TestSteppedDecayScore` / `TestShadowModeComparison` (`scripts/test_memory_lifecycle.py`) — the stepped curve's four bands and boundaries, and that the shadow comparison never mutates the sidecar.
-- `ThePolicy` (`scripts/test_lifecycle_transitions.py`) — a silent memory named to sink, a recalled one named to lift, an archive candidate named and never moved, the exempt states, the cap, and thresholds read from the contract. The binary's parity test (`check-dreaming-parity`) holds its lifecycle job to the recorded Python pass.
+- `scripts/test_decay_curve_parity.py` — the two arms score the same note the same way from the same contract block.
+- `scripts/test_lifecycle_transitions.py` — the archive lane moves the file and moves it back, the exempt states, the cap, and the thresholds read from the contract.
+- `go test ./internal/dreaming/` from `daemon/` — the sink, the archive move, the manifest-before-deletion rule, and the two clocks a deletion needs.
 
 ## Troubleshooting
 
-- **A note I thought was long-cold is still `active`, or isn't named as an archive candidate.** Check `.lifecycle.json` for its last genuine access — a recall resets the clock. Since the memory-root trims (agentm-vault plan 05) it lives in `<engine state dir>`, with your memory root read as the fallback on a vault that hasn't moved yet. `agentmdream status` reports the binary's last pass. A memory sinks to `dormant` only on a pass, and only a *dormant* memory past five years is named for the archive. `agentmdream run -force` prints what the next pass would do.
-- **A shelved artifact didn't come back after I touched it.** Nothing returns a shelved artifact on its own any more; the tidying stage that did so retired in agentm-vault plan 04. Move it out of `_shelf/` by hand.
+- **A long-silent note is still `active`.** Check whether it is exempt (step 1), then whether a recall reset its clock: the sidecar lives in `<engine state dir>`, keyed by path. `agentmdream status` reports the last pass; a note sinks only on a pass.
+- **A note vanished from its class folder.** It was archived, which moves it now. Look in `archive/memory/<class>/`, or run `/memory search --deep`.
+- **`daemon.decay_enabled` is off.** Then the curve computes and nothing ranks by it. It is thrown only with the retrieval gate clean on both arms.
 
 ## See also
 
-- [AgentM Memory System design](../designs/agentm-memory-system) — the archive/decay/prune convention this page tunes.
-- [AgentM Auto-Organization design](../designs/agentm-auto-organization) — the tidying-stage design, including the stepped-curve rationale.
+- [AgentM Vault design § Lifecycle per space](../designs/agentm-vault) — the policy this page tunes, and why each number is what it is.
+- [Archive a finished project](Archive-A-Finished-Project) — the same idea for a whole project, which is a different mechanism.
 - [Memory daemon reference § the dreaming binary](Memory-Daemon#the-dreaming-binary-agentmdream) — the lifecycle job, its gate and its report.
-- [Memory MCP tools reference](Memory-MCP-Tools) — the tool surface an archived, superseded, or shelved entry stays reachable through (`--include-archive`, everyday search for `_shelf/`).

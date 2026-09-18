@@ -2,9 +2,18 @@
 """lifecycle_transitions.py — the governance lanes for the lifecycle axis.
 
 Filing v2 part 6 (task 2). A memory ages on one frontmatter axis,
-`lifecycle:`, and never by moving. This module is the one writer of that
-axis after filing, and who may move a value is tiered by how hard the move
-is to undo:
+`lifecycle:`. This module is the one writer of that axis after filing, and
+who may move a value is tiered by how hard the move is to undo.
+
+One of the five values also moves the file. Filing v2 said archive never by
+moving; session 5 of the vault-perfection series reversed that, and the
+reason is the eyeline: Obsidian resolves links by basename, so a moved note
+is still found by every link that named it, and what the move buys is what
+the frontmatter field never gave — the class folders hold what is alive, and
+one folder holds what is not. So `→ archived` moves the note to
+`archive/<its class path>` and `archived → active` moves it back, in the same
+act that writes the field. Every other transition is a line-surgical edit in
+place.
 
 * **active ↔ dormant** runs automatic, by policy (`policy_pass`): a memory
   silent past the contract's `dormant_after_days` sinks to `dormant`; the
@@ -25,11 +34,11 @@ Every transition, whoever made it, is appended to the journal at
 `{ts, rel, from, to, actor, reason, run_id}`. The weekly digest's "what
 quietly sank" section and the scorecard's lifecycle line read it back.
 
-A transition is a line-surgical edit of `lifecycle:` in place, plus a
-`lifecycle_since:` date beside it, so a note keeps its home, its links and
-its history. `pinned` and `superseded` are never moved by policy: the first
-is the operator's word that the note does not age, the second has a
-successor that answers instead.
+A transition is a line-surgical edit of `lifecycle:`, plus a
+`lifecycle_since:` date beside it, so a note keeps its links and its history;
+only the archive lane also moves the file, and it moves it back. `pinned` and
+`superseded` are never moved by policy: the first is the operator's word that
+the note does not age, the second has a successor that answers instead.
 """
 from __future__ import annotations
 
@@ -68,6 +77,11 @@ ACTORS = ("policy", "operator", "dream-confirm")
 CONFIRMED_ACTORS = ("operator", "dream-confirm")
 JOURNAL_NAME = "lifecycle-journal.jsonl"
 CLASS_DIRS = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
+# Where an archived note lives, under the memory root: the memory tree
+# mirrored one level down (`dreaming.ArchiveDir`). One name in two arms —
+# the night moves notes here and this module moves them here and back, and a
+# second spelling would be a note the other arm cannot find.
+ARCHIVE_DIR = "archive"
 
 
 class ConfirmationRequired(PermissionError):
@@ -116,6 +130,36 @@ def set_lifecycle_text(text: str, to: str, *, since: str) -> str:
 
 
 # ── the journal ───────────────────────────────────────────────────────────────
+
+def in_archive(rel: str) -> bool:
+    """Whether a memory-root-relative path sits in the memory archive."""
+    return str(rel).replace("\\", "/").startswith(ARCHIVE_DIR + "/")
+
+
+def archive_destination(rel: str) -> str:
+    """Where `rel` goes when it is archived: the same path, one level down."""
+    return ARCHIVE_DIR + "/" + str(rel).replace("\\", "/")
+
+
+def class_destination(rel: str) -> str:
+    """Where an archived note goes when it comes back: its own class path."""
+    rel = str(rel).replace("\\", "/")
+    return rel[len(ARCHIVE_DIR) + 1:] if in_archive(rel) else rel
+
+
+def destination_for(rel: str, to: str) -> str:
+    """The path a note should sit at once it is in state `to`.
+
+    Only the archive lane moves anything. A note already where it belongs is
+    returned unchanged, so a caller can compare and skip the move rather than
+    rename a file onto itself.
+    """
+    if to == "archived":
+        return rel if in_archive(rel) else archive_destination(rel)
+    if in_archive(rel) and to in ("active", "pinned"):
+        return class_destination(rel)
+    return rel
+
 
 def journal_path(path: "Path | str | None" = None) -> Path:
     return Path(path) if path else engine_state.engine_state_dir() / JOURNAL_NAME
@@ -197,6 +241,7 @@ def transition(vault: "Path | str", rel: str, to: str, *, actor: str, reason: st
     new = set_lifecycle_text(text, to, since=ts[:10])
     if new == text:
         raise ValueError(f"{rel}: no frontmatter to edit")
+    dest = destination_for(rel, to)
     try:
         from vault_lock import vault_mutex  # type: ignore
         ctx = vault_mutex(vault)
@@ -204,10 +249,63 @@ def transition(vault: "Path | str", rel: str, to: str, *, actor: str, reason: st
         from contextlib import nullcontext
         ctx = nullcontext()
     with ctx:
-        p.write_text(new, encoding="utf-8")
+        if dest == rel:
+            p.write_text(new, encoding="utf-8")
+        else:
+            # Write the new content at the destination, then drop the old
+            # path. In that order: a crash between the two leaves the note in
+            # both places, which a reader can sort out, where the other order
+            # leaves it in neither.
+            target = vault / dest
+            if target.exists():
+                raise FileExistsError(
+                    f"{dest}: something is already there, so {rel} was not moved")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(new, encoding="utf-8")
+            p.unlink()
     entry = {"ts": ts, "rel": rel, "from": frm, "to": to, "actor": actor, "reason": reason, "run_id": run_id}
+    if dest != rel:
+        entry["moved_to"] = dest
     journal_append(entry, path=journal)
     return dict(entry, changed=True)
+
+
+def find_archived(vault: "Path | str", slug: str) -> "str | None":
+    """The archived note this slug names, as a memory-root-relative path.
+
+    A slug rather than a path, because the slug is what the operator has: it
+    is what the morning note printed, what the lesson's `consolidated_from`
+    links, and what Obsidian shows. A path they would have to reconstruct from
+    a class they may not remember is a worse question to ask.
+    """
+    vault = Path(vault)
+    base = vault / ARCHIVE_DIR
+    if not base.is_dir():
+        return None
+    slug = str(slug).strip()
+    if slug.endswith(".md"):
+        slug = slug[:-3]
+    for p in sorted(base.rglob("*.md")):
+        if p.stem == slug:
+            return p.relative_to(vault).as_posix()
+    return None
+
+
+def revive(vault: "Path | str", slug: str, *, reason: str = "operator revived it",
+           now=None, journal: "Path | str | None" = None) -> dict:
+    """Bring an archived note back: to its class folder, `active`, clock reset.
+
+    The operator's own act, so it goes in as `operator` — the same actor that
+    was allowed to archive it. Reviving is the cheaper direction of the pair
+    and it would be strange to gate it harder than the move it undoes.
+    """
+    rel = find_archived(vault, slug)
+    if rel is None:
+        raise FileNotFoundError(
+            f"{slug}: nothing by that name in {ARCHIVE_DIR}/. `search --deep` "
+            f"looks in the deletion manifests and the vault's git history too.")
+    return transition(vault, rel, "active", actor="operator", reason=reason,
+                      now=now, journal=journal)
 
 
 # ── the policy: active ↔ dormant, automatic ───────────────────────────────────
@@ -247,15 +345,22 @@ def thresholds(rules=None) -> tuple:
 
 
 def memory_notes(vault: "Path | str"):
-    mem = Path(vault) / "memory"
-    for cls in CLASS_DIRS:
-        d = mem / cls
-        if not d.is_dir():
-            continue
-        for p in sorted(d.rglob("*.md")):
-            if p.name == "_index.md" or drive_artifacts.is_artifact(p):
+    """Every memory note, the archived ones included.
+
+    Both trees, because archiving moves the file now: a summary that walked
+    only `memory/` would report the archive emptying out as notes left it, and
+    the population line would say the corpus was shrinking when it was only
+    being filed. The Go arm walks the same pair (`dreaming.MemoryNotes`).
+    """
+    for base in (Path(vault) / "memory", Path(vault) / ARCHIVE_DIR / "memory"):
+        for cls in CLASS_DIRS:
+            d = base / cls
+            if not d.is_dir():
                 continue
-            yield p
+            for p in sorted(d.rglob("*.md")):
+                if p.name == "_index.md" or drive_artifacts.is_artifact(p):
+                    continue
+                yield p
 
 
 def survey(vault: "Path | str", *, now: "str | None" = None, rules=None) -> list:
@@ -370,6 +475,9 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("set", help="the operator moves one memory — the one lane that may enter `archived` by hand")
     s.add_argument("rel"); s.add_argument("state", choices=STATES); s.add_argument("--reason", default="operator")
+    rv = sub.add_parser("revive", help="bring an archived note back to its class folder, active")
+    rv.add_argument("slug", help="the note's slug, as the morning note or a link prints it")
+    rv.add_argument("--reason", default="operator revived it")
     j = sub.add_parser("journal", help="what moved, and who moved it")
     j.add_argument("--since", help="ISO date lower bound")
     sm = sub.add_parser("summary", help="populations per state and the last week's moves")
@@ -378,6 +486,13 @@ def main(argv=None) -> int:
     vault = Path(a.vault)
     if a.cmd == "set":
         e = transition(vault, a.rel, a.state, actor="operator", reason=a.reason)
+        print(json.dumps(e, ensure_ascii=False))
+    elif a.cmd == "revive":
+        try:
+            e = revive(vault, a.slug, reason=a.reason)
+        except FileNotFoundError as err:
+            print(str(err), file=sys.stderr)
+            return 1
         print(json.dumps(e, ensure_ascii=False))
     elif a.cmd == "journal":
         for e in journal_entries(since=a.since):

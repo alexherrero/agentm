@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The lifecycle axis, per space (agentm-vault plan 11).** The contract gained
+  the lines both ranking arms read: one decay curve (`decay_full_days` 180,
+  `decay_half_days` 365, `decay_eighth_days` 1,095, `decay_floor_days` 1,825),
+  `forget_after_days` 2,555, `demotion_cap` 25,
+  `importance_dampen_at_or_below` 3, `lifecycle_overrides.episodic` for the
+  shorter line a session trace runs on (90 · 365 · 1,095), a `retention:` block
+  for the diagnostics, and `recall_exempt_areas:` with `personal/Home/Important
+  Docs` as its first line. `agentmd decay` prints the curve so the two arms can
+  be held to one reading of it. The `Personal` line left `model_exempt_spaces`:
+  background models may now read `personal/`, writing frontmatter only, behind
+  a wall in front of `Important Docs` that holds at the walk, at `IndexFile`, at
+  search and at the enrichment queue.
+- **The night archives by moving and forgets with a manifest.** A note past the
+  archive line moves to `archive/memory/<class>/`; a note past the forget line
+  is deleted only after both clocks agree, and only after the manifest naming
+  every row is on disk. `lifecycle_transitions.py set <rel> archived` moves the
+  file the same way, and `revive` moves it back — the one lane on this axis
+  that touches a path.
+- **Three free jobs and a facet.** `retain` prunes the diagnostics to the
+  contract's `retention:` block, `sequence` numbers project documents,
+  `reconcile` pairs what a hand move broke, and the `dreaming` facet says what
+  the night did — every move, every skip, and the manifest behind any deletion.
+- **`projects/` ranks by how much it is being worked.** Each project is scored
+  from its own evidence onto four bands, written into its tracker and into
+  `project-activity.json`, which is where the daemon reads it; a closed task's
+  research bundles and a superseded decision move to `<slug>/completed/`, and a
+  finished project to `projects/completed/` the night after its tracker reads
+  `done` with an Outcome written. Task directories never move.
+- **The weekly crystallize phase.** `agentmd crystallize` and the
+  `crystallize-weekly` runner job write the lesson a recurrence taught: three
+  sources, two sessions, seven days apart, counted in code so nothing below the
+  bar reaches a model and a run that finds nothing spends nothing. A lesson
+  carries `consolidated_from`; the cards that taught it are stamped
+  `consolidated_into` and rank at ×0.30 in both arms. An arc named in a
+  project tracker's `arc_closed:` gets its own synthesis. Registered and off
+  behind `daemon.crystallize_enabled`; pinned to the strong tier without audit,
+  because a bad lesson lands where nothing ages it out.
+- **`/memory revive`, `/memory pin` and `/memory search --deep`.** Deep search
+  looks where ordinary recall does not: the archive, the deletion manifests,
+  and the vault's git history, printing the `git show` that recovers a deleted
+  note from the commit it still lives in.
+
 - **The projects migration, ready to run (agentm-vault plan 10).**
   `scripts/migrate/projects_layout.py` dissolves every project's `_harness/` by
   a table rather than a judgment: each plan unit becomes
@@ -32,6 +74,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colliding.
 
 ### Changed
+
+- **The runner's daily ceiling is $30, and the repeated-run guard is its own
+  rule (agentm-vault plan 11, task 7).** The re-audit trigger the 2026-09-13
+  amendment set — "a second spending job is added" — fired when the weekly
+  crystallize phase registered a `budget:`. At $5 the fleet gate had stopped
+  being a cap and become a race decided by `order`: the enrichment batch
+  reports about $22, the gate is pre-flight so that run passes untouched, and
+  from then on whichever paid job ran second was refused every night for twenty
+  hours. The ceiling is now the sum of what the night's registered paid jobs
+  legitimately spend, with headroom, and `_own_spend` holds a paid job that has
+  already spent inside the window — reported as `budget-repeat` rather than
+  `budget-ceiling`, because "the fleet is over" and "you ran this an hour ago"
+  want different fixes.
+- **The morning note carries the rest of what plan 04 marked pending.** The
+  `dreaming` facet link with the night's counts, the two forward lists
+  (*sinking* and *archiving within 30 days*, which replaced the archive-candidate
+  backlog the night now moves itself), *lessons this week* naming every note the
+  crystallize phase wrote, and a spend line per tier-table job — enrichment
+  deep, enrichment light, crystallize — beside the nightly and seven-day
+  totals.
 
 - **A new plan lands in a numbered task, and a bare call names the task
   (agentm-vault plan 10, task 7).** On a project that keeps its plans in
