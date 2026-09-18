@@ -506,7 +506,9 @@ class TheStateWritingSuitesRunByHand(unittest.TestCase):
         ),
         "test_memory_lifecycle.py": (
             "TestAccessDrivenReset.test_genuine_recall_access_resets_volatile_clock",
-            "TestSteppedDecayScore.test_genuine_recall_access_resets_the_stepped_clock_too",
+            # Renamed with its class when the two curves became one:
+            # TestSteppedDecayScore.test_genuine_recall_access_resets_the_stepped_clock_too.
+            "TestTheDecayCurve.test_genuine_recall_access_resets_the_clock",
         ),
         "test_recall_daemon_fast_path.py": (
             "PromptSubmitIntegrationTests.test_the_daemon_answer_is_used_and_the_walk_never_runs",

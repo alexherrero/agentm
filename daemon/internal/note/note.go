@@ -27,6 +27,12 @@ var (
 	updatedRe    = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
 	altitudeRe   = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
 	confidenceRe = regexp.MustCompile(`(?m)^confidence:[ \t]*([0-9.]+)[ \t\r]*$`)
+	// `importance:` is the operator's number from the contract's rubric, quoted
+	// or bare — the corpus holds both spellings, because a backfill wrote some
+	// of them through a YAML dumper. `importance_proposed:` is deliberately not
+	// matched: a proposal is enrichment's opinion, and only the operator's own
+	// number ranks.
+	importanceRe = regexp.MustCompile(`(?m)^importance:[ \t]*"?([0-9]+)"?[ \t\r]*$`)
 	createdRe    = regexp.MustCompile(`(?m)^created:[ \t]*(.+?)[ \t\r]*$`)
 	// The writer's project stamp (agentm-vault § Projects and tasks).
 	projectRe = regexp.MustCompile(`(?m)^project:[ \t]*(.+?)[ \t\r]*$`)
@@ -150,6 +156,20 @@ type Note struct {
 	Confidence    float64
 	ConfidenceSet bool
 
+	// Importance is the operator's own `importance:`, and ImportanceSet
+	// distinguishes a note that says 1 from one that says nothing.
+	//
+	// Two fields for the same reason Confidence has two: absent is not low. Most
+	// of this corpus carries no importance at all — 184 notes of 2,877 on the
+	// morning this was written — so reading absent as zero would dampen the
+	// whole vault against the handful of notes enrichment has reached.
+	//
+	// It only ever ranks. The lifecycle job does not read it, which is what the
+	// contract means by "a 9 nobody has recalled in a year sinks exactly as a 3
+	// does".
+	Importance    int
+	ImportanceSet bool
+
 	// Updated is the note's own `updated:` stamp, and it is the decay anchor
 	// after a genuine recall.
 	//
@@ -204,7 +224,13 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	}
 	n.Probe = parseProbe(head)
 	n.Captured, n.CapturedSource = parseCaptured(head, modTime)
-	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status, n.Lifecycle)
+	if m := importanceRe.FindStringSubmatch(head); m != nil {
+		if v, err := strconv.Atoi(strings.TrimSpace(m[1])); err == nil {
+			n.Importance, n.ImportanceSet = v, true
+		}
+	}
+	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status, n.Lifecycle,
+		n.Importance, n.ImportanceSet)
 	n.Source = firstFrontmatterValue(head, sourceIDRe, sourceURLRe, sourceRe)
 	if m := derivedFromRe.FindStringSubmatch(head); m != nil {
 		n.DerivedFrom = parseFlowList(m[1])

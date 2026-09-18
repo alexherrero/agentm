@@ -25,17 +25,50 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "harness" / "skills" / "
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import lifecycle  # noqa: E402
 from lifecycle import (  # noqa: E402
-    DECAY_HALF_LIFE_DAYS,
+    DECAY_FLOOR,
     LIFECYCLE_SIDECAR_NAME,
     compute_decay_score,
-    compute_decay_score_shadow,
-    compute_decay_score_stepped,
+    decay_bands,
     is_decay_exempt,
     lifecycle_tier_for,
     record_recall_access,
 )
 import save  # noqa: E402
+
+
+class _FakeRules:
+    """The three accessors `lifecycle` asks the contract for. Patched in rather
+    than shelling out to the daemon, so a curve test asserts the curve and not
+    whether a binary happened to be on the machine."""
+
+    def __init__(self, thresholds):
+        self._thresholds = thresholds
+
+    def thresholds(self):
+        return dict(self._thresholds)
+
+    def contract_exempt_spaces(self):
+        return []
+
+
+def _with_contract(test, thresholds):
+    """Pin the curve to a contract for the duration of one test."""
+    original = lifecycle.storage_rules.rules
+    lifecycle.storage_rules.rules = lambda: _FakeRules(thresholds)
+    test.addCleanup(lambda: setattr(lifecycle.storage_rules, "rules", original))
+
+
+# What the shipped contract names. The bands used to be constants in two
+# languages; they are one curve now, and this is the file that says so.
+_SHIPPED = {
+    "decay_full_days": 180,
+    "decay_half_days": 365,
+    "decay_eighth_days": 1095,
+    "decay_floor_days": 1825,
+    "decay_floor_weight": 0.0625,
+}
 
 
 def _fm(**overrides) -> dict:
@@ -112,16 +145,16 @@ class TestDecayScore(unittest.TestCase):
         self.assertEqual(score_far, 1.0)
 
     def test_volatile_entry_decays_from_created_when_never_accessed(self):
+        _with_contract(self, _SHIPPED)
         fm = _fm(created="2026-01-01")
         rel = "memory/insight/some-note.md"
-        # Exactly one half-life elapsed with no recorded access.
-        now = "2026-01-01"
+        # One day past the first band, with no recorded access.
         import datetime
         later = (
-            datetime.date.fromisoformat(now) + datetime.timedelta(days=DECAY_HALF_LIFE_DAYS)
+            datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=181)
         ).isoformat()
         score = compute_decay_score(self.vault, "some-note", fm, rel, now=later)
-        self.assertAlmostEqual(score, 0.5, places=6)
+        self.assertEqual(score, 0.5)
 
     def test_volatile_entry_no_history_defaults_fresh(self):
         fm = {"kind": "insight"}  # no created, no sidecar entry.
@@ -143,20 +176,27 @@ class TestDecayScore(unittest.TestCase):
         self.assertEqual(score, 1.0)
 
     def test_falls_back_to_created_when_updated_absent(self):
+        _with_contract(self, _SHIPPED)
         fm = _fm(created="2026-01-01")  # no `updated` key at all.
         rel = "memory/insight/some-note.md"
         import datetime
         later = (
-            datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=DECAY_HALF_LIFE_DAYS)
+            datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=181)
         ).isoformat()
         score = compute_decay_score(self.vault, "some-note", fm, rel, now=later)
-        self.assertAlmostEqual(score, 0.5, places=6)
+        self.assertEqual(score, 0.5)
 
 
-class TestSteppedDecayScore(unittest.TestCase):
-    """Task 1 (auto-organization part 1): the stepped rank-curve function,
-    shadow-mode only — compute_decay_score (the live exponential curve,
-    recall.py's actual call site) is untouched by this class's fixtures."""
+class TestTheDecayCurve(unittest.TestCase):
+    """The one curve, read from the filing contract.
+
+    This class was written for a stepped curve that sat in shadow mode beside a
+    live thirty-day exponential, comparing the two. The axis-per-space landing
+    promoted the stepped curve, retired the exponential and deleted the
+    comparison, so the assertions are rewritten to the shipped curve and the
+    band edges move with it: the constants said 182 and the contract says 180.
+    A class that compared two curves has no subject once there is one.
+    """
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -173,95 +213,107 @@ class TestSteppedDecayScore(unittest.TestCase):
         later = (
             datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=days_elapsed)
         ).isoformat()
-        return compute_decay_score_stepped(self.vault, "some-note", fm, rel, now=later)
+        return compute_decay_score(self.vault, "some-note", fm, rel, now=later)
 
-    def test_full_strength_within_six_months(self):
+    def test_full_strength_to_the_contracts_first_band(self):
+        _with_contract(self, _SHIPPED)
         self.assertEqual(self._score_at(0), 1.0)
-        self.assertEqual(self._score_at(182), 1.0)
+        self.assertEqual(self._score_at(179), 1.0)
+        self.assertEqual(self._score_at(180), 1.0)
 
-    def test_half_strength_at_boundary_to_one_year(self):
-        self.assertEqual(self._score_at(183), 0.5)
+    def test_the_day_the_constant_and_the_contract_disagreed(self):
+        # The Go bands said 182 and the contract says 180. Reading the contract
+        # is what makes this day answer 0.5 in both arms instead of one each.
+        _with_contract(self, _SHIPPED)
+        self.assertEqual(self._score_at(181), 0.5)
+
+    def test_half_strength_to_one_year(self):
+        _with_contract(self, _SHIPPED)
         self.assertEqual(self._score_at(365), 0.5)
 
     def test_an_eighth_from_one_to_three_years(self):
+        _with_contract(self, _SHIPPED)
         self.assertEqual(self._score_at(366), 0.125)
         self.assertEqual(self._score_at(1095), 0.125)
 
     def test_a_sixteenth_from_three_to_five_years_and_beyond(self):
+        _with_contract(self, _SHIPPED)
         self.assertEqual(self._score_at(1096), 0.0625)
         self.assertEqual(self._score_at(1825), 0.0625)
         self.assertEqual(self._score_at(10_000), 0.0625)  # floor holds past 5y
 
+    def test_the_contracts_own_numbers_move_the_bands(self):
+        # Not a mirror of the shipped values: a different contract, and the
+        # curve has to follow it.
+        _with_contract(self, {
+            "decay_full_days": 10,
+            "decay_half_days": 20,
+            "decay_eighth_days": 30,
+            "decay_floor_days": 40,
+            "decay_floor_weight": 0.5,
+        })
+        self.assertEqual(self._score_at(10), 1.0)
+        self.assertEqual(self._score_at(11), 0.5)
+        self.assertEqual(self._score_at(21), 0.125)
+        self.assertEqual(self._score_at(31), 0.5)
+        self.assertEqual(self._score_at(9999), 0.5)
+
+    def test_an_incoherent_contract_falls_back_wholesale(self):
+        # Half from the contract and half from a constant is the drift that
+        # reading the contract exists to end, and it would be invisible.
+        for bad in (
+            {},
+            {"decay_full_days": 180},
+            dict(_SHIPPED, decay_half_days=100),
+            dict(_SHIPPED, decay_floor_days="not a number"),
+        ):
+            with self.subTest(contract=bad):
+                _with_contract(self, bad)
+                self.assertEqual(decay_bands()[0], (182.0, 1.0))
+
+    def test_an_unreadable_contract_falls_back_to_the_packaged_curve(self):
+        def boom():
+            raise RuntimeError("no daemon on this machine")
+
+        original = lifecycle.storage_rules.rules
+        lifecycle.storage_rules.rules = boom
+        self.addCleanup(lambda: setattr(lifecycle.storage_rules, "rules", original))
+        self.assertEqual(self._score_at(182), 1.0)
+        self.assertEqual(self._score_at(183), 0.5)
+
     def test_decay_exempt_entry_is_always_full_strength(self):
+        _with_contract(self, _SHIPPED)
         fm = _fm(kind="failure-incident", created="2020-01-01")
         rel = "memory/diag/incident-a.md"
-        score = compute_decay_score_stepped(self.vault, "incident-a", fm, rel, now="2035-01-01")
+        score = compute_decay_score(self.vault, "incident-a", fm, rel, now="2035-01-01")
         self.assertEqual(score, 1.0)
 
     def test_no_anchor_defaults_fresh(self):
+        _with_contract(self, _SHIPPED)
         fm = {"kind": "insight"}  # no created, no sidecar entry.
         rel = "memory/insight/no-dates.md"
-        score = compute_decay_score_stepped(self.vault, "no-dates", fm, rel, now="2026-06-01")
+        score = compute_decay_score(self.vault, "no-dates", fm, rel, now="2026-06-01")
         self.assertEqual(score, 1.0)
 
-    def test_genuine_recall_access_resets_the_stepped_clock_too(self):
-        # The two curves share the exact same anchor-resolution chain — an
-        # access recorded via record_recall_access() must reset both.
+    def test_genuine_recall_access_resets_the_clock(self):
+        _with_contract(self, _SHIPPED)
         fm = _fm(created="2020-01-01")
         rel = "memory/insight/some-note.md"
-        stale = compute_decay_score_stepped(self.vault, "some-note", fm, rel, now="2026-01-01")
+        stale = compute_decay_score(self.vault, "some-note", fm, rel, now="2026-01-01")
         self.assertEqual(stale, 0.0625)
 
         record_recall_access(self.vault, "some-note", fm, rel, today="2026-06-01")
-        fresh = compute_decay_score_stepped(self.vault, "some-note", fm, rel, now="2026-06-01")
+        fresh = compute_decay_score(self.vault, "some-note", fm, rel, now="2026-06-01")
         self.assertEqual(fresh, 1.0)
 
-
-class TestShadowModeComparison(unittest.TestCase):
-    """Both curves compute per note and the delta is available — while
-    compute_decay_score (the function recall.py actually calls) keeps
-    driving live ranking, provably unaffected by anything in this module
-    section since recall.py itself is untouched by task 1."""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.vault = Path(self.tmp.name) / "vault"
-        self.vault.mkdir(parents=True)
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def test_both_curves_compute_and_delta_is_correct(self):
-        fm = _fm(created="2026-01-01")
-        rel = "memory/insight/some-note.md"
-        import datetime
-        # 200 days: exponential is well past its 30-day half-life; stepped
-        # is still in the "half strength to 1y" band (200 > 182).
-        now = (datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=200)).isoformat()
-
-        result = compute_decay_score_shadow(self.vault, "some-note", fm, rel, now=now)
-        expected_old = compute_decay_score(self.vault, "some-note", fm, rel, now=now)
-        expected_new = compute_decay_score_stepped(self.vault, "some-note", fm, rel, now=now)
-
-        self.assertEqual(result["old"], expected_old)
-        self.assertEqual(result["new"], expected_new)
-        self.assertAlmostEqual(result["delta"], expected_new - expected_old, places=9)
-        self.assertFalse(result["exempt"])
-        # The stepped curve is far more generous than exponential decay at
-        # 200 days out — this is the real-world shape the retune is for.
-        self.assertGreater(result["new"], result["old"])
-
-    def test_exempt_entry_shows_no_delta(self):
-        fm = _fm(kind="failure-incident", created="2020-01-01")
-        rel = "memory/diag/incident-a.md"
-        result = compute_decay_score_shadow(self.vault, "incident-a", fm, rel, now="2035-01-01")
-        self.assertEqual(result, {"old": 1.0, "new": 1.0, "delta": 0.0, "exempt": True})
-
-    def test_shadow_comparison_never_mutates_the_sidecar(self):
-        # A read-only comparison must not itself count as an access.
+    def test_scoring_never_mutates_the_sidecar(self):
+        # Reading a score is not an access. Only a genuine recall resets the
+        # clock, and this is the assertion that keeps a ranking pass from
+        # quietly becoming one.
+        _with_contract(self, _SHIPPED)
         fm = _fm(created="2020-01-01")
         rel = "memory/insight/some-note.md"
-        compute_decay_score_shadow(self.vault, "some-note", fm, rel, now="2026-01-01")
+        compute_decay_score(self.vault, "some-note", fm, rel, now="2026-01-01")
         sidecar = self.vault / LIFECYCLE_SIDECAR_NAME
         self.assertFalse(sidecar.exists())
 
@@ -279,9 +331,11 @@ class TestAccessDrivenReset(unittest.TestCase):
     def test_genuine_recall_access_resets_volatile_clock(self):
         fm = _fm(created="2020-01-01")
         rel = "memory/insight/some-note.md"
-        # Long-decayed before any access.
+        # Long-decayed before any access. The floor, not a number under it:
+        # the one curve bottoms out at `decay_floor_weight` by design, where
+        # the exponential this replaced would have reached 1e-22.
         stale_score = compute_decay_score(self.vault, "some-note", fm, rel, now="2026-01-01")
-        self.assertLess(stale_score, 0.01)
+        self.assertEqual(stale_score, DECAY_FLOOR)
 
         record_recall_access(self.vault, "some-note", fm, rel, today="2026-06-01")
         fresh_score = compute_decay_score(self.vault, "some-note", fm, rel, now="2026-06-01")
@@ -322,7 +376,9 @@ class TestAccessDrivenReset(unittest.TestCase):
         # no sidecar entry was ever created by the raw read.
         sidecar = self.vault / LIFECYCLE_SIDECAR_NAME
         self.assertFalse(sidecar.exists())
-        self.assertLess(score_after_raw_touch, 0.01)
+        # At the floor, which is what "still decayed, never reset" reads as on
+        # the one curve — a reset would read 1.0.
+        self.assertEqual(score_after_raw_touch, DECAY_FLOOR)
 
 
 class TestRecallPayloadIntegration(unittest.TestCase):

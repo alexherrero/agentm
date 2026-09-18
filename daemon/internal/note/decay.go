@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,21 +47,78 @@ import (
 // to `captured` would penalize a frequently-maintained reference for staleness
 // it does not have.
 
-// The stepped bands, ported from lifecycle.py's `_STEPPED_BANDS` so the two
-// curves are the same curve. Each pair is (elapsed days at or below, score).
-var decayBands = []struct {
-	Days  float64
-	Score float64
-}{
+// Band is one step of the curve: every note at or below Days scores Score.
+//
+// The JSON tags are a surface, not decoration: `agentmd decay --json` prints
+// these, and the cross-arm parity test reads them.
+type Band struct {
+	Days  float64 `json:"days"`
+	Score float64 `json:"score"`
+}
+
+// DecayFloor is what a memory scores once past the last band when the contract
+// names no weight of its own. A floor, not a waypoint: the curve never reaches
+// zero.
+const DecayFloor = 0.0625
+
+// defaultBands is the curve with no contract behind it. It is the curve this
+// package carried as constants before the contract's `decay_*` lines were read,
+// kept so a vault whose contract predates them ranks exactly as it did.
+var defaultBands = []Band{
 	{182, 1.0},
 	{365, 0.5},
 	{1095, 0.125},
-	{1825, 0.0625},
+	{1825, DecayFloor},
 }
 
-// DecayFloor is what a memory scores once past the last band. A floor, not a
-// waypoint: the curve never reaches zero.
-const DecayFloor = 0.0625
+// curve is the live set, replaced once at boot from the contract and again
+// whenever the health pass re-reads it. Held in an atomic for the reason
+// dampened spaces are: four call sites parse notes and one is the self-probe,
+// which has no configuration and no business acquiring one.
+//
+// One curve, and it is the contract's. Before this, the Go bands were constants
+// here and the Python arm ran a thirty-day exponential, so the same note ranked
+// two different ways depending on which arm answered, and the contract's five
+// `decay_*` lines were read by nobody at all.
+var curve atomic.Pointer[[]Band]
+
+// SetDecayBands replaces the curve from the contract's `decay_*` thresholds.
+//
+// A day boundary that is missing or not ascending falls the whole curve back to
+// the default rather than accepting a partial one: a curve read half from the
+// contract and half from a constant is the drift this change exists to end, and
+// it would be invisible. `floorWeight` of zero means the contract named none,
+// and DecayFloor stands.
+func SetDecayBands(fullDays, halfDays, eighthDays, floorDays, floorWeight float64) {
+	weight := floorWeight
+	if weight <= 0 {
+		weight = DecayFloor
+	}
+	days := []float64{fullDays, halfDays, eighthDays, floorDays}
+	prev := 0.0
+	for _, d := range days {
+		if d <= prev {
+			curve.Store(nil)
+			return
+		}
+		prev = d
+	}
+	bands := []Band{
+		{fullDays, 1.0},
+		{halfDays, 0.5},
+		{eighthDays, 0.125},
+		{floorDays, weight},
+	}
+	curve.Store(&bands)
+}
+
+// DecayBands is the curve currently in force, for the status surface and tests.
+func DecayBands() []Band {
+	if p := curve.Load(); p != nil {
+		return append([]Band(nil), *p...)
+	}
+	return append([]Band(nil), defaultBands...)
+}
 
 // DecayScore maps elapsed days to a multiplier.
 func DecayScore(elapsedDays float64) float64 {
@@ -70,12 +128,16 @@ func DecayScore(elapsedDays float64) float64 {
 		// a negative age, which would otherwise read as the far side of the curve.
 		return 1.0
 	}
-	for _, b := range decayBands {
+	bands := defaultBands
+	if p := curve.Load(); p != nil {
+		bands = *p
+	}
+	for _, b := range bands {
 		if elapsedDays <= b.Days {
 			return b.Score
 		}
 	}
-	return DecayFloor
+	return bands[len(bands)-1].Score
 }
 
 // accessRecord is the shape `.lifecycle.json` carries.

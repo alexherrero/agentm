@@ -196,24 +196,89 @@ func TestRefreshPicksUpAChangedSidecar(t *testing.T) {
 	}
 }
 
-// The Go curve and the Python one must be the same curve. Ported values, pinned
-// against the bands lifecycle.py carries, so a change to either has to change
-// both deliberately rather than drift.
-func TestTheBandsMatchThePythonCurve(t *testing.T) {
-	want := []struct {
-		days  float64
-		score float64
-	}{
-		{182, 1.0}, {365, 0.5}, {1095, 0.125}, {1825, 0.0625},
-	}
-	if len(decayBands) != len(want) {
-		t.Fatalf("%d bands, the Python curve has %d", len(decayBands), len(want))
+// With no contract behind it the curve is the one this package carried as
+// constants, so a vault whose contract predates the `decay_*` lines ranks
+// exactly as it did.
+//
+// This used to be "the Go bands match the ported Python values", two hand-kept
+// copies pinned against each other. They are now one curve, read from the
+// contract by both arms, and the cross-arm agreement is proven where it can
+// actually fail — scripts/test_decay_curve_parity.py runs the shipped binary
+// and the Python function over the same days.
+func TestTheDefaultCurveIsTheOneThisPackageShipped(t *testing.T) {
+	t.Cleanup(func() { curve.Store(nil) })
+	curve.Store(nil)
+
+	want := []Band{{182, 1.0}, {365, 0.5}, {1095, 0.125}, {1825, 0.0625}}
+	got := DecayBands()
+	if len(got) != len(want) {
+		t.Fatalf("%d bands, want %d", len(got), len(want))
 	}
 	for i, w := range want {
-		if decayBands[i].Days != w.days || decayBands[i].Score != w.score {
-			t.Errorf("band %d is (%v, %v), the Python curve has (%v, %v)",
-				i, decayBands[i].Days, decayBands[i].Score, w.days, w.score)
+		if got[i] != w {
+			t.Errorf("band %d is (%v, %v), want (%v, %v)", i, got[i].Days, got[i].Score, w.Days, w.Score)
 		}
+	}
+}
+
+// The contract's numbers, not the package's.
+func TestTheCurveComesFromTheContract(t *testing.T) {
+	t.Cleanup(func() { curve.Store(nil) })
+	SetDecayBands(180, 365, 1095, 1825, 0.0625)
+
+	cases := []struct {
+		days float64
+		want float64
+	}{
+		{0, 1.0},
+		{179, 1.0},
+		{180, 1.0},
+		// 181 is the whole point of reading the contract: the constant said 182,
+		// the contract says 180, and this is the day they disagree on.
+		{181, 0.5},
+		{365, 0.5},
+		{366, 0.125},
+		{1095, 0.125},
+		{1096, 0.0625},
+		{1825, 0.0625},
+		{100000, 0.0625},
+		{-5, 1.0},
+	}
+	for _, c := range cases {
+		if got := DecayScore(c.days); got != c.want {
+			t.Errorf("DecayScore(%v) = %v, want %v", c.days, got, c.want)
+		}
+	}
+}
+
+// A curve read half from the contract and half from a constant is the drift
+// this change exists to end, and it would be invisible. A contract that
+// describes no ascending curve falls the whole thing back to the default.
+func TestAnIncoherentContractFallsBackWholesale(t *testing.T) {
+	t.Cleanup(func() { curve.Store(nil) })
+	for _, bad := range [][5]float64{
+		{0, 0, 0, 0, 0},                // names none
+		{180, 100, 1095, 1825, 0.0625}, // half before full
+		{180, 365, 1095, 0, 0.0625},    // floor day missing
+	} {
+		SetDecayBands(bad[0], bad[1], bad[2], bad[3], bad[4])
+		got := DecayBands()
+		if len(got) != 4 || got[0].Days != 182 {
+			t.Errorf("SetDecayBands%v left the curve at %v, want the package default", bad, got)
+		}
+	}
+}
+
+// The floor weight is the contract's too, and zero means it named none.
+func TestTheFloorWeightComesFromTheContract(t *testing.T) {
+	t.Cleanup(func() { curve.Store(nil) })
+	SetDecayBands(180, 365, 1095, 1825, 0.02)
+	if got := DecayScore(5000); got != 0.02 {
+		t.Errorf("DecayScore past the last band = %v, want the contract's 0.02", got)
+	}
+	SetDecayBands(180, 365, 1095, 1825, 0)
+	if got := DecayScore(5000); got != DecayFloor {
+		t.Errorf("DecayScore with no floor weight = %v, want the package floor %v", got, DecayFloor)
 	}
 }
 

@@ -93,7 +93,11 @@ func TestACompletedRecordRanksAtThirtyPercentOfItsTwin(t *testing.T) {
 		t.Fatalf("the completed record was not demoted below its twin: %v", got)
 	}
 	done := out.Results[1]
-	if !strings.Contains(done.Penalty, note.ClassCompleted) {
+	// The class this record earns is the archive family's, which is what a
+	// project's `completed/` joined when the axis-per-space landing gave the
+	// three archival folder names one rule. The demotion it asserts is
+	// unchanged: x0.30, penalized and never walled.
+	if !strings.Contains(done.Penalty, note.ClassArchiveClass) {
 		t.Errorf("the class is not visible on the row: %q", done.Penalty)
 	}
 	if want := done.RawScore * 0.30; math.Abs(done.Score-want) > 1e-9 {

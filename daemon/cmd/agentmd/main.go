@@ -57,6 +57,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd classify   report rank-penalty class counts over the live vault
   agentmd retire     retire the orphaned pre-daemon memory server
   agentmd rules      print the filing contract, or seed a vault with one
+  agentmd decay      print the decay curve the contract describes
   agentmd ledger     ask what dreaming has already done, and what is pending
   agentmd queue      show the pending-work queues, or record work owed
   agentmd sources    ask whether a source has been mined, and watermark it
@@ -102,6 +103,8 @@ func main() {
 		err = cmdRetire(os.Args[2:])
 	case "rules":
 		err = cmdRules(os.Args[2:])
+	case "decay":
+		err = cmdDecay(os.Args[2:])
 	case "ledger":
 		err = cmdLedger(os.Args[2:])
 	case "queue":

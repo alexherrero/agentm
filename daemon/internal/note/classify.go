@@ -90,11 +90,27 @@ const (
 	// four-month recall amputation, and the disagreement is worse when it is
 	// the *permissive* half that is silent.
 	ClassIngestStaged = "ingest-staged"
-	// ClassCompleted is a record in a project's `completed/` folder: the research,
-	// briefs and drafts a closed task left behind (agentm-vault § Projects and
-	// tasks). Kept in the index and penalized rather than walled, so a closed
-	// task's outcome is still findable and never outranks a live one. Earned by
-	// where the note sits — see pathClasses — not by anything it says.
+	// ClassArchiveClass is a note in a directory that means the work there is
+	// finished: the memory archive, a project's `completed/` folder, a finished
+	// project, the operator's own `_Archive`. Kept in the index and penalized
+	// rather than walled, so a closed task's outcome is still findable and never
+	// outranks a live one. Earned by where the note sits — see ArchiveSegments —
+	// not by anything it says.
+	ClassArchiveClass = "archive-class"
+	// ClassLowImportance is a note whose `importance` sits at or below the
+	// contract's `importance_dampen_at_or_below`. The contract's own rubric is
+	// what this reads: importance only ranks, and the low end of it is residue
+	// and moments that decide nothing.
+	//
+	// Set at index time like every other class here, which means changing the
+	// threshold is a reindex rather than a restart — the same cost spaces pay.
+	ClassLowImportance = "low-importance"
+	// ClassCompleted is the name this class went by before it covered the
+	// archive family, when it meant a project's `completed/` folder alone. No
+	// classifier writes it any more; it is still weighted because index rows
+	// written before the rename carry it until the next reindex, and an unlisted
+	// class multiplies by 1.0 — so dropping the entry would rank every
+	// not-yet-reindexed completed record *up* for the length of the gap.
 	ClassCompleted = "completed"
 )
 
@@ -144,9 +160,24 @@ var Weights = map[string]float64{
 	ClassDormant:    0.30,
 	ClassArchived:   0.30,
 	ClassSuperseded: 0.30,
-	// A closed task's records, by their path. Same 0.30 as every other demoted
-	// class, for the sweep's reason.
+	// Finished work, by its path — the memory archive, a project's `completed/`,
+	// the operator's own `_Archive`. Same 0.30 as every other demoted class, for
+	// the sweep's reason.
+	ClassArchiveClass: 0.30,
+	// The retired spelling of the line above, weighted identically so index rows
+	// written before the rename rank the same until the next reindex re-derives
+	// their flags.
 	ClassCompleted: 0.30,
+	// A note the operator has marked as saying little — `importance` at or below
+	// the contract's `importance_dampen_at_or_below`. The rubric calls 1 residue
+	// and 2-3 the record of a moment that decides nothing, and this is where that
+	// reading reaches the ranker.
+	//
+	// 0.80 rather than 0.30, and that is the whole claim: low importance is not a
+	// wall. The note still answers a question that names it, a little lower than
+	// its neighbours. A note carrying no `importance` at all earns no flag here —
+	// absent is not the same claim as low, and the corpus is mostly absent.
+	ClassLowImportance: 0.80,
 }
 
 // ProjectMismatch is what a note earns when a query names the session's project
@@ -159,32 +190,46 @@ var Weights = map[string]float64{
 // or below 0.6 ranks like a wall, and a project is not a wall.
 const ProjectMismatch = 0.80
 
-// pathClasses are the classes a note earns by where it sits rather than by what
-// it says. A row names a space (the first path segment, compared without case),
-// the depth of the directory segment it matches, and that segment's name. The
-// first row is a project's `completed/` folder; agentm-vault plan 11 adds its
-// archive class per space here rather than as another special case.
-var pathClasses = []struct {
-	space   string
-	depth   int
-	segment string
-	class   string
-}{
-	{space: "projects", depth: 2, segment: "completed", class: ClassCompleted},
-}
+// ArchiveSegments are the directory names that mean "the work here is
+// finished", in every space. One class for the three names, on the design's
+// ruling: the memory archive holds what has been retired from use and a
+// project's `completed/` holds finished work that is still true — two words for
+// two meanings, one ranker rule for both.
+//
+// Matched at any depth, because the three names do not sit at one. The memory
+// archive is `agent/archive/memory/<class>/`; a finished project is
+// `projects/completed/<slug>/`; a project's own finished work is
+// `projects/<slug>/completed/`; the operator's own is `personal/Home/_Archive/`.
+// Surveyed against the live vault before the rule was written this way: nine
+// directories carry one of these names and every one of them is archival.
+//
+// The Python arm holds the same three names and a parity test drives one table
+// through both, because the alternative to duplicating a three-item list across
+// two languages is a subprocess per note for a string comparison.
+var ArchiveSegments = []string{"archive", "_archive", "completed"}
 
-// pathClassFlags returns the classes `rel`'s directories earn from pathClasses.
-// Directories only: a file that happens to carry a segment's name earns nothing.
+// pathClassFlags returns the class `rel` earns from where it sits rather than
+// from what it says. Directories only: a file that happens to carry a segment's
+// name earns nothing, so `research/completed-work.md` is a note about finished
+// work rather than a finished note.
+//
+// One flag at most. A path that is archival twice over —
+// `projects/completed/blog/drafts/_archive/x.md` — is not twice as finished, and
+// compounding 0.30 into 0.09 would put it below the floor of the decay curve for
+// the sake of a folder name appearing twice.
 func pathClassFlags(rel string) []string {
-	parts := strings.Split(rel, "/")
-	var out []string
-	for _, c := range pathClasses {
-		if len(parts) > c.depth+1 && strings.EqualFold(parts[0], c.space) &&
-			strings.EqualFold(parts[c.depth], c.segment) {
-			out = append(out, c.class)
+	parts := strings.Split(strings.ReplaceAll(rel, "\\", "/"), "/")
+	if len(parts) < 2 {
+		return nil
+	}
+	for _, seg := range parts[:len(parts)-1] {
+		for _, want := range ArchiveSegments {
+			if strings.EqualFold(seg, want) {
+				return []string{ClassArchiveClass}
+			}
 		}
 	}
-	return out
+	return nil
 }
 
 // Overfetch is how deep to look before re-ranking. A penalty can only promote a
@@ -299,15 +344,20 @@ func isAllDigits(s string) bool {
 //	            `pinned` lands in `durable` (never ages); `active` is silent.
 //
 // `body` must already have leading whitespace trimmed.
-func classify(rel, head, body, status, lifecycle string) []string {
+func classify(rel, head, body, status, lifecycle string, importance int, importanceSet bool) []string {
 	var flags []string
 
 	if inDampenedSpace(rel) {
 		flags = append(flags, ClassSpace)
 	}
 
-	// Where the note sits: a project's completed records (pathClasses).
+	// Where the note sits: the archive family, in every space (ArchiveSegments).
 	flags = append(flags, pathClassFlags(rel)...)
+
+	// What the operator said it is worth. Absent earns nothing.
+	if importanceSet && isLowImportance(importance) {
+		flags = append(flags, ClassLowImportance)
+	}
 
 	if isDurable(rel, head) {
 		flags = append(flags, ClassDurable)

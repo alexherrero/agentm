@@ -16,8 +16,8 @@ Two tiers:
         path has a `decisions/` directory segment.
     An entry explicitly tagged `lifecycle_tier: durable` is also exempt.
   - "volatile" — the default when `lifecycle_tier` is absent or `volatile`.
-    Decays exponentially from last genuine recall access (or `created` if
-    never accessed). Access-driven reset (FABLE R1, adopted-bounded): only a
+    Decays on the contract's stepped curve from last genuine recall access (or
+    `created` if never accessed). Access-driven reset (FABLE R1, adopted-bounded): only a
     genuine recall hit resets the clock, and only for volatile-tier notes —
     a lint walk, an index rebuild, or a dreaming pass touching the file must
     NEVER reset it. This module exposes no hook those callers use; only
@@ -42,7 +42,6 @@ stage, task 3 — dream.py):
 from __future__ import annotations
 
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -70,12 +69,78 @@ DECAY_EXEMPT_KINDS = frozenset({"failure-incident"})
 # living-design amendment logs per the operator's global convention).
 _DECISIONS_DIR_SEGMENT = "decisions"
 
-# Exponential decay half-life for volatile-tier notes (days). A note with no
-# access for one half-life decays to 0.5; two half-lives to 0.25; etc.
-# Tunable default — not measured against real usage yet (V6-20 eval slice for
-# this task covers "field populated + queryable + red-tests", not a tuned
-# half-life; revisit once real access patterns exist to tune against).
-DECAY_HALF_LIFE_DAYS = 30.0
+# The curve with no contract behind it — the bands this module and the daemon
+# both carried as constants before the contract's `decay_*` lines were read.
+# Kept so a vault whose contract predates those lines ranks exactly as it did,
+# and mirrored byte for byte by `note.defaultBands` in Go.
+#
+# Each pair is (elapsed days at or below, score), checked in order.
+_DEFAULT_BANDS: tuple[tuple[float, float], ...] = (
+    (182.0, 1.0),
+    (365.0, 0.5),
+    (1095.0, 0.125),
+    (1825.0, 0.0625),
+)
+
+# What a memory scores past the last band when the contract names no weight.
+# A floor, not a waypoint: the curve never reaches zero.
+DECAY_FLOOR = 0.0625
+
+# The contract keys the curve is read from, in the order the bands fall.
+_BAND_KEYS = (
+    "decay_full_days",
+    "decay_half_days",
+    "decay_eighth_days",
+    "decay_floor_days",
+)
+_BAND_SCORES = (1.0, 0.5, 0.125)
+
+
+def decay_bands() -> tuple[tuple[float, float], ...]:
+    """The one curve, read from the filing contract's `decay_*` thresholds.
+
+    Before this, the daemon ran stepped bands hardcoded in Go and this module
+    ran a thirty-day exponential, so the same note ranked two different ways
+    depending on which arm answered — and the contract's five `decay_*` lines
+    were read by neither. One curve, and it is the operator's.
+
+    A contract that does not describe an ascending curve falls back to
+    `_DEFAULT_BANDS` **wholesale**, never band by band: a curve read half from
+    the contract and half from a constant is exactly the drift this reads the
+    contract to end, and it would be invisible.
+    """
+    try:
+        thresholds = storage_rules.rules().thresholds()
+    except Exception:
+        return _DEFAULT_BANDS
+    days: list[float] = []
+    previous = 0.0
+    for key in _BAND_KEYS:
+        try:
+            value = float(thresholds[key])
+        except (KeyError, TypeError, ValueError):
+            return _DEFAULT_BANDS
+        if value <= previous:
+            return _DEFAULT_BANDS
+        previous = value
+        days.append(value)
+    try:
+        floor_weight = float(thresholds.get("decay_floor_weight", 0) or 0)
+    except (TypeError, ValueError):
+        floor_weight = 0.0
+    if floor_weight <= 0:
+        floor_weight = DECAY_FLOOR
+    return tuple(zip(days, (*_BAND_SCORES, floor_weight)))
+
+
+def _score_from_bands(elapsed_days: float) -> float:
+    """Pure elapsed-days -> score against the live curve. No I/O, no exempt
+    check — compute_decay_score applies those before ever calling this."""
+    bands = decay_bands()
+    for threshold, score in bands:
+        if elapsed_days <= threshold:
+            return score
+    return bands[-1][1]
 
 
 def lifecycle_tier_for(fm: dict[str, str], rel_path: str | Path) -> str:
@@ -250,10 +315,14 @@ def compute_decay_score(
     """Return a decay score in (0.0, 1.0] — 1.0 means fully fresh/no decay.
 
     Decay-exempt entries always score 1.0 (durable tiers ignore access —
-    FABLE R1). Volatile entries decay exponentially from the last genuine
-    recall access (sidecar `last_access`), falling back to frontmatter
-    `updated` (then `created`, if `updated` is absent) with half-life
-    `DECAY_HALF_LIFE_DAYS`.
+    FABLE R1). Volatile entries decay on the contract's stepped curve from the
+    last genuine recall access (sidecar `last_access`), falling back to
+    frontmatter `updated` (then `created`, if `updated` is absent).
+
+    The thirty-day exponential this used to run retired in the axis-per-space
+    landing, with the shadow-mode stepped copy that sat beside it waiting for
+    exactly this promotion. There is one curve now, `decay_bands()`, and the
+    daemon reads the same lines from the same file.
 
     `updated`, not `created`, is the right fallback anchor: an entry that
     was substantively edited today is fresh regardless of how old its
@@ -271,49 +340,13 @@ def compute_decay_score(
         import datetime
         now = datetime.date.today().isoformat()
 
-    data = _load_sidecar(vault)
-    entry = data.get("entries", {}).get(slug, {})
-    anchor = entry.get("last_access") or fm.get("updated") or fm.get("created")
-    if not anchor:
-        return 1.0  # No basis to compute decay — treat as fresh.
-    try:
-        elapsed_days = max(0.0, _days_between(anchor, now))
-    except ValueError:
-        return 1.0  # Malformed date — fail open to fresh rather than crash.
-    return math.pow(0.5, elapsed_days / DECAY_HALF_LIFE_DAYS)
-
-
-# -----------------------------------------------------------------------------
-# Stepped rank-curve retune (auto-organization part 1, task 1) — shadow-mode
-# only. Neither function below is wired into recall.py's live ranking path;
-# compute_decay_score above (recall.py's actual call site) is untouched by
-# this section. The stepped curve only becomes live once the pinned
-# retrieval eval (scripts/health/eval_v6_retrieval.py) confirms it against
-# shadow output — that promotion is a future plan's own change to
-# recall.py, not something this module does on its own.
-# -----------------------------------------------------------------------------
-
-# (elapsed_days_upper_bound, score) — checked in order, first match wins.
-# Full strength through 6mo silence, half to 1y, an eighth to 3y, a
-# sixteenth to 5y and beyond (the archive move at 5y is what actually
-# retires an entry — this curve doesn't need a further cliff past that).
-_STEPPED_BANDS: tuple[tuple[float, float], ...] = (
-    (182.0, 1.0),
-    (365.0, 0.5),
-    (1095.0, 0.125),
-    (1825.0, 0.0625),
-)
-_STEPPED_FLOOR = _STEPPED_BANDS[-1][1]  # score once past the last band's bound
-
-
-def _stepped_score(elapsed_days: float) -> float:
-    """Pure elapsed-days -> stepped decay score. No I/O, no exempt check —
-    compute_decay_score_stepped applies those the same way the exponential
-    curve does before ever calling this."""
-    for threshold, score in _STEPPED_BANDS:
-        if elapsed_days <= threshold:
-            return score
-    return _STEPPED_FLOOR
+    elapsed_days = _resolve_elapsed_days(vault, slug, fm, now)
+    if elapsed_days is None:
+        # No anchor, or a malformed one: no basis to compute decay. Fresh
+        # rather than old — a note the system knows nothing about should not be
+        # buried for it.
+        return 1.0
+    return _score_from_bands(elapsed_days)
 
 
 def _resolve_elapsed_days(vault: Path, slug: str, fm: dict[str, str], now: str) -> float | None:
@@ -333,60 +366,3 @@ def _resolve_elapsed_days(vault: Path, slug: str, fm: dict[str, str], now: str) 
         return max(0.0, _days_between(anchor, now))
     except ValueError:
         return None
-
-
-def compute_decay_score_stepped(
-    vault: Path,
-    slug: str,
-    fm: dict[str, str],
-    rel_path: str | Path,
-    *,
-    now: str | None = None,
-) -> float:
-    """Stepped-schedule alternative to compute_decay_score's exponential
-    curve. Same exempt gate, same anchor-resolution chain — only the
-    elapsed-days -> score mapping differs (see `_STEPPED_BANDS`).
-
-    Shadow-mode only (task 1): nothing calls this from recall.py's live
-    ranking path today. `compute_decay_score_shadow` below is what a future
-    dreaming stage uses to compare it against the live curve without
-    affecting ranking.
-    """
-    if is_decay_exempt(fm, rel_path) or _in_contract_exempt_space(rel_path):
-        return 1.0
-    if now is None:
-        import datetime
-        now = datetime.date.today().isoformat()
-    elapsed_days = _resolve_elapsed_days(vault, slug, fm, now)
-    if elapsed_days is None:
-        return 1.0
-    return _stepped_score(elapsed_days)
-
-
-def compute_decay_score_shadow(
-    vault: Path,
-    slug: str,
-    fm: dict[str, str],
-    rel_path: str | Path,
-    *,
-    now: str | None = None,
-) -> dict:
-    """Compute both decay curves for one entry and return the comparison —
-    never the score itself, so a caller can't accidentally wire this into
-    ranking in place of compute_decay_score.
-
-    Returns {"old": <exponential score>, "new": <stepped score>,
-    "delta": new - old, "exempt": bool}. A dreaming tidying stage (task 3)
-    calls this per entry across the corpus and logs the aggregate delta
-    (including rank-position shifts, which only make sense computed across
-    the whole corpus, not per note) — this function's job stops at the
-    single-entry comparison.
-    """
-    old = compute_decay_score(vault, slug, fm, rel_path, now=now)
-    new = compute_decay_score_stepped(vault, slug, fm, rel_path, now=now)
-    return {
-        "old": old,
-        "new": new,
-        "delta": new - old,
-        "exempt": is_decay_exempt(fm, rel_path),
-    }

@@ -19,6 +19,8 @@ Operations:
                                             #   storage backend protocol name; V5-1 part 5)
     agentm_config.py --enrich-enabled true # let the nightly enrichment batch run
                                             #   (daemon.enrich_enabled; it spends)
+    agentm_config.py --decay-enabled true  # let the ranker run the contract's decay
+                                            #   curve (daemon.decay_enabled; ranking only)
     agentm_config.py --notify-enabled true # opt in to the daily on-device notification
                                             #   (plugins.autonomy.notify_enabled; FRIDAY feature 1)
     agentm_config.py --email-to <address>  # opt in to the daily digest email
@@ -84,6 +86,7 @@ _PLUGIN_MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
 #: Absent by default: both channels graceful-skip until the operator opts in.
 _AUTONOMY_NOTIFY_ENABLED_KEY = "plugins.autonomy.notify_enabled"
 _DAEMON_ENRICH_ENABLED_KEY = "daemon.enrich_enabled"
+_DAEMON_DECAY_ENABLED_KEY = "daemon.decay_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
 #: Optional — the verified sending address for relays (e.g. Resend) that
@@ -357,6 +360,42 @@ def cmd_set_enrich_enabled(prefix: Path, value: str) -> int:
     return 0
 
 
+def cmd_set_decay_enabled(prefix: Path, value: str) -> int:
+    """Let the ranker run the contract's decay curve (`daemon.decay_enabled`).
+
+    Off in the shipped configuration because of what it was measured to cost on
+    a corpus with no age spread: scored against the frozen gold set with decay
+    as the only variable, R@5 fell 0.781 to 0.750 and two questions flipped to a
+    miss, because 89% of the corpus was under a month old and exactly five notes
+    of 15,824 crossed any band. That is a reason to wait for age, not a reason
+    to ship a curve nobody reads.
+
+    Unlike `--enrich-enabled`, this spends nothing and writes nothing: it
+    changes the order of results and nothing else, and turning it off puts the
+    order back. What it does change is every ranking at once, which is why the
+    retrieval gate is run on both sides of the flip.
+
+    Idempotent: silent no-op when unchanged.
+    """
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        print(
+            f"[agentm_config] refusing to set decay_enabled: {value!r} is not "
+            "'true' or 'false'",
+            file=sys.stderr,
+        )
+        return 2
+    enabled = normalized == "true"
+    config = _read_config(prefix) or {}
+    if config.get(_DAEMON_DECAY_ENABLED_KEY) == enabled:
+        return 0
+    config[_DAEMON_DECAY_ENABLED_KEY] = enabled
+    written = _write_config(prefix, config)
+    print(f"{_DAEMON_DECAY_ENABLED_KEY} = {enabled}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_set_notify_enabled(prefix: Path, value: str) -> int:
     """Set the on-device notification opt-in (`plugins.autonomy.notify_enabled`).
 
@@ -593,6 +632,9 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--enrich-enabled", metavar="{true,false}",
                     help="set daemon.enrich_enabled — let the nightly enrichment "
                          "batch run; it makes model calls, under its budget")
+    op.add_argument("--decay-enabled", metavar="{true,false}",
+                    help="set daemon.decay_enabled — let the ranker run the "
+                         "contract's decay curve; it changes ranking, never a file")
     op.add_argument("--email-to", metavar="ADDRESS",
                     help="set plugins.autonomy.email_to — opt in to the daily digest email")
     op.add_argument("--email-smtp-url", metavar="URL",
@@ -624,6 +666,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_notify_enabled(prefix, args.notify_enabled)
     if args.enrich_enabled is not None:
         return cmd_set_enrich_enabled(prefix, args.enrich_enabled)
+    if args.decay_enabled is not None:
+        return cmd_set_decay_enabled(prefix, args.decay_enabled)
     if args.email_to is not None:
         return cmd_set_email_to(prefix, args.email_to)
     if args.email_smtp_url is not None:

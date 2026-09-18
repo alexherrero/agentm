@@ -38,11 +38,63 @@ func DampenedSpaces() []string {
 }
 
 // inDampenedSpace reports whether a vault-relative path sits in a dampened
-// space. Matched on the first path segment: a space is a top-level directory,
-// and matching deeper would let a folder named `personal` anywhere in the tree
-// silently demote itself.
+// area. An entry of one segment is a whole space, matched on the first path
+// segment — matching deeper would let a folder named `personal` anywhere in the
+// tree silently demote itself. An entry with a slash in it is an area:
+// `agent/diagnostics` matches that directory and everything under it, and
+// nothing else, so the night's own paper can be quieted without quieting the
+// memory classes beside it.
 func inDampenedSpace(rel string) bool {
 	return inSpaceSet(dampened.Load(), rel)
+}
+
+// The areas walled from recall entirely: never indexed, never embedded, never
+// served. Set from the contract's `recall_exempt_areas` beside the other two.
+//
+// A third list rather than a flag on the first, because it answers a third
+// question. Dampening asks whether a space should stay quiet, exemption asks
+// whether the contract governs it, and this asks whether the corpus may hold it
+// at all. The answer here is no, so the check runs before a file is read rather
+// than after it is scored.
+var recallExempt atomic.Pointer[[]string]
+
+// SetRecallExemptAreas replaces the walled set, normalized to lower case.
+func SetRecallExemptAreas(areas []string) {
+	recallExempt.Store(normSpaces(areas))
+}
+
+// RecallExemptAreas is what is currently walled, for the status surface and for
+// tests.
+func RecallExemptAreas() []string {
+	if p := recallExempt.Load(); p != nil {
+		return append([]string(nil), *p...)
+	}
+	return nil
+}
+
+// InRecallExemptArea reports whether a vault-relative path is walled from the
+// corpus. Every reader that could put a note in front of a model asks this.
+func InRecallExemptArea(rel string) bool {
+	return inSpaceSet(recallExempt.Load(), rel)
+}
+
+// The contract's `importance_dampen_at_or_below`: a note whose own importance
+// sits at or under it ranks quietly. Zero means the contract named none, and
+// nothing is dampened for importance at all — which is the state every vault
+// was in before this line existed.
+var importanceDampenMax atomic.Int64
+
+// SetImportanceDampenMax sets the quiet threshold from the contract.
+func SetImportanceDampenMax(max int) { importanceDampenMax.Store(int64(max)) }
+
+// ImportanceDampenMax is what is currently set, for the status surface and tests.
+func ImportanceDampenMax() int { return int(importanceDampenMax.Load()) }
+
+// isLowImportance reads the threshold. A note with no importance never reaches
+// here — absent is not low, and the caller checks that first.
+func isLowImportance(importance int) bool {
+	max := importanceDampenMax.Load()
+	return max > 0 && int64(importance) <= max
 }
 
 // The spaces the filing contract does not govern. Nothing in them decays.
@@ -87,23 +139,52 @@ func normSpaces(spaces []string) *[]string {
 	return &norm
 }
 
-// inSpaceSet is the shared first-segment match.
+// inSpaceSet is the shared match: a one-segment entry names a space and is
+// compared against the path's first segment; an entry with a slash names an
+// area and is compared segment by segment against the path's leading segments.
+//
+// Segment-wise rather than by string prefix, so `personal/Homework` is not read
+// as sitting inside `personal/Home`. A wall with a near-miss in it is worse than
+// no wall, because it reads as one.
 func inSpaceSet(p *[]string, rel string) bool {
 	if p == nil || len(*p) == 0 {
 		return false
 	}
-	rel = strings.TrimPrefix(strings.ReplaceAll(rel, "\\", "/"), "./")
-	first := rel
-	if i := strings.IndexByte(rel, '/'); i >= 0 {
-		first = rel[:i]
+	parts := segments(rel)
+	if len(parts) == 0 {
+		return false
 	}
-	first = strings.ToLower(first)
 	for _, s := range *p {
-		if first == s {
+		want := segments(s)
+		if len(want) == 0 || len(want) > len(parts) {
+			continue
+		}
+		match := true
+		for i, seg := range want {
+			if parts[i] != seg {
+				match = false
+				break
+			}
+		}
+		if match {
 			return true
 		}
 	}
 	return false
+}
+
+// segments splits a path into lower-cased, non-empty segments. Both sides of
+// every comparison in this file run through it, so a set entry and a vault path
+// are normalized the same way exactly once.
+func segments(rel string) []string {
+	rel = strings.TrimPrefix(strings.ReplaceAll(rel, "\\", "/"), "./")
+	var out []string
+	for _, p := range strings.Split(rel, "/") {
+		if p = strings.TrimSpace(p); p != "" && p != "." {
+			out = append(out, strings.ToLower(p))
+		}
+	}
+	return out
 }
 
 // altitudeDampening gates the `artifact` class.

@@ -414,9 +414,10 @@ func TestPackagedDefault(t *testing.T) {
 	if tier, _ := r.SourceTier("external-fetch"); tier != "untrusted" {
 		t.Error("external-fetch must ship untrusted — screening cannot grade plausible content")
 	}
-	wantFacets := []string{"meetings", "correspondence", "docs", "diary"}
+	// Four of the operator's own, plus the one the night writes.
+	wantFacets := []string{"meetings", "correspondence", "docs", "diary", "dreaming"}
 	if len(r.Facets) != len(wantFacets) {
-		t.Errorf("shipped facets = %v, want the ruled four", r.Facets)
+		t.Errorf("shipped facets = %v, want the ruled five", r.Facets)
 	}
 	for _, f := range wantFacets {
 		if !r.IsFacet(f) {

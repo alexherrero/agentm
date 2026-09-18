@@ -127,20 +127,43 @@ func TestAContractWithNoExemptionsBarsNothing(t *testing.T) {
 	}
 }
 
-// The shipped contract is what a fresh install runs on, and the operator's
-// private space being readable by an unattended model call is not a default
-// anyone should have to opt out of.
-func TestTheShippedContractExemptsPersonal(t *testing.T) {
+// The shipped contract is what a fresh install runs on, and what it must not
+// let out is the operator's certificates and recovery codes — not the whole of
+// `personal/`.
+//
+// This test used to assert the opposite half of that sentence: that a
+// background model pass could not read `personal/` at all. The operator
+// reversed it in the axis-per-space landing, so the assertion is rewritten
+// rather than deleted, and it still checks the same thing the old one did —
+// that a fresh install protects what must be protected, by the boundary the
+// contract now uses. Enrichment reads `personal/` and writes its frontmatter;
+// `personal/Home/Important Docs` reaches no surface at all.
+func TestTheShippedContractWallsImportantDocsAndOpensPersonal(t *testing.T) {
 	clearEnv(t)
 	r, err := Load("")
 	if err != nil {
 		t.Fatalf("the shipped contract does not parse: %v", err)
 	}
-	if r.MayReadWithModel("personal/Church/lesson.md") {
-		t.Error("the shipped contract lets a background model pass read personal/")
+	if !r.MayReadWithModel("personal/Church/lesson.md") {
+		t.Error("the shipped contract bars a model pass from personal/; the ruling " +
+			"opened it, writing frontmatter only")
 	}
 	if !r.IsContractExempt("personal/Church/lesson.md") {
-		t.Error("the shipped contract holds personal/ to the memory contract")
+		t.Error("the shipped contract holds personal/ to the memory contract; its " +
+			"files are documents, not memories")
+	}
+	if !r.IsRecallExempt("personal/Home/Important Docs/Marriage License.md") {
+		t.Error("the shipped contract serves Important Docs; it is the one area " +
+			"walled from the corpus entirely")
+	}
+	if r.IsRecallExempt("personal/Home/Recipes/turkey.md") {
+		t.Error("the shipped contract walls a recipe; the wall is one folder, not " +
+			"the space around it")
+	}
+	// A near-miss the wall must not swallow, and must not be swallowed by.
+	if r.IsRecallExempt("personal/Homework/algebra.md") {
+		t.Error("the wall matched `personal/Homework` against `personal/Home`; an " +
+			"area is matched segment by segment, never by string prefix")
 	}
 }
 

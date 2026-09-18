@@ -40,7 +40,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import sys
@@ -170,45 +169,6 @@ def _new_formula_top_k(vault: Path, query_text: str, k: int = 5) -> list[str]:
     return [r["path"] for r in results]
 
 
-# -----------------------------------------------------------------------------
-# Decay-curve gate (auto-organization part 1, task 2) — a SECOND, independent
-# comparison mode this same eval harness runs, distinct from the old-formula-
-# vs-new-formula (V6-3) comparison above. This one isolates the stepped
-# decay-curve retune (task 1) from the RRF fusion formula itself, which is
-# unchanged: both sides of this comparison rank through the exact same live
-# recall.query() pipeline; only which decay curve backs decay_score differs.
-# -----------------------------------------------------------------------------
-
-@contextlib.contextmanager
-def _stepped_decay_curve():
-    """Temporarily swap lifecycle.compute_decay_score for the shadow stepped
-    variant (task 1), so recall.query()'s live RRF pipeline ranks using it
-    for the duration of this context — restored on exit no matter what,
-    including on exception. recall.py looks up `lifecycle.compute_decay_score`
-    via the module attribute on every call (`import lifecycle` then
-    `lifecycle.compute_decay_score(...)`, not a name bound at import time),
-    so reassigning the attribute here is sufficient and nothing in recall.py
-    or lifecycle.py's own source is modified — this stays an eval-harness-
-    local substitution, never a change to either module's real behavior.
-    """
-    import lifecycle
-    original = lifecycle.compute_decay_score
-    lifecycle.compute_decay_score = lifecycle.compute_decay_score_stepped
-    try:
-        yield
-    finally:
-        lifecycle.compute_decay_score = original
-
-
-def _new_formula_top_k_with_stepped_decay(vault: Path, query_text: str, k: int = 5) -> list[str]:
-    """Same RRF pipeline as _new_formula_top_k, ranked with the shadow
-    stepped decay curve substituted in — the task 2 comparison this backs
-    isolates the decay-curve retune from the fusion formula, which this
-    function does not touch."""
-    with _stepped_decay_curve():
-        return _new_formula_top_k(vault, query_text, k=k)
-
-
 def run_eval(
     vault: Path,
     query_set_path: Path,
@@ -305,17 +265,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--vault-path", default=None)
     p.add_argument("--query-set", default=str(_DEFAULT_QUERY_SET))
     p.add_argument("--jsonl-out", default=None)
-    p.add_argument(
-        "--decay-curve", choices=("exponential", "stepped"), default="exponential",
-        help=(
-            "exponential (default): the original V6-3 old-formula-vs-new-formula "
-            "comparison, unchanged. stepped: auto-organization task 2's gate -- "
-            "compares today's live RRF ranking (exponential decay) against the "
-            "same RRF ranking with the shadow stepped decay curve (task 1) "
-            "substituted in, isolating the decay-curve retune from the fusion "
-            "formula, which is identical on both sides of this comparison."
-        ),
-    )
     args = p.parse_args(argv if argv is not None else sys.argv[1:])
 
     vault = _resolve_vault(args.vault_path)
@@ -332,20 +281,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[eval-v6-retrieval] query set not found: {query_set_path} — skipping", file=sys.stderr)
         return 0
 
-    if args.decay_curve == "stepped":
-        result = run_eval(
-            vault, query_set_path,
-            old_top_k_fn=_new_formula_top_k,
-            new_top_k_fn=_new_formula_top_k_with_stepped_decay,
-        )
-    else:
-        result = run_eval(vault, query_set_path)
+    result = run_eval(vault, query_set_path)
+
     print(json.dumps(result, indent=2))
 
-    label = (
-        "auto-org task 2 (exponential decay vs. shadow stepped decay, same RRF fusion)"
-        if args.decay_curve == "stepped" else "V6-3 RRF hybrid retrieval"
-    )
+    label = "V6-3 RRF hybrid retrieval"
 
     # L7-style fail-loud (mirrors eval_v6_graph.py's v9.0.5 fix): a drifted or
     # wrong-vault expected_notes set makes every affected query report as a
@@ -406,7 +346,7 @@ def main(argv: list[str] | None = None) -> int:
     merge_gate_passed = not accuracy_regressed and (compression_improved or discovery_improved)
 
     print(
-        f"\n[eval-v6-retrieval:{args.decay_curve}] accuracy_improved={accuracy_improved} "
+        f"\n[eval-v6-retrieval] accuracy_improved={accuracy_improved} "
         f"accuracy_regressed={accuracy_regressed} "
         f"compression_improved={compression_improved} "
         f"discovery_improved={discovery_improved} "

@@ -35,15 +35,23 @@ sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
 import storage_rules  # noqa: E402
 
 # One table, both implementations. Every row is a claim about a real vault path.
+#
+# `personal/` reads True here since the axis-per-space landing, and the whole
+# table was False on those rows before it. The operator's ruling: background
+# passes read the space and write its frontmatter — `summary`, `tags`,
+# `importance_proposed` — never its body. The boundary did not weaken, it moved:
+# `recall_exempt_areas` walls `personal/Home/Important Docs` from the corpus
+# entirely, which is stronger than this gate ever was, because it also covers
+# the operator's own foreground queries. That wall has its own table in
+# scripts/test_recall_wall.py; this one still asks only about model reads.
 CASES = [
     # (path, may a background model pass read it?)
-    ("personal/Church/lesson.md", False),
-    ("personal/Home/Recipes/turkey.md", False),
-    ("personal/Tech/Pages/note.md", False),
+    ("personal/Church/lesson.md", True),
+    ("personal/Home/Recipes/turkey.md", True),
+    ("personal/Tech/Pages/note.md", True),
     # macOS treats the two spellings as one directory, so a case-sensitive rule
     # here would be a hazard rather than a precision.
-    ("personal/Church/lesson.md", False),
-    ("PERSONAL/Church/lesson.md", False),
+    ("PERSONAL/Church/lesson.md", True),
     # Everything else is readable.
     ("agent/memory/semantic/a-fact.md", True),
     ("agent/desk/projects/agentm/plan.md", True),
@@ -55,7 +63,18 @@ CASES = [
     ("agent/memory/semantic/personal-preferences.md", True),
     # Degenerate inputs.
     ("", True),
+    ("./personal/Church/lesson.md", True),
+]
+
+# The gate still has to be able to say no, or every row above is a test of
+# nothing. A contract that names a space bars it, and that is what these prove —
+# the shipped list being empty is the operator's choice, not the mechanism's.
+NAMED_EXEMPT_CASES = [
+    ("personal/Church/lesson.md", False),
+    ("PERSONAL/Church/lesson.md", False),
     ("./personal/Church/lesson.md", False),
+    ("agent/memory/semantic/a-fact.md", True),
+    ("agent/desk/projects/x/personal/notes.md", True),
 ]
 
 _BUILD_DIR = None
@@ -131,12 +150,29 @@ class PythonSide(_Base):
             with self.subTest(path=rel):
                 self.assertEqual(storage_rules.may_read_with_model(rel), allowed)
 
-    def test_the_shipped_contract_exempts_personal(self):
-        """A fresh install must not let an unattended model call read the
-        operator's private space. That is not a default anyone should have to opt
-        out of."""
-        self.assertFalse(storage_rules.may_read_with_model("personal/Church/lesson.md"))
+    def test_the_shipped_contract_opens_personal_and_walls_important_docs(self):
+        """What a fresh install must protect is the certificates and the
+        recovery codes, not the whole of `personal/`.
+
+        This asserted the opposite until the axis-per-space landing: that a
+        background model pass could not read `personal/` at all. The operator
+        reversed it, and the protection moved to a stronger boundary rather than
+        away — so the assertion moves with it instead of being deleted.
+        """
+        self.assertTrue(storage_rules.may_read_with_model("personal/Church/lesson.md"))
         self.assertTrue(storage_rules.is_contract_exempt("personal/Church/lesson.md"))
+        self.assertTrue(
+            storage_rules.is_recall_exempt("personal/Home/Important Docs/Marriage License.md"))
+        self.assertFalse(storage_rules.is_recall_exempt("personal/Home/Recipes/turkey.md"))
+
+    def test_the_gate_can_still_say_no(self):
+        """A table of all-True rows proves nothing on its own. A contract that
+        names a space bars it — the shipped list being empty is the operator's
+        choice, not the mechanism's."""
+        exempt = ["personal"]
+        for rel, allowed in NAMED_EXEMPT_CASES:
+            with self.subTest(path=rel):
+                self.assertEqual(not storage_rules.in_space(rel, exempt), allowed)
 
     def test_contract_exemption_is_not_model_exemption(self):
         """Separate lists, separate questions. Asserted here so a later edit that

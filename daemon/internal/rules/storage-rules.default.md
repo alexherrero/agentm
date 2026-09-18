@@ -113,20 +113,44 @@ carrying it is a note the migration has not reached yet.
 
 ## The lifecycle axis
 
-A memory ages on one frontmatter axis, `lifecycle`, and never by moving.
-`pinned` never decays; `active` is what filing stamps; `dormant` ranks below
-its active twin; `archived` leaves everyday search while staying on disk;
-`superseded` names its successor in `superseded_by:` and leaves everyday
-search the same way, answering the explicit query demoted — `supersedes:` is
-only ever the successor's back-link. Ranking reads the axis as a demotion
-curve on top of the `decay_*` schedule below — the schedule is what moves a
-silent memory along, the axis is what makes the state legible and editable.
+A memory ages on one frontmatter axis, `lifecycle`. `pinned` never decays;
+`active` is what filing stamps; `dormant` ranks below its active twin;
+`archived` leaves everyday search while staying on disk; `superseded` names
+its successor in `superseded_by:` and leaves everyday search the same way,
+answering the explicit query demoted — `supersedes:` is only ever the
+successor's back-link. Ranking reads the axis as a demotion curve on top of
+the `decay_*` schedule below — the schedule is what moves a silent memory
+along, the axis is what makes the state legible and editable.
 
-Who moves a value is tiered by how hard it is to undo. Demotion runs
-automatic, logged, and summarized in a weekly digest of what quietly sank.
-Entering `archived` is conspicuous — confirmed, or at minimum surfaced for
-review. Deletion is not on this axis at all: a purge is an operator act that
-writes a manifest first, and no policy outcome ever deletes a memory.
+**The machinery may move a note's state only in the three observational
+classes, the calendar and the diagnostics.** Everything else — `projects/`,
+`personal/`, `standards/`, the crystallized lessons and the root notes — is
+permanent. It ranks and it is enriched; you supersede or replace it; no pass
+demotes, archives or deletes it.
+
+Where the machinery does apply, a card that nobody recalls again sinks to
+`dormant` at `dormant_after_days`, is archived at `archive_after_days` by
+being moved to `agent/archive/memory/<class>/`, and is deleted at
+`forget_after_days`. A trace runs the shorter line in `lifecycle_overrides`.
+Any genuine recall before the archive move returns the note to day zero, and
+after it, serving the note on an explicit archive query or moving it back
+returns it `active` with its clock reset. `pinned` is the one word that
+exempts; `type: preference` and `type: convention` decay but never sink,
+because a rule nobody has needed in a year is still the rule; crystallized
+lessons are exempt entirely.
+
+Every act is capped at `demotion_cap` a night, journaled, and listed the next
+morning in the day's `dreaming` facet — and **every deletion writes its
+manifest and its journal line before the file goes**, with the vault's git
+history behind it and a deep search that reaches what the manifests name.
+Archive is a move, which is what gives the class folders an eyeline: they
+hold what is alive, and one folder holds what is not. Obsidian resolves a
+link by basename, so a moved note is still found by every link that named it.
+`purge.py apply` stays as the hand lane for a manifest you write yourself.
+
+Nothing you move or edit is moved or edited back. Editing `lifecycle`
+yourself is a touch: the night journals it as yours, stamps
+`lifecycle_since`, and does not re-sink the note that night.
 
 ## Provenance
 
@@ -304,9 +328,21 @@ facets:
   - correspondence
   - docs
   - diary
+  # Written by the night, not by you: one line per act — what sank, what was
+  # archived, what was deleted and the manifest that recorded it, what was
+  # consolidated, what retention removed, what `sequence` numbered, and any
+  # file that moved by hand while the run was working. The day's record of the
+  # machinery, in the register beside your own facets.
+  - dreaming
 
+# An area is named by its path from the vault root, and it matches that
+# directory and everything under it. A single segment is a whole space, which
+# is how this list read before areas deeper than a root space joined it.
 dampened_spaces:
-  - Personal
+  - personal
+  # The night's own paper: digests, morning notes, lint reports, scorecards.
+  # It answers a question that names it and stays out of every other one.
+  - agent/diagnostics
 
 # Spaces no background model pass may read. This is a privacy boundary, not a
 # ranking one, and it is absolute: enrichment skips them, dreaming never sends
@@ -319,8 +355,29 @@ dampened_spaces:
 # Kept separate from `dampened_spaces` because the two answer different
 # questions. A space can rank low and still be safe to summarize, and a space can
 # rank normally and still be nobody's business to send anywhere.
-model_exempt_spaces:
-  - Personal
+#
+# Empty since the axis-per-space landing, on the operator's ruling: `personal/`
+# is read by background passes, which write its frontmatter — `summary`, `tags`,
+# `importance_proposed` — and never its body. What the ruling replaced this line
+# with is `recall_exempt_areas:` below, which is the stronger boundary: a model
+# pass reading a recipe to tag it is one thing, and a foreground recall putting
+# recovery codes into a cloud model's prompt because a query matched them is
+# another. The key stays, empty, so naming a space here is one edit away.
+model_exempt_spaces: []
+
+# Areas never indexed, never embedded, never served to any surface. On disk and
+# in Obsidian only.
+#
+# This is the one wall in the contract. `dampened_spaces` lowers a rank and
+# `model_exempt_spaces` bars an unattended model call; an area named here does
+# not enter the corpus at all, so there is nothing to rank and nothing to send.
+# Foreground recall is covered too, which is what makes it a wall rather than a
+# weight: the folder holds certificates and recovery codes, and a query that
+# happens to match them must not be able to serve them anywhere.
+#
+# Matched by path from the vault root, directory and everything under it.
+recall_exempt_areas:
+  - personal/Home/Important Docs
 
 # Spaces exempt from the memory contract. Their files are documents rather than
 # memories: they carry frontmatter of their own shape, and expecting `type`,
@@ -329,6 +386,45 @@ contract_exempt_spaces:
   - Personal
 
 warrants: {}
+
+# Where a class ages on a different line from the one `thresholds:` sets.
+#
+# A session trace is a handoff record and the raw material promote and
+# crystallize read, and both have read it inside a quarter; a trace is rarely
+# recalled by a query, and that is fine rather than a reason to keep it for
+# seven years. Its clock is `created`, not a recall.
+#
+# Only the three keys below may be overridden, and only for a class the
+# machinery may move at all — the three observational classes. A class absent
+# here runs on `thresholds:`.
+lifecycle_overrides:
+  episodic:
+    dormant_after_days: 90
+    archive_after_days: 365
+    forget_after_days: 1095
+
+# What the night keeps of its own paper, in days, and deletes past.
+#
+# The one place besides the memory classes where a pass deletes, and it deletes
+# only what it wrote: a digest of Tuesday is not a memory and not your document.
+# Every deletion still writes its manifest and its journal line first, and the
+# morning note counts what went.
+#
+# Migration and purge manifests are deliberately absent: they are the record of
+# what moved and what was forgotten, so nothing prunes them.
+retention:
+  digest_daily_days: 90
+  morning_note_days: 90
+  digest_3day_days: 180
+  digest_weekly_days: 365
+  digest_monthly_days: 1825
+  latest_mirror_days: 1825
+  lint_report_days: 90
+  scorecard_days: 365
+  divergence_note_days: 90
+  # The register's own horizon. At five years a year's facet files go, and the
+  # year's map and its monthly rollups stay as the record of it.
+  calendar_facet_days: 1825
 
 thresholds:
   low_confidence: 0.65
@@ -346,6 +442,21 @@ thresholds:
   decay_floor_weight: 0.0625
   dormant_after_days: 365
   archive_after_days: 1825
+  # Days of silence after the archive move before the note is deleted, with a
+  # manifest and a journal line written first and the vault's git history behind
+  # it. 2,555 is seven years from the last time anything recalled it.
+  forget_after_days: 2555
+  # How many notes one night may move along the axis — demotions, archive moves
+  # and deletions each capped separately. A backlog drains over nights rather
+  # than in one pass, so a wrong threshold is visible in the morning note before
+  # it has moved the whole corpus.
+  demotion_cap: 25
+  # A note at or below this ranks quietly on an ordinary question. The rubric
+  # above calls 1 residue and 2-3 the record of a moment that decides nothing,
+  # and this is where that reading reaches the ranker. A note with no
+  # `importance` at all is neutral, never dampened: absent is not the same
+  # claim as low, and nothing here may promote a note above its neighbours.
+  importance_dampen_at_or_below: 3
   moc_min_members: 5
   moc_split_at: 40
   moc_stale_after_days: 90
@@ -398,6 +509,14 @@ changes.
 ## Importance
 
 `importance` is a number from 1 to 10 for how much a memory should weigh when it competes with others for your attention, and it is yours. Capture or enrichment proposes one into `importance_proposed`; once you set `importance` to a different number, no pass writes it again. Enrichment proposes against this paragraph, so editing it changes what the next deep pass proposes. A 9 or 10 is a rule you want kept in view — a standing preference, a decision that governs later work, a fix you would be hurt to learn twice. A 7 or 8 is a durable fact or procedure you will need again and would not find from the code or the docs alone. A 4 to 6 is useful context: a reference, a lesson from one piece of work, a pointer to where something lives. A 2 or 3 is a record of a moment that may explain something later but decides nothing. A 1 is residue, kept by accident. Propose from what the note says and what its neighbours show, never from how long it is.
+
+`importance` only ranks. It is read where notes compete for a place in an
+answer, and it is read nowhere else: a 9 nobody has recalled in a year sinks
+exactly as a 3 does, because the axis measures silence and this number
+measures worth. A note at or below `importance_dampen_at_or_below` ranks
+quietly; a note with no `importance` at all is neutral rather than low.
+`pinned` is the one word that exempts a memory from the axis, and setting a
+high `importance` is not a way to spell it.
 
 ## Enrichment
 
