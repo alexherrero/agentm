@@ -38,6 +38,18 @@ import (
 // `backfilled` names the fields the card backfill stamped rather than a writer
 // that knew. It travels less any field the pass wrote itself, because a title
 // the pass wrote is the pass's, and `enriched_by` already says so.
+//
+// `probe` is here as a second guard rather than as the fix. The `SelfProbe`
+// pre-gate is what keeps a synthetic note out of the pass at all; this is what
+// keeps the marker on a probe that reaches a rewrite by some path neither of us
+// has thought of. The two are worth having together because the marker is an
+// identity rather than a value: a `summary` the pass got wrong is a bad
+// sentence, and a dropped `probe:` is a note that has stopped being the thing
+// it is — the next probe run cannot retire it, so the vault gains one
+// unretirable card a night until somebody notices. Note that this puts `probe`
+// and `aliases` on opposite sides of the same paragraph deliberately. A probe's
+// aliases are the round trip's own nonce and are spent the moment it finishes,
+// while its marker is what every later run reads it by.
 var carriedFields = []string{
 	"source", "source_id", "source_url", "source_fetched",
 	"lifecycle", "lifecycle_since", "superseded_by", "supersedes",
@@ -46,6 +58,7 @@ var carriedFields = []string{
 	"related", "trust", "why", "project", "task",
 	"importance", "importance_proposed",
 	"slug", "fingerprint", "occurrences",
+	"probe",
 }
 
 // EvidenceHeading opens the block quoting the excerpt a note came from. It is

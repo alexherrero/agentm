@@ -386,3 +386,94 @@ func TestAnEarlyDeclineShortCircuitsTheRest(t *testing.T) {
 		t.Errorf("a declined note cost %d call(s)", out.Calls)
 	}
 }
+
+// --- self-probe -------------------------------------------------------------
+
+// The probe note is the daemon's own test fixture, and the pass has no business
+// judging it. On 2026-09-17 it judged one: the rewrite spent a call summarizing
+// a synthetic note and dropped the `probe:` marker on the way out.
+//
+// The marker is the whole identity. Retirement reads it back off the file
+// before deleting yesterday's card, so a stripped card is never retired and the
+// vault gains one a night. That is why this refuses rather than trusting the
+// carry: a note that reaches the model at all has already lost the argument.
+func TestTheSelfProbeIsRefusedBeforeAnyModelCall(t *testing.T) {
+	g := &SelfProbe{}
+	probe := func(marker string) string {
+		return "---\ntitle: AgentM self-probe 2026-09-17T06:11:19Z\ntype: reference\n" +
+			"status: active\naliases: [\"pa412db75aab66\"]\n" + marker + "\n---\n\n" +
+			"Synthetic round-trip probe written by the daemon.\n"
+	}
+	for _, tc := range []struct {
+		name, body string
+		want       bool // eligible
+	}{
+		// What the daemon actually writes.
+		{"the marker as capture writes it", probe("probe: self-probe"), false},
+		// `true` and `yes` are accepted so a note marked by hand is not
+		// silently judged — the parser's rule, not a second one here.
+		{"marked by hand as true", probe("probe: true"), false},
+		{"marked by hand as yes", probe("probe: yes"), false},
+		{"quoted", probe(`probe: "self-probe"`), false},
+		{"the marker upper-cased", probe("probe: SELF-PROBE"), false},
+		// An ordinary memory is untouched by this gate, including one that
+		// talks about the probe: the marker is read out of the frontmatter
+		// block, and this corpus is full of notes about its own frontmatter.
+		{"an ordinary card", note("unfiled", "a thought worth keeping"), true},
+		{"a card about the probe", note("unfiled", "the daemon writes `probe: self-probe`"), true},
+		{"a card whose marker says no", probe("probe: false"), true},
+		{"no frontmatter at all", "just prose\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := g.Check(context.Background(), Request{
+				Rel: "agent/memory/semantic/x.md",
+			}, tc.body)
+			if tc.want && err != nil {
+				t.Errorf("refused a note that is not a probe: %v", err)
+			}
+			if !tc.want {
+				if err == nil {
+					t.Fatal("accepted the daemon's own synthetic note")
+				}
+				if !errors.Is(err, ErrNotEligible) {
+					t.Errorf("refused with the wrong error kind: %v", err)
+				}
+				if !strings.Contains(err.Error(), "probe") {
+					t.Errorf("the refusal does not name the marker: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// The refusal is a skip, not a failure and not work still owed: zero calls
+// spent, the gate named, and the note left exactly as the daemon wrote it.
+func TestARefusedProbeCostsNothingAndIsCountedAsASkip(t *testing.T) {
+	p := passWith(t, "a summary no probe asked for")
+	p.AddPre(&SelfProbe{})
+
+	raw := "---\ntitle: AgentM self-probe\ntype: reference\nstatus: active\n" +
+		"probe: self-probe\n---\n\nSynthetic round-trip probe.\n"
+	out, err := p.Run(context.Background(), Request{
+		Rel: "agent/memory/semantic/agentm-self-probe-2026-09-17t06-11-19z.md", Raw: raw,
+	})
+	if err != nil {
+		t.Fatalf("a refusal was reported as an error: %v", err)
+	}
+	if !out.Skipped {
+		t.Error("the probe was not marked skipped")
+	}
+	if out.Enriched {
+		t.Error("the probe was rewritten")
+	}
+	if out.Calls != 0 || p.Stats().Calls != 0 {
+		t.Errorf("the probe cost %d model calls (the pass counted %d)",
+			out.Calls, p.Stats().Calls)
+	}
+	if out.SkippedBy != (&SelfProbe{}).Name() {
+		t.Errorf("the skip names %q, not the gate that made it", out.SkippedBy)
+	}
+	if out.Body != "" {
+		t.Errorf("a skip must not hand back a body:\n%s", out.Body)
+	}
+}

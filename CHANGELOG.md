@@ -60,6 +60,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The nightly enrichment leaves the daemon's self-probe alone.** The probe
+  writes a synthetic note once a day, asks for it back sideways and leaves it
+  behind as the artifact of the check. On the night of 2026-09-17 enrichment
+  judged one: it spent a model call summarizing the daemon's own test fixture,
+  and the rewrite dropped the `probe:` marker along with `aliases`, moving the
+  card to `status: unfiled` at `filing_confidence: low`. The marker is the
+  probe's identity rather than a value on it — retirement reads it back off the
+  file before deleting yesterday's card, the card gate exempts a probe from
+  naming a transport by reading it, and the classifier excludes a probe from
+  every measurement by reading it — so a stripped card is one nothing ever
+  retires, and the vault would have gained another every night. Two guards now:
+  `enrich.SelfProbe` is a pre-gate that refuses any note `note.Parse` calls a
+  probe, first in the free set, so it costs no model call and is counted as a
+  skip rather than as work still owed; and `probe` joins `carriedFields`, so a
+  probe that reaches a rewrite by any other path keeps its marker. The free
+  gates are shared with the cheap-tier audit, which therefore stops sampling
+  the probe too. Retirement itself is unchanged and deliberately so: the marker
+  stays the only thing that authorizes deleting a file, because a cleanup that
+  fell back to the tag or the file name would delete on the evidence the design
+  rejected. The one live card the pass had already stripped was repaired by
+  hand.
+
 - **The battery's runners rotate every variable the isolation helper
   governs.** `run_unit_suite.py` and `scripts/conftest.py` gave each test its
   own engine state directory and recall ledger and named those two themselves,

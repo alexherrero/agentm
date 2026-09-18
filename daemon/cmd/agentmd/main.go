@@ -1709,7 +1709,7 @@ func cmdEnrich(args []string) error {
 	return json.NewEncoder(os.Stdout).Encode(run.summary())
 }
 
-// attachPreGates registers the six deterministic checks, in order.
+// attachPreGates registers the seven deterministic checks, in order.
 //
 // Wired here rather than inside the enrich package because two of them need
 // things the package deliberately does not import: the filing contract, for
@@ -1755,10 +1755,12 @@ func enrichRefused(cfg *config.Config, fp *enrich.Fingerprint,
 	return g
 }
 
-// freeGates are the three pre-gates that read nothing but the contract and
-// the note — eligibility, privacy, size — in the order they run. Shared with
-// the tier audit, which draws its sample through the same three so a card no
-// model may see is never offered to one there either.
+// freeGates are the four pre-gates that read nothing but the contract and
+// the note — the self-probe, eligibility, privacy, size — in the order they
+// run. Shared with the tier audit, which draws its sample through the same four
+// so a card no model may see is never offered to one there either. The
+// self-probe gate belongs in the shared set for the same reason: an audit that
+// sampled the daemon's own test fixture would be scoring a note nobody wrote.
 func freeGates(cfg *config.Config) []enrich.Gate {
 	eligibility := enrich.DefaultEligibility(modelMayRead(cfg))
 	eligibility.ProjectRecord = enrich.IsProjectRecord
@@ -1768,7 +1770,9 @@ func freeGates(cfg *config.Config) []enrich.Gate {
 		// direction mayRead takes.
 		return err != nil || loaded.IsRecordKind(kind)
 	}
-	return []enrich.Gate{eligibility, enrich.DefaultPrivacy(), enrich.DefaultSize()}
+	return []enrich.Gate{
+		&enrich.SelfProbe{}, eligibility, enrich.DefaultPrivacy(), enrich.DefaultSize(),
+	}
 }
 
 // callLinePrinter prints one line per call as it finishes — the per-call half
