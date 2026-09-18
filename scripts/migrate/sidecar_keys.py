@@ -44,7 +44,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
+# Both directories, the way every other migration in this folder does it. The
+# toolkit alone was enough while this was only ever imported by a suite that
+# runs with `scripts/` as its working directory; run by absolute path — which is
+# how an operator runs a migration — `harness_memory` was not importable and the
+# script died before parsing its own arguments.
+for _p in (str(_REPO / "scripts"), str(_REPO / "harness" / "skills" / "memory" / "scripts")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import engine_state  # noqa: E402
 import harness_memory  # noqa: E402

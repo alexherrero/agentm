@@ -29,6 +29,28 @@ import sidecar_keys  # noqa: E402
 import vault_layout  # noqa: E402
 
 
+class ItRunsTheWayAnOperatorRunsIt(unittest.TestCase):
+    """By absolute path, from wherever they happen to be standing.
+
+    Importing the module is not the same test. The suite runs with `scripts/`
+    as its working directory, which puts `harness_memory` on the path for free
+    — so every import-based test passed while the script itself died on its
+    first import line for anyone who invoked it the way a migration is
+    invoked. A subprocess from a neutral directory is the only shape that
+    catches that.
+    """
+
+    def test_it_parses_its_own_arguments_from_a_neutral_directory(self):
+        import subprocess
+        script = _REPO / "scripts" / "migrate" / "sidecar_keys.py"
+        with tempfile.TemporaryDirectory() as elsewhere:
+            r = subprocess.run([sys.executable, str(script), "--help"],
+                               cwd=elsewhere, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0,
+                         f"the migration could not start:\n{r.stderr[-1500:]}")
+        self.assertIn("--apply", r.stdout)
+
+
 class _Base(unittest.TestCase):
     """A flat fixture vault: the memory root and the vault root are the same
     directory, so a key and a path agree and the test is about the keying rather
