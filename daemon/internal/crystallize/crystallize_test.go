@@ -3,6 +3,7 @@ package crystallize
 import (
 	"encoding/json"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -107,7 +108,14 @@ func TestThreeRecurringOutcomesWriteOneLesson(t *testing.T) {
 		t.Errorf("consolidated_from names %d source(s), want the three that taught it: %v",
 			len(l.Sources), l.Sources)
 	}
-	raw, err := os.ReadFile(filepath.Join(f.root, l.Rel))
+	// The record's path is slash-separated on every platform: it is what the
+	// morning note renders as a link and what a later run joins against a
+	// root. Asserted here rather than left to the one runner that has a
+	// different separator, where it failed first.
+	if strings.ContainsRune(l.Rel, '\\') {
+		t.Errorf("the record's path is not slash-separated: %q", l.Rel)
+	}
+	raw, err := os.ReadFile(filepath.Join(f.root, filepath.FromSlash(l.Rel)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +227,7 @@ func TestTheSourcesACardCanCarryAreStamped(t *testing.T) {
 	if len(rep.Lessons) != 1 {
 		t.Fatalf("wrote %d lesson(s), want one: %+v", len(rep.Lessons), rep.Lessons)
 	}
-	stem := strings.TrimSuffix(filepath.Base(rep.Lessons[0].Rel), ".md")
+	stem := strings.TrimSuffix(path.Base(rep.Lessons[0].Rel), ".md")
 	for _, p := range []string{cardA, cardB} {
 		raw, err := os.ReadFile(p)
 		if err != nil {

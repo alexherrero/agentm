@@ -29,6 +29,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -115,11 +116,13 @@ func (s Source) Link() string {
 	if s.Rel == "" {
 		return s.Session
 	}
-	stem := strings.TrimSuffix(filepath.Base(s.Rel), ".md")
+	stem := strings.TrimSuffix(path.Base(s.Rel), ".md")
 	if !repeatedNames[stem] {
 		return stem
 	}
-	dir := filepath.Base(filepath.Dir(s.Rel))
+	// `path`, not `filepath`: Rel is a vault-relative path and always
+	// slash-separated, so the OS-aware pair has nothing to decide here.
+	dir := path.Base(path.Dir(s.Rel))
 	return strings.TrimSuffix(s.Rel, ".md") + "|" + dir
 }
 
@@ -717,8 +720,12 @@ func Run(opt Options, call Caller) (Report, error) {
 // stamps them.
 func write(opt Options, l Lesson, c Cluster) (Written, error) {
 	stem := Stem(l, c)
-	rel := filepath.Join(Dir, stem+".md")
-	p := filepath.Join(opt.Root, rel)
+	// Slash-separated, always. `Written.Rel` is a vault-relative path that the
+	// run record carries and the morning note renders as a link, and on Windows
+	// `filepath.Join` would make it `memory\crystallized\...` — a path no
+	// reader of that record joins correctly and no link resolves.
+	rel := path.Join(Dir, stem+".md")
+	p := filepath.Join(opt.Root, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return Written{}, err
 	}
