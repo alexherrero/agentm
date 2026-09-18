@@ -135,6 +135,20 @@ The script `scripts/migrate/projects_layout.py` follows `scripts/migrate/root_ca
 
     Compare `/tmp/lint-before.json` and `/tmp/lint-after.json` entry by entry and target by target. Two runs with the same count can still disagree about which link is unresolved.
 
+    **The lint is not enough on its own.** It resolves a wikilink by basename and skips `tasks/`, so a link
+    written as a path (`[[projects/crickets/_index]]`), a basename several moved files share (`_index`,
+    `progress`) or a relative Markdown link inside a moved note can break while the comparison reads clean.
+    Resolve the links yourself, the way Obsidian does — relative path, vault path, path suffix, basename,
+    case-insensitive — twice: against the files at the commit before the move, from each note's pre-move
+    path, and against the vault now. A link that resolved then and does not now is a casualty, and the run's
+    journal says where its target went. On the first run of this migration that check found 184 broken links
+    in 96 notes after the lint comparison had reported none.
+
+    **Sweep the prose pointers too.** The table rewrites links, not code spans, so a `**Part file:**` line, a
+    charter's "load `_harness/PLAN.md` first" and any other path written in backticks still name the old
+    place. `grep -rn '_harness/' <vault>/projects` finds them; the ones that instruct a session are the
+    urgent ones, because following one recreates the directory.
+
 13. **Reindex the embeddings.**
 
     ```bash
@@ -159,9 +173,9 @@ The script `scripts/migrate/projects_layout.py` follows `scripts/migrate/root_ca
 ## Verify
 
 - Run `git -C <vault> ls-files | grep -c '/_harness/'`. It reads `0` — no project's `_harness/` is still tracked.
-- Run `ls <vault>/projects/<a-migrated-project>`. It shows `charter.md`, `tracker.md`, `tasks/`, and no `_harness/` or `_index.md`.
+- Run `ls <vault>/projects/<a-migrated-project>`. It shows `charter.md` and `tasks/`, and no `_harness/` or `_index.md`. It shows no project-level `tracker.md`: the table moves files, and a project's tracker is new content that belongs to the project-documents plan.
 - Check `agent/memory/.projects-migration-complete`. It exists at the vault root and is committed.
-- Check the owed counts in `agentmd enrich -dry-run`. They match what step 2 recorded.
+- Check the owed counts in `agentmd enrich -dry-run`. The deep count rises by the number of records the move made eligible — anything that is now a charter, or sits under `decisions/`, `designs/` or `research/` directly inside a project — and nothing else moves. The light and unchanged counts hold: `ledger --rebuild` recovers each card's row from the corpus as it stands, so it absorbs the link rewrite rather than owing a pass for it. Predicting an increase there is predicting something the next step erases.
 - From a migrated project, with no `.harness/active-plan` marker set, `python3 scripts/harness_memory.py resolve-active-plan` (no `--plan`) exits `4` with nothing on stdout — the bare-call refusal agentm-vault plan 10's resolver half added, now with a project to exercise it against.
 - Check the retrieval / docs gates in `scripts/check-all.sh`. They read green.
 
