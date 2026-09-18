@@ -237,7 +237,13 @@ class Parity(_Base):
     def go_verdict(self, rel: str) -> dict:
         binary = os.environ["AGENTMD"]
         env = dict(os.environ, AGENTM_STORAGE_RULES=str(SHIPPED))
-        proc = subprocess.run([binary, "classify", "--path", rel, "--json"],
+        # `--vault` on a command that never opens the vault, because the
+        # command still resolves one before it runs, and a machine with no
+        # configured vault — every CI runner — cannot answer. The fixture
+        # directory satisfies the resolver and the classification is of the
+        # path string, so what is on disk under it is beside the point.
+        proc = subprocess.run([binary, "classify", "--path", rel, "--json",
+                               "--vault", str(self.vault)],
                               capture_output=True, text=True, timeout=120, env=env)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout)
