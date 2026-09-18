@@ -151,9 +151,23 @@ class TheGitHistory(_Vault):
         # And the command it prints actually prints the note. A sha and a path
         # a reader has to assemble themselves is a recipe for printing nothing
         # and concluding the note is gone.
+        #
+        # `shell=True` on purpose: the string is what an operator pastes into
+        # their shell, so running it any other way would test something they
+        # never do. That is what caught the caret — `cmd.exe` reads a bare `^`
+        # as its escape character, so the unquoted form asked for the deleting
+        # commit instead of its parent and reported the note as never there.
         out = subprocess.run(git["show"], shell=True, capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("never back-merge", out.stdout)
+
+        # The structural half, because this runner has no shell that eats a
+        # caret and so cannot reproduce the failure that taught us this. A
+        # proxy, and labelled as one: what the fix actually is, is that the
+        # revision is quoted, and an edit that unquotes it fails here even
+        # where it would still pass above.
+        self.assertIn(f'"{git["deleted_in"]}^:', git["show"],
+                      "the revision is unquoted; cmd.exe will eat the caret")
 
     def test_the_manifests_base_is_translated_before_git_is_asked(self):
         """A manifest's path is memory-root-relative; git wants it from the

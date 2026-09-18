@@ -158,6 +158,14 @@ def commit_for(vault: Path, rel: str) -> dict:
     parent — which is the version anyone asking this question wants. Reported as
     the `git show` to run rather than as a sha and a path to assemble, because
     assembling it wrong prints nothing and looks like the note is gone.
+
+    The revision is quoted, and that is load-bearing rather than tidy: in
+    `cmd.exe` a bare `^` is the escape character, so `show <sha>^:<path>`
+    arrives as `show <sha>:<path>` — the deleting commit itself, where the file
+    is exactly what it is not. It fails with "path does not exist in", which
+    reads like the note was never there. Quotes protect the caret on Windows
+    and change nothing on a POSIX shell. The path to the repository is quoted
+    for the ordinary reason.
     """
     if not (Path(vault) / ".git").exists():
         return {"available": False,
@@ -173,7 +181,7 @@ def commit_for(vault: Path, rel: str) -> dict:
                 "why": "no commit in this vault's history deletes that path"}
     sha, subject, date = (line.split("\x1f") + ["", ""])[:3]
     return {"available": True, "deleted_in": sha, "subject": subject, "date": date,
-            "show": f"git -C {vault} show {sha}^:{rel}"}
+            "show": f'git -C "{vault}" show "{sha}^:{rel}"'}
 
 
 def search(root: Path, vault: Path, query: str, k: int = DEFAULT_K) -> dict:
