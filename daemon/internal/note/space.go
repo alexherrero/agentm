@@ -78,6 +78,54 @@ func InRecallExemptArea(rel string) bool {
 	return inSpaceSet(recallExempt.Load(), rel)
 }
 
+// Each project's activity, slug to multiplier, written by the night and read
+// here at boot and on every contract re-read.
+//
+// `projects/` runs on no decay curve — a decision from June is not less true in
+// December — so what ranks a record there is how much its project is being
+// worked. The night computes the reading from ninety days of the project's own
+// evidence; this is the ranking half of it.
+//
+// A project with no reading ranks at 1.0. Absent is not quiet: a project the
+// night has not read yet is one nothing is known about, and the safe direction
+// for a weight is to leave it alone.
+var projectActivity atomic.Pointer[map[string]float64]
+
+// SetProjectActivity replaces the readings.
+func SetProjectActivity(readings map[string]float64) {
+	if readings == nil {
+		projectActivity.Store(nil)
+		return
+	}
+	copied := make(map[string]float64, len(readings))
+	for k, v := range readings {
+		copied[strings.ToLower(strings.TrimSpace(k))] = v
+	}
+	projectActivity.Store(&copied)
+}
+
+// ProjectActivityOf is the multiplier a vault-relative path earns from the
+// project it sits in, and 1.0 for a path in no project.
+func ProjectActivityOf(rel string) float64 {
+	p := projectActivity.Load()
+	if p == nil || len(*p) == 0 {
+		return 1.0
+	}
+	parts := segments(rel)
+	// `projects/<slug>/…`, and the `../projects/<slug>/…` spelling a
+	// memory-root-relative key takes for the sibling space.
+	for i, seg := range parts {
+		if seg != "projects" || i+1 >= len(parts) {
+			continue
+		}
+		if v, ok := (*p)[parts[i+1]]; ok && v > 0 {
+			return v
+		}
+		return 1.0
+	}
+	return 1.0
+}
+
 // The contract's `importance_dampen_at_or_below`: a note whose own importance
 // sits at or under it ranks quietly. Zero means the contract named none, and
 // nothing is dampened for importance at all — which is the state every vault

@@ -11,6 +11,7 @@ import (
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -54,6 +55,7 @@ type Report struct {
 	Retain    RetainPlan    `json:"retain"`
 	Sequence  SequencePlan  `json:"sequence"`
 	Reconcile ReconcilePlan `json:"reconcile"`
+	Projects  ProjectsPlan  `json:"projects"`
 	Facet     FacetPlan     `json:"facet"`
 	// SkippedByHandMove is every file an intent could not be applied to because
 	// it had moved since the plan read it. Named in the dreaming facet rather
@@ -339,6 +341,31 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	rep.Sequence = sequence
 	if opt.Apply && len(sequence.Intents) > 0 {
 		if err := applyAll(journal, root, runID, sequence.Intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+	}
+
+	// The projects space: each project's activity, and what has finished.
+	//
+	// Read before reconcile so a record this pass moved to `completed/` is one
+	// reconcile can pair rather than one it reports as vanished.
+	projects, err := PlanProjects(root, note.NewAccessLog(cfg.EngineStateDir, root), now, opt.Cap)
+	if err != nil {
+		return rep, err
+	}
+	rep.Projects = projects
+	if len(projects.Activity) > 0 {
+		// Written whether or not this is an apply pass: the reading is a
+		// measurement, not a mutation, and the daemon's ranking should not wait
+		// on a night that happened to be reporting.
+		_ = WriteActivity(cfg.EngineStateDir, projects.Activity, now)
+	}
+	if completed, err := PlanCompleted(root, ClosedTasks(root), DoneProjects(root), now, opt.Cap); err == nil {
+		rep.Projects.Moved = append(rep.Projects.Moved, completed.Moved...)
+		projects.Intents = append(projects.Intents, completed.Intents...)
+	}
+	if opt.Apply && len(projects.Intents) > 0 {
+		if err := applyAll(journal, root, runID, projects.Intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
 	}

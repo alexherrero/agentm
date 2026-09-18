@@ -105,6 +105,17 @@ const (
 	// Set at index time like every other class here, which means changing the
 	// threshold is a reindex rather than a restart — the same cost spaces pay.
 	ClassLowImportance = "low-importance"
+	// The project-activity bands. A record ranks with its project's activity as
+	// a multiplier: 1.0 when the project was worked in the last thirty days
+	// (no flag at all), 0.7 inside ninety, 0.5 inside a year, 0.3 beyond.
+	//
+	// Three classes rather than a number on the row, because a weight here is a
+	// class and the classes are what the index stores. Which band a project is
+	// in is the night's reading; how much each band costs is fixed here, like
+	// every other weight.
+	ClassProjectQuiet   = "project-quiet"
+	ClassProjectQuieter = "project-quieter"
+	ClassProjectCold    = "project-cold"
 	// ClassCompleted is the name this class went by before it covered the
 	// archive family, when it meant a project's `completed/` folder alone. No
 	// classifier writes it any more; it is still weighted because index rows
@@ -178,6 +189,12 @@ var Weights = map[string]float64{
 	// its neighbours. A note carrying no `importance` at all earns no flag here —
 	// absent is not the same claim as low, and the corpus is mostly absent.
 	ClassLowImportance: 0.80,
+	// The activity bands, and the one place in this table whose numbers are not
+	// the sweep's 0.30: the design sets them, and they are a gradient rather
+	// than a wall because a quiet project is still the operator's work.
+	ClassProjectQuiet:   0.70,
+	ClassProjectQuieter: 0.50,
+	ClassProjectCold:    0.30,
 }
 
 // ProjectMismatch is what a note earns when a query names the session's project
@@ -357,6 +374,16 @@ func classify(rel, head, body, status, lifecycle string, importance int, importa
 	// What the operator said it is worth. Absent earns nothing.
 	if importanceSet && isLowImportance(importance) {
 		flags = append(flags, ClassLowImportance)
+	}
+
+	// How much the project this record belongs to is being worked.
+	switch ProjectActivityOf(rel) {
+	case 0.7:
+		flags = append(flags, ClassProjectQuiet)
+	case 0.5:
+		flags = append(flags, ClassProjectQuieter)
+	case 0.3:
+		flags = append(flags, ClassProjectCold)
 	}
 
 	if isDurable(rel, head) {

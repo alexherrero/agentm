@@ -352,11 +352,40 @@ func (c *Config) ApplyContractToRanking() {
 	floorWeight, _ := loaded.Threshold("decay_floor_weight")
 	note.SetDecayBands(full, half, eighth, floorDays, floorWeight)
 
+	// The night's project-activity readings, which are state rather than
+	// contract — read here because this is the one place the ranking's inputs
+	// are pushed, and a second push point is a second thing to forget.
+	note.SetProjectActivity(projectActivityReadings(c.EngineStateDir))
+
 	if v, ok := loaded.Threshold("importance_dampen_at_or_below"); ok {
 		note.SetImportanceDampenMax(int(v))
 	} else {
 		note.SetImportanceDampenMax(0)
 	}
+}
+
+// projectActivityReadings is the night's last reading of how much each project
+// is being worked, slug to multiplier.
+//
+// Read here rather than imported from the dreaming package: config sits below
+// dreaming in this repo's import order, and a ranking input is not worth
+// inverting that for. The file is small, its shape is two fields, and the
+// writer's own test pins the spelling.
+func projectActivityReadings(engineStateDir string) map[string]float64 {
+	if engineStateDir == "" {
+		return nil
+	}
+	blob, err := os.ReadFile(filepath.Join(engineStateDir, "project-activity.json"))
+	if err != nil {
+		return nil
+	}
+	var rec struct {
+		Activity map[string]float64 `json:"activity"`
+	}
+	if err := json.Unmarshal(blob, &rec); err != nil {
+		return nil
+	}
+	return rec.Activity
 }
 
 // defaultEmbedScope is the part of the vault the vector arm covers when the

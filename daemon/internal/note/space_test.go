@@ -98,3 +98,35 @@ func TestSetIsNormalised(t *testing.T) {
 		t.Errorf("normalised set is %v, want [personal]", got)
 	}
 }
+
+// A record ranks with its project's activity, and a project the night has not
+// read yet ranks at full weight: absent is not quiet.
+func TestAProjectsRecordsRankWithItsActivity(t *testing.T) {
+	t.Cleanup(func() { SetProjectActivity(nil) })
+	SetProjectActivity(map[string]float64{"quiet": 0.7, "quieter": 0.5, "cold": 0.3})
+
+	cases := map[string]float64{
+		"projects/quiet/decisions/a.md":    0.70,
+		"projects/quieter/decisions/a.md":  0.50,
+		"projects/cold/decisions/a.md":     0.30,
+		"projects/unread/decisions/a.md":   1.00,
+		"../projects/quiet/decisions/a.md": 0.70,
+		"agent/memory/semantic/a-fact.md":  1.00,
+	}
+	for rel, want := range cases {
+		flags := classify(rel, "", "a body", "", "", 0, false)
+		// `decisions/` is decay-exempt, which carries no weight, so the only
+		// multiplier here is the project's own.
+		if got := Multiplier(flags); got != want {
+			t.Errorf("%s ranks %v, want %v (flags %v)", rel, got, want, flags)
+		}
+	}
+}
+
+func TestWithNoReadingsNothingRanksByActivity(t *testing.T) {
+	t.Cleanup(func() { SetProjectActivity(nil) })
+	SetProjectActivity(nil)
+	if got := ProjectActivityOf("projects/anything/a.md"); got != 1.0 {
+		t.Errorf("activity = %v with no readings, want 1.0", got)
+	}
+}
