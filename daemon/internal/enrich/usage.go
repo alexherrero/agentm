@@ -126,6 +126,8 @@ func parseEnvelope(stdout string) (string, Usage, error) {
 // CallRecord is one call as the meter saw it.
 type CallRecord struct {
 	Label string
+	// Job is the tier-table job the call belongs to, when the route named one.
+	Job   string
 	Model string
 	Tier  string
 	Usage Usage
@@ -140,13 +142,19 @@ type CallRecord struct {
 type Meter struct {
 	mu     sync.Mutex
 	byTier map[string]Usage
+	// byJob is the same spend split the other way: by the tier table's job
+	// name. A call whose route named no job is counted in the tier totals and
+	// nowhere here, because a job line labelled "" tells a reader nothing.
+	byJob map[string]Usage
 	// OnCall, when set, is told about every call as it finishes. The batch
 	// prints a line per call from it.
 	OnCall func(CallRecord)
 }
 
 // NewMeter starts an empty meter.
-func NewMeter() *Meter { return &Meter{byTier: map[string]Usage{}} }
+func NewMeter() *Meter {
+	return &Meter{byTier: map[string]Usage{}, byJob: map[string]Usage{}}
+}
 
 // Record adds one call.
 func (m *Meter) Record(r CallRecord) {
@@ -155,6 +163,12 @@ func (m *Meter) Record(r CallRecord) {
 	}
 	m.mu.Lock()
 	m.byTier[r.Tier] = m.byTier[r.Tier].Add(r.Usage)
+	if r.Job != "" {
+		if m.byJob == nil {
+			m.byJob = map[string]Usage{}
+		}
+		m.byJob[r.Job] = m.byJob[r.Job].Add(r.Usage)
+	}
 	cb := m.OnCall
 	m.mu.Unlock()
 	if cb != nil {
@@ -195,6 +209,20 @@ func (m *Meter) ByTier() map[string]Usage {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for k, v := range m.byTier {
+		out[k] = v
+	}
+	return out
+}
+
+// ByJob is a copy of the per-job readings, for the morning note's spend line.
+func (m *Meter) ByJob() map[string]Usage {
+	out := map[string]Usage{}
+	if m == nil {
+		return out
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, v := range m.byJob {
 		out[k] = v
 	}
 	return out

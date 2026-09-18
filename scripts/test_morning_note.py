@@ -68,6 +68,30 @@ def _run(at: float, **over) -> dict:
     return run
 
 
+def _crystallize_run(at: float, **over) -> dict:
+    run = {
+        "at": _iso(at), "job": "crystallize", "model": "opus", "tier": "strong",
+        "why": "pinned to the strong tier without audit", "sources": 412,
+        "clusters": 2, "considered": 2, "model_calls": 2, "tokens": 48000,
+        "total_cost_usd": 1.40,
+        "usage": {"strong": {"input_tokens": 40000, "cache_creation_input_tokens": 0,
+                             "cache_read_input_tokens": 9000, "output_tokens": 8000,
+                             "total_cost_usd": 1.40, "calls": 2}},
+        "by_job": {"crystallize": {"input_tokens": 40000,
+                                   "cache_creation_input_tokens": 0,
+                                   "cache_read_input_tokens": 9000,
+                                   "output_tokens": 8000, "cost_usd": 1.40, "calls": 2}},
+        "lessons": [{"rel": "memory/crystallized/worktree-guard.md",
+                     "subject": "worktree-guard",
+                     "title": "A worktree guard refuses what it cannot verify",
+                     "why": "Three tasks hit it.",
+                     "consolidated_from": ["a", "b", "c"],
+                     "stamped": ["memory/semantic/a.md"]}],
+    }
+    run.update(over)
+    return run
+
+
 def _report() -> dict:
     return {
         "run_id": "tonight-apply-pass", "mode": "apply", "outcome": "applied",
@@ -126,6 +150,10 @@ class _Night(unittest.TestCase):
     # ── the night's records ──
     def runs(self, *runs):
         (self.engine / "enrich-runs.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in runs), encoding="utf-8")
+
+    def crystallize(self, *runs):
+        (self.engine / "crystallize-runs.jsonl").write_text(
             "".join(json.dumps(r) + "\n" for r in runs), encoding="utf-8")
 
     def binary(self, at=TONIGHT, report=None):
@@ -193,6 +221,71 @@ class _Night(unittest.TestCase):
         dated, stable, head = mn.build(self.vault, now=NOW, engine_dir=self.engine,
                                        runner_dir=self.runner, rollup=self.rollup, ask=ask)
         return dated.read_text(encoding="utf-8"), dated, stable, head
+
+
+class TheSpendLine(_Night):
+    """The design's ask (session 4's second loose end): the spend section gains
+    per-job lines for enrichment deep, enrichment light and crystallize, beside
+    the nightly and seven-day totals. The weekly phase's cadence re-audit reads
+    its own line after three runs, and one total cannot answer what that phase
+    costs while the batch spends on the same nights."""
+
+    def by_job(self):
+        return {"classify-unfiled": {"input_tokens": 500000,
+                                     "cache_creation_input_tokens": 0,
+                                     "cache_read_input_tokens": 10000,
+                                     "output_tokens": 80000,
+                                     "cost_usd": 3.60, "calls": 190},
+                "summarize": {"input_tokens": 200000,
+                              "cache_creation_input_tokens": 0,
+                              "cache_read_input_tokens": 2334,
+                              "output_tokens": 20000,
+                              "cost_usd": 0.61, "calls": 46}}
+
+    def test_the_spend_line_names_each_job(self):
+        self.full_night()
+        self.runs(_run(TONIGHT, by_job=self.by_job()))
+        self.crystallize(_crystallize_run(TONIGHT))
+        text, *_ = self.build()
+
+        for want in ("enrichment deep", "enrichment light", "crystallize"):
+            self.assertIn(want, text, f"the spend line does not name {want}")
+        # The numbers are the job's own, not the night's total.
+        self.assertIn("580,000 tokens · 190 call(s) · $3.60", text)
+        self.assertIn("48,000 tokens · 2 call(s) · $1.40", text)
+
+    def test_the_weekly_phase_gets_its_own_line(self):
+        self.full_night()
+        self.crystallize(_crystallize_run(TONIGHT))
+        text, *_ = self.build()
+        self.assertIn("The weekly phase: 1 lesson(s) from 2 recurrence(s)", text)
+
+    def test_the_seven_day_total_carries_the_weekly_phase(self):
+        self.full_night()
+        self.crystallize(_crystallize_run(TONIGHT))
+        text, *_ = self.build()
+        # The batch's $4.21 tonight + $2.00 three days ago + the phase's $1.40.
+        self.assertIn("$7.61", text)
+
+    def test_a_run_written_before_by_job_existed_still_counts_in_the_totals(self):
+        """The per-job lines are a finer reading of the same spend, not a second
+        accounting of it. A record written before the meter carried job names
+        has no `by_job` block, and must not make the night's total disappear."""
+        self.full_night()  # _run() carries no by_job
+        text, *_ = self.build()
+        self.assertIn("$4.21", text)
+        self.assertNotIn("enrichment deep", text)
+
+    def test_every_lesson_is_named_where_you_would_argue_with_it(self):
+        """The re-audit trigger for this phase is "any crystallized note you
+        would not keep", which cannot be read from a count. A lesson never
+        decays and nothing ages it out, so the morning it is written is the
+        cheapest morning to disagree with it."""
+        self.full_night()
+        self.crystallize(_crystallize_run(TONIGHT))
+        text, *_ = self.build()
+        self.assertIn("Lessons this week", text)
+        self.assertIn("[[worktree-guard]]", text)
 
 
 class TheNote(_Night):

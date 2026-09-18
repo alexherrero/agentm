@@ -136,6 +136,68 @@ class TestQueryEndToEndArchiveAndShelf(unittest.TestCase):
             recall._area_demotion("memory/reference/live-widget.md", self.vault), 1.0)
 
 
+class TestALessonOutranksWhatTaughtIt(unittest.TestCase):
+    """A source stamped `consolidated_into` ranks at x0.30 in this arm, the same
+    number the daemon's `ClassConsolidated` gives it.
+
+    Once the weekly crystallize phase writes a lesson, the cards it consolidated
+    must not crowd the lesson out of recall — the operator's ruling, and the
+    reason the stamp is immediate rather than something the decay curve gets to
+    in six months. They stay where they are and stay findable: a query naming
+    the specific case still reaches the card, below the lesson.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write(self, rel: str, body: str, extra: str = "") -> None:
+        p = self.vault / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"---\nkind: note\nslug: {Path(rel).stem}\n{extra}---\n{body}\n",
+                     encoding="utf-8")
+
+    def test_the_stamp_is_what_moves_it(self):
+        """The multiplier on its own, where it is not tangled up with RRF's own
+        rank contributions."""
+        self.assertEqual(recall._stamp_demotion(
+            {"consolidated_into": "[[widget-retries]]"}), 0.30)
+        self.assertEqual(recall._stamp_demotion({}), 1.0)
+        # A writer mid-edit leaves the key with nothing after it. Not a stamp.
+        self.assertEqual(recall._stamp_demotion({"consolidated_into": ""}), 1.0)
+        self.assertEqual(recall._stamp_demotion({"consolidated_into": None}), 1.0)
+
+    def test_the_lesson_comes_first_and_the_source_is_still_served(self):
+        # The source is the better keyword match — it says the query's words
+        # twice — so only the stamp can put the lesson above it. A fixture
+        # where the lesson wins anyway would pass against a dampen that was
+        # never applied.
+        self._write("memory/crystallized/widget-retries.md",
+                    "widget subsystem retry logic notes")
+        self._write("memory/semantic/the-case.md",
+                    "widget subsystem retry logic notes, widget subsystem again",
+                    extra='consolidated_into: "[[widget-retries]]"\n')
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
+        paths = [r["path"] for r in results]
+        self.assertIn("memory/semantic/the-case.md", paths,
+                      "a consolidated source was dropped rather than demoted")
+        self.assertEqual(paths[0], "memory/crystallized/widget-retries.md",
+                         "the card that taught the lesson outranked the lesson")
+
+    def test_the_number_is_the_daemons_number(self):
+        """0.30 on both sides, read from the two tables rather than asserted
+        twice by hand: the same question answered differently depending on
+        which arm was up is the failure this parity exists to stop."""
+        go = (Path(__file__).resolve().parent.parent / "daemon" / "internal" /
+              "note" / "classify.go").read_text(encoding="utf-8")
+        self.assertIn("ClassConsolidated: 0.30,", go,
+                      "the daemon's consolidated weight moved without this arm")
+        self.assertEqual(recall._CONSOLIDATED_DEMOTION, 0.30)
+
+
 class TestInboxExclusion(unittest.TestCase):
     """`_inbox/` never leaks into ordinary recall.
 

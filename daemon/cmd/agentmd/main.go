@@ -51,6 +51,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd reindex    rebuild the index from the files
   agentmd embed      compute the vector arm's embeddings for in-scope notes
   agentmd enrich     run the enrichment pass over the unfiled queue
+  agentmd crystallize  write the lesson a recurrence taught (weekly)
   agentmd status     ask a running daemon how it is doing
   agentmd probe      run the round-trip self-probe now
   agentmd gate       ask whether a corpus-wide write job may start
@@ -91,6 +92,8 @@ func main() {
 		err = cmdEmbed(os.Args[2:])
 	case "enrich":
 		err = cmdEnrich(os.Args[2:])
+	case "crystallize":
+		err = cmdCrystallize(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
 	case "probe":

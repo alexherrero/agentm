@@ -14,13 +14,17 @@ import (
 )
 
 // ReadOrder is what you read, in panel order. `type` and `kind` share a slot;
-// `lifecycle_since` sits beside `lifecycle`, where every writer puts it.
+// `lifecycle_since` sits beside `lifecycle`, where every writer puts it;
+// `consolidated_from` and `consolidated_into` sit after the supersession pair,
+// because a lesson's sources and a source's lesson are the same kind of
+// relation and a reader looking for one looks for the other.
 var ReadOrder = []string{
 	"title", "type", "kind", "summary", "why", "importance",
 	"status", "lifecycle", "lifecycle_since", "filing_confidence",
 	"source", "source_url", "source_id", "source_fetched", "trust",
 	"created", "updated", "tags",
 	"related", "supersedes", "superseded_by",
+	"consolidated_from", "consolidated_into",
 	"project", "task",
 }
 

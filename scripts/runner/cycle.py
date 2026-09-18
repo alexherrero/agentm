@@ -89,11 +89,31 @@ def _write_cycle_summary(state_root: Optional[Path], report: "CycleReport", now:
 # finding + fix): a stranger's clone ships no `.harness/budget.yaml`, and
 # `_read_daily_ceiling` must never let that absence mean "no ceiling at
 # all" -- the runner design's own token contract ("A hard budget ceiling",
-# wiki/designs/agentm-runner.md) already assumes one always applies. This
-# is a conservative single-operator daily-USD cap, deliberately low; an
-# operator who wants a different number writes `budget.yaml` and it
-# overrides this default exactly as it always has.
-_DEFAULT_DAILY_USD_CEILING = 5.0
+# wiki/designs/agentm-runner.md) already assumes one always applies. An
+# operator who wants a different number writes `budget.yaml` and it overrides
+# this default exactly as it always has.
+#
+# $30, raised from $5 when the weekly crystallize phase registered as the
+# second job that spends (agentm-vault plan 11, task 7; 2026-09-18).
+#
+# The re-audit, in one paragraph. $5 was chosen when no job had ever reported
+# a real cost, and it was never a cap on what a night spends: the gate is
+# pre-flight only, so the enrichment batch's measured ~$22 night went through
+# it untouched and the ceiling bit only the *next* paid run. With one paid job
+# that read as "one paid run per window", which is what it was for. With two
+# it reads as "one paid *job* per window" — whichever ran second was refused
+# every night, and a weekly phase behind a nightly batch would never have run
+# at all. The number has to cover what the night's registered paid jobs
+# legitimately spend or the gate is a race between them, decided by `order`.
+# So: the batch's measured night, plus the weekly phase's own smaller line,
+# plus headroom for a night that runs long. Neither the window nor the gate
+# changed; the number did, because with a second spender the old one no longer
+# described the thing it was capping.
+#
+# Re-audit when a third paid job registers, or when the batch's own measured
+# night moves: this is a sum of what is registered, and a sum has to be
+# re-added when the set changes.
+_DEFAULT_DAILY_USD_CEILING = 30.0
 
 
 def _read_daily_ceiling(harness_dir: Optional[Path]) -> float:
@@ -157,6 +177,37 @@ def _spends(job: manifest_mod.JobManifest) -> bool:
     would save nothing and stop the machine's upkeep for a day.
     """
     return job.budget_tokens is not None
+
+
+def _own_spend(name: str, state_root: Optional[Path], now: Optional[float] = None) -> float:
+    """What THIS job's own last run cost, if that run was inside the window.
+
+    The repeated-run guard, and its own rule since the weekly crystallize phase
+    registered as the second spending job (agentm-vault plan 11, task 7).
+
+    It used to be a side effect of the ceiling being smaller than one night: at
+    $5, the batch's ~$22 put the fleet over and the fleet gate held everything,
+    the batch included. Raising the ceiling to cover two paid jobs — which it
+    had to be, or the gate was a race between them decided by `order` — takes
+    that side effect away. So the thing the 2026-09-13 ruling actually named
+    ("the ceiling is the only guard against repeated paid runs") becomes a rule
+    of its own: a paid job that has already spent inside the window does not run
+    again inside it, whatever the fleet total says.
+
+    The two gates answer different questions. The fleet ceiling asks whether the
+    machine has spent too much today. This asks whether *this job* is about to
+    do the same work twice. A mistyped `schedule: 10h` on the nightly batch is
+    the case it catches, and the fleet being under a larger ceiling is no reason
+    to let it through.
+    """
+    marker = state_mod.read_marker(name, state_root=state_root)
+    last = state_mod.last_run_epoch(marker)
+    if last is None:
+        return 0.0
+    now = now if now is not None else time.time()
+    if now - last > _SPEND_WINDOW_SECONDS:
+        return 0.0
+    return state_mod.last_cost_usd(marker)
 
 
 def in_window(window: tuple[int, int], now: float) -> bool:
@@ -418,13 +469,24 @@ def run_cycle(
         if not due:
             report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason=reason))
             continue
-        if spend >= ceiling and not job.dry_run and _spends(job):
-            # Pre-flight check the fleet ceiling before a real (non-dry-run)
-            # run of a spending job starts — an over-budget run never starts
-            # (throttle rung). A job that spends nothing is never over budget.
-            report.budget_ceiling_hit = True
-            report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason="budget-ceiling"))
-            continue
+        if not job.dry_run and _spends(job):
+            # Two pre-flight gates before a real run of a spending job starts,
+            # answering two different questions. An over-budget run never starts
+            # (throttle rung); a job that spends nothing is never over budget and
+            # reaches neither gate.
+            if spend >= ceiling:
+                # The fleet has spent too much today.
+                report.budget_ceiling_hit = True
+                report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason="budget-ceiling"))
+                continue
+            if _own_spend(job.name, state_root, now) > 0:
+                # This job has already spent inside the window: a repeat, not a
+                # cadence. Named apart from the ceiling so a report says which
+                # of the two held it — "the fleet is over" and "you ran this an
+                # hour ago" want different fixes.
+                report.budget_ceiling_hit = True
+                report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason="budget-repeat"))
+                continue
         outcome = _run_one(job, now=now, state_root=state_root, report_path=report_path)
         spend += outcome.cost_usd
         report.outcomes.append(outcome)

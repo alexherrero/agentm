@@ -75,13 +75,17 @@ type enrichRun struct {
 	Tokens       int64                   `json:"tokens"`
 	TotalCostUSD float64                 `json:"total_cost_usd"`
 	Usage        map[string]enrich.Usage `json:"usage,omitempty"`
-	TokenLines   map[string]int64        `json:"token_lines"`
-	CallGuard    int                     `json:"call_guard"`
-	StoppedBy    string                  `json:"stopped_by,omitempty"`
-	Cursor       string                  `json:"cursor,omitempty"`
-	ElapsedSec   float64                 `json:"elapsed_seconds"`
-	Verdicts     enrichVerdicts          `json:"verdicts"`
-	Errors       []string                `json:"errors,omitempty"`
+	// ByJob is the night's spend by the tier table's job name — the deep
+	// pass's `classify-unfiled` beside the light pass's `summarize` — which is
+	// what the morning note's per-job spend lines read.
+	ByJob      map[string]enrich.Usage `json:"by_job,omitempty"`
+	TokenLines map[string]int64        `json:"token_lines"`
+	CallGuard  int                     `json:"call_guard"`
+	StoppedBy  string                  `json:"stopped_by,omitempty"`
+	Cursor     string                  `json:"cursor,omitempty"`
+	ElapsedSec float64                 `json:"elapsed_seconds"`
+	Verdicts   enrichVerdicts          `json:"verdicts"`
+	Errors     []string                `json:"errors,omitempty"`
 }
 
 func newEnrichRun(rep enrich.BatchReport, v enrichVerdicts, model string,
@@ -92,6 +96,7 @@ func newEnrichRun(rep enrich.BatchReport, v enrichVerdicts, model string,
 		Refused: rep.Refused,
 		Failed:  rep.Failed, NotesSent: rep.Calls, ModelCalls: rep.ModelCalls,
 		Tokens: rep.Tokens, TotalCostUSD: rep.TotalCostUSD, Usage: rep.Usage,
+		ByJob:      rep.ByJob,
 		TokenLines: b.TokenLines, CallGuard: b.MaxCalls, StoppedBy: rep.StoppedBy,
 		Cursor: rep.Cursor, ElapsedSec: rep.Elapsed.Seconds(), Verdicts: v,
 		Errors: rep.Errors,

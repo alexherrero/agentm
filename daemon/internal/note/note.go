@@ -20,13 +20,16 @@ var (
 	statusRe      = regexp.MustCompile(`(?m)^status:[ \t]*(\S+)`)
 	// The lifecycle axis. `lifecycle:` and nothing else — `lifecycle_tier:`
 	// below is the older durability marker and must not read as a value here.
-	lifecycleRe  = regexp.MustCompile(`(?m)^lifecycle:[ \t]*(\S+)`)
-	miningRe     = regexp.MustCompile(`(?m)^mining_confidence:`)
-	probeRe      = regexp.MustCompile(`(?m)^probe:[ \t]*(\S+)`)
-	capturedRe   = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
-	updatedRe    = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
-	altitudeRe   = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
-	confidenceRe = regexp.MustCompile(`(?m)^confidence:[ \t]*([0-9.]+)[ \t\r]*$`)
+	lifecycleRe = regexp.MustCompile(`(?m)^lifecycle:[ \t]*(\S+)`)
+	miningRe    = regexp.MustCompile(`(?m)^mining_confidence:`)
+	// `consolidated_into:` with something after it. A bare key with an empty
+	// value is a writer mid-edit, not a lesson, and must not dampen the note.
+	consolidatedRe = regexp.MustCompile(`(?m)^consolidated_into:[ \t]*\S`)
+	probeRe        = regexp.MustCompile(`(?m)^probe:[ \t]*(\S+)`)
+	capturedRe     = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
+	updatedRe      = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
+	altitudeRe     = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
+	confidenceRe   = regexp.MustCompile(`(?m)^confidence:[ \t]*([0-9.]+)[ \t\r]*$`)
 	// `importance:` is the operator's number from the contract's rubric, quoted
 	// or bare — the corpus holds both spellings, because a backfill wrote some
 	// of them through a YAML dumper. `importance_proposed:` is deliberately not

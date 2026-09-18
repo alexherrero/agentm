@@ -93,12 +93,22 @@ class JobTemplatesLoad(unittest.TestCase):
         self.assertTrue(job.enabled)
 
     def test_the_nightly_steps_share_the_window_in_the_night_order(self):
-        """agentm-vault plan 04, tasks 1 and 6: enrichment, the binary, the
-        Python cycle, the scorecards, then the morning note and the email that
-        carries it — inside 02:00-06:00, in that order, because each reads what
-        the one before it wrote."""
-        night = ["enrich-nightly", "dreaming", "dream", "corpus-scorecard",
-                 "morning-note", "observability-email-daily"]
+        """agentm-vault plan 04, tasks 1 and 6, and plan 11 task 7: enrichment,
+        the binary, the weekly crystallize phase, the Python cycle, the
+        scorecards, then the morning note and the email that carries it —
+        inside 02:00-06:00, in that order, because each reads what the one
+        before it wrote.
+
+        `crystallize-weekly` shares `order: 3` with the Python cycle and the
+        loader breaks the tie by name, which puts it first of the two. Sorted
+        here by the loader's own key, `(order, name)`, so the assertion is the
+        sequence the cycle actually runs rather than one reading of an
+        ambiguous sort. The two ends are what matter: it runs after the binary,
+        whose promote and projects passes write what it reads, and before the
+        morning note, which lists the lessons it wrote.
+        """
+        night = ["enrich-nightly", "dreaming", "crystallize-weekly", "dream",
+                 "corpus-scorecard", "morning-note", "observability-email-daily"]
         with tempfile.TemporaryDirectory() as td:
             jobs = Path(td) / "jobs"
             jobs.mkdir()
@@ -107,11 +117,38 @@ class JobTemplatesLoad(unittest.TestCase):
             loaded = {j.name: j for j in manifest.load_manifests(jobs)}
         for name in night:
             self.assertEqual(loaded[name].window_minutes, (120, 360), name)
-        self.assertEqual(sorted(night, key=lambda n: loaded[n].order), night)
-        # Nothing else is windowed yet: the hourly sweep and the shepherds are
-        # not night work, and a window on them would stall them all day.
+        self.assertEqual(sorted(night, key=lambda n: (loaded[n].order, n)), night)
+        # Nothing else is windowed: the hourly sweep and the shepherds are not
+        # night work, and a window on them would stall them all day.
         others = [n for n, j in loaded.items() if j.window and n not in night]
         self.assertEqual(others, [])
+
+    def test_the_second_spending_job_ships_off_and_declares_its_budget(self):
+        """A job that spends is armed by a person, never by an update.
+
+        `crystallize-weekly` is the second manifest to declare a `budget:`,
+        which is what tells the runner's pre-flight it spends at all. It ships
+        `enabled: false` for the same reason the enrichment batch did: the
+        operator reads one supervised run before a model runs unattended over
+        their corpus. Its own `daemon.crystallize_enabled` switch is the other
+        half, and the command refuses without it.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            jobs = Path(td) / "jobs"
+            jobs.mkdir()
+            for name in ("crystallize-weekly.yaml", "enrich-nightly.yaml"):
+                shutil.copy(TEMPLATES / name, jobs / name)
+            loaded = {j.name: j for j in manifest.load_manifests(jobs)}
+        job = loaded["crystallize-weekly"]
+        self.assertFalse(job.enabled, "the weekly phase ships armed")
+        self.assertIsNotNone(job.budget_tokens,
+                             "a job that spends must declare a budget, or the "
+                             "fleet ceiling never gates it")
+        self.assertEqual(job.schedule, "weekly")
+        self.assertIn("agentmd crystallize", job.command)
+        self.assertNotIn("--yes", job.command,
+                         "--yes in a scheduled command bypasses the switch that "
+                         "is the whole point of the switch")
 
 
 if __name__ == "__main__":

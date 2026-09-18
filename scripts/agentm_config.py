@@ -21,6 +21,8 @@ Operations:
                                             #   (daemon.enrich_enabled; it spends)
     agentm_config.py --decay-enabled true  # let the ranker run the contract's decay
                                             #   curve (daemon.decay_enabled; ranking only)
+    agentm_config.py --crystallize-enabled true # let the weekly crystallize phase run
+                                            #   (daemon.crystallize_enabled; it spends)
     agentm_config.py --notify-enabled true # opt in to the daily on-device notification
                                             #   (plugins.autonomy.notify_enabled; FRIDAY feature 1)
     agentm_config.py --email-to <address>  # opt in to the daily digest email
@@ -87,6 +89,7 @@ _PLUGIN_MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
 _AUTONOMY_NOTIFY_ENABLED_KEY = "plugins.autonomy.notify_enabled"
 _DAEMON_ENRICH_ENABLED_KEY = "daemon.enrich_enabled"
 _DAEMON_DECAY_ENABLED_KEY = "daemon.decay_enabled"
+_DAEMON_CRYSTALLIZE_ENABLED_KEY = "daemon.crystallize_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
 #: Optional — the verified sending address for relays (e.g. Resend) that
@@ -356,6 +359,45 @@ def cmd_set_enrich_enabled(prefix: Path, value: str) -> int:
     config[_DAEMON_ENRICH_ENABLED_KEY] = enabled
     written = _write_config(prefix, config)
     print(f"{_DAEMON_ENRICH_ENABLED_KEY} = {enabled}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
+def cmd_set_crystallize_enabled(prefix: Path, value: str) -> int:
+    """Let the weekly crystallize phase run (`daemon.crystallize_enabled`).
+
+    The second switch that arms spending, and its own rather than a share of
+    `--enrich-enabled`, because the two are decided at different times: the
+    batch was armed once the operator had read a supervised run, and this phase
+    earns the same reading of its own. One switch for two spenders would mean
+    arming the second by turning on the first.
+
+    What it arms is small and rare — one model call per recurrence that cleared
+    the bar of three sources across two sessions seven days apart, capped at
+    five lessons a run, once a week — and what it writes is permanent: a lesson
+    lands in the decay-exempt layer, where nothing ages it out. That is why the
+    tier table pins the job strong without audit and why nothing but a person
+    turns it on.
+
+    `agentmd crystallize --yes` runs one pass without this, and
+    `--dry-run` finds the recurrences for free. Idempotent: silent no-op when
+    unchanged.
+    """
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        print(
+            f"[agentm_config] refusing to set crystallize_enabled: {value!r} is "
+            "not 'true' or 'false'",
+            file=sys.stderr,
+        )
+        return 2
+    enabled = normalized == "true"
+    config = _read_config(prefix) or {}
+    if config.get(_DAEMON_CRYSTALLIZE_ENABLED_KEY) == enabled:
+        return 0
+    config[_DAEMON_CRYSTALLIZE_ENABLED_KEY] = enabled
+    written = _write_config(prefix, config)
+    print(f"{_DAEMON_CRYSTALLIZE_ENABLED_KEY} = {enabled}")
     print(f"(written to {written})", file=sys.stderr)
     return 0
 
@@ -635,6 +677,9 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--decay-enabled", metavar="{true,false}",
                     help="set daemon.decay_enabled — let the ranker run the "
                          "contract's decay curve; it changes ranking, never a file")
+    op.add_argument("--crystallize-enabled", metavar="{true,false}",
+                    help="set daemon.crystallize_enabled — let the weekly "
+                         "crystallize phase run; it makes model calls, under its budget")
     op.add_argument("--email-to", metavar="ADDRESS",
                     help="set plugins.autonomy.email_to — opt in to the daily digest email")
     op.add_argument("--email-smtp-url", metavar="URL",
@@ -668,6 +713,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_enrich_enabled(prefix, args.enrich_enabled)
     if args.decay_enabled is not None:
         return cmd_set_decay_enabled(prefix, args.decay_enabled)
+    if args.crystallize_enabled is not None:
+        return cmd_set_crystallize_enabled(prefix, args.crystallize_enabled)
     if args.email_to is not None:
         return cmd_set_email_to(prefix, args.email_to)
     if args.email_smtp_url is not None:

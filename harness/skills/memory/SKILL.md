@@ -32,6 +32,7 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | See what the heat-based always-load policy would demote or promote (never applies without `--apply`) | `/memory heat-policy` |
 | Print the context payload to paste into claude.ai or the Gem, or regenerate the copies derived from it | `/memory payload` |
 | Check the vault for orphans, broken links, contradictions, and a per-note quality score — on demand (the nightly dream cycle also reports it) | `/memory lint` |
+| Ask for the lesson a repetition taught, now, instead of waiting for the weekly phase | `/memory crystallize` |
 
 Auto-recall happens via the [SessionStart + UserPromptSubmit hooks](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault/parts/recall-loop.md) — operators don't invoke a recall command directly. Reflection happens automatically via Stop + idle hooks too; the manual `/memory reflect` is for one-off runs against arbitrary transcripts.
 
@@ -1193,6 +1194,59 @@ Calls the same recall engine the UserPromptSubmit hook uses: a BM25 walk over th
 ```
 
 Default behavior: query against all groups; exclude `_inbox/`; return top-5 results.
+
+### `/memory crystallize`
+
+Runs the weekly crystallize phase on request, over what you point it at.
+
+A crystallized note is a hard-learned lesson: something that proved itself over
+time, across more than one task or more than one card, that you would keep after
+every card it came from has aged out. Nothing else in the system writes one — a
+session closing a task has the task in context but not the time axis, and the
+nightly pass reads one card at a time. The phase runs weekly on its own (the
+`crystallize-weekly` runner job); this is the same phase, aimed.
+
+```
+/memory crystallize [<topic>] [--dry-run]
+```
+
+Which runs:
+
+```bash
+agentmd crystallize --topic "<topic>" --json
+```
+
+**What it reads:** the Outcomes of closed tasks, the candidate lines the session
+traces accumulate, and the cards sharing a `project:` or a subject.
+
+**The bar, before any model is asked:** the same mechanism, failure or method in
+at least **three** sources, across at least **two** sessions, at least **seven
+days apart**. A recurrence that misses is reported with the leg it missed and
+costs nothing. Only what clears the bar reaches a model, on the strong tier the
+tier table pins — a bad lesson lands in the decay-exempt layer, where nothing
+ages it out.
+
+**What it writes:** one `memory/crystallized/<subject>.md` per lesson, with
+`consolidated_from` naming every source and `why` written from the recurrence it
+found, and `project:` when the lesson belongs to one project. Each source card
+is then stamped `consolidated_into: "[[<lesson>]]"`, which drops it to ×0.30 in
+both ranking arms — the things that taught a lesson should not crowd the lesson
+out of recall. The sources stay where they are, so a query naming the specific
+case still finds the card, below the lesson.
+
+**It may answer nothing, and that is the common case.** Three notes sharing a
+word are not a lesson; the model is asked to say so rather than to write one
+anyway.
+
+**`--dry-run` costs nothing**: it finds the recurrences, prints the near misses
+with the bar-leg each missed, makes no model call and writes no file. Use it
+before turning the weekly job on.
+
+**Spending.** This is the second job in the system that spends, after the
+nightly enrichment batch. It refuses unless `daemon.crystallize_enabled` is on
+(`agentm_config.py --crystallize-enabled true`) or you pass `--yes` for one
+pass. The morning note gives it its own spend line, and the design's re-audit
+reads that line after three runs.
 
 ## Concurrent-write safety (operator guidance)
 

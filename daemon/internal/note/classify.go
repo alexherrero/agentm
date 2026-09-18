@@ -116,6 +116,15 @@ const (
 	ClassProjectQuiet   = "project-quiet"
 	ClassProjectQuieter = "project-quieter"
 	ClassProjectCold    = "project-cold"
+	// ClassConsolidated is a note whose `consolidated_into` names the lesson
+	// the weekly crystallize phase wrote from it. The sources that taught a
+	// lesson must not crowd the lesson out of recall (agentm-vault § Lifecycle
+	// per space, "a lesson outranks what taught it"), so the stamp drops them
+	// to the same 0.30 a demotion to `dormant` gives — immediately, rather
+	// than waiting for the curve. They stay where they are and stay findable:
+	// a query naming the specific case still reaches the card, below the
+	// lesson, and the lesson's own links resolve.
+	ClassConsolidated = "consolidated"
 	// ClassCompleted is the name this class went by before it covered the
 	// archive family, when it meant a project's `completed/` folder alone. No
 	// classifier writes it any more; it is still weighted because index rows
@@ -195,6 +204,10 @@ var Weights = map[string]float64{
 	ClassProjectQuiet:   0.70,
 	ClassProjectQuieter: 0.50,
 	ClassProjectCold:    0.30,
+	// A source whose lesson has been written. The sweep's 0.30, and the design
+	// asks for exactly that number: "ranks at x0.30 immediately — matching the
+	// demotion `dormant` gives".
+	ClassConsolidated: 0.30,
 }
 
 // ProjectMismatch is what a note earns when a query names the session's project
@@ -388,6 +401,14 @@ func classify(rel, head, body, status, lifecycle string, importance int, importa
 
 	if isDurable(rel, head) {
 		flags = append(flags, ClassDurable)
+	}
+
+	// The lesson this note taught, once one has been written. Read from the
+	// head because it is nothing the note parser has a field for: it is a
+	// relation, like `superseded_by`, and the only thing the ranker needs to
+	// know is whether it is there.
+	if consolidatedRe.MatchString(head) {
+		flags = append(flags, ClassConsolidated)
 	}
 
 	// The lifecycle axis. Read from the parsed value rather than the head so

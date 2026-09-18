@@ -169,6 +169,15 @@ type Config struct {
 	// deciding to.
 	EnrichEnabled bool
 
+	// CrystallizeEnabled turns the weekly crystallize phase on.
+	//
+	// Its own switch rather than riding on EnrichEnabled, because it is the
+	// second job that spends and the two are turned on at different times: the
+	// batch was armed once the operator had read a supervised run, and this
+	// phase earns the same reading of its own. One switch for two spenders
+	// would mean arming the second by turning on the first.
+	CrystallizeEnabled bool
+
 	// EnrichModel is the model name enrichment passes to `claude -p`. A name,
 	// not a tier — tier qualification is earned by sampled audit against the
 	// strong tier, which is its own mechanism and not this pass's job.
@@ -644,6 +653,9 @@ func Load(opts Options) (*Config, error) {
 	}
 	if b, ok := raw["daemon.enrich_enabled"].(bool); ok {
 		c.EnrichEnabled = b
+	}
+	if b, ok := raw["daemon.crystallize_enabled"].(bool); ok {
+		c.CrystallizeEnabled = b
 	}
 	if s := strVal(raw, "daemon.enrich_model"); s != "" {
 		c.EnrichModel = s

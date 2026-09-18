@@ -55,6 +55,12 @@ type Caller struct {
 	// Label names the call in the per-call line, so a reader can tell the
 	// note's call from its judge's.
 	Label string
+	// Job is the tier-table job this call belongs to — `classify-unfiled`,
+	// `summarize`, `crystallize`. The tier table already names the night's
+	// work; carrying that name down to the meter is what lets the morning
+	// note's spend section give each job a line rather than reporting one
+	// total for everything a night called.
+	Job string
 	// Meter, when set, is told what every call spent.
 	Meter *Meter
 }
@@ -82,6 +88,9 @@ func (c *Caller) With(r Route, label string) *Caller {
 	}
 	if label != "" {
 		cp.Label = label
+	}
+	if r.Job != "" {
+		cp.Job = r.Job
 	}
 	return &cp
 }
@@ -260,7 +269,8 @@ func (c *Caller) record(u Usage, err error) {
 	if tier == "" {
 		tier = TierStrong
 	}
-	c.Meter.Record(CallRecord{Label: c.Label, Model: c.Model, Tier: tier, Usage: u, Err: err})
+	c.Meter.Record(CallRecord{Label: c.Label, Job: c.Job, Model: c.Model,
+		Tier: tier, Usage: u, Err: err})
 }
 
 // envelopeReason is the `result` text of an error envelope, when there is one.

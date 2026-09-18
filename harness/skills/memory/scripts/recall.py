@@ -331,6 +331,30 @@ _SPACE_DEMOTION = 0.30
 _ARCHIVE_DEMOTION = 0.30
 ARCHIVE_SEGMENTS = ("archive", "_archive", "completed")
 
+# A source whose lesson has been written: `consolidated_into` names the
+# crystallized note the weekly phase built from it. The sources that taught a
+# lesson must not crowd the lesson out of recall, so they drop to the same 0.30
+# a demotion to `dormant` gives — immediately, rather than waiting for the
+# curve, because the lesson exists now. They stay where they are and stay
+# findable: a query naming the specific case still reaches the card, below the
+# lesson, and the lesson's `consolidated_from` links resolve.
+_CONSOLIDATED_DEMOTION = 0.30
+
+
+def _stamp_demotion(fm: dict) -> float:
+    """What a note's `consolidated_into` stamp costs it: 0.30, or 1.0 when it
+    carries none.
+
+    A named function rather than two lines inside the ranking loop, because
+    this number has to equal the daemon's `ClassConsolidated` and a number that
+    can only be read by running a query is one nothing can hold to that.
+
+    An empty value is not a stamp. A writer mid-edit leaves the key with
+    nothing after it, and sinking a card because something started to write and
+    stopped is the wrong direction to fail in.
+    """
+    return _CONSOLIDATED_DEMOTION if str(fm.get("consolidated_into") or "").strip() else 1.0
+
 
 def in_archive_class(rel: str) -> bool:
     """Whether a vault-relative path sits under one of ARCHIVE_SEGMENTS.
@@ -1779,6 +1803,8 @@ def query(
         demoted = lifecycle_value in _DEMOTED_LIFECYCLES
         if demoted:
             decay_score *= _LIFECYCLE_DEMOTION
+        # The lesson this card taught, once one has been written.
+        decay_score *= _stamp_demotion(fm)
         # The filing axis, multiplicatively and independently: a dormant
         # unfiled capture takes both, which is what the daemon does too.
         status_value = _status_of(fm)

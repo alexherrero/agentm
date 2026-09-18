@@ -89,6 +89,20 @@ OPERATOR_LINES = {"strong": 2_000_000, "cheap": 2_000_000}
 CALL_GUARD = 250
 
 ENRICH_RUNS = "enrich-runs.jsonl"
+# The weekly crystallize phase keeps its own record beside enrichment's, because
+# it is a different job on a different cadence and folding it into the
+# enrichment row would make one night's batch look like it judged notes it never
+# saw. The two are read together only in the spend section, where the design
+# asks for a line per job (agentm-vault, "loose ends from session 4").
+CRYSTALLIZE_RUNS = "crystallize-runs.jsonl"
+
+# The tier table's job names, in the order the spend section lists them, with
+# the words a reader wants rather than the table's slugs.
+JOB_NAMES = {
+    "classify-unfiled": "enrichment deep",
+    "summarize": "enrichment light",
+    "crystallize": "crystallize",
+}
 LAST_REPORT = Path("dreaming") / "last-report.json"
 # `dream.CYCLE_REPORT_NAME`; a test holds the two equal.
 CYCLE_REPORT = Path("dreaming") / "python-cycle.json"
@@ -163,10 +177,10 @@ def _read_json(path: Path):
         return None
 
 
-def enrich_runs(engine_dir: Path) -> list:
-    """Every run the enrichment record holds, oldest first, each with `_at`."""
+def _runs_file(path: Path) -> list:
+    """One JSONL record of runs, oldest first, each line stamped with `_at`."""
     try:
-        lines = (Path(engine_dir) / ENRICH_RUNS).read_text(encoding="utf-8").splitlines()
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
     out = []
@@ -180,6 +194,16 @@ def enrich_runs(engine_dir: Path) -> list:
             run["_at"] = at
             out.append(run)
     return sorted(out, key=lambda r: r["_at"])
+
+
+def enrich_runs(engine_dir: Path) -> list:
+    """Every run the enrichment record holds, oldest first, each with `_at`."""
+    return _runs_file(Path(engine_dir) / ENRICH_RUNS)
+
+
+def crystallize_runs(engine_dir: Path) -> list:
+    """Every run the weekly phase recorded, oldest first, each with `_at`."""
+    return _runs_file(Path(engine_dir) / CRYSTALLIZE_RUNS)
 
 
 def binary_report(engine_dir: Path) -> Optional[dict]:
@@ -257,6 +281,8 @@ class Night:
     start: float
     tonight_runs: list = field(default_factory=list)
     week_runs: list = field(default_factory=list)
+    crystallize_tonight: list = field(default_factory=list)
+    crystallize_week: list = field(default_factory=list)
     binary: Optional[dict] = None
     binary_tonight: bool = False
     python: Optional[dict] = None
@@ -336,6 +362,12 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
     runs = enrich_runs(engine_dir)
     night.tonight_runs = [r for r in runs if r["_at"] >= start]
     night.week_runs = [r for r in runs if r["_at"] >= now - 7 * 86400]
+    cryst = crystallize_runs(engine_dir)
+    night.crystallize_tonight = [r for r in cryst if r["_at"] >= start]
+    # Seven days rather than tonight for the lesson list as well: the phase runs
+    # weekly, and a note that only listed what last night wrote would name the
+    # week's lessons on one morning in seven and say nothing on the other six.
+    night.crystallize_week = [r for r in cryst if r["_at"] >= now - 7 * 86400]
     night.binary = binary_report(engine_dir)
     night.binary_tonight = bool(night.binary and night.binary["_mtime"] >= start)
     cycle = python_cycle(engine_dir)
@@ -558,6 +590,21 @@ def needs_you(night: Night) -> list:
         lines.append(f"- **{what.capitalize()} within 30 days** ({len(items)}): " + _first(
             items, lambda c: f"{_link(c.get('rel', ''))} ({int(c.get('days') or 0):,} days silent)"))
 
+    # Every lesson the weekly phase wrote, named rather than counted.
+    #
+    # The re-audit trigger the design sets for this phase is "any crystallized
+    # note you would not keep", and that cannot be read from a count. A lesson
+    # never decays and nothing ages it out, so the morning it is written is the
+    # cheapest morning to disagree with it.
+    lessons = [l for r in night.crystallize_week for l in (r.get("lessons") or [])]
+    if lessons:
+        def lesson(l):
+            stem = str(l.get("rel", "")).rsplit("/", 1)[-1][:-3]
+            return f"[[{stem}]] (from {len(l.get('consolidated_from') or [])})"
+        lines.append(f"- **Lessons this week** ({len(lessons)}): "
+                     + _first(lessons, lesson)
+                     + " — permanent learning; nothing ages one out but you.")
+
     facet = (night.binary or {}).get("facet") or {}
     if facet.get("rel"):
         lines.append(f"- **What the night did** ({facet.get('acts', 0)} act(s)): "
@@ -603,6 +650,56 @@ def _tier_added(runs: list) -> dict:
     return out
 
 
+def _by_job(runs: list) -> dict:
+    """What each tier-table job spent across these runs.
+
+    Read from each run's own `by_job` block, which the meter fills from the
+    route the tier table chose. A run written before that block existed
+    contributes nothing here and still counts in the totals — the per-job lines
+    are a finer reading of the same spend, not a second accounting of it.
+    """
+    out: dict = {}
+    for r in runs:
+        for job, u in (r.get("by_job") or {}).items():
+            if not isinstance(u, dict):
+                continue
+            added = sum(int(u.get(k) or 0) for k in (
+                "input_tokens", "cache_creation_input_tokens", "output_tokens"))
+            cur = out.setdefault(job, {"tokens": 0, "calls": 0, "cost": 0.0})
+            cur["tokens"] += added
+            cur["calls"] += int(u.get("calls") or 0)
+            cur["cost"] += float(u.get("cost_usd") or 0)
+    return out
+
+
+def per_job(night: Night) -> list:
+    """A line for each job that spent last night, in the table's own order.
+
+    The design's ask (session 4's second loose end): "per-job lines for
+    enrichment deep, enrichment light, and crystallize, alongside nightly and
+    seven-day totals". The cadence re-audit for the weekly phase reads its line
+    after three runs, and a single total cannot answer what that phase costs
+    while the batch is spending on the same nights.
+    """
+    by = _by_job(night.tonight_runs)
+    for job, u in _by_job(night.crystallize_tonight).items():
+        cur = by.setdefault(job, {"tokens": 0, "calls": 0, "cost": 0.0})
+        cur["tokens"] += u["tokens"]
+        cur["calls"] += u["calls"]
+        cur["cost"] += u["cost"]
+    if not by:
+        return []
+    order = list(JOB_NAMES) + sorted(k for k in by if k not in JOB_NAMES)
+    lines = []
+    for job in order:
+        u = by.get(job)
+        if not u:
+            continue
+        lines.append(f"  - {JOB_NAMES.get(job, job)}: {u['tokens']:,} tokens · "
+                     f"{u['calls']} call(s) · ${u['cost']:,.2f}")
+    return lines
+
+
 def spend(night: Night) -> list:
     lines = []
     runs = night.tonight_runs
@@ -617,11 +714,20 @@ def spend(night: Night) -> list:
                      + (f" ({against})" if against else "")
                      + f" · {_sum(runs, 'tokens'):,} processed"
                      + f" · {calls} calls of the {CALL_GUARD}-call guard · ${cost:,.2f}")
-    if night.week_runs:
-        cost = sum(float(r.get("total_cost_usd") or 0) for r in night.week_runs)
-        lines.append(f"- Seven days: {sum(_tier_added(night.week_runs).values()):,} tokens against "
+    lines += per_job(night)
+    if night.crystallize_tonight:
+        cryst = night.crystallize_tonight
+        wrote = sum(len(r.get("lessons") or []) for r in cryst)
+        cost = sum(float(r.get("total_cost_usd") or 0) for r in cryst)
+        lines.append(f"- The weekly phase: {wrote} lesson(s) from "
+                     f"{_sum(cryst, 'clusters')} recurrence(s) over the bar · "
+                     f"{_sum(cryst, 'model_calls')} call(s) · ${cost:,.2f}")
+    week = night.week_runs + night.crystallize_week
+    if week:
+        cost = sum(float(r.get("total_cost_usd") or 0) for r in week)
+        lines.append(f"- Seven days: {sum(_tier_added(week).values()):,} tokens against "
                      f"the line · {_sum(night.week_runs, 'tokens'):,} processed across "
-                     f"{len(night.week_runs)} run(s) · ${cost:,.2f}")
+                     f"{len(week)} run(s) · ${cost:,.2f}")
     if night.sessions and (night.sessions[0] > 0 or night.sessions[1] > 0):
         lines.append(f"- Sessions, the last day: ${night.sessions[0]:,.2f} across "
                      f"{night.sessions[1]} event(s)")
