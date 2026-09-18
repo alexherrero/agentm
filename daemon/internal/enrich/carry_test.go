@@ -228,3 +228,46 @@ func TestComposeWritesTheCardOrder(t *testing.T) {
 		t.Fatalf("the read block must lead:\n%s", out)
 	}
 }
+
+// The second guard on the self-probe. `SelfProbe` is what keeps a synthetic
+// note out of the pass; this is what keeps the marker on one that reaches a
+// rewrite anyway — by a path neither gate anticipated, or by an older binary
+// still running the night the fix lands.
+//
+// The marker is an identity rather than a value, which is why it is worth
+// guarding twice. The probe retires yesterday's card by reading `probe:` back
+// off the file, so a rewrite that dropped it left a card nothing would ever
+// delete; the live card of 2026-09-17 was exactly that, and the next night
+// would have added a second.
+func TestCarryProvenanceKeepsTheProbeMarker(t *testing.T) {
+	was := "---\ntitle: AgentM self-probe 2026-09-17T06:11:19Z\ntype: reference\n" +
+		"status: active\nfiling_confidence: high\nprobe: self-probe\n---\n\n" +
+		"Synthetic round-trip probe written by the daemon.\n"
+	out := CarryProvenance(was, rendered(t))
+	if !strings.Contains(out, "\nprobe: self-probe\n") {
+		t.Fatalf("the marker that says what the note is must survive a rewrite:\n%s", out)
+	}
+}
+
+// And through the whole write path, in the card's order: `probe` sits in the
+// machine block, so a carried marker lands where the panel shows it rather than
+// wherever the carry appended it.
+func TestComposeKeepsTheProbeMarkerInTheCardOrder(t *testing.T) {
+	previous := "---\ntitle: AgentM self-probe 2026-09-17T06:11:19Z\ntype: reference\n" +
+		"status: active\nsource: daemon\ntrust: trusted\ncreated: 2026-09-17T06:11:19Z\n" +
+		"lifecycle: active\nslug: agentm-self-probe-2026-09-17t06-11-19z\n" +
+		"probe: self-probe\n---\n\nSynthetic round-trip probe.\n"
+	out, _, err := Compose(previous, Response{
+		Title: "AgentM self-probe", Type: "reference", Confidence: 0.3,
+	}, Stamp{Version: "v", RulesHash: "h", ConfidenceFloor: 0.65,
+		At: time.Date(2026, 9, 17, 9, 30, 21, 0, time.UTC)}, DepthDeep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "\nprobe: self-probe\n") {
+		t.Fatalf("the composed note lost the marker:\n%s", out)
+	}
+	if cardshape.Reorder(out) != out {
+		t.Fatalf("composed out of the card's order:\n%s", out)
+	}
+}

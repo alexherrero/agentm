@@ -9,24 +9,76 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	// Aliased because the package's own tests declare a helper named `note`,
+	// and Go lets no identifier be declared in both a file block and the
+	// package block.
+	notes "github.com/alexherrero/agentm/daemon/internal/note"
 )
 
-// The five deterministic pre-gates, in the order they run.
+// The six deterministic pre-gates, in the order they run.
 //
-// All five are cheap and none calls a model. That ordering is the point: the
+// All six are cheap and none calls a model. That ordering is the point: the
 // expensive thing happens once every free thing has agreed it should. They run
-// in the order registered, and the order is deliberate — eligibility first
-// because it is a path comparison and rejects the most notes; the budget last
-// because it is the only one whose answer depends on what the earlier gates
-// already spent.
+// in the order registered, and the order is deliberate — the self-probe first
+// because it is the only one asking whether the thing in front of it is a
+// memory at all, and a question about what a note *is* comes before every
+// question about where it sits or what it costs; eligibility next because it is
+// a path comparison and rejects the most notes; the budget last because it is
+// the only one whose answer depends on what the earlier gates already spent.
 //
-//	1. Eligibility   — is this note ours to touch at all?
-//	2. Privacy       — does it carry something no model should see?
-//	3. Size          — is it small enough to send whole?
-//	4. Fingerprint   — have we already done exactly this?
-//	5. Budget        — is there anything left to spend?
+//	1. Self-probe    — is this a memory at all, or the daemon's own synthetic note?
+//	2. Eligibility   — is this note ours to touch at all?
+//	3. Privacy       — does it carry something no model should see?
+//	4. Size          — is it small enough to send whole?
+//	5. Fingerprint   — have we already done exactly this?
+//	6. Budget        — is there anything left to spend?
 
-// --- 1. eligibility ---------------------------------------------------------
+// --- 1. self-probe ----------------------------------------------------------
+
+// SelfProbe refuses the note the daemon writes to prove itself.
+//
+// The probe writes a synthetic memory once a day, asks for it back sideways and
+// records whether it came. The note it leaves behind is the artifact of that
+// check, not a memory: nobody wrote it, nothing was learned, and there is
+// nothing in it for a judge to be right or wrong about. On the night of
+// 2026-09-17 the pass judged one anyway — it spent a call summarizing the
+// daemon's own test fixture, and the rewrite dropped the `probe:` marker that
+// said what the note was.
+//
+// Losing that marker is the part that matters, and it is why this refuses
+// rather than letting the carry handle it. The marker is the probe's identity:
+// the next run retires yesterday's note by reading it back off the file, the
+// card gate exempts a probe from naming a transport by reading it, and the
+// classifier excludes a probe from every measurement by reading it. A note that
+// arrives without it is a probe to nobody — so a stripped card is never
+// retired, and one more arrives every night behind it.
+//
+// It runs first because it is the only gate asking what the note is rather than
+// where it sits. A probe lives in a class directory that a model may read, at a
+// size no ceiling catches, under a fingerprint nothing has seen — it passes
+// every other gate on the merits, which is exactly how it got judged.
+type SelfProbe struct{}
+
+func (g *SelfProbe) Name() string { return "probe" }
+
+// Check reads the marker through the corpus's own parser rather than a second
+// reader of the same key: `note.Parse` decides what counts as a probe
+// everywhere else — for retirement, for the classifier, for the card gate — and
+// a gate that disagreed with it by a quoted value or a letter's case would
+// refuse a different set of notes than the one the rest of the daemon calls
+// synthetic.
+func (g *SelfProbe) Check(_ context.Context, req Request, body string) error {
+	if !notes.Parse(req.Rel, body, time.Time{}).Probe {
+		return nil
+	}
+	return fmt.Errorf("%w: it carries `%s:` — the daemon's synthetic self-probe, "+
+		"which is a test fixture and not a memory; enriching it spends a call on "+
+		"nothing and a rewrite that dropped the marker would leave a note no "+
+		"later run could recognize as a probe", ErrNotEligible, notes.ProbeMarker)
+}
+
+// --- 2. eligibility ---------------------------------------------------------
 
 // Eligibility answers whether a note is enrichment's business.
 //
@@ -155,7 +207,7 @@ func PassDepth(body string) Depth {
 	return DepthLight
 }
 
-// --- 2. privacy -------------------------------------------------------------
+// --- 3. privacy -------------------------------------------------------------
 
 // Privacy refuses a note carrying a secret.
 //
@@ -218,7 +270,7 @@ func (g *Privacy) Check(_ context.Context, req Request, body string) error {
 	return nil
 }
 
-// --- 3. size ----------------------------------------------------------------
+// --- 4. size ----------------------------------------------------------------
 
 // Size keeps a note inside what one call can carry.
 //
@@ -284,7 +336,7 @@ func headerSections(body string) []string {
 // corpus's keys at once.
 var PassVersion = "enrich/1+prompt/" + PromptHash()
 
-// --- 4. fingerprint ---------------------------------------------------------
+// --- 5. fingerprint ---------------------------------------------------------
 
 // Fingerprint is the idempotency gate, and it is the one that saves the money.
 //
@@ -347,7 +399,7 @@ func normalizeBody(body string) string {
 	return strings.ToLower(strings.Join(lines, "\n"))
 }
 
-// --- 5. budget --------------------------------------------------------------
+// --- 6. budget --------------------------------------------------------------
 
 // CycleBudget is the last gate, and it is last because its answer depends on what the
 // four before it already let through.

@@ -509,12 +509,26 @@ now gates only the standing nightly behaviour, never a per-capture model
 call. See [`templates/jobs/enrich-nightly.yaml`](#the-runner-and-a-refused-manifest)
 below for how the batch is scheduled.
 
+The first pre-gate asks what the note is rather than where it sits. A note
+carrying the `probe:` marker is the daemon's own self-probe — the synthetic
+note the round-trip check leaves behind — and `SelfProbe` refuses it before
+anything else runs (`daemon/internal/enrich/pregates.go:61-79`). It reads the
+marker through `note.Parse`, the same parser retirement and the classifier
+read it with, so the set of notes the pass calls synthetic is the set the rest
+of the daemon does. It matters because of what a rewrite took rather than what
+it cost: on 2026-09-17 enrichment judged a probe card and dropped the marker,
+and the marker is what the next run reads before deleting yesterday's card, so
+a stripped card is one nothing ever retires. `probe` is carried in
+`carriedFields` as a second guard. The gate lives in `freeGates`
+(`daemon/cmd/agentmd/main.go`), which the cheap-tier audit draws its sample
+through, so the audit stops sampling the probe as well.
+
 Eligibility no longer reads `status`: what used to refuse any note that
 wasn't `unfiled` is gone (`Eligibility.Statuses` removed; the check now at
-`daemon/internal/enrich/pregates.go:69-92`), because status says whether a
+`daemon/internal/enrich/pregates.go:126-159`), because status says whether a
 note was judged, not whether it has been through this pass. What the pass
 reads instead is `PassDepth`, from the note's own `enriched_at` and
-`enriched_by` stamps (`pregates.go:133-141`): no `enriched_at` means the
+`enriched_by` stamps (`pregates.go:200-208`): no `enriched_at` means the
 whole pass is owed (`DepthDeep`), and so does an `enriched_at` stamped by a
 pass version other than the current one — a prompt change re-owes the deep
 pass to every note (agentm-vault plan 04), because a stamp from an older
@@ -523,7 +537,7 @@ prompt never answered what this one asks for: the neighbours, `related`,
 the lighter pass a note that has moved since (`DepthLight`). A note
 genuinely unchanged since its last pass is caught for free by the separate
 fingerprint gate, keyed on the pass version, the rules hash, and the body
-together (`Fingerprint.Check`, `pregates.go:298-307`).
+together (`Fingerprint.Check`, `pregates.go:365-374`).
 
 ### The refusal record
 
@@ -540,7 +554,7 @@ The refusal is written down instead, one JSON line per card in
 `Fingerprint.Key` — literally the same function the fingerprint gate calls,
 passed in rather than reimplemented — so pass version, rules hash and body
 decide a standing refusal exactly as they decide an idempotent skip. The
-`refusal` pre-gate reads it, sixth in the order, between the fingerprint and
+`refusal` pre-gate reads it, seventh in the order, between the fingerprint and
 the budget: after the fingerprint because that answers the commoner case,
 and before the budget because the budget counts a call the moment it agrees
 to one. A refused card comes back when its body changes, when the prompt
