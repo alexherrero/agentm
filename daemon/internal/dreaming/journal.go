@@ -372,6 +372,14 @@ func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Tim
 		return applied()
 	}
 	cur, err := os.ReadFile(src)
+	if os.IsNotExist(err) {
+		// The note this intent was planned against is no longer there. That is
+		// a hand move, not a fault: the operator works in the vault while the
+		// night runs, and a pass that aborted because a file went somewhere
+		// else would take the rest of the night with it. Skipped, named, and
+		// picked up by the reconcile step at the end of the same night.
+		return skipped("the note this intent was planned against has moved or gone")
+	}
 	if err != nil {
 		return "", err
 	}

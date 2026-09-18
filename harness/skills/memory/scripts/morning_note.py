@@ -536,12 +536,32 @@ def needs_you(night: Night) -> list:
     if facets:
         lines.append(f"- **Proposed facets** ({len(facets)}): " + _first(
             facets, lambda f: f"`{f.get('label', '?')}` on {f.get('days', '?')} days"))
-    candidates = ((night.binary or {}).get("plan") or {}).get("archive_candidates") or []
-    if candidates:
-        lines.append(f"- **Archive candidates** ({len(candidates)}): " + _first(
-            candidates, lambda c: f"{_link(c.get('rel', ''))} ({int(c.get('days') or 0):,} days silent)"))
     if night.sank:
         lines.append(f"- **Sank this week** ({len(night.sank)}): " + _first(night.sank, _link))
+
+    # The two forward lists, each omitted when empty. What the axis is about to
+    # do, before it does it: the whole of "you see a demotion before it happens"
+    # is this line and the facet below it.
+    #
+    # `archive_candidates` used to be listed here as what the operator had to
+    # confirm. The night moves them itself now, so what is worth their eye is
+    # not the backlog but what is coming — a threshold can be argued with while
+    # it is still thirty days off.
+    plan = (night.binary or {}).get("plan") or {}
+    forward = (
+        ("sinking", plan.get("sinking_within_30_days") or []),
+        ("archiving", plan.get("archiving_within_30_days") or []),
+    )
+    for what, items in forward:
+        if not items:
+            continue
+        lines.append(f"- **{what.capitalize()} within 30 days** ({len(items)}): " + _first(
+            items, lambda c: f"{_link(c.get('rel', ''))} ({int(c.get('days') or 0):,} days silent)"))
+
+    facet = (night.binary or {}).get("facet") or {}
+    if facet.get("rel"):
+        lines.append(f"- **What the night did** ({facet.get('acts', 0)} act(s)): "
+                     f"{_link(facet['rel'])} — every move, with the manifest behind any deletion.")
     if lines:
         lines.append(f"- The full lists: [[{needs_review.MOC_SLUG}]].")
     return lines

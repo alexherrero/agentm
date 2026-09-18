@@ -74,7 +74,11 @@ def _report() -> dict:
         "decision": {"due": True, "reason": "due"},
         "plan": {"demoted": [{"rel": "memory/semantic/quiet.md", "days": 400}], "revived": [],
                  "archive_candidates": [{"rel": "memory/semantic/ancient.md", "days": 1900}],
+                 "archived": [{"rel": "memory/semantic/ancient.md", "days": 1900}],
+                 "sinking_within_30_days": [{"rel": "memory/semantic/nearly.md", "days": 355}],
+                 "archiving_within_30_days": [{"rel": "memory/semantic/soon.md", "days": 1815}],
                  "skipped_by_cap": 0, "considered": 700},
+        "facet": {"rel": "../calendar/2026/2026-09-12-dreaming.md", "acts": 3},
         "copies": {"families": [{"canonical": "a"}], "deferred": 0},
         "refile": {"moves": [], "unflags": [], "blocked": []},
         "promote": {"promotions": [{"rel": "memory/semantic/candidate-x.md"}], "existing": []},
@@ -210,8 +214,10 @@ class TheNote(_Night):
         self.assertEqual(fm["kind"], "report")
         self.assertEqual(str(fm["date"]), "2026-09-12")
         self.assertEqual(fm["headline"], head)
+        # Seven, not five: the two forward lists and the day's facet joined
+        # what needs the operator's eye when the archive candidates left it.
         self.assertEqual(head, "enrichment judged 118 (97 active, 2 sank) · the binary applied · "
-                               "1 possible twin(s) · 5 list(s) need you")
+                               "1 possible twin(s) · 7 list(s) need you")
 
     def test_what_ran(self):
         self.full_night()
@@ -243,8 +249,15 @@ class TheNote(_Night):
         self.assertNotIn("[[never-judged]]", text)  # awaiting the batch, not you
         self.assertIn("- **Possible twins** (1): [[t0-a]] and [[t0-b]] (95%)", text)
         self.assertIn("- **Proposed facets** (1): `garden` on 3 days", text)
-        self.assertIn("- **Archive candidates** (1): [[ancient]] (1,900 days silent)", text)
         self.assertIn("- **Sank this week** (1): [[quiet]]", text)
+        # The archive candidates used to be listed here as what the operator had
+        # to confirm. The night moves them itself now, so what is worth their eye
+        # is what is coming — a threshold can be argued with while it is still
+        # thirty days off — and the day's facet, which names every move made.
+        self.assertNotIn("Archive candidates", text)
+        self.assertIn("- **Sinking within 30 days** (1): [[nearly]] (355 days silent)", text)
+        self.assertIn("- **Archiving within 30 days** (1): [[soon]] (1,815 days silent)", text)
+        self.assertIn("- **What the night did** (3 act(s)): [[2026-09-12-dreaming]]", text)
         self.assertIn("- The full lists: [[needs-review]].", text)
 
     def test_a_long_list_shows_five_and_counts_the_rest(self):
@@ -460,8 +473,9 @@ class TheNote(_Night):
         self.assertIn("- **The dreaming binary** — ran, and its gate held; the last pass was 3 d ago (applied).",
                       text)
         self.assertNotIn("| lifecycle |", text)
-        # Its archive candidates still need you: they stand until acted on.
-        self.assertIn("- **Archive candidates** (1)", text)
+        # A pass whose gate held did not run tonight, and what it said last time
+        # about what is coming still stands.
+        self.assertIn("- **Sinking within 30 days** (1)", text)
 
     def test_halted_filing_is_said(self):
         self.python(storage_rules_ok=False, storage_rules_error="routing: not a mapping")

@@ -50,8 +50,18 @@ type Report struct {
 	Refile   RefilePlan    `json:"refile"`
 	Promote  PromotePlan   `json:"promote"`
 	Calendar CalendarPlan  `json:"calendar"`
-	Mocs     MocsPlan      `json:"mocs"`
-	Dates    DatesPlan     `json:"dates"`
+	// The three free jobs the axis added, and the night's own record of itself.
+	Retain    RetainPlan    `json:"retain"`
+	Sequence  SequencePlan  `json:"sequence"`
+	Reconcile ReconcilePlan `json:"reconcile"`
+	Facet     FacetPlan     `json:"facet"`
+	// SkippedByHandMove is every file an intent could not be applied to because
+	// it had moved since the plan read it. Named in the dreaming facet rather
+	// than swallowed: the reconcile step at the end of the same night is what
+	// repairs them, and a repair nobody can see is indistinguishable from a loss.
+	SkippedByHandMove []string  `json:"skipped_by_hand_move,omitempty"`
+	Mocs              MocsPlan  `json:"mocs"`
+	Dates             DatesPlan `json:"dates"`
 	// The report-only checks: nothing below mutates a note.
 	Vocabulary VocabularyReport `json:"vocabulary"`
 	Trends     TrendReport      `json:"trends"`
@@ -292,6 +302,65 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		return rep, err
 	}
 	version := PassVersion(contract)
+	// The retention sweep. Last of the mutating jobs, and separate from the
+	// lifecycle one: it deletes the night's own paper rather than a memory, on
+	// the contract's `retention:` lines, and it takes the same manifest-first
+	// rule every other deletion on the axis takes.
+	retain, err := PlanRetain(root, contract, now, opt.Cap)
+	if err != nil {
+		return rep, err
+	}
+	rep.Retain = retain
+	if opt.Apply && len(retain.Intents) > 0 {
+		rows := DeletionRows(root, retain.Intents, nil)
+		for i := range rows {
+			rows[i].Days = 0
+		}
+		manifest, mErr := WriteDeletionManifest(root, runID, rows, now)
+		if mErr != nil || manifest == "" {
+			rep.Retain.Removed = nil
+		} else {
+			if rep.DeletionManifest == "" {
+				rep.DeletionManifest = manifest
+			}
+			if err := applyAll(journal, root, runID, retain.Intents, now, opt.Pace, &rep); err != nil {
+				return rep, err
+			}
+		}
+	}
+
+	// The numbering. Its first run is a supervised data run, not a nightly one —
+	// see PlanSequence — so it plans every night and applies only what it is
+	// allowed to.
+	sequence, err := PlanSequence(root, ProjectsRoot(root), now, opt.Cap)
+	if err != nil {
+		return rep, err
+	}
+	rep.Sequence = sequence
+	if opt.Apply && len(sequence.Intents) > 0 {
+		if err := applyAll(journal, root, runID, sequence.Intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+	}
+
+	// Reconcile, last, so it sees every hand move including the ones this pass
+	// tripped over. It repairs the engine's record of where a note is; it writes
+	// no note.
+	if known, err := KnownFingerprints(cfg.EngineStateDir, root); err == nil {
+		if onDisk, err := FingerprintsOnDisk(root); err == nil {
+			rep.Reconcile = PlanReconcile(known, onDisk, nil, now)
+		}
+	}
+
+	// The night's own record of itself, written from what it actually did.
+	facet := PlanDreamingFacet(root, contract, &rep, now)
+	rep.Facet = facet
+	if opt.Apply && len(facet.Intents) > 0 {
+		if err := applyAll(journal, root, runID, facet.Intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+	}
+
 	if rep.Reclassify, err = Reclassify(root, contract, version, st.LastPassVersion, ReclassifySample(contract), 0, opt.Reclassify); err != nil {
 		return rep, err
 	}
@@ -349,6 +418,12 @@ func applyAll(journal *Journal, root, runID string, intents []Intent, now time.T
 		}
 		if kind == KindSkipped {
 			rep.Skipped++
+			// The per-write re-check, and what it is for. The journal refuses an
+			// intent whose target no longer hashes as the plan read it, which is
+			// exactly a file the operator moved or edited between the plan and
+			// the write. Named here so the facet can say so and the reconcile
+			// step can repair it at the end of the same night.
+			rep.SkippedByHandMove = append(rep.SkippedByHandMove, in.Rel)
 		} else {
 			rep.Applied++
 		}
