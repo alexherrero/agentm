@@ -340,14 +340,25 @@ func TestAHandMoveDuringTheRunIsSkippedNamedAndRepaired(t *testing.T) {
 
 	// Reconcile pairs the two by the body, and the facet names both the skip
 	// and the repair.
-	known := map[string]string{rel: BodyFingerprint(string(body))}
+	//
+	// `known` is keyed the way the sidecar keys it — from the vault root — and
+	// not the way this line used to key it, from the memory root. Built by hand
+	// from the same rel the walk returned, the two sides agreed because one
+	// value was used twice, and the pass reported every note in the corpus as
+	// moved on the first real vault it saw. `reconcile_base_test.go` holds the
+	// bases apart against a sidecar on disk; this keeps using a literal, so the
+	// literal has to be the sidecar's spelling.
+	vaultRel := func(memRel string) string {
+		return vaultRelOf(vaultRootOf(root), filepath.Join(root, filepath.FromSlash(memRel)), memRel)
+	}
+	known := map[string]string{vaultRel(rel): BodyFingerprint(string(body))}
 	onDisk, err := FingerprintsOnDisk(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rep.Reconcile = PlanReconcile(known, onDisk, nil, now)
-	if len(rep.Reconcile.Repaired) != 1 || rep.Reconcile.Repaired[0].To != moved {
-		t.Fatalf("reconcile = %+v, want the pairing to %s", rep.Reconcile.Repaired, moved)
+	if len(rep.Reconcile.Repaired) != 1 || rep.Reconcile.Repaired[0].To != vaultRel(moved) {
+		t.Fatalf("reconcile = %+v, want the pairing to %s", rep.Reconcile.Repaired, vaultRel(moved))
 	}
 
 	facet := PlanDreamingFacet(root, contract, &rep, now)

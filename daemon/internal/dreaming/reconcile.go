@@ -123,8 +123,16 @@ func PlanReconcile(known map[string]string, fingerprints map[string]string,
 // written since the re-keying and none written before it. A vault whose sidecar
 // predates that has nothing here to pair with, and the pass says so rather than
 // pairing on a name.
+//
+// Narrowed to the memory tree, because that is what `FingerprintsOnDisk` walks.
+// The sidecar holds a clock for everything recall can serve — project records,
+// the diagnostics, the operator's own spaces — and every one of those would
+// read as a note that had left the corpus, because the pairing never looks
+// where they live. Counting them as vanished would be a nightly report of a
+// disappearance that never happened.
 func KnownFingerprints(engineStateDir, root string) (map[string]string, error) {
 	out := map[string]string{}
+	scope := memoryScope(root)
 	blob, err := os.ReadFile(filepath.Join(engineStateDir, ".lifecycle.json"))
 	if err != nil {
 		blob, err = os.ReadFile(filepath.Join(root, ".lifecycle.json"))
@@ -142,29 +150,65 @@ func KnownFingerprints(engineStateDir, root string) (map[string]string, error) {
 		return out, err
 	}
 	for rel, e := range rec.Entries {
-		if e.Fingerprint != "" {
+		if e.Fingerprint != "" && scope(rel) {
 			out[rel] = e.Fingerprint
 		}
 	}
 	return out, nil
 }
 
-// FingerprintsOnDisk is every memory note's body hash, keyed by its
-// memory-root-relative path — what the pairing compares against.
+// FingerprintsOnDisk is every memory note's body hash, keyed the way the
+// sidecars key an entry: by the note's path from the **vault** root.
+//
+// Not the memory-root-relative rel `MemoryNotes` returns, which is the base the
+// rest of this package works in. The two are one segment apart —
+// `memory/semantic/a.md` against `agent/memory/semantic/a.md` — and comparing
+// them as though they were one made every note in the corpus read as a note the
+// operator had moved, every night. The sidecar is the thing being paired
+// against, so the sidecar's base is the one that decides; the Python arm's
+// `vault_layout.vault_rel` says why that base is the vault root and not the
+// memory root — from the memory root, `../projects/x.md` and `projects/x.md`
+// are the same note.
 func FingerprintsOnDisk(root string) (map[string]string, error) {
 	rels, err := MemoryNotes(root)
 	if err != nil {
 		return nil, err
 	}
+	vault := vaultRootOf(root)
 	out := make(map[string]string, len(rels))
 	for _, rel := range rels {
-		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		raw, err := os.ReadFile(abs)
 		if err != nil {
 			continue
 		}
-		out[rel] = BodyFingerprint(string(raw))
+		out[vaultRelOf(vault, abs, rel)] = BodyFingerprint(string(raw))
 	}
 	return out, nil
+}
+
+// vaultRelOf is `abs` from the vault root, falling back to `fallback` when the
+// two are not nested — a flat export, where the two roots are one directory and
+// the memory-root rel is already the vault-root rel.
+func vaultRelOf(vaultRoot, abs, fallback string) string {
+	rel, err := filepath.Rel(vaultRoot, abs)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return fallback
+	}
+	return filepath.ToSlash(rel)
+}
+
+// memoryScope answers whether a vault-relative path is inside the memory tree —
+// the part of the vault `FingerprintsOnDisk` walks.
+func memoryScope(root string) func(string) bool {
+	prefix := vaultRelOf(vaultRootOf(root), root, "")
+	live, archived := "memory/", ArchiveDir+"/memory/"
+	if prefix != "" && prefix != "." {
+		live, archived = prefix+"/"+live, prefix+"/"+archived
+	}
+	return func(rel string) bool {
+		return strings.HasPrefix(rel, live) || strings.HasPrefix(rel, archived)
+	}
 }
 
 // BodyFingerprint is the note's body hash, matching `lifecycle.fingerprint_of`
