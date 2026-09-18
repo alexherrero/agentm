@@ -35,14 +35,17 @@ import re
 # share a slot (a note carries one). `lifecycle_since` sits beside `lifecycle`,
 # because the two are one fact and every writer already puts them together.
 # `source_url`, `source_id` and `source_fetched` sit beside `source`;
-# `supersedes` and `superseded_by` beside `related`; `project` and `task`
-# after them.
+# `supersedes` and `superseded_by` beside `related`; `consolidated_from` and
+# `consolidated_into` after those, because a lesson's sources and a source's
+# lesson are the same kind of relation and a reader looking for one looks for
+# the other; `project` and `task` after them.
 READ_ORDER: tuple[str, ...] = (
     "title", "type", "kind", "summary", "why", "importance",
     "status", "lifecycle", "lifecycle_since", "filing_confidence",
     "source", "source_url", "source_id", "source_fetched", "trust",
     "created", "updated", "tags",
     "related", "supersedes", "superseded_by",
+    "consolidated_from", "consolidated_into",
     "project", "task",
 )
 

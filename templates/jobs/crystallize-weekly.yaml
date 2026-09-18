@@ -1,0 +1,110 @@
+# crystallize-weekly.yaml — the weekly crystallize phase (agentm-vault plan 11,
+# task 7).
+#
+# A crystallized note is a hard-learned lesson: something that proved itself
+# over time, across more than one task or more than one card, that you would
+# keep after every card it came from has aged out. A session closing a task
+# cannot see that — it has the task in context but not the time axis — and a
+# nightly pass over one card cannot either. So the phase runs weekly, inside the
+# night's window and against its budget line, until its cost is known and a
+# cheaper shape is found (agentm-vault § Projects and tasks).
+#
+# It reads the Outcomes of closed tasks, the candidate lines the traces
+# accumulate, and the cards sharing a `project:` or a subject. It looks for
+# recurrence at your bar — the same mechanism, failure or method in at least
+# three sources, across at least two sessions, at least seven days apart — and
+# only what clears that bar reaches a model. A run that finds nothing spends
+# nothing.
+#
+# .harness/jobs/ is gitignored (per-project runtime state, same as every other
+# .harness/* file), so this templates/ copy is the tracked, shipped source.
+# Register it by copying to .harness/jobs/crystallize-weekly.yaml in a repo that
+# runs the agentm runner (scripts/agentm-runner.sh).
+#
+# **Turning it on is two edits, and they belong together**: `enabled: true`
+# here, and `daemon.crystallize_enabled true` in the kernel config
+# (`agentm_config.py --crystallize-enabled true`). Either alone does nothing —
+# `enabled: true` schedules a command that refuses while the switch is off, and
+# the switch alone arms a phase with nothing scheduled to call it. That is the
+# same two-edit discipline the enrichment batch has, and it has its own switch
+# rather than sharing enrichment's: this is the second job that spends, and one
+# switch for two spenders would mean arming the second by turning on the first.
+schedule: weekly
+
+# A week's lookback, so a cycle that missed its opening — the machine asleep, a
+# night that ran long — picks the phase up on the next one rather than waiting
+# out another week.
+lookback: 8d
+
+# The night (agentm-vault plan 04): the nightly steps start inside 02:00-06:00
+# local, in the order they declare, because each reads what the one before it
+# wrote.
+#
+# `order: 3`, shared with the Python cycle. The loader breaks a tie by name and
+# `crystallize-weekly` precedes `dream`, so this runs first of the two — which
+# is what we want and not what we depend on: neither reads what the other
+# writes. What matters is the two ends. It runs *after* the binary (order 2),
+# whose promote job writes the semantic candidates and whose projects pass
+# writes the trackers this phase reads. It runs *before* the corpus scorecard
+# (4) and the morning note (5), so a lesson written tonight is listed in
+# tonight's note rather than tomorrow's. Sharing a slot rather than renumbering
+# the three jobs below it: those manifests are live in .harness/jobs/ on this
+# machine, and a renumbering nobody applies there is a reordering that only
+# exists in the repo.
+window: "02:00-06:00"
+order: 3
+
+# Registered and off. `enabled: false` is not `dry_run: true`: a dry run still
+# runs the command and asks it not to write. The enrichment batch stayed off
+# until the operator had read its first supervised run, and this phase earns
+# the same reading — a lesson lands in the decay-exempt layer, where nothing
+# ages it out, which is why the tier table pins this job strong without audit
+# and why nothing turns it on but a person.
+#
+# To read what it would write without spending anything:
+#
+#     agentmd crystallize --dry-run --json
+#
+# which finds the recurrences, prints the near misses with the leg of the bar
+# each one missed, and makes no model call.
+enabled: false
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention). The
+# runner exports $MEMORY_ROOT as the memory root and agentmd reads it as
+# exactly that, deriving the vault root above it from the configured
+# memory_root.
+#
+# **No `--yes`, deliberately**, for the reason the enrichment job gives: that
+# flag bypasses the standing switch outright, so a scheduled command carrying
+# it would spend every week with the switch still off.
+#
+# No `--cap` either: the binary's default of five lessons a run is the line, and
+# a flag here could only lower it. The last line the command prints is a JSON
+# object carrying `total_cost_usd`, which is what the runner's spend line reads.
+command: $HOME/.local/bin/agentmd crystallize
+
+# Spends model calls, over the operator's own corpus, unattended. The same tier
+# every other job that calls a model carries.
+tier: T3
+
+# Declared so the runner knows this job spends: the fleet's daily dollar ceiling
+# (`.harness/budget.yaml`, $5 when unset) gates only jobs that declare a budget.
+#
+# The number is this phase's own line, and it is small next to the batch's two
+# million because the shapes are different: the batch judges every eligible card
+# in the corpus, and this makes one call per recurrence that cleared a bar of
+# three-across-two-sessions-seven-days-apart. Five calls is a busy week.
+#
+# Since this is the *second* spending job, the fleet ceiling was re-audited when
+# it landed (agentm-runner, 2026-09-18): the pre-flight now holds a paid job
+# only when the fleet is over its ceiling **and** that job has itself spent
+# inside the twenty-hour window. Without that, whichever paid job ran second was
+# refused every night — the batch reports around $22 against a $5 default — and
+# a weekly phase behind a nightly batch would never have run at all.
+budget:
+  tokens: 200000
+
+# Not a dry run when it is turned on: the phase's job is to write the lesson,
+# and its gates — the recurrence bar, the strong tier, the model's own licence
+# to answer `skip`, the one-lesson-per-subject rule — are what make that safe.
+dry_run: false

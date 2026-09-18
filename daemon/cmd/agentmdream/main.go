@@ -96,7 +96,9 @@ func cmdRun(args []string) error {
 	force := fs.Bool("force", false, "skip the dual gate and run a pass now")
 	every := fs.Duration("every", 7*24*time.Hour, "minimum interval between passes")
 	pace := fs.Duration("pace", 0, "sleep between mutations (tests)")
-	cap := fs.Int("cap", dreaming.DefaultDemotionCap, "at most this many automatic demotions per pass")
+	// 0 means "the contract's `demotion_cap`". The flag used to default to this
+	// package's own 200, which quietly outranked the number the operator set.
+	cap := fs.Int("cap", 0, "at most this many moves along the axis per pass (0: the contract's `demotion_cap`)")
 	reclassify := fs.Bool("reclassify", false, "run the sampled re-classification diff this pass even if the filing pass version is unchanged")
 	asJSON := fs.Bool("json", false, "emit the report as JSON")
 	if err := fs.Parse(args); err != nil {
@@ -142,8 +144,9 @@ func printReport(rep dreaming.Report) {
 	if rep.Mode == "apply" {
 		verb = "sank"
 	}
-	fmt.Printf("%s pass %s (%s): %s — %s %d, revived %d, archive candidates %d, previews %d, held by cap %d, considered %d",
-		rep.Mode, rep.RunID, rep.Outcome, rep.Decision.Reason, verb, len(p.Demoted), len(p.Revived), len(p.Candidates), len(p.Previews), p.Capped, p.Considered)
+	fmt.Printf("%s pass %s (%s): %s — %s %d, revived %d, archived %d, deleted %d, returned %d, touched by hand %d, previews %d, held by cap %d, considered %d",
+		rep.Mode, rep.RunID, rep.Outcome, rep.Decision.Reason, verb, len(p.Demoted), len(p.Revived),
+		len(p.Archived), len(p.Deleted), len(p.Returned), len(p.Touched), len(p.Previews), p.Capped, p.Considered)
 	if rep.Mode == "apply" {
 		fmt.Printf("; applied %d, skipped %d", rep.Applied, rep.Skipped)
 	}
@@ -154,8 +157,29 @@ func printReport(rep dreaming.Report) {
 	for _, m := range p.Revived {
 		fmt.Printf("  revived %s — recalled %.0f days ago\n", m.Rel, m.Days)
 	}
-	for _, m := range p.Candidates {
-		fmt.Printf("  archive candidate %s — %.0f days (the confirm surface's, never this pass's)\n", m.Rel, m.Days)
+	for _, m := range p.Archived {
+		fmt.Printf("  archived %s — silent %.0f days, moved to %s\n",
+			m.Rel, m.Days, dreaming.ArchiveDestination(m.Rel))
+	}
+	for _, m := range p.Deleted {
+		fmt.Printf("  deleted %s — silent %.0f days\n", m.Rel, m.Days)
+	}
+	if rep.DeletionManifest != "" {
+		fmt.Printf("  the deletions are recorded in %s, written before the files went\n",
+			rep.DeletionManifest)
+	}
+	for _, m := range p.Returned {
+		fmt.Printf("  returned %s — moved back into its class by hand\n", m.Rel)
+	}
+	for _, m := range p.Touched {
+		fmt.Printf("  left alone %s — its `lifecycle` was edited by hand since this pass last moved it\n", m.Rel)
+	}
+	// What is coming, so a threshold can be argued with before it fires.
+	if len(p.SinkingSoon) > 0 {
+		fmt.Printf("  sinking within %.0f days: %d\n", dreaming.ForwardDays, len(p.SinkingSoon))
+	}
+	if len(p.ArchivingSoon) > 0 {
+		fmt.Printf("  archiving within %.0f days: %d\n", dreaming.ForwardDays, len(p.ArchivingSoon))
 	}
 	would := "would "
 	if rep.Mode == "apply" {

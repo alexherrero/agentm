@@ -169,6 +169,15 @@ type Config struct {
 	// deciding to.
 	EnrichEnabled bool
 
+	// CrystallizeEnabled turns the weekly crystallize phase on.
+	//
+	// Its own switch rather than riding on EnrichEnabled, because it is the
+	// second job that spends and the two are turned on at different times: the
+	// batch was armed once the operator had read a supervised run, and this
+	// phase earns the same reading of its own. One switch for two spenders
+	// would mean arming the second by turning on the first.
+	CrystallizeEnabled bool
+
 	// EnrichModel is the model name enrichment passes to `claude -p`. A name,
 	// not a tier — tier qualification is earned by sampled audit against the
 	// strong tier, which is its own mechanism and not this pass's job.
@@ -305,26 +314,87 @@ type Options struct {
 // field.
 func (c *Config) loadRules(now time.Time) {
 	c.Rules = rules.NewHolder(c.VaultPath, now)
-	c.applyDampenedSpaces()
+	c.ApplyContractToRanking()
 }
 
-// applyDampenedSpaces pushes the contract's space list into the classifier.
+// ApplyContractToRanking pushes the contract's ranking lines into the classifier:
+// which areas damp, which spaces the contract does not govern, which areas are
+// walled from the corpus entirely, and the one decay curve both arms run.
 //
 // Done here rather than threaded through note.Parse because four call sites
 // parse notes and one of them is the self-probe, which has no configuration.
 // When the contract will not parse, nothing is dampened: that is the safe
 // direction, since the failure mode of dampening too little is a leak the
 // operator can see, and of dampening too much is an answer that never arrives.
-func (c *Config) applyDampenedSpaces() {
-	if loaded, err := c.Rules.Get(); err == nil {
-		note.SetDampenedSpaces(loaded.DampenedSpaces)
-		note.SetDecayExemptSpaces(loaded.ContractExemptSpaces)
-		note.SetAltitudeDampening(c.AltitudeEnabled)
-	} else {
+//
+// **The wall is the exception to that direction, and deliberately so.** A
+// contract that will not parse leaves the previously walled areas walled rather
+// than opening them: every other line here decides how loudly a note answers,
+// and this one decides whether the operator's certificates can reach a model at
+// all. A typo must not be able to open it.
+//
+// Exported because the health pass re-reads the contract on every status read,
+// and before this a re-read updated the held pointer while ranking kept the
+// values it took at boot — so an edit to `dampened_spaces` appeared to hot-reload
+// and did not.
+func (c *Config) ApplyContractToRanking() {
+	note.SetAltitudeDampening(c.AltitudeEnabled)
+	loaded, err := c.Rules.Get()
+	if err != nil {
 		note.SetDampenedSpaces(nil)
 		note.SetDecayExemptSpaces(nil)
-		note.SetAltitudeDampening(c.AltitudeEnabled)
+		note.SetDecayBands(0, 0, 0, 0, 0)
+		return
 	}
+	note.SetDampenedSpaces(loaded.DampenedSpaces)
+	note.SetDecayExemptSpaces(loaded.ContractExemptSpaces)
+	note.SetRecallExemptAreas(loaded.RecallExemptAreas)
+
+	// A curve read half from the contract and half from a constant is the drift
+	// this reads the contract to end, so all five lines are passed together and
+	// note.SetDecayBands falls the whole curve back to its default if they do
+	// not describe an ascending one.
+	full, _ := loaded.Threshold("decay_full_days")
+	half, _ := loaded.Threshold("decay_half_days")
+	eighth, _ := loaded.Threshold("decay_eighth_days")
+	floorDays, _ := loaded.Threshold("decay_floor_days")
+	floorWeight, _ := loaded.Threshold("decay_floor_weight")
+	note.SetDecayBands(full, half, eighth, floorDays, floorWeight)
+
+	// The night's project-activity readings, which are state rather than
+	// contract — read here because this is the one place the ranking's inputs
+	// are pushed, and a second push point is a second thing to forget.
+	note.SetProjectActivity(projectActivityReadings(c.EngineStateDir))
+
+	if v, ok := loaded.Threshold("importance_dampen_at_or_below"); ok {
+		note.SetImportanceDampenMax(int(v))
+	} else {
+		note.SetImportanceDampenMax(0)
+	}
+}
+
+// projectActivityReadings is the night's last reading of how much each project
+// is being worked, slug to multiplier.
+//
+// Read here rather than imported from the dreaming package: config sits below
+// dreaming in this repo's import order, and a ranking input is not worth
+// inverting that for. The file is small, its shape is two fields, and the
+// writer's own test pins the spelling.
+func projectActivityReadings(engineStateDir string) map[string]float64 {
+	if engineStateDir == "" {
+		return nil
+	}
+	blob, err := os.ReadFile(filepath.Join(engineStateDir, "project-activity.json"))
+	if err != nil {
+		return nil
+	}
+	var rec struct {
+		Activity map[string]float64 `json:"activity"`
+	}
+	if err := json.Unmarshal(blob, &rec); err != nil {
+		return nil
+	}
+	return rec.Activity
 }
 
 // defaultEmbedScope is the part of the vault the vector arm covers when the
@@ -583,6 +653,9 @@ func Load(opts Options) (*Config, error) {
 	}
 	if b, ok := raw["daemon.enrich_enabled"].(bool); ok {
 		c.EnrichEnabled = b
+	}
+	if b, ok := raw["daemon.crystallize_enabled"].(bool); ok {
+		c.CrystallizeEnabled = b
 	}
 	if s := strVal(raw, "daemon.enrich_model"); s != "" {
 		c.EnrichModel = s

@@ -142,6 +142,47 @@ class StorageRules:
         """Spaces whose files are documents rather than memories."""
         return list(self._data.get("contract_exempt_spaces") or [])
 
+    def dampened_spaces(self) -> list:
+        """Areas that rank quietly on an ordinary question.
+
+        An entry of one segment is a whole space; an entry with a slash is an
+        area — `agent/diagnostics` is the night's own paper, quieted without
+        quieting the memory classes beside it.
+        """
+        return list(self._data.get("dampened_spaces") or [])
+
+    def recall_exempt_areas(self) -> list:
+        """Areas never indexed, never embedded, never served to any surface.
+
+        The one wall in the contract. `dampened_spaces` lowers a rank and
+        `model_exempt_spaces` bars an unattended model call; an area named here
+        does not enter the corpus at all, so there is nothing to rank and
+        nothing to send — and foreground recall is covered too, which is what
+        makes it a wall rather than a weight.
+        """
+        return list(self._data.get("recall_exempt_areas") or [])
+
+    def lifecycle_overrides(self) -> dict:
+        """`{class: {threshold: days}}` — where a class ages on a different line
+        from the one `thresholds` sets. `episodic` today."""
+        return dict(self._data.get("lifecycle_overrides") or {})
+
+    def lifecycle_threshold(self, cls: str, name: str):
+        """One threshold for one class: the class's own override when
+        `lifecycle_overrides` names it, else the shared `thresholds` value, else
+        None — and None means the contract does not say, which is different from
+        the contract saying zero."""
+        override = self.lifecycle_overrides().get(cls) or {}
+        if name in override:
+            return override[name]
+        return self.thresholds().get(name)
+
+    def retention(self) -> dict:
+        """`{what: days}` — how long the night keeps its own paper before it
+        deletes it. The only place besides the memory classes where a pass
+        deletes, and it deletes only what it wrote."""
+        return dict(self._data.get("retention") or {})
+
     def warrants(self) -> dict:
         """`{memory_type: {query_class, nearest, why_not}}` — the growth rule's
         evidence. A type added to `memory_types` carries one; the gate checks it
@@ -221,11 +262,31 @@ def _ask(args: list) -> dict:
         raise StorageRulesError(detail)
 
     try:
-        return json.loads(proc.stdout)
+        answer = json.loads(proc.stdout)
     except ValueError as exc:
         raise StorageRulesError(
             f"{DAEMON_BIN} answered with something that is not JSON: {exc}"
         ) from exc
+
+    # It parsed, but is it a contract? Refuse anything that does not carry the
+    # two registers every contract has, rather than wrapping it and letting a
+    # caller find out by asking whether `preference` is a memory type and being
+    # told no.
+    #
+    # The failure this is written against is real and was not theoretical: a
+    # test that fakes the daemon by patching `subprocess.run` answers *every*
+    # invocation with its canned search payload, so the moment a hot path
+    # started reading the contract, `{"results": [...]}` came back here, was
+    # cached as the contract for the rest of the process, and forty modules
+    # later an unrelated suite failed because its register read empty. An
+    # answer with no registers in it is not a contract, whatever produced it.
+    if not isinstance(answer, dict) or not answer.get("classes") or not answer.get("memory_types"):
+        shape = ", ".join(sorted(answer)[:6]) if isinstance(answer, dict) else type(answer).__name__
+        raise StorageRulesError(
+            f"{DAEMON_BIN} answered with something that is not a filing contract "
+            f"(no `classes`/`memory_types`; it carried: {shape or 'nothing'})"
+        )
+    return answer
 
 
 def load(*, vault_path=None) -> StorageRules:
@@ -284,6 +345,19 @@ def is_memory(frontmatter: dict) -> bool:
 # ── module-level convenience, for the consumers ────────────────────────────
 
 _CACHE = None
+# What the cached answer was resolved from. The daemon's own resolution order
+# begins with `$AGENTM_STORAGE_RULES`, so a process in which that variable
+# changes is a process in which the cache is answering about a different file.
+_CACHE_KEY = None
+
+
+def _resolution_key() -> tuple:
+    """The inputs the daemon resolves the contract from, as a cache key.
+
+    `$AGENTM_STORAGE_RULES` picks the file; `DAEMON_BIN` picks the parser that
+    reads it. Either one moving means the cached answer is about something else.
+    """
+    return (os.environ.get("AGENTM_STORAGE_RULES"), DAEMON_BIN)
 
 
 def rules(*, refresh: bool = False) -> StorageRules:
@@ -292,10 +366,22 @@ def rules(*, refresh: bool = False) -> StorageRules:
     Cached because the enum consumers ask per note, and spawning a subprocess
     16,000 times in a lint pass is not a design. `refresh=True` re-asks, which is
     what a long-running pass does when the watcher sees the rules file change.
+
+    **The cache is keyed on what it was resolved from**, which it was not until
+    the axis-per-space landing. The cache is process-wide, and the first caller
+    to ask fills it — so a process that pointed `$AGENTM_STORAGE_RULES` at one
+    contract, asked, and then pointed it at another went on answering from the
+    first. That is invisible in ordinary use, where nothing moves the variable,
+    and it surfaced the moment a hot path started reading the contract: the unit
+    suite began failing in modules that had nothing to do with the change, with
+    a register that read empty because a fixture contract from forty modules
+    earlier was still cached.
     """
-    global _CACHE
-    if _CACHE is None or refresh:
+    global _CACHE, _CACHE_KEY
+    key = _resolution_key()
+    if _CACHE is None or refresh or key != _CACHE_KEY:
         _CACHE = load()
+        _CACHE_KEY = key
     return _CACHE
 
 
@@ -358,6 +444,70 @@ def in_space(rel, spaces) -> bool:
         rel = rel[2:]
     first = rel.split("/", 1)[0].lower()
     return any(first == str(s).strip().strip("/").lower() for s in spaces)
+
+
+def in_area(rel, areas) -> bool:
+    """Whether a vault-relative path sits inside one of `areas`.
+
+    An area is a path from the vault root — `personal`, or `personal/Home/
+    Important Docs` — matching that directory and everything under it, segment
+    by segment and without case. Segment-wise rather than by string prefix, so
+    `personal/Homework` is not read as sitting inside `personal/Home`: a wall
+    with a near-miss in it is worse than no wall, because it reads as one.
+
+    `in_space` stays as it is for the lists that genuinely name spaces. The Go
+    arm carries the same rule as `rules.InArea`, and the parity test drives one
+    table through both.
+    """
+    if not areas:
+        return False
+    parts = _area_segments(rel)
+    if not parts:
+        return False
+    for area in areas:
+        want = _area_segments(area)
+        if not want or len(want) > len(parts):
+            continue
+        if all(a == b for a, b in zip(parts, want)):
+            return True
+    return False
+
+
+def _area_segments(rel) -> list:
+    """A path's non-empty segments, lower-cased. Both sides of every comparison
+    run through it, so a contract entry and a vault path normalize the same way
+    exactly once."""
+    rel = str(rel).replace("\\", "/")
+    if rel.startswith("./"):
+        rel = rel[2:]
+    return [p.strip().lower() for p in rel.split("/") if p.strip() not in ("", ".")]
+
+
+# What the wall falls back to when the contract cannot be read at all.
+#
+# Every other contract read in this module fails open, because the failure mode
+# of a missing rule is an answer that ranks oddly. This one is different: it
+# decides whether the operator's certificates and recovery codes can reach a
+# model, and the arm that reads it is the *fallback* engine — the one that runs
+# precisely when the daemon is missing, which is also when the contract cannot
+# be read. Failing open there would open the wall on exactly the machine state
+# it has to survive.
+#
+# Failing fully closed is not the answer either: "every path is walled" would
+# black out the whole corpus the moment a binary went missing. So it falls back
+# to the shipped contract's own list, mirrored here. `test_recall_wall.py` pins
+# this against the packaged default, so the two cannot drift.
+_FALLBACK_RECALL_EXEMPT_AREAS = ("personal/Home/Important Docs",)
+
+
+def is_recall_exempt(rel) -> bool:
+    """Whether a path is walled from recall entirely — never indexed, never
+    embedded, never served to any surface."""
+    try:
+        areas = rules().recall_exempt_areas()
+    except Exception:
+        areas = list(_FALLBACK_RECALL_EXEMPT_AREAS)
+    return in_area(rel, areas)
 
 
 def may_read_with_model(rel) -> bool:

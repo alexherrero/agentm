@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """The governance lanes (filing v2 part 6, task 2).
 
-A transition edits `lifecycle:` in place and journals who moved it; the
-policy sinks the silent to `dormant` and lifts the recalled back, under a
-cap; `archived` is unreachable except through a confirm surface — the
-operator's own hand, since the dream cycle's archive proposal retired in
-agentm-vault plan 04; pinned and superseded never move by policy; the
-scorecard carries the line.
+A transition edits `lifecycle:` and journals who moved it; the policy sinks
+the silent to `dormant` and lifts the recalled back, under a cap; `archived`
+is unreachable except through a confirm surface — the operator's own hand,
+since the dream cycle's archive proposal retired in agentm-vault plan 04;
+pinned and superseded never move by policy; the scorecard carries the line.
+
+Since plan 11, the archive lane also moves the file: `→ archived` writes the
+note at `archive/<its class path>` and `archived → active` writes it back, in
+the same act that writes the field. Every other lane is still in place.
 """
 from __future__ import annotations
 
@@ -115,7 +118,8 @@ class OneTransition(_Vault):
         e = lt.transition(self.vault, rel, "dormant", actor="policy", reason="silent", now=NOW, run_id="r1", rules=self.rules)
         self.assertTrue(e["changed"])
         self.assertEqual(self._state(rel), "dormant")
-        self.assertTrue((self.vault / rel).exists(), "files never move for lifecycle")
+        self.assertTrue((self.vault / rel).exists(),
+                        "only the archive lane moves a file; `dormant` is in place")
         self.assertEqual(sorted(p.name for p in (self.vault / "memory/semantic").iterdir()), ["a.md"])
         j = self._journal()
         self.assertEqual(len(j), 1)
@@ -145,8 +149,106 @@ class OneTransition(_Vault):
         for actor in lt.CONFIRMED_ACTORS:
             rel2 = self._note(f"b-{actor}", lifecycle="dormant")
             lt.transition(self.vault, rel2, "archived", actor=actor, now=NOW, rules=self.rules)
-            self.assertEqual(self._state(rel2), "archived")
+            # The note is read where the archive lane put it. Same assertion as
+            # before plan 11 — the state the confirm surface wrote — against the
+            # path the move now gives it.
+            self.assertEqual(self._state(lt.archive_destination(rel2)), "archived")
         self.assertEqual([e["actor"] for e in self._journal()], list(lt.CONFIRMED_ACTORS))
+
+
+class TheArchiveLane(_Vault):
+    """Archiving moves the note; reviving moves it back.
+
+    Filing v2 said archive never by moving. Session 5 of the vault-perfection
+    series reversed that: Obsidian resolves links by basename, so a moved note
+    is still found by every link that named it, and what the move buys is the
+    eyeline the frontmatter field never gave — the class folders hold what is
+    alive, one folder holds what is not.
+    """
+
+    def test_archiving_moves_the_note_and_says_where(self):
+        rel = self._note("a", lifecycle="dormant")
+        e = lt.transition(self.vault, rel, "archived", actor="operator", now=NOW, rules=self.rules)
+
+        dest = "archive/memory/semantic/a.md"
+        self.assertFalse((self.vault / rel).exists(), "the note is still in its class folder")
+        self.assertTrue((self.vault / dest).exists(), f"nothing at {dest}")
+        self.assertEqual(self._state(dest), "archived")
+        self.assertEqual(e["moved_to"], dest)
+        # The journal's `rel` stays where the note came from, so a reader
+        # following the axis backwards can see the path it left.
+        self.assertEqual(self._journal()[0]["rel"], rel)
+        self.assertEqual(self._journal()[0]["moved_to"], dest)
+
+    def test_reviving_puts_it_back_in_its_class_folder_active(self):
+        rel = self._note("a", lifecycle="dormant")
+        lt.transition(self.vault, rel, "archived", actor="operator", now=NOW, rules=self.rules)
+
+        e = lt.revive(self.vault, "a", now=NOW)
+
+        self.assertTrue((self.vault / rel).exists(), "the note did not come back")
+        self.assertFalse((self.vault / "archive/memory/semantic/a.md").exists())
+        self.assertEqual(self._state(rel), "active")
+        self.assertEqual(e["actor"], "operator")
+        self.assertEqual([j["to"] for j in self._journal()], ["archived", "active"])
+
+    def test_reviving_a_slug_nothing_archived_carries_says_where_else_to_look(self):
+        with self.assertRaises(FileNotFoundError) as caught:
+            lt.revive(self.vault, "never-existed")
+        self.assertIn("--deep", str(caught.exception),
+                      "the refusal should point at the search that reads the "
+                      "deletion manifests and git")
+
+    def test_a_note_already_in_the_archive_is_not_moved_twice(self):
+        rel = self._note("a", lifecycle="dormant")
+        lt.transition(self.vault, rel, "archived", actor="operator", now=NOW, rules=self.rules)
+        dest = "archive/memory/semantic/a.md"
+        # Asking again is a no-op, not a second nesting level.
+        e = lt.transition(self.vault, dest, "archived", actor="operator", now=NOW, rules=self.rules)
+        self.assertFalse(e["changed"])
+        self.assertFalse((self.vault / "archive/archive").exists())
+
+    def test_an_archived_file_whose_field_disagrees_is_not_nested_deeper(self):
+        """The case the no-op above cannot reach.
+
+        A hand edit of `lifecycle:` is an expected act — the design counts one
+        as a touch — so a file can sit in `archive/` reading `dormant`. Asked to
+        archive it, the lane has real work to do (the field is wrong) and no
+        move to make (the file is already there). Without the guard it would
+        land at `archive/archive/memory/...`, one level deeper every time.
+        """
+        p = self.vault / "archive/memory/semantic/a.md"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("---\ntitle: a\nkind: reference\nstatus: active\nslug: a\n"
+                     "lifecycle: dormant\n---\n\nA plain body.\n", encoding="utf-8")
+
+        e = lt.transition(self.vault, "archive/memory/semantic/a.md", "archived",
+                          actor="operator", now=NOW, rules=self.rules)
+
+        self.assertTrue(e["changed"], "the disagreeing field was not corrected")
+        self.assertNotIn("moved_to", e, "a note already in the archive was moved")
+        self.assertTrue(p.exists(), "the note left its archive path")
+        self.assertFalse((self.vault / "archive/archive").exists())
+        self.assertEqual(self._state("archive/memory/semantic/a.md"), "archived")
+
+    def test_a_collision_refuses_rather_than_overwriting(self):
+        rel = self._note("a", lifecycle="dormant")
+        squatter = self.vault / "archive/memory/semantic/a.md"
+        squatter.parent.mkdir(parents=True, exist_ok=True)
+        squatter.write_text("---\ntitle: someone else\n---\n\nnot yours\n", encoding="utf-8")
+
+        with self.assertRaises(FileExistsError):
+            lt.transition(self.vault, rel, "archived", actor="operator", now=NOW, rules=self.rules)
+        self.assertTrue((self.vault / rel).exists(), "the source was removed anyway")
+        self.assertIn("not yours", squatter.read_text(encoding="utf-8"))
+
+    def test_the_summary_still_counts_an_archived_note(self):
+        """Both trees are walked. A summary that read only `memory/` would
+        report the corpus shrinking as notes were filed."""
+        rel = self._note("a", lifecycle="dormant")
+        before = len(list(lt.memory_notes(self.vault)))
+        lt.transition(self.vault, rel, "archived", actor="operator", now=NOW, rules=self.rules)
+        self.assertEqual(len(list(lt.memory_notes(self.vault))), before)
 
 
 class ThePolicy(_Vault):

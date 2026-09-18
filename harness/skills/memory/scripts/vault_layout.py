@@ -185,6 +185,33 @@ def sidecar_path(root, name: str) -> Path:
     return _resolve(sidecar_candidates(root, name))
 
 
+def vault_rel(path, root) -> str:
+    """A path rendered from the **vault root**, in POSIX form.
+
+    The one spelling the sidecars key on, and the one the daemon already uses
+    for every row it writes. `root` here is the *memory* root — the directory
+    this module's other helpers take — and a note in the sibling `projects/`
+    space is outside it, which is exactly why the key cannot be memory-root
+    relative: `../projects/x.md` and `projects/x.md` are the same note, and a
+    clock keyed on the first would be invisible to the arm that writes the
+    second.
+
+    A flat vault is both roots at once, and the two spellings then agree.
+    """
+    root = Path(root)
+    try:
+        vault_root = vault_root_candidates(root)[0]
+    except Exception:
+        vault_root = root
+    p = Path(path)
+    if not p.is_absolute():
+        p = root / p
+    try:
+        return p.resolve().relative_to(Path(vault_root).resolve()).as_posix()
+    except (ValueError, OSError):
+        return str(path).replace("\\", "/")
+
+
 def registry_candidates(root) -> list[Path]:
     return [engine_state.engine_state_dir() / "repos.json",
             Path(root) / "_meta" / "repos.json"]

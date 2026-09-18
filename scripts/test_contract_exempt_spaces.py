@@ -167,10 +167,15 @@ class DecayExemption(_Base):
             self.root, "lesson", fm, "agent/memory/semantic/lesson.md", now="2026-08-20")
         self.assertLess(score, 1.0)
 
-    def test_the_stepped_curve_exempts_it_too(self):
+    def test_the_exemption_is_read_before_the_curve_not_after_it(self):
+        """There used to be two curves here and this asserted the second one
+        exempted the space as well. There is one now — the contract's, read by
+        both arms — so what is left to assert is that the exemption is checked
+        before any curve runs at all: a note ten years silent in an exempt space
+        scores 1.0 whatever the bands say."""
         fm = {"created": "2016-05-28", "updated": "2016-12-11"}
-        score = lifecycle.compute_decay_score_stepped(
-            self.root, "lesson", fm, "personal/Church/lesson.md", now="2026-08-20")
+        score = lifecycle.compute_decay_score(
+            self.root, "lesson", fm, "personal/Church/lesson.md", now="2036-08-20")
         self.assertEqual(score, 1.0)
 
 

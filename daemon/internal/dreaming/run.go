@@ -11,6 +11,7 @@ import (
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -50,8 +51,19 @@ type Report struct {
 	Refile   RefilePlan    `json:"refile"`
 	Promote  PromotePlan   `json:"promote"`
 	Calendar CalendarPlan  `json:"calendar"`
-	Mocs     MocsPlan      `json:"mocs"`
-	Dates    DatesPlan     `json:"dates"`
+	// The three free jobs the axis added, and the night's own record of itself.
+	Retain    RetainPlan    `json:"retain"`
+	Sequence  SequencePlan  `json:"sequence"`
+	Reconcile ReconcilePlan `json:"reconcile"`
+	Projects  ProjectsPlan  `json:"projects"`
+	Facet     FacetPlan     `json:"facet"`
+	// SkippedByHandMove is every file an intent could not be applied to because
+	// it had moved since the plan read it. Named in the dreaming facet rather
+	// than swallowed: the reconcile step at the end of the same night is what
+	// repairs them, and a repair nobody can see is indistinguishable from a loss.
+	SkippedByHandMove []string  `json:"skipped_by_hand_move,omitempty"`
+	Mocs              MocsPlan  `json:"mocs"`
+	Dates             DatesPlan `json:"dates"`
 	// The report-only checks: nothing below mutates a note.
 	Vocabulary VocabularyReport `json:"vocabulary"`
 	Trends     TrendReport      `json:"trends"`
@@ -59,9 +71,13 @@ type Report struct {
 	Applied    int              `json:"applied"`
 	Skipped    int              `json:"skipped"`
 	Outcome    string           `json:"outcome"`
-	Refused    string           `json:"refused,omitempty"`
-	Root       string           `json:"root,omitempty"`
-	seq        int
+	// DeletionManifest is where the record of tonight's deletions was written,
+	// before the files went. Empty when nothing was deleted; a pass that could
+	// not write it deletes nothing, and says so by leaving this empty.
+	DeletionManifest string `json:"deletion_manifest,omitempty"`
+	Refused          string `json:"refused,omitempty"`
+	Root             string `json:"root,omitempty"`
+	seq              int
 }
 
 // ErrRefused is returned (with a Report) when the pass could not take its
@@ -180,6 +196,20 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	rep.Plan = plan
 	intents = append(intents, plan.Intents...)
 	if opt.Apply {
+		// The manifest, before the files go. A deletion with no record is what
+		// the retired doctrine — "no policy outcome ever deletes a memory" —
+		// was protecting against, and it is still refused: if the record cannot
+		// be written, the deletions are dropped and the rest of the pass runs.
+		if rows := DeletionRows(root, intents, plan.Deleted); len(rows) > 0 {
+			manifest, mErr := WriteDeletionManifest(root, runID, rows, now)
+			if mErr != nil || manifest == "" {
+				intents = withoutDeletions(intents)
+				rep.Plan.Deleted = nil
+				rep.DeletionManifest = ""
+			} else {
+				rep.DeletionManifest = manifest
+			}
+		}
 		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
@@ -274,6 +304,90 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		return rep, err
 	}
 	version := PassVersion(contract)
+	// The retention sweep. Last of the mutating jobs, and separate from the
+	// lifecycle one: it deletes the night's own paper rather than a memory, on
+	// the contract's `retention:` lines, and it takes the same manifest-first
+	// rule every other deletion on the axis takes.
+	retain, err := PlanRetain(root, contract, now, opt.Cap)
+	if err != nil {
+		return rep, err
+	}
+	rep.Retain = retain
+	if opt.Apply && len(retain.Intents) > 0 {
+		rows := DeletionRows(root, retain.Intents, nil)
+		for i := range rows {
+			rows[i].Days = 0
+		}
+		manifest, mErr := WriteDeletionManifest(root, runID, rows, now)
+		if mErr != nil || manifest == "" {
+			rep.Retain.Removed = nil
+		} else {
+			if rep.DeletionManifest == "" {
+				rep.DeletionManifest = manifest
+			}
+			if err := applyAll(journal, root, runID, retain.Intents, now, opt.Pace, &rep); err != nil {
+				return rep, err
+			}
+		}
+	}
+
+	// The numbering. Its first run is a supervised data run, not a nightly one —
+	// see PlanSequence — so it plans every night and applies only what it is
+	// allowed to.
+	sequence, err := PlanSequence(root, ProjectsRoot(root), now, opt.Cap)
+	if err != nil {
+		return rep, err
+	}
+	rep.Sequence = sequence
+	if opt.Apply && len(sequence.Intents) > 0 {
+		if err := applyAll(journal, root, runID, sequence.Intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+	}
+
+	// The projects space: each project's activity, and what has finished.
+	//
+	// Read before reconcile so a record this pass moved to `completed/` is one
+	// reconcile can pair rather than one it reports as vanished.
+	projects, err := PlanProjects(root, note.NewAccessLog(cfg.EngineStateDir, root), now, opt.Cap)
+	if err != nil {
+		return rep, err
+	}
+	rep.Projects = projects
+	if len(projects.Activity) > 0 {
+		// Written whether or not this is an apply pass: the reading is a
+		// measurement, not a mutation, and the daemon's ranking should not wait
+		// on a night that happened to be reporting.
+		_ = WriteActivity(cfg.EngineStateDir, projects.Activity, now)
+	}
+	if completed, err := PlanCompleted(root, ClosedTasks(root), DoneProjects(root), now, opt.Cap); err == nil {
+		rep.Projects.Moved = append(rep.Projects.Moved, completed.Moved...)
+		projects.Intents = append(projects.Intents, completed.Intents...)
+	}
+	if opt.Apply && len(projects.Intents) > 0 {
+		if err := applyAll(journal, root, runID, projects.Intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+	}
+
+	// Reconcile, last, so it sees every hand move including the ones this pass
+	// tripped over. It repairs the engine's record of where a note is; it writes
+	// no note.
+	if known, err := KnownFingerprints(cfg.EngineStateDir, root); err == nil {
+		if onDisk, err := FingerprintsOnDisk(root); err == nil {
+			rep.Reconcile = PlanReconcile(known, onDisk, nil, now)
+		}
+	}
+
+	// The night's own record of itself, written from what it actually did.
+	facet := PlanDreamingFacet(root, contract, &rep, now)
+	rep.Facet = facet
+	if opt.Apply && len(facet.Intents) > 0 {
+		if err := applyAll(journal, root, runID, facet.Intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+	}
+
 	if rep.Reclassify, err = Reclassify(root, contract, version, st.LastPassVersion, ReclassifySample(contract), 0, opt.Reclassify); err != nil {
 		return rep, err
 	}
@@ -308,6 +422,19 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 // journal so both layers keep one record — Commit writes that line itself,
 // before the applied line, so a crash anywhere leaves a state Resolve can
 // finish.
+// withoutDeletions drops every deletion from a plan, leaving the rest of it to
+// run. The one caller is the manifest failure above.
+func withoutDeletions(intents []Intent) []Intent {
+	out := intents[:0:0]
+	for _, in := range intents {
+		if in.Delete {
+			continue
+		}
+		out = append(out, in)
+	}
+	return out
+}
+
 func applyAll(journal *Journal, root, runID string, intents []Intent, now time.Time, pace time.Duration, rep *Report) error {
 	for _, in := range intents {
 		rep.seq++
@@ -318,6 +445,12 @@ func applyAll(journal *Journal, root, runID string, intents []Intent, now time.T
 		}
 		if kind == KindSkipped {
 			rep.Skipped++
+			// The per-write re-check, and what it is for. The journal refuses an
+			// intent whose target no longer hashes as the plan read it, which is
+			// exactly a file the operator moved or edited between the plan and
+			// the write. Named here so the facet can say so and the reconcile
+			// step can repair it at the end of the same night.
+			rep.SkippedByHandMove = append(rep.SkippedByHandMove, in.Rel)
 		} else {
 			rep.Applied++
 		}

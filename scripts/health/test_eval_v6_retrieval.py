@@ -40,36 +40,6 @@ def _write_query_set(path: Path) -> None:
     }), encoding="utf-8")
 
 
-class TestSteppedDecayCurveContextManager(unittest.TestCase):
-    def test_swaps_and_restores_on_normal_exit(self):
-        original = lifecycle.compute_decay_score
-        with ev._stepped_decay_curve():
-            self.assertIs(lifecycle.compute_decay_score, lifecycle.compute_decay_score_stepped)
-        self.assertIs(lifecycle.compute_decay_score, original)
-
-    def test_restores_even_on_exception(self):
-        original = lifecycle.compute_decay_score
-        with self.assertRaises(ValueError):
-            with ev._stepped_decay_curve():
-                self.assertIs(lifecycle.compute_decay_score, lifecycle.compute_decay_score_stepped)
-                raise ValueError("boom")
-        self.assertIs(lifecycle.compute_decay_score, original)
-
-    def test_new_formula_top_k_with_stepped_decay_wraps_the_swap(self):
-        calls = []
-
-        def fake_new_formula_top_k(vault, query_text, k=5):
-            calls.append(lifecycle.compute_decay_score is lifecycle.compute_decay_score_stepped)
-            return ["x.md"]
-
-        original = lifecycle.compute_decay_score
-        with mock.patch.object(ev, "_new_formula_top_k", fake_new_formula_top_k):
-            result = ev._new_formula_top_k_with_stepped_decay(Path("/nonexistent"), "q", k=5)
-        self.assertEqual(result, ["x.md"])
-        self.assertEqual(calls, [True])  # curve was swapped DURING the call
-        self.assertIs(lifecycle.compute_decay_score, original)  # and restored after
-
-
 class TestRunEvalInjectableTopKFns(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -131,10 +101,16 @@ _FAKE_RESULT = {
 }
 
 
-class TestDecayCurveCLIDispatch(unittest.TestCase):
-    """Verifies main() selects the right top_k_fn pair without ever running
-    a real query — run_eval() itself is mocked out entirely, so no
-    recall.py dependency is needed for these CLI-dispatch tests."""
+class TestCLIDispatch(unittest.TestCase):
+    """Verifies main() reaches run_eval with the default top_k_fn pair
+    without ever running a real query — run_eval() itself is mocked out
+    entirely, so no recall.py dependency is needed here.
+
+    The `--decay-curve stepped` half of this class retired with the mode
+    itself: it compared the live exponential curve against the shadow
+    stepped one, and there is one curve now, read from the contract by both
+    arms. A gate that compares a thing to itself cannot fail; the parity
+    that replaced it is scripts/test_decay_curve_parity.py."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -150,41 +126,6 @@ class TestDecayCurveCLIDispatch(unittest.TestCase):
             ev.main(["--vault-path", str(self.vault), "--query-set", str(self.query_set)])
         _, kwargs = spy.call_args
         self.assertEqual(kwargs, {})  # no override kwargs passed -> defaults apply
-
-    def test_stepped_mode_selects_the_decay_curve_pair(self):
-        with mock.patch.object(ev, "run_eval", return_value=dict(_FAKE_RESULT)) as spy:
-            ev.main([
-                "--vault-path", str(self.vault), "--query-set", str(self.query_set),
-                "--decay-curve", "stepped",
-            ])
-        _, kwargs = spy.call_args
-        self.assertIs(kwargs["old_top_k_fn"], ev._new_formula_top_k)
-        self.assertIs(kwargs["new_top_k_fn"], ev._new_formula_top_k_with_stepped_decay)
-
-    def test_stepped_mode_never_regresses_when_curves_are_functionally_identical(self):
-        # If the two top-k functions happen to return the same results (the
-        # honest case when a vault has no lifecycle sidecar history at all,
-        # so both curves fall back to the same "no basis, fully fresh"
-        # 1.0 score), the gate must not report a regression.
-        # This exercises the real (unmocked) run_eval(), so the query set's
-        # expected_notes paths must actually exist under the tmp vault —
-        # otherwise the expected-files-missing fail-loud check (below) fires
-        # first, which is a different, correctly-triggered behavior, not the
-        # regression this test targets.
-        (self.vault / "a.md").touch()
-        (self.vault / "b.md").touch()
-        (self.vault / "c.md").touch()
-
-        def same(vault, query_text, k=5):
-            return ["a.md"] if query_text == "alpha" else ["b.md", "c.md"]
-
-        with mock.patch.object(ev, "_new_formula_top_k", same), \
-             mock.patch.object(ev, "_new_formula_top_k_with_stepped_decay", same):
-            exit_code = ev.main([
-                "--vault-path", str(self.vault), "--query-set", str(self.query_set),
-                "--decay-curve", "stepped",
-            ])
-        self.assertEqual(exit_code, 0)
 
 
 class TestExpectedNotesExistenceCheck(unittest.TestCase):

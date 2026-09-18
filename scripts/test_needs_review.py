@@ -318,5 +318,32 @@ from engine_state_isolation import isolate_module  # noqa: E402
 isolate_module(globals())
 
 
+
+class TheForwardLists(unittest.TestCase):
+    """The morning note carries a count and the first five of each; this page is
+    where the rest of them are."""
+
+    def test_both_lists_are_carried_in_full(self):
+        forward = {
+            "sinking_within_30_days": [
+                {"rel": f"memory/semantic/n{i}.md", "days": 350 + i} for i in range(9)
+            ],
+            "archiving_within_30_days": [{"rel": "memory/semantic/cold.md", "days": 1815}],
+        }
+        text = needs_review.render([], created="2026-09-18", today="2026-09-18",
+                                   forward=forward)
+        self.assertIn("## Sinking within 30 days (9)", text)
+        self.assertIn("## Archiving within 30 days (1)", text)
+        # All nine, not the morning note's five.
+        for i in range(9):
+            self.assertIn(f"[[n{i}]]", text)
+        self.assertIn("1,815 days silent", text)
+
+    def test_an_empty_list_writes_no_heading(self):
+        text = needs_review.render([], created="2026-09-18", today="2026-09-18", forward={})
+        self.assertNotIn("Sinking within 30 days", text)
+        self.assertNotIn("Archiving within 30 days", text)
+
+
 if __name__ == "__main__":
     unittest.main()

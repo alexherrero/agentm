@@ -75,6 +75,10 @@ type BatchReport struct {
 	ModelCalls int `json:"model_calls"`
 	// Usage is what each tier spent, from the calls' own envelopes.
 	Usage map[string]Usage `json:"usage,omitempty"`
+	// ByJob is the same spend split by the tier table's job name, so the
+	// morning note can say what the deep pass cost beside what the light one
+	// did rather than reporting one number for the night.
+	ByJob map[string]Usage `json:"by_job,omitempty"`
 	// Tokens is the night's total across tiers.
 	Tokens int64 `json:"tokens"`
 	// TotalCostUSD is the night's cost as the calls reported it. The field
@@ -312,6 +316,7 @@ func (r *BatchReport) fillUsage(m *Meter) {
 		return
 	}
 	r.Usage = m.ByTier()
+	r.ByJob = m.ByJob()
 	total := m.Total()
 	r.ModelCalls = total.Calls
 	r.Tokens = total.Tokens()

@@ -32,6 +32,10 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | See what the heat-based always-load policy would demote or promote (never applies without `--apply`) | `/memory heat-policy` |
 | Print the context payload to paste into claude.ai or the Gem, or regenerate the copies derived from it | `/memory payload` |
 | Check the vault for orphans, broken links, contradictions, and a per-note quality score — on demand (the nightly dream cycle also reports it) | `/memory lint` |
+| Ask for the lesson a repetition taught, now, instead of waiting for the weekly phase | `/memory crystallize` |
+| Bring an archived note back to its class folder, active, with its clock reset | `/memory revive` |
+| Keep a note out of the lifecycle entirely — never decays, never sinks | `/memory pin` |
+| Find a note that is not live any more: the archive, the deletion manifests, git | `/memory search --deep` |
 
 Auto-recall happens via the [SessionStart + UserPromptSubmit hooks](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault/parts/recall-loop.md) — operators don't invoke a recall command directly. Reflection happens automatically via Stop + idle hooks too; the manual `/memory reflect` is for one-off runs against arbitrary transcripts.
 
@@ -1179,20 +1183,130 @@ points a surface at a mailbox that does not exist.
 
 ### `/memory search`
 
-> [!NOTE]
-> **Status**: stub. Full body lands in plan #7a **part 2** (`recall-loop`) where the recall engine is built. See `.harness/designs/memoryvault/queued-plans/recall-loop.PLAN.md` for the queued plan.
-
-Manual semantic query against the vault — the read primitive that complements `/memory save`'s write. Useful when the automatic recall (via UserPromptSubmit hook) didn't surface what you wanted, or when you want to inspect what's in the vault without re-loading via a session prompt.
-
-Calls the same recall engine the UserPromptSubmit hook uses: a BM25 walk over the corpus with frontmatter filtering, rank-normalized via RRF, deduped, returning top-K (K=5 default). On a daemon-backed machine the hook asks `agentmd` first and only falls back to this engine.
-
-**Planned invocation shape** (subject to refinement in plan #7a part 2):
+Manual query against the vault — the read primitive that complements `/memory save`'s write. Useful when automatic recall (the UserPromptSubmit hook) did not surface what you wanted, or when you want to look at the corpus without spending a session prompt on it.
 
 ```
-/memory search <query> [--group <group>] [--include-inbox] [--top-k <N>]
+/memory search <query> [-k N] [--include-archive] [--filter 'tag=x AND project=y']
 ```
 
-Default behavior: query against all groups; exclude `_inbox/`; return top-5 results.
+Which runs:
+
+```bash
+python3 harness/skills/memory/scripts/recall.py query "<query>" -k 5
+```
+
+The same engine the hook uses: a BM25 walk with frontmatter filtering, rank-merged through RRF, deduped, top-5 by default. On a daemon-backed machine the hook asks `agentmd` first and falls back to this engine. `_inbox/` is excluded unless you pass `--include-inbox`; archived notes are excluded unless you pass `--include-archive`, which is the explicit archive query.
+
+#### `--deep`
+
+A different question: *where did that note go?* Ordinary search is about what is live. `--deep` looks in the three places a note goes when it stops being live, in order of how much of it is left.
+
+```
+/memory search --deep <query>
+```
+
+Which runs:
+
+```bash
+python3 harness/skills/memory/scripts/deep_search.py "<query>" --vault <memory-root>
+```
+
+1. **The archive** — `archive/memory/<class>/<slug>.md`, where the night moves a note past the contract's `archive_after_days`. Still a file, still readable; it left everyday search and nothing else.
+2. **The deletion manifests** — `diagnostics/migrations/purge/<stamp>/manifest.json`, the row the night writes *before* it deletes anything, carrying the path, the title, how many silent days it had and the SHA-256 of what went. Every deletion has its manifest first; this reads that rule back.
+3. **The vault's git history** — for a note the manifests name, the commit that deleted it and the exact `git show` that prints the file as it last stood. The manifest says the note existed; git is where it still does.
+
+A query that finds nothing in all three is a real answer: the note was never in this vault under that name. Deep search matches on *all* the words you give it and does not rank — "where did it go" is not a relevance question.
+
+### `/memory crystallize`
+
+Runs the weekly crystallize phase on request, over what you point it at.
+
+A crystallized note is a hard-learned lesson: something that proved itself over
+time, across more than one task or more than one card, that you would keep after
+every card it came from has aged out. Nothing else in the system writes one — a
+session closing a task has the task in context but not the time axis, and the
+nightly pass reads one card at a time. The phase runs weekly on its own (the
+`crystallize-weekly` runner job); this is the same phase, aimed.
+
+```
+/memory crystallize [<topic>] [--dry-run]
+```
+
+Which runs:
+
+```bash
+agentmd crystallize --topic "<topic>" --json
+```
+
+**What it reads:** the Outcomes of closed tasks, the candidate lines the session
+traces accumulate, and the cards sharing a `project:` or a subject.
+
+**The bar, before any model is asked:** the same mechanism, failure or method in
+at least **three** sources, across at least **two** sessions, at least **seven
+days apart**. A recurrence that misses is reported with the leg it missed and
+costs nothing. Only what clears the bar reaches a model, on the strong tier the
+tier table pins — a bad lesson lands in the decay-exempt layer, where nothing
+ages it out.
+
+**What it writes:** one `memory/crystallized/<subject>.md` per lesson, with
+`consolidated_from` naming every source and `why` written from the recurrence it
+found, and `project:` when the lesson belongs to one project. Each source card
+is then stamped `consolidated_into: "[[<lesson>]]"`, which drops it to ×0.30 in
+both ranking arms — the things that taught a lesson should not crowd the lesson
+out of recall. The sources stay where they are, so a query naming the specific
+case still finds the card, below the lesson.
+
+**It may answer nothing, and that is the common case.** Three notes sharing a
+word are not a lesson; the model is asked to say so rather than to write one
+anyway.
+
+**`--dry-run` costs nothing**: it finds the recurrences, prints the near misses
+with the bar-leg each missed, makes no model call and writes no file. Use it
+before turning the weekly job on.
+
+**Spending.** This is the second job in the system that spends, after the
+nightly enrichment batch. It refuses unless `daemon.crystallize_enabled` is on
+(`agentm_config.py --crystallize-enabled true`) or you pass `--yes` for one
+pass. The morning note gives it its own spend line, and the design's re-audit
+reads that line after three runs.
+
+### `/memory revive`
+
+Bring an archived note back.
+
+```
+/memory revive <slug>
+```
+
+Which runs:
+
+```bash
+python3 harness/skills/memory/scripts/lifecycle_transitions.py --vault <memory-root> revive <slug>
+```
+
+The note moves from `archive/memory/<class>/` back to its class folder, its `lifecycle:` is set to `active` with today's `lifecycle_since`, and the move is journaled like every other transition. A slug, not a path, because the slug is what you have — it is what the morning note printed, what a lesson's `consolidated_from` links, and what Obsidian shows you.
+
+If nothing in the archive carries that slug, the command says so and points at `--deep`: a note that is not in the archive was either never archived or has passed the forget line, and the deletion manifests know which.
+
+Reviving is the operator's act. Nothing revives a note on its own except a genuine recall, and only before the archive move.
+
+### `/memory pin`
+
+Keep a note out of the lifecycle entirely.
+
+```
+/memory pin <slug>
+```
+
+Which runs:
+
+```bash
+python3 harness/skills/memory/scripts/recall.py heat-pin <slug>
+```
+
+A pinned note never decays and never sinks, whatever its clock says, and it is restored to the always-load directory if the heat policy had demoted it. This is the same `heat_pin: true` the always-load curation reads — one field, one meaning, rather than a second pin that would have to agree with the first.
+
+Use it for the handful of things that are true regardless of when you last read them. For a note that is merely important right now, `importance:` is the field; importance only ranks, and nothing ages out because of it.
 
 ## Concurrent-write safety (operator guidance)
 

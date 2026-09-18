@@ -51,17 +51,48 @@ HOT_SESSIONS_MIN = 2     # min distinct sessions with a hit (spike guard)
 MIN_ALWAYS_LOAD = 5      # safety floor: never demote below this count of always-load entries
 
 
+# The sidecar's shapes. Version 1 keyed an entry on a note's stem, which is not
+# an identity — 26 stems in the live file matched more than one file in the
+# vault, `progress` matching eight — so several notes shared one counter and a
+# hit on any of them read as a hit on all. Version 2 keys on the note's path
+# from the vault root, the same key `.lifecycle.json` and the daemon's own rows
+# use.
+SIDECAR_VERSION = 2
+_SIDECAR_VERSIONS = (1, 2)
+
+
+def heat_key(vault: Path, rel_path) -> str:
+    """The key an entry is stored under: the note's path from the vault root."""
+    return vault_layout.vault_rel(rel_path, vault)
+
+
+def _entry_for(data: dict, vault: Path, slug: str, rel_path=None) -> dict:
+    """One entry, by path, falling back to the stem a version-1 file keyed on.
+
+    Read-only compatibility: nothing writes a stem key any more, so the old
+    keys drain as notes are hit rather than being carried forward.
+    """
+    entries = data.get("entries") or {}
+    if rel_path is not None:
+        entry = entries.get(heat_key(vault, rel_path))
+        if entry is not None:
+            return entry
+    if data.get("version") == 1 and slug:
+        return entries.get(slug) or {}
+    return {}
+
+
 def _load_heat(vault: Path) -> dict:
     """Load the heat sidecar. Returns default structure if missing or corrupt."""
     path = vault_layout.sidecar_path(vault, HEAT_SIDECAR_NAME)
     try:
         raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)
-        if isinstance(data, dict) and data.get("version") == 1:
+        if isinstance(data, dict) and data.get("version") in _SIDECAR_VERSIONS:
             return data
     except (OSError, json.JSONDecodeError):
         pass
-    return {"version": 1, "total_sessions": 0, "entries": {}}
+    return {"version": SIDECAR_VERSION, "total_sessions": 0, "entries": {}}
 
 
 def _save_heat(vault: Path, data: dict) -> None:
@@ -81,18 +112,34 @@ def _save_heat(vault: Path, data: dict) -> None:
     atomic_write(path, content)
 
 
-def record_hit(vault: Path, slug: str, *, today: str | None = None) -> None:
-    """Record one on-demand recall hit for `slug`.
+def record_hit(vault: Path, slug: str, *, rel_path=None, today: str | None = None) -> None:
+    """Record one on-demand recall hit. One note; `record_hits` is the batch."""
+    record_hits(vault, [(rel_path if rel_path is not None else slug, slug)], today=today)
 
-    Increments the entry's hit count and hit_session count (if this is the
-    first hit of the day). Also increments total_sessions if this is the
-    first hit of the day across ALL entries (one session counter tick per day).
 
-    Best-effort: all exceptions are swallowed — heat tracking must never
-    block or fail the recall pipeline.
+def record_hits(vault: Path, served, *, today: str | None = None) -> None:
+    """Record an on-demand recall hit for every note one recall served.
+
+    `served` is an iterable of `(rel_path, slug)`.
+
+    Increments each entry's hit count, and its hit_session count when this is
+    the day's first hit on it. Increments total_sessions once per day across
+    all entries — once per batch, not once per note, which is what "one session
+    counter tick per day" always meant and what recording hit by hit made
+    accidentally true only because the first hit of the batch got there first.
+
+    Batched because the sidecar is one file: recording five hits one at a time
+    read and rewrote it five times, under the vault mutex each time, on a path
+    with a 300ms budget.
+
+    Best-effort: all exceptions are swallowed — heat tracking must never block
+    or fail the recall pipeline.
 
     `today` is injectable for tests (ISO date string YYYY-MM-DD).
     """
+    served = list(served)
+    if not served:
+        return
     try:
         if today is None:
             import datetime
@@ -107,13 +154,17 @@ def record_hit(vault: Path, slug: str, *, today: str | None = None) -> None:
         with ctx:
             data = _load_heat(vault)
             entries = data.setdefault("entries", {})
-            entry = entries.setdefault(slug, {"hits": 0, "hit_sessions": 0, "last_hit": None})
+            for rel_path, slug in served:
+                key = heat_key(vault, rel_path)
+                entry = dict(_entry_for(data, vault, slug, rel_path)
+                             or {"hits": 0, "hit_sessions": 0, "last_hit": None})
 
-            was_new_day = entry.get("last_hit") != today
-            entry["hits"] = entry.get("hits", 0) + 1
-            if was_new_day:
-                entry["hit_sessions"] = entry.get("hit_sessions", 0) + 1
-            entry["last_hit"] = today
+                was_new_day = entry.get("last_hit") != today
+                entry["hits"] = entry.get("hits", 0) + 1
+                if was_new_day:
+                    entry["hit_sessions"] = entry.get("hit_sessions", 0) + 1
+                entry["last_hit"] = today
+                entries[key] = entry
 
             # Increment total_sessions once per day (first new-day hit globally).
             last_session_day = data.get("last_session_day")
@@ -121,9 +172,35 @@ def record_hit(vault: Path, slug: str, *, today: str | None = None) -> None:
                 data["total_sessions"] = data.get("total_sessions", 0) + 1
                 data["last_session_day"] = today
 
+            data["version"] = SIDECAR_VERSION
             _save_heat(vault, data)
     except Exception:  # noqa: BLE001 — heat tracking is best-effort
         pass
+
+
+def rekey(vault: Path, old_rel, new_rel) -> bool:
+    """Follow a note's counters to where the note went — the reconcile step's
+    repair for a hand move, beside `lifecycle.rekey`."""
+    try:
+        try:
+            from vault_lock import vault_mutex  # type: ignore
+            ctx = vault_mutex(vault)
+        except ImportError:
+            from contextlib import nullcontext
+            ctx = nullcontext()
+        with ctx:
+            data = _load_heat(vault)
+            entries = data.setdefault("entries", {})
+            old_key = heat_key(vault, old_rel)
+            new_key = heat_key(vault, new_rel)
+            if old_key == new_key or old_key not in entries:
+                return False
+            entries.setdefault(new_key, entries.pop(old_key))
+            data["version"] = SIDECAR_VERSION
+            _save_heat(vault, data)
+            return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
@@ -277,15 +354,19 @@ def run_policy(
             result["pinned_skipped"].append(slug)
             continue
 
-        # Cold check: zero hits across sufficient sessions.
-        entry_heat = entries_heat.get(slug, {})
+        # Cold check: zero hits across sufficient sessions. Read by path, with
+        # the stem fallback a version-1 sidecar still needs — a demotion decided
+        # from a counter the re-keying orphaned would retire an entry the
+        # operator had actually been hitting.
+        entry_heat = _entry_for(heat, vault, slug, md_path)
         hits = entry_heat.get("hits", 0)
         if hits == 0 and total_sessions >= COLD_SESSIONS_MIN:
             demote_candidates.append((md_path, fm, slug))
 
     # Too early to judge — not enough sessions recorded.
     if total_sessions < COLD_SESSIONS_MIN and not any(
-        entries_heat.get(s, {}).get("hits", 0) == 0 for _, _, s in demote_candidates
+        _entry_for(heat, vault, s, p).get("hits", 0) == 0
+        for p, _, s in demote_candidates
     ):
         # Only set too_early when there are no cold candidates at all.
         pass
@@ -342,7 +423,7 @@ def run_policy(
             if (always_load_dir / fname).exists():
                 continue
 
-            entry_heat = entries_heat.get(slug, {})
+            entry_heat = _entry_for(heat, vault, slug, md_path)
             hits = entry_heat.get("hits", 0)
             hit_sessions = entry_heat.get("hit_sessions", 0)
 

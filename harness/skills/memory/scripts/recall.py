@@ -310,6 +310,62 @@ _DEMOTED_STATUSES = frozenset({"unfiled", "expired"})
 # multiplies above 1.0.
 _PROJECT_MISMATCH = 0.80
 
+# The spaces the contract asks to stay quiet on an ordinary question, as the
+# daemon ranks them (`note.Weights[ClassSpace]`). This arm had no space
+# dampening at all: `personal/` ranked at full weight here and at x0.30 in the
+# daemon, so the same question answered differently depending on which arm was
+# up. Which areas is the contract's (`dampened_spaces`); the strength is not a
+# knob, for the reason the daemon's own sweep found — every weight at or below
+# 0.6 ranks identically.
+_SPACE_DEMOTION = 0.30
+
+# Finished work, by its path: `archive`, `_archive` or `completed` as a
+# directory anywhere above the file (`note.ArchiveSegments` in the Go arm). One
+# class for the three names, on the design's ruling — the memory archive holds
+# what has been retired from use and a project's `completed/` holds finished
+# work that is still true, two words for two meanings and one ranker rule.
+#
+# Earned once however many of those directories a path passes through: archival
+# twice over is not twice as finished, and compounding 0.30 into 0.09 would put
+# a note under the floor of the decay curve for a folder name appearing twice.
+_ARCHIVE_DEMOTION = 0.30
+ARCHIVE_SEGMENTS = ("archive", "_archive", "completed")
+
+# A source whose lesson has been written: `consolidated_into` names the
+# crystallized note the weekly phase built from it. The sources that taught a
+# lesson must not crowd the lesson out of recall, so they drop to the same 0.30
+# a demotion to `dormant` gives — immediately, rather than waiting for the
+# curve, because the lesson exists now. They stay where they are and stay
+# findable: a query naming the specific case still reaches the card, below the
+# lesson, and the lesson's `consolidated_from` links resolve.
+_CONSOLIDATED_DEMOTION = 0.30
+
+
+def _stamp_demotion(fm: dict) -> float:
+    """What a note's `consolidated_into` stamp costs it: 0.30, or 1.0 when it
+    carries none.
+
+    A named function rather than two lines inside the ranking loop, because
+    this number has to equal the daemon's `ClassConsolidated` and a number that
+    can only be read by running a query is one nothing can hold to that.
+
+    An empty value is not a stamp. A writer mid-edit leaves the key with
+    nothing after it, and sinking a card because something started to write and
+    stopped is the wrong direction to fail in.
+    """
+    return _CONSOLIDATED_DEMOTION if str(fm.get("consolidated_into") or "").strip() else 1.0
+
+
+def in_archive_class(rel: str) -> bool:
+    """Whether a vault-relative path sits under one of ARCHIVE_SEGMENTS.
+
+    Directories only: a file that happens to carry a segment's name earns
+    nothing, so `research/completed-work.md` is a note about finished work
+    rather than a finished note.
+    """
+    parts = [p for p in str(rel).replace("\\", "/").split("/") if p]
+    return any(seg.lower() in ARCHIVE_SEGMENTS for seg in parts[:-1])
+
 
 def _status_of(fm: dict) -> str:
     return str(fm.get("status") or "").strip().strip("'\"").lower()
@@ -360,6 +416,91 @@ def _vault_rel(path: Path, vault: Path) -> str:
         return path.relative_to(vault).as_posix()
     except ValueError:
         return os.path.relpath(path, vault).replace(os.sep, "/")
+
+
+def _vault_root_rel(key: str, vault) -> str:
+    """A recall key rendered as a path from the **vault root**.
+
+    Entry keys in this module are memory-root-relative, and a root-space note
+    keys as `../projects/…`. The contract's area rules — `dampened_spaces`,
+    `recall_exempt_areas` — are written from the vault root, because that is
+    where `personal/` and `agent/diagnostics` are legible. Comparing one to the
+    other without this is the vault-root/memory-root confusion that has silently
+    matched nothing twice in this codebase already.
+
+    A flat vault is both roots at once, and the two spellings then agree.
+    """
+    import vault_layout  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    vault = Path(vault)
+    try:
+        root = vault_layout.vault_root_candidates(vault)[0]
+    except Exception:
+        root = vault
+    try:
+        return (vault / key).resolve().relative_to(Path(root).resolve()).as_posix()
+    except (ValueError, OSError):
+        # Outside the vault root entirely, or unresolvable. Return the key as
+        # it stands: no area rule will match it, which is the safe reading for
+        # a dampen and the reason the wall is checked on the absolute path too.
+        return str(key).replace("\\", "/")
+
+
+def _contract_areas() -> tuple:
+    """`(walled, dampened)` from the filing contract, read once per call site.
+
+    Read once and passed down rather than asked per note. The contract lives in
+    Go and Python reaches it by spawning `agentmd rules --json`, so a read on
+    the per-note path would be a subprocess per file — and on a machine with no
+    daemon, a *failed* subprocess per file, since a failure is not cached.
+
+    Falls back to the shipped wall and no dampening when the contract cannot be
+    read: a missing dampen is a note that ranks louder than it should, and a
+    missing wall is the operator's recovery codes in a prompt.
+    """
+    import storage_rules  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    try:
+        loaded = storage_rules.rules()
+    except Exception:
+        return (list(storage_rules._FALLBACK_RECALL_EXEMPT_AREAS), [])
+    return (loaded.recall_exempt_areas(), loaded.dampened_spaces())
+
+
+def _is_walled(key: str, vault, walled=None) -> bool:
+    """Whether a recall key names a path the contract walls from the corpus.
+
+    Asked of both spellings — the key as written and its vault-root form —
+    because the wall must not depend on which layout the memory root is in.
+    """
+    import storage_rules  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    if walled is None:
+        walled, _ = _contract_areas()
+    rel = str(key).replace("\\", "/")
+    return (storage_rules.in_area(rel, walled)
+            or storage_rules.in_area(_vault_root_rel(key, vault), walled))
+
+
+def _area_demotion(key: str, vault, dampened=None) -> float:
+    """The multiplier a path earns from where it sits: a dampened area, the
+    archive family, or both.
+
+    Both, when both apply: the classes compose multiplicatively here exactly as
+    they do in the daemon, so the operator's own `personal/Home/_Archive` is a
+    quiet space holding finished work and ranks below either one alone.
+    """
+    import storage_rules  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    if dampened is None:
+        _, dampened = _contract_areas()
+    rel = _vault_root_rel(key, vault)
+    mult = 1.0
+    if storage_rules.in_area(rel, dampened):
+        mult *= _SPACE_DEMOTION
+    if in_archive_class(rel):
+        mult *= _ARCHIVE_DEMOTION
+    return mult
 
 
 def _root_projects_dir(vault):
@@ -420,11 +561,9 @@ def _read_entry(path: Path, vault: Path, backend) -> str:
 # source walk, but recall.py had no matching entry -- a bulk-review batch's
 # proposal files, each embedding a full copy of a real note's content,
 # were keyword-recall candidates until this line closed the gap). _archive/
-# used to live in this same always-excluded set; auto-organization part 1
-# task 5 gave it its own toggle (--include-archive, mirroring --include-
-# inbox exactly) instead, matching the design's own "an archived memory...
-# answers an explicit archive search whenever you ask" contract -- see
-# `_INCLUDE_ARCHIVE_DIR_NAME` below. _shelf/ was never in this set and
+# used to live in this same always-excluded set, and then had a toggle of its
+# own for a while; the axis-per-space landing retired both readings, and the
+# note under the set says why. _shelf/ was never in this set and
 # needs no change: the shelf is a browse convention, not a search boundary,
 # so shelved artifacts stay in everyday search by construction.
 # Matched against a single directory NAME, not a relative path, so this holds
@@ -434,7 +573,20 @@ def _read_entry(path: Path, vault: Path, backend) -> str:
 # exhaust back into recall.
 _EXCLUDE_DIR_NAMES = {"scratch"}
 _INBOX_DIR_NAME = "_inbox"
-_INCLUDE_ARCHIVE_DIR_NAME = "_archive"
+
+# `_archive/` used to be a fourth exclusion here, toggled by --include-archive:
+# an archived memory was invisible to ordinary recall and came back only when a
+# caller asked for the archive by name. The axis-per-space landing retired the
+# exclusion. A directory no longer hides a note; the archive *class* dampens it
+# to x0.30 wherever it sits, which is what the daemon has always done and what
+# the Python arm did not. The flag keeps its other and older meaning, the one
+# `_unserved` reads: whether a note whose `lifecycle:` has left everyday search
+# comes back, demoted.
+#
+# Retiring it is what makes the two arms agree. An exclusion cannot be
+# out-ranked by a better match, so a note the operator was looking for could be
+# unreachable in one arm and merely quiet in the other, and which arm answered
+# depended on whether the daemon was up.
 
 
 # Tokenization for grep search: split on non-alphanumeric, lowercase, drop
@@ -1080,6 +1232,8 @@ def _iter_entry_paths(
         return out
     from storage_device_local import DeviceLocalBackend  # noqa: E402 (lazy)
     backend = DeviceLocalBackend(root=vault)
+    # One contract read for the whole walk, not one per file.
+    walled, _ = _contract_areas()
 
     def _walk(be, root, locator) -> None:
         try:
@@ -1097,13 +1251,20 @@ def _iter_entry_paths(
                     continue
                 if name == _INBOX_DIR_NAME and not include_inbox:
                     continue
-                if name == _INCLUDE_ARCHIVE_DIR_NAME and not include_archive:
-                    continue
                 if name.startswith("."):
+                    continue
+                # The contract's `recall_exempt_areas`. Refused at the walk, so
+                # the files inside are never read at all — "walked and filtered
+                # later" would put their contents in this process's memory, and
+                # the folder this was written for holds recovery codes.
+                if _is_walled(root.joinpath(*child.parts), vault, walled):
                     continue
                 _walk(be, root, child)
             elif name.endswith(".md"):
-                out.append(root.joinpath(*child.parts))
+                path = root.joinpath(*child.parts)
+                if _is_walled(path, vault, walled):
+                    continue
+                out.append(path)
 
     _walk(backend, vault, backend.resolve())
     # Filing-v2 2b: the vault-root projects/ sibling is corpus too — walked
@@ -1608,6 +1769,8 @@ def query(
         lifecycle = None  # type: ignore
 
     all_paths = set(fused.keys())
+    # One contract read for the whole ranking pass, not one per candidate.
+    _, dampened_areas = _contract_areas()
     merged: list[dict] = []
     for path in all_paths:
         if path in dedup_paths:
@@ -1640,6 +1803,8 @@ def query(
         demoted = lifecycle_value in _DEMOTED_LIFECYCLES
         if demoted:
             decay_score *= _LIFECYCLE_DEMOTION
+        # The lesson this card taught, once one has been written.
+        decay_score *= _stamp_demotion(fm)
         # The filing axis, multiplicatively and independently: a dormant
         # unfiled capture takes both, which is what the daemon does too.
         status_value = _status_of(fm)
@@ -1650,6 +1815,11 @@ def query(
         # dampening that is the session's own cards' lift (agentm-vault plan 09).
         if project and _project_of(fm) != project.strip().lower():
             decay_score *= _PROJECT_MISMATCH
+        # Where the note sits: a dampened area, the archive family, or both.
+        # This arm had neither until the axis-per-space landing — `personal/`
+        # ranked here at full weight and at x0.30 in the daemon, and an
+        # `_archive/` note was invisible here and merely quiet there.
+        decay_score *= _area_demotion(path, vault, dampened_areas)
 
         combined = fused[path] * decay_score
 
@@ -2183,10 +2353,22 @@ def _daemon_admissible(
             return False
         if name == _INBOX_DIR_NAME and not include_inbox:
             return False
-        if name == _INCLUDE_ARCHIVE_DIR_NAME and not include_archive:
-            return False
         if name.startswith("."):
             return False
+    # The `_archive/` rule that used to sit here retired with the walk's: a
+    # directory no longer hides a note, the archive class dampens it, and the
+    # daemon already ranks it that way. Keeping the rule here alone would have
+    # made the fast path hide what the fallback path merely quieted.
+    #
+    # `recall_exempt_areas` is deliberately **not** re-checked here, and the
+    # reason is the budget. Reading the contract from Python means spawning the
+    # daemon, and this function runs on the prompt-submit path, which has 300ms
+    # for everything — so a re-check would spend a second process per prompt to
+    # re-derive what the process that just answered already enforced. The Go arm
+    # walls twice, at the walk and again at search time by path, so a walled note
+    # cannot be in a daemon answer at all: not from a fresh index, and not from a
+    # stale one. The walk in `_iter_entry_paths` is where Python is the only
+    # enforcement, and that is where the wall is read.
     return True
 
 
@@ -2620,6 +2802,7 @@ def prompt_submit(
     # itself, before the loop's own unreadable-file `continue` can skip an
     # entry. Computing rank from a loop-local counter instead would
     # silently renumber every hit after a skip.
+    servable_fm: dict = {}
     for rank, result in enumerate(results, start=1):
         md_path = vault / result["path"]
         try:
@@ -2655,18 +2838,15 @@ def prompt_submit(
                 "full_tokens": max(1, full_chars // 4),
             }
         )
-        # Record the on-demand hit for heat tracking (best-effort). Skipped for
-        # `external` hits — notes outside the memory root are readable context,
-        # not curated memory, and heat/decay bookkeeping on them would score a
-        # tree the memory engine does not own.
-        if _record_recall_hit is not None and not result.get("external"):
-            _record_recall_hit(vault, result["slug"])
-        # V6-1: genuine recall access resets the volatile-tier decay clock
-        # (best-effort, no-op for decay-exempt entries). This is the ONLY
-        # call site — a lint walk, index rebuild, or dreaming pass must
-        # never reach this function.
-        if _record_lifecycle_access is not None and not result.get("external"):
-            _record_lifecycle_access(vault, result["slug"], fm, result["path"])
+        # The note's frontmatter, kept for the one recording this function makes
+        # once the token budget has decided what was actually served. Recording
+        # here instead would reset the clock for a candidate the budget then
+        # dropped — a note nobody was shown, kept alive by having been ranked.
+        # `external` hits are excluded: notes outside the memory root are
+        # readable context, not curated memory, and heat and decay bookkeeping
+        # on them would score a tree the memory engine does not own.
+        if not result.get("external"):
+            servable_fm[result["path"]] = fm
 
     # Apply token budget: results are highest-salience first → truncation
     # drops the least-relevant tail entries, never the top hits. Each
@@ -2710,17 +2890,40 @@ def prompt_submit(
     kept_hits = [hit for _slug, hit in kept_pairs]
     token_budget_excerpted = sum(1 for _slug, hit in kept_pairs if hit.get("excerpt"))
 
-    # L1 (ledger ruling 6): one per-recall counter event, query hashed (never
-    # raw text) + the slugs actually surfaced after truncation. Best-effort,
-    # this function's sole call site — same discipline as the heat/lifecycle
-    # recordings above. `hits` (Loose Ends Release 8) carries the same
-    # evidence alongside, for the `memory-recall trace` reader.
+    # One record of one recall, and everything that reads a recall reads it.
+    #
+    # The ledger row, the decay clocks and the heat counters were three separate
+    # recordings on three different sets: the ledger wrote the slugs actually
+    # surfaced, while the clock and the counters were written per candidate
+    # inside the loop above, before the token budget had decided anything. So a
+    # note that was ranked and then dropped had its clock reset — kept alive by
+    # never being shown to anyone. The design's words are "the clock resets on
+    # any hit **served** to any surface", and this is the set that was served.
+    #
+    # `record_recall` is the single call site; the sidecar updates ride with it,
+    # batched, so the two files are read and written once each rather than once
+    # per hit under the vault mutex on a 300ms path.
+    served = [(hit["path"], slug) for slug, hit in kept_pairs
+              if hit.get("path") in servable_fm]
     try:
         from recall_counter import record_recall as _record_recall_event  # type: ignore
         _record_recall_event(prompt, loaded_slugs, hits=kept_hits,
                              drops=daemon_drops or None)
     except ImportError:
         pass
+    if _record_recall_hit is not None and served:
+        try:
+            from heat_policy import record_hits as _record_recall_hits  # type: ignore
+            _record_recall_hits(vault, served)
+        except ImportError:
+            pass
+    if _record_lifecycle_access is not None and served:
+        try:
+            from lifecycle import record_recall_accesses as _record_lifecycle_accesses  # type: ignore
+            _record_lifecycle_accesses(
+                vault, [(rel, servable_fm[rel]) for rel, _slug in served])
+        except ImportError:
+            pass
 
     # Output assembly: only print stdout when we have hits or a truncation notice.
     if blocks or token_budget_omitted > 0:

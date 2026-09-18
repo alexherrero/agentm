@@ -26,10 +26,10 @@ func TestOpenWithSidecarReadsTheEngineDirFirst(t *testing.T) {
 	if got := log.SidecarPath(); got != filepath.Join(engine, ".lifecycle.json") {
 		t.Fatalf("sidecar read from %s, want the engine directory", got)
 	}
-	if _, ok := log.LastAccess("engine-slug"); !ok {
+	if _, ok := log.LastAccess("engine-slug", "engine-slug"); !ok {
 		t.Fatal("the engine copy's entry is missing")
 	}
-	if _, ok := log.LastAccess("legacy-slug"); ok {
+	if _, ok := log.LastAccess("legacy-slug", "legacy-slug"); ok {
 		t.Fatal("the stale vault copy was read")
 	}
 }
@@ -49,7 +49,7 @@ func TestOpenWithSidecarFallsBackToTheMemoryRoot(t *testing.T) {
 	if got := log.SidecarPath(); got != filepath.Join(vault, "agent", ".lifecycle.json") {
 		t.Fatalf("sidecar read from %s, want the memory root while the engine dir holds none", got)
 	}
-	if _, ok := log.LastAccess("legacy-slug"); !ok {
+	if _, ok := log.LastAccess("legacy-slug", "legacy-slug"); !ok {
 		t.Fatal("the pre-move copy was not read")
 	}
 }

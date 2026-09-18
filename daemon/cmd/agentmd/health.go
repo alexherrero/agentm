@@ -227,6 +227,14 @@ func describeProbe(rep health.Report) string {
 func contractHealth(cfg *config.Config, cp *capture.Capturer) health.Contract {
 	now := time.Now()
 	loaded, err := cfg.Rules.Refresh(now)
+	// A re-read that does not reach the ranker is half a re-read. The contract
+	// hot-reloads here, but the push into the classifier ran once at boot, so an
+	// edit to `dampened_spaces` looked like it had taken effect and had not —
+	// found while landing the axis-per-space contract, which edits four of those
+	// lines at once. The wall in `recall_exempt_areas` makes it matter more than
+	// ranking: an area named in the contract has to start being refused without
+	// waiting for a restart.
+	cfg.ApplyContractToRanking()
 
 	out := health.Contract{CheckedAt: now}
 	if cp != nil {

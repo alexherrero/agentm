@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,21 +47,78 @@ import (
 // to `captured` would penalize a frequently-maintained reference for staleness
 // it does not have.
 
-// The stepped bands, ported from lifecycle.py's `_STEPPED_BANDS` so the two
-// curves are the same curve. Each pair is (elapsed days at or below, score).
-var decayBands = []struct {
-	Days  float64
-	Score float64
-}{
+// Band is one step of the curve: every note at or below Days scores Score.
+//
+// The JSON tags are a surface, not decoration: `agentmd decay --json` prints
+// these, and the cross-arm parity test reads them.
+type Band struct {
+	Days  float64 `json:"days"`
+	Score float64 `json:"score"`
+}
+
+// DecayFloor is what a memory scores once past the last band when the contract
+// names no weight of its own. A floor, not a waypoint: the curve never reaches
+// zero.
+const DecayFloor = 0.0625
+
+// defaultBands is the curve with no contract behind it. It is the curve this
+// package carried as constants before the contract's `decay_*` lines were read,
+// kept so a vault whose contract predates them ranks exactly as it did.
+var defaultBands = []Band{
 	{182, 1.0},
 	{365, 0.5},
 	{1095, 0.125},
-	{1825, 0.0625},
+	{1825, DecayFloor},
 }
 
-// DecayFloor is what a memory scores once past the last band. A floor, not a
-// waypoint: the curve never reaches zero.
-const DecayFloor = 0.0625
+// curve is the live set, replaced once at boot from the contract and again
+// whenever the health pass re-reads it. Held in an atomic for the reason
+// dampened spaces are: four call sites parse notes and one is the self-probe,
+// which has no configuration and no business acquiring one.
+//
+// One curve, and it is the contract's. Before this, the Go bands were constants
+// here and the Python arm ran a thirty-day exponential, so the same note ranked
+// two different ways depending on which arm answered, and the contract's five
+// `decay_*` lines were read by nobody at all.
+var curve atomic.Pointer[[]Band]
+
+// SetDecayBands replaces the curve from the contract's `decay_*` thresholds.
+//
+// A day boundary that is missing or not ascending falls the whole curve back to
+// the default rather than accepting a partial one: a curve read half from the
+// contract and half from a constant is the drift this change exists to end, and
+// it would be invisible. `floorWeight` of zero means the contract named none,
+// and DecayFloor stands.
+func SetDecayBands(fullDays, halfDays, eighthDays, floorDays, floorWeight float64) {
+	weight := floorWeight
+	if weight <= 0 {
+		weight = DecayFloor
+	}
+	days := []float64{fullDays, halfDays, eighthDays, floorDays}
+	prev := 0.0
+	for _, d := range days {
+		if d <= prev {
+			curve.Store(nil)
+			return
+		}
+		prev = d
+	}
+	bands := []Band{
+		{fullDays, 1.0},
+		{halfDays, 0.5},
+		{eighthDays, 0.125},
+		{floorDays, weight},
+	}
+	curve.Store(&bands)
+}
+
+// DecayBands is the curve currently in force, for the status surface and tests.
+func DecayBands() []Band {
+	if p := curve.Load(); p != nil {
+		return append([]Band(nil), *p...)
+	}
+	return append([]Band(nil), defaultBands...)
+}
 
 // DecayScore maps elapsed days to a multiplier.
 func DecayScore(elapsedDays float64) float64 {
@@ -70,12 +128,16 @@ func DecayScore(elapsedDays float64) float64 {
 		// a negative age, which would otherwise read as the far side of the curve.
 		return 1.0
 	}
-	for _, b := range decayBands {
+	bands := defaultBands
+	if p := curve.Load(); p != nil {
+		bands = *p
+	}
+	for _, b := range bands {
 		if elapsedDays <= b.Days {
 			return b.Score
 		}
 	}
-	return DecayFloor
+	return bands[len(bands)-1].Score
 }
 
 // accessRecord is the shape `.lifecycle.json` carries.
@@ -87,12 +149,25 @@ type accessRecord struct {
 	Version int `json:"version"`
 	Entries map[string]struct {
 		LastAccess string `json:"last_access"`
+		// Fingerprint is the note's body hash, written since version 2 so a
+		// file that moves can be followed to its new path. Read here so the
+		// shape round-trips; the pairing itself is the reconcile step's.
+		Fingerprint string `json:"fingerprint,omitempty"`
 	} `json:"entries"`
 }
 
-// accessRecordVersion is the sidecar shape this reader understands, matching
-// `lifecycle._load_sidecar`.
-const accessRecordVersion = 1
+// The sidecar shapes this reader understands, matching `lifecycle._load_sidecar`.
+//
+// Version 1 keyed an entry on a note's slug — its basename, or the `slug:` in
+// its frontmatter. That is not an identity: 26 keys in the live file matched
+// more than one file in the vault, `progress` matching eight, so eight notes
+// shared one clock and a recall of any of them read as a recall of all eight.
+// Version 2 keys on the note's path from the vault root, which is the key every
+// row in this index already carries.
+const (
+	accessRecordV1 = 1
+	accessRecordV2 = 2
+)
 
 // AccessLog is the recall-access sidecar, read once and cached.
 //
@@ -101,8 +176,13 @@ const accessRecordVersion = 1
 // data loss. It is deliberately not consulted per search — a 50KB parse on the
 // hot path would be the kind of thing the capture budget exists to catch.
 type AccessLog struct {
-	mu      sync.RWMutex
-	byslug  map[string]time.Time
+	mu sync.RWMutex
+	// byKey is keyed on whatever the sidecar keys on: a path in version 2, a
+	// slug in version 1. `version` says which, so a lookup knows whether the
+	// slug fallback is a compatibility read or a wrong answer waiting to be
+	// given.
+	byKey   map[string]time.Time
+	version int
 	loaded  bool
 	dirs    []string
 	modTime time.Time
@@ -117,7 +197,7 @@ type AccessLog struct {
 // refused to run because a cache was corrupt would be trading a small
 // inaccuracy for no answer at all.
 func NewAccessLog(dirs ...string) *AccessLog {
-	a := &AccessLog{byslug: map[string]time.Time{}}
+	a := &AccessLog{byKey: map[string]time.Time{}}
 	for _, d := range dirs {
 		if strings.TrimSpace(d) != "" {
 			a.dirs = append(a.dirs, d)
@@ -168,48 +248,61 @@ func (a *AccessLog) Refresh() {
 	if err := json.Unmarshal(blob, &rec); err != nil {
 		return
 	}
-	if rec.Version != accessRecordVersion {
+	if rec.Version != accessRecordV1 && rec.Version != accessRecordV2 {
 		return
 	}
 
 	parsed := make(map[string]time.Time, len(rec.Entries))
-	for slug, e := range rec.Entries {
+	for key, e := range rec.Entries {
 		if t, err := time.Parse("2006-01-02", strings.TrimSpace(e.LastAccess)); err == nil {
-			parsed[slug] = t
+			parsed[key] = t
 		}
 	}
 
 	a.mu.Lock()
-	a.byslug = parsed
+	a.byKey = parsed
+	a.version = rec.Version
 	a.loaded = true
 	a.modTime = info.ModTime()
 	a.mu.Unlock()
 }
 
-// LastAccess returns the recorded genuine-recall date for a slug.
-func (a *AccessLog) LastAccess(slug string) (time.Time, bool) {
+// LastAccess returns the recorded genuine-recall date for one note.
+//
+// By path, which is the note's identity. The slug is consulted only when the
+// sidecar on disk is still version 1, where it is the only key there is — and
+// not otherwise, because a slug lookup against a version-2 file would be a
+// basename collision reintroduced by the reader.
+func (a *AccessLog) LastAccess(rel, slug string) (time.Time, bool) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	t, ok := a.byslug[slug]
-	return t, ok
+	if t, ok := a.byKey[rel]; ok {
+		return t, true
+	}
+	if a.version == accessRecordV1 && slug != "" {
+		if t, ok := a.byKey[slug]; ok {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // Len is how many notes carry an access record.
 func (a *AccessLog) Len() int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return len(a.byslug)
+	return len(a.byKey)
 }
 
 // ElapsedDays resolves a note's age by the anchor chain the design specifies:
 // genuine recall first, then `updated`, then `captured`. Returns false when no
 // anchor resolves, which callers treat as no basis to decay rather than as
 // maximum age.
-func ElapsedDays(log *AccessLog, slug, updated, created, captured, capturedSrc string,
+func ElapsedDays(log *AccessLog, rel, slug, updated, created, captured, capturedSrc string,
 	now time.Time) (float64, bool) {
 	var anchor time.Time
 	if log != nil {
-		if t, ok := log.LastAccess(slug); ok {
+		if t, ok := log.LastAccess(rel, slug); ok {
 			anchor = t
 		}
 	}

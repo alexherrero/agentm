@@ -362,16 +362,24 @@ class ScopeTests(_VaultFixture):
 class HygieneTests(_VaultFixture):
     """Rule 3: recall's exclusions survive the engine swap."""
 
-    def test_dream_staging_inbox_and_archive_are_all_excluded(self):
+    def test_staging_and_the_inbox_are_excluded_and_the_archive_is_not(self):
+        """The archive row changed side here when the exclusion retired.
+
+        A daemon answer carrying an `_archive/` path is admitted now, because
+        the archive is a rank and not an absence — the daemon already ranked it
+        at x0.30 and this arm was the one hiding it. Staging and the inbox are
+        unchanged: staging is never surfaced, and the inbox has its own flag.
+        """
         out = self._run(_FakeDaemon(stdout=_payload(
             "agent/desk/scratch/batch/prop.md",
             "agent/memory/_inbox/unfiled.md",
             "agent/memory/_archive/old.md",
             "agent/memory/zorbulax.md",
         )))
-        self.assertEqual([r["path"] for r in out], ["memory/zorbulax.md"])
+        self.assertEqual([r["path"] for r in out],
+                         ["memory/_archive/old.md", "memory/zorbulax.md"])
 
-    def test_inbox_and_archive_reopen_on_request(self):
+    def test_the_inbox_reopens_on_request(self):
         out = self._run(
             _FakeDaemon(stdout=_payload(
                 "agent/memory/_inbox/unfiled.md",
@@ -524,17 +532,20 @@ class PromptSubmitIntegrationTests(_VaultFixture):
         """
         import heat_policy
 
-        seen: list[str] = []
+        seen: list[tuple] = []
         with unittest.mock.patch.dict(
             recall.os.environ, {recall.DAEMON_SCOPE_ENV: "vault"}
         ), unittest.mock.patch.object(
-            heat_policy, "record_hit", lambda vault, slug: seen.append(slug)
+            heat_policy, "record_hits", lambda vault, served: seen.extend(served)
         ):
             _, _, err = self._submit(_FakeDaemon(stdout=_payload(
                 "Church/talk.md", "agent/memory/zorbulax.md"
             )))
         self.assertIn("Loaded 2 relevant", err)
-        self.assertEqual(seen, ["zorbulax"])
+        # One batched recording over what the recall actually served, rather
+        # than one call per candidate: the counters and the decay clocks now
+        # ride with the ledger row, on the same set it writes.
+        self.assertEqual([slug for _rel, slug in seen], ["zorbulax"])
 
 
 class SpaceLabelTests(unittest.TestCase):

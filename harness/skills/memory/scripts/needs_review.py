@@ -229,7 +229,8 @@ def _proposal_lines(proposals: dict) -> list:
     return lines
 
 
-def render(entries: list, *, created: str, today: str, proposals: "dict | None" = None) -> str:
+def render(entries: list, *, created: str, today: str, proposals: "dict | None" = None,
+           forward: "dict | None" = None) -> str:
     proposals = proposals or {}
     lines = [
         "---",
@@ -270,11 +271,55 @@ def render(entries: list, *, created: str, today: str, proposals: "dict | None" 
         lines += [f"The sections below come from the dream cycle{when}. Nothing acts on them "
                   "but you.", ""]
         lines += dream_lines
+    lines += _forward_lines(forward or {})
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
+def _forward_lines(forward: dict) -> list:
+    """The two forward lists, in full.
+
+    The morning note carries a count and the first five of each; this page is
+    where the rest of them are. A note about to sink is not something to act on
+    — recalling it is what stops it, and doing nothing is a decision too — so
+    these are listed rather than queued, and nothing here waits on the operator.
+    """
+    out = []
+    for key, title in (("sinking_within_30_days", "Sinking within 30 days"),
+                       ("archiving_within_30_days", "Archiving within 30 days")):
+        rows = forward.get(key) or []
+        if not rows:
+            continue
+        out += [f"## {title} ({len(rows)})", ""]
+        for row in rows:
+            rel = str(row.get("rel") or "")
+            slug = rel.rsplit("/", 1)[-1][:-3] if rel.endswith(".md") else rel
+            days = int(row.get("days") or 0)
+            out.append(f"- [[{slug}]] — {days:,} days silent · `{rel}`")
+        out.append("")
+    return out
+
+
+def read_forward() -> dict:
+    """The binary's last pass's two forward lists, from its own report.
+
+    Read here rather than recomputed: the pass that decided what sinks is the
+    one that knows how close everything else is, and a second reading of the
+    corpus would be a second answer to the same question.
+    """
+    import engine_state
+    try:
+        import json
+        blob = (engine_state.engine_state_dir() / "dreaming" / "last-report.json").read_text(
+            encoding="utf-8")
+        plan = (json.loads(blob) or {}).get("plan") or {}
+    except Exception:
+        return {}
+    return {k: plan.get(k) or [] for k in
+            ("sinking_within_30_days", "archiving_within_30_days")}
+
+
 def write(vault: "Path | str", *, today: "str | None" = None,
-          proposals: "dict | None" = None) -> Path:
+          proposals: "dict | None" = None, forward: "dict | None" = None) -> Path:
     """Regenerate the MOC. `created` survives regeneration (the page is one
     page, not a page a day); `updated` is today. The dream sections come from
     the engine state unless `proposals` is handed in."""
@@ -289,7 +334,8 @@ def write(vault: "Path | str", *, today: "str | None" = None,
             pass
     target.parent.mkdir(parents=True, exist_ok=True)
     text = render(collect(vault), created=created, today=today,
-                  proposals=read_proposals() if proposals is None else proposals)
+                  proposals=read_proposals() if proposals is None else proposals,
+                  forward=read_forward() if forward is None else forward)
     if not target.exists() or target.read_text(encoding="utf-8") != text:
         target.write_text(text, encoding="utf-8")
     return target

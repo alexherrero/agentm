@@ -74,6 +74,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `clusters` | Which notes are too similar to be independent memories, and what kind of too-similar. `--threshold`, `--sample`, `--json`. |
 | `embed` | Compute the vector arm's embeddings for in-scope notes. |
 | `enrich` | Run the enrichment pass over the notes owed one. `--sample N --seed S` draws a reproducible random batch, `--dump` writes before/after pairs, `--yes` runs one batch without needing `daemon.enrich_enabled` set. |
+| `crystallize` | Write the lesson a recurrence taught. `--dry-run` finds the recurrences and makes no call, `--topic` narrows the run, `--cap` lowers the five-lesson limit, `--yes` runs one pass without needing `daemon.crystallize_enabled` set. |
 | `ledger` | Ask what dreaming has already done, and what is pending. |
 | `queue` | Show the pending-work queues, or record work owed. |
 | `sources` | Ask whether a source has been mined, and watermark it. |
@@ -989,6 +990,90 @@ all of its frontmatter is the capture's and all of it is evidence.
 `daemon.enrich_sample_rate`, which
 governed how often the retired half sampled, is no longer read; a config
 that still carries the key is harmless.
+
+## Crystallize, the weekly phase
+
+The second job that spends, and the only writer of a crystallized note.
+
+A crystallized note is a hard-learned lesson: something that proved itself over
+time, across more than one task or more than one card, that the operator would
+keep after every card it came from has aged out. A session closing a task has
+the task in context but not the time axis, and a nightly pass over one card has
+neither — so this runs weekly, in the night's window, against its own budget
+line.
+
+| | |
+|---|---|
+| Command | `agentmd crystallize` |
+| Scheduled by | `templates/jobs/crystallize-weekly.yaml` — weekly, `window: "02:00-06:00"`, `order: 3`, `budget: tokens: 200000`, registered and off |
+| Switch | `daemon.crystallize_enabled` (`agentm_config.py --crystallize-enabled true`); `--yes` for one pass, `--dry-run` needs neither |
+| Tier | strong, pinned by the tier table without audit — a bad lesson lands in the decay-exempt layer, where nothing ages it out |
+| Writes | `memory/crystallized/<subject>.md`, plus a `consolidated_into` stamp on each source card |
+| Record | `<engine state dir>/crystallize-runs.jsonl`, one JSON line per run, beside `enrich-runs.jsonl` |
+
+**What it reads.** The Outcomes of closed tasks (`projects/*/tasks/*/tracker.md`
+and each project's own tracker, `status: done` with a written `## Outcome`), the
+`## Candidates` lines the session traces accumulate, and the cards in
+`memory/semantic`, `memory/procedural` and `memory/episodic`. A card already
+stamped `consolidated_into` is not read again: it has taught its lesson.
+
+**The bar, before any model is asked.** A subject is a term several sources name
+— their `tags`, the things they put in backticks, the notes they wikilink — and
+a subject clears the bar when at least **three** sources name it, across at
+least **two** sessions, at least **seven days** apart. The counting is
+arithmetic and lives in code; the recognition of what the recurrence *taught* is
+the model's, one call per cluster that cleared the bar. A run that finds nothing
+makes no call and costs nothing. Clusters whose source sets are contained in a
+larger one are dropped, so one recurrence writes one lesson rather than one per
+word inside it.
+
+**The model may refuse.** The prompt offers a `{"skip": "..."}` shape and says
+plainly that skipping is the safe answer, because three notes sharing a word are
+not a lesson and a phase that wrote one per cluster would fill the decay-exempt
+layer with vocabulary.
+
+**What a lesson carries.** The card shape, with `lifecycle: pinned`,
+`source: crystallize`, `trust: derived`, `consolidated_from` naming every source,
+`why` written from the recurrence the phase found, and `project:` when every
+source shares one. Sources whose file name repeats across the vault — every
+`tracker.md` — are linked by path with the directory as the alias, so the link
+resolves to one file.
+
+**What gets stamped.** Only cards. Each gains
+`consolidated_into: "[[<lesson>]]"` and drops to x0.30 in both ranking arms
+(`note.ClassConsolidated` and `recall._stamp_demotion`), immediately rather than
+by the decay curve: the things that taught a lesson must not crowd it out.
+Trackers and traces are never stamped — a tracker is the operator's living head
+with a locked schema, and a trace is one session's record from which several
+lessons may draw.
+
+### The arc synthesis
+
+When an arc of work closes, the closing session marks it on the project's own
+tracker with `arc_closed:` — one name or a list — and the phase's next run
+writes that arc's synthesis at `memory/crystallized/<project>-<arc>.md` from
+every Outcome in the project, asked a different question: not what recurred, but
+what the whole of it turned out to be about. The mark accumulates rather than
+resetting, so a second closed arc adds a line. The bar still applies: an arc of
+two tasks in a week has nothing to synthesise that its Outcomes do not already
+say, and the refusal is reported with `arc:` in front of it so the session that
+marked it can find out why. A synthesis is written once.
+
+### What it costs, and what the runner does about it
+
+`crystallize` is the second job in the fleet that declares a `budget:`. That
+changed how the runner's daily ceiling works: at the old $5 default the
+enrichment batch's ~$22 night put the fleet over before this job was considered,
+so whichever paid job carried the higher `order` was refused every night. The
+ceiling is now $30 — the sum of what the night's registered paid jobs
+legitimately spend, with headroom — and the repeated-run guard became a rule of
+its own, reported as `budget-repeat`. See
+[agentm-runner](../designs/agentm-runner.md), 2026-09-18.
+
+The morning note gives the phase its own spend line and a per-job line beside
+enrichment's deep and light passes, and names every lesson written in the past
+seven days under *what needs you* — the re-audit trigger for this phase is "any
+crystallized note you would not keep", and that cannot be read from a count.
 
 ## The dreaming binary, `agentmdream`
 

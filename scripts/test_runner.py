@@ -451,12 +451,21 @@ class CycleIdempotencyTests(unittest.TestCase):
     def test_a_second_paid_run_ten_hours_later_is_still_held(self):
         """The other side of the 20-hour window: last night's cost ages out, the
         same day's does not. The batch's own limits start again on every run,
-        so the ceiling is the only thing that stops a second paid run in a day
+        so nothing but the budget pre-flight stops a second paid run in a day
         (operator ruling, 2026-09-13). A spending job due again ten hours after
-        it ran, as a mistyped schedule would make it, is held by the $5 default."""
+        it ran, as a mistyped schedule would make it, is held.
+
+        Held by the repeat gate rather than by the fleet ceiling since the
+        weekly crystallize phase registered as the second spending job
+        (agentm-vault plan 11, task 7). It used to be the ceiling, and only
+        because $5 was below one night of enrichment: the batch's own ~$22 put
+        the fleet over and the fleet gate caught everything. The ceiling had to
+        rise to cover two paid jobs, so the repeated-run guard the ruling
+        actually named became a rule of its own. Same job held at the same
+        moment; the report now says which of the two gates did it."""
         with TemporaryDirectory() as td:
             jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
-            hd.mkdir()  # no budget.yaml: the $5 default
+            hd.mkdir()  # no budget.yaml: the shipped default
             _write_job(jobs_dir, "enrich-nightly", schedule="10h", lookback="1h",
                        dry_run=False, budget={"tokens": 2000000})
             first = datetime(2026, 9, 13, 2, 22, 45).timestamp()
@@ -464,7 +473,70 @@ class CycleIdempotencyTests(unittest.TestCase):
             report = cycle.run_cycle(jobs_dir, now=first + 10 * 3600, state_root=sr, harness_dir=hd)
             self.assertTrue(report.budget_ceiling_hit)
             self.assertFalse(report.outcomes[0].ran)
-            self.assertEqual(report.outcomes[0].skipped_reason, "budget-ceiling")
+            self.assertEqual(report.outcomes[0].skipped_reason, "budget-repeat")
+
+    def test_neither_paid_job_holds_the_other(self):
+        """The night runs two jobs that spend: the nightly enrichment batch and
+        the weekly crystallize phase. Neither may hold the other.
+
+        The fixture is the real arithmetic. The batch reports ~$22 a night, and
+        at the old $5 default that put the fleet over the ceiling before the
+        second job was even considered — so whichever paid job carried the
+        higher `order` was refused that night, and refused again on every cycle
+        for the next twenty hours. A weekly phase behind a nightly batch would
+        never have run at all, and the only trace would be one `budget-ceiling`
+        line on a night it was not due anyway.
+
+        So: the batch runs and reports its night, and the phase behind it still
+        runs. Then the reverse, with the phase first, because a rule that only
+        works in one declared order is an accident of `order` and not a rule."""
+        for first_name, first_cost, second_name in (
+                ("enrich-nightly", 22.13, "crystallize-weekly"),
+                ("crystallize-weekly", 1.40, "enrich-nightly")):
+            with self.subTest(ran_first=first_name), TemporaryDirectory() as td:
+                jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
+                hd.mkdir()  # no budget.yaml: the shipped default
+                _write_job(jobs_dir, first_name, lookback="36h", dry_run=False,
+                           budget={"tokens": 2000000})
+                _write_job(jobs_dir, second_name, lookback="36h", dry_run=False,
+                           budget={"tokens": 200000})
+                night = datetime(2026, 9, 20, 2, 30, 0).timestamp()
+                state.mark_done(first_name, now=night, cost_usd=first_cost, state_root=sr)
+
+                report = cycle.run_cycle(jobs_dir, now=night + 60, state_root=sr,
+                                         harness_dir=hd)
+                by = {o.name: o for o in report.outcomes}
+                self.assertTrue(
+                    by[second_name].ran,
+                    f"{second_name} was held after {first_name} spent "
+                    f"${first_cost}: {by[second_name].skipped_reason}")
+                # And the one that did spend does not run again tonight. On a
+                # daily schedule the due check holds it before the budget gate
+                # is reached, which is the cheaper of the two and the reason
+                # the repeat gate has its own test above.
+                self.assertFalse(by[first_name].ran)
+
+    def test_a_fleet_genuinely_over_its_ceiling_still_stops_everything(self):
+        """The ceiling rose; it did not soften. A fleet whose window already
+        holds more than the ceiling holds every spending job, including one that
+        has not itself spent a cent — which is the whole of what a stop-loss is
+        for, and the property the per-job repeat gate must not have taken away."""
+        with TemporaryDirectory() as td:
+            jobs_dir, sr, hd = Path(td) / "jobs", Path(td) / "state", Path(td) / "harness"
+            hd.mkdir()
+            (hd / "budget.yaml").write_text("daily_usd_ceiling: 30.0\n", encoding="utf-8")
+            _write_job(jobs_dir, "runaway", lookback="36h", dry_run=False,
+                       budget={"tokens": 2000000})
+            _write_job(jobs_dir, "crystallize-weekly", lookback="36h", dry_run=False,
+                       budget={"tokens": 200000})
+            night = datetime(2026, 9, 20, 2, 30, 0).timestamp()
+            state.mark_done("runaway", now=night, cost_usd=44.00, state_root=sr)
+
+            report = cycle.run_cycle(jobs_dir, now=night + 60, state_root=sr, harness_dir=hd)
+            by = {o.name: o for o in report.outcomes}
+            self.assertTrue(report.budget_ceiling_hit)
+            self.assertEqual(by["crystallize-weekly"].skipped_reason, "budget-ceiling")
+            self.assertFalse(by["crystallize-weekly"].ran)
 
     def test_t2_report_survives_concurrent_style_append(self):
         # T2 reports route through vault_lock.atomic_write; two sequential

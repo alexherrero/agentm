@@ -97,9 +97,28 @@ type block struct {
 	// ContractExemptSpaces are top-level directories whose files are documents
 	// rather than memories. A missing `type` there is the expected state, not a
 	// finding.
-	ContractExemptSpaces []string           `yaml:"contract_exempt_spaces" json:"contract_exempt_spaces"`
-	Warrants             map[string]Warrant `yaml:"warrants" json:"warrants"`
-	Thresholds           map[string]float64 `yaml:"thresholds" json:"thresholds"`
+	ContractExemptSpaces []string `yaml:"contract_exempt_spaces" json:"contract_exempt_spaces"`
+	// RecallExemptAreas are never indexed, never embedded and never served to
+	// any surface. The one wall in the contract, and the only list here matched
+	// as an area — a path from the vault root, that directory and everything
+	// under it — because the folder it was written for sits two levels down.
+	//
+	// `omitempty`, like every field added after a corpus was already stamped:
+	// contentHash marshals this struct, and a contract that names none of these
+	// must hash exactly as it did before the field existed.
+	RecallExemptAreas []string `yaml:"recall_exempt_areas" json:"recall_exempt_areas,omitempty"`
+	// LifecycleOverrides is where a class ages on a different line from the one
+	// `thresholds` sets — `episodic` today, whose traces run 90 · 365 · 1,095.
+	// Keyed by class, then by the threshold's own name.
+	LifecycleOverrides map[string]map[string]float64 `yaml:"lifecycle_overrides" json:"lifecycle_overrides,omitempty"`
+	// Retention is how long the night keeps its own paper, in days, by the kind
+	// of diagnostic. The one place besides the memory classes where a pass
+	// deletes, and it deletes only what it wrote.
+	Retention map[string]float64 `yaml:"retention" json:"retention,omitempty"`
+	Warrants  map[string]Warrant `yaml:"warrants" json:"warrants"`
+	// Thresholds are the numbers the operator sets and the machinery reads —
+	// the decay bands both ranking arms run, the lifecycle lines, and the caps.
+	Thresholds map[string]float64 `yaml:"thresholds" json:"thresholds"`
 	// Lifecycles is the aging axis a memory carries in `lifecycle:` — the
 	// graduated scale ranking reads as a demotion curve. Filing stamps
 	// DefaultLifecycle; policy and the operator move a memory along the scale by
@@ -466,6 +485,62 @@ func (b block) validate(source string) error {
 		facets[f] = true
 	}
 
+	// `lifecycle_overrides` may only bend the three lines, and only for a class
+	// the machinery is allowed to move at all. A typo here would be a class that
+	// silently keeps the shared threshold, which is the quiet kind of wrong: the
+	// note ages on a schedule nobody chose and nothing reports the mismatch.
+	overridable := map[string]bool{
+		"dormant_after_days": true,
+		"archive_after_days": true,
+		"forget_after_days":  true,
+	}
+	observational := map[string]bool{}
+	for _, c := range ObservationalClasses {
+		observational[c] = true
+	}
+	for class, over := range b.LifecycleOverrides {
+		if !observational[class] {
+			return fail("`lifecycle_overrides` names %q, which is not one of the three "+
+				"observational classes (%s) — the machinery moves a note's state only "+
+				"there, so an override anywhere else would be a line nothing reads",
+				class, strings.Join(ObservationalClasses, ", "))
+		}
+		for name, v := range over {
+			if !overridable[name] {
+				return fail("`lifecycle_overrides.%s` names %q; a class may override "+
+					"dormant_after_days, archive_after_days or forget_after_days and "+
+					"nothing else", class, name)
+			}
+			if v < 0 {
+				return fail("`lifecycle_overrides.%s.%s` is %v; days are never negative",
+					class, name, v)
+			}
+		}
+	}
+
+	for name, v := range b.Retention {
+		if !strings.HasSuffix(name, "_days") {
+			return fail("`retention` entry %q does not end in `_days`; every line here "+
+				"is a number of days a file is kept, and a line that is not says the "+
+				"job reading it is about to delete on a unit nobody named", name)
+		}
+		if v < 1 {
+			return fail("`retention.%s` is %v; a retention line deletes files, so zero "+
+				"or negative is refused rather than read as `delete everything`", name, v)
+		}
+	}
+
+	for _, a := range b.RecallExemptAreas {
+		if strings.TrimSpace(a) == "" {
+			return fail("`recall_exempt_areas` names an empty area; an empty path would " +
+				"match the whole vault and wall the corpus from itself")
+		}
+		if strings.HasPrefix(strings.TrimSpace(a), "/") {
+			return fail("`recall_exempt_areas` entry %q is absolute; an area is a path "+
+				"from the vault root", a)
+		}
+	}
+
 	for name, w := range b.Warrants {
 		if strings.TrimSpace(w.QueryClass) == "" {
 			return fail("warrant for %q is missing `query_class`", name)
@@ -583,6 +658,97 @@ func InSpace(rel string, spaces []string) bool {
 		}
 	}
 	return false
+}
+
+// InArea reports whether a vault-relative path sits inside one of `areas`.
+//
+// An area is a path from the vault root — `personal`, or `personal/Home/
+// Important Docs` — and it matches that directory and everything under it,
+// segment by segment and without case. Segment-wise rather than by string
+// prefix so `personal/Homework` is not read as being inside `personal/Home`,
+// which is the kind of near-miss a wall must not have.
+//
+// InSpace stays as it is for the two lists that genuinely name spaces: a
+// top-level directory, matched on the first segment alone.
+func InArea(rel string, areas []string) bool {
+	if len(areas) == 0 {
+		return false
+	}
+	parts := areaSegments(rel)
+	if len(parts) == 0 {
+		return false
+	}
+	for _, a := range areas {
+		want := areaSegments(a)
+		if len(want) == 0 || len(want) > len(parts) {
+			continue
+		}
+		match := true
+		for i, seg := range want {
+			if !strings.EqualFold(parts[i], seg) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+// areaSegments splits a vault-relative path into its non-empty segments,
+// normalizing separators and a leading `./`.
+func areaSegments(rel string) []string {
+	rel = strings.TrimPrefix(strings.ReplaceAll(rel, "\\", "/"), "./")
+	var out []string
+	for _, p := range strings.Split(rel, "/") {
+		if p = strings.TrimSpace(p); p != "" && p != "." {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// IsRecallExempt reports whether a path is walled from recall entirely.
+//
+// The strongest rule the contract carries. Unlike MayReadWithModel, which bars
+// unattended model reads, this one also covers what the operator's own session
+// can be served: the folder it was written for holds certificates and recovery
+// codes, and a query that happens to match them must not be able to put them in
+// front of any model, including one the operator is talking to.
+func (r *Rules) IsRecallExempt(rel string) bool {
+	if r == nil {
+		return false
+	}
+	return InArea(rel, r.RecallExemptAreas)
+}
+
+// LifecycleThreshold reads a threshold for one class — the class's own
+// override when `lifecycle_overrides` names it, else the shared `thresholds`
+// value. The second return says whether either named it.
+func (r *Rules) LifecycleThreshold(class, name string) (float64, bool) {
+	if r == nil {
+		return 0, false
+	}
+	if over, ok := r.LifecycleOverrides[class]; ok {
+		if v, ok := over[name]; ok {
+			return v, true
+		}
+	}
+	return r.Threshold(name)
+}
+
+// RetentionDays reads one of the contract's `retention` lines. The second
+// return distinguishes "the contract says keep it zero days" from "the contract
+// does not say", because only one of those is a number anybody chose — and the
+// job that reads it deletes files.
+func (r *Rules) RetentionDays(name string) (float64, bool) {
+	if r == nil || r.Retention == nil {
+		return 0, false
+	}
+	v, ok := r.Retention[name]
+	return v, ok
 }
 
 // MayReadWithModel is the eligibility gate's path rule.
