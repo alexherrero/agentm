@@ -967,12 +967,18 @@ func cmdClassify(args []string) error {
 			"flags":         flags,
 			"weight":        note.Multiplier(n.Flags),
 			"recall_walled": note.InRecallExemptArea(rel),
+			// The fourth list, reported beside the wall so the two arms can be
+			// compared on one table rather than reasoned about separately —
+			// which is how they came to disagree about whether the rule was
+			// recursive.
+			"always_load": note.InAlwaysLoadArea(rel),
 		}
 		if *asJSON {
 			return enc.Encode(row)
 		}
-		fmt.Printf("%s  weight x%.4f  flags %s  walled %v\n",
-			rel, row["weight"], strings.Join(flags, ","), row["recall_walled"])
+		fmt.Printf("%s  weight x%.4f  flags %s  walled %v  always-load %v\n",
+			rel, row["weight"], strings.Join(flags, ","), row["recall_walled"],
+			row["always_load"])
 		return nil
 	}
 

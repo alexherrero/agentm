@@ -379,6 +379,35 @@ model_exempt_spaces: []
 recall_exempt_areas:
   - personal/Home/Important Docs
 
+# Areas every session has already read in full, so recall never serves them
+# again. The fourth list, and the weakest of the four: it is not a wall and not
+# a privacy line, it is the absence of a second copy.
+#
+# `standards/` is the always-load tier. The loader reads every file in it whole
+# at session start, before the first prompt. A recall hit under it is therefore
+# always a duplicate of something already in the window — and the filing
+# contract is the largest file in the vault, so a prompt that merely mentions
+# filing could spend fifteen kilobytes re-reading what the session opened with.
+#
+# The files stay indexed. Drive-side surfaces search by name and have to find
+# them, and `agentmd search` for a rule by title should answer. What changes is
+# only that the ranked arms drop these rows before ranking.
+#
+# Why exclusion here and not a dedupe in the hook: a dedupe has to be repeated
+# in every reader, and one of them forgets. The prompt hook's own dedupe set
+# covered `memory/_always-load/` and not `standards/`, which is exactly how the
+# double injection got in.
+#
+# **Matched non-recursively, unlike every other list here, and deliberately.**
+# The others name a place, and a place includes what is under it. This one
+# names the files the loader actually injected — `<area>/*.md`, minus the
+# generated `moc-` maps the loader skips. A subtree rule would swallow
+# `standards/voice/`, which the loader's glob has never read, and the voice
+# library would leave every memory surface at once. Four gold questions went to
+# a miss when it was written the other way, and the retrieval gate refused it.
+always_load_areas:
+  - standards
+
 # Spaces exempt from the memory contract. Their files are documents rather than
 # memories: they carry frontmatter of their own shape, and expecting `type`,
 # `status` or `altitude` there would flag every one of them forever.

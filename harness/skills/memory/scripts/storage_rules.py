@@ -162,6 +162,16 @@ class StorageRules:
         """
         return list(self._data.get("recall_exempt_areas") or [])
 
+    def always_load_areas(self) -> list:
+        """Areas the loader already read whole, so recall never serves them again.
+
+        The fourth list and the weakest. `recall_exempt_areas` keeps a file out
+        of the corpus; this keeps an indexed, embedded, findable file out of the
+        *ranked* answer, because every session opened with it. A hit under it is
+        a second copy — and the filing contract is the largest file in the vault.
+        """
+        return list(self._data.get("always_load_areas") or [])
+
     def lifecycle_overrides(self) -> dict:
         """`{class: {threshold: days}}` — where a class ages on a different line
         from the one `thresholds` sets. `episodic` today."""
@@ -499,6 +509,13 @@ def _area_segments(rel) -> list:
 # this against the packaged default, so the two cannot drift.
 _FALLBACK_RECALL_EXEMPT_AREAS = ("personal/Home/Important Docs",)
 
+# The same mirrored fallback, for the same reason, on the fourth list. Failing
+# open here is the safe direction and not the dangerous one: the cost of missing
+# this list is a duplicate in the window, where the cost of missing the wall
+# above it is a recovery code in a prompt. `test_recall_wall.py` pins both
+# against the packaged default.
+_FALLBACK_ALWAYS_LOAD_AREAS = ("standards",)
+
 
 def is_recall_exempt(rel) -> bool:
     """Whether a path is walled from recall entirely — never indexed, never
@@ -508,6 +525,44 @@ def is_recall_exempt(rel) -> bool:
     except Exception:
         areas = list(_FALLBACK_RECALL_EXEMPT_AREAS)
     return in_area(rel, areas)
+
+
+def in_always_load_set(rel, areas) -> bool:
+    """Whether `rel` is a file the loader already injected.
+
+    **Not `in_area`, and not a subtree rule.** Every other path rule in this
+    contract answers a question about a *place* — what may rank, what a model
+    may read, what the corpus may hold — and a place includes what is under it.
+    This one answers a question about a *file*: did the session already get it?
+    Only the loader can say, so this mirrors the loader exactly —
+    `<area>/*.md`, non-recursive, minus the `moc-` maps it skips
+    (`recall.py`'s `session_start`).
+
+    Written as a subtree rule first, and the retrieval gate refused it:
+    `standards/voice/` is the operator's voice library, the loader's glob has
+    never read it, and excluding it from recall too made it unreachable from
+    every memory surface at once. Four gold questions went to a miss.
+    """
+    if not areas:
+        return False
+    norm = str(rel).replace("\\", "/").lstrip("./").lower()
+    head, _, base = norm.rpartition("/")
+    if not head or base.startswith("moc-"):
+        return False
+    return head in {str(a).strip("/").lower() for a in areas}
+
+
+def is_always_load_area(rel) -> bool:
+    """Whether a path is one the loader already injected.
+
+    Indexed, embedded and findable by name — only never ranked. Asked by the
+    ranked arms, never by the walk.
+    """
+    try:
+        areas = rules().always_load_areas()
+    except Exception:
+        areas = list(_FALLBACK_ALWAYS_LOAD_AREAS)
+    return in_always_load_set(rel, areas)
 
 
 def may_read_with_model(rel) -> bool:

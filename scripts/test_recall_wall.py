@@ -196,6 +196,14 @@ class TheFallbackWhenTheContractCannotBeRead(_Base):
         shipped = tuple(storage_rules.load_file(SHIPPED).recall_exempt_areas())
         self.assertEqual(shipped, storage_rules._FALLBACK_RECALL_EXEMPT_AREAS)
 
+    def test_the_always_load_fallback_matches_the_shipped_contract(self):
+        """Same pin on the fourth list. It fails *open* rather than closed —
+        missing it costs a duplicate in the window, where missing the wall
+        above costs a recovery code in a prompt — but a fallback that has
+        drifted from the file it mirrors is wrong in either direction."""
+        shipped = tuple(storage_rules.load_file(SHIPPED).always_load_areas())
+        self.assertEqual(shipped, storage_rules._FALLBACK_ALWAYS_LOAD_AREAS)
+
     def test_the_wall_holds_with_no_daemon_at_all(self):
         saved = storage_rules.DAEMON_BIN
         storage_rules.DAEMON_BIN = str(self.vault / "no-such-binary")
@@ -274,6 +282,171 @@ class Parity(_Base):
         self.assertIsNotNone(block, "the Go arm no longer declares ArchiveSegments")
         go_names = tuple(s.strip().strip('"') for s in block.group(1).split(",") if s.strip())
         self.assertEqual(go_names, recall.ARCHIVE_SEGMENTS)
+
+
+class TheAlwaysLoadExclusion(_Base):
+    """`always_load_areas`: the tier the session already read, kept out of the
+    ranked answer without being kept out of the corpus.
+
+    The distinction from the wall above is the whole design. A walled area is
+    never indexed; this one is indexed, embedded and findable by name on
+    purpose, because Drive-side surfaces search by title and `agentmd search`
+    for a rule should answer. Only the ranked arms drop it.
+    """
+
+    def test_a_loaded_standards_file_is_in_the_set_and_a_memory_note_is_not(self):
+        self.assertTrue(storage_rules.is_always_load_area("standards/storage-rules.md"))
+        self.assertTrue(storage_rules.is_always_load_area("standards/user-preferences.md"))
+        self.assertFalse(storage_rules.is_always_load_area("agent/memory/semantic/a-fact.md"))
+
+    def test_a_word_inside_a_name_is_not_the_name(self):
+        """The same rule the archive segments follow: an area is a directory,
+        so a file that merely starts with the word is not in it."""
+        self.assertFalse(storage_rules.is_always_load_area("standards-draft/x.md"))
+        self.assertFalse(storage_rules.is_always_load_area("projects/agentm/standards.md"))
+
+    def test_a_subdirectory_the_loader_never_reads_stays_in_recall(self):
+        """The rule this list got wrong first, and why it is non-recursive.
+
+        The loader's glob is `<area>/*.md` — `standards/voice/` has never been
+        injected, so excluding it from recall too makes the operator's voice
+        library unreachable from every memory surface at once. Four gold
+        questions went to a miss and the retrieval gate refused the change.
+        """
+        self.assertTrue(storage_rules.is_always_load_area("standards/storage-rules.md"))
+        self.assertFalse(
+            storage_rules.is_always_load_area("standards/voice/design-doc-prose.md"),
+            "the voice library left recall; the loader never injected it")
+
+    def test_a_generated_map_stays_in_recall(self):
+        """Same reasoning: the loader skips a `moc-` map, so a session never
+        has one, so recall has to keep answering with it."""
+        self.assertFalse(storage_rules.is_always_load_area("standards/moc-standards.md"))
+
+    def test_the_hook_reads_the_contract_only_for_a_binary_that_cannot(self):
+        """The cost gate on the belt-and-braces path.
+
+        The daemon does this drop itself, and reaching for the contract anyway
+        would mean an `agentmd rules --json` subprocess on every prompt, inside
+        the interactive budget, to re-check work already done. A current daemon
+        always emits `always_load_hidden`, so its presence is the signal. The
+        fallback still exists for the window a contract line is live and the
+        binary that reads it is not — the ordinary state on the day of a
+        landing, and the day a session would otherwise get the contract twice.
+        """
+        import subprocess as sp
+        from unittest import mock
+
+        def run_with(payload: dict):
+            seen = []
+
+            def fake(argv, **_kw):
+                seen.append(list(argv))
+                return sp.CompletedProcess(argv, 0, stdout=json.dumps(payload), stderr="")
+
+            with mock.patch.object(recall.subprocess, "run", side_effect=fake):
+                recall._daemon_search(vault=self.vault, query_text="filing rules",
+                                      k=5, drops={})
+            return seen
+
+        current = run_with({"results": [], "always_load_hidden": 0})
+        self.assertEqual(len(current), 1,
+                         "a current daemon's response made the hook read the "
+                         f"contract as well: {current}")
+
+        old = run_with({"results": []})
+        self.assertEqual(len(old), 2,
+                         "a binary too old to know the key left the hook "
+                         f"trusting it anyway: {old}")
+        self.assertIn("rules", old[1])
+
+    def go_always_load(self, rel: str) -> bool:
+        binary = os.environ["AGENTMD"]
+        env = dict(os.environ, AGENTM_STORAGE_RULES=str(SHIPPED))
+        proc = subprocess.run([binary, "classify", "--path", rel, "--json",
+                               "--vault", str(self.vault)],
+                              capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return bool(json.loads(proc.stdout)["always_load"])
+
+    def test_the_two_arms_agree_on_every_row(self):
+        """Two implementations of one path rule, run rather than reasoned about.
+        The Python half is what runs with no daemon; the Go half is what runs
+        with one, and a session cannot tell which answered it."""
+        rows = [
+            ("standards/storage-rules.md", True),
+            ("standards/user-preferences.md", True),
+            ("standards/voice/design-doc-prose.md", False),
+            ("standards/moc-standards.md", False),
+            ("standards-draft/proposal.md", False),
+            ("agent/memory/semantic/a-fact.md", False),
+            ("standards.md", False),
+        ]
+        areas = ["standards"]
+        for rel, want in rows:
+            with self.subTest(path=rel):
+                self.assertEqual(
+                    storage_rules.in_always_load_set(rel, areas), want,
+                    "the Python arm disagrees")
+                self.assertEqual(self.go_always_load(rel), want,
+                                 "the Go arm disagrees")
+
+    def test_it_is_not_a_wall(self):
+        """The one property that separates the fourth list from the first: the
+        walk still reads these files, so they stay in the index. A test that
+        only checked the drop would pass with the files walled out entirely,
+        which is the change this must not become."""
+        self.assertFalse(storage_rules.is_recall_exempt("standards/storage-rules.md"))
+
+    def test_the_prompt_arm_drops_a_standards_hit_on_a_flat_vault(self):
+        areas = recall._always_load_areas()
+        self.assertTrue(areas, "the contract names no always-load area")
+        # This fixture is flat, so the memory root and the vault root are one
+        # directory and a standards file keys without a `../`.
+        self.assertTrue(
+            recall._in_always_load_area("standards/storage-rules.md", self.vault, areas))
+        self.assertFalse(
+            recall._in_always_load_area("memory/semantic/a-fact.md", self.vault, areas))
+
+    def test_the_prompt_arm_drops_it_on_a_nested_vault_too(self):
+        """The two-bases case, which is the shipped layout and the one that has
+        silently matched nothing four times in this codebase.
+
+        Recall keys are memory-root-relative, so a vault-root file arrives as
+        `../standards/x.md`, while the contract's areas are written from the
+        vault root. A rule compared against the wrong base matches nothing and
+        says nothing — and the symptom would be the contract quietly coming
+        back in recall again, which is the bug this list was added to fix.
+        """
+        areas = recall._always_load_areas()
+        root = Path(self._tmp.name) / "nested"
+        (root / "standards").mkdir(parents=True)
+        (root / "standards" / "storage-rules.md").write_text("x", encoding="utf-8")
+        memory_root = root / "agent"
+        (memory_root / "memory" / "semantic").mkdir(parents=True)
+        self.assertTrue(
+            recall._in_always_load_area("../standards/storage-rules.md", memory_root, areas),
+            "a memory-root-relative key for a vault-root file did not resolve")
+        self.assertFalse(
+            recall._in_always_load_area("memory/semantic/a-fact.md", memory_root, areas))
+
+    def test_an_empty_area_list_drops_nothing(self):
+        """Fails open, deliberately, and this is the pin on that direction: an
+        empty list must not read as `match everything` and blank the answer."""
+        self.assertFalse(
+            recall._in_always_load_area("standards/storage-rules.md", self.vault, []))
+
+    def test_the_go_arm_declares_the_same_rule(self):
+        """Two implementations of one path rule is a drift surface. The Python
+        half is checked above; this is the pin that the Go half exists and is
+        wired into the ranked path rather than declared and forgotten."""
+        space = (_REPO / "daemon" / "internal" / "note" / "space.go").read_text()
+        self.assertIn("func InAlwaysLoadArea(", space)
+        self.assertIn("func SetAlwaysLoadAreas(", space)
+        search = (_REPO / "daemon" / "internal" / "index" / "search.go").read_text()
+        self.assertIn("note.InAlwaysLoadArea(r.Path)", search)
+        cfg = (_REPO / "daemon" / "internal" / "config" / "config.go").read_text()
+        self.assertIn("note.SetAlwaysLoadAreas(loaded.AlwaysLoadAreas)", cfg)
 
 
 if __name__ == "__main__":

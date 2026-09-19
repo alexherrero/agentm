@@ -104,6 +104,14 @@ jobs:
         # The Gemini half graceful-skips on a runner (no ~/.gemini); the tracked
         # Antigravity rule is checkable everywhere and never skips.
         run: python3 scripts/check-payload-parity.py
+      - name: check-index-self-description (index.md carries the payload's reading order and card guide)
+        # A runner has no vault, so what runs here in full is the self-test: a
+        # complete section passes, a hole and a retired `Filing.md` pointer each
+        # fail. The live half is a named skip, never a silent pass.
+        run: python3 scripts/check-index-self-description.py
+      - name: check-always-load-budget (the packaged always-load tier stays under 40,000 tokens)
+        # The packaged set is in the repo, so this runs in full on a runner.
+        run: python3 scripts/check-always-load-budget.py
       - name: check-no-title-case-roots (no literal spells a root space Title Case)
         run: python3 scripts/check-no-title-case-roots.py
       - name: "check-vocabulary-membership (set-ratchet self-test — collision + membership fire)"

@@ -214,10 +214,53 @@ def brief_for(cwd: Path) -> Optional[list]:
     )
 
 
+def ceiling_line() -> Optional[str]:
+    """One line when the live always-load tier is over its ceiling, else None.
+
+    The tier is what every session reads before it reads anything else, and it
+    has a ceiling of 40,000 tokens. The gate in the battery holds the *packaged*
+    set to that number; the live tier is the operator's own files, so it gets a
+    line rather than a failure — the ceiling is against creep, not against them.
+
+    It belongs to this hook and not to the loader for a reason the design names
+    outright: the always-load hook's output is large and the host collapses it
+    unread, so a warning printed there is a warning nobody sees. This hook is
+    small and stays open.
+
+    Never raises. A session must start even when nothing about the tier can be
+    measured, and a missing number is not worth a blocked boot.
+    """
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_alb", Path(__file__).resolve().parent / "check-always-load-budget.py")
+        alb = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(alb)
+        import harness_memory as hm  # noqa: E402
+        root = hm.memory_root()
+        if root is None:
+            return None
+        total, _rows = alb.tier_tokens(alb.live_files(Path(root)))
+        if total <= alb.CEILING_TOKENS:
+            return None
+        return (f"[agentm] always-load tier is {total:,} tokens, over the "
+                f"{alb.CEILING_TOKENS:,} ceiling — every session pays this "
+                f"before your first word. Trim standards/.")
+    except Exception:
+        return None
+
+
 def main(argv: Optional[list] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--cwd", default=None, help="the session's directory (default: this process's)")
+    ap.add_argument("--ceiling-line", action="store_true",
+                    help="print only the over-ceiling line, when there is one")
     args = ap.parse_args(argv)
+    if args.ceiling_line:
+        line = ceiling_line()
+        if line:
+            print(line)
+        return 0
     try:
         lines = brief_for(Path(args.cwd) if args.cwd else Path.cwd())
     except Exception as exc:  # never block a session's start

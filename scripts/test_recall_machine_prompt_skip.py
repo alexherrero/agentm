@@ -109,6 +109,11 @@ def _payload(*paths: str) -> str:
             for i, p in enumerate(paths)
         ],
         "matched": len(paths),
+        # A current daemon always emits this, zero or not: its presence is
+        # how the hook knows the always-load drop already happened and does
+        # not need to read the contract itself. A fake without it is an old
+        # binary, and the hook would rightly spend a second subprocess.
+        "always_load_hidden": 0,
     })
 
 

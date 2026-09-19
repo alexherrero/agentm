@@ -49,6 +49,17 @@ if [[ -z "$BRIEF" && -f "$HOME/Antigravity/agentm/scripts/project_brief.py" ]]; 
     BRIEF="$HOME/Antigravity/agentm/scripts/project_brief.py"
 fi
 
+# ── The always-load ceiling, when the live tier is over it ──────────────────────
+# Printed here rather than by the loader, and printed before either branch below
+# so it is never lost to whichever one runs. The always-load hook's own output is
+# large and the host collapses it unread; this hook is small and stays open, which
+# is the whole reason the two are separate (agentm-vault § the session opens on
+# two blocks).
+if [[ -n "$BRIEF" ]]; then
+    CEILING_LINE="$(python3 "$BRIEF" --ceiling-line 2>/dev/null || true)"
+    [[ -n "$CEILING_LINE" ]] && printf '%s\n' "$CEILING_LINE"
+fi
+
 # ── The brief, when a tracker exists ─────────────────────────────────────────────
 if [[ -n "$BRIEF" && -d "$EVENT_CWD" ]]; then
     TIMEOUT_CMD=""

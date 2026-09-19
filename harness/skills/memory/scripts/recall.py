@@ -446,6 +446,42 @@ def _vault_root_rel(key: str, vault) -> str:
         return str(key).replace("\\", "/")
 
 
+def _always_load_areas() -> list:
+    """The contract's `always_load_areas`, read once per call site.
+
+    Separate from `_contract_areas` rather than a third element of it, because
+    the two are asked at different moments. The wall and the dampen are asked on
+    the walk, before a file is read; this is asked on the ranked result, after
+    the corpus has answered — the files stay indexed on purpose so a search by
+    name still finds them.
+    """
+    import storage_rules  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    try:
+        return storage_rules.rules().always_load_areas()
+    except Exception:
+        # Fails open: the cost of missing this list is a duplicate in the
+        # window, not a leak. The wall above it fails closed for the opposite
+        # reason.
+        return list(storage_rules._FALLBACK_ALWAYS_LOAD_AREAS)
+
+
+def _in_always_load_area(key: str, vault, areas) -> bool:
+    """Whether a recall key names a path the loader already read whole.
+
+    Keys arrive memory-root-relative (`../standards/x.md` for a vault-root
+    file), so they are resolved against the vault root the same way the dampen
+    resolves its areas — `_vault_root_rel` is the one place that translation
+    lives, and a second copy of it here is how the two bases got out of step
+    four times in plan 11.
+    """
+    if not areas:
+        return False
+    import storage_rules  # noqa: E402
+
+    return storage_rules.in_always_load_set(_vault_root_rel(key, vault), areas)
+
+
 def _contract_areas() -> tuple:
     """`(walled, dampened)` from the filing contract, read once per call site.
 
@@ -861,6 +897,49 @@ def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
     return fm, body
 
 
+# Fenced blocks whose info string names a machine surface. The daemon reads
+# these out of the file at runtime; no session ever does.
+MACHINE_BLOCK_LANGS = ("storage-rules",)
+
+
+def _strip_machine_blocks(body: str) -> str:
+    """The body an always-load entry injects, with its machine blocks removed.
+
+    The filing contract is 22 KB, and three fifths of it is one fenced
+    `storage-rules` block — a parse target for the Go daemon, injected whole
+    into every session that never read a line of it. Stripping it is the same
+    move as stripping frontmatter: the machine's half of a document is not the
+    reader's half.
+
+    The heading above the block stays, and a line takes the block's place, so
+    what a session sees is that the routing table exists and is read from the
+    file rather than a silent hole where two hundred lines were.
+
+    Only a fence whose info string names a machine surface is touched. An
+    unclosed fence is left alone: a body with one is malformed, and guessing
+    where it ended would cut prose nobody can get back from the injection.
+    """
+    lines = body.split("\n")
+    out, i, n = [], 0, len(lines)
+    while i < n:
+        line = lines[i]
+        info = line.strip()
+        if info.startswith("```") and info[3:].strip() in MACHINE_BLOCK_LANGS:
+            lang = info[3:].strip()
+            close = next((j for j in range(i + 1, n)
+                          if lines[j].strip() == "```"), None)
+            if close is None:
+                out.extend(lines[i:])
+                break
+            out.append(f"_The `{lang}` block is read from this file by the "
+                       f"daemon and is not injected._")
+            i = close + 1
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
 def _format_entry_for_injection(slug: str, fm: dict[str, str], body: str) -> str:
     """Format a single always-load entry for stdout injection.
 
@@ -995,7 +1074,7 @@ def session_start(
         # have been flagged superseded without being moved).
         if _unserved(fm):
             continue
-        parsed_entries.append((md_path.stem, fm, body))
+        parsed_entries.append((md_path.stem, fm, _strip_machine_blocks(body)))
 
     # Priority-first ordering (R0.8 / voice#0): `priority: low` entries (the
     # heavy voice-style files) sort last, `priority: high` first, everything
@@ -1169,22 +1248,34 @@ def _machine_prompt_marker(prompt: str) -> str | None:
 
 
 def _collect_always_load_paths(vault: Path) -> set[str]:
-    """Return the set of always-load entry paths (relative to vault root) for dedup.
+    """The retired pen's entries, for dedup. Empty on a vault that has none.
 
-    The UserPromptSubmit hook must NOT re-inject entries the SessionStart hook
-    already loaded. Returns a set of vault-relative path strings (POSIX-style,
-    matching the relative-path convention used in entry frontmatter).
+    **Retired in favour of the contract's `always_load_areas`** (agentm-vault
+    plan 12). This used to be how the prompt hook avoided re-injecting what the
+    session had already read, and it is the reason the contract could be
+    injected twice: the set it collected covered `memory/_always-load/` and the
+    hook never learned that `standards/` had become the tier. A dedupe has to be
+    repeated in every reader, and one of them forgets. Exclusion by area is read
+    from the contract by both arms and by the daemon, so there is one place to
+    forget and three readers that would notice.
+
+    It stays, scoped to the legacy pen alone, for the vault that still has one.
+    `standards/` is deliberately not collected here any more — it is covered by
+    the contract, and collecting it too would hide a broken exclusion behind a
+    working dedupe.
     """
     import vault_layout  # noqa: E402 — lazy, mirrors this module's other cross-file imports
 
+    pen = vault_layout.legacy_pen_dir(vault)
+    if not pen.is_dir():
+        return set()
     out: set[str] = set()
-    for tier_dir in vault_layout.always_load_dirs(vault):
-        for md_path in tier_dir.glob("*.md"):
-            if md_path.stem.startswith("moc-"):
-                continue
-            # Memory-root-relative POSIX path (consistent with save.py's path
-            # convention); a standards file keys as `../standards/<name>.md`.
-            out.add(_vault_rel(md_path, vault))
+    for md_path in pen.glob("*.md"):
+        if md_path.stem.startswith("moc-"):
+            continue
+        # Memory-root-relative POSIX path (consistent with save.py's path
+        # convention).
+        out.add(_vault_rel(md_path, vault))
     return out
 
 
@@ -1771,9 +1862,19 @@ def query(
     all_paths = set(fused.keys())
     # One contract read for the whole ranking pass, not one per candidate.
     _, dampened_areas = _contract_areas()
+    always_load = _always_load_areas()
     merged: list[dict] = []
     for path in all_paths:
         if path in dedup_paths:
+            continue
+        # The contract's `always_load_areas`, dropped before ranking. The
+        # session read every file under `standards/` whole at start, so a hit
+        # there is a second copy — and the filing contract is fifteen kilobytes
+        # of it. Exclusion rather than a dedupe in the caller, because a dedupe
+        # has to be repeated in every reader and one of them forgets: the
+        # prompt hook's own set covered `memory/_always-load/` and not
+        # `standards/`, which is how the double injection got in.
+        if _in_always_load_area(path, vault, always_load):
             continue
         # No embedding stands behind any hit now that the vector stack is
         # gone, so zero is the true value rather than a failed match — the
@@ -2520,6 +2621,21 @@ def _daemon_search(
     note = note if isinstance(note, str) else ""
     effective_mode = "lexical" if _DAEMON_HYBRID_DEGRADE_MARK in note else DAEMON_SEARCH_MODE
 
+    # The contract's `always_load_areas`, but only for a binary that does not
+    # know the key yet.
+    #
+    # A daemon that does the drop itself reports how many rows it removed, so
+    # the field's *presence* is how this arm learns the work is already done —
+    # and asking the contract anyway would mean a `agentmd rules --json`
+    # subprocess on every prompt, inside the interactive budget, to re-check
+    # something that already happened. The window this covers is real but
+    # narrow: a contract line lands before the binary that reads it is
+    # deployed, which is the ordinary state on the day of a landing, and it is
+    # exactly the day a session would otherwise get the contract twice.
+    always_load = []
+    if isinstance(payload, dict) and "always_load_hidden" not in payload:
+        always_load = _always_load_areas()
+
     root: Path | None = None
     seen: set[str] = set()
     out: list[dict] = []
@@ -2531,12 +2647,17 @@ def _daemon_search(
         drops.setdefault("returned", 0)
         drops["returned"] += len(raw)
         for _reason in ("malformed", "inadmissible", "unrooted",
-                        "out_of_scope", "deduped"):
+                        "out_of_scope", "deduped", "always_load_area"):
             drops.setdefault(_reason, 0)
 
     def _drop(reason: str) -> None:
+        # `setdefault` rather than `+=` on a pre-seeded key: the seed list above
+        # and this call site are two places that have to agree, and they did not
+        # the first time a reason was added — a drop reason missing from the seed
+        # raised `KeyError` mid-recall, which is a crash in the one path whose
+        # whole contract is never to block a prompt.
         if drops is not None:
-            drops[reason] += 1
+            drops[reason] = drops.get(reason, 0) + 1
 
     for item in raw:
         if len(out) >= k:
@@ -2577,6 +2698,9 @@ def _daemon_search(
                 external = True
         if rel in dedup_paths or rel in seen:
             _drop("deduped")
+            continue
+        if _in_always_load_area(rel, vault, always_load):
+            _drop("always_load_area")
             continue
         seen.add(rel)
         try:

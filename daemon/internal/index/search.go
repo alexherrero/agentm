@@ -146,6 +146,19 @@ type SearchOutcome struct {
 	// never served to anything, and this count exists so the wall firing is
 	// visible in a diagnostic rather than silent.
 	RecallWalled int `json:"recall_walled,omitempty"`
+	// AlwaysLoadHidden is how many rows the contract's `always_load_areas`
+	// removed — files the loader already read whole into the session, so a hit
+	// on one would be a second copy. Counted for the same reason: the fix for
+	// the contract being injected twice should be visible as a number, not
+	// inferred from a hit list that got shorter.
+	//
+	// No `omitempty`, unlike the counts above it, and that is load-bearing. The
+	// prompt hook does the same drop for a binary too old to know the key, and
+	// the only way it can tell a new daemon from an old one is that a new one
+	// emits this field. With `omitempty` a zero would read as absence, and the
+	// hook would spawn `agentmd rules --json` inside the interactive budget on
+	// every prompt where nothing happened to be dropped — which is most of them.
+	AlwaysLoadHidden int `json:"always_load_hidden"`
 	// StagedHidden is the same wall's count for `status: ingest_staged` — a
 	// unit the ingest sweep fetched and has not promoted. Reported for the
 	// same reason the other two are: an absence nobody can see is an absence
@@ -273,6 +286,7 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 	rows, w = wallUnserved(rows, includeArchived)
 	out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = w.archived, w.superseded, w.staged
 	out.RecallWalled = w.recallExempt
+	out.AlwaysLoadHidden = w.alwaysLoad
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
@@ -494,6 +508,7 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3, inc
 	rows, w = wallUnserved(rows, includeArchived)
 	out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = w.archived, w.superseded, w.staged
 	out.RecallWalled = w.recallExempt
+	out.AlwaysLoadHidden = w.alwaysLoad
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
@@ -573,7 +588,8 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 		ArchivedHidden:   lexical.ArchivedHidden + denseWalls.archived,
 		SupersededHidden: lexical.SupersededHidden + denseWalls.superseded,
 		StagedHidden:     lexical.StagedHidden + denseWalls.staged,
-		RecallWalled:     lexical.RecallWalled + denseWalls.recallExempt}
+		RecallWalled:     lexical.RecallWalled + denseWalls.recallExempt,
+		AlwaysLoadHidden: lexical.AlwaysLoadHidden + denseWalls.alwaysLoad}
 	if len(out.Results) > k {
 		out.Results = out.Results[:k]
 	}
@@ -922,10 +938,24 @@ func wallUnserved(rows []Result, include bool) ([]Result, walled) {
 	// reconcile drops the ones it finds. This is the second reader, for the gap
 	// between the contract naming an area and the next reconcile removing what
 	// it already indexed: on the night the wall lands, the rows are still there.
+	//
+	// The contract's `always_load_areas` is dropped in the same pass and for a
+	// different reason: not that the corpus may not hold it, but that the
+	// session already has it. The loader read every file under `standards/`
+	// whole before the first prompt, so a hit there is a second copy of
+	// something in the window — and the filing contract is the largest file in
+	// the vault. `include` does not reach this one either: an explicit archive
+	// query is a request for cold notes, not a request to be told twice.
+	// Unlike the wall above, the rows are *in* the index on purpose, so this is
+	// the only reader that removes them.
 	kept := make([]Result, 0, len(rows))
 	for _, r := range rows {
 		if note.InRecallExemptArea(r.Path) {
 			w.recallExempt++
+			continue
+		}
+		if note.InAlwaysLoadArea(r.Path) {
+			w.alwaysLoad++
 			continue
 		}
 		kept = append(kept, r)
@@ -963,6 +993,7 @@ type walled struct {
 	superseded   int
 	staged       int
 	recallExempt int
+	alwaysLoad   int
 }
 
 func hasFlag(flags []string, want string) bool {

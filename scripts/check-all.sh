@@ -122,6 +122,8 @@ gate "check-card-shape (class cards in the card's order: required fields, no ret
 gate "check-class-directories (a class directory holds only cards and records)" "$PY" scripts/check-class-directories.py
 gate "check-no-empty-tags (no empty tag list in the class directories)" "$PY" scripts/check-no-empty-tags.py
 gate "check-root-notes (Home.md and Filing.md retired, nothing links to them, index.md holds the authority table once)" "$PY" scripts/check-root-notes.py
+gate "check-index-self-description (index.md carries the payload's reading order and card guide)" "$PY" scripts/check-index-self-description.py
+gate "check-always-load-budget (the packaged always-load tier stays under 40,000 tokens)" "$PY" scripts/check-always-load-budget.py
 gate "check-calendar-root (the calendar root holds years and their maps, and the daily note's two allowances until plan 10)" "$PY" scripts/check-calendar-root.py
 gate "check-tracker-schema (every tracker in the projects space has the one schema, in its place)" "$PY" scripts/check-tracker-schema.py
 gate "check-memory-root-consistency (daemon spaces sit beneath memory_root)" "$PY" scripts/check-memory-root-consistency.py
