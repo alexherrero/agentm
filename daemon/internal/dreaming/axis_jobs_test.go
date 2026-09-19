@@ -91,85 +91,6 @@ func TestRetentionWithNoContractRemovesNothing(t *testing.T) {
 	}
 }
 
-// ── sequence ─────────────────────────────────────────────────────────────────
-
-func TestSequenceNumbersByTheCreatedDate(t *testing.T) {
-	vault := t.TempDir()
-	root := filepath.Join(vault, "agent")
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(vault, ".obsidian"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(vault, "projects", "agentm", "decisions")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	write := func(name, created string) {
-		body := "---\nkind: note\n"
-		if created != "" {
-			body += "created: " + created + "\n"
-		}
-		body += "---\n\nbody\n"
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// The names are deliberately in the opposite order to the dates: a
-	// directory listing is alphabetical, so a fixture whose two orders agree
-	// cannot tell the two apart, and this test would pass against a job that
-	// numbered by name.
-	write("007-already-numbered.md", "2026-01-01")
-	write("alpha.md", "2026-06-01")
-	write("zulu.md", "2026-03-01")
-	write("mike-undated.md", "")
-
-	plan, err := PlanSequence(root, ProjectsRoot(root), time.Now(), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Already != 1 {
-		t.Errorf("already numbered = %d, want the one", plan.Already)
-	}
-	var got []string
-	for _, r := range plan.Numbered {
-		got = append(got, filepath.Base(r.To))
-	}
-	want := []string{"008-zulu.md", "009-alpha.md", "010-mike-undated.md"}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("numbered %v, want %v — by the created date, continuing from the "+
-			"highest already taken, with the undated file last", got, want)
-	}
-	for _, in := range plan.Intents {
-		if in.To == "" {
-			t.Errorf("%s: numbering produced an edit rather than a rename", in.Rel)
-		}
-		if string(in.Before) != string(in.After) {
-			t.Errorf("%s: the rename changed the file's bytes", in.Rel)
-		}
-	}
-}
-
-func TestSequenceLeavesASettledFolderAlone(t *testing.T) {
-	vault := t.TempDir()
-	root := filepath.Join(vault, "agent")
-	os.MkdirAll(root, 0o755)
-	os.MkdirAll(filepath.Join(vault, ".obsidian"), 0o755)
-	dir := filepath.Join(vault, "projects", "agentm", "research")
-	os.MkdirAll(dir, 0o755)
-	for _, n := range []string{"001-a.md", "002-b.md"} {
-		os.WriteFile(filepath.Join(dir, n), []byte("---\nkind: note\n---\n\nbody\n"), 0o644)
-	}
-	plan, err := PlanSequence(root, ProjectsRoot(root), time.Now(), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Numbered) != 0 {
-		t.Errorf("numbered %d in a folder that is already numbered", len(plan.Numbered))
-	}
-}
-
 // ── reconcile ────────────────────────────────────────────────────────────────
 
 func TestReconcileFollowsAMoveByItsBody(t *testing.T) {
@@ -231,8 +152,6 @@ func TestTheFacetNamesEveryActAndTheManifest(t *testing.T) {
 		},
 		Retain: RetainPlan{Removed: []RetainRow{
 			{Rel: "diagnostics/digests/20260101-digest-daily.md", What: "daily digest", Days: 260, Keep: 90}}},
-		Sequence: SequencePlan{Numbered: []SequenceRow{
-			{From: "../projects/agentm/decisions/a.md", To: "../projects/agentm/decisions/008-a.md"}}},
 		Reconcile:         ReconcilePlan{Repaired: []ReconcileRow{{From: "memory/semantic/x.md", To: "archive/memory/semantic/x.md"}}},
 		SkippedByHandMove: []string{"memory/semantic/moved-under-us.md"},
 		DeletionManifest:  "/state/purge/20260918T090000Z/manifest.json",
@@ -255,7 +174,6 @@ func TestTheFacetNamesEveryActAndTheManifest(t *testing.T) {
 		"## Archived", "archive/memory/semantic/cold.md",
 		"## Deleted", "manifest.json",
 		"## Removed by retention", "daily digest",
-		"## Numbered", "008-a.md",
 		"## Skipped, and repaired by reconcile", "moved-under-us",
 		"## Followed a move you made",
 		"## Left alone", "edited",

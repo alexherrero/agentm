@@ -155,12 +155,6 @@ func renderDreamingFacet(rep *Report, now time.Time) (string, int) {
 	}
 	section("Removed by retention", removed)
 
-	var numbered []string
-	for _, row := range rep.Sequence.Numbered {
-		numbered = append(numbered, fmt.Sprintf("`%s` → `%s`", row.From, row.To))
-	}
-	section("Numbered", numbered)
-
 	var consolidated []string
 	for _, fam := range rep.Copies.Families {
 		if len(fam.Copies) == 0 {
