@@ -115,7 +115,7 @@ type ProjectsPlan struct {
 	Activity []ActivityReading `json:"activity"`
 	// Moved is a record whose work finished: to `<slug>/completed/`, or a whole
 	// project to `projects/completed/`.
-	Moved []SequenceRow `json:"moved"`
+	Moved []MoveRow `json:"moved"`
 	// TrackersWritten is how many project trackers took the two fields. Zero
 	// while no project carries one, which is today.
 	TrackersWritten int    `json:"trackers_written"`
@@ -390,7 +390,7 @@ func PlanCompleted(root string, closedTasks map[string]bool, doneProjects []stri
 				plan.Intents = append(plan.Intents, Intent{Job: JobProjects, Rel: from, To: to,
 					Before: raw, After: raw, Summary: why,
 					Meta: map[string]string{"from": "live", "to": "completed", "reason": why}})
-				plan.Moved = append(plan.Moved, SequenceRow{From: from, To: to})
+				plan.Moved = append(plan.Moved, MoveRow{From: from, To: to})
 			}
 		}
 	}
@@ -418,7 +418,7 @@ func PlanCompleted(root string, closedTasks map[string]bool, doneProjects []stri
 		if e1 != nil || e2 != nil {
 			continue
 		}
-		plan.Moved = append(plan.Moved, SequenceRow{From: from, To: to})
+		plan.Moved = append(plan.Moved, MoveRow{From: from, To: to})
 	}
 	return plan, nil
 }

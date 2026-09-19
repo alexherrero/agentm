@@ -27,10 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every row is on disk. `lifecycle_transitions.py set <rel> archived` moves the
   file the same way, and `revive` moves it back — the one lane on this axis
   that touches a path.
-- **Three free jobs and a facet.** `retain` prunes the diagnostics to the
-  contract's `retention:` block, `sequence` numbers project documents,
-  `reconcile` pairs what a hand move broke, and the `dreaming` facet says what
-  the night did — every move, every skip, and the manifest behind any deletion.
+- **Two free jobs and a facet.** `retain` prunes the diagnostics to the
+  contract's `retention:` block, `reconcile` pairs what a hand move broke, and
+  the `dreaming` facet says what the night did — every move, every skip, and the
+  manifest behind any deletion. A third, `sequence`, numbered a project's
+  documents in creation order; the operator read its first report and reversed
+  the decision before any file was renamed, so it ships retired rather than
+  shipping (see Changed).
 - **`projects/` ranks by how much it is being worked.** Each project is scored
   from its own evidence onto four bands, written into its tracker and into
   `project-activity.json`, which is where the daemon reads it; a closed task's
@@ -74,6 +77,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colliding.
 
 ### Changed
+
+- **A project's documents are not numbered (agentm-vault plan 11).** The
+  `sequence` job gave every file in a project's `decisions/`, `designs/`,
+  `research/` and `drafts/` a three-digit prefix in creation order. Its first
+  run was supervised by design; the operator read the report — about 130 renames
+  across nine projects — and reversed the decision. That ordering will live in a
+  set of sub-folders instead, and a number in a filename would be a second
+  scheme to hold in agreement with the first. **No document was renamed**, which
+  is what the supervised first run was for. The job, its tests and the facet's
+  `## Numbered` section are gone; the three helpers it held that the projects
+  pass still needs moved to `projects_paths.go`. Task directories keep their
+  numbers.
 
 - **The runner's daily ceiling is $30, and the repeated-run guard is its own
   rule (agentm-vault plan 11, task 7).** The re-audit trigger the 2026-09-13

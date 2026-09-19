@@ -53,7 +53,6 @@ type Report struct {
 	Calendar CalendarPlan  `json:"calendar"`
 	// The three free jobs the axis added, and the night's own record of itself.
 	Retain    RetainPlan    `json:"retain"`
-	Sequence  SequencePlan  `json:"sequence"`
 	Reconcile ReconcilePlan `json:"reconcile"`
 	Projects  ProjectsPlan  `json:"projects"`
 	Facet     FacetPlan     `json:"facet"`
@@ -328,20 +327,6 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 			if err := applyAll(journal, root, runID, retain.Intents, now, opt.Pace, &rep); err != nil {
 				return rep, err
 			}
-		}
-	}
-
-	// The numbering. Its first run is a supervised data run, not a nightly one —
-	// see PlanSequence — so it plans every night and applies only what it is
-	// allowed to.
-	sequence, err := PlanSequence(root, ProjectsRoot(root), now, opt.Cap)
-	if err != nil {
-		return rep, err
-	}
-	rep.Sequence = sequence
-	if opt.Apply && len(sequence.Intents) > 0 {
-		if err := applyAll(journal, root, runID, sequence.Intents, now, opt.Pace, &rep); err != nil {
-			return rep, err
 		}
 	}
 
