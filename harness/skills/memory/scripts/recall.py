@@ -482,6 +482,78 @@ def _in_always_load_area(key: str, vault, areas) -> bool:
     return storage_rules.in_always_load_set(_vault_root_rel(key, vault), areas)
 
 
+# The record kind a session trace carries. One constant, because the two arms
+# and the tests all have to mean the same string.
+SESSION_TRACE_KIND = "session-trace"
+
+# How far into a file to look for its `kind:`. Counted in lines, not
+# characters, and generously: a trace's `kind:` is on line three, but the
+# `touched:` list two lines below it is a single line running to a thousand
+# characters and more. A character cap large enough for that is a guess about
+# the widest line in the corpus; a line cap is a statement about frontmatter.
+_KIND_PROBE_LINES = 60
+
+
+def prompt_admits_traces(prompt: str) -> bool:
+    """Whether a session trace may be served for this prompt.
+
+    A trace is the handoff record of a session — what was asked and what
+    happened. It answers a time question well and almost nothing else, and it
+    is the best lexical match in the corpus for a prompt that was itself
+    pasted into a session, which is how one brief came back five times in its
+    own first recall, one copy per session that had pasted it.
+
+    So the rule is the one the design names: a trace is admitted when the
+    prompt carries a temporal bound, and dropped before the five are chosen
+    otherwise. Reusing `_extract_temporal_bound` rather than writing a second
+    "is this a time question" test — it already draws exactly this line, and
+    two heuristics for one question drift.
+
+    Note what this deliberately does *not* admit: "when did I decide X" bounds
+    nothing. The extractor abstains on every "when did I…" shape because those
+    ask for a date rather than supply one, and a trace is not the answer to
+    them either — the note that records the decision is.
+
+    Traces stay indexed and `memory_search` still returns them when asked.
+    This is the prompt hook's rule about what it injects unasked, not a wall.
+    """
+    return _extract_temporal_bound(prompt) is not None
+
+
+def _is_session_trace(path: Path) -> bool:
+    """Whether a note's `kind:` is `session-trace`, from a bounded head read.
+
+    Read rather than inferred from the path: `episodic/` holds traces and other
+    things, and a rule that dropped a whole class directory would be a different
+    and much larger change than the one the design asked for.
+
+    Scanned line by line rather than parsed out of a clipped head, because the
+    first thing this was tried against on the live corpus defeated the clipped
+    version: a trace's `touched:` list is one line of a thousand-odd characters,
+    so a 512-character read ended inside the frontmatter, the closing `---`
+    never arrived, `_parse_frontmatter` correctly returned nothing, and every
+    real trace read as not-a-trace. The unit fixtures had short frontmatter and
+    passed throughout.
+
+    Lazy iteration, so the cost is the frontmatter rather than the file.
+    """
+    try:
+        with path.open(encoding="utf-8") as fh:
+            first = fh.readline()
+            if first.rstrip("\r\n") != "---":
+                return False
+            for _ in range(_KIND_PROBE_LINES):
+                line = fh.readline()
+                if not line or line.rstrip("\r\n") == "---":
+                    return False
+                key, sep, value = line.partition(":")
+                if sep and key.strip() == "kind":
+                    return value.strip().strip("\"'") == SESSION_TRACE_KIND
+    except (OSError, UnicodeDecodeError):
+        return False
+    return False
+
+
 def _contract_areas() -> tuple:
     """`(walled, dampened)` from the filing contract, read once per call site.
 
@@ -1751,6 +1823,7 @@ def query(
     filter_expr: str | None = None,
     status: dict | None = None,
     project: str | None = None,
+    admit_traces: bool = True,
     stderr=sys.stderr,
 ) -> list[dict]:
     """Run the in-process recall engine.
@@ -1892,6 +1965,11 @@ def query(
             fm, _ = _parse_frontmatter(content)
         except (OSError, UnicodeDecodeError):
             fm = {}
+        # The trace rule, on the arm that has the frontmatter in hand already.
+        # Before the sort and the cut below, so a dropped trace leaves a slot
+        # for a real hit rather than shortening the injection.
+        if not admit_traces and fm.get("kind") == SESSION_TRACE_KIND:
+            continue
         if lifecycle is not None:
             lifecycle_tier = lifecycle.lifecycle_tier_for(fm, path)
             decay_score = lifecycle.compute_decay_score(vault, slug, fm, path)
@@ -2488,6 +2566,7 @@ def _daemon_search(
     daemon_index: str | None = None,
     drops: dict | None = None,
     project: str | None = None,
+    admit_traces: bool = True,
 ) -> list[dict] | None:
     """Ask the agentm daemon for the top-k entries relevant to `query_text`.
 
@@ -2647,7 +2726,8 @@ def _daemon_search(
         drops.setdefault("returned", 0)
         drops["returned"] += len(raw)
         for _reason in ("malformed", "inadmissible", "unrooted",
-                        "out_of_scope", "deduped", "always_load_area"):
+                        "out_of_scope", "deduped", "always_load_area",
+                        "session_trace_no_temporal_bound"):
             drops.setdefault(_reason, 0)
 
     def _drop(reason: str) -> None:
@@ -2701,6 +2781,13 @@ def _daemon_search(
             continue
         if _in_always_load_area(rel, vault, always_load):
             _drop("always_load_area")
+            continue
+        # The trace rule, before the k are chosen rather than after, so a
+        # dropped trace leaves a slot for a real hit instead of shortening the
+        # injection. A bounded head read, and only on a prompt that carries no
+        # temporal bound — on one that does, nothing here runs at all.
+        if not admit_traces and _is_session_trace(vault / rel):
+            _drop("session_trace_no_temporal_bound")
             continue
         seen.add(rel)
         try:
@@ -2824,6 +2911,13 @@ def prompt_submit(
 
     always_load_paths = _collect_always_load_paths(vault)
 
+    # The trace rule (agentm-vault § Surfaces). Computed once for the prompt
+    # and handed to whichever arm answers, so the two cannot disagree about
+    # what counts as a time question — the extractor is the only thing that
+    # decides, and it is the same one that puts `-after`/`-before` on the
+    # daemon call.
+    admit_traces = prompt_admits_traces(prompt)
+
     # Non-positive budget → deterministic immediate-overrun path (matches
     # session_start's force-overrun branch). Smoke tests rely on this to
     # exercise the degraded-graceful path without depending on machine speed.
@@ -2856,6 +2950,7 @@ def prompt_submit(
                     status=daemon_status,
                     drops=daemon_drops,
                     project=project,
+                    admit_traces=admit_traces,
                 )
             except Exception as e:  # noqa: BLE001 — never block the prompt
                 daemon_status.update(
@@ -2883,6 +2978,7 @@ def prompt_submit(
                     deadline=deadline,
                     status=recall_status,
                     project=project,
+                    admit_traces=admit_traces,
                     stderr=stderr,
                 )
                 recall_status.setdefault("engine", "in-process")
