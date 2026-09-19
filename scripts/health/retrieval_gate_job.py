@@ -29,9 +29,13 @@ import corpus_scorecard as sc  # noqa: E402 — the diagnostics-dir resolver liv
 GATE = _REPO / "scripts" / "check-retrieval-regression.sh"
 ARTIFACT_NAME = "latest_retrieval_gate.json"
 
-# The gate's exit codes, translated for the scorecard. 0 covers both PASS and
-# SKIP; the verdict line distinguishes them, and both are worth showing.
-VERDICTS = {0: "clean-or-skip", 1: "FAIL"}
+# The gate's exit codes, translated for the scorecard. One code per verdict:
+# until 2026-09-18 a skip and a pass both exited 0 and this dict said
+# `clean-or-skip`, so the artifact's verdict was decided by grepping the gate's
+# last three lines for the string "SKIP". A measurement that never ran was one
+# reworded log line away from being recorded as PASS — which is how a decay
+# flip nearly went in behind a gate that had printed `no reachable vault`.
+VERDICTS = {0: "PASS", 1: "FAIL", 2: "SKIP"}
 
 
 def run_gate() -> dict:
@@ -43,15 +47,14 @@ def run_gate() -> dict:
                 "tail": ""}
     tail = [l for l in (proc.stdout + proc.stderr).strip().splitlines()
             if l.strip()][-3:]
-    # The gate itself only ever exits 0 or 1; anything else is the wrapper's
+    # The gate exits 0, 1 or 2 and nothing else; anything else is the wrapper's
     # environment failing underneath it (127 = command not found), which is
-    # a could-not-run reading, not a verdict about the ranker.
+    # a could-not-run reading, not a verdict about the ranker. Read from the
+    # exit code alone — the tail is evidence for a human, never the verdict.
     verdict = VERDICTS.get(proc.returncode,
                            f"gate could not run (exit {proc.returncode})")
-    if proc.returncode == 0:
-        joined = "\n".join(tail)
-        verdict = "SKIP" if "SKIP" in joined else "PASS"
     return {"exit": proc.returncode, "verdict": verdict,
+            "measured": verdict in ("PASS", "FAIL"),
             "tail": "\n".join(tail)}
 
 

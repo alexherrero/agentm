@@ -219,6 +219,64 @@ def _remap_projects(path: str, vault_root: "Path | None | bool" = False) -> str:
     return path
 
 
+# The desk dissolution (2026-09-02, ahead of Filing v2 part 3): `agent/desk/`
+# emptied out and the diagnostics moved up a level into per-kind buckets. The
+# vault's own history is the evidence and not a guess from the filename — the
+# old path is deleted in `0c7f54c68` and the new one added in `48287a3e6`, both
+# on 2026-09-02, and `ebce1f0c7` folds the root to lowercase on 2026-09-14.
+#
+# Whole paths, not a prefix, for the reason `_PROJECTS_REMAPS` gives: the desk's
+# other children did not all land in the same bucket, and a prefix row would
+# rewrite a note this move never touched. Keyed on the paths as the casing fold
+# leaves them, and taken only when the vault holds the destination.
+_DESK_REMAPS = (
+    ("agent/desk/diagnostics/latest_health_scorecard.md",
+     "agent/diagnostics/health/latest_health_scorecard.md"),
+)
+
+
+def _remap_desk(path: str, vault_root: "Path | None | bool" = False) -> str:
+    """A gold-set path as the desk dissolution leaves it, when it has run."""
+    root = _vault_root() if vault_root is False else vault_root
+    if root is None:
+        return path
+    for old, new in _DESK_REMAPS:
+        if path != old:
+            continue
+        if (Path(root) / new).exists():
+            return new
+        return path
+    return path
+
+
+# Expectations whose note left the vault on purpose. These are not drift and
+# they are not repairable by a remap: there is no destination to point at, so
+# the only honest thing the eval can do is drop them from the expected set and
+# say so on every run.
+#
+# The distinction matters in both directions, and getting it wrong is silent
+# either way. A retired expectation left in a *positive* entry is a permanent
+# miss that reads as a ranking failure. Left in a *negative* entry it is a
+# permanent free pass, because a banned note that cannot be returned can never
+# be returned wrongly — the same painted-on dial `RULE-hard-negatives.md` found
+# in the original twenty.
+#
+# Keyed on the paths as the casing fold leaves them. Each row carries its
+# evidence, because "this note was deleted deliberately" is a claim about the
+# past that nobody can check from the code alone.
+_RETIRED = {
+    "agent/desk/scratch/_index.md":
+        "scratch left the vault (agentm-vault, `agent/` holds diagnostics, "
+        "memory and archive, nothing loose); no destination inside the vault",
+    "agent/memory/preferences/i-want-this-context-vault-to.md":
+        "purged 2026-09-03 as expired auto-miner output — corpus-migration-3 "
+        "run 20260903T150538-purge, purge-manifest.csv",
+    "agent/memory/preferences/i-want-to-create-the-vault.md":
+        "purged 2026-09-03 as expired auto-miner output — corpus-migration-3 "
+        "run 20260903T150538-purge, purge-manifest.csv",
+}
+
+
 # The root casing (agentm-vault plan 08, 2026-09-14): the four root spaces are
 # lowercase. The gold set is frozen and keeps the old spelling; the daemon
 # returns what is on disk. The first segment is folded here, at score time,
@@ -514,6 +572,62 @@ def load_gold() -> list:
     return entries
 
 
+def resolve_expected(entry: dict) -> tuple:
+    """`(live, retired)` for one entry's expectations, through the whole chain.
+
+    `_remap_projects` runs after the casing fold and `_remap_desk` after it,
+    for the reason the score loop's own note gives: a table keyed on the folded
+    path only matches once that fold has happened.
+    """
+    live, retired = [], []
+    for p in (entry.get(EXPECTED_FIELD) or []):
+        if not p:
+            continue
+        r = _remap_desk(_remap_projects(_remap_casing(
+            _migrated(_remap_trims(_remap_merged(p))))))
+        (retired if r in _RETIRED else live).append(r)
+    return live, retired
+
+
+def check_expectations(entries: list) -> dict:
+    """Every surviving expectation names a file that is on disk, or the run stops.
+
+    Without this the gate is quiet about exactly the failure it exists to catch.
+    A gold-set path whose note has moved still *compares* — it just never
+    matches, so a positive becomes a permanent miss and a negative a permanent
+    pass, and the number goes on being printed with three decimal places.
+    That is how `0.734 -> 0.641` was read for two plans as a ranking drop when
+    part of it was a fixture pointing at files that were not there.
+
+    Runs only where a vault resolves: with no vault there is nothing to check
+    against, and CI is meant to get past this to the setup skip.
+
+    Returns the retirement census, which `render` prints on every run.
+    """
+    root = _vault_root()
+    if root is None:
+        return {"retired": 0, "checked": 0, "reasons": {}}
+    stale, checked, retired = [], 0, {}
+    for e in entries:
+        live, gone = resolve_expected(e)
+        for r in gone:
+            retired[r] = _RETIRED[r]
+        for r in live:
+            checked += 1
+            if not (Path(root) / r).exists():
+                stale.append((e.get("id"), r))
+    if stale:
+        named = "; ".join(f"{i}: {p}" for i, p in sorted(stale))
+        raise Control(
+            f"{len(stale)} expectation(s) in the frozen gold set name a file "
+            f"that is not in the vault: {named}. The gold set is evidence and "
+            "is never edited; add a remap row for a note that moved, or a "
+            "_RETIRED row with its evidence for one that left on purpose. "
+            "Scoring past this measures the fixture's drift and calls it the "
+            "ranker's.")
+    return {"retired": len(retired), "checked": checked, "reasons": retired}
+
+
 def check_canary(binary: str) -> None:
     """The planted note must come back at rank 1, or nothing gets scored.
 
@@ -628,13 +742,13 @@ def score(binary: str, entries: list, k: int) -> dict:
     all_scores = []
     for e in entries:
         question = e["question"]
-        # `_remap_projects` runs **outermost**, after the casing fold. The 2b
-        # remap emits the root Title Case and `_remap_casing` folds it to the
-        # spelling the vault lists, so a table keyed on the folded path only
-        # matches once that fold has happened. Placed inside, it matched nothing
-        # and every moved expectation scored as a miss (2026-09-16).
-        expected = [_remap_projects(_remap_casing(_migrated(_remap_trims(_remap_merged(p)))))
-                    for p in (e.get(EXPECTED_FIELD) or []) if p]
+        # The whole remap chain, and the retirement split, live in
+        # `resolve_expected` so that the control which checks these paths and
+        # the loop which scores them can never resolve them differently. A
+        # second copy of the chain here is how the ordering bug of 2026-09-16
+        # got in: `_remap_projects` has to run outermost, after the casing
+        # fold, because its table is keyed on the folded path.
+        expected, _retired = resolve_expected(e)
         rows = _search_rows(binary, question, k)
         got = [path for path, _score in rows]
         all_scores.extend(s for _path, s in rows if s is not None)
@@ -830,12 +944,22 @@ def comparison_lines(cmp: dict, k: int) -> list:
     ]
 
 
-def render(result: dict, provenance: str) -> str:
+def render(result: dict, provenance: str, census: dict = None) -> str:
     lines = [
         f"corpus: {provenance}",
-        f"scored {result['scored']} question(s) at k={result['k']}",
-        f"  R@{result['k']}              : {result['r_at_k']:.3f} ({result['hits']} hits)",
     ]
+    # Printed every run, not only when it changes: a retired expectation is a
+    # question quietly measuring less than the fixture says it does, and a
+    # number that hides that is the thing this arc was written to stop.
+    if census and census.get("retired"):
+        lines.append(
+            f"expectations: {census['checked']} live, {census['retired']} "
+            f"retired (the note left the vault on purpose)")
+        for path, why in sorted(census["reasons"].items()):
+            lines.append(f"  retired: {path} — {why}")
+    lines.append(f"scored {result['scored']} question(s) at k={result['k']}")
+    lines.append(f"  R@{result['k']}              : "
+                 f"{result['r_at_k']:.3f} ({result['hits']} hits)")
     if "r_at_1" in result:
         lines.append(f"  R@1 (informational): {result['r_at_1']:.3f} "
                      f"({result['hits_at_1']} first-slot hits)")
@@ -884,6 +1008,7 @@ def main(argv: list) -> int:
     try:
         provenance = require_warm_embedder(binary)
         entries = load_gold()
+        census = check_expectations(entries)
         check_canary(binary)
     except Setup as exc:
         print(f"eval-retrieval-shipped: {exc}", file=sys.stderr)
@@ -901,7 +1026,7 @@ def main(argv: list) -> int:
         print(f"\nINSTRUMENT CONTROL FIRED: {exc}", file=sys.stderr)
         return 4
 
-    print(render(first, provenance))
+    print(render(first, provenance, census))
 
     if args.verify_determinism:
         second = score(binary, entries, args.k)

@@ -46,6 +46,26 @@ gate_skip() {
   RESULTS+=("  SKIP  $1 — $2")
 }
 
+# gate_tri "<name>" <command...>  — a gate that reports its own skip.
+#
+# Exit 0 passes, exit 2 is a skip (recorded, never counted as a failure), and
+# anything else fails. For a gate that can only measure on a machine with the
+# thing it grades: the plain `gate` above has to read non-zero as failure, so a
+# gate wanting to say "I could not measure" had no choice but to exit 0 and
+# hope somebody read the text. That is how a skip and a pass came to share an
+# exit code on the retrieval gate.
+gate_tri() {
+  local name="$1"; shift
+  printf '  … %s\n' "$name" >&2
+  "$@" >"$LOG" 2>&1
+  local rc=$?
+  case "$rc" in
+    0) RESULTS+=("  PASS  $name"); PASS=$((PASS+1)) ;;
+    2) RESULTS+=("  SKIP  $name"$'\n'"$(tail -4 "$LOG" | sed 's/^/          | /')") ;;
+    *) RESULTS+=("  FAIL  $name"$'\n'"$(tail -8 "$LOG" | sed 's/^/          | /')"); FAIL=$((FAIL+1)) ;;
+  esac
+}
+
 # The filing contract is parsed by the daemon and asked for over `agentmd rules`
 # — one parser, in Go, so a type added to standards/storage-rules.md is live
 # everywhere at once. Several Python gates below read it, so the battery builds
@@ -95,7 +115,7 @@ gate "check-storage-rules (the filing contract parses + the taxonomy growth rule
 gate "check-payload-layout-free (the pasted payload names no folder a migration moves)" "$PY" scripts/check-payload-layout-free.py
 gate "check-payload-parity (every payload copy is the template's derivation)" "$PY" scripts/check-payload-parity.py
 gate "check-vocabulary-membership (--strict: any unregistered type/kind value fails; collision self-test)" "$PY" scripts/check-vocabulary-membership.py --strict
-gate "check-retrieval-regression (shipped ranker vs the pinned gold-set baseline)" bash scripts/check-retrieval-regression.sh
+gate_tri "check-retrieval-regression (shipped ranker vs the pinned gold-set baseline)" bash scripts/check-retrieval-regression.sh
 gate "check-vault-frontmatter (every note's frontmatter parses as YAML)" "$PY" scripts/check-vault-frontmatter.py
 gate "check-memory-root-shape (agent/ holds two children; memory/ only the classes; the standards set)" "$PY" scripts/check-memory-root-shape.py
 gate "check-card-shape (class cards in the card's order: required fields, no retired field, no counter name)" "$PY" scripts/check-card-shape.py

@@ -548,6 +548,9 @@ def gate_reading(out_dir) -> "Reading":
     note = f"{age_h:.0f}h ago"
     if verdict == "FAIL":
         note += " — REGRESSION: the ranker got worse against the pinned baseline"
+    if verdict == "SKIP":
+        note += (" — MEASURED NOTHING: the gate ran and could not score. A skip "
+                 "is not a clean bar; nothing may be flipped behind it")
     if age_h > GATE_STALE_HOURS:
         note += (f" — STALE (>{GATE_STALE_HOURS}h): the nightly job has stopped "
                  "running, which is its own finding")

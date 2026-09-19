@@ -41,11 +41,37 @@ class TheWrapperVerdicts(unittest.TestCase):
         self.assertEqual(got["verdict"], "PASS")
 
     def test_a_skip_is_named_skip_not_pass(self):
-        # The two share exit 0 and must not share a label — a skip counted as a
-        # pass is the silent-tripwire failure all over again.
-        got = self._run(exit_code=0,
+        # A skip has its own exit code since 2026-09-18. It must not share a
+        # label with a pass — a skip counted as a pass is the silent-tripwire
+        # failure all over again.
+        got = self._run(exit_code=2,
                         stdout="check-retrieval-regression: SKIP — no daemon\n")
         self.assertEqual(got["verdict"], "SKIP")
+
+    def test_a_skip_is_read_from_the_exit_code_not_the_log_text(self):
+        # The defect this pins: the verdict used to be decided by grepping the
+        # gate's last three lines for "SKIP". Reword the log and a run that
+        # measured nothing is recorded as a clean gate — which is how a decay
+        # flip nearly went in behind `no reachable vault`. Exit 2 with a tail
+        # that never says the word is still a skip.
+        got = self._run(exit_code=2,
+                        stdout="no reachable vault\nnothing was measured\n")
+        self.assertEqual(got["verdict"], "SKIP")
+        self.assertFalse(got["measured"])
+
+    def test_a_pass_whose_log_merely_mentions_the_word_is_still_a_pass(self):
+        # And the inverse: the old string match would have called this a skip.
+        got = self._run(exit_code=0,
+                        stdout="1 optional check was a SKIP\n"
+                               "check-retrieval-regression: clean\n")
+        self.assertEqual(got["verdict"], "PASS")
+        self.assertTrue(got["measured"])
+
+    def test_only_a_run_that_scored_is_marked_measured(self):
+        self.assertTrue(self._run(exit_code=0)["measured"])
+        self.assertTrue(self._run(exit_code=1)["measured"])
+        self.assertFalse(self._run(exit_code=2)["measured"])
+        self.assertFalse(self._run(exit_code=127)["measured"])
 
     def test_a_regression_is_fail(self):
         got = self._run(exit_code=1, stdout="regressed\n")
@@ -91,6 +117,15 @@ class TheScorecardReading(unittest.TestCase):
             self._artifact(Path(d), verdict="FAIL", hours_ago=1)
             r = sc.gate_reading(Path(d))
         self.assertIn("REGRESSION", r.note)
+
+    def test_a_skip_on_the_page_says_it_measured_nothing(self):
+        # The row a human reads has to distinguish "the bar held" from "nobody
+        # took a reading". Anything flipped behind the second is unmeasured.
+        with tempfile.TemporaryDirectory() as d:
+            self._artifact(Path(d), verdict="SKIP", hours_ago=1)
+            r = sc.gate_reading(Path(d))
+        self.assertEqual(r.value, "SKIP")
+        self.assertIn("MEASURED NOTHING", r.note)
 
     def test_no_artifact_is_an_absence_with_the_fix_in_it(self):
         with tempfile.TemporaryDirectory() as d:
