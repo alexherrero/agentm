@@ -98,6 +98,9 @@ def capture(
     tags: "list[str] | None" = None,
     instructions: "str | None" = None,
     source_url: "str | None" = None,
+    transport: "str | None" = None,
+    why: "str | None" = None,
+    project: "str | None" = None,
     now: "datetime | None" = None,
     lock_timeout: float = 10.0,
 ) -> CaptureResult:
@@ -132,6 +135,19 @@ def capture(
     that is no longer live (a tombstone, a superseded note) is never a
     reinforce target.
 
+    `transport` overrides the contract `source:` this write files under, and
+    with it the `trust:` the contract's sources table stamps. It exists for the
+    mail door: a mailed card is `source: email`, which the contract maps to
+    `trust: untrusted`, and the door must not be the thing that decides its own
+    trust level — the contract is. Absent, the transport is derived as it always
+    was (`external-fetch` for a link, `operator-direct` otherwise), so every
+    existing caller writes exactly what it wrote before.
+
+    `why` is the reason the thing was worth keeping, when the caller has one to
+    carry. `project` names the project a capture belongs to. Both are plain
+    frontmatter; neither can cause anything to happen, which is what separates
+    them from `instructions`.
+
     `lock_timeout` passes through to the vault mutex the writer takes.
     """
     if kind not in _KNOWN_KINDS:
@@ -150,7 +166,8 @@ def capture(
         import filing_engine  # same skill dir
 
         title = content.strip().splitlines()[0].strip()[:120]
-        extra = {"captured": _iso(now), "via": source, "surface": surface, "instructions": instructions}
+        extra = {"captured": _iso(now), "via": source, "surface": surface,
+                 "instructions": instructions, "why": why, "project": project}
         # Decide, then write; when a concurrent writer lands on the settled
         # name between the two, decide again against the disk — the next
         # pass sees the newcomer (a twin to reinforce, or a namesake to
@@ -160,7 +177,7 @@ def capture(
             decision = filing_engine.decide(
                 vault, title=title, body=content, slug=resolved_slug,
                 type_hint="idea" if kind == "idea" else None, confidence="LOW",
-                source="external-fetch" if source_url else "operator-direct",
+                source=transport or ("external-fetch" if source_url else "operator-direct"),
             )
             if decision.op == "noop":
                 twin = vault / decision.dest_rel

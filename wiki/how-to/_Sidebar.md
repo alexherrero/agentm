@@ -11,6 +11,7 @@
 - [Audit the vault](Audit-The-Vault)
 - [Find missing note links](Find-Missing-Note-Links)
 - [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent)
+- [Open the mail door](Open-The-Mail-Door)
 - [Tune auto-orchestration](Tune-Auto-Orchestration)
 - [Run without a vault](Run-Without-A-Vault)
 - [Choose a storage backend](Choose-A-Storage-Backend)
