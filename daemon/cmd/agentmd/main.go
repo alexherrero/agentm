@@ -504,7 +504,18 @@ func cmdSearch(args []string) error {
 		fmt.Println("note:", out.Note)
 	}
 	for i, r := range out.Results {
-		fmt.Printf("%d. %s\n", i+1, r.Path)
+		// The card's readable head, then the address, then the evidence — the
+		// same order and the same fields `memory_search` returns and
+		// `/memory search` prints. A hit that reads three different ways is
+		// three things a reader has to learn.
+		fmt.Printf("%d. %s\n", i+1, headline(r))
+		if line := kindLine(r); line != "" {
+			fmt.Printf("   %s\n", line)
+		}
+		if r.Summary != "" {
+			fmt.Printf("   %s\n", r.Summary)
+		}
+		fmt.Printf("   %s\n", r.Path)
 		fmt.Printf("   score %.4f", r.Score)
 		if r.Penalty != "" {
 			fmt.Printf("  raw %.4f  penalty %s", r.RawScore, r.Penalty)

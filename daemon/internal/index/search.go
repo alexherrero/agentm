@@ -10,8 +10,33 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/note"
 )
 
-// Result is one ranked hit.
+// Result is one ranked hit: the card's readable head, then its address and the
+// evidence (agentm-vault § Surfaces).
+//
+// Field order is the card's own, which is the order the operator reads a note
+// in, so a hit list reads like a list of notes rather than like a query result.
+// `title` first because it is what tells you whether you want the rest.
+//
+// The body is never here — the surface reads it from the file — and neither is
+// `why`, which is the reason the operator kept the note, written for them.
+// Filled by `fillHeads` at serve time; see head.go for why not at index time.
 type Result struct {
+	// Title, Type-or-Kind, Summary, Importance, Status, Lifecycle, Project:
+	// the head. `omitempty` throughout, so a note carrying none of them is a
+	// row of the shape it always was, and a consumer reading only `path` and
+	// `score` is untouched.
+	Title string `json:"title,omitempty"`
+	// Type is a memory's; Kind is a record's. Never both — the contract's own
+	// rule, and carrying them separately is what lets a reader tell the two
+	// apart without knowing either vocabulary.
+	Type       string `json:"type,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	Importance int    `json:"importance,omitempty"`
+	Status     string `json:"status,omitempty"`
+	Lifecycle  string `json:"lifecycle,omitempty"`
+	Project    string `json:"project,omitempty"`
+
 	Path string `json:"path"`
 	// Score is the penalized score, larger is better. SQLite's own bm25() is
 	// negative-is-better, which reads as a bug to anyone comparing two tools side
@@ -234,6 +259,11 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 	// After the wall and the ranking, over what the caller is actually handed:
 	// a row the archive wall removed was not served, and counting it would reset
 	// the clock of a note nobody saw.
+	// The head, the clock and the ledger row, in that order, over the rows the
+	// caller is actually handed. All three are about what was *served*: a row
+	// the archive wall removed was not, and filling or counting it would be
+	// describing a note nobody saw.
+	x.fillHeads(out.Results)
 	x.recordAccess(q.Surface, out.Results)
 	x.recordLedger(q.Surface, text, out.Results)
 	return out, nil

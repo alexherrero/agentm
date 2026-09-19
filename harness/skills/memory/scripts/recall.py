@@ -489,6 +489,11 @@ def _in_always_load_area(key: str, vault, areas) -> bool:
 # would read as a new surface rather than as a mistake.
 SURFACE_SESSION_START = "session-start"
 SURFACE_PROMPT_SUBMIT = "prompt-submit"
+# `/memory search` is a person at a terminal reading their memory, so it is a
+# genuine recall and moves the clock — the same as `agentmd search` by hand.
+# Named here for the ledger's vocabulary; the daemon applies it as its own
+# default, so nothing has to pass it.
+SURFACE_CLI = "cli"
 
 # The record kind a session trace carries. One constant, because the two arms
 # and the tests all have to mean the same string.
@@ -2047,6 +2052,57 @@ def _hit_space(rel_path: str) -> str:
     return parts[0] if parts else "?"
 
 
+# The card's readable head, for `/memory search` (agentm-vault § Surfaces).
+#
+# The eleven fields in the card's own order, which is the order the operator
+# reads a note in. The daemon's `agentmd search -json` fills them from the file
+# at serve time and this prints what it returns; where no daemon answers, the
+# in-process arm's own frontmatter parse fills the same fields, so the shell
+# surface says the same thing either way.
+#
+# Never the body, which the reader opens the file for, and never `why`, which is
+# the reason the operator kept the note — written for them, not about it.
+HEAD_FIELDS = ("title", "type", "kind", "summary", "importance", "status",
+               "lifecycle", "project")
+
+
+def format_head(hit: dict) -> str:
+    """One hit as a screen rather than an address."""
+    title = (hit.get("title") or "").strip()
+    if not title:
+        title = Path(hit.get("path", "?")).stem
+    lines = [title]
+    facets = []
+    if hit.get("type"):
+        facets.append(str(hit["type"]))
+    elif hit.get("kind"):
+        facets.append(str(hit["kind"]))
+    if hit.get("importance"):
+        facets.append(f"importance {hit['importance']}")
+    if hit.get("status"):
+        facets.append(str(hit["status"]))
+    # `lifecycle: active` is what every filing stamps; printing it on every hit
+    # hides the `dormant` a reader actually needs to see.
+    if hit.get("lifecycle") and hit["lifecycle"] != "active":
+        facets.append(str(hit["lifecycle"]))
+    if hit.get("project"):
+        facets.append(f"project {hit['project']}")
+    if facets:
+        lines.append("   " + " · ".join(facets))
+    if hit.get("summary"):
+        lines.append("   " + str(hit["summary"]))
+    lines.append("   " + str(hit.get("path", "?")))
+    score = hit.get("score", hit.get("combined"))
+    if score is not None:
+        try:
+            lines.append(f"   score {float(score):.4f}")
+        except (TypeError, ValueError):
+            pass
+    if hit.get("snippet"):
+        lines.append("   " + str(hit["snippet"]))
+    return "\n".join(lines)
+
+
 def _format_recall_result(
     result: dict,
     body: str,
@@ -2821,6 +2877,20 @@ def _daemon_search(
             # Not a curated memory entry: readable and rankable, but it gets no
             # heat count and no decay-clock reset (see prompt_submit).
             entry["external"] = True
+        # The card's readable head, carried through from the daemon rather than
+        # re-derived. This is what makes the design's "the three surfaces print
+        # the same head" literally true: the daemon reads the file once at serve
+        # time, and `memory_search`, `agentmd search` and `/memory search` all
+        # print those same values. Re-parsing here would be a second reader to
+        # keep in agreement, which is the drift this whole plan has been undoing.
+        #
+        # Only what the daemon sent: a field absent from the response is a field
+        # the note does not carry, and inventing a blank would make "no summary"
+        # indistinguishable from "an older daemon".
+        for _head in HEAD_FIELDS:
+            _value = item.get(_head)
+            if _value not in (None, "", 0):
+                entry[_head] = _value
         snippet = item.get("snippet")
         if isinstance(snippet, str) and snippet.strip():
             # Carried for the excerpt path alone (`_build_excerpt_block`). The
@@ -3370,6 +3440,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     q.add_argument("query_text", help="the query string (use '-' to read stdin)")
     q.add_argument("-k", type=int, default=DEFAULT_K,
                    help=f"top-K results to return (default: {DEFAULT_K})")
+    q.add_argument("--heads", action="store_true",
+                   help="print each hit as the card's readable head — title, "
+                        "type or kind, summary, importance, status, lifecycle, "
+                        "project, then the path, the score and the snippet. The "
+                        "same head `memory_search` returns and `agentmd search` "
+                        "prints. Default stays JSON-Lines, which is what every "
+                        "script reading this already expects.")
     q.add_argument("--budget-ms", type=int, default=QUERY_CLI_BUDGET_MS,
                    help=f"time budget in milliseconds (default: {QUERY_CLI_BUDGET_MS})")
     q.add_argument("--include-inbox", action="store_true",
@@ -3465,6 +3542,45 @@ def main(argv: list[str] | None = None) -> int:
         except FilterError as e:
             print(f"ERROR: {e}", file=sys.stderr)
             return 1
+        if getattr(args, "heads", False):
+            # The readable head, the same one `memory_search` returns and
+            # `agentmd search` prints. Asks the daemon first so all three
+            # surfaces are literally the same fields from the same reader; the
+            # in-process results above stand in where no daemon answers.
+            hits = None
+            try:
+                # No `-surface` is passed, so the daemon's own default (`cli`)
+                # applies — which is right: a person searching their memory at
+                # a terminal is a genuine recall and moves the clock.
+                hits = _daemon_search(vault=vault, query_text=query_text,
+                                      k=args.k, include_inbox=args.include_inbox,
+                                      include_archive=args.include_archive,
+                                      budget_ms=10_000)
+            except Exception:  # noqa: BLE001 — the fallback is the point
+                hits = None
+            # `None` and `[]` are different answers from the daemon and the
+            # house rule (GH #92, `_daemon_search`'s docstring) is to branch on
+            # which one arrived: `None` is "no search happened", `[]` is "the
+            # daemon searched and nothing matched". So pick the arm once, then
+            # report on the arm that was picked — asking `hits or results` would
+            # consult the arm this code just decided not to use, and print
+            # nothing at all on a daemon `[]` that the in-process engine
+            # disagrees with.
+            chosen = hits if hits is not None else results
+            for i, r in enumerate(chosen, start=1):
+                print(f"{i}. {format_head(r)}")
+            if not chosen:
+                print("(no results)")
+            if hits is None and chosen:
+                # A head is the daemon's read of the card's frontmatter. The
+                # in-process engine ranks paths and never opens the file, so its
+                # rows have no title and no summary — and a head rendered from
+                # one looks exactly like a note that has neither. Say which it
+                # is rather than letting a degraded surface pass for a thin card.
+                print("note: the daemon did not answer, so these are the "
+                      "in-process engine's rows — ranked paths, with no title "
+                      "or summary to show.", file=sys.stderr)
+            return 0
         # JSON-Lines output for scriptability.
         for r in results:
             print(json.dumps(r))
