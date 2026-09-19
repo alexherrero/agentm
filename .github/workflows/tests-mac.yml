@@ -78,6 +78,9 @@ jobs:
       - name: check-always-load-budget (the packaged always-load tier stays under 40,000 tokens)
         # The packaged set is in the repo, so this runs in full on a runner.
         run: python3 scripts/check-always-load-budget.py
+      - name: check-measurement-surface (a pass that grades searching says so)
+        # Pure grep over named call sites; runs in full on a runner.
+        run: python3 scripts/check-measurement-surface.py
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         run: bash scripts/check-vendored-parity.sh hook-config
       - name: Unit tests — auto-discover every scripts/test_*.py

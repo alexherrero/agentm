@@ -558,6 +558,77 @@ def gate_reading(out_dir) -> "Reading":
                             source=GATE_ARTIFACT_NAME, note=note)
 
 
+RECALL_SURFACE_WINDOW_DAYS = 7
+
+
+def section_surfaces(window_days: int = RECALL_SURFACE_WINDOW_DAYS) -> Section:
+    """How the memory is actually being reached, by surface.
+
+    Every row in the recall ledger used to come from the prompt-submit hook, so
+    the file answered "how often does that hook fire" while being read as "how
+    often is this memory used". Since the daemon writes rows of its own, the
+    `surface:` field is the only thing that tells them apart — and it is what
+    makes the design's own re-audit answerable: a memory reached only from
+    claude.ai leaves no row here at all, and that absence is the point.
+
+    Rows written before the field existed are counted as `(unlabelled)` rather
+    than folded into `prompt-submit`. Thirteen thousand of them are, and they
+    almost certainly were that hook, but "almost certainly" is not a
+    measurement and this page is read as one.
+    """
+    import collections
+    import datetime as _dt
+
+    s = Section("Surfaces", blurb=(
+        f"Which surface served each recall, over the last {window_days} days. "
+        "A surface that cannot write the clock — claude.ai through Drive — "
+        "leaves no row here, which is the design's named consequence rather "
+        "than a gap."))
+    try:
+        import recall_counter
+        path = recall_counter.default_history_path()
+    except Exception as exc:  # noqa: BLE001 — a scorecard never raises
+        s.readings.append(Reading.unavailable("recalls by surface", str(exc)))
+        return s
+    if not path.exists():
+        s.readings.append(Reading.unavailable(
+            "recalls by surface", f"no ledger at {path} yet"))
+        return s
+
+    cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=window_days)
+    counts: "collections.Counter" = collections.Counter()
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                    ts = _dt.datetime.fromisoformat(str(row.get("ts", "")).replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    continue
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=_dt.timezone.utc)
+                if ts < cutoff:
+                    continue
+                counts[str(row.get("surface") or "(unlabelled)")] += 1
+    except OSError as exc:
+        s.readings.append(Reading.unavailable("recalls by surface", str(exc)))
+        return s
+
+    if not counts:
+        s.readings.append(Reading.measured(
+            "recalls by surface", 0, source=path.name,
+            note=f"no recall in {window_days} days"))
+        return s
+    for surface, n in counts.most_common():
+        s.readings.append(Reading.measured(
+            f"recalls · {surface}", n, source=path.name,
+            note=f"last {window_days} days"))
+    return s
+
+
 def section_coverage() -> Section:
     """How much of the corpus each stage has actually processed."""
     s = Section("Coverage", blurb=(
@@ -661,6 +732,7 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
         section_completeness(out_dir),
         section_meters(),
         _with_gate(section_retrieval(repo), out_dir),
+        section_surfaces(),
         section_coverage(),
         section_graph(vault, out_dir),
     ]

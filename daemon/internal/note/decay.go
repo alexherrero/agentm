@@ -181,11 +181,18 @@ type AccessLog struct {
 	// slug in version 1. `version` says which, so a lookup knows whether the
 	// slug fallback is a compatibility read or a wrong answer waiting to be
 	// given.
-	byKey   map[string]time.Time
-	version int
-	loaded  bool
-	dirs    []string
-	modTime time.Time
+	byKey map[string]time.Time
+	// fingerprints is the body hash each entry carries, kept because this type
+	// now writes the file it reads. The reader parsed the field and dropped it,
+	// which was harmless while nothing here wrote; a writer that dropped it
+	// would erase every fingerprint in the sidecar on its first hit, and the
+	// reconcile step that follows a moved note to its new path has nothing else
+	// to follow it by.
+	fingerprints map[string]string
+	version      int
+	loaded       bool
+	dirs         []string
+	modTime      time.Time
 }
 
 // NewAccessLog reads the sidecar from the first of `dirs` that holds one. The
@@ -197,7 +204,7 @@ type AccessLog struct {
 // refused to run because a cache was corrupt would be trading a small
 // inaccuracy for no answer at all.
 func NewAccessLog(dirs ...string) *AccessLog {
-	a := &AccessLog{byKey: map[string]time.Time{}}
+	a := &AccessLog{byKey: map[string]time.Time{}, fingerprints: map[string]string{}}
 	for _, d := range dirs {
 		if strings.TrimSpace(d) != "" {
 			a.dirs = append(a.dirs, d)
@@ -253,14 +260,19 @@ func (a *AccessLog) Refresh() {
 	}
 
 	parsed := make(map[string]time.Time, len(rec.Entries))
+	prints := make(map[string]string, len(rec.Entries))
 	for key, e := range rec.Entries {
 		if t, err := time.Parse("2006-01-02", strings.TrimSpace(e.LastAccess)); err == nil {
 			parsed[key] = t
+		}
+		if fp := strings.TrimSpace(e.Fingerprint); fp != "" {
+			prints[key] = fp
 		}
 	}
 
 	a.mu.Lock()
 	a.byKey = parsed
+	a.fingerprints = prints
 	a.version = rec.Version
 	a.loaded = true
 	a.modTime = info.ModTime()
@@ -292,6 +304,90 @@ func (a *AccessLog) Len() int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return len(a.byKey)
+}
+
+// Record stamps today's date against each of `rels` and writes the sidecar.
+//
+// The Go arm read this file and never wrote it, which is why a memory used only
+// over MCP aged as if unread — the design's "a surface that can write writes the
+// clock" was true of the Python hooks and of nothing else.
+//
+// Same day, no write: the sidecar's resolution is a date, so a second recall of
+// the same note on the same day changes nothing, and rewriting a 50KB file for
+// every hit of every search would be a real cost for no information.
+//
+// Written whole and renamed into place, because a torn `.lifecycle.json` is
+// every note's anchor at once. Best-effort by contract: a failure here loses an
+// anchor, and refusing to answer a search because a cache could not be written
+// would trade a ranking inaccuracy for no answer at all.
+//
+// A version-1 sidecar is upgraded on first write rather than appended to: its
+// keys are slugs, 26 of which matched more than one file, and adding path keys
+// beside them would leave a file that is two schemas at once.
+func (a *AccessLog) Record(rels []string, now time.Time) {
+	if len(rels) == 0 {
+		return
+	}
+	path := a.SidecarPath()
+	if path == "" {
+		return
+	}
+	day := now.UTC().Truncate(24 * time.Hour)
+
+	a.mu.Lock()
+	fresh := false
+	for _, rel := range rels {
+		rel = strings.TrimSpace(rel)
+		if rel == "" {
+			continue
+		}
+		if prev, ok := a.byKey[rel]; ok && !prev.Before(day) {
+			continue
+		}
+		a.byKey[rel] = day
+		fresh = true
+	}
+	if !fresh {
+		a.mu.Unlock()
+		return
+	}
+	out := accessRecord{Version: accessRecordV2}
+	out.Entries = make(map[string]struct {
+		LastAccess  string `json:"last_access"`
+		Fingerprint string `json:"fingerprint,omitempty"`
+	}, len(a.byKey))
+	for k, t := range a.byKey {
+		e := out.Entries[k]
+		e.LastAccess = t.UTC().Format("2006-01-02")
+		e.Fingerprint = a.fingerprints[k]
+		out.Entries[k] = e
+	}
+	a.version = accessRecordV2
+	a.loaded = true
+	a.mu.Unlock()
+
+	blob, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(blob, '\n'), 0o644); err != nil {
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return
+	}
+	// The write is ours, so the next Refresh must not read it back as a change
+	// somebody else made and discard the in-memory map for a re-parse.
+	if info, err := os.Stat(path); err == nil {
+		a.mu.Lock()
+		a.modTime = info.ModTime()
+		a.mu.Unlock()
+	}
 }
 
 // ElapsedDays resolves a note's age by the anchor chain the design specifies:

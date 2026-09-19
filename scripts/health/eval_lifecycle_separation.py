@@ -139,7 +139,8 @@ class Daemon:
         return self._run("reindex").stdout.strip()
 
     def search(self, terms: str, *, include_archived: bool = False, k: int = 10) -> dict:
-        args = ["search", "-json", "-k", str(k)]
+        # `-surface measure`: a pass grading the ranker, never anybody reading — `-surface measure` so these queries reset no clock.
+        args = ["search", "-json", "-surface", "measure", "-k", str(k)]
         if include_archived:
             args.append("-include-archived")
         args.append(terms)

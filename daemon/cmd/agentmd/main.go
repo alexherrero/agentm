@@ -421,6 +421,11 @@ func cmdSearch(args []string) error {
 	includeArchived := fs.Bool("include-archived", false,
 		"also return notes whose lifecycle is archived or superseded — the contract's explicit archive query; "+
 			"off by default, both have left everyday search while staying on disk (a superseded note comes back demoted beside its successor)")
+	surface := fs.String("surface", note.SurfaceCLI,
+		"who is asking, which decides whether this counts as a genuine recall and resets each hit's clock. "+
+			"`cli` (the default) is a person searching. `measure` is a pass grading the ranker — the retrieval "+
+			"gate, the scorecards, the verify scripts, the probe — and never touches a clock; without it the "+
+			"gate's 64 nightly questions would hold three hundred notes at day zero forever")
 	ef := bindEmbedderFlags(fs)
 	rf := bindRerankerFlags(fs)
 	asJSON := fs.Bool("json", false, "emit JSON")
@@ -450,7 +455,7 @@ func cmdSearch(args []string) error {
 	}
 
 	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode, Lex3: *lex3,
-		IncludeArchived: *includeArchived, Project: *project}
+		IncludeArchived: *includeArchived, Project: *project, Surface: note.NormalizeSurface(*surface)}
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if innerMode == index.ModeHybrid {

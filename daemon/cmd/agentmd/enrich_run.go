@@ -15,6 +15,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/note"
 )
 
 // The night's record of one enrichment run.
@@ -360,7 +361,11 @@ func enrichNeighbours(cfg *config.Config, idx *index.Index,
 		if q == "" {
 			return nil
 		}
-		out, err := idx.Search(index.Query{Text: q, K: 40, Mode: index.ModeFusion})
+		// A background pass looking for neighbours, not anybody reading:
+		// `measure` so a nightly enrichment does not hold every note it
+		// considered at day zero.
+		out, err := idx.Search(index.Query{Text: q, K: 40, Mode: index.ModeFusion,
+			Surface: note.SurfaceMeasure})
 		if err != nil {
 			return nil
 		}

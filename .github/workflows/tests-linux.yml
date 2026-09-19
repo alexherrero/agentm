@@ -112,6 +112,9 @@ jobs:
       - name: check-always-load-budget (the packaged always-load tier stays under 40,000 tokens)
         # The packaged set is in the repo, so this runs in full on a runner.
         run: python3 scripts/check-always-load-budget.py
+      - name: check-measurement-surface (a pass that grades searching says so)
+        # Pure grep over named call sites; runs in full on a runner.
+        run: python3 scripts/check-measurement-surface.py
       - name: check-no-title-case-roots (no literal spells a root space Title Case)
         run: python3 scripts/check-no-title-case-roots.py
       - name: "check-vocabulary-membership (set-ratchet self-test — collision + membership fire)"

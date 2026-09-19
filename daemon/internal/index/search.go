@@ -124,6 +124,12 @@ type Query struct {
 	// note.ProjectMismatch: a modest lift for the session's own cards. Empty ranks
 	// exactly as before.
 	Project string
+	// Surface is who is asking, and it decides whether this search counts as a
+	// genuine recall — `cli`, `mcp:<client>`, or `measure` for a pass that is
+	// grading the ranker rather than reading memory. Empty means the CLI, the
+	// only caller that can reach here without saying who it is. See
+	// note.MovesClock.
+	Surface string
 }
 
 // SearchOutcome carries the hits plus whatever the driver needs to know about how
@@ -209,15 +215,45 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 
 	switch q.Mode {
 	case "", ModeAnd:
-		return x.searchAnd(text, k, after, before, q.IncludeArchived, q.Project)
+		out, err = x.searchAnd(text, k, after, before, q.IncludeArchived, q.Project)
 	case ModeFusion:
-		return x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived, q.Project)
+		out, err = x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived, q.Project)
 	case ModeHybrid:
-		return x.searchHybrid(text, k, after, before, q)
+		out, err = x.searchHybrid(text, k, after, before, q)
 	default:
 		return out, fmt.Errorf("unknown search mode %q (want %q, %q or %q)",
 			q.Mode, ModeAnd, ModeFusion, ModeHybrid)
 	}
+	if err != nil {
+		return out, err
+	}
+	// Serving a hit is what moves its clock, so it is stamped here — at the one
+	// funnel every mode returns through — rather than in each mode's own tail,
+	// where the third one added would be the one that forgot.
+	//
+	// After the wall and the ranking, over what the caller is actually handed:
+	// a row the archive wall removed was not served, and counting it would reset
+	// the clock of a note nobody saw.
+	x.recordAccess(q.Surface, out.Results)
+	x.recordLedger(q.Surface, text, out.Results)
+	return out, nil
+}
+
+// recordAccess stamps today against every note this search served, unless the
+// surface says the search was a measurement.
+//
+// Best-effort, and deliberately after the answer is assembled: the clock is a
+// ranking input, and a search that refused to answer because a cache could not
+// be written would trade a small inaccuracy for no answer at all.
+func (x *Index) recordAccess(surface string, rows []Result) {
+	if len(rows) == 0 || !note.MovesClock(surface) {
+		return
+	}
+	rels := make([]string, 0, len(rows))
+	for _, r := range rows {
+		rels = append(rels, r.Path)
+	}
+	x.accessLog().Record(rels, time.Now())
 }
 
 // searchAnd runs BM25 over FTS5, applies the measured rank penalty, and returns

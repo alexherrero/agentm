@@ -684,7 +684,11 @@ def _search_rows(binary: str, question: str, k: int,
     if not terms:
         return []
 
-    argv = [binary, "search", "-json",
+    # The gate runs 64 questions a night against the same gold set. Counted as
+    # recalls they would hold about three hundred notes at day zero forever, and
+    # the axis the whole lifecycle rests on would read healthy while measuring
+    # nothing. `measure` is the surface that never touches a clock.
+    argv = [binary, "search", "-json", "-surface", "measure",
             "-k", str(max(1, k) * recall.DAEMON_OVERFETCH),
             "-mode", mode or recall.DAEMON_SEARCH_MODE,
             "-question", question]

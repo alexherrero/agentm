@@ -53,7 +53,10 @@ def search(binary: str, terms: str, mode: str, k: int = DEFAULT_K) -> list:
     pass the question, which is why absolute rates here are lower than
     production and are never reported as the production rate.
     """
-    argv = [binary, "search", "-json", "-k", str(k), "-mode", mode, terms]
+    # `-surface measure`: the probe searches in order to grade searching, so
+    # none of its queries is a genuine recall and none resets a clock.
+    argv = [binary, "search", "-json", "-surface", "measure",
+            "-k", str(k), "-mode", mode, terms]
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
         raise ProbeError(f"search failed ({mode}, {terms[:40]!r}): "

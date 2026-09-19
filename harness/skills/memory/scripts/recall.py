@@ -482,6 +482,14 @@ def _in_always_load_area(key: str, vault, areas) -> bool:
     return storage_rules.in_always_load_set(_vault_root_rel(key, vault), areas)
 
 
+# Which surface a recall was served on, for the ledger's `surface:` field
+# (agentm-vault § Surfaces). The Go side has the same vocabulary in
+# `note/surface.go`; these are the two arms Python owns. A name, not a literal
+# at the call site, because the scorecard groups on these strings and a typo
+# would read as a new surface rather than as a mistake.
+SURFACE_SESSION_START = "session-start"
+SURFACE_PROMPT_SUBMIT = "prompt-submit"
+
 # The record kind a session trace carries. One constant, because the two arms
 # and the tests all have to mean the same string.
 SESSION_TRACE_KIND = "session-trace"
@@ -3128,7 +3136,8 @@ def prompt_submit(
     try:
         from recall_counter import record_recall as _record_recall_event  # type: ignore
         _record_recall_event(prompt, loaded_slugs, hits=kept_hits,
-                             drops=daemon_drops or None)
+                             drops=daemon_drops or None,
+                             surface=SURFACE_PROMPT_SUBMIT)
     except ImportError:
         pass
     if _record_recall_hit is not None and served:
