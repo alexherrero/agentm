@@ -1,24 +1,25 @@
 {
-  "avg_rank_to_first_hit": 1.7872,
+  "avg_rank_to_first_hit": 2.0,
   "corpus": {
-    "documents": 7928,
-    "embedded_in_scope": 7414,
+    "documents": 2883,
+    "embedded_in_scope": 2196,
     "gold_sha": "1aa1-c96d-39d1",
-    "pinned": "2026-08-28"
+    "pinned": "2026-09-18"
   },
-  "false_positives": 10,
+  "false_positives": 9,
   "false_positives_easy": 0,
-  "false_positives_hard": 10,
-  "hits": 47,
-  "hits_at_1": 24,
+  "false_positives_hard": 9,
+  "hits": 42,
+  "hits_at_1": 16,
   "k": 5,
   "negatives": 30,
   "negatives_easy": 20,
   "negatives_hard": 10,
   "per_question": {
     "dt01": {
-      "hit": false,
+      "hit": null,
       "negative": false,
+      "note": "no expected paths in the fixture",
       "rank": null
     },
     "dt02": {
@@ -39,12 +40,12 @@
     "dt05": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "dt06": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 3
     },
     "dt07": {
       "hit": true,
@@ -59,7 +60,7 @@
     "dt09": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "dt10": {
       "hit": true,
@@ -89,12 +90,12 @@
     "ep03": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 3
     },
     "ep04": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "ep05": {
       "hit": true,
@@ -122,14 +123,14 @@
       "rank": null
     },
     "ep10": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 2
     },
     "ep11": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "ep12": {
       "hit": false,
@@ -264,7 +265,7 @@
     },
     "ngh02": {
       "hard": true,
-      "hit": false,
+      "hit": true,
       "negative": true,
       "rank": null
     },
@@ -319,22 +320,22 @@
     "pp01": {
       "hit": true,
       "negative": false,
-      "rank": 3
+      "rank": 2
     },
     "pp02": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 3
     },
     "pp03": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "pp04": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "pp05": {
       "hit": false,
@@ -354,7 +355,7 @@
     "pp08": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "pp09": {
       "hit": false,
@@ -362,9 +363,9 @@
       "rank": null
     },
     "pp10": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 3
     },
     "pp11": {
       "hit": true,
@@ -374,17 +375,17 @@
     "pp12": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "pp13": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 3
+      "rank": null
     },
     "pp14": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 2
+      "rank": null
     },
     "pp15": {
       "hit": false,
@@ -402,9 +403,9 @@
       "rank": null
     },
     "pp18": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 2
+      "rank": null
     },
     "rc01": {
       "hit": false,
@@ -422,9 +423,9 @@
       "rank": null
     },
     "rc04": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 3
+      "rank": null
     },
     "rc05": {
       "hit": true,
@@ -432,39 +433,39 @@
       "rank": 1
     },
     "rc06": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 1
+      "rank": null
     },
     "rc07": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 3
     },
     "rc08": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 1
+      "rank": null
     },
     "rc09": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 1
+      "rank": null
     },
     "rc10": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 1
+      "rank": null
     },
     "rc11": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "rc12": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 1
     },
     "rd01": {
       "hit": false,
@@ -479,12 +480,12 @@
     "rd03": {
       "hit": true,
       "negative": false,
-      "rank": 4
+      "rank": 3
     },
     "rd04": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 3
+      "rank": null
     },
     "rd05": {
       "hit": true,
@@ -499,12 +500,12 @@
     "rd07": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "rd08": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 4
     },
     "rd09": {
       "hit": true,
@@ -517,7 +518,7 @@
       "rank": 3
     }
   },
-  "r_at_1": 0.375,
-  "r_at_k": 0.7344,
-  "scored": 64
+  "r_at_1": 0.254,
+  "r_at_k": 0.6667,
+  "scored": 63
 }
