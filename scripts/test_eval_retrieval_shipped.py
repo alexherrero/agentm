@@ -19,6 +19,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -38,11 +39,18 @@ def setUpModule():
     # the designed layout, and the module must never read the operator's live
     # vault root to decide how to spell an expectation.
     ev._ROOT_SPELLINGS = {}
+    # And the root itself. The three remap tables and the resolution control
+    # all take the live vault as their authority; left resolved, a hermetic
+    # test of the fingerprint or the refusal would be deciding its exit code
+    # off the operator's disk. `None` is the CI shape: every remap passes
+    # through and the control stands down.
+    ev._VAULT_ROOT = None
 
 
 def tearDownModule():
     ev._MIGRATION_TABLE = None
     ev._ROOT_SPELLINGS = None
+    ev._VAULT_ROOT = False
 
 import recall  # noqa: E402
 
@@ -73,13 +81,31 @@ class TheGateExists(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "runs the gate under bash with a POSIX PATH")
     def test_the_gate_skips_rather_than_passes_without_a_daemon(self):
-        """A skip is never silent. A gate that went quiet on the machines it
-        cannot measure would be indistinguishable from one that passes."""
+        """A skip is never silent, and since 2026-09-18 it is not exit 0 either.
+
+        The intent is unchanged — a machine that cannot measure must not report
+        a measurement — but the old contract expressed it only in words, and a
+        word is not something a caller can branch on. `check-all.sh`'s
+        `gate_tri` reads the 2 and records a skipped row rather than a failure,
+        so this is still "skip, not fail".
+        """
         proc = subprocess.run(["bash", str(GATE)], capture_output=True, text=True,
                               env={"PATH": "/usr/bin:/bin", "AGENTMD": "/nonexistent/agentmd"},
                               timeout=120)
-        self.assertEqual(proc.returncode, 0, "a missing daemon should skip, not fail")
+        self.assertEqual(proc.returncode, 2,
+                         "a missing daemon should skip with the skip code")
         self.assertIn("SKIP", proc.stdout + proc.stderr)
+
+    @unittest.skipIf(os.name == "nt", "reads a bash battery Windows does not run")
+    def test_the_battery_reads_the_skip_code_as_a_skip(self):
+        """The exit code only helps if its one caller knows it. A `gate` call
+        would turn every daemon-less machine's battery red."""
+        battery = (_REPO / "scripts" / "check-all.sh").read_text(encoding="utf-8")
+        line = next(l for l in battery.splitlines()
+                    if "check-retrieval-regression.sh" in l and not l.startswith("#"))
+        self.assertTrue(line.startswith("gate_tri "),
+                        f"the retrieval gate is wired through {line.split()[0]!r}, "
+                        "which cannot tell a skip from a failure")
 
 
 class ExactPairedTest(unittest.TestCase):
@@ -778,6 +804,138 @@ class TheFixtureField(unittest.TestCase):
         baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
         gold = json.loads(ev.GOLD_SET.read_text(encoding="utf-8"))
         self.assertEqual(set(baseline["per_question"]), {e["id"] for e in gold["entries"]})
+
+
+class EveryExpectationResolves(unittest.TestCase):
+    """The control that was missing while the number went on being printed.
+
+    The gate compares remapped gold paths against what search returns. Nothing
+    checked that a remapped path was still a file, so a note that moved scored
+    as a permanent miss and a *banned* note that moved scored as a permanent
+    pass — and `0.734 -> 0.641` was read as a ranking drop for two plans while
+    part of it was the fixture pointing at files that were not there.
+    """
+
+    def setUp(self):
+        self._root = ev._VAULT_ROOT
+        self._retired = dict(ev._RETIRED)
+
+    def tearDown(self):
+        ev._VAULT_ROOT = self._root
+        ev._RETIRED.clear()
+        ev._RETIRED.update(self._retired)
+
+    def _entry(self, path, stratum="pure-paraphrase"):
+        return {"id": "x1", "question": "q", "stratum": stratum,
+                ev.EXPECTED_FIELD: [path]}
+
+    def test_a_path_that_is_not_in_the_vault_stops_the_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            ev._VAULT_ROOT = Path(d)
+            with self.assertRaises(ev.Control) as caught:
+                ev.check_expectations([self._entry("agent/memory/semantic/gone.md")])
+        # Named, not counted: a partial hole has to be as loud as a total one.
+        self.assertIn("agent/memory/semantic/gone.md", str(caught.exception))
+
+    def test_a_banned_path_that_is_not_in_the_vault_stops_the_run_too(self):
+        """A negative's expectation is the note it must NOT return. When that
+        note is missing the negative can never fire, so it reads as answered
+        correctly forever — the painted-on dial, in the other direction."""
+        with tempfile.TemporaryDirectory() as d:
+            ev._VAULT_ROOT = Path(d)
+            with self.assertRaises(ev.Control):
+                ev.check_expectations(
+                    [self._entry("agent/memory/semantic/gone.md", stratum="negative")])
+
+    def test_a_path_that_is_in_the_vault_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            ev._VAULT_ROOT = Path(d)
+            note = Path(d) / "agent" / "memory" / "semantic" / "here.md"
+            note.parent.mkdir(parents=True)
+            note.write_text("x", encoding="utf-8")
+            census = ev.check_expectations(
+                [self._entry("agent/memory/semantic/here.md")])
+        self.assertEqual(census["retired"], 0)
+        self.assertEqual(census["checked"], 1)
+
+    def test_a_retired_expectation_is_dropped_and_named(self):
+        """A note deleted on purpose has no destination to remap to. It leaves
+        the expected set, and the reason travels with it — a silent drop is the
+        shrunk denominator the refusal exists to prevent."""
+        with tempfile.TemporaryDirectory() as d:
+            ev._VAULT_ROOT = Path(d)
+            ev._RETIRED["agent/memory/semantic/gone.md"] = "purged 2026-09-03, manifested"
+            entry = self._entry("agent/memory/semantic/gone.md")
+            census = ev.check_expectations([entry])
+            live, retired = ev.resolve_expected(entry)
+        self.assertEqual(live, [])
+        self.assertEqual(retired, ["agent/memory/semantic/gone.md"])
+        self.assertEqual(census["retired"], 1)
+        self.assertIn("manifested", census["reasons"]["agent/memory/semantic/gone.md"])
+
+    def test_the_render_prints_the_retirements(self):
+        """Every run, not only when the set changes: a retired expectation means
+        a question is measuring less than the fixture says, and a number that
+        hides that is what this whole control is against."""
+        out = ev.render(
+            {"k": 5, "scored": 1, "hits": 1, "r_at_k": 1.0,
+             "avg_rank_to_first_hit": 1.0, "negatives": 0, "false_positives": 0},
+            "stub",
+            {"retired": 1, "checked": 9,
+             "reasons": {"agent/x.md": "purged 2026-09-03, manifested"}})
+        self.assertIn("1 retired", out)
+        self.assertIn("agent/x.md", out)
+        self.assertIn("manifested", out)
+
+    def test_with_no_vault_the_control_stands_down(self):
+        """CI has no vault, so there is nothing to check paths against. The run
+        has to reach the setup skip rather than fail on an absence."""
+        ev._VAULT_ROOT = None
+        self.assertEqual(
+            ev.check_expectations([self._entry("agent/memory/semantic/gone.md")]),
+            {"retired": 0, "checked": 0, "reasons": {}})
+
+    def test_the_live_gold_set_resolves_end_to_end(self):
+        """The repair itself, against the real vault: all 108 expectations land
+        on a file or carry a retirement row.
+
+        The one test in this module that deliberately reads the operator's disk,
+        because it is the only way to prove the tables are right about a vault
+        rather than about a fixture. Everything else here runs hermetic, and
+        this skips where no vault resolves — which is CI.
+        """
+        saved_root, saved_table, saved_spell = (
+            ev._VAULT_ROOT, ev._MIGRATION_TABLE, ev._ROOT_SPELLINGS)
+        ev._VAULT_ROOT, ev._MIGRATION_TABLE, ev._ROOT_SPELLINGS = False, None, None
+        try:
+            if ev._vault_root() is None:
+                self.skipTest("no vault on this machine")
+            census = ev.check_expectations(ev.load_gold())
+        finally:
+            (ev._VAULT_ROOT, ev._MIGRATION_TABLE, ev._ROOT_SPELLINGS) = (
+                saved_root, saved_table, saved_spell)
+        self.assertEqual(census["checked"] + census["retired"], 108)
+
+
+class TheGoldSetIsNeverEdited(unittest.TestCase):
+    """Frozen evidence. A drifted expectation is repaired by a table at score
+    time; editing the fixture would quietly re-author what was measured."""
+
+    def test_the_moved_expectation_is_repaired_by_a_table_not_the_fixture(self):
+        gold = json.loads(ev.GOLD_SET.read_text(encoding="utf-8"))
+        entry = next(e for e in gold["entries"] if e["id"] == "ngh06")
+        self.assertEqual(entry[ev.EXPECTED_FIELD],
+                         ["Agent/desk/diagnostics/latest_health_scorecard.md"])  # root-casing: the frozen fixture's own spelling, asserted unchanged
+        self.assertIn(("agent/desk/diagnostics/latest_health_scorecard.md",
+                       "agent/diagnostics/health/latest_health_scorecard.md"),
+                      ev._DESK_REMAPS)
+
+    def test_every_retirement_row_carries_its_evidence(self):
+        """'This note was deleted on purpose' is a claim about the past that
+        nobody can check from the code, so the row has to say where to look."""
+        for path, why in ev._RETIRED.items():
+            self.assertTrue(why.strip(), f"{path} retires with no reason")
+            self.assertGreater(len(why), 40, f"{path}'s reason names no evidence")
 
 
 if __name__ == "__main__":

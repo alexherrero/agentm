@@ -1,6 +1,8 @@
 package note
 
 import (
+	"path"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 )
@@ -76,6 +78,66 @@ func RecallExemptAreas() []string {
 // corpus. Every reader that could put a note in front of a model asks this.
 func InRecallExemptArea(rel string) bool {
 	return inSpaceSet(recallExempt.Load(), rel)
+}
+
+// The areas the loader already read whole at session start. Set from the
+// contract's `always_load_areas`.
+//
+// The fourth list, and deliberately the weakest. `recallExempt` keeps a file
+// out of the corpus; this one keeps an indexed, embedded, findable file out of
+// the *ranked* answer, because every session already has it in the window. A
+// hit under it is a second copy, and the filing contract is the largest file in
+// the vault — so the cost of not having this list is that any prompt mentioning
+// filing re-reads what the session opened with.
+var alwaysLoad atomic.Pointer[[]string]
+
+// SetAlwaysLoadAreas replaces the set, normalized to lower case.
+func SetAlwaysLoadAreas(areas []string) {
+	alwaysLoad.Store(normSpaces(areas))
+}
+
+// AlwaysLoadAreas is what is currently set, for the status surface and for tests.
+func AlwaysLoadAreas() []string {
+	if p := alwaysLoad.Load(); p != nil {
+		return append([]string(nil), *p...)
+	}
+	return nil
+}
+
+// InAlwaysLoadArea reports whether a vault-relative path is one the loader
+// already injected. Asked by the ranked arms, never by the walk: these files
+// stay indexed on purpose, so a search by name still answers.
+//
+// **Not a subtree rule, unlike every other list in this file, and that is not
+// an oversight.** The others answer questions about a *place* — what may rank,
+// what a model may read, what the corpus may hold — and a place includes what
+// is under it. This one answers a question about a *file*: did the session
+// already get this one? Only the loader can say, so this mirrors the loader
+// exactly — `<area>/*.md`, non-recursive, minus the generated `moc-` maps it
+// skips.
+//
+// The cost of getting this wrong is not theoretical. `standards/voice/` is the
+// operator's voice library; the loader's glob has never read it, and a subtree
+// rule here excluded it from recall as well — making it unreachable from every
+// memory surface at once. Four gold questions went to a miss and the retrieval
+// gate refused the change, which is the only reason it is written this way.
+func InAlwaysLoadArea(rel string) bool {
+	areas := alwaysLoad.Load()
+	if areas == nil {
+		return false
+	}
+	norm := strings.ToLower(strings.TrimPrefix(filepath.ToSlash(rel), "./"))
+	dir, base := path.Split(norm)
+	dir = strings.TrimSuffix(dir, "/")
+	if dir == "" || strings.HasPrefix(base, "moc-") {
+		return false
+	}
+	for _, a := range *areas {
+		if dir == a {
+			return true
+		}
+	}
+	return false
 }
 
 // Each project's activity, slug to multiplier, written by the night and read

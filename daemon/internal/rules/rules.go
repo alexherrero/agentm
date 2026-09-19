@@ -107,6 +107,16 @@ type block struct {
 	// contentHash marshals this struct, and a contract that names none of these
 	// must hash exactly as it did before the field existed.
 	RecallExemptAreas []string `yaml:"recall_exempt_areas" json:"recall_exempt_areas,omitempty"`
+	// AlwaysLoadAreas are read whole by the loader at session start, so the
+	// ranked arms drop them before ranking rather than serve a second copy.
+	// Indexed, embedded and findable by name — only never ranked. The weakest
+	// of the four lists: not a wall, not a privacy line, just the absence of a
+	// duplicate.
+	//
+	// `omitempty` for the same reason as the field above it: contentHash
+	// marshals this struct, and a contract naming none of these must hash as it
+	// did before the field existed.
+	AlwaysLoadAreas []string `yaml:"always_load_areas" json:"always_load_areas,omitempty"`
 	// LifecycleOverrides is where a class ages on a different line from the one
 	// `thresholds` sets — `episodic` today, whose traces run 90 · 365 · 1,095.
 	// Keyed by class, then by the threshold's own name.
@@ -537,6 +547,17 @@ func (b block) validate(source string) error {
 		}
 		if strings.HasPrefix(strings.TrimSpace(a), "/") {
 			return fail("`recall_exempt_areas` entry %q is absolute; an area is a path "+
+				"from the vault root", a)
+		}
+	}
+
+	for _, a := range b.AlwaysLoadAreas {
+		if strings.TrimSpace(a) == "" {
+			return fail("`always_load_areas` names an empty area; an empty path would " +
+				"match the whole vault and drop every hit from every ranked arm")
+		}
+		if strings.HasPrefix(strings.TrimSpace(a), "/") {
+			return fail("`always_load_areas` entry %q is absolute; an area is a path "+
 				"from the vault root", a)
 		}
 	}

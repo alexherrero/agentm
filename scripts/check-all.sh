@@ -46,6 +46,26 @@ gate_skip() {
   RESULTS+=("  SKIP  $1 — $2")
 }
 
+# gate_tri "<name>" <command...>  — a gate that reports its own skip.
+#
+# Exit 0 passes, exit 2 is a skip (recorded, never counted as a failure), and
+# anything else fails. For a gate that can only measure on a machine with the
+# thing it grades: the plain `gate` above has to read non-zero as failure, so a
+# gate wanting to say "I could not measure" had no choice but to exit 0 and
+# hope somebody read the text. That is how a skip and a pass came to share an
+# exit code on the retrieval gate.
+gate_tri() {
+  local name="$1"; shift
+  printf '  … %s\n' "$name" >&2
+  "$@" >"$LOG" 2>&1
+  local rc=$?
+  case "$rc" in
+    0) RESULTS+=("  PASS  $name"); PASS=$((PASS+1)) ;;
+    2) RESULTS+=("  SKIP  $name"$'\n'"$(tail -4 "$LOG" | sed 's/^/          | /')") ;;
+    *) RESULTS+=("  FAIL  $name"$'\n'"$(tail -8 "$LOG" | sed 's/^/          | /')"); FAIL=$((FAIL+1)) ;;
+  esac
+}
+
 # The filing contract is parsed by the daemon and asked for over `agentmd rules`
 # — one parser, in Go, so a type added to standards/storage-rules.md is live
 # everywhere at once. Several Python gates below read it, so the battery builds
@@ -95,13 +115,16 @@ gate "check-storage-rules (the filing contract parses + the taxonomy growth rule
 gate "check-payload-layout-free (the pasted payload names no folder a migration moves)" "$PY" scripts/check-payload-layout-free.py
 gate "check-payload-parity (every payload copy is the template's derivation)" "$PY" scripts/check-payload-parity.py
 gate "check-vocabulary-membership (--strict: any unregistered type/kind value fails; collision self-test)" "$PY" scripts/check-vocabulary-membership.py --strict
-gate "check-retrieval-regression (shipped ranker vs the pinned gold-set baseline)" bash scripts/check-retrieval-regression.sh
+gate_tri "check-retrieval-regression (shipped ranker vs the pinned gold-set baseline)" bash scripts/check-retrieval-regression.sh
 gate "check-vault-frontmatter (every note's frontmatter parses as YAML)" "$PY" scripts/check-vault-frontmatter.py
 gate "check-memory-root-shape (agent/ holds two children; memory/ only the classes; the standards set)" "$PY" scripts/check-memory-root-shape.py
 gate "check-card-shape (class cards in the card's order: required fields, no retired field, no counter name)" "$PY" scripts/check-card-shape.py
 gate "check-class-directories (a class directory holds only cards and records)" "$PY" scripts/check-class-directories.py
 gate "check-no-empty-tags (no empty tag list in the class directories)" "$PY" scripts/check-no-empty-tags.py
 gate "check-root-notes (Home.md and Filing.md retired, nothing links to them, index.md holds the authority table once)" "$PY" scripts/check-root-notes.py
+gate "check-index-self-description (index.md carries the payload's reading order and card guide)" "$PY" scripts/check-index-self-description.py
+gate "check-always-load-budget (the packaged always-load tier stays under 40,000 tokens)" "$PY" scripts/check-always-load-budget.py
+gate "check-measurement-surface (a pass that grades searching says so)" "$PY" scripts/check-measurement-surface.py
 gate "check-calendar-root (the calendar root holds years and their maps, and the daily note's two allowances until plan 10)" "$PY" scripts/check-calendar-root.py
 gate "check-tracker-schema (every tracker in the projects space has the one schema, in its place)" "$PY" scripts/check-tracker-schema.py
 gate "check-memory-root-consistency (daemon spaces sit beneath memory_root)" "$PY" scripts/check-memory-root-consistency.py

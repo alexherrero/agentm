@@ -89,6 +89,10 @@ def _payload(*paths: str, matched: int | None = None, note: str = "") -> str:
             for i, p in enumerate(paths)
         ],
         "matched": len(paths) if matched is None else matched,
+        # A current daemon always emits this, zero or not: its presence is
+        # how the hook knows the always-load drop already happened, so a
+        # fake without it makes the hook read the contract as well.
+        "always_load_hidden": 0,
     }
     if note:
         doc["note"] = note

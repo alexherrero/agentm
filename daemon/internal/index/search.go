@@ -10,8 +10,33 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/note"
 )
 
-// Result is one ranked hit.
+// Result is one ranked hit: the card's readable head, then its address and the
+// evidence (agentm-vault § Surfaces).
+//
+// Field order is the card's own, which is the order the operator reads a note
+// in, so a hit list reads like a list of notes rather than like a query result.
+// `title` first because it is what tells you whether you want the rest.
+//
+// The body is never here — the surface reads it from the file — and neither is
+// `why`, which is the reason the operator kept the note, written for them.
+// Filled by `fillHeads` at serve time; see head.go for why not at index time.
 type Result struct {
+	// Title, Type-or-Kind, Summary, Importance, Status, Lifecycle, Project:
+	// the head. `omitempty` throughout, so a note carrying none of them is a
+	// row of the shape it always was, and a consumer reading only `path` and
+	// `score` is untouched.
+	Title string `json:"title,omitempty"`
+	// Type is a memory's; Kind is a record's. Never both — the contract's own
+	// rule, and carrying them separately is what lets a reader tell the two
+	// apart without knowing either vocabulary.
+	Type       string `json:"type,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	Importance int    `json:"importance,omitempty"`
+	Status     string `json:"status,omitempty"`
+	Lifecycle  string `json:"lifecycle,omitempty"`
+	Project    string `json:"project,omitempty"`
+
 	Path string `json:"path"`
 	// Score is the penalized score, larger is better. SQLite's own bm25() is
 	// negative-is-better, which reads as a bug to anyone comparing two tools side
@@ -124,6 +149,12 @@ type Query struct {
 	// note.ProjectMismatch: a modest lift for the session's own cards. Empty ranks
 	// exactly as before.
 	Project string
+	// Surface is who is asking, and it decides whether this search counts as a
+	// genuine recall — `cli`, `mcp:<client>`, or `measure` for a pass that is
+	// grading the ranker rather than reading memory. Empty means the CLI, the
+	// only caller that can reach here without saying who it is. See
+	// note.MovesClock.
+	Surface string
 }
 
 // SearchOutcome carries the hits plus whatever the driver needs to know about how
@@ -146,6 +177,19 @@ type SearchOutcome struct {
 	// never served to anything, and this count exists so the wall firing is
 	// visible in a diagnostic rather than silent.
 	RecallWalled int `json:"recall_walled,omitempty"`
+	// AlwaysLoadHidden is how many rows the contract's `always_load_areas`
+	// removed — files the loader already read whole into the session, so a hit
+	// on one would be a second copy. Counted for the same reason: the fix for
+	// the contract being injected twice should be visible as a number, not
+	// inferred from a hit list that got shorter.
+	//
+	// No `omitempty`, unlike the counts above it, and that is load-bearing. The
+	// prompt hook does the same drop for a binary too old to know the key, and
+	// the only way it can tell a new daemon from an old one is that a new one
+	// emits this field. With `omitempty` a zero would read as absence, and the
+	// hook would spawn `agentmd rules --json` inside the interactive budget on
+	// every prompt where nothing happened to be dropped — which is most of them.
+	AlwaysLoadHidden int `json:"always_load_hidden"`
 	// StagedHidden is the same wall's count for `status: ingest_staged` — a
 	// unit the ingest sweep fetched and has not promoted. Reported for the
 	// same reason the other two are: an absence nobody can see is an absence
@@ -196,15 +240,50 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 
 	switch q.Mode {
 	case "", ModeAnd:
-		return x.searchAnd(text, k, after, before, q.IncludeArchived, q.Project)
+		out, err = x.searchAnd(text, k, after, before, q.IncludeArchived, q.Project)
 	case ModeFusion:
-		return x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived, q.Project)
+		out, err = x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived, q.Project)
 	case ModeHybrid:
-		return x.searchHybrid(text, k, after, before, q)
+		out, err = x.searchHybrid(text, k, after, before, q)
 	default:
 		return out, fmt.Errorf("unknown search mode %q (want %q, %q or %q)",
 			q.Mode, ModeAnd, ModeFusion, ModeHybrid)
 	}
+	if err != nil {
+		return out, err
+	}
+	// Serving a hit is what moves its clock, so it is stamped here — at the one
+	// funnel every mode returns through — rather than in each mode's own tail,
+	// where the third one added would be the one that forgot.
+	//
+	// After the wall and the ranking, over what the caller is actually handed:
+	// a row the archive wall removed was not served, and counting it would reset
+	// the clock of a note nobody saw.
+	// The head, the clock and the ledger row, in that order, over the rows the
+	// caller is actually handed. All three are about what was *served*: a row
+	// the archive wall removed was not, and filling or counting it would be
+	// describing a note nobody saw.
+	x.fillHeads(out.Results)
+	x.recordAccess(q.Surface, out.Results)
+	x.recordLedger(q.Surface, text, out.Results)
+	return out, nil
+}
+
+// recordAccess stamps today against every note this search served, unless the
+// surface says the search was a measurement.
+//
+// Best-effort, and deliberately after the answer is assembled: the clock is a
+// ranking input, and a search that refused to answer because a cache could not
+// be written would trade a small inaccuracy for no answer at all.
+func (x *Index) recordAccess(surface string, rows []Result) {
+	if len(rows) == 0 || !note.MovesClock(surface) {
+		return
+	}
+	rels := make([]string, 0, len(rows))
+	for _, r := range rows {
+		rels = append(rels, r.Path)
+	}
+	x.accessLog().Record(rels, time.Now())
 }
 
 // searchAnd runs BM25 over FTS5, applies the measured rank penalty, and returns
@@ -273,6 +352,7 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 	rows, w = wallUnserved(rows, includeArchived)
 	out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = w.archived, w.superseded, w.staged
 	out.RecallWalled = w.recallExempt
+	out.AlwaysLoadHidden = w.alwaysLoad
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
@@ -494,6 +574,7 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3, inc
 	rows, w = wallUnserved(rows, includeArchived)
 	out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = w.archived, w.superseded, w.staged
 	out.RecallWalled = w.recallExempt
+	out.AlwaysLoadHidden = w.alwaysLoad
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
@@ -573,7 +654,8 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 		ArchivedHidden:   lexical.ArchivedHidden + denseWalls.archived,
 		SupersededHidden: lexical.SupersededHidden + denseWalls.superseded,
 		StagedHidden:     lexical.StagedHidden + denseWalls.staged,
-		RecallWalled:     lexical.RecallWalled + denseWalls.recallExempt}
+		RecallWalled:     lexical.RecallWalled + denseWalls.recallExempt,
+		AlwaysLoadHidden: lexical.AlwaysLoadHidden + denseWalls.alwaysLoad}
 	if len(out.Results) > k {
 		out.Results = out.Results[:k]
 	}
@@ -922,10 +1004,24 @@ func wallUnserved(rows []Result, include bool) ([]Result, walled) {
 	// reconcile drops the ones it finds. This is the second reader, for the gap
 	// between the contract naming an area and the next reconcile removing what
 	// it already indexed: on the night the wall lands, the rows are still there.
+	//
+	// The contract's `always_load_areas` is dropped in the same pass and for a
+	// different reason: not that the corpus may not hold it, but that the
+	// session already has it. The loader read every file under `standards/`
+	// whole before the first prompt, so a hit there is a second copy of
+	// something in the window — and the filing contract is the largest file in
+	// the vault. `include` does not reach this one either: an explicit archive
+	// query is a request for cold notes, not a request to be told twice.
+	// Unlike the wall above, the rows are *in* the index on purpose, so this is
+	// the only reader that removes them.
 	kept := make([]Result, 0, len(rows))
 	for _, r := range rows {
 		if note.InRecallExemptArea(r.Path) {
 			w.recallExempt++
+			continue
+		}
+		if note.InAlwaysLoadArea(r.Path) {
+			w.alwaysLoad++
 			continue
 		}
 		kept = append(kept, r)
@@ -963,6 +1059,7 @@ type walled struct {
 	superseded   int
 	staged       int
 	recallExempt int
+	alwaysLoad   int
 }
 
 func hasFlag(flags []string, want string) bool {

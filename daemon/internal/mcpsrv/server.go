@@ -15,12 +15,15 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -47,6 +50,17 @@ type Server struct {
 	onWrite func(rel string)
 	started time.Time
 	version string
+	// client is the name the last `initialize` carried, used to label which
+	// surface a recall was served to (`mcp:claude-code`, `mcp:claude-desktop`).
+	//
+	// Last-seen rather than per-session, because this transport has no session:
+	// it is stateless JSON-RPC over POST, and nothing in a `tools/call` says who
+	// sent it. With one registered client — the state this daemon has been in
+	// since it was written — last-seen is exact. With two, a label can be wrong
+	// while the count stays right, and the label is used for a ledger row rather
+	// than for any decision. Recorded as a limitation rather than solved with an
+	// invented session id, which would be a protocol of our own.
+	client atomic.Pointer[string]
 }
 
 func New(cfg *config.Config, idx *index.Index, cp *capture.Capturer, log *slog.Logger,
@@ -213,6 +227,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	resp := rpcResponse{JSONRPC: "2.0", ID: req.ID}
 	switch req.Method {
 	case "initialize":
+		s.rememberClient(req.Params)
 		resp.Result = map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
@@ -311,7 +326,7 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 		a.K = 50
 	}
 	q := index.Query{Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode, Lex3: a.Lex3,
-		IncludeArchived: a.IncludeArchived}
+		IncludeArchived: a.IncludeArchived, Surface: s.surface()}
 	if a.Mode == index.ModeHybrid && s.embed != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -322,6 +337,44 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return toolOK(out)
+}
+
+// rememberClient records the name from an `initialize`, so a recall served over
+// this transport can say which client read it.
+func (s *Server) rememberClient(raw json.RawMessage) {
+	var p struct {
+		ClientInfo struct {
+			Name string `json:"name"`
+		} `json:"clientInfo"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &p) != nil {
+		return
+	}
+	name := strings.ToLower(strings.TrimSpace(p.ClientInfo.Name))
+	if name == "" {
+		return
+	}
+	// Kept to what a surface label can be: this ends up in a ledger row and in
+	// the morning note's per-surface counts, and a client is free to send
+	// anything at all in that field.
+	name = surfaceNameSafe.ReplaceAllString(name, "-")
+	if len(name) > 40 {
+		name = name[:40]
+	}
+	s.client.Store(&name)
+}
+
+// surfaceNameSafe keeps a client-supplied name to letters, digits, dot and dash.
+var surfaceNameSafe = regexp.MustCompile(`[^a-z0-9.-]+`)
+
+// surface is the label for a recall served over MCP.
+func (s *Server) surface() string {
+	if p := s.client.Load(); p != nil && *p != "" {
+		return note.SurfaceMCPPrefix + *p
+	}
+	// A client that never sent `initialize`, or sent no name. Still MCP, and
+	// still a genuine recall — the unnamed part is who, not whether.
+	return note.SurfaceMCPPrefix + "unknown"
 }
 
 func (s *Server) toolCapture(raw json.RawMessage) (any, error) {

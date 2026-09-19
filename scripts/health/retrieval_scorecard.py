@@ -110,7 +110,9 @@ def search(query: str, k: int, mode: str = "and", target: tuple = (),
     only asks for it.
     """
     started = time.monotonic()
-    argv = ["agentmd", "search", "-json", "-mode", mode, "-k", str(k), *target]
+    # `-surface measure`: a pass grading the ranker, never anybody reading — `-surface measure` so these queries reset no clock.
+    argv = ["agentmd", "search", "-json", "-surface", "measure",
+            "-mode", mode, "-k", str(k), *target]
     if question:
         argv += ["-question", question]
     if lex3:

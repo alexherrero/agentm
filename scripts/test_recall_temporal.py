@@ -346,7 +346,11 @@ class _FakeDaemon:
 
 
 def _payload(*paths: str) -> str:
-    return json.dumps({"results": [{"path": p, "score": 1.0} for p in paths], "matched": len(paths)})
+    return json.dumps({"results": [{"path": p, "score": 1.0} for p in paths],
+                       "matched": len(paths),
+                       # A current daemon always emits this; see
+                       # `_daemon_search`'s note on why its presence matters.
+                       "always_load_hidden": 0})
 
 
 class ArgvWiringTests(unittest.TestCase):

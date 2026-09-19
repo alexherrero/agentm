@@ -74,6 +74,7 @@ def _hash_query(query_text: str) -> str:
 def record_recall(query_text: str, hit_slugs: list[str], *,
                    hits: "list[dict] | None" = None,
                    drops: "dict | None" = None,
+                   surface: "str | None" = None,
                    now: "datetime | None" = None,
                    history_path: "Path | None" = None) -> dict:
     """Append one recall event. Best-effort: a write failure never raises --
@@ -98,6 +99,17 @@ def record_recall(query_text: str, hit_slugs: list[str], *,
         "hit_slugs": list(hit_slugs),
         "hit_count": len(hit_slugs),
     }
+    if surface:
+        # Which surface served this recall — `session-start`, `prompt-submit`,
+        # `mcp:<client>`, `cli` (agentm-vault § Surfaces). Until now every row
+        # in this file came from the prompt hook, so the field would have been a
+        # constant; with the daemon writing rows of its own it is the only thing
+        # that tells them apart, and it is what lets the scorecard say how a
+        # memory is actually being reached rather than how one arm reaches it.
+        #
+        # Omitted when absent rather than written empty, so a row from before
+        # the field existed is legible as one — 13,000-odd of them are.
+        row["surface"] = str(surface)
     if hits is not None:
         row["hits"] = list(hits)
     if drops:

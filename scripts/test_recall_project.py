@@ -99,7 +99,14 @@ class TheDaemonPath(_Vault):
             seen.append(list(argv))
             if returns:
                 return returns.pop(0)
-            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({"results": []}), stderr="")
+            # `always_load_hidden` rides on every current daemon response, zero or
+            # not: its presence is how the hook knows the always-load drop has
+            # already happened, so a fake without it spends a second subprocess
+            # reading the contract and the argv count stops meaning what this
+            # test reads it to mean.
+            return subprocess.CompletedProcess(
+                argv, 0,
+                stdout=json.dumps({"results": [], "always_load_hidden": 0}), stderr="")
 
         with mock.patch.object(recall.subprocess, "run", side_effect=fake_run):
             out = recall._daemon_search(vault=self.vault, query_text="release gate checks", k=5, drops={}, **kw)

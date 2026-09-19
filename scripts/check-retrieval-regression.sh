@@ -23,7 +23,19 @@
 #   FAIL  it ran, and the ranking got worse.
 #
 # Usage:  bash scripts/check-retrieval-regression.sh
-# Exit:   0 pass or skip · 1 regression
+# Exit:   0 pass · 1 regression · 2 skip
+#
+# A skip has its own exit code, and that is the whole point of the third one.
+# Until 2026-09-18 a skip and a pass both exited 0, and the only thing that told
+# them apart downstream was `retrieval_gate_job.py` grepping its own tail for
+# the string "SKIP". So a run that measured nothing was one dropped word away
+# from being recorded as a clean gate — and on 2026-09-17 a `daemon.decay_enabled`
+# flip was nearly taken behind exactly that reading. An exit code cannot be
+# mistyped into a pass.
+#
+# `check-all.sh` calls this through `gate_tri`, which records 2 as a skipped row
+# rather than a failed one, so CI (no daemon, no vault) stays green without the
+# skip ever being spelled the same way as a measurement.
 
 set -uo pipefail
 
@@ -35,11 +47,11 @@ BASELINE="$REPO/scripts/health/fixtures/week1-gold/shipped-baseline.json"
 if ! command -v "$BIN" >/dev/null 2>&1 && [ ! -x "$BIN" ]; then
   echo "check-retrieval-regression: SKIP — $BIN is not available, so the shipped"
   echo "  ranker cannot be measured. This gate needs the daemon it is grading."
-  exit 0
+  exit 2
 fi
 if [ ! -f "$BASELINE" ]; then
   echo "check-retrieval-regression: SKIP — no pinned baseline at $BASELINE"
-  exit 0
+  exit 2
 fi
 
 # --drifted-ok: this gate is the standing tripwire against the live vault, so
@@ -54,7 +66,7 @@ case "$rc" in
   0) echo "check-retrieval-regression: clean"; exit 0 ;;
   2) echo "check-retrieval-regression: SKIP — the environment cannot produce a"
      echo "  trustworthy measurement (see the reason above). Not a pass."
-     exit 0 ;;
+     exit 2 ;;
   3) echo "check-retrieval-regression: FAIL — the comparison was refused (no"
      echo "  provenance, or a different gold set). With --drifted-ok passed, this"
      echo "  is a configuration defect, not drift: someone must re-pin."

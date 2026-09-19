@@ -446,6 +446,127 @@ def _vault_root_rel(key: str, vault) -> str:
         return str(key).replace("\\", "/")
 
 
+def _always_load_areas() -> list:
+    """The contract's `always_load_areas`, read once per call site.
+
+    Separate from `_contract_areas` rather than a third element of it, because
+    the two are asked at different moments. The wall and the dampen are asked on
+    the walk, before a file is read; this is asked on the ranked result, after
+    the corpus has answered — the files stay indexed on purpose so a search by
+    name still finds them.
+    """
+    import storage_rules  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    try:
+        return storage_rules.rules().always_load_areas()
+    except Exception:
+        # Fails open: the cost of missing this list is a duplicate in the
+        # window, not a leak. The wall above it fails closed for the opposite
+        # reason.
+        return list(storage_rules._FALLBACK_ALWAYS_LOAD_AREAS)
+
+
+def _in_always_load_area(key: str, vault, areas) -> bool:
+    """Whether a recall key names a path the loader already read whole.
+
+    Keys arrive memory-root-relative (`../standards/x.md` for a vault-root
+    file), so they are resolved against the vault root the same way the dampen
+    resolves its areas — `_vault_root_rel` is the one place that translation
+    lives, and a second copy of it here is how the two bases got out of step
+    four times in plan 11.
+    """
+    if not areas:
+        return False
+    import storage_rules  # noqa: E402
+
+    return storage_rules.in_always_load_set(_vault_root_rel(key, vault), areas)
+
+
+# Which surface a recall was served on, for the ledger's `surface:` field
+# (agentm-vault § Surfaces). The Go side has the same vocabulary in
+# `note/surface.go`; these are the two arms Python owns. A name, not a literal
+# at the call site, because the scorecard groups on these strings and a typo
+# would read as a new surface rather than as a mistake.
+SURFACE_SESSION_START = "session-start"
+SURFACE_PROMPT_SUBMIT = "prompt-submit"
+# `/memory search` is a person at a terminal reading their memory, so it is a
+# genuine recall and moves the clock — the same as `agentmd search` by hand.
+# Named here for the ledger's vocabulary; the daemon applies it as its own
+# default, so nothing has to pass it.
+SURFACE_CLI = "cli"
+
+# The record kind a session trace carries. One constant, because the two arms
+# and the tests all have to mean the same string.
+SESSION_TRACE_KIND = "session-trace"
+
+# How far into a file to look for its `kind:`. Counted in lines, not
+# characters, and generously: a trace's `kind:` is on line three, but the
+# `touched:` list two lines below it is a single line running to a thousand
+# characters and more. A character cap large enough for that is a guess about
+# the widest line in the corpus; a line cap is a statement about frontmatter.
+_KIND_PROBE_LINES = 60
+
+
+def prompt_admits_traces(prompt: str) -> bool:
+    """Whether a session trace may be served for this prompt.
+
+    A trace is the handoff record of a session — what was asked and what
+    happened. It answers a time question well and almost nothing else, and it
+    is the best lexical match in the corpus for a prompt that was itself
+    pasted into a session, which is how one brief came back five times in its
+    own first recall, one copy per session that had pasted it.
+
+    So the rule is the one the design names: a trace is admitted when the
+    prompt carries a temporal bound, and dropped before the five are chosen
+    otherwise. Reusing `_extract_temporal_bound` rather than writing a second
+    "is this a time question" test — it already draws exactly this line, and
+    two heuristics for one question drift.
+
+    Note what this deliberately does *not* admit: "when did I decide X" bounds
+    nothing. The extractor abstains on every "when did I…" shape because those
+    ask for a date rather than supply one, and a trace is not the answer to
+    them either — the note that records the decision is.
+
+    Traces stay indexed and `memory_search` still returns them when asked.
+    This is the prompt hook's rule about what it injects unasked, not a wall.
+    """
+    return _extract_temporal_bound(prompt) is not None
+
+
+def _is_session_trace(path: Path) -> bool:
+    """Whether a note's `kind:` is `session-trace`, from a bounded head read.
+
+    Read rather than inferred from the path: `episodic/` holds traces and other
+    things, and a rule that dropped a whole class directory would be a different
+    and much larger change than the one the design asked for.
+
+    Scanned line by line rather than parsed out of a clipped head, because the
+    first thing this was tried against on the live corpus defeated the clipped
+    version: a trace's `touched:` list is one line of a thousand-odd characters,
+    so a 512-character read ended inside the frontmatter, the closing `---`
+    never arrived, `_parse_frontmatter` correctly returned nothing, and every
+    real trace read as not-a-trace. The unit fixtures had short frontmatter and
+    passed throughout.
+
+    Lazy iteration, so the cost is the frontmatter rather than the file.
+    """
+    try:
+        with path.open(encoding="utf-8") as fh:
+            first = fh.readline()
+            if first.rstrip("\r\n") != "---":
+                return False
+            for _ in range(_KIND_PROBE_LINES):
+                line = fh.readline()
+                if not line or line.rstrip("\r\n") == "---":
+                    return False
+                key, sep, value = line.partition(":")
+                if sep and key.strip() == "kind":
+                    return value.strip().strip("\"'") == SESSION_TRACE_KIND
+    except (OSError, UnicodeDecodeError):
+        return False
+    return False
+
+
 def _contract_areas() -> tuple:
     """`(walled, dampened)` from the filing contract, read once per call site.
 
@@ -861,6 +982,49 @@ def _parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
     return fm, body
 
 
+# Fenced blocks whose info string names a machine surface. The daemon reads
+# these out of the file at runtime; no session ever does.
+MACHINE_BLOCK_LANGS = ("storage-rules",)
+
+
+def _strip_machine_blocks(body: str) -> str:
+    """The body an always-load entry injects, with its machine blocks removed.
+
+    The filing contract is 22 KB, and three fifths of it is one fenced
+    `storage-rules` block — a parse target for the Go daemon, injected whole
+    into every session that never read a line of it. Stripping it is the same
+    move as stripping frontmatter: the machine's half of a document is not the
+    reader's half.
+
+    The heading above the block stays, and a line takes the block's place, so
+    what a session sees is that the routing table exists and is read from the
+    file rather than a silent hole where two hundred lines were.
+
+    Only a fence whose info string names a machine surface is touched. An
+    unclosed fence is left alone: a body with one is malformed, and guessing
+    where it ended would cut prose nobody can get back from the injection.
+    """
+    lines = body.split("\n")
+    out, i, n = [], 0, len(lines)
+    while i < n:
+        line = lines[i]
+        info = line.strip()
+        if info.startswith("```") and info[3:].strip() in MACHINE_BLOCK_LANGS:
+            lang = info[3:].strip()
+            close = next((j for j in range(i + 1, n)
+                          if lines[j].strip() == "```"), None)
+            if close is None:
+                out.extend(lines[i:])
+                break
+            out.append(f"_The `{lang}` block is read from this file by the "
+                       f"daemon and is not injected._")
+            i = close + 1
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
 def _format_entry_for_injection(slug: str, fm: dict[str, str], body: str) -> str:
     """Format a single always-load entry for stdout injection.
 
@@ -995,7 +1159,7 @@ def session_start(
         # have been flagged superseded without being moved).
         if _unserved(fm):
             continue
-        parsed_entries.append((md_path.stem, fm, body))
+        parsed_entries.append((md_path.stem, fm, _strip_machine_blocks(body)))
 
     # Priority-first ordering (R0.8 / voice#0): `priority: low` entries (the
     # heavy voice-style files) sort last, `priority: high` first, everything
@@ -1169,22 +1333,34 @@ def _machine_prompt_marker(prompt: str) -> str | None:
 
 
 def _collect_always_load_paths(vault: Path) -> set[str]:
-    """Return the set of always-load entry paths (relative to vault root) for dedup.
+    """The retired pen's entries, for dedup. Empty on a vault that has none.
 
-    The UserPromptSubmit hook must NOT re-inject entries the SessionStart hook
-    already loaded. Returns a set of vault-relative path strings (POSIX-style,
-    matching the relative-path convention used in entry frontmatter).
+    **Retired in favour of the contract's `always_load_areas`** (agentm-vault
+    plan 12). This used to be how the prompt hook avoided re-injecting what the
+    session had already read, and it is the reason the contract could be
+    injected twice: the set it collected covered `memory/_always-load/` and the
+    hook never learned that `standards/` had become the tier. A dedupe has to be
+    repeated in every reader, and one of them forgets. Exclusion by area is read
+    from the contract by both arms and by the daemon, so there is one place to
+    forget and three readers that would notice.
+
+    It stays, scoped to the legacy pen alone, for the vault that still has one.
+    `standards/` is deliberately not collected here any more — it is covered by
+    the contract, and collecting it too would hide a broken exclusion behind a
+    working dedupe.
     """
     import vault_layout  # noqa: E402 — lazy, mirrors this module's other cross-file imports
 
+    pen = vault_layout.legacy_pen_dir(vault)
+    if not pen.is_dir():
+        return set()
     out: set[str] = set()
-    for tier_dir in vault_layout.always_load_dirs(vault):
-        for md_path in tier_dir.glob("*.md"):
-            if md_path.stem.startswith("moc-"):
-                continue
-            # Memory-root-relative POSIX path (consistent with save.py's path
-            # convention); a standards file keys as `../standards/<name>.md`.
-            out.add(_vault_rel(md_path, vault))
+    for md_path in pen.glob("*.md"):
+        if md_path.stem.startswith("moc-"):
+            continue
+        # Memory-root-relative POSIX path (consistent with save.py's path
+        # convention).
+        out.add(_vault_rel(md_path, vault))
     return out
 
 
@@ -1660,6 +1836,7 @@ def query(
     filter_expr: str | None = None,
     status: dict | None = None,
     project: str | None = None,
+    admit_traces: bool = True,
     stderr=sys.stderr,
 ) -> list[dict]:
     """Run the in-process recall engine.
@@ -1771,9 +1948,19 @@ def query(
     all_paths = set(fused.keys())
     # One contract read for the whole ranking pass, not one per candidate.
     _, dampened_areas = _contract_areas()
+    always_load = _always_load_areas()
     merged: list[dict] = []
     for path in all_paths:
         if path in dedup_paths:
+            continue
+        # The contract's `always_load_areas`, dropped before ranking. The
+        # session read every file under `standards/` whole at start, so a hit
+        # there is a second copy — and the filing contract is fifteen kilobytes
+        # of it. Exclusion rather than a dedupe in the caller, because a dedupe
+        # has to be repeated in every reader and one of them forgets: the
+        # prompt hook's own set covered `memory/_always-load/` and not
+        # `standards/`, which is how the double injection got in.
+        if _in_always_load_area(path, vault, always_load):
             continue
         # No embedding stands behind any hit now that the vector stack is
         # gone, so zero is the true value rather than a failed match — the
@@ -1791,6 +1978,11 @@ def query(
             fm, _ = _parse_frontmatter(content)
         except (OSError, UnicodeDecodeError):
             fm = {}
+        # The trace rule, on the arm that has the frontmatter in hand already.
+        # Before the sort and the cut below, so a dropped trace leaves a slot
+        # for a real hit rather than shortening the injection.
+        if not admit_traces and fm.get("kind") == SESSION_TRACE_KIND:
+            continue
         if lifecycle is not None:
             lifecycle_tier = lifecycle.lifecycle_tier_for(fm, path)
             decay_score = lifecycle.compute_decay_score(vault, slug, fm, path)
@@ -1858,6 +2050,57 @@ def _hit_space(rel_path: str) -> str:
     """
     parts = PurePosixPath(rel_path).parts
     return parts[0] if parts else "?"
+
+
+# The card's readable head, for `/memory search` (agentm-vault § Surfaces).
+#
+# The eleven fields in the card's own order, which is the order the operator
+# reads a note in. The daemon's `agentmd search -json` fills them from the file
+# at serve time and this prints what it returns; where no daemon answers, the
+# in-process arm's own frontmatter parse fills the same fields, so the shell
+# surface says the same thing either way.
+#
+# Never the body, which the reader opens the file for, and never `why`, which is
+# the reason the operator kept the note — written for them, not about it.
+HEAD_FIELDS = ("title", "type", "kind", "summary", "importance", "status",
+               "lifecycle", "project")
+
+
+def format_head(hit: dict) -> str:
+    """One hit as a screen rather than an address."""
+    title = (hit.get("title") or "").strip()
+    if not title:
+        title = Path(hit.get("path", "?")).stem
+    lines = [title]
+    facets = []
+    if hit.get("type"):
+        facets.append(str(hit["type"]))
+    elif hit.get("kind"):
+        facets.append(str(hit["kind"]))
+    if hit.get("importance"):
+        facets.append(f"importance {hit['importance']}")
+    if hit.get("status"):
+        facets.append(str(hit["status"]))
+    # `lifecycle: active` is what every filing stamps; printing it on every hit
+    # hides the `dormant` a reader actually needs to see.
+    if hit.get("lifecycle") and hit["lifecycle"] != "active":
+        facets.append(str(hit["lifecycle"]))
+    if hit.get("project"):
+        facets.append(f"project {hit['project']}")
+    if facets:
+        lines.append("   " + " · ".join(facets))
+    if hit.get("summary"):
+        lines.append("   " + str(hit["summary"]))
+    lines.append("   " + str(hit.get("path", "?")))
+    score = hit.get("score", hit.get("combined"))
+    if score is not None:
+        try:
+            lines.append(f"   score {float(score):.4f}")
+        except (TypeError, ValueError):
+            pass
+    if hit.get("snippet"):
+        lines.append("   " + str(hit["snippet"]))
+    return "\n".join(lines)
 
 
 def _format_recall_result(
@@ -2387,6 +2630,7 @@ def _daemon_search(
     daemon_index: str | None = None,
     drops: dict | None = None,
     project: str | None = None,
+    admit_traces: bool = True,
 ) -> list[dict] | None:
     """Ask the agentm daemon for the top-k entries relevant to `query_text`.
 
@@ -2520,6 +2764,21 @@ def _daemon_search(
     note = note if isinstance(note, str) else ""
     effective_mode = "lexical" if _DAEMON_HYBRID_DEGRADE_MARK in note else DAEMON_SEARCH_MODE
 
+    # The contract's `always_load_areas`, but only for a binary that does not
+    # know the key yet.
+    #
+    # A daemon that does the drop itself reports how many rows it removed, so
+    # the field's *presence* is how this arm learns the work is already done —
+    # and asking the contract anyway would mean a `agentmd rules --json`
+    # subprocess on every prompt, inside the interactive budget, to re-check
+    # something that already happened. The window this covers is real but
+    # narrow: a contract line lands before the binary that reads it is
+    # deployed, which is the ordinary state on the day of a landing, and it is
+    # exactly the day a session would otherwise get the contract twice.
+    always_load = []
+    if isinstance(payload, dict) and "always_load_hidden" not in payload:
+        always_load = _always_load_areas()
+
     root: Path | None = None
     seen: set[str] = set()
     out: list[dict] = []
@@ -2531,12 +2790,18 @@ def _daemon_search(
         drops.setdefault("returned", 0)
         drops["returned"] += len(raw)
         for _reason in ("malformed", "inadmissible", "unrooted",
-                        "out_of_scope", "deduped"):
+                        "out_of_scope", "deduped", "always_load_area",
+                        "session_trace_no_temporal_bound"):
             drops.setdefault(_reason, 0)
 
     def _drop(reason: str) -> None:
+        # `setdefault` rather than `+=` on a pre-seeded key: the seed list above
+        # and this call site are two places that have to agree, and they did not
+        # the first time a reason was added — a drop reason missing from the seed
+        # raised `KeyError` mid-recall, which is a crash in the one path whose
+        # whole contract is never to block a prompt.
         if drops is not None:
-            drops[reason] += 1
+            drops[reason] = drops.get(reason, 0) + 1
 
     for item in raw:
         if len(out) >= k:
@@ -2578,6 +2843,16 @@ def _daemon_search(
         if rel in dedup_paths or rel in seen:
             _drop("deduped")
             continue
+        if _in_always_load_area(rel, vault, always_load):
+            _drop("always_load_area")
+            continue
+        # The trace rule, before the k are chosen rather than after, so a
+        # dropped trace leaves a slot for a real hit instead of shortening the
+        # injection. A bounded head read, and only on a prompt that carries no
+        # temporal bound — on one that does, nothing here runs at all.
+        if not admit_traces and _is_session_trace(vault / rel):
+            _drop("session_trace_no_temporal_bound")
+            continue
         seen.add(rel)
         try:
             score = float(item.get("score") or 0.0)
@@ -2602,6 +2877,20 @@ def _daemon_search(
             # Not a curated memory entry: readable and rankable, but it gets no
             # heat count and no decay-clock reset (see prompt_submit).
             entry["external"] = True
+        # The card's readable head, carried through from the daemon rather than
+        # re-derived. This is what makes the design's "the three surfaces print
+        # the same head" literally true: the daemon reads the file once at serve
+        # time, and `memory_search`, `agentmd search` and `/memory search` all
+        # print those same values. Re-parsing here would be a second reader to
+        # keep in agreement, which is the drift this whole plan has been undoing.
+        #
+        # Only what the daemon sent: a field absent from the response is a field
+        # the note does not carry, and inventing a blank would make "no summary"
+        # indistinguishable from "an older daemon".
+        for _head in HEAD_FIELDS:
+            _value = item.get(_head)
+            if _value not in (None, "", 0):
+                entry[_head] = _value
         snippet = item.get("snippet")
         if isinstance(snippet, str) and snippet.strip():
             # Carried for the excerpt path alone (`_build_excerpt_block`). The
@@ -2700,6 +2989,13 @@ def prompt_submit(
 
     always_load_paths = _collect_always_load_paths(vault)
 
+    # The trace rule (agentm-vault § Surfaces). Computed once for the prompt
+    # and handed to whichever arm answers, so the two cannot disagree about
+    # what counts as a time question — the extractor is the only thing that
+    # decides, and it is the same one that puts `-after`/`-before` on the
+    # daemon call.
+    admit_traces = prompt_admits_traces(prompt)
+
     # Non-positive budget → deterministic immediate-overrun path (matches
     # session_start's force-overrun branch). Smoke tests rely on this to
     # exercise the degraded-graceful path without depending on machine speed.
@@ -2732,6 +3028,7 @@ def prompt_submit(
                     status=daemon_status,
                     drops=daemon_drops,
                     project=project,
+                    admit_traces=admit_traces,
                 )
             except Exception as e:  # noqa: BLE001 — never block the prompt
                 daemon_status.update(
@@ -2759,6 +3056,7 @@ def prompt_submit(
                     deadline=deadline,
                     status=recall_status,
                     project=project,
+                    admit_traces=admit_traces,
                     stderr=stderr,
                 )
                 recall_status.setdefault("engine", "in-process")
@@ -2908,7 +3206,8 @@ def prompt_submit(
     try:
         from recall_counter import record_recall as _record_recall_event  # type: ignore
         _record_recall_event(prompt, loaded_slugs, hits=kept_hits,
-                             drops=daemon_drops or None)
+                             drops=daemon_drops or None,
+                             surface=SURFACE_PROMPT_SUBMIT)
     except ImportError:
         pass
     if _record_recall_hit is not None and served:
@@ -3141,6 +3440,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     q.add_argument("query_text", help="the query string (use '-' to read stdin)")
     q.add_argument("-k", type=int, default=DEFAULT_K,
                    help=f"top-K results to return (default: {DEFAULT_K})")
+    q.add_argument("--heads", action="store_true",
+                   help="print each hit as the card's readable head — title, "
+                        "type or kind, summary, importance, status, lifecycle, "
+                        "project, then the path, the score and the snippet. The "
+                        "same head `memory_search` returns and `agentmd search` "
+                        "prints. Default stays JSON-Lines, which is what every "
+                        "script reading this already expects.")
     q.add_argument("--budget-ms", type=int, default=QUERY_CLI_BUDGET_MS,
                    help=f"time budget in milliseconds (default: {QUERY_CLI_BUDGET_MS})")
     q.add_argument("--include-inbox", action="store_true",
@@ -3236,6 +3542,45 @@ def main(argv: list[str] | None = None) -> int:
         except FilterError as e:
             print(f"ERROR: {e}", file=sys.stderr)
             return 1
+        if getattr(args, "heads", False):
+            # The readable head, the same one `memory_search` returns and
+            # `agentmd search` prints. Asks the daemon first so all three
+            # surfaces are literally the same fields from the same reader; the
+            # in-process results above stand in where no daemon answers.
+            hits = None
+            try:
+                # No `-surface` is passed, so the daemon's own default (`cli`)
+                # applies — which is right: a person searching their memory at
+                # a terminal is a genuine recall and moves the clock.
+                hits = _daemon_search(vault=vault, query_text=query_text,
+                                      k=args.k, include_inbox=args.include_inbox,
+                                      include_archive=args.include_archive,
+                                      budget_ms=10_000)
+            except Exception:  # noqa: BLE001 — the fallback is the point
+                hits = None
+            # `None` and `[]` are different answers from the daemon and the
+            # house rule (GH #92, `_daemon_search`'s docstring) is to branch on
+            # which one arrived: `None` is "no search happened", `[]` is "the
+            # daemon searched and nothing matched". So pick the arm once, then
+            # report on the arm that was picked — asking `hits or results` would
+            # consult the arm this code just decided not to use, and print
+            # nothing at all on a daemon `[]` that the in-process engine
+            # disagrees with.
+            chosen = hits if hits is not None else results
+            for i, r in enumerate(chosen, start=1):
+                print(f"{i}. {format_head(r)}")
+            if not chosen:
+                print("(no results)")
+            if hits is None and chosen:
+                # A head is the daemon's read of the card's frontmatter. The
+                # in-process engine ranks paths and never opens the file, so its
+                # rows have no title and no summary — and a head rendered from
+                # one looks exactly like a note that has neither. Say which it
+                # is rather than letting a degraded surface pass for a thin card.
+                print("note: the daemon did not answer, so these are the "
+                      "in-process engine's rows — ranked paths, with no title "
+                      "or summary to show.", file=sys.stderr)
+            return 0
         # JSON-Lines output for scriptability.
         for r in results:
             print(json.dumps(r))

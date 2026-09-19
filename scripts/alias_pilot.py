@@ -292,7 +292,9 @@ def lexical_top_k(agentmd: str, index: str, query: str, k: int) -> list[str]:
     needs the dense arm and never pays for it.
     """
     proc = subprocess.run(
-        [agentmd, "search", "-json", "-mode", "fusion", "-no-embedder",
+        # `-surface measure`: an offline alias experiment, never a read.
+        [agentmd, "search", "-json", "-surface", "measure",
+         "-mode", "fusion", "-no-embedder",
          "-k", str(k), "-index", index, query],
         capture_output=True, text=True,
     )

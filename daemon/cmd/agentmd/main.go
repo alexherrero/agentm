@@ -421,6 +421,11 @@ func cmdSearch(args []string) error {
 	includeArchived := fs.Bool("include-archived", false,
 		"also return notes whose lifecycle is archived or superseded — the contract's explicit archive query; "+
 			"off by default, both have left everyday search while staying on disk (a superseded note comes back demoted beside its successor)")
+	surface := fs.String("surface", note.SurfaceCLI,
+		"who is asking, which decides whether this counts as a genuine recall and resets each hit's clock. "+
+			"`cli` (the default) is a person searching. `measure` is a pass grading the ranker — the retrieval "+
+			"gate, the scorecards, the verify scripts, the probe — and never touches a clock; without it the "+
+			"gate's 64 nightly questions would hold three hundred notes at day zero forever")
 	ef := bindEmbedderFlags(fs)
 	rf := bindRerankerFlags(fs)
 	asJSON := fs.Bool("json", false, "emit JSON")
@@ -450,7 +455,7 @@ func cmdSearch(args []string) error {
 	}
 
 	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode, Lex3: *lex3,
-		IncludeArchived: *includeArchived, Project: *project}
+		IncludeArchived: *includeArchived, Project: *project, Surface: note.NormalizeSurface(*surface)}
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if innerMode == index.ModeHybrid {
@@ -499,7 +504,18 @@ func cmdSearch(args []string) error {
 		fmt.Println("note:", out.Note)
 	}
 	for i, r := range out.Results {
-		fmt.Printf("%d. %s\n", i+1, r.Path)
+		// The card's readable head, then the address, then the evidence — the
+		// same order and the same fields `memory_search` returns and
+		// `/memory search` prints. A hit that reads three different ways is
+		// three things a reader has to learn.
+		fmt.Printf("%d. %s\n", i+1, headline(r))
+		if line := kindLine(r); line != "" {
+			fmt.Printf("   %s\n", line)
+		}
+		if r.Summary != "" {
+			fmt.Printf("   %s\n", r.Summary)
+		}
+		fmt.Printf("   %s\n", r.Path)
 		fmt.Printf("   score %.4f", r.Score)
 		if r.Penalty != "" {
 			fmt.Printf("  raw %.4f  penalty %s", r.RawScore, r.Penalty)
@@ -967,12 +983,18 @@ func cmdClassify(args []string) error {
 			"flags":         flags,
 			"weight":        note.Multiplier(n.Flags),
 			"recall_walled": note.InRecallExemptArea(rel),
+			// The fourth list, reported beside the wall so the two arms can be
+			// compared on one table rather than reasoned about separately —
+			// which is how they came to disagree about whether the rule was
+			// recursive.
+			"always_load": note.InAlwaysLoadArea(rel),
 		}
 		if *asJSON {
 			return enc.Encode(row)
 		}
-		fmt.Printf("%s  weight x%.4f  flags %s  walled %v\n",
-			rel, row["weight"], strings.Join(flags, ","), row["recall_walled"])
+		fmt.Printf("%s  weight x%.4f  flags %s  walled %v  always-load %v\n",
+			rel, row["weight"], strings.Join(flags, ","), row["recall_walled"],
+			row["always_load"])
 		return nil
 	}
 

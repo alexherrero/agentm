@@ -8,7 +8,9 @@ version: 0.1.0
 
 # memory — permanent agent memory via Obsidian-vault-folder + reflection sidecar
 
-The first toolkit skill that integrates with the user's own personal note-taking surface (Obsidian) rather than maintaining a separate agent-only vault. The skill exposes four sub-commands (`save` / `evolve` / `reflect` / `search`); recall is hook-driven rather than user-invoked (SessionStart + UserPromptSubmit hooks shipped alongside in the [recall-loop part](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault/parts/recall-loop.md)).
+The first toolkit skill that integrates with the user's own personal note-taking surface (Obsidian) rather than maintaining a separate agent-only vault. Recall is hook-driven rather than user-invoked (SessionStart + UserPromptSubmit hooks shipped alongside in the [recall-loop part](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault/parts/recall-loop.md)); the table below is the whole list of sub-commands, and it is generated from nothing, so it is the thing to keep true.
+
+*(This line used to say "four sub-commands (`save` / `evolve` / `reflect` / `search`)". It had said so through about twenty additions.)*
 
 **Position vs. built-in agent memory** (Claude memories, vendor-specific context features): built-in memory is per-platform, opaque, lossy, and not composable across tools. MemoryVault is file-based + version-control-friendly + human-inspectable. The user can open Obsidian + read or edit any captured entry directly; the agent's memory + the user's notes coexist in the same place.
 

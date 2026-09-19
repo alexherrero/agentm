@@ -322,5 +322,61 @@ class TestLedgerPathOverride(unittest.TestCase):
             )
 
 
+class TheSurfaceField(unittest.TestCase):
+    """Which surface served a recall (agentm-vault plan 12 task 6).
+
+    Every row in this ledger used to come from the prompt-submit hook, so the
+    file answered "how often does that hook fire" while being read as "how often
+    is this memory used". Since the daemon writes rows of its own, this field is
+    the only thing that tells them apart.
+    """
+
+    def _row(self, **kw) -> dict:
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "recall-history.jsonl"
+            rc.record_recall("a query", ["slug-one"], history_path=path, **kw)
+            return json.loads(path.read_text(encoding="utf-8").strip())
+
+    def test_a_named_surface_is_written(self):
+        self.assertEqual(self._row(surface="prompt-submit")["surface"],
+                         "prompt-submit")
+
+    def test_an_mcp_surface_keeps_its_client(self):
+        self.assertEqual(self._row(surface="mcp:claude-desktop")["surface"],
+                         "mcp:claude-desktop")
+
+    def test_no_surface_leaves_the_key_off(self):
+        """Rather than writing it empty. Thirteen thousand rows predate the
+        field, and a row from before it existed has to stay legible as one —
+        they almost certainly came from the prompt hook, but "almost certainly"
+        is not a measurement and this ledger is read as one."""
+        self.assertNotIn("surface", self._row())
+
+    def test_the_row_shape_is_otherwise_unchanged(self):
+        row = self._row(surface="cli")
+        self.assertEqual(set(row), {"ts", "query_hash", "hit_slugs", "hit_count", "surface"})
+        self.assertEqual(row["hit_count"], 1)
+
+    def test_the_query_is_still_only_hashed(self):
+        """The standing contract of this file, unchanged by the new field."""
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "recall-history.jsonl"
+            rc.record_recall("a very distinctive quixotic phrase", ["slug-one"],
+                             surface="cli", history_path=path)
+            self.assertNotIn("quixotic", path.read_text(encoding="utf-8"))
+
+    def test_the_two_arms_spell_the_hook_surfaces_the_same_way(self):
+        """`recall.py` names them and the Go side declares the same vocabulary.
+        The scorecard groups on these strings, so a typo would read as a new
+        surface rather than as a mistake."""
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent
+                               / "harness" / "skills" / "memory" / "scripts"))
+        import recall  # noqa: E402
+        go = (Path(__file__).resolve().parent.parent / "daemon" / "internal"
+              / "note" / "surface.go").read_text(encoding="utf-8")
+        self.assertIn(f'SurfaceSessionStart = "{recall.SURFACE_SESSION_START}"', go)
+        self.assertIn(f'SurfaceSubmit       = "{recall.SURFACE_PROMPT_SUBMIT}"', go)
+
+
 if __name__ == "__main__":
     unittest.main()

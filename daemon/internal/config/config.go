@@ -343,12 +343,14 @@ func (c *Config) ApplyContractToRanking() {
 	if err != nil {
 		note.SetDampenedSpaces(nil)
 		note.SetDecayExemptSpaces(nil)
+		note.SetAlwaysLoadAreas(nil)
 		note.SetDecayBands(0, 0, 0, 0, 0)
 		return
 	}
 	note.SetDampenedSpaces(loaded.DampenedSpaces)
 	note.SetDecayExemptSpaces(loaded.ContractExemptSpaces)
 	note.SetRecallExemptAreas(loaded.RecallExemptAreas)
+	note.SetAlwaysLoadAreas(loaded.AlwaysLoadAreas)
 
 	// A curve read half from the contract and half from a constant is the drift
 	// this reads the contract to end, so all five lines are passed together and

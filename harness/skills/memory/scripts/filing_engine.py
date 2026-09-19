@@ -315,7 +315,11 @@ def daemon_search(vault: Path, query: str, *, k: int = 5) -> list:
     if not terms:
         return []
     try:
-        proc = subprocess.run([binary, "search", "-json", "-k", str(k), "-mode", "and", terms],
+        # `-surface measure`: the filing engine searches for a similarity
+        # shortlist while deciding where a new note goes. Nobody is reading
+        # the neighbours it finds, so none of them is a genuine recall.
+        proc = subprocess.run([binary, "search", "-json", "-surface", "measure",
+                               "-k", str(k), "-mode", "and", terms],
                               capture_output=True, text=True, timeout=20)
         rows = json.loads(proc.stdout) if proc.returncode == 0 and proc.stdout.strip() else []
     except Exception:

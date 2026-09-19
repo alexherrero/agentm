@@ -145,6 +145,14 @@ class SweepResult:
     idea_folded: "list[str]" = field(default_factory=list)
     idea_fold_denied: "list[tuple[str, str]]" = field(default_factory=list)
     restamped: "list[str]" = field(default_factory=list)
+    # The mail door (agentm-vault § Surfaces), a seventh duty on this job. Two
+    # lists and nothing else: what arrived as a card, and a count per reason for
+    # what did not. A refused message leaves no trace in the vault at all — not
+    # its body, not its subject, not its sender — so a count is all there is to
+    # report, and it is all the morning note needs.
+    mailed_cards: "list[tuple[str, str]]" = field(default_factory=list)
+    mail_dropped: "dict" = field(default_factory=dict)
+    mail_error: "str | None" = None
 
 
 # -----------------------------------------------------------------------------
@@ -643,7 +651,37 @@ def run_ingest_sweep(
                 else:
                     result.promote_failures.append((str(path), detail))
 
+    # Duty 7 — the mail door. Last, and after everything that touches the inbox,
+    # because a mailed card files straight to its class directory through the
+    # same write path a capture takes: it is not a candidate for the duties
+    # above, and running it first would only widen the window in which this
+    # pass holds the vault.
+    _poll_the_mail_door(vault, result)
     return result
+
+
+def _poll_the_mail_door(vault: Path, result: "SweepResult") -> None:
+    """Accept what the mail door will take, and count the rest.
+
+    Never raises into the sweep. An unconfigured door, an unreachable mailbox
+    and a mailbox full of refused mail are all ordinary states, and none of them
+    is a reason for the other six duties to have not run.
+    """
+    try:
+        import mail_door
+    except ImportError:
+        return
+    try:
+        out = mail_door.poll_mailbox(vault)
+    except Exception as exc:  # noqa: BLE001 — the class only; see mail_door
+        result.mail_error = f"the mail door failed ({type(exc).__name__})"
+        return
+    result.mailed_cards = list(out.accepted)
+    result.mail_dropped = dict(out.dropped)
+    # An unconfigured door is silence, not an error line every hour. A door that
+    # is set up and could not be read is worth saying out loud.
+    if out.error and "not configured" not in out.error:
+        result.mail_error = out.error
 
 
 def _render_digest(result: SweepResult) -> str:
@@ -651,6 +689,26 @@ def _render_digest(result: SweepResult) -> str:
     lines.append(f"Fetched + staged: {len(result.fetched)}")
     lines.append(f"Clips staged: {len(result.staged_clips)}")
     lines.append(f"Promoted to permanent memory: {len(result.promoted)}")
+    if result.mailed_cards or result.mail_dropped or result.mail_error:
+        dropped = sum(result.mail_dropped.values())
+        lines.append(f"Mailed cards: {len(result.mailed_cards)} filed, {dropped} dropped")
+    if result.mail_dropped or result.mail_error:
+        lines.append("")
+        lines.append("## The mail door")
+        if result.mail_error:
+            lines.append(f"- {result.mail_error}")
+        for reason, n in sorted(result.mail_dropped.items()):
+            lines.append(f"- {n} dropped: {reason}")
+        if result.mail_dropped:
+            lines.append("- a dropped message is counted and never stored, so "
+                         "there is nothing else to show. A non-zero count on a "
+                         "day you sent nothing is the re-audit this door was "
+                         "given.")
+    if result.mailed_cards:
+        lines.append("")
+        lines.append("## Cards that arrived by mail (unfiled, untrusted)")
+        for slug, subject in result.mailed_cards:
+            lines.append(f"- {slug}: {subject[:80]}")
     if result.promote_failures:
         lines.append("")
         lines.append("## Promotion failures (retried next cycle, not silently dropped)")
