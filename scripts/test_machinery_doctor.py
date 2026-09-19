@@ -785,6 +785,117 @@ class RunnerCycleRowTests(unittest.TestCase):
             self.assertIn("never a job target", row.detail)
 
 
+import shutil as _shutil  # noqa: E402
+
+
+class ClaudeDesktopRowTests(unittest.TestCase):
+    """The row answers one question and discloses nothing else.
+
+    The operator's desktop config holds their other MCP servers, and some of
+    those carry tokens in `env` or in an `args` URL. The row's whole job is to
+    say whether agentm is wired in; every test below is really about what it
+    must *not* say while doing that.
+    """
+
+    def _cfg(self, payload) -> Path:
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(_shutil.rmtree, d, True)
+        f = d / "claude_desktop_config.json"
+        f.write_text(payload if isinstance(payload, str) else json.dumps(payload),
+                     encoding="utf-8")
+        return f
+
+    def test_a_wired_entry_reads_ok(self):
+        c = md.check_claude_desktop_entry(self._cfg({"mcpServers": {
+            "agentmemory": {"command": "python3",
+                            "args": ["/x/harness/skills/memory/scripts/mcp_stdio_bridge.py"]}}}))
+        self.assertEqual(c.status, "OK")
+
+    def test_an_absent_entry_is_unverified_not_a_failure(self):
+        """Wiring Desktop is the operator's choice. A machine that never opens
+        the app is correct without it, so this must not read as a defect."""
+        c = md.check_claude_desktop_entry(
+            self._cfg({"mcpServers": {"other": {"command": "npx"}}}))
+        self.assertEqual(c.status, "UNVERIFIED")
+        self.assertNotEqual(c.status, "FAIL")
+
+    def test_a_missing_file_is_not_a_failure_either(self):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(_shutil.rmtree, d, True)
+        c = md.check_claude_desktop_entry(d / "nope.json")
+        self.assertEqual(c.status, "UNVERIFIED")
+
+    def test_the_row_never_reproduces_the_config(self):
+        """The one that matters. A secret in a neighbouring server's settings
+        must not reach the row's detail, and neither must the names of the
+        operator's other servers."""
+        secret = "sk-ant-SHOULD-NEVER-APPEAR-00000"
+        cfg = self._cfg({"mcpServers": {
+            "agentmemory": {"command": "python3", "args": ["/x/mcp_stdio_bridge.py"]},
+            "a-private-vendor": {"command": "npx", "args": ["--token", secret],
+                                 "env": {"API_KEY": secret}},
+        }})
+        c = md.check_claude_desktop_entry(cfg)
+        self.assertNotIn(secret, c.detail)
+        self.assertNotIn("a-private-vendor", c.detail)
+        self.assertNotIn("API_KEY", c.detail)
+        # And the whole serialized row, not just the detail — a field added
+        # later would otherwise slip past this.
+        self.assertNotIn(secret, json.dumps(c.to_dict()))
+
+    def test_unparseable_config_names_the_line_and_not_its_content(self):
+        secret = "sk-ant-SHOULD-NEVER-APPEAR-00000"
+        c = md.check_claude_desktop_entry(
+            self._cfg('{"mcpServers": {"x": {"env": {"K": "' + secret + '"}}} INVALID'))
+        self.assertEqual(c.status, "WARN")
+        self.assertNotIn(secret, c.detail)
+
+    def test_a_url_entry_counts_as_wired_too(self):
+        """If a future Desktop build accepts the daemon's URL directly, the
+        operator drops the bridge — and this row should still find it rather
+        than reporting the surface gone."""
+        c = md.check_claude_desktop_entry(self._cfg({"mcpServers": {
+            "agentmemory": {"url": "http://127.0.0.1:7821/mcp"}}}))
+        self.assertEqual(c.status, "OK")
+
+    def test_a_non_list_args_does_not_end_the_doctor_run(self):
+        """`"args": null` used to raise `TypeError` out of this row, and
+        `run_inventory` calls it unguarded — so the whole doctor printed a
+        traceback and *no rows at all*: not stop-hook wiring, not install
+        freshness, not the runner jobs, nothing. A health check that goes dark
+        because of a file agentm does not own is the failure the doctor exists
+        to catch."""
+        for value in (None, 5, True, "a string", {"k": "v"}):
+            with self.subTest(args=value):
+                c = md.check_claude_desktop_entry(self._cfg({"mcpServers": {
+                    "x": {"command": "npx", "args": value}}}))
+                self.assertIn(c.status, ("OK", "WARN", "UNVERIFIED"))
+
+    def test_a_non_list_args_does_not_stop_a_real_entry_being_found(self):
+        """And the row still answers its question with a broken neighbour."""
+        c = md.check_claude_desktop_entry(self._cfg({"mcpServers": {
+            "broken": {"command": "npx", "args": None},
+            "agentmemory": {"command": "python3",
+                            "args": ["/x/mcp_stdio_bridge.py"]}}}))
+        self.assertEqual(c.status, "OK")
+
+    def test_the_whole_inventory_survives_a_hostile_desktop_config(self):
+        """The composition, not the row alone — this is where it actually broke."""
+        cfg = self._cfg({"mcpServers": {"x": {"command": "npx", "args": None}}})
+        with mock.patch.object(md, "claude_desktop_config_path", lambda: cfg):
+            checks = md.run_inventory()
+        self.assertTrue(checks, "run_inventory returned no rows")
+        self.assertIn("claude-desktop-entry", {c.name for c in checks})
+
+    def test_a_config_with_no_mcpservers_key_is_handled(self):
+        c = md.check_claude_desktop_entry(self._cfg({"preferences": {}}))
+        self.assertEqual(c.status, "UNVERIFIED")
+
+    def test_a_non_object_config_does_not_raise(self):
+        c = md.check_claude_desktop_entry(self._cfg([1, 2, 3]))
+        self.assertEqual(c.status, "WARN")
+
+
 # Every test here gets its own engine state, cache root and recall ledger.
 # The doctor reads the runner's markers, watchdog records and last cycle
 # through the runner's default state root. That root follows `XDG_CACHE_HOME`
