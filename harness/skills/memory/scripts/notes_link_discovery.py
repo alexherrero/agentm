@@ -602,6 +602,34 @@ def _save_embed_cache(cache_path: Path, cache: dict) -> None:
     os.replace(tmp, cache_path)
 
 
+def _key_is_walled(key: str, root: Path, areas: list) -> bool:
+    """Whether a cache key names a walled path, under either root it may carry.
+
+    A key is a path with no root recorded beside it, and this tool has written
+    them from two different roots: the vault root today, and — before the
+    `MEMORY_ROOT` fix — one level deeper, which dropped the leading space. So
+    `personal/Home/Important Docs/X` and `Home/Important Docs/X` are the same
+    file written by two versions of the same walk, and only the first matches a
+    contract area written from the vault root.
+
+    Both are tried: the key as written, then the key under each space at the
+    vault root. Bounded to one missing segment and to directories that actually
+    exist, rather than sliding the area along the key — `[[Important Docs]]`
+    anywhere in a path is not the operator's folder, and a wall with a
+    false positive in it is a wall nobody trusts.
+    """
+    import storage_rules  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    if storage_rules.in_area(key, areas):
+        return True
+    try:
+        spaces = [d.name for d in Path(root).iterdir() if d.is_dir()
+                  and not d.name.startswith(".")]
+    except OSError:
+        return False
+    return any(storage_rules.in_area(f"{space}/{key}", areas) for space in spaces)
+
+
 def prune_embed_cache(vault: Path, cache_path: Optional[Path] = None,
                       *, notes: Optional[list] = None,
                       apply: bool = True) -> dict:
@@ -643,8 +671,10 @@ def prune_embed_cache(vault: Path, cache_path: Optional[Path] = None,
     kept, walled, absent = {}, 0, 0
     for key, value in cache.items():
         # The wall first, so a key that is both walled and absent is counted as
-        # the one that matters.
-        if _is_walled(root / (str(key) + ".md"), root, areas):
+        # the one that matters. Both count as removed either way; which bucket
+        # it lands in is what the operator reads, and a walled key reported as
+        # merely stale reads as "the cache was clean".
+        if _key_is_walled(str(key), root, areas):
             walled += 1
         elif key not in live:
             absent += 1

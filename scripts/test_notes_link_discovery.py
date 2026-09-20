@@ -955,14 +955,17 @@ class TestPruneEmbedCache(unittest.TestCase):
                 # Walled, in the spelling today's corpus produces.
                 f"{WALLED_DIR}/Recovery Codes": {"hash": "h3", "vec": [1.0, 1.0]},
                 # The spelling on the operator's disk: rooted one level too
-                # deep, so it names nothing in the corpus.
+                # deep, so its leading space is missing. It names the same
+                # walled folder and must be counted as walled, not as stale —
+                # every key in the live 391-key cache is in this spelling, and
+                # reporting them as merely stale reads as "the cache was clean".
                 "Home/Important Docs/Marriage License": {"hash": "h4", "vec": [1.0, 2.0]},
                 # An ordinary note that has since been deleted.
                 "personal/Church/gone": {"hash": "h5", "vec": [2.0, 0.0]},
             })
             rep = nld.prune_embed_cache(v)
-            self.assertEqual(rep["walled"], 1)
-            self.assertEqual(rep["absent"], 2)
+            self.assertEqual(rep["walled"], 2)
+            self.assertEqual(rep["absent"], 1)
             self.assertEqual(rep["kept"], 2)
             self.assertTrue(rep["written"])
             left = json.loads(cache.read_text(encoding="utf-8"))
@@ -1003,6 +1006,25 @@ class TestPruneEmbedCache(unittest.TestCase):
             with self.assertRaises(ValueError):
                 nld.prune_embed_cache(empty, cache_path=cache)
             self.assertEqual(cache.read_bytes(), before)
+
+    def test_the_missing_space_is_one_segment_not_a_sliding_match(self):
+        # The old spelling is missing exactly one leading space, so the trial
+        # adds one that exists at the vault root. It does not slide the area
+        # along the key: a folder called `Important Docs` somewhere else in the
+        # tree is not the operator's, and a wall with a false positive in it is
+        # a wall nobody trusts.
+        with _Vault() as v:
+            (v / "personal").mkdir(parents=True, exist_ok=True)
+            root, areas = v, [WALLED_DIR]
+            # As written today, and the one-segment-short spelling.
+            self.assertTrue(nld._key_is_walled(f"{WALLED_DIR}/Recovery Codes", root, areas))
+            self.assertTrue(nld._key_is_walled("Home/Important Docs/Recovery Codes", root, areas))
+            # Two segments short, or under a space that is not there.
+            self.assertFalse(nld._key_is_walled("Important Docs/Recovery Codes", root, areas))
+            self.assertFalse(nld._key_is_walled("work/Home/Important Docs/x", root, areas))
+            # The near-miss the area rule exists for.
+            self.assertFalse(nld._key_is_walled("Homework/algebra", root, areas))
+            self.assertFalse(nld._key_is_walled("personal/Homework/algebra", root, areas))
 
     def test_dry_run_without_prune_cache_is_refused(self):
         # The flag reads as "change nothing" and is consulted by one mode. Next
