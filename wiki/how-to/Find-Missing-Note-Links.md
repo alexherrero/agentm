@@ -15,7 +15,7 @@ This audit is the complement to [Audit the vault](Audit-The-Vault) — that one 
    python3 harness/skills/memory/scripts/notes_link_discovery.py --format json
    ```
 
-   Tuning flags: `--top N` caps the shortlist (default 40; `0` = all), `--min-score X` sets the TF-IDF cosine floor (default `0.18`), and `--vault PATH` points at a specific Obsidian root when `MEMORY_ROOT` isn't set. The corpus is every `.md` under the Obsidian root **except** the vault root folder itself, `.obsidian/`, `.trash/`, and `.git/`.
+   Tuning flags: `--top N` caps the shortlist (default 40; `0` = all), `--min-score X` sets the TF-IDF cosine floor (default `0.18`), and `--vault PATH` points at a specific Obsidian root when `MEMORY_ROOT` isn't set. The corpus is every `.md` under the Obsidian root **except** the vault root folder itself, `.obsidian/`, `.trash/`, `.git/`, and every area the filing contract walls with `recall_exempt_areas` — `personal/Home/Important Docs` on the shipped contract. The walk refuses a walled folder before reading anything in it, so those notes are never scored, reported, embedded, backed up, or written into.
 
 2. **Add the semantic signal (optional but recommended).** Pass `--embeddings` to run a second relatedness pass that catches related notes which *don't share surface vocabulary* — including the same note in two languages:
 
@@ -24,6 +24,8 @@ This audit is the complement to [Audit the vault](Audit-The-Vault) — that one 
    ```
 
    This embeds each note with the local BGE model and caches the vectors at `~/.local/state/agentm/notes-embeddings.json` — the engine state directory (`$AGENTM_STATE_DIR` overrides it), since a vector cache is machine state, not vault content (content-hash keyed, so re-runs only re-embed changed notes — the first run is slow, later runs are fast). `--embed-min-score X` sets the embedding cosine floor (default `0.70`). If `sentence-transformers` isn't installed the audit prints a one-line notice and falls back to TF-IDF-only — never an error.
+
+   To clear keys out of that cache without running a model, use `--prune-cache` (add `--dry-run` to look first). It drops every key the contract walls and every key naming a note the corpus no longer holds, then says how many of each went. A cache written before the wall landed, or under an older corpus root, carries both kinds.
 
 3. **Write the suggestion report.** Add `--report` to write the operator-review markdown instead of printing:
 

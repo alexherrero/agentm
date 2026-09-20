@@ -641,6 +641,11 @@ func cmdReindex(args []string) error {
 	fmt.Printf("scanned %d, added %d, updated %d, removed %d in %s\n",
 		rep.Scanned, rep.Added, rep.Updated, rep.Removed,
 		time.Since(started).Round(time.Millisecond))
+	// The orphan sweep, printed whatever it found. A silent zero is worth a line
+	// here: this is the command an operator runs to find out whether the index
+	// is carrying rows whose note is gone, and "nothing to remove" is the answer
+	// they came for as much as a count is.
+	fmt.Println("orphan sweep:", rep.Swept)
 	for i, e := range rep.Errors {
 		if i >= 10 {
 			fmt.Printf("… and %d more errors\n", len(rep.Errors)-10)

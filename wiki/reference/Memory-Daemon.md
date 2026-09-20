@@ -63,7 +63,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `serve` | Watch, index, serve MCP, commit. Prints `listening http://…` once the index is caught up. |
 | `search <terms>` | One-shot query against the index. `-k`, `-mode`, `-question`, `--after`, `--before`, `-project`, `--json`. |
 | `capture <text>` | One-shot capture. Reads stdin when given no argument. |
-| `reindex` | Full reconcile. `--from-scratch` deletes the index first, proving it rebuilds from the files. |
+| `reindex` | Full reconcile, then the orphan sweep, whose one line says what it removed. `--from-scratch` deletes the index first, proving it rebuilds from the files — which also discards the enrichment ledger and every vector, so prefer the plain form. |
 | `status` | Ask a running daemon for its state. Exits 3 when anything is red. `--json` for the raw document. |
 | `probe` | Run the round-trip self-probe now. Exits 3 on failure. |
 | `gate corpus-write` | Ask whether a corpus-wide write job may start. Exits 0 to pass, 3 to refuse, 1 when it could not decide. |
@@ -1224,6 +1224,46 @@ proves the rebuild repairs them rather than preserving the damage.
 All three were added additively, with no `SchemaVersion` bump. A bump discards
 the whole index file, and the expensive half of rebuilding it is the re-embed,
 which none of this touches.
+
+### Deleting a note, and the orphan sweep
+
+Each of these tables is keyed by the document's id, and nothing in the schema
+ties them to it — there is no foreign key, and SQLite enforces none unasked. A
+table is cleared when a note is deleted because `Delete` names it, and for no
+other reason. `perDocumentTables` is that one list, read by `Delete` and by the
+sweep alike, so a table is cleared by both or by neither.
+
+It was not always one list. All three of these tables arrived after `Delete` was
+written, each carrying a comment saying the docmeta delete took its rows with
+it, and none of them was added to the delete. Counted on the live index on
+2026-09-19: 27,891 of 46,581 chunk rows, 11,898 entity rows and 8,145 link rows
+belonged to 4,209 documents that no longer existed — every purged note, every
+path the migrations retired, and the body of every note `recall_exempt_areas`
+walls. No search reached them, since every ranked read joins `docmeta` and an
+AUTOINCREMENT id is never reused; they were simply the text of deleted notes,
+kept.
+
+`SweepOrphans` removes every row in every one of these tables whose document is
+gone, and sets back to dangling every link naming a path the index no longer
+holds. `Reconcile` runs it, which means the daemon's startup pass, its
+five-minute pass, and `agentmd reindex` — whose output carries the one line it
+prints. It works in place: the enrichment ledger and the work queue are tables
+in this same file, so deleting the index to clean it would cost a ledger rebuild
+and a full re-embed. On a clean index it is one existence check per table and
+takes no write lock; the checks stop at the first table that answers yes, and
+`docs` is asked last because it is the FTS5 virtual table, where the query has
+no plan and scans (182ms cold, 10ms warm over 8,000 notes, against microseconds
+for the five with a covering index).
+
+The report is filled in only after the commit returns. The deletes ride one
+transaction with a deferred rollback, so a count written as each statement ran
+would credit rows that are still in their tables — and the daemon logs that
+number every five minutes.
+
+The sweep is the backstop, not the mechanism. A note's rows have to go inside
+the transaction that removes its `docmeta` row, because the id is the join key
+and a note re-added between two sweeps takes a fresh one — rows left for a later
+sweep are unreachable from the moment the `docmeta` row goes.
 
 ### Two kinds of chunking, and why both
 

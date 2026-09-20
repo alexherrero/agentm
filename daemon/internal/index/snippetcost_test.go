@@ -60,7 +60,7 @@ func TestSnippetsAreComputedOnlyForTheRowsReturned(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			x := snippetFixture(t, corpus)
-			if err := x.PutVectors("m", []VectorRow{
+			if _, err := x.PutVectors("m", []VectorRow{
 				{DocID: docID(t, x, "memory/n007.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 			}); err != nil {
 				t.Fatalf("PutVectors: %v", err)
@@ -126,7 +126,7 @@ func TestDenseArmPromotionDoesNotWidenSnippetCoverage(t *testing.T) {
 		"a wall of text about gardening that happens to mention homelab and server once, "+
 			strings.Repeat("filler about compost and tomatoes ", 400))
 
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/faint.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 	}); err != nil {
 		t.Fatalf("PutVectors: %v", err)

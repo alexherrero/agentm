@@ -100,7 +100,7 @@ func TestHybridSurfacesWhatLexicalCannot(t *testing.T) {
 
 	// The paraphrase shares no term with the query, so no lexical mode can find
 	// it; the dense arm is given a vector identical to the query's.
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/paraphrase.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 		{DocID: docID(t, x, "memory/lexical.md"), MtimeNS: 1, Vec: unit(0, 0, 1)},
 	}); err != nil {
@@ -141,7 +141,7 @@ func TestHybridLeavesDenseOnlyHitsWithoutASnippet(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "memory/lexical.md", "homelab server", "the homelab server runs in the closet")
 	addNote(t, x, "memory/paraphrase.md", "home lab box", "the machine under the stairs")
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/paraphrase.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 	}); err != nil {
 		t.Fatalf("PutVectors: %v", err)
@@ -175,7 +175,7 @@ func TestHybridPenalizesInsideTheDenseArm(t *testing.T) {
 
 	// The penalized note is a marginally better cosine match. Without the
 	// in-arm penalty it takes rank 1 of the dense arm and wins the fusion.
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/retired.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 		{DocID: docID(t, x, "memory/clean.md"), MtimeNS: 1, Vec: unit(0.99, 0.14, 0)},
 	}); err != nil {

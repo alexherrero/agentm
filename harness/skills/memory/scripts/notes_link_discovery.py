@@ -257,21 +257,84 @@ def _resolve_link(target: str) -> tuple:
     return t, None
 
 
+def _walled_areas() -> list:
+    """The contract's `recall_exempt_areas`, read once per walk.
+
+    Once, and passed down — never asked per file. The contract lives in Go and
+    Python reaches it by spawning `agentmd rules --json`, so a per-file read is
+    a subprocess per file, and on a machine with no daemon a *failed*
+    subprocess per file, because `storage_rules.rules()` caches an answer and
+    not a failure. `recall.py._contract_areas` carries the same note for the
+    same reason.
+
+    Fails closed, to the shipped contract's own list. Every other contract read
+    in this tool could fail open — a missing rule is a pair that ranks oddly —
+    and this one decides whether the operator's certificates are read at all.
+    """
+    import storage_rules  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    try:
+        return list(storage_rules.rules().recall_exempt_areas())
+    except Exception:
+        return list(storage_rules._FALLBACK_RECALL_EXEMPT_AREAS)
+
+
+def _is_walled(path, root, areas=None) -> bool:
+    """Whether `path` sits in an area the contract walls from recall.
+
+    Asked on the path from the **vault root**, because that is the root the
+    contract's areas are written from (`personal/Home/Important Docs`), and the
+    corpus root is that same directory — `_obsidian_root` returns the folder
+    holding `.obsidian/`. Getting this root wrong is the failure that wrote the
+    cache this replaces: it was built when the corpus was rooted one level too
+    deep, so every key in it is missing its leading space and matches no
+    contract area at all.
+
+    `areas` is the contract's list, read once by the caller. Passing None reads
+    it again, which is right for a single question and wrong inside a walk.
+    """
+    import storage_rules  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    if areas is None:
+        areas = _walled_areas()
+    try:
+        rel = Path(path).relative_to(root).as_posix()
+    except ValueError:
+        return False
+    return storage_rules.in_area(rel, areas)
+
+
 def build_corpus(vault: Path) -> list:
     """Walk the Obsidian root, parse every personal note (excluding the
-    agent's own vault directory + Obsidian config), return a list[Note].
-    Read-only."""
+    agent's own vault directory, Obsidian config, and the areas the filing
+    contract walls from recall), return a list[Note]. Read-only."""
     vault = Path(vault)
     root = vault_lint._obsidian_root(vault)
     exclude_dirs = _EXCLUDE_DIRS | {vault.resolve().name}
+    # One contract read for the whole walk, not one per file.
+    walled = _walled_areas()
     notes = []
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune excluded dirs in-place so os.walk doesn't descend into them.
         dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
+        # The contract's `recall_exempt_areas`, refused at the walk — the same
+        # door the daemon's reconcile and `recall.py`'s walk close, and which
+        # this walker had not. The folder it was written for holds
+        # certificates and recovery codes; this tool reads a note's whole body,
+        # scores it, prints its title and shared terms into a report, embeds it,
+        # writes the vector to a cache on disk, and under `--apply` writes
+        # `[[links]]` into the note itself. Every one of those is a copy the
+        # operator did not ask for, so the refusal belongs before the read.
+        dirnames[:] = [d for d in dirnames
+                       if not _is_walled(Path(dirpath) / d, root, walled)]
         for fn in filenames:
             if not fn.endswith(".md"):
                 continue
             p = Path(dirpath) / fn
+            # A walled file directly under an unwalled directory. The prune
+            # above covers the folder; this covers an area naming a single file.
+            if _is_walled(p, root, walled):
+                continue
             try:
                 text = p.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
@@ -524,8 +587,74 @@ def _load_embed_cache(cache_path: Optional[Path]) -> dict:
 
 
 def _save_embed_cache(cache_path: Path, cache: dict) -> None:
+    """Replace the cache file atomically.
+
+    Written beside the target and renamed over it, because the prune's whole job
+    is to remove keys from a file that is 9MB of vectors: a plain write
+    interrupted halfway leaves a truncated JSON document, and while
+    `_load_embed_cache` tolerates that by returning `{}`, the cost is re-embedding
+    the whole corpus. `os.replace` is atomic on every platform this runs on.
+    """
+    cache_path = Path(cache_path)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(cache), encoding="utf-8")
+    tmp = cache_path.with_name(cache_path.name + ".tmp")
+    tmp.write_text(json.dumps(cache), encoding="utf-8")
+    os.replace(tmp, cache_path)
+
+
+def prune_embed_cache(vault: Path, cache_path: Optional[Path] = None,
+                      *, notes: Optional[list] = None,
+                      apply: bool = True) -> dict:
+    """Drop from the vector cache every key that should not be in it.
+
+    Two rules, counted apart because they are different faults:
+
+    - **walled** — the key names a path the contract walls from recall. The
+      corpus walk refuses these now, so nothing writes one again; this is what
+      removes one already written.
+    - **absent** — the key names no note in the corpus. A vector for a note that
+      no longer exists is never read (a cache hit is keyed on a live note's own
+      path), and a key written under a different corpus root reads as absent,
+      which is what the 391-key cache on the operator's machine is: built on
+      2026-05-30, when this tool was rooted one level too deep, so its keys are
+      missing their leading space.
+
+    Refuses to write when the corpus is empty, which is what a wrong `--vault`
+    looks like — and under that reading every key is 'absent' and the whole file
+    goes. Returns the counts; `apply=False` reports without writing.
+    """
+    if cache_path is None:
+        cache_path = default_embed_index_path(vault)
+    cache = _load_embed_cache(cache_path)
+    if not cache:
+        return {"kept": 0, "walled": 0, "absent": 0, "written": False,
+                "path": str(cache_path)}
+
+    if notes is None:
+        notes = build_corpus(vault)
+    if not notes:
+        raise ValueError(
+            f"the corpus at {vault} holds no notes; refusing to prune "
+            f"{cache_path}, since every key would read as absent")
+
+    live = {n.rel for n in notes}
+    root = vault_lint._obsidian_root(Path(vault))
+    areas = _walled_areas()
+    kept, walled, absent = {}, 0, 0
+    for key, value in cache.items():
+        # The wall first, so a key that is both walled and absent is counted as
+        # the one that matters.
+        if _is_walled(root / (str(key) + ".md"), root, areas):
+            walled += 1
+        elif key not in live:
+            absent += 1
+        else:
+            kept[key] = value
+
+    if apply and (walled or absent):
+        _save_embed_cache(Path(cache_path), kept)
+    return {"kept": len(kept), "walled": walled, "absent": absent,
+            "written": bool(apply and (walled or absent)), "path": str(cache_path)}
 
 
 def embed_corpus(notes: list, *, mode: Optional[str] = None,
@@ -591,6 +720,10 @@ def embed_corpus(notes: list, *, mode: Optional[str] = None,
                 raws[rel] = raw
 
     if cache_path is not None:
+        # Written from this run's corpus, which the walk has already refused
+        # every walled note to — so the file this writes holds vectors for the
+        # notes in the corpus and nothing else. It replaces the file rather than
+        # merging into it, which is what retires a key the corpus no longer has.
         _save_embed_cache(Path(cache_path),
                           {rel: {"hash": hashes[rel], "vec": raws[rel]} for rel in raws})
     return {rel: _normalize(vec) for rel, vec in raws.items()}
@@ -948,7 +1081,22 @@ def main(argv: Optional[list] = None) -> int:
                    help="WRITE the suggested links into the notes (opt-in; default "
                         "is read-only). Backs the corpus up first, then merges a "
                         "marked `## Related` section into each source note.")
+    p.add_argument("--prune-cache", action="store_true",
+                   help="drop from the vector cache every key the contract walls "
+                        "from recall, and every key naming a note the corpus no "
+                        "longer holds. Loads no model. --dry-run reports without "
+                        "writing.")
+    p.add_argument("--dry-run", action="store_true",
+                   help="with --prune-cache: report what would go, write nothing")
     args = p.parse_args(argv)
+    # A flag that reads as "change nothing" and is consulted by one mode would
+    # be at its most dangerous next to `--apply`, where it names the mode that
+    # does write into personal notes and would be silently ignored.
+    if args.dry_run and not args.prune_cache:
+        print("notes_link_discovery: --dry-run applies to --prune-cache. Every "
+              "other mode is already read-only except --apply, which --dry-run "
+              "does not gate.", file=sys.stderr)
+        return 2
     try:
         vault = vault_lint._resolve_vault(args.vault)
     except FileNotFoundError as e:
@@ -957,6 +1105,23 @@ def main(argv: Optional[list] = None) -> int:
     if not vault.is_dir():
         print(f"notes_link_discovery: vault not found: {vault}", file=sys.stderr)
         return 2
+
+    if args.prune_cache:
+        # Before `discover`, because this one job needs no scoring — and a
+        # machine that will never run `--embeddings` again still has to be able
+        # to empty the cache of what should not be in it.
+        try:
+            rep = prune_embed_cache(vault, apply=not args.dry_run)
+        except ValueError as e:
+            print(f"notes_link_discovery: {e}", file=sys.stderr)
+            return 2
+        verb = "would drop" if args.dry_run else "dropped"
+        print(f"notes-link-discovery prune: {verb} {rep['walled']} walled key(s) and "
+              f"{rep['absent']} key(s) naming no note in the corpus; "
+              f"{rep['kept']} kept -> {rep['path']}")
+        if not rep["written"] and not args.dry_run:
+            print("  nothing to remove; the file is unchanged.")
+        return 0
 
     notes, suggestions = discover(vault, min_score=args.min_score, top=args.top)
 

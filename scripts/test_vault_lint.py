@@ -648,6 +648,62 @@ class TestSchemaPin(unittest.TestCase):
         self.assertIn("fingerprint: abc123", fm)
 
 
+class TestTheRecallWallInLinkResolution(unittest.TestCase):
+    """The link-target walk reads every file's head to harvest `aliases:`.
+
+    It walked the folder the contract walls from recall too, so the lint opened
+    the operator's certificates to read four kilobytes of each. Nothing was ever
+    printed — the harvested values are only membership-tested — but the wall's
+    own standard is that the refusal comes before the read.
+
+    A walled note stays a valid link target. Its name is in the directory entry
+    already, so `[[Recovery Codes]]` written elsewhere still resolves and does
+    not lint as broken; only its aliases are lost, which is the cheaper of the
+    two wrong answers.
+    """
+
+    WALLED = "personal/Home/Important Docs"
+
+    def _vault(self, root: Path) -> Path:
+        (root / self.WALLED).mkdir(parents=True, exist_ok=True)
+        (root / self.WALLED / "Recovery Codes.md").write_text(
+            "---\naliases: [Codes, Backup Keys]\n---\n\nThe codes.\n", encoding="utf-8")
+        (root / "personal" / "Church").mkdir(parents=True, exist_ok=True)
+        (root / "personal" / "Church" / "baptism.md").write_text(
+            "---\naliases: [Christening]\n---\n\nA baptism.\n", encoding="utf-8")
+        return root
+
+    def test_a_walled_note_is_a_link_target_but_is_never_opened(self):
+        with _Vault() as v:
+            self._vault(v)
+            opened = []
+            saved = Path.read_text
+
+            def watching(self, *a, **kw):
+                opened.append(Path(self).as_posix())
+                return saved(self, *a, **kw)
+
+            model = vl.VaultModel(vault=v)
+            try:
+                Path.read_text = watching
+                vl._index_link_targets(v, model)
+            finally:
+                Path.read_text = saved
+
+            for path in opened:
+                self.assertNotIn("Important Docs", path,
+                                 f"the link walk opened a walled file: {path}")
+            self.assertTrue(any("baptism" in p for p in opened),
+                            "the walk opened nothing at all, so this proves nothing")
+
+            # Still resolvable by name and by path — a link to it is not broken.
+            self.assertIn("Recovery Codes", model.link_stems)
+            self.assertIn(f"{self.WALLED}/Recovery Codes", model.link_paths)
+            # Its aliases are not targets; an unwalled note's are.
+            self.assertNotIn("Backup Keys", model.link_aliases)
+            self.assertIn("Christening", model.link_aliases)
+
+
 # Every test in this module gets its own engine state dir. Without it a hand
 # run shares one directory across the file and reads what the last test left
 # (PLAN-source-and-hygiene, task 3); the battery's runner hid that from CI.

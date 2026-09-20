@@ -203,22 +203,28 @@ func (x *Index) PendingEmbeds(model string, scope []string, limit int) ([]Pendin
 // — would otherwise leave chunk_idx 1 and 2 behind: rows no query deletes,
 // invisible to every count, and still there to be scored the next time this
 // note is searched.
-func (x *Index) PutVectors(model string, rows []VectorRow) error {
+//
+// Returns the documents whose rows were refused because they are no longer in
+// the index, so a caller counting what it embedded can subtract them. Returned
+// rather than logged: the backfill reports how many notes it embedded and how
+// many chunks it wrote, and a silent skip makes both numbers wrong in a way
+// nothing can reconcile afterwards.
+func (x *Index) PutVectors(model string, rows []VectorRow) (vanished []int64, err error) {
 	if len(rows) == 0 {
-		return nil
+		return nil, nil
 	}
 	x.mu.Lock()
 	defer x.mu.Unlock()
 
 	tx, err := x.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
 	del, err := tx.Prepare(`DELETE FROM embeddings WHERE doc_id = ?`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer del.Close()
 
@@ -229,9 +235,21 @@ func (x *Index) PutVectors(model string, rows []VectorRow) error {
 		   model=excluded.model, dim=excluded.dim,
 		   mtime_ns=excluded.mtime_ns, vec=excluded.vec`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer ins.Close()
+
+	// A document that left the index while this batch was embedding. Minutes can
+	// pass between the query that chose these notes and this write — long enough
+	// for a note to be deleted, or for an edit to `recall_exempt_areas` to wall
+	// one — and a vector stored for a missing document is an orphan from the
+	// moment it lands, since a re-added note takes a fresh id.
+	live, err := tx.Prepare(`SELECT EXISTS(SELECT 1 FROM docmeta WHERE id = ?)`)
+	if err != nil {
+		return nil, err
+	}
+	defer live.Close()
+	exists := make(map[int64]bool, len(rows))
 
 	// Cleared once per doc_id, before that doc_id's first insert — clearing
 	// again on a later row for the same note would delete the chunk this same
@@ -241,18 +259,36 @@ func (x *Index) PutVectors(model string, rows []VectorRow) error {
 		if len(r.Vec) == 0 {
 			continue
 		}
+		if _, asked := exists[r.DocID]; !asked {
+			var found bool
+			if err := live.QueryRow(r.DocID).Scan(&found); err != nil {
+				return nil, err
+			}
+			exists[r.DocID] = found
+			if !found {
+				vanished = append(vanished, r.DocID)
+			}
+		}
+		if !exists[r.DocID] {
+			continue
+		}
 		if !cleared[r.DocID] {
 			if _, err := del.Exec(r.DocID); err != nil {
-				return err
+				return nil, err
 			}
 			cleared[r.DocID] = true
 		}
 		if _, err := ins.Exec(
 			r.DocID, r.ChunkIdx, model, len(r.Vec), r.MtimeNS, encodeVec(r.Vec)); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		// Nothing was stored, so nothing was refused either — a caller told a
+		// document vanished would subtract it from a count that never rose.
+		return nil, err
+	}
+	return vanished, nil
 }
 
 // DropVectors clears the vector table. Swapping the embedding model invalidates
@@ -399,18 +435,6 @@ func (x *Index) VectorSearch(q []float32, model string, k int, after, before str
 		out = out[:k]
 	}
 	return out, nil
-}
-
-// deleteVectorLocked drops a note's embedding. Called from Delete, which already
-// holds the mutex.
-//
-// This has to happen with the docmeta row and not on a later sweep: docmeta.id is
-// the join key, and a re-added note takes a fresh id, so an embedding left behind
-// would be an orphan pointing at nothing — invisible to every count and still
-// occupying the table.
-func deleteVectorLocked(tx *sql.Tx, id int64) error {
-	_, err := tx.Exec(`DELETE FROM embeddings WHERE doc_id = ?`, id)
-	return err
 }
 
 // VectorModels lists the models that currently have vectors stored, so a mixed

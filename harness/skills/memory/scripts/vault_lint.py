@@ -297,12 +297,43 @@ def _obsidian_root(vault: Path) -> Path:
     return vault
 
 
+def _walled_areas() -> list:
+    """The contract's `recall_exempt_areas`, read once per walk.
+
+    Once, never per file: the contract lives in Go and Python reaches it by
+    spawning `agentmd rules --json`, so a per-file read is a subprocess per
+    file. Falls back closed to the shipped list when the contract cannot be
+    read at all.
+    """
+    try:
+        return list(storage_rules.rules().recall_exempt_areas())
+    except Exception:
+        return list(storage_rules._FALLBACK_RECALL_EXEMPT_AREAS)
+
+
 def _index_link_targets(vault: Path, model: VaultModel) -> None:
     """Index EVERY .md file in the enclosing Obsidian vault as a valid wikilink
     target (stem + relative path). Obsidian-root-wide — schema-linting stays
     AgentMemory-only, but link RESOLUTION must see the whole Obsidian vault so
-    cross-vault references (e.g. `[[Ideas]]`) don't false-positive."""
+    cross-vault references (e.g. `[[Ideas]]`) don't false-positive.
+
+    A file the contract walls from recall is named but never opened. The name is
+    what link resolution needs and it is already in the directory entry, so a
+    `[[Recovery Codes]]` written elsewhere still resolves rather than linting as
+    broken, while nothing inside the file is read. The cost is that a walled
+    note's `aliases:` are not link targets, since finding them means reading it;
+    a link by alias into that folder lints as unresolved, which is the cheaper of
+    the two wrong answers.
+    """
     root = _obsidian_root(vault)
+    walled = _walled_areas()
+
+    def _is_walled(p: Path) -> bool:
+        try:
+            return storage_rules.in_area(p.relative_to(root).as_posix(), walled)
+        except ValueError:
+            return False
+
     for dirpath, dirnames, filenames in os.walk(root):
         # Skip Obsidian's config dir; not a note source.
         dirnames[:] = [d for d in dirnames if d != ".obsidian"]
@@ -315,6 +346,8 @@ def _index_link_targets(vault: Path, model: VaultModel) -> None:
                 model.link_paths.add(p.relative_to(root).with_suffix("").as_posix())
             except ValueError:
                 pass
+            if _is_walled(p):
+                continue
             # Index `aliases:` too — Obsidian treats them as link targets.
             # Only the frontmatter block can carry them, so read just the head
             # of the file rather than the whole note.

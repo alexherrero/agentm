@@ -196,8 +196,9 @@ func (x *Index) migrate() error {
 		// note longer than the embedder's window gets several chunk rows instead
 		// of one vector truncated from its head, and chunk_idx 0 is the whole note
 		// for everything that fits — the common case is unchanged in shape.
-		// `doc_id` is still the same id the lexical side uses, so deleting a
-		// note's docmeta row takes every one of its chunk rows with it. `model` is
+		// `doc_id` is still the same id the lexical side uses, and `Delete` clears
+		// the table by it. Nothing cascades here: a table is cleared because
+		// perDocumentTables names it and for no other reason. `model` is
 		// stored per row rather than once for the table because a half-finished
 		// model swap is a real state and it should be countable, not inferred from
 		// vectors that rank oddly.
@@ -216,9 +217,11 @@ func (x *Index) migrate() error {
 		// version 3 says exactly this — a change that does not touch vectors is
 		// worth making additively.
 		//
-		// Keyed (doc_id, chunk_idx) like `embeddings`, and for the same reason:
-		// deleting a note's docmeta row takes its chunk rows with it. `header_path`
-		// is what makes a match point at a section rather than a file.
+		// Keyed (doc_id, chunk_idx) like `embeddings`, so `Delete` can clear a
+		// note's rows by its id. This comment used to say that deleting the docmeta
+		// row "takes its chunk rows with it", and nothing made that true — the
+		// rows outlived 4,209 documents before anyone counted. `header_path` is
+		// what makes a match point at a section rather than a file.
 		`CREATE TABLE IF NOT EXISTS chunks (
 				doc_id      INTEGER NOT NULL,
 				chunk_idx   INTEGER NOT NULL,
@@ -450,6 +453,12 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 
 // Delete drops a note from the index. Removing a file from the vault removes it
 // from search; nothing here touches the vault.
+//
+// Every table the note owns goes in the one transaction, so the index never
+// holds half a deleted note. Which tables those are is `perDocumentTables` and
+// not this function's own list — a derived table added to `migrate` and
+// forgotten here is exactly the defect this replaces, and it left the text of
+// 4,209 deleted notes in `chunks`.
 func (x *Index) Delete(rel string) error {
 	x.mu.Lock()
 	defer x.mu.Unlock()
@@ -467,12 +476,10 @@ func (x *Index) Delete(rel string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM docs WHERE rowid = ?`, id); err != nil {
+	if err := deleteDocumentRowsTx(tx, id, rel); err != nil {
 		return err
 	}
-	if err := deleteVectorLocked(tx, id); err != nil {
-		return err
-	}
+	// Last: every statement above finds the note by the id this row carries.
 	if _, err := tx.Exec(`DELETE FROM docmeta WHERE id = ?`, id); err != nil {
 		return err
 	}
@@ -535,6 +542,11 @@ type ReconcileReport struct {
 	// a number here means the graph was wrong until this run, and a reader
 	// watching backlinks appear deserves to know why.
 	Resolved int
+	// Swept is what the orphan sweep removed. On an index built by a binary that
+	// carries the fixed Delete this is zeros; anything else is a row that
+	// outlived its document, which is worth saying out loud rather than
+	// removing quietly.
+	Swept SweepReport
 }
 
 // Reconcile walks the vault and makes the index agree with it: new files added,
@@ -638,6 +650,22 @@ func (x *Index) Reconcile() (ReconcileReport, error) {
 			rep.Gone = append(rep.Gone, rel)
 		}
 	}
+
+	// Rows whose document is gone. Before the re-resolve, so a link left
+	// pointing at a path this pass dropped goes back to dangling first and is
+	// then offered the same second chance as every other dangling link — a note
+	// deleted and rewritten between passes resolves again here rather than
+	// waiting for the one after.
+	//
+	// A pass over a clean index spends a handful of existence checks on this,
+	// which is the common case forever after the first sweep. Run every pass
+	// rather than at startup alone because the leak it answers for was a writer,
+	// and a daemon that has been up for a month is exactly where a new one hides.
+	swept, err := x.SweepOrphans()
+	if err != nil {
+		rep.Errors = append(rep.Errors, fmt.Sprintf("sweeping orphaned rows: %v", err))
+	}
+	rep.Swept = swept
 
 	// Links written before their targets existed. Resolution happens at index
 	// time against the paths known then, and a note whose mtime has not moved is

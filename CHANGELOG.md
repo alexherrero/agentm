@@ -137,6 +137,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Deleting a note deletes the note.** `Delete` cleared the lexical row, the
+  vectors and the metadata row, and left the three derived tables that arrived
+  after it was written — `chunks`, `links` and `entities`. Each of the three
+  carries a comment saying the metadata delete took its rows with it, and
+  nothing made that true: the tables have no foreign key, and SQLite enforces
+  none unasked. Counted on the live index on 2026-09-19, **27,891 of 46,581
+  chunk rows, 11,898 entity rows and 8,145 link rows belonged to 4,209
+  documents that no longer existed** — the body of every note the recall wall
+  removed, every note the purges deleted and every path the migrations retired,
+  held in a table with nothing left to name it by. No search reached them; the
+  ranked reads all join the metadata table and an AUTOINCREMENT id is never
+  reused. They were simply kept. The tables a document owns are now one list
+  read by the delete and by a new orphan sweep alike, so a table is cleared by
+  both or by neither, and a schema-reading test fails if a fourth arrives and
+  is not on it. `SweepOrphans` removes what an index already carries, runs in
+  every reconcile — the daemon's startup pass, its five-minute pass and
+  `agentmd reindex`, which prints what it found — and works in place, because
+  the enrichment ledger and the work queue live in the same file and rebuilding
+  the index to clean it would cost a ledger rebuild and a full re-embed. A link
+  to a deleted note goes back to dangling and resolves again if the note
+  returns, and the embedder now refuses to store a vector for a document that
+  left the index while its batch was running — reporting the notes it refused
+  rather than skipping them silently, so `agentmd embed`'s note and chunk
+  counts stay the number actually stored and `--limit` spends its budget on
+  notes that are there. The sweep's own report is filled in only once the
+  commit returns: the deletes ride a transaction with a deferred rollback, so a
+  report written as the statements ran would have credited rows still sitting
+  in their tables, and the daemon would have logged that number every five
+  minutes.
+
+- **The walled folder is walled in the tables, not only in the answers.** The
+  contract's `recall_exempt_areas` promises `personal/Home/Important Docs` is
+  never indexed, embedded or served, and every door to a ranked answer refused
+  it. The delete underneath did not, so walling the area dropped the row that
+  named each note and kept its text — including in `entities`, which lifts any
+  hex-looking run of seven characters or more out of a body as a `commit:`
+  reference. The recall-wall tests asked `Search` and `PendingEmbeds` what they
+  would serve, and both answered correctly the whole time, which is how this
+  survived them; they read the rows now, at the walk, at the notifier's door
+  and on an area named over a note already indexed. Two walkers in the Python
+  half had no wall. `notes_link_discovery` read walled notes whole, scored
+  them, named them in its report, embedded them into
+  `~/.local/state/agentm/notes-embeddings.json` and, under `--apply`, wrote
+  `[[links]]` into them and tarred them into its backup; it refuses the area at
+  its walk now, on the path from the vault root — the root it was getting wrong
+  when it wrote the cache that is on disk today, whose every key is missing its
+  leading space. `--prune-cache` empties that file of the keys the contract
+  walls and the keys naming notes the corpus no longer holds, counted apart,
+  loading no model; `--dry-run` reports without writing, an empty corpus is
+  refused rather than taken as licence to delete every key, and the rewrite is
+  atomic. `vault_lint`'s link-target walk read four kilobytes of every file in
+  the vault to harvest `aliases:`, walled ones included. It names a walled note
+  without opening it, so a `[[link]]` to one still resolves rather than linting
+  as broken; only its aliases stop being link targets, which is the cheaper of
+  the two wrong answers.
+
 - **The nightly enrichment leaves the daemon's self-probe alone.** The probe
   writes a synthetic note once a day, asks for it back sideways and leaves it
   behind as the artifact of the check. On the night of 2026-09-17 enrichment
