@@ -17,15 +17,13 @@ What rendering does:
 
   - drops the leading operator-only HTML comment (paste instructions, not
     instructions to the agent);
-  - resolves the two alternates marked `payload:mail` / `payload:no-mail`,
-    keeping the mail sentence only when a capture address is configured, and
-    substituting it for `{{CAPTURE_ADDRESS}}`;
-  - normalizes blank-line runs so either branch leaves the same shape.
+  - normalizes blank-line runs.
 
-The address lives at `plugins.autonomy.capture_address` in the engine config,
-beside the SMTP target the autonomy plugin already keeps there. It is unset
-until the mail door lands, and an unset address means the payload does not tell
-a chat surface to mail a mailbox that does not exist.
+There is one body and no alternates. The `payload:mail` / `payload:no-mail`
+pair and the `{{CAPTURE_ADDRESS}}` the first substituted retired with the email
+door's transport (agentm-vault plan 16): a chat surface writes by dropping a
+card into `agent/inbox/` over Drive, which is true on every machine and depends
+on no config key, so there is nothing left for the renderer to choose between.
 """
 from __future__ import annotations
 
@@ -41,72 +39,25 @@ TEMPLATE_PATH = REPO / "templates" / "agentmemory-context.md"
 ANTIGRAVITY_RULE_PATH = REPO / "adapters" / "antigravity" / "rules" / "agentmemory-context.md"
 GEMINI_RULES_PATH = Path.home() / ".gemini" / "GEMINI.md"
 
-CAPTURE_ADDRESS_KEY = "plugins.autonomy.capture_address"
-PLACEHOLDER = "{{CAPTURE_ADDRESS}}"
 MARKER = "AGENTMEMORY"  # the managed-section marker in GEMINI.md
 
 ANTIGRAVITY_FRONTMATTER = "---\ntrigger: always_on\n---\n\n"
 
 # The operator-only header, stripped before the body reaches a surface. The
-# negative lookahead matters: the alternates below are also leading HTML
-# comments, and a template that ever loses its header must not have its first
-# `payload:` marker eaten as though it were one.
+# negative lookahead is kept though the alternates are gone: a `payload:` marker
+# is still the one leading HTML comment that must never be eaten as a header, and
+# removing the guard would make restoring one a silent corruption rather than a
+# visible one.
 _LEADING_COMMENT = re.compile(r"\A<!--(?!\s*/?payload:).*?-->\s*", re.DOTALL)
-_BLOCK_OPEN = re.compile(r"\A\s*<!--\s*payload:(mail|no-mail)\s*-->\s*\Z")
-_BLOCK_CLOSE = re.compile(r"\A\s*<!--\s*/payload:(mail|no-mail)\s*-->\s*\Z")
 
 
 def read_template(path: Optional[Path] = None) -> str:
     return (path or TEMPLATE_PATH).read_text(encoding="utf-8")
 
 
-def capture_address(install_prefix: Optional[Path] = None) -> Optional[str]:
-    """The configured capture mailbox, or None. Never raises on a missing config."""
-    try:
-        sys.path.insert(0, str(HERE))
-        import agentm_config  # noqa: PLC0415 — local import keeps this module import-light
-
-        prefix = agentm_config._resolve_install_prefix(
-            str(install_prefix) if install_prefix else None
-        )
-        config = agentm_config._read_config(prefix) or {}
-    except Exception:  # a missing / unreadable config is "no address", not a crash
-        return None
-    value = config.get(CAPTURE_ADDRESS_KEY)
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
-
-
-def render(template_text: str, address: Optional[str] = None) -> str:
-    """The pasteable body: header stripped, one alternate kept, address filled in."""
-    body = _LEADING_COMMENT.sub("", template_text, count=1)
-    wanted = "mail" if address else "no-mail"
-
-    kept: list = []
-    skipping_until: Optional[str] = None
-    for line in body.splitlines():
-        close = _BLOCK_CLOSE.match(line)
-        if close:
-            if skipping_until == close.group(1):
-                skipping_until = None
-            continue
-        if skipping_until is not None:
-            continue
-        opened = _BLOCK_OPEN.match(line)
-        if opened:
-            if opened.group(1) != wanted:
-                skipping_until = opened.group(1)
-            continue
-        kept.append(line)
-
-    out = "\n".join(kept)
-    if address:
-        out = out.replace(PLACEHOLDER, address)
-    if PLACEHOLDER in out:
-        raise ValueError(
-            f"{PLACEHOLDER} survived rendering — the mail alternate is active with no address"
-        )
+def render(template_text: str) -> str:
+    """The pasteable body: the operator-only header stripped, nothing else."""
+    out = _LEADING_COMMENT.sub("", template_text, count=1)
     out = re.sub(r"\n{3,}", "\n\n", out).strip("\n")
     return out + "\n"
 
@@ -114,9 +65,9 @@ def render(template_text: str, address: Optional[str] = None) -> str:
 def antigravity_rule(body: str) -> str:
     """The tracked Antigravity rule: always_on frontmatter over the rendered body.
 
-    Rendered with NO address, deliberately: this file is tracked in git, and the
-    operator's capture mailbox is not something to commit. The machine-local
-    Gemini copy is the one that carries the address.
+    One body, the same on every surface and in every copy: the write path is a
+    folder, not a configured address, so there is nothing machine-local left in
+    it to keep out of git.
     """
     return ANTIGRAVITY_FRONTMATTER + body
 
@@ -148,7 +99,7 @@ def short(text: str) -> str:
 def write_antigravity_rule(path: Optional[Path] = None) -> str:
     """Regenerate the tracked Antigravity rule. Returns 'written' or 'kept'."""
     path = path or ANTIGRAVITY_RULE_PATH
-    wanted = antigravity_rule(render(read_template(), None))
+    wanted = antigravity_rule(render(read_template()))
     if path.is_file() and path.read_text(encoding="utf-8") == wanted:
         return "kept"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -156,9 +107,7 @@ def write_antigravity_rule(path: Optional[Path] = None) -> str:
     return "written"
 
 
-def write_gemini_section(
-    path: Optional[Path] = None, *, address: Optional[str] = None
-) -> str:
+def write_gemini_section(path: Optional[Path] = None) -> str:
     """Merge the rendered body into GEMINI.md's managed section.
 
     Delegates the marker-bounded merge to merge-managed-section.py, which is the
@@ -173,7 +122,7 @@ def write_gemini_section(
     path = path or GEMINI_RULES_PATH
     if not path.parent.is_dir():
         return "absent"
-    body = render(read_template(), address if address is not None else capture_address())
+    body = render(read_template())
     with tempfile.NamedTemporaryFile(
         "w", suffix=".md", delete=False, encoding="utf-8"
     ) as fh:
@@ -213,7 +162,7 @@ def _build_parser():
 def main(argv: Optional[list] = None) -> int:
     args = _build_parser().parse_args(argv if argv is not None else sys.argv[1:])
     if not args.write:
-        print(render(read_template(), capture_address()), end="")
+        print(render(read_template()), end="")
         return 0
     if not args.gemini_only:
         print(f"    antigravity rule      {write_antigravity_rule()}")

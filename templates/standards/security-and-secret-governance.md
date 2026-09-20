@@ -20,10 +20,12 @@ read by you; edit it as the rules change.
 This document names where a secret is kept. It never holds one, and neither
 does anything else in this vault.
 
-- `~/.claude/.agentm-config.json` holds the mail door's SMTP credential
+- `~/.claude/.agentm-config.json` holds the nightly digest's SMTP credential
   under `plugins.autonomy.email_smtp_url`. Never print, quote, echo or
   reproduce that value — not in a note, a commit, a log line, a chat reply
-  or a test fixture. Name the key when you need to point at it.
+  or a test fixture. Name the key when you need to point at it. The mail
+  door's own four keys are gone with its transport (agentm-vault plan 16);
+  the Drive drop folder needs no credential on any device.
 - The `claude` command's login is a session the CLI keeps for itself. The
   nightly enrichment shells out to it; when the session lapses, every call
   fails the same way and the fix is yours, in a terminal (`claude`, then
@@ -44,9 +46,13 @@ does anything else in this vault.
 - Purge and deletion are yours alone, with a manifest first. Deletion is
   never a policy outcome — a lifecycle pass demotes and archives, it does
   not delete.
-- Chat surfaces (Claude.ai, Claude Desktop, the Gemini Gem) are read-only
-  on the vault, whatever tools their environment exposes. They suggest an
-  entry; you file it.
+- Chat surfaces (Claude.ai, Claude Code's cloud agent, the Gemini Gem) read
+  everywhere and write in exactly one place: `agent/inbox/`, the drop folder
+  they reach over the Drive mirror (agentm-vault plan 16). Everywhere else
+  they are read-only, whatever tools their environment exposes. A card in the
+  drop folder is not filed: it sits `unfiled` and `untrusted` until you read
+  it at `/memory inbox` and say where it goes. Nothing files an inbox card
+  except you, at the pass.
 - `scripts/health/results/**` and `_harness/archive/**` are frozen evidence.
 - The daemon's MCP surface stays exactly two tools: search and capture.
 

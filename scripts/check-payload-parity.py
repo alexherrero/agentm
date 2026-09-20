@@ -36,15 +36,18 @@ import payload_render as pr  # noqa: E402
 
 def check() -> list:
     """Return [(label, status, detail)] — status is OK | FAIL | SKIP."""
+    # One body, for every copy. The neutral/addressed pair retired with the
+    # email door's capture address (agentm-vault plan 16): the write path is a
+    # folder every machine has, so the Gemini copy and the tracked Antigravity
+    # rule are now the same bytes and a difference between them is drift rather
+    # than configuration.
     template = pr.read_template()
-    neutral = pr.render(template, None)
-    address = pr.capture_address()
-    addressed = pr.render(template, address) if address else neutral
+    body = pr.render(template)
 
     results = []
 
     rule_path = pr.ANTIGRAVITY_RULE_PATH
-    expected_rule = pr.antigravity_rule(neutral)
+    expected_rule = pr.antigravity_rule(body)
     if not rule_path.is_file():
         results.append(("antigravity rule", "FAIL", f"missing: {rule_path}"))
     else:
@@ -67,12 +70,12 @@ def check() -> list:
                 "gemini managed section", "FAIL",
                 f"no {pr.MARKER} managed section in {gemini_path}",
             ))
-        elif section == addressed:
+        elif section == body:
             results.append(("gemini managed section", "OK", f"sha {pr.short(section)}"))
         else:
             results.append((
                 "gemini managed section", "FAIL",
-                f"sha {pr.short(section)} != template's {pr.short(addressed)} ({gemini_path})",
+                f"sha {pr.short(section)} != template's {pr.short(body)} ({gemini_path})",
             ))
 
     return results

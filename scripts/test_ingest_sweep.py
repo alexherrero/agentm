@@ -429,5 +429,86 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertIn("instructions_acted", fm)
 
 
+class InboxIsNotTheSweepsTests(unittest.TestCase):
+    """agentm-vault plan 16 — the operator's drop folder waits for a person.
+
+    Two directions, and both matter. The sweep must not reach `agent/inbox/`,
+    which is what makes the inbox an inbox rather than a queue something drains;
+    and the retired `memory/_inbox/` walk must stay gone, so the path cannot
+    come back by accident on some later edit.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)  # the memory root, as the sweep reads it
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    _CARD = (
+        "---\n"
+        "title: a thought typed on a phone\n"
+        "type: reference\n"
+        "status: unfiled\n"
+        "source_url: https://example.com/article\n"
+        "instructions: tag:urgent\n"
+        "---\n\n"
+        "Worth keeping.\n"
+    )
+
+    def _drop_a_card(self) -> Path:
+        inbox = self.vault / "inbox"
+        inbox.mkdir(parents=True, exist_ok=True)
+        card = inbox / "a-thought.md"
+        card.write_text(self._CARD, encoding="utf-8")
+        return card
+
+    def test_a_card_in_the_operators_inbox_survives_a_full_sweep_byte_identical(self) -> None:
+        card = self._drop_a_card()
+        before = card.read_bytes()
+        with mock.patch("ingest.fetch_url", side_effect=AssertionError(
+                "the sweep fetched an inbox card — it must never reach one")):
+            result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
+        self.assertEqual(card.read_bytes(), before,
+                         "the sweep rewrote a card in the operator's inbox")
+        self.assertTrue(card.exists())
+        # Every list the sweep reports on: none of them may name it. The card
+        # carries `status: unfiled`, a `source_url` and an `instructions:` line,
+        # so it would be fetched, restamped and acted on by three separate
+        # duties if the walk could see it at all.
+        for name in ("fetched", "staged_clips", "promoted", "restamped",
+                     "idea_folded"):
+            self.assertEqual(getattr(result, name), [], f"result.{name} named the inbox")
+        self.assertEqual(result.acted, [])
+        self.assertEqual(result.surfaced_instructions, [])
+        self.assertNotIn("a-thought", ingest_sweep._render_digest(result))
+
+    def test_the_retired_staging_directory_is_not_walked(self) -> None:
+        # `memory/_inbox/` was the staging directory before filing v2's write
+        # path. The walk over it retired with plan 16; a card left in one is
+        # stranded, which `check-memory-root-shape` reports by name. What must
+        # not happen is the sweep quietly picking it up again.
+        legacy = self.vault / "memory" / "_inbox"
+        legacy.mkdir(parents=True)
+        stranded = legacy / "stranded.md"
+        stranded.write_text(self._CARD, encoding="utf-8")
+        before = stranded.read_bytes()
+        with mock.patch("ingest.fetch_url", side_effect=AssertionError(
+                "the sweep walked the retired memory/_inbox/")):
+            result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
+        self.assertEqual(stranded.read_bytes(), before)
+        self.assertEqual(result.fetched, [])
+        self.assertEqual(result.restamped, [])
+        self.assertEqual(ingest_sweep._iter_inbox_candidates(self.vault), [])
+        self.assertFalse(hasattr(ingest_sweep, "_INBOX_SUBDIR"),
+                         "the retired staging path is back as a module constant")
+
+    def test_a_capture_at_its_class_directory_is_still_walked(self) -> None:
+        # The negative above would pass trivially if the walk found nothing at
+        # all. This is the control: the population the sweep does own.
+        path = _new_candidate(self.vault, source_url="https://example.com/article")
+        self.assertIn(path, ingest_sweep._iter_inbox_candidates(self.vault))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -556,7 +556,7 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 					},
 					"source": map[string]any{
 						"type": "string",
-						"description": "How this arrived: operator-direct, conversation, external-fetch or email. " +
+						"description": "How this arrived: operator-direct, conversation, external-fetch or inbox. " +
 							"It sets the trust tier, so it names the transport and never the thing it came from.",
 					},
 					"source_id": map[string]any{

@@ -567,10 +567,12 @@ def check_payload_copies() -> list:
         )]
 
     try:
+        # One body, for every copy. The neutral/addressed pair retired with the
+        # email door's capture address (agentm-vault plan 16): the write path is
+        # a folder every machine has, so a difference between the Gemini copy
+        # and the tracked Antigravity rule is drift rather than configuration.
         template = pr.read_template()
-        neutral = pr.render(template, None)
-        address = pr.capture_address()
-        addressed = pr.render(template, address) if address else neutral
+        body = pr.render(template)
     except Exception as exc:
         return [Check(
             name=f"{name_prefix}", status="FAIL",
@@ -581,7 +583,7 @@ def check_payload_copies() -> list:
     checks = []
 
     rule_path = pr.ANTIGRAVITY_RULE_PATH
-    expected = pr.antigravity_rule(neutral)
+    expected = pr.antigravity_rule(body)
     if not rule_path.is_file():
         checks.append(Check(
             name=f"{name_prefix}: antigravity rule", status="FAIL",
@@ -616,7 +618,7 @@ def check_payload_copies() -> list:
                 detail=f"no {pr.MARKER} managed section in {gemini_path}",
                 owner="/memory payload --write",
             ))
-        elif section == addressed:
+        elif section == body:
             checks.append(Check(
                 name=f"{name_prefix}: gemini managed section", status="OK",
                 detail=f"sha {pr.short(section)} == template",
@@ -624,7 +626,7 @@ def check_payload_copies() -> list:
         else:
             checks.append(Check(
                 name=f"{name_prefix}: gemini managed section", status="FAIL",
-                detail=f"sha {pr.short(section)} differs from template's {pr.short(addressed)} — {gemini_path}",
+                detail=f"sha {pr.short(section)} differs from template's {pr.short(body)} — {gemini_path}",
                 owner="/memory payload --write",
             ))
 
@@ -1225,112 +1227,6 @@ def _daemon_uptime_seconds(binary: Path) -> "float | None":
 
 
 # ── composition ───────────────────────────────────────────────────────────
-def claude_desktop_config_path() -> Path:
-    """Where the desktop app keeps its own config, per platform."""
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
-    if os.name == "nt":
-        # `or` rather than a default: APPDATA set-but-empty would otherwise
-        # resolve to `.`, making this read a path relative to whatever
-        # directory the doctor happened to be invoked from.
-        appdata = os.environ.get("APPDATA") or str(Path.home())
-        return Path(appdata) / "Claude" / "claude_desktop_config.json"
-    return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
-
-
-def check_claude_desktop_entry(config_path: Optional[Path] = None) -> Check:
-    """See `_claude_desktop_entry`. This wrapper is the one that must not raise.
-
-    The row reads a file agentm does not own and cannot constrain, so an
-    unhandled shape inside it would end `run_inventory` and print no rows at
-    all. Every branch below is handled explicitly; this exists for the branch
-    that was not thought of.
-    """
-    try:
-        return _claude_desktop_entry(config_path)
-    except Exception as exc:  # noqa: BLE001 — a row must never end the run
-        return Check("claude-desktop-entry", "WARN",
-                     f"the desktop config could not be read: "
-                     f"{type(exc).__name__}")
-
-
-def _claude_desktop_entry(config_path: Optional[Path] = None) -> Check:
-    """Is the memory server wired into Claude Desktop?
-
-    **This row never prints the file.** It is the operator's own configuration
-    and other servers' settings live in it, some of which carry tokens; a doctor
-    row that dumped it would put those in a terminal, a scrollback and any
-    transcript of the run. So this reads the file, answers one question about
-    it — is there an entry that points at agentm — and reports only that. The
-    names of the operator's other servers are not this row's business either,
-    so it reports how many there are and not which.
-
-    Absence is not a failure. Desktop is one surface of several, wiring it is
-    the operator's to do, and a machine that never opens the app is correct
-    without it. So absence reports `UNVERIFIED` — the doctor's existing word for
-    "this row asserts no health" — rather than WARN, which would nag every run
-    about a choice the operator has not made yet, or OK, which would claim a
-    surface that is not there.
-    """
-    name = "claude-desktop-entry"
-    path = config_path if config_path is not None else claude_desktop_config_path()
-    if not path.exists():
-        return Check(name, "UNVERIFIED",
-                     "Claude Desktop has no config file yet — nothing to wire "
-                     "into. See wiki/how-to/Reach-Memory-From-Claude-Desktop.md")
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        return Check(name, "WARN", f"the desktop config cannot be read: {exc.strerror}")
-    try:
-        cfg = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        # The line number is safe to name; the line itself is not.
-        return Check(name, "WARN",
-                     f"the desktop config does not parse (line {exc.lineno}) — "
-                     f"Claude Desktop will start with no MCP servers at all")
-    if not isinstance(cfg, dict):
-        return Check(name, "WARN", "the desktop config is not a JSON object")
-
-    servers = cfg.get("mcpServers")
-    if not isinstance(servers, dict):
-        servers = {}
-    total = len(servers)
-
-    # An agentm entry is one whose command line mentions the bridge or the
-    # daemon's endpoint. Matched on the *shape* rather than on a fixed server
-    # name, because the operator names their own entries.
-    wired = []
-    for server_name, spec in servers.items():
-        if not isinstance(spec, dict):
-            continue
-        # `args` is whatever the file says, which is not necessarily a list.
-        # Guarding the *iteration* rather than filtering inside the
-        # comprehension: a filter is evaluated per item, so `"args": null` was
-        # iterated before the type was ever checked. That raised `TypeError`
-        # out of this row and, since `run_inventory` calls it unguarded, took
-        # down the entire doctor run — every other row with it. A health check
-        # that goes dark because of a file agentm does not own is the exact
-        # failure the doctor exists to catch.
-        raw_args = spec.get("args")
-        args = raw_args if isinstance(raw_args, list) else []
-        hay = " ".join(
-            [str(spec.get("command", "")), str(spec.get("url", ""))]
-            + [str(a) for a in args]
-        )
-        if "mcp_stdio_bridge" in hay or "agentmd" in hay or "127.0.0.1:7821" in hay:
-            wired.append(server_name)
-
-    others = total - len(wired)
-    if wired:
-        return Check(name, "OK",
-                     f"the memory server is wired into Claude Desktop "
-                     f"({len(wired)} entry) — {others} other server(s) configured")
-    return Check(name, "UNVERIFIED",
-                 f"Claude Desktop has {total} MCP server(s) configured, none of "
-                 f"them agentm. See wiki/how-to/Reach-Memory-From-Claude-Desktop.md")
-
-
 def run_inventory(
     repo: Optional[Path] = None, *, state_root: Optional[Path] = None,
     telemetry_root: Optional[Path] = None,
@@ -1366,7 +1262,6 @@ def run_inventory(
     crickets_root = find_crickets_root()
     checks.append(check_cross_review_visible_degradation(crickets_root))
     checks.append(check_crickets_coordination_suite(crickets_root))
-    checks.append(check_claude_desktop_entry())
     return checks
 
 

@@ -406,13 +406,23 @@ func TestPackagedDefault(t *testing.T) {
 	if r.DefaultLifecycle != "active" {
 		t.Errorf("shipped default lifecycle = %q, want active", r.DefaultLifecycle)
 	}
-	for _, transport := range []string{"operator-direct", "conversation", "external-fetch", "email"} {
+	// `inbox` replaced `email` when the door's transport retired (agentm-vault
+	// plan 16). The drop folder is the untrusted transport now; nothing in the
+	// corpus ever carried the old value, so it left the vocabulary rather than
+	// the deprecations map.
+	for _, transport := range []string{"operator-direct", "conversation", "external-fetch", "inbox"} {
 		if _, ok := r.SourceTier(transport); !ok {
 			t.Errorf("shipped contract is missing source transport %q", transport)
 		}
 	}
 	if tier, _ := r.SourceTier("external-fetch"); tier != "untrusted" {
 		t.Error("external-fetch must ship untrusted — screening cannot grade plausible content")
+	}
+	if tier, _ := r.SourceTier("inbox"); tier != "untrusted" {
+		t.Error("inbox must ship untrusted — a model on a chat surface wrote the card")
+	}
+	if _, ok := r.SourceTier("email"); ok {
+		t.Error("`email` survived the door's retirement; the drop folder replaced it")
 	}
 	// Four of the operator's own, plus the one the night writes.
 	wantFacets := []string{"meetings", "correspondence", "docs", "diary", "dreaming"}

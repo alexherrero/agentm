@@ -99,6 +99,7 @@ def capture(
     instructions: "str | None" = None,
     source_url: "str | None" = None,
     transport: "str | None" = None,
+    type_hint: "str | None" = None,
     why: "str | None" = None,
     project: "str | None" = None,
     now: "datetime | None" = None,
@@ -143,6 +144,14 @@ def capture(
     was (`external-fetch` for a link, `operator-direct` otherwise), so every
     existing caller writes exactly what it wrote before.
 
+    `type_hint` is the memory type the caller has been *told* — not guessed. It
+    exists for the inbox review pass (agentm-vault plan 16), where the operator
+    reads a card and says what it is, and the destination has to be their answer
+    rather than a default the command picked. Absent, routing is what it always
+    was: `idea` for `kind="idea"`, and the contract's default otherwise. The
+    value still goes through the filing engine, so a type the contract does not
+    know is routed by the contract's own rule and not by this argument.
+
     `why` is the reason the thing was worth keeping, when the caller has one to
     carry. `project` names the project a capture belongs to. Both are plain
     frontmatter; neither can cause anything to happen, which is what separates
@@ -176,7 +185,8 @@ def capture(
         for _attempt in range(64):
             decision = filing_engine.decide(
                 vault, title=title, body=content, slug=resolved_slug,
-                type_hint="idea" if kind == "idea" else None, confidence="LOW",
+                type_hint=type_hint or ("idea" if kind == "idea" else None),
+                confidence="LOW",
                 source=transport or ("external-fetch" if source_url else "operator-direct"),
             )
             if decision.op == "noop":

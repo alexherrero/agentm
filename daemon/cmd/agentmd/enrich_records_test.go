@@ -83,9 +83,78 @@ func TestTheListerPagesByPositionSoCardsComeFirst(t *testing.T) {
 			t.Errorf("queueAfter(%q, %d) = %v, want %v", c.cursor, c.limit, got, c.want)
 		}
 	}
-	// A cursor the queue no longer holds resumes where path order would have.
-	if got := queueAfter([]string{"a", "c", "e"}, "b", 5); !reflect.DeepEqual(got, []string{"c", "e"}) {
-		t.Errorf("an unknown cursor resumed at %v", got)
+	// A cursor the queue no longer holds restarts at the top.
+	//
+	// It used to resume at the first path that sorted after the missing one,
+	// which meant something while the queue was in path order. Since
+	// agentm-vault plan 16 the queue has tiers — the inbox, then the cards,
+	// then the records — and each tier is served oldest first, so a path
+	// comparison names an arbitrary position several tiers from where the run
+	// actually was. Restarting costs a walk and no calls: the fingerprint gate
+	// refuses an unchanged note before any call exists.
+	if got := queueAfter([]string{"a", "c", "e"}, "b", 5); !reflect.DeepEqual(got, []string{"a", "c", "e"}) {
+		t.Errorf("an unknown cursor resumed at %v, want the whole queue", got)
+	}
+}
+
+func TestTheQueueServesTheInboxFirstAndEachTierOldestFirst(t *testing.T) {
+	// The night's serving order, end to end over a real index: the drop folder
+	// ahead of the class cards ahead of the project records, and inside each
+	// tier the oldest note first rather than the alphabetically first one.
+	vault := t.TempDir()
+	cfg := configOverRules(t, vault, "reference")
+	cfg.MemoryRoot = "agent"
+
+	card := func(created string) string {
+		return "---\ntype: reference\nstatus: unfiled\ncreated: " + created +
+			"\n---\n\nA thought.\n"
+	}
+	notes := map[string]string{
+		// Inbox: `zeta` is the oldest, so it leads despite sorting last.
+		"agent/inbox/alpha.md": card("2026-09-18"),
+		"agent/inbox/zeta.md":  card("2026-09-01"),
+		// A dotfile in the drop folder is not a card, and neither is a
+		// non-markdown file.
+		"agent/inbox/.gitkeep":  "a marker\n",
+		"agent/inbox/notes.txt": "loose\n",
+		// Cards: `004-…` sorts first and is the newest, so it must not lead —
+		// this is the case path order got wrong.
+		"agent/memory/semantic/004-recent.md": card("2026-09-19"),
+		"agent/memory/semantic/waited.md":     card("2026-09-10"),
+		// A record, last whatever its age.
+		"projects/agentm/decisions/old.md": "---\nkind: decision\ncreated: 2020-01-01\n---\n\nSettled.\n",
+	}
+	idxPath := filepath.Join(t.TempDir(), "index.db")
+	x, err := index.Open(idxPath, vault, "agent", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer x.Close()
+	for rel, body := range notes {
+		putNote(t, x, vault, rel, body)
+	}
+
+	got, err := enrichServeOrder(cfg, x, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"agent/inbox/zeta.md", "agent/inbox/alpha.md",
+		"agent/memory/semantic/waited.md", "agent/memory/semantic/004-recent.md",
+		"projects/agentm/decisions/old.md",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("serve order\n got %v\nwant %v", got, want)
+	}
+
+	// The ledger's eligible population is the same order, less the records: a
+	// card is eligible, a project record is the drain's and not this number's.
+	cards, err := enrichServeOrder(cfg, x, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cards, want[:4]) {
+		t.Errorf("card population\n got %v\nwant %v", cards, want[:4])
 	}
 }
 

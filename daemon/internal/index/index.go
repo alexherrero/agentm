@@ -939,6 +939,46 @@ func (x *Index) Paths() ([]string, error) {
 	return out, rows.Err()
 }
 
+// PathAges is every indexed path with the one timestamp that says how long it
+// has been waiting, as an RFC3339-comparable string.
+//
+// `created` when the note carries one, else `captured`, else the file's own
+// mtime — first non-empty wins, so the answer is never blank and an ordering
+// built on it is total. The enrichment queue serves each of its tiers oldest
+// first (agentm-vault plan 16), and "oldest" has to mean the note's own age
+// rather than its path: a queue in path order serves `004-…` before a card
+// that has been waiting nine days because `0` sorts before `b`.
+//
+// Read from `docmeta` rather than by stat-ing the corpus, because the index
+// already holds it and 800 stats per queue build is a cost with nothing to
+// show for it.
+func (x *Index) PathAges() (map[string]string, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	rows, err := x.db.Query(`SELECT path, created, captured, mtime_ns FROM docmeta`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string)
+	for rows.Next() {
+		var p, created, captured string
+		var mtimeNS int64
+		if err := rows.Scan(&p, &created, &captured, &mtimeNS); err != nil {
+			return nil, err
+		}
+		switch {
+		case strings.TrimSpace(created) != "":
+			out[p] = strings.TrimSpace(created)
+		case strings.TrimSpace(captured) != "":
+			out[p] = strings.TrimSpace(captured)
+		default:
+			out[p] = time.Unix(0, mtimeNS).UTC().Format(time.RFC3339)
+		}
+	}
+	return out, rows.Err()
+}
+
 // pathsLocked lists every indexed path, for link resolution. Read inside the
 // caller's transaction so resolution sees the same corpus the write is joining.
 func (x *Index) pathsLocked(tx *sql.Tx) ([]string, error) {

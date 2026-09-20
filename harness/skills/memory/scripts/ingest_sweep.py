@@ -4,15 +4,17 @@ half, capture part 3 (`designs/friday/agentm-capture.md`,
 capture-phone-ingest-sweep plan).
 
 Six duties, one hourly job (per the design's own "don't split into
-separate jobs" instruction):
+separate jobs" instruction). It walks the class directories by status and
+never a folder: `agent/inbox/`, where a chat surface drops a card over Drive,
+waits for a person and is not this job's (agentm-vault plan 16).
 
   1. Fetch forwarded links/documents (`source_url` present, not a clip)
      and stage the fetched text ON THE ORIGINATING CANDIDATE ITSELF
      (`status: ingest_staged` + the text appended under a `## Fetched
      content` heading) -- no new file, no new directory. The candidate
      is patched wherever it already lives: since filing v2's write
-     path, that is the class directory the contract routed its type to,
-     or a legacy `memory/_inbox/` while one still exists. Staging still
+     path, that is the class directory the contract routed its type to.
+     Staging still
      needs no new mechanism, but what keeps a staged candidate out of
      recall is now a status read rather than a path exclusion --
      `recall.py` serves neither `inbox` nor `ingest_staged`, which is
@@ -76,10 +78,18 @@ try:
 except Exception:  # pragma: no cover — degrade gracefully if the ideas surface path is unresolvable
     append_idea_to_surface = None  # type: ignore[assignment]
 
-_INBOX_SUBDIR = ("memory", "_inbox")
 # The states a candidate waits in before anything has acted on it: `unfiled`
 # is what the write path stamps on a capture filed at its class directory
-# (filing v2); `inbox` is what the retired staging directory used.
+# (filing v2); `inbox` is what the retired staging directory used, kept because
+# notes still carry it.
+#
+# There is no directory in this tuple's company any more. The walk over a
+# legacy `memory/_inbox/` retired with agentm-vault plan 16, which put the
+# operator's drop folder at `agent/inbox/` — outside `memory/` — precisely so
+# that nothing on this path can reach it. Re-adding a directory walk here would
+# put the sweep back inside a folder whose whole design is that it waits for a
+# person. `check-memory-root-shape` names a vault that still holds the retired
+# directory, so the cards in one are surfaced rather than silently stranded.
 _UNREVIEWED = ("inbox", "unfiled")
 
 
@@ -145,14 +155,6 @@ class SweepResult:
     idea_folded: "list[str]" = field(default_factory=list)
     idea_fold_denied: "list[tuple[str, str]]" = field(default_factory=list)
     restamped: "list[str]" = field(default_factory=list)
-    # The mail door (agentm-vault § Surfaces), a seventh duty on this job. Two
-    # lists and nothing else: what arrived as a card, and a count per reason for
-    # what did not. A refused message leaves no trace in the vault at all — not
-    # its body, not its subject, not its sender — so a count is all there is to
-    # report, and it is all the morning note needs.
-    mailed_cards: "list[tuple[str, str]]" = field(default_factory=list)
-    mail_dropped: "dict" = field(default_factory=dict)
-    mail_error: "str | None" = None
 
 
 # -----------------------------------------------------------------------------
@@ -226,15 +228,19 @@ def _iter_inbox_candidates(vault: Path) -> "list[Path]":
     `memory/<class>/` and keeps every unreviewed capture (`status: unfiled`)
     plus the notes this sweep already staged — the same population the
     staging directory used to hold, so the restamp and the act step still
-    reach a plain capture — plus whatever a legacy `memory/_inbox/` still
-    holds while it exists.
+    reach a plain capture.
+
+    **Status, never a directory.** The walk over a legacy `memory/_inbox/`
+    retired with agentm-vault plan 16. Two folders would otherwise be called an
+    inbox and mean opposite things: the operator's `agent/inbox/`, which waits
+    for a person, and a staging directory the hourly job drains. This walk is
+    the draining one, so it reads statuses under `memory/` and never a folder
+    named for waiting.
+
     Non-recursive on purpose, so a lane, an index, or a record folder's
     children never count."""
     vault = Path(vault)
     found: "list[Path]" = []
-    inbox_dir = vault.joinpath(*_INBOX_SUBDIR)
-    if inbox_dir.exists():
-        found += [p for p in inbox_dir.glob("*.md") if p.is_file()]
     mem = vault / "memory"
     if mem.is_dir():
         for d in sorted(mem.iterdir()):
@@ -275,7 +281,7 @@ def _find_duplicate_by_source_url(vault: Path, source_url: str, exclude: Path) -
     ever see both of them still untriaged (confirmed empirically, not
     assumed, at /work time). Checks every sibling candidate this sweep
     can see -- since filing v2's write path, the flat notes under the
-    class directories plus a legacy `_inbox/` -- for an exact
+    class directories -- for an exact
     `source_url` match already staged or ingested. Narrower than fuzzy
     near-duplicate text matching, but it's exactly the shape of
     duplicate this sweep itself can introduce."""
@@ -651,37 +657,11 @@ def run_ingest_sweep(
                 else:
                     result.promote_failures.append((str(path), detail))
 
-    # Duty 7 — the mail door. Last, and after everything that touches the inbox,
-    # because a mailed card files straight to its class directory through the
-    # same write path a capture takes: it is not a candidate for the duties
-    # above, and running it first would only widen the window in which this
-    # pass holds the vault.
-    _poll_the_mail_door(vault, result)
+    # There is no seventh duty any more. The mail door's transport retired in
+    # agentm-vault plan 16 — a chat surface drops a card into `agent/inbox/`
+    # over Drive instead, and that folder waits for a person rather than for
+    # this job. Nothing here polls anything.
     return result
-
-
-def _poll_the_mail_door(vault: Path, result: "SweepResult") -> None:
-    """Accept what the mail door will take, and count the rest.
-
-    Never raises into the sweep. An unconfigured door, an unreachable mailbox
-    and a mailbox full of refused mail are all ordinary states, and none of them
-    is a reason for the other six duties to have not run.
-    """
-    try:
-        import mail_door
-    except ImportError:
-        return
-    try:
-        out = mail_door.poll_mailbox(vault)
-    except Exception as exc:  # noqa: BLE001 — the class only; see mail_door
-        result.mail_error = f"the mail door failed ({type(exc).__name__})"
-        return
-    result.mailed_cards = list(out.accepted)
-    result.mail_dropped = dict(out.dropped)
-    # An unconfigured door is silence, not an error line every hour. A door that
-    # is set up and could not be read is worth saying out loud.
-    if out.error and "not configured" not in out.error:
-        result.mail_error = out.error
 
 
 def _render_digest(result: SweepResult) -> str:
@@ -689,26 +669,6 @@ def _render_digest(result: SweepResult) -> str:
     lines.append(f"Fetched + staged: {len(result.fetched)}")
     lines.append(f"Clips staged: {len(result.staged_clips)}")
     lines.append(f"Promoted to permanent memory: {len(result.promoted)}")
-    if result.mailed_cards or result.mail_dropped or result.mail_error:
-        dropped = sum(result.mail_dropped.values())
-        lines.append(f"Mailed cards: {len(result.mailed_cards)} filed, {dropped} dropped")
-    if result.mail_dropped or result.mail_error:
-        lines.append("")
-        lines.append("## The mail door")
-        if result.mail_error:
-            lines.append(f"- {result.mail_error}")
-        for reason, n in sorted(result.mail_dropped.items()):
-            lines.append(f"- {n} dropped: {reason}")
-        if result.mail_dropped:
-            lines.append("- a dropped message is counted and never stored, so "
-                         "there is nothing else to show. A non-zero count on a "
-                         "day you sent nothing is the re-audit this door was "
-                         "given.")
-    if result.mailed_cards:
-        lines.append("")
-        lines.append("## Cards that arrived by mail (unfiled, untrusted)")
-        for slug, subject in result.mailed_cards:
-            lines.append(f"- {slug}: {subject[:80]}")
     if result.promote_failures:
         lines.append("")
         lines.append("## Promotion failures (retried next cycle, not silently dropped)")

@@ -9,6 +9,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The inbox: a chat surface's write path is a folder in Drive (agentm-vault
+  plan 16).** `agent/` gains a fourth standard child. `agent/inbox/` is where
+  claude.ai, Claude Code's cloud agent, the Gemini Gem and the Claude app on a
+  phone drop a card, over the Google Drive mirror the vault already is — no
+  credential on any device, no inbound connection to the machine. The hourly
+  sweep cannot reach the folder and the legacy `memory/_inbox/` walk retires so
+  the path cannot come back by accident; `check-memory-root-shape` names a vault
+  that still holds one rather than letting its cards be swept silently. `agent/inbox`
+  joins `dampened_spaces` at the weight every other dampened space carries, and
+  never `recall_exempt_areas`: a card you cannot find until you triage it is a
+  card you triage in order to find it.
+- **`/memory inbox`, which reviews and does not file.** It lists every card
+  oldest first with the frontmatter the night gave it, files none of them, names
+  any card it cannot parse and leaves it exactly where it is, and names any
+  DriveFS conflict copy it finds. Card text is quoted behind a `| ` gutter and
+  labelled as data, because a model on a chat surface wrote it and it may be
+  quoting a web page — and *everything* the card supplies goes behind that
+  gutter, the filename and every frontmatter key and value included, with only
+  the pass's own headings outside one. `--file <name>` is the separate verb the operator reaches
+  for once they have said where one card goes; it takes the write path a capture
+  already takes, to the class directory the *operator's* type routes to, and the
+  card leaves the folder only after the write has landed. Reaching a card is a
+  containment check — no path separators, no symlink, resolved parent equals the
+  resolved folder — not a lexical `parent ==`, which is true of any slash-free
+  name whatever the entry actually is.
+- **The enrichment queue has tiers, where it had none.** The inbox is served
+  first, then the cards in the contract's class directories, then the project
+  records — and each tier oldest first rather than in path order, which had been
+  serving `004-…` ahead of a card that had waited nine days. One budget with a
+  priority order rather than a second ceiling to keep in step forever. A card
+  touched in the last five minutes is left for the next night: it may still be
+  coming down from Drive, and enriching half a card writes the half back over
+  the whole one. `agent/inbox` joins the vector arm's default scope, so a
+  dampened card comes back on both arms.
+- **The card reaches the enrichment model as data.** Before the inbox, every
+  card in the queue was written by this machine's own capture path; the queue's
+  first tier is now cards a model on a chat surface wrote, possibly quoting a
+  web page. The prompt now says the card is data, and brackets it between BEGIN
+  CARD / END CARD markers carrying a tag derived from the card's own SHA-256 —
+  forging the closing marker would mean knowing the hash of the file you are
+  still writing. The frame is repeated *after* the card, so the last thing the
+  model reads is the frame rather than the content. The tag is deterministic,
+  which keeps the pass reproducible and the prompt prefix cacheable.
+- **`templates/inbox-card-prompt.md`**, the paste each writing surface carries,
+  with `check-card-prompt` holding it to `card_shape.py`'s own field list — a
+  paste has no CI of its own, and this is the CI it gets.
+- **Enrichment writes atomically.** A temporary sibling, fsynced, renamed over
+  the target. `os.WriteFile` truncates first and fills after, so a reader —
+  Obsidian, a recall, DriveFS taking the file up — that opened a card in between
+  saw an empty or half-written note. In the drop folder that window is not
+  theoretical. The rename is retried briefly, and that is Windows: `MoveFileEx`
+  refuses while any handle is open on the destination without
+  `FILE_SHARE_DELETE`, which Go's own `os.Open` does not ask for, so without the
+  retry an ordinary reader would make the write fail where `os.WriteFile`
+  succeeded — the guarantee traded for rather than added to. One honest
+  Windows consequence, recorded rather than hidden: a concurrent reader's
+  *open* can fail with a sharing violation for an instant during the replace.
+  That is a loud failure the reader retries, not a half-read card, and it is
+  still strictly better than the truncate-and-fill window it replaced.
+
+### Changed
+
+- **The email door's transport retires, and its filing half stays.** Gone: IMAP,
+  TLS negotiation, the `Authentication-Results` reader, the sender allow-list,
+  and the four `agentm_config` mail keys (`mailbox_url`,
+  `mail_own_addresses`, `mail_authserv_id`, `capture_address`). Nine rounds of
+  adversarial review, almost all of it authenticating a transport nothing uses
+  any more: an address accepts mail from anyone, and a Drive folder accepts
+  writes only from the operator's own authenticated account. What survives is
+  `harness/skills/memory/scripts/untrusted_card.py` — card parsing, the size cap,
+  trust stamping, `daily_write_cap`, and refusals counted by a named reason and
+  never stored. The contract's `sources:` vocabulary trades `email` for `inbox`;
+  nothing in the corpus ever carried the old value. The two `email_*` keys the
+  nightly digest uses are a different thing and stay.
+- **The Claude Desktop surface retires entirely** — the stdio bridge, its suite,
+  the `claude-desktop-entry` doctor row and its how-to. It was built for the same
+  reason the door was, and the inbox answers both. A Code session on the machine
+  already gets recall injected by hook, which beats a tool a model must choose to
+  call, and the surfaces that matter are mobile and web, which no loopback client
+  can reach. The doctor's row count falls by exactly one, with a test that says so.
+- **The pasted payload has one body and no alternates.** The
+  `payload:mail` / `payload:no-mail` pair and the `{{CAPTURE_ADDRESS}}` the first
+  filled in are gone: the write path is a folder every machine has, so there is
+  nothing left for the renderer to choose between, and the Gemini copy and the
+  tracked Antigravity rule are now the same bytes.
+- **A dangling enrichment cursor restarts at the top** rather than resuming at
+  the first path that sorts after it. That meant something while the queue was in
+  path order; with tiers it named an arbitrary position several tiers from where
+  the run was. Nothing is re-enriched by the restart — the fingerprint gate
+  refuses an unchanged note before any call exists.
+
 - **The lifecycle axis, per space (agentm-vault plan 11).** The contract gained
   the lines both ranking arms read: one decay curve (`decay_full_days` 180,
   `decay_half_days` 365, `decay_eighth_days` 1,095, `decay_floor_days` 1,825),
