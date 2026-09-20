@@ -1574,6 +1574,12 @@ func cmdEnrich(args []string) error {
 		}
 		previous, _ := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
 		stamp := enrichStamp(cfg, time.Now())
+		// The drop folder's posture, set from the path because the path is the
+		// fact. Nothing files an inbox card except the operator at the review
+		// pass (agentm-vault plan 16), so the night may enrich one — that is the
+		// whole reason it reaches the folder — and may never promote it to
+		// `active`, however sure the model is.
+		stamp.NeverFiles = strings.HasPrefix(rel, enrichInboxDir(cfg))
 		// New frontmatter over the card's own text, byte for byte, and on a deep
 		// pass the dated section below it. Compose refuses a composition that
 		// would change a byte of what the session wrote.
@@ -1594,9 +1600,22 @@ func cmdEnrich(args []string) error {
 		if err != nil {
 			return err
 		}
+		// No rename inside the drop folder, for a reason the class directories
+		// do not have: the folder is a Drive mirror, and the surface that wrote
+		// the card still holds the name it chose. A rename there is a
+		// delete-and-create pair over Drive, it breaks the `--file <name>` the
+		// operator was just shown by `/memory inbox`, and it re-titles the
+		// operator's own words before a person has read them. The slug rule's
+		// own bargain — correct a name early, while nothing links to it — is
+		// about notes this machine wrote; this folder's notes are somebody
+		// else's until they are filed.
+		newSlug := r.Slug
+		if stamp.NeverFiles {
+			newSlug = ""
+		}
 		dest, err := applier.Apply(ctx, enrich.WriteRequest{
 			Rel: rel, Previous: string(previous), Next: next,
-			NewSlug: r.Slug, Trigger: enrich.TriggerBatch,
+			NewSlug: newSlug, Trigger: enrich.TriggerBatch,
 			Version: stamp.Version,
 		})
 		if err != nil {
