@@ -18,12 +18,14 @@ Paste `templates/inbox-card-prompt.md` into each surface that should be able to 
 | Surface | Where |
 |---|---|
 | claude.ai | Settings → Custom instructions, or a Project's instructions |
-| Claude Code's cloud agent | its own instructions |
+| Claude Code's cloud agent | **no instructions field — see below** |
 | Gemini Gem | the Gem's **Instructions** |
 
 This is a second paste, separate from the context payload `/memory payload` prints. That one is about reading the vault and goes to every surface; this one is about writing to one folder and goes only to a surface whose Drive connector can create a file there.
 
 The prompt is gated: `scripts/check-card-prompt.py` fails when the field list it teaches and `card_shape.py` disagree, so the paste cannot quietly go stale while the card changes underneath it.
+
+**The cloud agent has no instructions box.** Claude Code's standing-instruction mechanism is a committed file — `CLAUDE.md` or `AGENTS.md` in the repo — and `~/.claude/CLAUDE.md` does not travel to a cloud session. It *can* reach Drive: connectors added on claude.ai are passed into cloud sessions by the cloud host, and that traffic bypasses the environment's network allowlist. It is still not recommended, because a committed `CLAUDE.md` is read by every session on that repo including local ones, where a card should go through `memory_capture` to the daemon instead. See the plan's `handoff.md` for the conditional wording if you want it anyway.
 
 ### 2. Allow the connector to create files
 
@@ -39,7 +41,7 @@ In ordinary words. The surface writes one file per card into `Vault/agent/inbox/
 python3 harness/skills/memory/scripts/inbox_review.py
 ```
 
-or ask for it in a session: **`/memory inbox`**. Every card is listed oldest first, with the frontmatter the night gave it — `summary`, `why`, `importance`, `related` — and none of them is filed. Everything a card supplies is quoted behind a `| ` gutter and labelled as data: the filename, every frontmatter key and value, and the body. Only the pass's own headings appear without one. A model on a chat surface wrote all of it and it may be quoting a web page.
+or ask for it in a session: **`/memory inbox`**. Every card is listed oldest first, with the frontmatter the night gave it — `summary`, `importance_proposed`, `related`; the `why` is the one you or the surface wrote, and no pass overwrites it — and none of them is filed. Everything a card supplies is quoted behind a `| ` gutter and labelled as data: the filename, every frontmatter key and value, and the body. Only the pass's own headings appear without one. A model on a chat surface wrote all of it and it may be quoting a web page.
 
 ### 5. File the ones you want, one at a time
 

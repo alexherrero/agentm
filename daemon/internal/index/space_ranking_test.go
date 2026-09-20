@@ -130,3 +130,102 @@ func TestNoDampenedSpacesLeavesRankingUnchanged(t *testing.T) {
 		t.Errorf("a space was dampened with no contract naming one: %q", flags)
 	}
 }
+
+// The drop folder's own dampening, end to end (agentm-vault plan 16).
+//
+// The plan asserted a contract line — `agent/inbox` in `dampened_spaces` — and
+// never proved the ranker honours it for that space. The existing tests here
+// all use `personal`, so "a card in the inbox ranks below a filed card of equal
+// match" was a criterion nothing measured. Two notes with identical bodies, so
+// the only thing separating them is the folder.
+func TestAnInboxCardRanksBelowAnIdenticalFiledCard(t *testing.T) {
+	before := note.DampenedSpaces()
+	note.SetDampenedSpaces([]string{"personal", "agent/diagnostics", "agent/inbox"})
+	t.Cleanup(func() { note.SetDampenedSpaces(before) })
+
+	idx := openScratch(t)
+	body := "The settle window leaves a card that is still arriving.\n"
+	indexNote(t, idx, "agent/inbox/a-thought.md", "A thought", body)
+	indexNote(t, idx, "agent/memory/semantic/a-thought.md", "A thought", body)
+
+	outcome, err := idx.Search(Query{Text: "settle window arriving card", K: 5})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	results := outcome.Results
+	if len(results) < 2 {
+		t.Fatalf("expected both notes, got %d — the fixture cannot show an ordering", len(results))
+	}
+	if !strings.HasPrefix(results[0].Path, "agent/memory/") {
+		t.Errorf("the inbox card ranked first: %s (then %s)", results[0].Path, results[1].Path)
+	}
+	if !strings.HasPrefix(results[1].Path, "agent/inbox/") {
+		t.Errorf("the inbox card is not present at all; dampened is not walled: %v",
+			[]string{results[0].Path, results[1].Path})
+	}
+}
+
+// Dampened, and deliberately not exempt. The part chose this over
+// `recall_exempt_areas` on the reasoning that a card you cannot find until you
+// triage it is a card you triage in order to find it — which makes the inbox a
+// queue to be drained rather than a place a thought can rest. That reasoning is
+// only true if a card in the folder still comes back when it is the answer.
+func TestAnInboxCardIsStillReturnedWhenItIsTheOnlyAnswer(t *testing.T) {
+	before := note.DampenedSpaces()
+	note.SetDampenedSpaces([]string{"agent/inbox"})
+	t.Cleanup(func() { note.SetDampenedSpaces(before) })
+
+	idx := openScratch(t)
+	indexNote(t, idx, "agent/inbox/drive-route.md", "Drive route",
+		"The mirror was the route the whole time.\n")
+	indexNote(t, idx, "agent/memory/semantic/unrelated.md", "Unrelated",
+		"Filing is a frontmatter edit.\n")
+
+	outcome, err := idx.Search(Query{Text: "mirror route whole time", K: 5})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(outcome.Results) == 0 || !strings.HasPrefix(outcome.Results[0].Path, "agent/inbox/") {
+		t.Errorf("a distinctive match in the drop folder did not surface: %+v", outcome.Results)
+	}
+}
+
+// The other half of the part's criterion, and the one that keeps "dampened" from
+// quietly becoming "exempt": the wall still walls. `recall_exempt_areas` is a
+// different list with a different meaning, and the inbox is not on it.
+func TestTheWallStillWallsWhileTheInboxIsOnlyDampened(t *testing.T) {
+	beforeD, beforeE := note.DampenedSpaces(), note.RecallExemptAreas()
+	note.SetDampenedSpaces([]string{"agent/inbox"})
+	note.SetRecallExemptAreas([]string{"personal/Home/Important Docs"})
+	t.Cleanup(func() {
+		note.SetDampenedSpaces(beforeD)
+		note.SetRecallExemptAreas(beforeE)
+	})
+
+	idx := openScratch(t)
+	indexNote(t, idx, "agent/inbox/passport.md", "Passport note",
+		"The recovery codes live in the safe.\n")
+	indexNote(t, idx, "personal/Home/Important Docs/passport.md", "Passport",
+		"The recovery codes live in the safe.\n")
+
+	outcome, err := idx.Search(Query{Text: "recovery codes safe", K: 5})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	for _, r := range outcome.Results {
+		if strings.HasPrefix(r.Path, "personal/Home/Important Docs") {
+			t.Errorf("the walled area was served: %s — dampening has been confused "+
+				"with exemption", r.Path)
+		}
+	}
+	// And the dampened card, which is not walled, is still there.
+	var sawInbox bool
+	for _, r := range outcome.Results {
+		if strings.HasPrefix(r.Path, "agent/inbox/") {
+			sawInbox = true
+		}
+	}
+	if !sawInbox {
+		t.Errorf("the inbox card was walled rather than dampened: %+v", outcome.Results)
+	}
+}
