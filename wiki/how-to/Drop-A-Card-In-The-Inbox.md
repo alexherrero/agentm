@@ -39,7 +39,7 @@ In ordinary words. The surface writes one file per card into `Vault/agent/inbox/
 python3 harness/skills/memory/scripts/inbox_review.py
 ```
 
-or ask for it in a session: **`/memory inbox`**. Every card is listed oldest first, with the frontmatter the night gave it — `summary`, `why`, `importance`, `related` — and none of them is filed. Card text is quoted behind a `| ` gutter and labelled as data, because a model on a chat surface wrote it and it may be quoting a web page.
+or ask for it in a session: **`/memory inbox`**. Every card is listed oldest first, with the frontmatter the night gave it — `summary`, `why`, `importance`, `related` — and none of them is filed. Everything a card supplies is quoted behind a `| ` gutter and labelled as data: the filename, every frontmatter key and value, and the body. Only the pass's own headings appear without one. A model on a chat surface wrote all of it and it may be quoting a web page.
 
 ### 5. File the ones you want, one at a time
 
@@ -70,6 +70,7 @@ A card that changed in the last five minutes is left alone for the night: it may
 - **Check the sync, not the folder.** DriveFS brings the file down when it is ready; the review pass reads what is on disk and does not wait.
 - **A `(conflicted copy)` file** means two writers touched one card. `/memory inbox` names any it finds. Read both and keep the one you meant — resolving a conflict is yours.
 - **Nothing at all, ever** — the surface's connector may not have file-creation permission for that folder. Re-check step 2.
+- **A card reported as "a symbolic link, not a card"** — nothing that arrives over Drive is a symlink, so something local put it there. It is named and never read, and filing it is refused: the pass will not hand an arbitrary file's contents to the write path.
 
 ## Related
 

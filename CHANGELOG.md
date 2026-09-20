@@ -25,10 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   any card it cannot parse and leaves it exactly where it is, and names any
   DriveFS conflict copy it finds. Card text is quoted behind a `| ` gutter and
   labelled as data, because a model on a chat surface wrote it and it may be
-  quoting a web page. `--file <name>` is the separate verb the operator reaches
+  quoting a web page — and *everything* the card supplies goes behind that
+  gutter, the filename and every frontmatter key and value included, with only
+  the pass's own headings outside one. `--file <name>` is the separate verb the operator reaches
   for once they have said where one card goes; it takes the write path a capture
   already takes, to the class directory the *operator's* type routes to, and the
-  card leaves the folder only after the write has landed.
+  card leaves the folder only after the write has landed. Reaching a card is a
+  containment check — no path separators, no symlink, resolved parent equals the
+  resolved folder — not a lexical `parent ==`, which is true of any slash-free
+  name whatever the entry actually is.
 - **The enrichment queue has tiers, where it had none.** The inbox is served
   first, then the cards in the contract's class directories, then the project
   records — and each tier oldest first rather than in path order, which had been
