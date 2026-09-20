@@ -279,7 +279,7 @@ The same door, callable by any connected MCP host: `memory_capture(content, kind
 
 ### `/memory inbox`
 
-The review pass over `agent/inbox/` — the fourth standard child of `agent/`, where a chat surface drops a card over the Google Drive mirror (agentm-vault part `16-the-inbox`). Nothing listens on that folder, nothing polls it, and the hourly sweep cannot reach it. This command is what reading it looks like: it lists every card with the frontmatter the nightly enrichment gave it, oldest first, and **files none of them**.
+The review pass over `agent/inbox/` — the fourth standard child of `agent/`, where a chat surface drops a card over the Google Drive mirror (agentm-vault part `16-the-inbox`). Nothing listens on that folder, nothing polls it, and the hourly sweep cannot reach it. This command is what reading it looks like: it lists every card with the frontmatter the nightly enrichment gave it — `summary`, `importance_proposed` and `related`; the `why` is the card's own, written by whoever kept it, and no pass overwrites it — oldest first, and **files none of them**.
 
 **It reviews; it does not file.** Filing is decided here, in conversation, card by card — you say where a card goes and it goes there through the write path a capture already takes, with the destination being the one you chose rather than a default the command picked. A card you say nothing about stays in the folder. The inbox is small and its contents are half-formed thoughts, which is exactly the material a filing rule guesses worst: a phone-typed line has no type, often no project, and a `why` only its author can supply.
 
@@ -291,10 +291,12 @@ The review pass over `agent/inbox/` — the fourth standard child of `agent/`, w
 
 ```
 python3 harness/skills/memory/scripts/inbox_review.py [--memory-root <path>] [--json]
+python3 harness/skills/memory/scripts/inbox_review.py --file <name> [--type <t>] [--project <p>] [--why <w>]
 ```
 
 - **(no flags)** — the rendered review: each card's fields in the card's own order, a quoted lead of its body, then anything the pass could not read and any DriveFS conflict copy it found.
 - **`--json`** — the same result as data, for a caller that wants to drive the conversation itself. Both surfaces read one `read_inbox()` result, so they cannot disagree.
+- **`--file <name>`** — file one card the operator has named, and only after they have said where it goes. A **separate verb on purpose**: the listing above files nothing, and this is what "decided in conversation, card by card" looks like as a command. `--type` is the memory type they chose and it routes the destination through the filing contract, not a default this command picked; `--why` and `--project` override whatever the card's own text guessed. The card leaves the folder only once the write has landed, so a refused write leaves it exactly where it was. Reaching a card is a containment check — no path separators, no symlink, resolved parent equals the resolved folder — because `(folder / name).parent == folder` is string arithmetic that is true of any slash-free name.
 
 #### Failure modes (graceful)
 
@@ -1213,10 +1215,12 @@ changes.** A layout change never triggers one — that is the whole point of the
 layout-free text. The four checks that prove a paste took live in the
 [AgentMemory context payload reference](../../../wiki/reference/AgentMemory-Context-Payload.md).
 
-The capture address in the posture paragraph comes from
-`plugins.autonomy.capture_address` in the engine config. While it is unset, the
-payload tells a chat surface to show you the card rather than mail it — it never
-points a surface at a mailbox that does not exist.
+The posture paragraph names one write path and it is not conditional on any
+config key: a chat surface drops a card into `agent/inbox/` over the Drive
+mirror. `plugins.autonomy.capture_address` and the `payload:mail` /
+`payload:no-mail` alternates it chose between retired with the email door's
+transport (agentm-vault plan 16), so there is one body and every derived copy
+is the same bytes.
 
 ### `/memory search`
 
