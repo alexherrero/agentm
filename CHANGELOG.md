@@ -43,6 +43,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coming down from Drive, and enriching half a card writes the half back over
   the whole one. `agent/inbox` joins the vector arm's default scope, so a
   dampened card comes back on both arms.
+- **The card reaches the enrichment model as data.** Before the inbox, every
+  card in the queue was written by this machine's own capture path; the queue's
+  first tier is now cards a model on a chat surface wrote, possibly quoting a
+  web page. The prompt now says the card is data, and brackets it between BEGIN
+  CARD / END CARD markers carrying a tag derived from the card's own SHA-256 —
+  forging the closing marker would mean knowing the hash of the file you are
+  still writing. The frame is repeated *after* the card, so the last thing the
+  model reads is the frame rather than the content. The tag is deterministic,
+  which keeps the pass reproducible and the prompt prefix cacheable.
 - **`templates/inbox-card-prompt.md`**, the paste each writing surface carries,
   with `check-card-prompt` holding it to `card_shape.py`'s own field list — a
   paste has no CI of its own, and this is the CI it gets.

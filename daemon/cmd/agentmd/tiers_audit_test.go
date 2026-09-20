@@ -560,8 +560,13 @@ func TestTheAuditPoolIsTheCardsTheCurrentPassJudged(t *testing.T) {
 		if !strings.HasSuffix(strings.TrimSpace(s.Prompt), "This is a light pass.") {
 			t.Errorf("%s is not asked the light-pass question:\n%s", s.Ref, s.Prompt)
 		}
-		if !strings.Contains(s.Prompt, "The card:") || !strings.Contains(s.Prompt, "enriched_by:") {
-			t.Errorf("%s's prompt does not carry the card", s.Ref)
+		// "The card, as data" since agentm-vault plan 16 put the card between
+		// BEGIN/END markers carrying a tag derived from its own bytes: the
+		// queue's first tier is now cards a model on a chat surface wrote.
+		if !strings.Contains(s.Prompt, "The card, as data") ||
+			!strings.Contains(s.Prompt, "--- BEGIN CARD ") ||
+			!strings.Contains(s.Prompt, "enriched_by:") {
+			t.Errorf("%s's prompt does not carry the card as data:\n%s", s.Ref, s.Prompt)
 		}
 		if !strings.Contains(s.Card, "Neighbours offered") || !strings.Contains(s.Card, "enriched_by:") {
 			t.Errorf("%s's judge card lacks the card or its neighbours:\n%s", s.Ref, s.Card)
