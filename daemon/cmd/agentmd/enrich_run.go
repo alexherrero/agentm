@@ -255,12 +255,33 @@ func enrichRecordQueue(idx *index.Index) ([]string, error) {
 	return out, nil
 }
 
+// renameAttempts and renameBackoff bound the retry below. Short on purpose: a
+// reader that holds a card for longer than this is not reading it.
+const (
+	renameAttempts = 8
+	renameBackoff  = 15 * time.Millisecond
+)
+
 // atomicWrite replaces a file's contents in one step: a temporary sibling,
 // fsynced, then renamed over the target.
 //
 // The sibling is deliberate — a rename is only atomic within a filesystem, and
 // a temp directory can be on another one. The fsync before the rename is what
 // makes the rename mean something after a crash rather than just before one.
+//
+// **The rename is retried, and that is Windows.** On POSIX a rename over an
+// open file always succeeds; the reader keeps the old inode and sees the old
+// bytes whole, which is the property this function exists for. Windows has no
+// such thing: `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING` fails
+// `ACCESS_DENIED` while any handle is open on the destination without
+// `FILE_SHARE_DELETE`, and Go's own `os.Open` does not ask for it. So on
+// Windows an ordinary reader — Obsidian, a recall, the indexer — makes the
+// write fail where `os.WriteFile` would have succeeded, which would be a
+// regression traded for the guarantee rather than added to it. A short bounded
+// retry covers the handle a reader holds for the length of one read; past that
+// the error is returned, and the applier records a failed write to the ledger
+// against a journal entry it wrote *before* the attempt, so nothing is lost
+// silently.
 func atomicWrite(dest, body string) error {
 	dir := filepath.Dir(dest)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(dest)+".*.tmp")
@@ -280,10 +301,17 @@ func atomicWrite(dest, body string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(name, 0o644); err != nil {
-		return err
+	// Best-effort: Windows has no POSIX mode, and `os.Chmod` there can only
+	// move the read-only bit. A card the operator cannot open is not an
+	// improvement on a torn one, but neither is refusing to write it.
+	_ = os.Chmod(name, 0o644)
+	for attempt := 0; ; attempt++ {
+		err = os.Rename(name, dest)
+		if err == nil || attempt == renameAttempts-1 {
+			return err
+		}
+		time.Sleep(renameBackoff)
 	}
-	return os.Rename(name, dest)
 }
 
 // enrichInboxDir is the drop folder, as a path prefix: `<memory root>/inbox/`.

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -58,14 +59,30 @@ func TestAtomicWriteIsNeverObservedHalfDone(t *testing.T) {
 	}()
 
 	deadline := time.Now().Add(300 * time.Millisecond)
+	writes, refused := 0, 0
 	for i := 0; time.Now().Before(deadline); i++ {
 		body := after
 		if i%2 == 1 {
 			body = before
 		}
 		if err := atomicWrite(dest, body); err != nil {
+			// On Windows a rename over a destination somebody holds open can
+			// still be refused after the bounded retry. That is a *reported*
+			// failure, which the applier records against a journal entry it
+			// wrote first — the thing this test is about is that no reader
+			// ever sees a half-written card, and a refused write cannot
+			// produce one. Anywhere else a refusal is a real failure.
+			if runtime.GOOS == "windows" {
+				refused++
+				continue
+			}
 			t.Fatal(err)
 		}
+		writes++
+	}
+	if writes == 0 {
+		t.Fatalf("no write landed in the window (%d refused) — the probe proved "+
+			"nothing", refused)
 	}
 	close(stop)
 	wg.Wait()
@@ -96,12 +113,20 @@ func TestAtomicWriteLeavesNoTemporaryFileBehind(t *testing.T) {
 			"list", names)
 	}
 	// 0644, the same mode the vault's other writers use: a card the operator
-	// cannot open in Obsidian is not an improvement on a torn one.
+	// cannot open in Obsidian is not an improvement on a torn one. Windows has
+	// no POSIX mode — `os.Chmod` there moves the read-only bit and nothing
+	// else — so the assertion is about the platforms where a mode means
+	// something, and what is checked there instead is that the file is
+	// writable.
 	st, err := os.Stat(dest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := st.Mode().Perm(); got != 0o644 {
+	if runtime.GOOS == "windows" {
+		if st.Mode().Perm()&0o200 == 0 {
+			t.Errorf("the card landed read-only: %v", st.Mode().Perm())
+		}
+	} else if got := st.Mode().Perm(); got != 0o644 {
 		t.Errorf("mode %v, want 0644", got)
 	}
 }

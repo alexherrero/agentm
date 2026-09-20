@@ -50,7 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the target. `os.WriteFile` truncates first and fills after, so a reader —
   Obsidian, a recall, DriveFS taking the file up — that opened a card in between
   saw an empty or half-written note. In the drop folder that window is not
-  theoretical.
+  theoretical. The rename is retried briefly, and that is Windows: `MoveFileEx`
+  refuses while any handle is open on the destination without
+  `FILE_SHARE_DELETE`, which Go's own `os.Open` does not ask for, so without the
+  retry an ordinary reader would make the write fail where `os.WriteFile`
+  succeeded — the guarantee traded for rather than added to.
 
 ### Changed
 
