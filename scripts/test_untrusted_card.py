@@ -34,6 +34,19 @@ for _p in (str(_HERE), str(_TOOLKIT)):
 
 import untrusted_card as uc  # noqa: E402
 
+#: The transport being *used*, not mentioned: an import statement, an attribute
+#: reference, a connection, or a read of the header the door authenticated on.
+#: Written in the subset POSIX ERE (`git grep -E`) and Python `re` both read,
+#: so the two halves of this check cannot drift.
+#: Prose that records the retirement is the opposite of the failure and must not
+#: match — `test_that_grep_can_still_fail` pins both directions.
+_TRANSPORT_IN_USE = (
+    r"^[ \t]*import imaplib"
+    r"|imaplib\."
+    r"|IMAP4_SSL\("
+    r"|get(_all)?\([\"']Authentication-Results"
+)
+
 
 def _frontmatter(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
@@ -216,16 +229,40 @@ class WhatARefusalReports(_Filing):
 class TheDoorsTransportIsGone(unittest.TestCase):
     def test_no_module_opens_a_mailbox(self):
         # The removal, asserted rather than assumed. A grep over the tracked
-        # tree, because the failure mode is a path somebody restores by
-        # copying an old file back, not one the import graph would catch.
+        # tree, because the failure mode is somebody restoring an old file by
+        # copying it back, which the import graph would never notice.
+        #
+        # It greps for the transport being *used*, not mentioned: `imaplib` as
+        # an import or an attribute, an `IMAP4_SSL` construction, and a read of
+        # the `Authentication-Results` header. Prose that records the
+        # retirement — this file, the CHANGELOG, the module docstring, the wiki
+        # — is the opposite of the failure and must not trip it.
         import subprocess
         repo = _HERE.parent
+        used = _TRANSPORT_IN_USE
         out = subprocess.run(
-            ["git", "grep", "-lE", r"imaplib|IMAP4_SSL|Authentication-Results|authserv",
-             "--", ":!wiki", ":!scripts/test_untrusted_card.py", ":!*.archive.*"],
+            # This file is excluded because its own falsification fixtures
+            # below carry the literals on purpose; `test_that_grep_can_still_fail`
+            # is what keeps that exclusion from hiding a broken pattern.
+            ["git", "grep", "-lE", used, "--", "*.py", "*.go", "*.sh", "*.ps1",
+             ":!scripts/test_untrusted_card.py"],
             cwd=repo, capture_output=True, text=True)
         self.assertEqual(out.stdout.strip(), "",
                          "the email transport is back:\n" + out.stdout)
+
+    def test_that_grep_can_still_fail(self):
+        # A grep that matches nothing looks identical whether the transport is
+        # gone or the pattern is broken. This proves the pattern still fires.
+        import re
+        used = re.compile(_TRANSPORT_IN_USE)
+        for line in ("import imaplib",
+                     "conn = imaplib.IMAP4_SSL(host)",
+                     'msg.get_all("Authentication-Results")',
+                     "msg.get('Authentication-Results')"):
+            self.assertTrue(used.search(line), f"the pattern missed {line!r}")
+        for line in ("# imaplib retired with the door",
+                     "the `Authentication-Results` reader is gone"):
+            self.assertIsNone(used.search(line), f"the pattern fired on prose: {line!r}")
 
     def test_the_mail_keys_are_gone_from_the_config_tool(self):
         import agentm_config

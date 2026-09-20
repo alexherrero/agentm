@@ -201,8 +201,17 @@ check("D. the report carries the contract it was taken against",
 
 # ── E. the batch's own queue offers it, through the real binary ─────────────
 dry = agentmd("enrich", "--dry-run")
+# The summary counts three populations since agentm-vault plan 16 put the drop
+# folder at the front of the queue: `N inbox card(s) under <dir>, M card(s)
+# under <dirs> and K project record(s)`. This fixture has no inbox and no
+# records, so what it pins is still the card count — that every card under the
+# contract's class directory is in the queue.
 check("E. the batch's queue holds every card under the contract's class directory",
-      f"dry run: {len(CORPUS)} card(s) under memory/semantic" in dry, dry.splitlines()[:1])
+      f"{len(CORPUS)} card(s) under memory/semantic" in dry, dry.splitlines()[:1])
+check("E. the drop folder is served ahead of the cards",
+      "inbox card(s) under" in dry and
+      dry.index("inbox card(s) under") < dry.index(f"{len(CORPUS)} card(s) under"),
+      dry.splitlines()[:1])
 check("E. none of them reads as unchanged at this pass",
       "unchanged at this pass 0 " in dry, [l for l in dry.splitlines() if "owed" in l])
 

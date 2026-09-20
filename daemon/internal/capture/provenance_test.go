@@ -140,13 +140,17 @@ func TestCaptureWritesTheReferenceInItsOwnField(t *testing.T) {
 }
 
 // A registry identity takes the same route, and the hash rides with it even
-// though `source:` holds a transport rather than the unit.
+// though `source:` holds a transport rather than the unit. The identity here is
+// still a message-id, which is the point: `source_id:` names the unit the
+// material came from, and it does not have to agree with the transport that
+// carried it — the transport is `inbox` since the door's retired
+// (agentm-vault plan 16).
 func TestCaptureWritesASourceIdentityBesideItsTransport(t *testing.T) {
 	cp := newHarness(t)
 	res, err := cp.Do(Request{
 		Text:       "what the thread said",
 		Title:      "a thread",
-		Source:     "email",
+		Source:     "inbox",
 		SourceID:   "email:<abc@example.com>",
 		SourceHash: "deadbeef",
 	})
@@ -162,6 +166,6 @@ func TestCaptureWritesASourceIdentityBesideItsTransport(t *testing.T) {
 		t.Errorf("the hash did not ride with the identity: %q", n.SourceHash)
 	}
 	if !strings.Contains(body, "trust: untrusted\n") {
-		t.Errorf("`email` is an untrusted transport in the contract:\n%s", body)
+		t.Errorf("`inbox` is an untrusted transport in the contract:\n%s", body)
 	}
 }

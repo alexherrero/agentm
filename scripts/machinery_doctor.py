@@ -567,10 +567,12 @@ def check_payload_copies() -> list:
         )]
 
     try:
+        # One body, for every copy. The neutral/addressed pair retired with the
+        # email door's capture address (agentm-vault plan 16): the write path is
+        # a folder every machine has, so a difference between the Gemini copy
+        # and the tracked Antigravity rule is drift rather than configuration.
         template = pr.read_template()
-        neutral = pr.render(template, None)
-        address = pr.capture_address()
-        addressed = pr.render(template, address) if address else neutral
+        body = pr.render(template)
     except Exception as exc:
         return [Check(
             name=f"{name_prefix}", status="FAIL",
@@ -581,7 +583,7 @@ def check_payload_copies() -> list:
     checks = []
 
     rule_path = pr.ANTIGRAVITY_RULE_PATH
-    expected = pr.antigravity_rule(neutral)
+    expected = pr.antigravity_rule(body)
     if not rule_path.is_file():
         checks.append(Check(
             name=f"{name_prefix}: antigravity rule", status="FAIL",
@@ -616,7 +618,7 @@ def check_payload_copies() -> list:
                 detail=f"no {pr.MARKER} managed section in {gemini_path}",
                 owner="/memory payload --write",
             ))
-        elif section == addressed:
+        elif section == body:
             checks.append(Check(
                 name=f"{name_prefix}: gemini managed section", status="OK",
                 detail=f"sha {pr.short(section)} == template",
@@ -624,7 +626,7 @@ def check_payload_copies() -> list:
         else:
             checks.append(Check(
                 name=f"{name_prefix}: gemini managed section", status="FAIL",
-                detail=f"sha {pr.short(section)} differs from template's {pr.short(addressed)} — {gemini_path}",
+                detail=f"sha {pr.short(section)} differs from template's {pr.short(body)} — {gemini_path}",
                 owner="/memory payload --write",
             ))
 

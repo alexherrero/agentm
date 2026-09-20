@@ -35,8 +35,6 @@ def _load(module_file: str):
 LAYOUT_FREE = _load("check-payload-layout-free.py")
 # Assembled rather than written out: the repo's PII gate matches an email
 # shape literally, and it is right not to make an exception for a fixture.
-FAKE_ADDRESS = "door" + "@" + "example.test"
-SHORT_ADDRESS = "d" + "@" + "e.test"
 TEMPLATE = HERE.parent / "templates" / "agentmemory-context.md"
 SEPTEMBER = HERE / "fixtures" / "agentmemory-context.september.md"
 
@@ -67,59 +65,61 @@ import payload_render as pr  # noqa: E402
 
 
 class Renderer(unittest.TestCase):
+    """One body, no alternates.
+
+    The `payload:mail` / `payload:no-mail` pair and the `{{CAPTURE_ADDRESS}}`
+    the first substituted retired with the email door's transport (agentm-vault
+    plan 16). Their tests retired with them: a branch that cannot be taken is
+    not a behaviour to pin. What those tests were really protecting — that the
+    operator-only header never reaches a surface, and that the body carries no
+    unresolved placeholder — is kept below against the one render there is.
+    """
+
     def test_the_operator_only_header_never_reaches_a_surface(self):
-        body = pr.render(TEMPLATE.read_text(encoding="utf-8"), None)
+        body = pr.render(TEMPLATE.read_text(encoding="utf-8"))
         self.assertTrue(body.startswith("# Using my memory vault"))
         self.assertNotIn("SOURCE OF TRUTH", body)
         self.assertNotIn("<!--", body)
 
-    def test_no_address_keeps_the_no_mail_alternate(self):
-        body = pr.render(TEMPLATE.read_text(encoding="utf-8"), None)
-        self.assertIn("no write door yet", body)
+    def test_the_body_names_the_one_write_path_and_no_mailbox(self):
+        body = pr.render(TEMPLATE.read_text(encoding="utf-8"))
+        self.assertIn("agent/inbox/", body)
         self.assertNotIn("email it to", body)
-        self.assertNotIn(pr.PLACEHOLDER, body)
-
-    def test_an_address_keeps_the_mail_alternate_and_fills_it_in(self):
-        body = pr.render(TEMPLATE.read_text(encoding="utf-8"), FAKE_ADDRESS)
-        self.assertIn("email it to " + FAKE_ADDRESS, body)
         self.assertNotIn("no write door yet", body)
-        self.assertNotIn(pr.PLACEHOLDER, body)
+        self.assertNotIn("Claude Desktop", body)
 
-    def test_both_branches_render_to_the_same_shape(self):
-        # Only the one sentence differs; the block markers leave no blank-line
-        # scar behind whichever alternate is dropped.
-        a = pr.render(TEMPLATE.read_text(encoding="utf-8"), None).splitlines()
-        b = pr.render(TEMPLATE.read_text(encoding="utf-8"), FAKE_ADDRESS).splitlines()
-        self.assertEqual(len(a), len(b))
-        self.assertEqual([i for i, (x, y) in enumerate(zip(a, b)) if x != y], [12])
+    def test_no_placeholder_survives_rendering(self):
+        # A placeholder that survived would paste a literal `{{…}}` onto a chat
+        # surface. There is no substitution step any more, so the guard is that
+        # the template carries nothing needing one.
+        body = pr.render(TEMPLATE.read_text(encoding="utf-8"))
+        self.assertNotIn("{{", body)
+        self.assertNotIn("}}", body)
 
-    def test_an_unresolvable_placeholder_raises_rather_than_shipping(self):
-        # A placeholder that survives rendering would paste a literal
-        # {{CAPTURE_ADDRESS}} onto a chat surface. Fail loudly instead. The
-        # sentence here sits outside the alternates, so no branch can drop it.
-        with self.assertRaises(ValueError):
-            pr.render("# t\n\nmail {{CAPTURE_ADDRESS}} now\n", None)
+    def test_a_headerless_template_loses_nothing(self):
+        # The header stripper eats the first HTML comment. A template with no
+        # header must not have its first line eaten instead.
+        text = "<!-- operator only -->\n\n# t\n\nthe body\n"
+        self.assertEqual(pr.render(text), "# t\n\nthe body\n")
+        self.assertEqual(pr.render("# t\n\nthe body\n"), "# t\n\nthe body\n")
 
-    def test_a_headerless_template_keeps_its_first_alternate(self):
-        # The header stripper eats the first HTML comment; the alternates are
-        # HTML comments too. A template with no header must not lose its mail
-        # block to the stripper.
-        text = ("# t\n\n<!-- payload:mail -->\nmail {{CAPTURE_ADDRESS}}\n<!-- /payload:mail -->\n"
-                "<!-- payload:no-mail -->\nshow me\n<!-- /payload:no-mail -->\n")
-        self.assertEqual(pr.render(text, None), "# t\n\nshow me\n")
-        self.assertEqual(pr.render(text, SHORT_ADDRESS), "# t\n\nmail " + SHORT_ADDRESS + "\n")
-        headerless = text.replace("# t\n\n", "", 1)
-        self.assertEqual(pr.render(headerless, SHORT_ADDRESS), "mail " + SHORT_ADDRESS + "\n")
+    def test_a_payload_marker_is_never_eaten_as_a_header(self):
+        # The negative lookahead outlived the alternates on purpose: restoring
+        # a `payload:` block must be a visible change, not a silent corruption.
+        text = "<!-- payload:mail -->\nkept\n"
+        self.assertIn("kept", pr.render(text))
+        self.assertIn("payload:mail", pr.render(text))
 
 
 class ParityGate(unittest.TestCase):
-    def test_the_tracked_antigravity_rule_is_the_neutral_render(self):
-        expected = pr.antigravity_rule(pr.render(TEMPLATE.read_text(encoding="utf-8"), None))
+    def test_the_tracked_antigravity_rule_is_the_one_render(self):
+        expected = pr.antigravity_rule(pr.render(TEMPLATE.read_text(encoding="utf-8")))
         self.assertEqual(pr.ANTIGRAVITY_RULE_PATH.read_text(encoding="utf-8"), expected)
 
-    def test_the_tracked_rule_never_carries_a_capture_address(self):
-        # The repo copy is deliberately address-free: a mailbox is not something
-        # to commit, and check-no-pii would be the second line of defence.
+    def test_the_tracked_rule_carries_no_address(self):
+        # It never did, and now there is no key that could put one there. The
+        # assertion stays because check-no-pii is the second line of defence,
+        # not the first.
         self.assertNotIn("email it to", pr.ANTIGRAVITY_RULE_PATH.read_text(encoding="utf-8"))
 
     def test_a_hand_edited_rule_fails_the_gate_and_the_writer_restores_it(self):
@@ -141,17 +141,24 @@ class ParityGate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             gemini = Path(td) / "GEMINI.md"
             gemini.write_text("# my own rules\n\nkeep me\n", encoding="utf-8")
-            self.assertEqual(pr.write_gemini_section(gemini, address=None), "appended")
+            self.assertEqual(pr.write_gemini_section(gemini), "appended")
             text = gemini.read_text(encoding="utf-8")
             self.assertIn("keep me", text)  # everything outside the markers survives
             self.assertEqual(pr.managed_section(text),
-                             pr.render(TEMPLATE.read_text(encoding="utf-8"), None))
-            gemini.write_text(text.replace("read only", "READ ONLY"), encoding="utf-8")
+                             pr.render(TEMPLATE.read_text(encoding="utf-8")))
+            # Drift is injected by editing a phrase the body actually carries,
+            # and the edit is asserted to have changed something. Without that
+            # assertion this test quietly became a no-op when the posture line
+            # was reworded in plan 16: the replace matched nothing, the section
+            # stayed identical, and "drift fails the gate" was never exercised.
+            drifted = text.replace("last-synced state", "LAST-SYNCED STATE")
+            self.assertNotEqual(drifted, text, "the drift injection matched nothing")
+            gemini.write_text(drifted, encoding="utf-8")
             self.assertNotEqual(pr.managed_section(gemini.read_text(encoding="utf-8")),
-                                pr.render(TEMPLATE.read_text(encoding="utf-8"), None))
-            pr.write_gemini_section(gemini, address=None)
+                                pr.render(TEMPLATE.read_text(encoding="utf-8")))
+            pr.write_gemini_section(gemini)
             self.assertEqual(pr.managed_section(gemini.read_text(encoding="utf-8")),
-                             pr.render(TEMPLATE.read_text(encoding="utf-8"), None))
+                             pr.render(TEMPLATE.read_text(encoding="utf-8")))
 
 
 import machinery_doctor as DOCTOR  # noqa: E402
@@ -218,8 +225,7 @@ class DoctorRows(unittest.TestCase):
         proc = subprocess.run([sys.executable, str(PAYLOAD_CMD), "--body-only"],
                               capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(proc.stdout, pr.render(TEMPLATE.read_text(encoding="utf-8"),
-                                                pr.capture_address()))
+        self.assertEqual(proc.stdout, pr.render(TEMPLATE.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":
