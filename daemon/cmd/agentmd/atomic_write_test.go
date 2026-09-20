@@ -29,6 +29,7 @@ func TestAtomicWriteIsNeverObservedHalfDone(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	var bad []string
+	var reads, blocked int
 	var mu sync.Mutex
 	go func() {
 		defer wg.Done()
@@ -40,14 +41,28 @@ func TestAtomicWriteIsNeverObservedHalfDone(t *testing.T) {
 			}
 			raw, err := os.ReadFile(dest)
 			if err != nil {
-				// The file never stops existing: a rename replaces it in one
-				// step, where a truncate-and-fill leaves a window with nothing
-				// in it.
+				// On Windows the replace makes a concurrent OPEN fail with a
+				// sharing violation for an instant. That is a loud failure the
+				// reader can retry, not a half-read card, and it is strictly
+				// better than the truncate-and-fill window it replaced — so it
+				// is counted rather than treated as the defect.
+				//
+				// On POSIX the file never stops existing: the rename swaps one
+				// inode for another and an open in between gets one of them
+				// whole. A failure there is the real finding.
+				if runtime.GOOS == "windows" {
+					mu.Lock()
+					blocked++
+					mu.Unlock()
+					continue
+				}
 				mu.Lock()
 				bad = append(bad, "the card vanished mid-write: "+err.Error())
 				mu.Unlock()
 				return
 			}
+			// The property under test, on every platform: whatever a reader
+			// gets, it is one whole version and never a prefix of either.
 			if s := string(raw); s != before && s != after {
 				mu.Lock()
 				bad = append(bad, "a reader saw neither version whole "+
@@ -55,6 +70,9 @@ func TestAtomicWriteIsNeverObservedHalfDone(t *testing.T) {
 				mu.Unlock()
 				return
 			}
+			mu.Lock()
+			reads++
+			mu.Unlock()
 		}
 	}()
 
@@ -90,6 +108,12 @@ func TestAtomicWriteIsNeverObservedHalfDone(t *testing.T) {
 	defer mu.Unlock()
 	for _, b := range bad {
 		t.Error(b)
+	}
+	// A probe that never managed to read proves nothing about what a reader
+	// sees, however many writes it counted.
+	if reads == 0 {
+		t.Errorf("no read completed in the window (%d blocked) — the probe "+
+			"proved nothing", blocked)
 	}
 }
 

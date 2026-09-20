@@ -282,6 +282,12 @@ const (
 // the error is returned, and the applier records a failed write to the ledger
 // against a journal entry it wrote *before* the attempt, so nothing is lost
 // silently.
+//
+// The reader's half of the same Windows fact, recorded because somebody should
+// find it written down before they find it in a log: a concurrent open can fail
+// with a sharing violation for the instant of the replace. That is a loud
+// failure a reader retries, not a half-read card, and it is still the better
+// half of the trade against `os.WriteFile`'s truncate-and-fill.
 func atomicWrite(dest, body string) error {
 	dir := filepath.Dir(dest)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(dest)+".*.tmp")

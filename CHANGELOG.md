@@ -63,7 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refuses while any handle is open on the destination without
   `FILE_SHARE_DELETE`, which Go's own `os.Open` does not ask for, so without the
   retry an ordinary reader would make the write fail where `os.WriteFile`
-  succeeded — the guarantee traded for rather than added to.
+  succeeded — the guarantee traded for rather than added to. One honest
+  Windows consequence, recorded rather than hidden: a concurrent reader's
+  *open* can fail with a sharing violation for an instant during the replace.
+  That is a loud failure the reader retries, not a half-read card, and it is
+  still strictly better than the truncate-and-fill window it replaced.
 
 ### Changed
 
