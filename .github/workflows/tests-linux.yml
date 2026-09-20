@@ -100,6 +100,11 @@ jobs:
         # carried a folder map. This gate is the tripwire that keeps the template
         # naming only index.md, standards/ and moc-projects.md.
         run: python3 scripts/check-payload-layout-free.py
+      - name: check-card-prompt (the inbox paste teaches the card's own shape)
+        # The inbox paste is the only thing a chat surface knows about a card,
+        # and a paste has no CI of its own. This is the CI it gets: the field
+        # list it teaches has to match card_shape.py's.
+        run: python3 scripts/check-card-prompt.py
       - name: check-payload-parity (every payload copy is the template's derivation)
         # The Gemini half graceful-skips on a runner (no ~/.gemini); the tracked
         # Antigravity rule is checkable everywhere and never skips.

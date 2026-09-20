@@ -117,8 +117,9 @@ gate "check-payload-parity (every payload copy is the template's derivation)" "$
 gate "check-vocabulary-membership (--strict: any unregistered type/kind value fails; collision self-test)" "$PY" scripts/check-vocabulary-membership.py --strict
 gate_tri "check-retrieval-regression (shipped ranker vs the pinned gold-set baseline)" bash scripts/check-retrieval-regression.sh
 gate "check-vault-frontmatter (every note's frontmatter parses as YAML)" "$PY" scripts/check-vault-frontmatter.py
-gate "check-memory-root-shape (agent/ holds two children; memory/ only the classes; the standards set)" "$PY" scripts/check-memory-root-shape.py
+gate "check-memory-root-shape (agent/ holds its four standard children; memory/ only the classes; the standards set)" "$PY" scripts/check-memory-root-shape.py
 gate "check-card-shape (class cards in the card's order: required fields, no retired field, no counter name)" "$PY" scripts/check-card-shape.py
+gate "check-card-prompt (the inbox paste teaches the card's own shape)" "$PY" scripts/check-card-prompt.py
 gate "check-class-directories (a class directory holds only cards and records)" "$PY" scripts/check-class-directories.py
 gate "check-no-empty-tags (no empty tag list in the class directories)" "$PY" scripts/check-no-empty-tags.py
 gate "check-root-notes (Home.md and Filing.md retired, nothing links to them, index.md holds the authority table once)" "$PY" scripts/check-root-notes.py

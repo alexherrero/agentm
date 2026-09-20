@@ -30,7 +30,11 @@ DEFAULT_TEMPLATE = REPO / "templates" / "agentmemory-context.md"
 FORBIDDEN = [
     ("Agent/", "the capitalized root space; the casing rename retires it"),  # root-casing: the forbidden spelling the payload gate looks for
     ("Projects/", "the capitalized projects space; it becomes projects/"),  # root-casing: the forbidden spelling the payload gate looks for
-    ("_inbox", "there is no inbox; the metadata is the inbox"),
+    # The retired *staging* directory, not the operator's drop folder. Since
+    # agentm-vault plan 16 there is an inbox — `agent/inbox/`, where a chat
+    # surface writes — and the thing that must never come back is the folder the
+    # hourly sweep used to drain. The two differ by the underscore.
+    ("_inbox", "the retired staging directory; the drop folder is agent/inbox/"),
     ("_always-load", "the always-load pen folds into standards/"),
     ("_index.md", "the project anchor becomes tracker.md / charter.md"),
     ("_harness", "harness state is not something a chat surface reads"),
