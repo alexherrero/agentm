@@ -128,7 +128,7 @@ func TestTheProjectBoostRunsInsideTheDenseArm(t *testing.T) {
 			t.Fatalf("indexing %s: %v", n.Rel, err)
 		}
 	}
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/a-other.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 		{DocID: docID(t, x, "memory/b-agentm.md"), MtimeNS: 1, Vec: unit(0.99, 0.14, 0)},
 	}); err != nil {

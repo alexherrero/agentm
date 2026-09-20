@@ -117,7 +117,7 @@ func TestAStagedUnitIsWalledInsideTheDenseArm(t *testing.T) {
 	addPenalizedNote(t, x, "memory/staged.md", "staged", "the release gate body",
 		note.ClassIngestStaged)
 
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/staged.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 		{DocID: docID(t, x, "memory/clean.md"), MtimeNS: 1, Vec: unit(0.99, 0.14, 0)},
 	}); err != nil {

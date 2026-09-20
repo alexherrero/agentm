@@ -55,7 +55,7 @@ func TestVectorSearchRanksByCosine(t *testing.T) {
 		{DocID: docID(t, x, "memory/mid.md"), MtimeNS: 1, Vec: unit(1, 1, 0)},
 		{DocID: docID(t, x, "memory/far.md"), MtimeNS: 1, Vec: unit(-1, 0, 0)},
 	}
-	if err := x.PutVectors("test-model", rows); err != nil {
+	if _, err := x.PutVectors("test-model", rows); err != nil {
 		t.Fatalf("PutVectors: %v", err)
 	}
 
@@ -87,7 +87,7 @@ func TestVectorSearchRanksByCosine(t *testing.T) {
 func TestVectorSearchIgnoresOtherModels(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "memory/a.md", "a", "body")
-	if err := x.PutVectors("model-a", []VectorRow{
+	if _, err := x.PutVectors("model-a", []VectorRow{
 		{DocID: docID(t, x, "memory/a.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 	}); err != nil {
 		t.Fatalf("PutVectors: %v", err)
@@ -108,7 +108,7 @@ func TestVectorSearchSkipsWrongWidth(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "memory/wide.md", "wide", "body")
 	addNote(t, x, "memory/right.md", "right", "body")
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/wide.md"), MtimeNS: 1, Vec: unit(1, 0, 0, 0)},
 		{DocID: docID(t, x, "memory/right.md"), MtimeNS: 1, Vec: unit(0, 1, 0)},
 	}); err != nil {
@@ -132,7 +132,7 @@ func TestVectorSearchScoresNoteByBestChunk(t *testing.T) {
 	id := docID(t, x, "memory/multi.md")
 
 	// Chunk 0 is 90° off the query; chunk 1 is a perfect match.
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: id, ChunkIdx: 0, MtimeNS: 1, Vec: unit(0, 1, 0)},
 		{DocID: id, ChunkIdx: 1, MtimeNS: 1, Vec: unit(1, 0, 0)},
 	}); err != nil {
@@ -232,7 +232,7 @@ func TestPendingEmbedsTreatsMultiChunkNoteAsOneUnit(t *testing.T) {
 	addNote(t, x, "memory/multi.md", "multi", "body")
 	id := docID(t, x, "memory/multi.md")
 
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: id, ChunkIdx: 0, MtimeNS: 1, Vec: unit(1, 0, 0)},
 		{DocID: id, ChunkIdx: 1, MtimeNS: 1, Vec: unit(0, 1, 0)},
 	}); err != nil {
@@ -265,7 +265,7 @@ func TestReindexedNoteBecomesPending(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "memory/n.md", "n", "first body")
 	id := docID(t, x, "memory/n.md")
-	if err := x.PutVectors("m", []VectorRow{{DocID: id, MtimeNS: 1, Vec: unit(1, 0, 0)}}); err != nil {
+	if _, err := x.PutVectors("m", []VectorRow{{DocID: id, MtimeNS: 1, Vec: unit(1, 0, 0)}}); err != nil {
 		t.Fatalf("PutVectors: %v", err)
 	}
 	pending, err := x.PendingEmbeds("m", []string{"memory"}, 0)
@@ -298,7 +298,7 @@ func TestPutVectorsReplacesShrunkChunkSet(t *testing.T) {
 	addNote(t, x, "memory/shrinks.md", "shrinks", "body")
 	id := docID(t, x, "memory/shrinks.md")
 
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: id, ChunkIdx: 0, MtimeNS: 1, Vec: unit(1, 0, 0)},
 		{DocID: id, ChunkIdx: 1, MtimeNS: 1, Vec: unit(0, 1, 0)},
 		{DocID: id, ChunkIdx: 2, MtimeNS: 1, Vec: unit(0, 0, 1)},
@@ -314,7 +314,7 @@ func TestPutVectorsReplacesShrunkChunkSet(t *testing.T) {
 	}
 
 	// Re-embed as if the note (or the chunking policy) now produces one chunk.
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: id, ChunkIdx: 0, MtimeNS: 2, Vec: unit(1, 1, 1)},
 	}); err != nil {
 		t.Fatalf("PutVectors (1 chunk): %v", err)
@@ -335,7 +335,7 @@ func TestDeleteRemovesVector(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "memory/gone.md", "gone", "body")
 	id := docID(t, x, "memory/gone.md")
-	if err := x.PutVectors("m", []VectorRow{{DocID: id, MtimeNS: 1, Vec: unit(1, 0, 0)}}); err != nil {
+	if _, err := x.PutVectors("m", []VectorRow{{DocID: id, MtimeNS: 1, Vec: unit(1, 0, 0)}}); err != nil {
 		t.Fatalf("PutVectors: %v", err)
 	}
 	if err := x.Delete("memory/gone.md"); err != nil {
@@ -355,7 +355,7 @@ func TestVectorStatsCountsCoverage(t *testing.T) {
 	addNote(t, x, "memory/a.md", "a", "body")
 	addNote(t, x, "memory/b.md", "b", "body")
 	addNote(t, x, "_meta/c.md", "c", "body")
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/a.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 	}); err != nil {
 		t.Fatalf("PutVectors: %v", err)
@@ -388,7 +388,7 @@ func TestVectorStatsNotesCountsNotesNotChunks(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "memory/chunked.md", "chunked", "body")
 	id := docID(t, x, "memory/chunked.md")
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: id, ChunkIdx: 0, MtimeNS: 1, Vec: unit(1, 0, 0)},
 		{DocID: id, ChunkIdx: 1, MtimeNS: 1, Vec: unit(0, 1, 0)},
 	}); err != nil {

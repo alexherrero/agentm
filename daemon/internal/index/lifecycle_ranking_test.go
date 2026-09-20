@@ -135,7 +135,7 @@ func TestTheWallReachesTheDenseArm(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "memory/live.md", "live", "the live note says something else entirely")
 	indexLifecycle(t, x, "memory/cold.md", "cold", "archived", "the archived note is the only cosine match\n")
-	if err := x.PutVectors("m", []VectorRow{
+	if _, err := x.PutVectors("m", []VectorRow{
 		{DocID: docID(t, x, "memory/cold.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
 		{DocID: docID(t, x, "memory/live.md"), MtimeNS: 1, Vec: unit(0, 0, 1)},
 	}); err != nil {

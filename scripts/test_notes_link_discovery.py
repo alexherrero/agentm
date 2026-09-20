@@ -20,7 +20,7 @@ import json
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import date
 from pathlib import Path
 
@@ -769,6 +769,305 @@ class TestUnitHelpers(unittest.TestCase):
             self.assertIn("common", model.idf)
             if "rare0" in model.idf:
                 self.assertGreater(model.idf["rare0"], model.idf["common"])
+
+
+# The contract's `recall_exempt_areas`, in the last walker that had no wall.
+#
+# This tool reads a personal note's whole body, scores it, prints its title into
+# a report, embeds it and writes the vector to a file on disk — and under
+# `--apply` writes into the note itself. None of that was refused for the folder
+# the wall was written for, and the cache it left on the operator's machine
+# carried 14 keys naming `Important Docs` for three and a half months.
+#
+# `personal/Home/Important Docs` is the area every fixture below walls with. It
+# is what the shipped contract names and what `storage_rules` falls back to when
+# no daemon answers, so these read the same on a machine with a daemon and
+# without one; `test_recall_wall.py` pins the fallback against the packaged
+# contract so the two cannot drift.
+WALLED_DIR = "personal/Home/Important Docs"
+
+
+class TestTheRecallWall(unittest.TestCase):
+    def _vault_with_a_walled_note(self, v: Path):
+        """A corpus with one walled note, one near-miss, and two ordinary notes
+        related enough to be suggested."""
+        walled = _write(v, f"{WALLED_DIR}/Recovery Codes.md",
+                        "The recovery codes are a1b2c3d4e5f6 and 222222. "
+                        "Covenant ordinance sacrament baptism confirmation.")
+        # The near-miss: a string-prefix wall would swallow `Homework`.
+        near = _write(v, "personal/Homework/algebra.md",
+                      "Recovery of the constant term. Covenant ordinance sacrament.")
+        a = _write(v, "personal/Church/baptism.md",
+                   "Baptism covenant ordinance renewed by the sacrament.")
+        b = _write(v, "personal/Church/confirmation.md",
+                   "Confirmation covenant ordinance conferring the sacrament.")
+        return walled, near, a, b
+
+    def test_a_walled_note_never_enters_the_corpus(self):
+        with _Vault() as v:
+            self._vault_with_a_walled_note(v)
+            rels = {n.rel for n in nld.build_corpus(v)}
+            self.assertNotIn(f"{WALLED_DIR}/Recovery Codes", rels,
+                             "the walled note was read into the corpus")
+            self.assertIn("personal/Homework/algebra", rels,
+                          "the near-miss was walled; the rule is segment-wise, "
+                          "not a string prefix")
+            self.assertIn("personal/Church/baptism", rels)
+
+    def test_the_fixture_would_otherwise_be_in_the_corpus(self):
+        # Without this the test above passes on any fixture the walk happens to
+        # miss for an unrelated reason — a wrong root, a bad suffix.
+        with _Vault() as v:
+            self._vault_with_a_walled_note(v)
+            saved = nld._is_walled
+            try:
+                nld._is_walled = lambda *a, **k: False
+                rels = {n.rel for n in nld.build_corpus(v)}
+            finally:
+                nld._is_walled = saved
+            self.assertIn(f"{WALLED_DIR}/Recovery Codes", rels,
+                          "this fixture is outside the corpus for some reason "
+                          "other than the wall, so walling it proves nothing")
+
+    def test_the_contract_is_read_once_for_the_whole_walk(self):
+        # The contract lives in Go, and Python reaches it by spawning
+        # `agentmd rules --json`. `storage_rules.rules()` caches an answer and
+        # not a failure, so a per-file read is a failed subprocess per file on
+        # a machine with no daemon — the trap `recall.py._contract_areas` is
+        # written against. One read, passed down.
+        with _Vault() as v:
+            self._vault_with_a_walled_note(v)
+            for i in range(12):
+                _write(v, f"personal/Other/n{i}.md", f"Filler note {i}.")
+            reads = {"n": 0}
+            saved = nld._walled_areas
+            try:
+                def counting():
+                    reads["n"] += 1
+                    return saved()
+                nld._walled_areas = counting
+                notes = nld.build_corpus(v)
+            finally:
+                nld._walled_areas = saved
+            self.assertGreater(len(notes), 12, "the fixture is too small to tell")
+            self.assertEqual(reads["n"], 1,
+                             f"the contract was read {reads['n']} times for one walk "
+                             f"over {len(notes)} notes")
+
+    def test_the_wall_holds_when_the_contract_cannot_be_read(self):
+        # The arm that runs when no daemon does. `storage_rules.rules()` raises,
+        # and the wall has to fall back to the shipped list rather than open.
+        import storage_rules
+        with _Vault() as v:
+            self._vault_with_a_walled_note(v)
+            saved = storage_rules.rules
+            try:
+                def boom(**kwargs):
+                    raise storage_rules.StorageRulesError("no daemon")
+                storage_rules.rules = boom
+                self.assertEqual(list(nld._walled_areas()),
+                                 list(storage_rules._FALLBACK_RECALL_EXEMPT_AREAS))
+                rels = {n.rel for n in nld.build_corpus(v)}
+            finally:
+                storage_rules.rules = saved
+            self.assertNotIn(f"{WALLED_DIR}/Recovery Codes", rels,
+                             "the wall opened when the contract could not be read")
+            self.assertIn("personal/Church/baptism", rels,
+                          "the fallback walled the whole corpus")
+
+    def test_a_walled_note_is_in_no_suggestion_and_no_report(self):
+        with _Vault() as v:
+            self._vault_with_a_walled_note(v)
+            notes, sugg = nld.discover(v, min_score=0.05, top=40)
+            for s in sugg:
+                self.assertNotIn("Important Docs", s.a_rel + s.b_rel,
+                                 f"a walled note was suggested: {s.a_rel} <-> {s.b_rel}")
+            report = nld.build_report(notes, sugg, today="2026-09-19")
+            self.assertNotIn("Important Docs", report)
+            self.assertNotIn("Recovery Codes", report)
+
+    def test_apply_never_writes_into_a_walled_note_nor_backs_it_up(self):
+        with _Vault() as v:
+            walled, _near, _a, _b = self._vault_with_a_walled_note(v)
+            before = walled.read_bytes()
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = nld.main(["--vault", str(v), "--apply", "--min-score", "0.05"])
+            self.assertEqual(rc, 0)
+            self.assertEqual(walled.read_bytes(), before,
+                             "--apply wrote into a note the contract walls")
+            # The backup tars the corpus, so a walled note in it would be a
+            # second copy of the folder sitting in the state directory.
+            import tarfile
+            tars = list(nld.engine_state.engine_state_dir().glob("notes-backup-*.tar.gz"))
+            self.assertEqual(len(tars), 1)
+            with tarfile.open(tars[0]) as tf:
+                names = tf.getnames()
+            self.assertTrue(names, "the backup is empty; it proves nothing")
+            for name in names:
+                self.assertNotIn("Important Docs", name,
+                                 f"the backup carries a walled note: {name}")
+
+    def test_the_embedding_cache_is_never_written_with_a_walled_key(self):
+        import embed as embed_mod
+        with _Vault() as v:
+            self._vault_with_a_walled_note(v)
+            cache = nld.default_embed_index_path(v)
+            notes = nld.build_corpus(v)
+            orig = embed_mod.embed_text
+            try:
+                embed_mod.embed_text = lambda t, mode=None: orig(t, mode="stub")
+                self.assertIsNotNone(
+                    nld.embed_corpus(notes, mode="stub", cache_path=cache))
+            finally:
+                embed_mod.embed_text = orig
+            written = json.loads(cache.read_text(encoding="utf-8"))
+            self.assertTrue(written, "nothing was cached; this proves nothing")
+            for key in written:
+                self.assertNotIn("Important Docs", key,
+                                 f"a walled note's vector was cached as {key}")
+
+
+class TestPruneEmbedCache(unittest.TestCase):
+    """The keys already on disk.
+
+    The operator's cache held 391 keys on 2026-09-19, 14 naming `Important
+    Docs`. It was written on 2026-05-30, when this tool resolved its corpus root
+    one level too deep, so every key is missing its leading space and names
+    nothing in today's corpus — which is why the prune counts 'walled' and
+    'absent' apart rather than reporting one number.
+    """
+
+    def _seed(self, v: Path, cache: Path, extra: dict) -> dict:
+        _write(v, "personal/Church/baptism.md", "Baptism covenant ordinance.")
+        _write(v, "personal/Church/confirmation.md", "Confirmation covenant ordinance.")
+        seeded = {"personal/Church/baptism": {"hash": "h1", "vec": [1.0, 0.0]},
+                  "personal/Church/confirmation": {"hash": "h2", "vec": [0.0, 1.0]}}
+        seeded.update(extra)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(seeded), encoding="utf-8")
+        return seeded
+
+    def test_drops_walled_and_absent_keys_and_keeps_the_rest(self):
+        with _Vault() as v:
+            cache = nld.default_embed_index_path(v)
+            self._seed(v, cache, {
+                # Walled, in the spelling today's corpus produces.
+                f"{WALLED_DIR}/Recovery Codes": {"hash": "h3", "vec": [1.0, 1.0]},
+                # The spelling on the operator's disk: rooted one level too
+                # deep, so it names nothing in the corpus.
+                "Home/Important Docs/Marriage License": {"hash": "h4", "vec": [1.0, 2.0]},
+                # An ordinary note that has since been deleted.
+                "personal/Church/gone": {"hash": "h5", "vec": [2.0, 0.0]},
+            })
+            rep = nld.prune_embed_cache(v)
+            self.assertEqual(rep["walled"], 1)
+            self.assertEqual(rep["absent"], 2)
+            self.assertEqual(rep["kept"], 2)
+            self.assertTrue(rep["written"])
+            left = json.loads(cache.read_text(encoding="utf-8"))
+            self.assertEqual(set(left), {"personal/Church/baptism",
+                                         "personal/Church/confirmation"})
+            # The kept entries are untouched, not rewritten.
+            self.assertEqual(left["personal/Church/baptism"],
+                             {"hash": "h1", "vec": [1.0, 0.0]})
+
+    def test_a_clean_cache_is_left_byte_identical(self):
+        with _Vault() as v:
+            cache = nld.default_embed_index_path(v)
+            self._seed(v, cache, {})
+            before = cache.read_bytes()
+            rep = nld.prune_embed_cache(v)
+            self.assertEqual((rep["walled"], rep["absent"], rep["kept"]), (0, 0, 2))
+            self.assertFalse(rep["written"])
+            self.assertEqual(cache.read_bytes(), before)
+
+    def test_a_dry_run_writes_nothing(self):
+        with _Vault() as v:
+            cache = nld.default_embed_index_path(v)
+            self._seed(v, cache, {
+                f"{WALLED_DIR}/Recovery Codes": {"hash": "h3", "vec": [1.0, 1.0]}})
+            before = cache.read_bytes()
+            rep = nld.prune_embed_cache(v, apply=False)
+            self.assertEqual(rep["walled"], 1)
+            self.assertFalse(rep["written"])
+            self.assertEqual(cache.read_bytes(), before)
+
+    def test_an_empty_corpus_is_refused_rather_than_emptying_the_file(self):
+        # What a wrong --vault looks like. Under it every key reads as absent,
+        # so the rule that removes stale keys would remove all of them.
+        with _Vault() as v, _Vault() as empty:
+            cache = nld.default_embed_index_path(v)
+            self._seed(v, cache, {})
+            before = cache.read_bytes()
+            with self.assertRaises(ValueError):
+                nld.prune_embed_cache(empty, cache_path=cache)
+            self.assertEqual(cache.read_bytes(), before)
+
+    def test_dry_run_without_prune_cache_is_refused(self):
+        # The flag reads as "change nothing" and is consulted by one mode. Next
+        # to --apply, the one mode that writes into personal notes, silently
+        # ignoring it is the worst thing it could do.
+        with _Vault() as v:
+            _write(v, "personal/Church/baptism.md", "Baptism covenant ordinance.")
+            _write(v, "personal/Church/confirmation.md", "Confirmation covenant ordinance.")
+            buf, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(buf), redirect_stderr(err):
+                rc = nld.main(["--vault", str(v), "--apply", "--dry-run",
+                               "--min-score", "0.05"])
+            self.assertEqual(rc, 2)
+            self.assertIn("--dry-run applies to --prune-cache", err.getvalue())
+            self.assertNotIn(nld._APPLY_MARKER,
+                             (v / "personal/Church/baptism.md").read_text(encoding="utf-8"))
+
+    def test_the_cache_write_is_atomic(self):
+        # A prune rewrites a file that is megabytes of vectors. A write
+        # interrupted halfway leaves truncated JSON, and the cost of that is
+        # re-embedding the corpus.
+        with _Vault() as v:
+            cache = nld.default_embed_index_path(v)
+            self._seed(v, cache, {})
+            before = cache.read_bytes()
+            saved = Path.write_text
+
+            def boom(self, *a, **kw):
+                if self.name.endswith(".tmp"):
+                    saved(self, *a, **kw)
+                    raise OSError("interrupted after the temp file was written")
+                return saved(self, *a, **kw)
+            try:
+                Path.write_text = boom
+                with self.assertRaises(OSError):
+                    nld._save_embed_cache(cache, {"replacement": 1})
+            finally:
+                Path.write_text = saved
+            self.assertEqual(cache.read_bytes(), before,
+                             "an interrupted write reached the cache file")
+
+    def test_a_missing_cache_is_not_an_error(self):
+        with _Vault() as v:
+            rep = nld.prune_embed_cache(v)
+            self.assertEqual((rep["walled"], rep["absent"], rep["kept"]), (0, 0, 0))
+            self.assertFalse(rep["written"])
+
+    def test_the_cli_prunes_and_reports(self):
+        with _Vault() as v:
+            cache = nld.default_embed_index_path(v)
+            self._seed(v, cache, {
+                f"{WALLED_DIR}/Recovery Codes": {"hash": "h3", "vec": [1.0, 1.0]},
+                "personal/Church/gone": {"hash": "h5", "vec": [2.0, 0.0]},
+            })
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = nld.main(["--vault", str(v), "--prune-cache"])
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn("dropped 1 walled key(s)", out)
+            self.assertIn("1 key(s) naming no note in the corpus", out)
+            self.assertNotIn("Recovery Codes", out,
+                             "the report names a walled note")
+            self.assertEqual(set(json.loads(cache.read_text(encoding="utf-8"))),
+                             {"personal/Church/baptism", "personal/Church/confirmation"})
 
 
 # Every test in this module gets its own engine state dir. Without it a hand

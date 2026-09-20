@@ -181,6 +181,14 @@ func (w *Watcher) reconcile(commit bool) (index.ReconcileReport, error) {
 		w.log.Warn("reconcile finished with errors",
 			"errors", len(rep.Errors), "first", shown)
 	}
+	// Logged only when it found something. A row outliving its document means a
+	// writer leaked, and a line in the log is how that is noticed at all; a
+	// count of zero every five minutes is how it stops being noticed.
+	if rep.Swept.Total() > 0 || rep.Swept.Unresolved > 0 {
+		w.log.Info("swept rows whose document is gone",
+			"detail", rep.Swept.String(), "rows", rep.Swept.Total(),
+			"unresolved_links", rep.Swept.Unresolved)
+	}
 	if commit {
 		// Ask git rather than replay the report. The reconcile pass reports a
 		// vanished path exactly once — it drops the row on the first pass that

@@ -1,6 +1,6 @@
 # Note relatedness signals reference
 
-The `notes_link_discovery.py` script scores signals. It finds related-but-unlinked pairs among your **personal** notes. This corpus includes everything outside the vault root and `.obsidian/`. The audit never mutates a personal note. It surfaces candidate links for you to review (A3). Suggestions are strictly personal↔personal. A vault-root entry is never a source or a target (DC-2).
+The `notes_link_discovery.py` script scores signals. It finds related-but-unlinked pairs among your **personal** notes. This corpus includes everything outside the vault root and `.obsidian/`, minus the areas the filing contract walls from recall. The audit never mutates a personal note. It surfaces candidate links for you to review (A3). Suggestions are strictly personal↔personal. A vault-root entry is never a source or a target (DC-2).
 
 ## ⚡ Quick Reference
 
@@ -8,10 +8,12 @@ The `notes_link_discovery.py` script scores signals. It finds related-but-unlink
 |---|---|
 | What runs the audit? | `harness/skills/memory/scripts/notes_link_discovery.py` (the relatedness engine + report writer). |
 | How do I see suggestions? | `python3 harness/skills/memory/scripts/notes_link_discovery.py --format text` (or `--format json`). |
-| Which notes are in the corpus? | Personal notes only — the Obsidian vault **excluding the vault root folder, `.obsidian/`, `.trash/`, `.git/`** (DC-2). |
+| Which notes are in the corpus? | Personal notes only — the Obsidian vault **excluding the vault root folder, `.obsidian/`, `.trash/`, `.git/`** (DC-2) **and every area the filing contract walls with `recall_exempt_areas`**. |
+| What does the wall keep out? | `personal/Home/Important Docs` and anything else the contract names. The walk refuses those folders before reading a file, so a walled note is never scored, never named in the report, never embedded or cached, never in the `--apply` backup, and never written into by `--apply`. `vault_lint`'s link-target walk holds the same wall: it names a walled note so links to it still resolve, without opening it. |
 | What are the two signals? | **TF-IDF** content overlap (lexical) + **embedding** cosine (semantic, opt-in via `--embeddings`). Folder + date proximity are weak context. |
 | Does the audit ever edit a note? | Not by default — read-only / surface-only (DC-1). The opt-in `--apply` flag is the one exception: it writes the safe suggestions into a marked `## Related` section, backup-first + idempotent (you directed it; A3 satisfied). |
 | Where do outputs live? | Report → `<vault>/diagnostics/lint/notes-links-<date>.md`; embedding cache → `~/.local/state/agentm/notes-embeddings.json` (the engine state directory; `$AGENTM_STATE_DIR` overrides). Never beside a personal note. This cache is this tool's own — it was never the AgentMemory index, which has since been removed entirely. |
+| How do I clear stale keys out of the cache? | `--prune-cache` drops every key the contract walls and every key naming a note the corpus no longer holds, then says how many of each went. It loads no model; `--dry-run` reports without writing. See [Find missing note links](Find-Missing-Note-Links). |
 | How do I run the report? | See [Find missing note links](Find-Missing-Note-Links). |
 | Related pages | [Find missing note links](Find-Missing-Note-Links) |
 

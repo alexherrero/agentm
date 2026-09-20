@@ -331,6 +331,13 @@ type backfillReport struct {
 	// in exactly the way a note it ranks poorly is not.
 	Failed      int      `json:"failed"`
 	FailedPaths []string `json:"failed_paths,omitempty"`
+	// Vanished counts notes that left the index between the query that chose
+	// them and the write — deleted, or walled by an edit to the contract while
+	// a long batch was embedding. Their vectors are refused rather than stored,
+	// because the id is the join key and a re-added note takes a fresh one.
+	// Counted apart from Failed: the model did its work on these, and nothing
+	// is wrong.
+	Vanished int `json:"vanished,omitempty"`
 	// Stalled is set when a whole batch failed, which would otherwise loop.
 	Stalled  bool          `json:"stalled,omitempty"`
 	Elapsed  time.Duration `json:"-"`
@@ -444,15 +451,39 @@ func runBackfill(
 			})
 			embeddedNotes[ni] = true
 		}
-		if err := idx.PutVectors(model.Name, rows); err != nil {
+		vanished, err := idx.PutVectors(model.Name, rows)
+		if err != nil {
 			return rep, err
 		}
-		rep.Embedded += len(embeddedNotes)
-		rep.Chunks += len(rows)
+		// What was stored, not what was handed over. A note that left the index
+		// while this batch was embedding has no vector to show for it, and
+		// counting it would overstate coverage and spend the `--limit` budget on
+		// a note that is not there.
+		gone := make(map[int64]bool, len(vanished))
+		for _, id := range vanished {
+			gone[id] = true
+		}
+		stored, storedRows := 0, 0
+		for ni := range embeddedNotes {
+			if !gone[pending[ni].ID] {
+				stored++
+			}
+		}
+		for _, r := range rows {
+			if !gone[r.DocID] {
+				storedRows++
+			}
+		}
+		rep.Embedded += stored
+		rep.Chunks += storedRows
+		rep.Vanished += len(vanished)
 
 		// A batch that embedded no note would otherwise loop forever: the notes
 		// stay pending by design, so the next query returns the same ones. Stop
-		// and report instead of spinning.
+		// and report instead of spinning. Asked of what the model produced
+		// rather than of what was stored: a batch whose notes all vanished
+		// stored nothing and is not a stall, since `PendingEmbeds` joins
+		// docmeta and will not offer them again.
 		if len(embeddedNotes) == 0 {
 			rep.Stalled = true
 			break
