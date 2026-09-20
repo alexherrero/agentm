@@ -166,7 +166,7 @@ func Compose(previous string, r Response, s Stamp, depth Depth, offered []Neighb
 		r.Body = ""
 	}
 
-	verdict := VerdictFor(previous, r, s.ConfidenceFloor)
+	verdict := VerdictForNote(previous, r, s.ConfidenceFloor, s.NeverFiles)
 	body := joinBody(captured, section, after)
 	// The card leaves in the card's order (agentm-vault § The card). The render
 	// writes the judgment and the carry appends the provenance, and neither

@@ -414,3 +414,80 @@ func TestACardWithNoFrontmatterKeepsItsText(t *testing.T) {
 		t.Errorf("no frontmatter was written:\n%s", next)
 	}
 }
+
+// The night may enrich a card in the drop folder and may never file one
+// (agentm-vault plan 16). `VerdictFor` promoted on confidence alone, with no
+// path or trust check, so a card nobody had read could be stamped `active` by
+// a score — which is the one thing that part exists to prevent. The folder was
+// empty when this was found, so nothing had been mis-stamped; that was luck.
+func TestTheNightNeverFilesACardInTheDropFolder(t *testing.T) {
+	card := "---\ntitle: a thought typed on a phone\nstatus: unfiled\n" +
+		"trust: untrusted\n---\n\nDrive is already the route.\n"
+	r := Response{Title: "a thought typed on a phone", Type: "reference",
+		Summary: "the night wrote this", Confidence: 0.99, ImportanceProposed: 8}
+
+	// Same card, same sky-high confidence, two postures.
+	filed := Stamp{Version: "enrich/1", ConfidenceFloor: 0.6}
+	dropped := Stamp{Version: "enrich/1", ConfidenceFloor: 0.6, NeverFiles: true}
+
+	inClass, cv, err := Compose(card, r, filed, DepthLight, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cv.Status != "active" {
+		t.Fatalf("a confident card in a class directory did not file: %q", cv.Status)
+	}
+
+	inbox, iv, err := Compose(card, r, dropped, DepthLight, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iv.Status != "unfiled" {
+		t.Errorf("the night filed an inbox card: status %q at confidence %.2f "+
+			"against a floor of %.2f", iv.Status, r.Confidence, filed.ConfidenceFloor)
+	}
+	if iv.FilingConfidence != "low" {
+		t.Errorf("filing_confidence %q, want low — the card is still a candidate",
+			iv.FilingConfidence)
+	}
+	if iv.Sank {
+		t.Error("an inbox card sank; it was never judged by a person, so there " +
+			"is nothing for it to sink from")
+	}
+	for _, want := range []string{"status: unfiled", "filing_confidence: low"} {
+		if !strings.Contains(inbox, want) {
+			t.Errorf("the written card does not carry %q:\n%s", want, inbox)
+		}
+	}
+	if strings.Contains(inbox, "status: active") {
+		t.Errorf("the written card says active:\n%s", inbox)
+	}
+
+	// The enrichment itself still happened — that is why the night reaches the
+	// folder at all. The guard bars the promotion, not the work.
+	for _, want := range []string{"summary:", "the night wrote this"} {
+		if !strings.Contains(inbox, want) {
+			t.Errorf("the card was not enriched at all; %q is missing:\n%s", want, inbox)
+		}
+	}
+	// And the operator's own text is untouched, in both postures.
+	for name, got := range map[string]string{"class": inClass, "inbox": inbox} {
+		if !strings.Contains(got, "Drive is already the route.") {
+			t.Errorf("%s: the card's own text did not survive:\n%s", name, got)
+		}
+	}
+}
+
+// The zero value is "may file", so every caller that predates the drop folder
+// keeps the behaviour it had. This is what makes the additive field safe.
+func TestTheDefaultPostureIsUnchanged(t *testing.T) {
+	card := "---\ntitle: x\nstatus: unfiled\n---\n\nbody\n"
+	r := Response{Title: "x", Type: "reference", Summary: "s", Confidence: 0.99}
+	v := VerdictFor(card, r, 0.6)
+	if v.Status != "active" {
+		t.Errorf("VerdictFor no longer files a confident card: %q", v.Status)
+	}
+	if got := VerdictForNote(card, r, 0.6, false); got != v {
+		t.Errorf("VerdictForNote(neverFiles=false) = %+v, want VerdictFor's %+v", got, v)
+	}
+}

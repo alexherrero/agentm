@@ -70,6 +70,20 @@ type Stamp struct {
 	// leaving it out is what keeps a rendered note byte-identical across calls
 	// when a test needs it to be.
 	At time.Time
+	// NeverFiles bars this judgment from promoting the note, whatever the
+	// model's confidence. It is set for a card in the drop folder
+	// (`agent/inbox/`), where the rule is that nothing files a card except the
+	// operator at the review pass — not the sweep, not the night, not this.
+	//
+	// It is a property of WHERE the note is, deliberately, and not of what it
+	// says. An inbox card's `trust: untrusted` is written by the chat surface
+	// that wrote the card, so a card that omitted it — or claimed
+	// `trust: trusted` — would exempt itself from its own guard. The folder is
+	// the fact; the frontmatter is the card's claim about itself.
+	//
+	// Zero value is "may file", so every caller that predates the drop folder
+	// keeps exactly the behaviour it had.
+	NeverFiles bool
 }
 
 // RenderNote turns an enriched response into the bytes that go on disk.
@@ -201,6 +215,24 @@ type FilingVerdict struct {
 // `preference` and `convention` — a rule nobody has read in a while is still
 // the rule. They stay `unfiled` and listed for the operator instead.
 func VerdictFor(previous string, r Response, floor float64) FilingVerdict {
+	return verdictFor(previous, r, floor, false)
+}
+
+// VerdictForNote is VerdictFor with the note's posture: `neverFiles` bars a
+// promotion whatever the confidence, for a card in the drop folder.
+func VerdictForNote(previous string, r Response, floor float64, neverFiles bool) FilingVerdict {
+	return verdictFor(previous, r, floor, neverFiles)
+}
+
+func verdictFor(previous string, r Response, floor float64, neverFiles bool) FilingVerdict {
+	// The drop folder's rule, ahead of the floor: a card there stays `unfiled`
+	// however sure the model is, because "filed" is what the operator does at
+	// the review pass and a confidence score is not a person reading a card.
+	// `filing_confidence: low` rides with it — the judgment is real and the
+	// card is still a candidate, which is exactly what low says.
+	if neverFiles {
+		return FilingVerdict{Status: "unfiled", FilingConfidence: "low"}
+	}
 	if r.Confidence >= Floor(floor) {
 		return FilingVerdict{Status: "active", FilingConfidence: "high"}
 	}
