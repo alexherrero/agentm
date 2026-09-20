@@ -92,15 +92,13 @@ _DAEMON_DECAY_ENABLED_KEY = "daemon.decay_enabled"
 _DAEMON_CRYSTALLIZE_ENABLED_KEY = "daemon.crystallize_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
-# The mail door (agentm-vault § Surfaces): the mailbox every chat surface
-# writes to, the addresses it accepts from, and the authserv-id that says
-# which `Authentication-Results` header is our own server's rather than one
-# a sender wrote. The URL carries a password and is masked on echo, like the
-# SMTP one beside it.
-_AUTONOMY_MAILBOX_URL_KEY = "plugins.autonomy.mailbox_url"
-_AUTONOMY_MAIL_OWN_ADDRESSES_KEY = "plugins.autonomy.mail_own_addresses"
-_AUTONOMY_MAIL_AUTHSERV_ID_KEY = "plugins.autonomy.mail_authserv_id"
-_AUTONOMY_CAPTURE_ADDRESS_KEY = "plugins.autonomy.capture_address"
+# The mail door's four keys — the mailbox URL, the sender allow-list, the
+# server-identity token and the published capture address — retired with its
+# transport (agentm-vault plan 16). A chat surface writes by dropping a card into
+# `agent/inbox/` over Google Drive, which needs no credential on any device and
+# no inbound connection to this machine, so there is nothing here to configure.
+# The two `email_*` keys below are a different thing and stay: they send the
+# operator a nightly digest.
 #: Optional — the verified sending address for relays (e.g. Resend) that
 #: require a domain-verified From distinct from the SMTP auth username.
 #: Absent → the sender falls back to email_to (mail-to-self, fine for a
@@ -563,113 +561,6 @@ def cmd_set_email_smtp_url(prefix: Path, url: str) -> int:
     return 0
 
 
-def cmd_set_mailbox_url(prefix: Path, url: str) -> int:
-    """Set the mail door's mailbox (`plugins.autonomy.mailbox_url`).
-
-    An `imaps://user:password@host[:port]/FOLDER` URL. IMAP over TLS and
-    nothing else: the door refuses any other scheme rather than negotiating an
-    upgrade, because a fallback is a downgrade attack with a polite name.
-
-    The password is written to the config untouched and masked on the terminal
-    echo, exactly as `email_smtp_url` beside it. Nothing else in this repo reads
-    the value — `mail_door.py` hands it straight to the IMAP client, and every
-    error it can raise names this key rather than the URL.
-    """
-    url = url.strip()
-    if not url:
-        print("[agentm_config] refusing to set mailbox_url: url must be a "
-              "non-empty string", file=sys.stderr)
-        return 2
-    if not url.startswith("imaps://"):
-        print("[agentm_config] refusing to set mailbox_url: the door speaks "
-              "IMAP over TLS only, so the URL must begin imaps://", file=sys.stderr)
-        return 2
-    config = _read_config(prefix) or {}
-    if config.get(_AUTONOMY_MAILBOX_URL_KEY) == url:
-        return 0
-    config[_AUTONOMY_MAILBOX_URL_KEY] = url
-    written = _write_config(prefix, config)
-    print(f"{_AUTONOMY_MAILBOX_URL_KEY} = {_mask_smtp_url_password(url)}")
-    print(f"(written to {written})", file=sys.stderr)
-    return 0
-
-
-def cmd_set_mail_own_addresses(prefix: Path, addresses: str) -> int:
-    """Set the addresses the door accepts from (`plugins.autonomy.mail_own_addresses`).
-
-    Comma-separated. The door compares the parsed `From:` address against this
-    list and nothing else — never the display name, which is free text.
-
-    There is no "empty means everyone": with no list the door reports itself
-    unconfigured and stays shut, because a door that accepted mail from anyone
-    who learned the address is the one failure it must not have.
-    """
-    parsed = [a.strip().lower() for a in addresses.split(",") if a.strip()]
-    if not parsed:
-        print("[agentm_config] refusing to set mail_own_addresses: the list "
-              "must name at least one address; an empty list shuts the door "
-              "rather than opening it", file=sys.stderr)
-        return 2
-    config = _read_config(prefix) or {}
-    if config.get(_AUTONOMY_MAIL_OWN_ADDRESSES_KEY) == parsed:
-        return 0
-    config[_AUTONOMY_MAIL_OWN_ADDRESSES_KEY] = parsed
-    written = _write_config(prefix, config)
-    print(f"{_AUTONOMY_MAIL_OWN_ADDRESSES_KEY} = {', '.join(parsed)}")
-    print(f"(written to {written})", file=sys.stderr)
-    return 0
-
-
-def cmd_set_mail_authserv_id(prefix: Path, authserv_id: str) -> int:
-    """Set which `Authentication-Results` header is ours (`plugins.autonomy.mail_authserv_id`).
-
-    That header is ordinary: a sender can include one asserting anything they
-    like. The one that means something is the one the receiving server
-    prepended, and it carries that server's `authserv-id` as its first token.
-    This is that token — `mx.google.com` for Gmail.
-
-    Unset, the door accepts nothing: with no way to tell our server's header
-    from a forged one, refusing is the only honest reading.
-    """
-    value = authserv_id.strip().lower()
-    if not value:
-        print("[agentm_config] refusing to set mail_authserv_id: without it "
-              "the door cannot tell our server's Authentication-Results from a "
-              "forged one, and accepts nothing", file=sys.stderr)
-        return 2
-    config = _read_config(prefix) or {}
-    if config.get(_AUTONOMY_MAIL_AUTHSERV_ID_KEY) == value:
-        return 0
-    config[_AUTONOMY_MAIL_AUTHSERV_ID_KEY] = value
-    written = _write_config(prefix, config)
-    print(f"{_AUTONOMY_MAIL_AUTHSERV_ID_KEY} = {value}")
-    print(f"(written to {written})", file=sys.stderr)
-    return 0
-
-
-def cmd_set_capture_address(prefix: Path, address: str) -> int:
-    """Set the address the payload tells a chat surface to mail
-    (`plugins.autonomy.capture_address`).
-
-    Not a secret — it is rendered into the pasted payload. Kept separate from
-    the mailbox URL for exactly that reason: one is published to three chat
-    surfaces and the other never leaves this file.
-    """
-    value = address.strip()
-    if not value or "@" not in value:
-        print("[agentm_config] refusing to set capture_address: it must be an "
-              "email address", file=sys.stderr)
-        return 2
-    config = _read_config(prefix) or {}
-    if config.get(_AUTONOMY_CAPTURE_ADDRESS_KEY) == value:
-        return 0
-    config[_AUTONOMY_CAPTURE_ADDRESS_KEY] = value
-    written = _write_config(prefix, config)
-    print(f"{_AUTONOMY_CAPTURE_ADDRESS_KEY} = {value}")
-    print(f"(written to {written})", file=sys.stderr)
-    return 0
-
-
 def cmd_get(prefix: Path, field: str) -> int:
     """Read a single field; rc=0 if present, rc=1 silent if absent.
 
@@ -800,18 +691,6 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="set plugins.autonomy.email_to — opt in to the daily digest email")
     op.add_argument("--email-smtp-url", metavar="URL",
                     help="set plugins.autonomy.email_smtp_url — the first-party SMTP/mail-agent target")
-    op.add_argument("--mailbox-url", metavar="URL",
-                    help="set plugins.autonomy.mailbox_url — the mail door's mailbox, "
-                         "imaps:// only; the password is masked on echo")
-    op.add_argument("--mail-own-addresses", metavar="ADDRS",
-                    help="set plugins.autonomy.mail_own_addresses — the comma-separated "
-                         "addresses the mail door accepts from; empty shuts the door")
-    op.add_argument("--mail-authserv-id", metavar="ID",
-                    help="set plugins.autonomy.mail_authserv_id — the authserv-id that "
-                         "marks our own Authentication-Results header (e.g. mx.google.com)")
-    op.add_argument("--capture-address", metavar="ADDRESS",
-                    help="set plugins.autonomy.capture_address — the address the pasted "
-                         "payload tells a chat surface to mail a card to")
     op.add_argument("--email-from", metavar="ADDRESS",
                     help="set plugins.autonomy.email_from — the verified sending address (optional; some relays require this distinct from the SMTP auth username)")
     op.add_argument("--get", metavar="FIELD", help="read single field to stdout")
@@ -847,14 +726,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_email_to(prefix, args.email_to)
     if args.email_smtp_url is not None:
         return cmd_set_email_smtp_url(prefix, args.email_smtp_url)
-    if args.mailbox_url is not None:
-        return cmd_set_mailbox_url(prefix, args.mailbox_url)
-    if args.mail_own_addresses is not None:
-        return cmd_set_mail_own_addresses(prefix, args.mail_own_addresses)
-    if args.mail_authserv_id is not None:
-        return cmd_set_mail_authserv_id(prefix, args.mail_authserv_id)
-    if args.capture_address is not None:
-        return cmd_set_capture_address(prefix, args.capture_address)
     if args.email_from is not None:
         return cmd_set_email_from(prefix, args.email_from)
     if args.get is not None:

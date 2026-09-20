@@ -47,7 +47,7 @@ SURFACES = [
 
 
 def print_body(body_only: bool = False) -> int:
-    body = pr.render(pr.read_template(), pr.capture_address())
+    body = pr.render(pr.read_template())
     print(body, end="")
     if body_only:
         return 0
