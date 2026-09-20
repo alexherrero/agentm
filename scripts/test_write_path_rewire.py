@@ -216,13 +216,30 @@ class TheIngestSweepReadsTheClassDirectories(_Vault):
         self.assertEqual(result.fetched + result.staged_clips + result.promoted, [])
         self.assertEqual(_frontmatter(r.path)["status"], "unfiled")
 
-    def test_a_legacy_inbox_is_still_read_while_it_exists(self):
+    def test_a_legacy_inbox_is_no_longer_read(self):
+        # This test used to assert the opposite — that the sweep still walked a
+        # legacy `memory/_inbox/` while one existed. agentm-vault plan 16
+        # retired that walk, because the operator's drop folder is now called
+        # an inbox too (`agent/inbox/`) and the two mean opposite things: one
+        # waits for a person, one is drained by this job. A walk that could
+        # reach a folder named for waiting is the hazard the retirement closes.
+        #
+        # The note is not lost by the retirement, and that is the half worth
+        # keeping: `check-memory-root-shape` names a vault that still holds the
+        # directory (scripts/test_check_memory_root_shape.py), so a stranded
+        # card is reported rather than silently swept.
         inbox = self.root / "memory" / "_inbox"
         inbox.mkdir()
         p = inbox / "old-link.md"
         p.write_text("---\nkind: capture\nstatus: inbox\nslug: old-link\n"
                      "source_url: https://example.com/old\n---\n\nleft over\n", encoding="utf-8")
-        self.assertIn(p, ingest_sweep._iter_inbox_candidates(self.root))
+        self.assertNotIn(p, ingest_sweep._iter_inbox_candidates(self.root))
+        before = p.read_bytes()
+        with mock.patch.object(ingest_sweep.ingest, "fetch_url", side_effect=AssertionError(
+                "the sweep fetched a note in the retired memory/_inbox/")):
+            result = ingest_sweep.run_ingest_sweep(self.root, now=_NOW.timestamp())
+        self.assertEqual(p.read_bytes(), before)
+        self.assertEqual(result.fetched + result.staged_clips + result.promoted, [])
 
 
 if __name__ == "__main__":

@@ -3,9 +3,9 @@
 
 agentm-vault plan 05 ruled the shape of the agent's half of the vault:
 
-  agent/        holds `diagnostics/` and `memory/` (and `archive/` once plan
-                11 creates it) and nothing loose — no engine JSON, no `_meta/`,
-                no `_dream/`, no `desk/`.
+  agent/        holds `diagnostics/`, `memory/`, `archive/` (plan 11) and
+                `inbox/` (plan 16) and nothing loose — no engine JSON, no
+                `_meta/`, no `_dream/`, no `desk/`.
   memory/       holds only the class directories the filing contract routes
                 into — nothing loose, no pen, no watchlist, no settings file.
   standards/    holds the four rule files and the voice library:
@@ -51,7 +51,17 @@ import maps_shape as ms  # noqa: E402
 import vault_layout  # noqa: E402
 
 CLASSES = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
-AGENT_DIRS = {"diagnostics", "memory", "archive"}
+# The standard children of `agent/`. `inbox` is the fourth (agentm-vault plan
+# 16): the folder a chat surface drops a card into over the Drive mirror. It
+# sits here, outside `memory/`, on purpose — `_iter_inbox_candidates` walks
+# `memory/<class>/*.md` for `status: unfiled`, so a drop folder placed under
+# `memory/` would be ingested within the hour, which inverts the posture the
+# inbox exists to create.
+AGENT_DIRS = {"diagnostics", "memory", "archive", "inbox"}
+# The retired staging directory the hourly sweep used to walk. The walk retired
+# with plan 16 so the path cannot come back by accident; a vault that still
+# holds one is named below rather than left to be swept silently.
+RETIRED_INBOX = "_inbox"
 AGENT_LOOSE_UNTIL_MAPS = {"Home.md"}  # retired by the maps data run (agentm-vault plan 07)
 IGNORABLE = {".DS_Store", "Icon\r", "Icon", ".rename-vault-root-complete", ".gitkeep",
              ".card-backfill-complete",  # the card backfill's marker (agentm-vault plan 06)
@@ -115,7 +125,13 @@ def _shape_findings(root: Path) -> list[str]:
             if p.name in IGNORABLE:
                 continue
             if p.is_dir():
-                if p.name not in CLASSES:
+                if p.name == RETIRED_INBOX:
+                    findings.append(
+                        f"memory/{RETIRED_INBOX}/ is the retired staging "
+                        "directory — the hourly sweep no longer walks it "
+                        "(agentm-vault plan 16), so anything in it is stranded: "
+                        "move its cards to agent/inbox/ and remove the directory")
+                elif p.name not in CLASSES:
                     findings.append(f"memory/ holds a non-class directory: {p.name}/")
             else:
                 findings.append(f"memory/ holds a loose file: {p.name}")

@@ -114,6 +114,50 @@ class ShapeGateTests(unittest.TestCase):
         self.assertEqual(rc, 0, text)
         self.assertNotIn(".root-casing-complete", text, "the data run's own marker was named")
 
+    def test_the_inbox_is_a_standard_child_and_a_fifth_one_is_not(self):
+        # agentm-vault plan 16: `agent/` holds exactly archive/, diagnostics/,
+        # inbox/ and memory/. The gate has to accept the fourth and still fail
+        # on a fifth, or "nothing loose" has quietly become "anything at all".
+        mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
+        (self.root / "inbox").mkdir(exist_ok=True)
+        (self.root / "archive").mkdir(exist_ok=True)
+        rc, text = self._check()
+        self.assertEqual(rc, 0, text)
+        self.assertNotIn("inbox", text, "the fourth standard child was named as a finding")
+        self.assertEqual(
+            sorted(p.name for p in self.root.iterdir() if p.is_dir()),
+            ["archive", "diagnostics", "inbox", "memory"])
+        (self.root / "outbox").mkdir()
+        rc, text = self._check()
+        self.assertEqual(rc, 1, text)
+        self.assertIn("extra directory: outbox/", text)
+
+    def test_a_card_in_the_inbox_is_not_a_loose_file(self):
+        # The inbox's whole content is cards. The gate walks `agent/` one level
+        # for loose files; a card one level deeper must not read as one.
+        mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
+        (self.root / "inbox").mkdir(exist_ok=True)
+        (self.root / "inbox" / "a-thought.md").write_text(
+            "---\ntitle: a thought\n---\n\nbody\n", encoding="utf-8")
+        rc, text = self._check()
+        self.assertEqual(rc, 0, text)
+        self.assertNotIn("a-thought.md", text)
+
+    def test_the_retired_staging_inbox_is_named_rather_than_swept(self):
+        # The hourly sweep no longer walks `memory/_inbox/` (plan 16). A vault
+        # that still holds one holds cards nothing will ever drain, so the gate
+        # says so by name — the alternative is a directory that looks live and
+        # is not.
+        mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
+        (self.root / "memory" / "_inbox").mkdir()
+        (self.root / "memory" / "_inbox" / "stranded.md").write_text(
+            "---\nstatus: inbox\n---\n", encoding="utf-8")
+        rc, text = self._check()
+        self.assertEqual(rc, 1, text)
+        self.assertIn("memory/_inbox/", text)
+        self.assertIn("retired staging directory", text)
+        self.assertIn("agent/inbox/", text)
+
     def test_a_missing_standards_file_is_named(self):
         mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
         (self.vault / "standards" / "moc-standards.md").unlink()
