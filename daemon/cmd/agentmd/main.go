@@ -1351,24 +1351,15 @@ func cmdEnrich(args []string) error {
 		budget.PageSize = *pageSize
 	}
 
-	// The queue is the cards in the contract's class directories, taken once.
-	// It used to be every `unfiled` note, which stopped being the question when
-	// eligibility moved from status to stamp: an `active` card nothing ever
-	// judged is owed the deep pass as much as an unfiled one.
-	dirs, err := enrichQueueDirs(cfg)
-	if err != nil {
-		return err
-	}
-	queue, err := enrichQueue(idx, dirs)
-	if err == nil {
-		// The project records queue after the cards, inside the same line
-		// (agentm-vault § Projects and tasks): no card waits for a record, and
-		// the lister pages this slice by position, so the order holds.
-		var records []string
-		if records, err = enrichRecordQueue(idx); err == nil {
-			queue = append(queue, records...)
-		}
-	}
+	// The queue is the drop folder, then the cards in the contract's class
+	// directories, then the project records — each tier oldest first, taken
+	// once (agentm-vault plan 16). It used to be every `unfiled` note, which
+	// stopped being the question when eligibility moved from status to stamp:
+	// an `active` card nothing ever judged is owed the deep pass as much as an
+	// unfiled one. Then it was the cards and the records in path order, which
+	// let a filename decide what the night reached. The lister pages this slice
+	// by position, so the order here is the order served.
+	queue, err := enrichServeOrder(cfg, idx, true)
 	if err != nil {
 		return err
 	}
@@ -1412,24 +1403,32 @@ func cmdEnrich(args []string) error {
 		// The night sized before anything is spent: what each note is owed, read
 		// the same way the pass will read it, and the line it runs under.
 		fp := enrichFingerprint(cfg, led)
-		// Counted apart, because they are two populations under one queue: the
-		// cards come from the contract's class directories and the records from
-		// the projects space. One number over both read as a card count and was
-		// not — on the live vault of 2026-09-13 it said 503 cards where there
-		// were 211 and 292 records.
-		var cards, records int
+		// Counted apart, because they are three populations under one queue:
+		// the drop folder, the cards in the contract's class directories, and
+		// the records from the projects space. One number over them read as a
+		// card count and was not — on the live vault of 2026-09-13 it said 503
+		// cards where there were 211 and 292 records.
+		dirs, derr := enrichQueueDirs(cfg)
+		if derr != nil {
+			return derr
+		}
+		inboxDir := enrichInboxDir(cfg)
+		var inbox, cards, records int
 		for _, rel := range queue {
-			if enrich.IsProjectRecord(rel) {
+			switch {
+			case strings.HasPrefix(rel, inboxDir):
+				inbox++
+			case enrich.IsProjectRecord(rel):
 				records++
-			} else {
+			default:
 				cards++
 			}
 		}
 		var deep, light, unchanged, unreadable int
 		// From the position the lister would page from, not from every path that
-		// sorts after the cursor: the queue serves the records after the cards,
-		// so the two are different populations the moment a card's path sorts
-		// after a record's.
+		// sorts after the cursor: the queue serves the inbox, then the cards,
+		// then the records, each oldest first, so a path comparison names a
+		// different population than the pager does.
 		for _, rel := range queue[queueStart(queue, *after):] {
 			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
 			if err != nil {
@@ -1445,8 +1444,9 @@ func cmdEnrich(args []string) error {
 				light++
 			}
 		}
-		fmt.Printf("dry run: %d card(s) under %s and %d project record(s)\n",
-			cards, strings.Join(dirs, ", "), records)
+		fmt.Printf("dry run: %d inbox card(s) under %s, %d card(s) under %s and "+
+			"%d project record(s), served in that order and oldest first\n",
+			inbox, inboxDir, cards, strings.Join(dirs, ", "), records)
 		fmt.Printf("  owed the deep pass %d · the light pass %d · unchanged at this "+
 			"pass %d · unreadable %d\n", deep, light, unchanged, unreadable)
 		fmt.Printf("  budget: the %d-call guard · strong %s tokens · cheap %s tokens · %s\n",
@@ -1539,9 +1539,14 @@ func cmdEnrich(args []string) error {
 			return len(back) > 0, err
 		}},
 		Journal: enrich.NewFileJournal(filepath.Dir(cfg.IndexPath)),
+		// Atomically: a temporary file in the destination's own directory, then
+		// a rename over the target. `os.WriteFile` truncates first and fills
+		// after, so a reader — Obsidian, a recall, DriveFS taking the file up —
+		// that opens the card in between sees an empty or half-written note. In
+		// the drop folder that window is not theoretical: the whole point of
+		// the folder is that something on another device is writing into it.
 		Put: func(_ context.Context, rel, body string) error {
-			return os.WriteFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)),
-				[]byte(body), 0o644)
+			return atomicWrite(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)), body)
 		},
 		Move: func(_ context.Context, from, to string) error {
 			return os.Rename(
@@ -1787,6 +1792,21 @@ func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget,
 	// pretending to an idempotency it cannot provide.
 	fp := enrichFingerprint(cfg, led)
 	pass.AddPre(freeGates(cfg)...)
+	// The drop folder's own gate: a card that changed in the last few minutes
+	// may still be coming down from Drive (agentm-vault plan 16). Added here
+	// rather than in freeGates because the tier audit draws its sample through
+	// those, and a sample that skipped whatever arrived this afternoon would be
+	// measuring the calendar.
+	pass.AddPre(&enrich.Settle{
+		Dir: enrichInboxDir(cfg),
+		ModTime: func(rel string) (time.Time, error) {
+			st, err := os.Stat(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
+			if err != nil {
+				return time.Time{}, err
+			}
+			return st.ModTime(), nil
+		},
+	})
 	pass.AddPre(
 		fp,
 		// The refusal gate, on the fingerprint's own Key, so "keyed the same

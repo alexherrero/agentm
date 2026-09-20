@@ -202,6 +202,66 @@ func TestSizeDefersRatherThanTruncating(t *testing.T) {
 	}
 }
 
+// --- settle -----------------------------------------------------------------
+
+func TestSettleLeavesACardThatIsStillArriving(t *testing.T) {
+	now := time.Date(2026, 9, 19, 22, 0, 0, 0, time.UTC)
+	mod := map[string]time.Time{
+		"agent/inbox/just-landed.md": now.Add(-30 * time.Second),
+		"agent/inbox/settled.md":     now.Add(-2 * time.Hour),
+		// Same recency, in a class directory: written by this machine under the
+		// vault lock, so the rule does not apply to it.
+		"agent/memory/semantic/local.md": now.Add(-30 * time.Second),
+	}
+	g := &Settle{
+		Dir:     "agent/inbox/",
+		Window:  5 * time.Minute,
+		Now:     func() time.Time { return now },
+		ModTime: func(rel string) (time.Time, error) { return mod[rel], nil },
+	}
+	err := g.Check(context.Background(), Request{Rel: "agent/inbox/just-landed.md"}, "")
+	if err == nil {
+		t.Fatal("a card that changed 30s ago was offered to a model")
+	}
+	if !errors.Is(err, ErrNotEligible) {
+		t.Errorf("the refusal is not an eligibility refusal: %v", err)
+	}
+	// The refusal has to say it is about timing, or a reader takes it for a
+	// judgment about the card.
+	for _, want := range []string{"settle window", "offered again tomorrow"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal never says %q: %v", want, err)
+		}
+	}
+	if g.Check(context.Background(), Request{Rel: "agent/inbox/settled.md"}, "") != nil {
+		t.Error("a card two hours old was refused")
+	}
+	if g.Check(context.Background(), Request{Rel: "agent/memory/semantic/local.md"}, "") != nil {
+		t.Error("the settle rule reached outside the drop folder")
+	}
+}
+
+func TestSettleOffersTheCardWhenItCannotTellTheTime(t *testing.T) {
+	// A failing *timing* check must never become a reason a card is never
+	// enriched at all: the cost of enriching one card early is a rewrite the
+	// journal can undo, and the cost of the other direction is a card that
+	// waits forever for a stat that keeps failing.
+	boom := &Settle{
+		Dir:     "agent/inbox/",
+		ModTime: func(string) (time.Time, error) { return time.Time{}, errors.New("no") },
+	}
+	if boom.Check(context.Background(), Request{Rel: "agent/inbox/a.md"}, "") != nil {
+		t.Error("an unreadable mtime refused the card")
+	}
+	// And an unconfigured gate covers nothing rather than everything: a vault
+	// with no drop folder gets the behaviour it had before the folder existed.
+	for _, g := range []*Settle{nil, {}, {Dir: "agent/inbox/"}} {
+		if g.Check(context.Background(), Request{Rel: "agent/inbox/a.md"}, "") != nil {
+			t.Errorf("an unconfigured settle gate refused a card: %+v", g)
+		}
+	}
+}
+
 func TestHeaderSectionsSplitsAtHeadings(t *testing.T) {
 	got := headerSections("intro\n# One\na\n## Two\nb\n")
 	if len(got) != 3 {

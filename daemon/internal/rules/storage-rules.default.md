@@ -316,7 +316,13 @@ sources:
   operator-direct: trusted
   conversation: trusted
   external-fetch: untrusted
-  email: untrusted
+  # The drop folder. A card written by a model on a chat surface, dropped into
+  # `agent/inbox/` over Drive — content, never instructions, and never `active`
+  # until a person has read it. It replaces `email`, whose transport retired in
+  # agentm-vault plan 16; nothing in the corpus ever carried that value, so it
+  # leaves the vocabulary rather than the deprecations map, which exists for
+  # values notes still hold.
+  inbox: untrusted
 
 # The calendar's standing facets — the per-day surfaces of the daily register.
 # A facet file exists only on a day that had content for it. A pattern
@@ -343,6 +349,13 @@ dampened_spaces:
   # The night's own paper: digests, morning notes, lint reports, scorecards.
   # It answers a question that names it and stays out of every other one.
   - agent/diagnostics
+  # The drop folder a chat surface writes into over Drive. A card here is a
+  # capture nobody has read yet, which is the state `unfiled` already names, so
+  # it dampens at the weight every other dampened space carries and adds no new
+  # number. Not recall_exempt_areas: a card you cannot find until you triage it
+  # is a card you triage in order to find it, which makes the inbox a queue to
+  # be drained rather than a place a thought can rest.
+  - agent/inbox
 
 # Spaces no background model pass may read. This is a privacy boundary, not a
 # ranking one, and it is absolute: enrichment skips them, dreaming never sends

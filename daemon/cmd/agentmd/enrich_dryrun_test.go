@@ -176,9 +176,15 @@ func TestTheDryRunCountsCardsAndRecordsApartAndSizesWhatTheCursorWouldServe(t *t
 	for _, c := range cases {
 		out := dryRun(c.after)
 		// The summary is about the queue, not the slice, so it says the same
-		// thing under every cursor: two cards and three records, with the
-		// tracker, plan and progress log counted as neither.
-		if want := "dry run: 2 card(s) under agent/memory/semantic/ and 3 project record(s)\n"; !strings.Contains(out, want) {
+		// thing under every cursor: an empty drop folder, two cards and three
+		// records, with the tracker, plan and progress log counted as none of
+		// them. Three populations since agentm-vault plan 16 put the inbox at
+		// the front of the queue; the thing being pinned is unchanged — each
+		// population is counted as itself, because one number over them all
+		// read as a card count and was not.
+		if want := "dry run: 0 inbox card(s) under agent/inbox/, 2 card(s) under " +
+			"agent/memory/semantic/ and 3 project record(s), served in that " +
+			"order and oldest first\n"; !strings.Contains(out, want) {
 			t.Errorf("%s: the summary line is not %q:\n%s", c.name, strings.TrimSuffix(want, "\n"), out)
 		}
 		owed := dryRunOwed(t, out)

@@ -78,6 +78,79 @@ func (g *SelfProbe) Check(_ context.Context, req Request, body string) error {
 		"later run could recognize as a probe", ErrNotEligible, notes.ProbeMarker)
 }
 
+// --- 1b. settle -------------------------------------------------------------
+
+// DefaultSettleWindow is how recently a drop-folder card may have changed and
+// still be left alone for the night. Minutes rather than seconds, because a
+// DriveFS download of a file a phone is still editing is not one event.
+const DefaultSettleWindow = 5 * time.Minute
+
+// Settle refuses a card that is still arriving.
+//
+// The drop folder has two writers and one file. A card reaches it over Google
+// Drive, written by a chat surface on some other device, and the night rewrites
+// what it finds there — so a run that starts while DriveFS is still bringing a
+// file down reads half a card, enriches the half, and writes the result back
+// over the whole one when the rest lands. The card the operator wrote is gone
+// and nothing reports it, because from the pass's side every byte of that
+// sequence was ordinary.
+//
+// Refusing anything touched inside the window costs one night on one card, and
+// the card is still there in the morning. There is no cheaper check that is
+// also honest: the pass cannot ask Drive whether a file is finished, and a
+// content heuristic ("does this parse?") passes on the truncation that matters
+// most — a card cut off after its frontmatter.
+//
+// Scoped by path rather than applied to everything, because it is a statement
+// about *this folder's* transport. A card in a class directory was written by
+// this machine, under the vault lock, and delaying it would be superstition.
+type Settle struct {
+	// Dir is the path prefix the rule covers, e.g. `agent/inbox/`. Empty
+	// disables the gate, which is the honest state for a vault with no drop
+	// folder rather than a rule that silently covers everything.
+	Dir string
+	// Window is how recently is too recently. Zero means DefaultSettleWindow.
+	Window time.Duration
+	// ModTime reports when the note last changed. Supplied so this package does
+	// not own the vault; a nil ModTime, or one that answers with an error,
+	// leaves the card offered — the failure of a *timing* check must not become
+	// a reason a card is never enriched at all.
+	ModTime func(rel string) (time.Time, error)
+	// Now is the clock, injectable for the tests.
+	Now func() time.Time
+}
+
+func (g *Settle) Name() string { return "settle" }
+
+func (g *Settle) Check(_ context.Context, req Request, _ string) error {
+	if g == nil || g.Dir == "" || g.ModTime == nil {
+		return nil
+	}
+	if !strings.HasPrefix(req.Rel, g.Dir) {
+		return nil
+	}
+	mod, err := g.ModTime(req.Rel)
+	if err != nil {
+		return nil
+	}
+	window := g.Window
+	if window <= 0 {
+		window = DefaultSettleWindow
+	}
+	now := time.Now
+	if g.Now != nil {
+		now = g.Now
+	}
+	age := now().Sub(mod)
+	if age >= window {
+		return nil
+	}
+	return fmt.Errorf("%w: it changed %s ago, inside the %s settle window — a "+
+		"card syncing down from Drive may still be arriving, and enriching half "+
+		"a card writes the half back over the whole one; it is offered again "+
+		"tomorrow", ErrNotEligible, age.Round(time.Second), window)
+}
+
 // --- 2. eligibility ---------------------------------------------------------
 
 // Eligibility answers whether a note is enrichment's business.

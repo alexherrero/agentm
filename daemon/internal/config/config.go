@@ -420,7 +420,12 @@ func defaultEmbedScope(memoryRoot string) []string {
 	// `diagnostics` joins in filing-v2 2a: the digests and scorecards it now
 	// holds lived under `desk` before the move and were dense-retrievable —
 	// dropping them from the scope would be a silent regression, not a call.
-	names := []string{"memory", "desk", "external", "diagnostics"}
+	// `inbox` joins with the drop folder (agentm-vault plan 16). A card there is
+	// dampened, not walled — it has to come back for a query that matches it,
+	// on both arms. Leaving it out of the scope would give the lexical arm a
+	// card the dense arm cannot see, which reads as a ranking decision and is
+	// really an absent vector.
+	names := []string{"memory", "desk", "external", "diagnostics", "inbox"}
 	out := make([]string, 0, len(names))
 	for _, n := range names {
 		if root == "" {

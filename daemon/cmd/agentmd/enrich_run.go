@@ -255,6 +255,137 @@ func enrichRecordQueue(idx *index.Index) ([]string, error) {
 	return out, nil
 }
 
+// atomicWrite replaces a file's contents in one step: a temporary sibling,
+// fsynced, then renamed over the target.
+//
+// The sibling is deliberate — a rename is only atomic within a filesystem, and
+// a temp directory can be on another one. The fsync before the rename is what
+// makes the rename mean something after a crash rather than just before one.
+func atomicWrite(dest, body string) error {
+	dir := filepath.Dir(dest)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(dest)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name) // a no-op once the rename has taken it
+	if _, err := tmp.WriteString(body); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(name, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(name, dest)
+}
+
+// enrichInboxDir is the drop folder, as a path prefix: `<memory root>/inbox/`.
+// A fourth standard child of `agent/`, not a class directory — which is why it
+// needs its own walk rather than joining enrichQueueDirs.
+func enrichInboxDir(cfg *config.Config) string {
+	return path.Join(cfg.MemoryRoot, "inbox") + "/"
+}
+
+// enrichInboxQueue is every indexed note in the drop folder.
+//
+// Processing an inbox is deciding what to keep, and that decision is fast when
+// the card already carries a summary, a `why`, an importance and its
+// neighbours, and slow when it carries only what a phone had time to type. The
+// job that writes those fields is this one, which is why the night reaches a
+// folder the hourly sweep deliberately cannot (agentm-vault plan 16).
+func enrichInboxQueue(cfg *config.Config, idx *index.Index) ([]string, error) {
+	all, err := idx.Paths()
+	if err != nil {
+		return nil, err
+	}
+	dir := enrichInboxDir(cfg)
+	var out []string
+	for _, p := range all {
+		if strings.HasPrefix(p, dir) && strings.HasSuffix(p, ".md") &&
+			!strings.HasPrefix(path.Base(p), ".") {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// orderByAge sorts one tier oldest first, by the note's own age, with the path
+// as the tie-break so the order is total and two runs agree.
+//
+// A missing age cannot happen — index.PathAges falls back to the file's mtime
+// — but a path the snapshot does not hold sorts last rather than first, because
+// "we do not know how long this has been waiting" is not a claim that it has
+// been waiting the longest.
+func orderByAge(paths []string, ages map[string]string) []string {
+	out := append([]string(nil), paths...)
+	sort.SliceStable(out, func(i, j int) bool {
+		ai, oki := ages[out[i]]
+		aj, okj := ages[out[j]]
+		if oki != okj {
+			return oki
+		}
+		if ai != aj {
+			return ai < aj
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
+// enrichServeOrder is the night's queue, in the order it is served: the inbox
+// first, then the cards in the contract's class directories, then the project
+// records — and each tier oldest first.
+//
+// **Tiers, where there were none.** The queue used to be the cards in path
+// order followed by the records in path order, which meant a card's position
+// was decided by its filename. Two things were wrong with that. The inbox is
+// fed from a phone and its contents are the one population whose size the
+// operator does not control, so a card waiting there for a judgment sat behind
+// eight hundred notes that were not waiting for anything; and inside a tier,
+// path order served `004-fix-…` ahead of a card that had been in the judgment
+// queue for nine days.
+//
+// **One budget, with a priority order**, rather than a ceiling of its own: the
+// second number would have to be kept in step with the first forever, and a
+// night that runs long has one place to look.
+//
+// `records` is false for the ledger's eligible population, which counts cards
+// — the inbox is one, a project record is not.
+func enrichServeOrder(cfg *config.Config, idx *index.Index, records bool) ([]string, error) {
+	ages, err := idx.PathAges()
+	if err != nil {
+		return nil, err
+	}
+	inbox, err := enrichInboxQueue(cfg, idx)
+	if err != nil {
+		return nil, err
+	}
+	dirs, err := enrichQueueDirs(cfg)
+	if err != nil {
+		return nil, err
+	}
+	cards, err := enrichQueue(idx, dirs)
+	if err != nil {
+		return nil, err
+	}
+	out := append(orderByAge(inbox, ages), orderByAge(cards, ages)...)
+	if !records {
+		return out, nil
+	}
+	recs, err := enrichRecordQueue(idx)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, orderByAge(recs, ages)...), nil
+}
+
 // queueStart is the position a cursor resumes at: the one after the cursor's
 // own. A cursor the queue no longer holds resumes at the first path that sorts
 // after it, which is where the path-ordered pager this replaces would have
@@ -275,12 +406,17 @@ func queueStart(queue []string, cursor string) int {
 			return i + 1
 		}
 	}
-	for i, p := range queue {
-		if p > cursor {
-			return i
-		}
-	}
-	return len(queue)
+	// A cursor the queue no longer holds. This used to resume at the first path
+	// that sorted after it, which was meaningful while the queue was in path
+	// order and stopped being so when it gained tiers and an oldest-first order
+	// inside each (agentm-vault plan 16): "the first path lexically after the
+	// one that vanished" now names an arbitrary position, several tiers from
+	// where the run actually was.
+	//
+	// So: start at the top. Nothing is re-enriched by that — the fingerprint
+	// gate refuses an unchanged note before any call exists — so a restart
+	// costs a walk over the queue, not a night's budget.
+	return 0
 }
 
 // queueAfter pages the queue by position: the `limit` paths after `cursor`, or

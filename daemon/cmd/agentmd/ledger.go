@@ -340,11 +340,12 @@ func pendingFor(ctx context.Context, stage string, cfg *config.Config,
 	}
 
 	fp := enrichFingerprint(cfg, nil)
-	dirs, err := enrichQueueDirs(cfg)
-	if err != nil {
-		return ledger.Report{}, err
-	}
-	queue, err := enrichQueue(idx, dirs)
+	// The drop folder and the class directories, in the order the drain serves
+	// them, and not the project records — a card is eligible here, a record is
+	// counted by the drain and not by this number (agentm-vault plan 16 locked
+	// the inbox into the eligible population: the drain walks it, so the
+	// coverage number has to, or it is a number about a set nobody can name).
+	queue, err := enrichServeOrder(cfg, idx, false)
 	if err != nil {
 		return ledger.Report{}, err
 	}

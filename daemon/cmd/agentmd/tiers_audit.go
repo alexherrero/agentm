@@ -145,11 +145,11 @@ func planTierAudit(cfg *config.Config, job, cheap, strong, judge, version string
 // send whole. The same gates the pass runs, less the two that read a ledger
 // or a budget — this walk spends nothing.
 func auditPool(ctx context.Context, cfg *config.Config, idx *index.Index) ([]string, error) {
-	dirs, err := enrichQueueDirs(cfg)
-	if err != nil {
-		return nil, err
-	}
-	queue, err := enrichQueue(idx, dirs)
+	// The cards the drain works on — the drop folder and the class directories,
+	// not the project records. An inbox card the night has already judged is a
+	// card, and an audit drawn from a narrower population than the pass serves
+	// would grade a set the pass does not run on.
+	queue, err := enrichServeOrder(cfg, idx, false)
 	if err != nil {
 		return nil, err
 	}

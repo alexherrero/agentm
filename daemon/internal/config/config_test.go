@@ -11,7 +11,7 @@ import (
 // notes and a vector arm with no vectors looks exactly like one that is cold.
 func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 	got := defaultEmbedScope("agent")
-	want := []string{"agent/memory", "agent/desk", "agent/external", "agent/diagnostics", "projects", "calendar", "standards/voice"}
+	want := []string{"agent/memory", "agent/desk", "agent/external", "agent/diagnostics", "agent/inbox", "projects", "calendar", "standards/voice"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,10 +23,22 @@ func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 	for _, root := range []string{"", "  ", "/"} {
 		got := defaultEmbedScope(root)
-		want := "memory,desk,external,diagnostics,projects,calendar,standards/voice"
+		want := "memory,desk,external,diagnostics,inbox,projects,calendar,standards/voice"
 		if strings.Join(got, ",") != want {
 			t.Errorf("memory_root %q gave %v, want %s", root, got, want)
 		}
+	}
+}
+
+// `inbox` is deliberately IN the default scope (agentm-vault plan 16): a card
+// in the drop folder is dampened, not walled, so it has to come back for a
+// query that matches it on both arms. Left out, the lexical arm would return a
+// card the dense arm cannot see, which reads as a ranking decision and is
+// really an absent vector.
+func TestDefaultEmbedScopeCoversTheDropFolder(t *testing.T) {
+	got := strings.Join(defaultEmbedScope("agent"), ",")
+	if !strings.Contains(got, "agent/inbox") {
+		t.Errorf("the drop folder is outside the vector arm's scope: %s", got)
 	}
 }
 
