@@ -230,6 +230,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`check-vault-frontmatter` parses the whole vault, where it had been parsing
+  15% of it.** The gate was pinned to `memory_root()` on 2026-08-09, while the
+  agent's tree still held `projects/<slug>/_harness/`, the notes it was written
+  to catch. The vault then grew around the pin: filing v2 moved `projects/` up
+  beside `agent/`, the always-load notes left for a new vault-root
+  `standards/`, and `calendar/` was created there. The scan shrank without a
+  word, from 96% of the vault's notes on 2026-08-11 to about half by 2026-09-03
+  and 446 of 2,975 by 2026-09-20, with every tracker, plan and design outside
+  it. AGENTS.md described it the whole time as a parse over every vault note. It now scans `vault_path()` and prints a `scope:` line naming each
+  top-level directory it walked, with the notes in each, so a narrowed root is
+  visible where the gate runs. Widened, it parses 2,386 frontmatter blocks
+  across 2,977 notes. Two more parses of the same blocks, one refusing
+  duplicate keys and one under YAML 1.2, found nothing the gate missed. The
+  gate finds one violation, in a conversation export under one of the
+  operator's completed projects: a `source:` holding a description rather than
+  a transport. That note left the gate's reach on 2026-09-02, four days before
+  the `source:` rule arrived, so nothing had checked it. It is reported rather
+  than edited, and `check-all` stays red on it until the operator resolves it.
+- **`check-vault-frontmatter` accepts the inbox transport.** Plan 16 traded
+  `email` for `inbox` in the contract's `sources:` block, but not in the copy
+  this gate keeps. The gate would have refused every card the inbox review files
+  with `source: inbox`, and accepted a retired `email`. The copy now matches,
+  and the unit suite holds it to the packaged contract in both directions, so
+  the next vocabulary edit that misses this line fails the build instead of the
+  vault.
 - **Deleting a note deletes the note.** `Delete` cleared the lexical row, the
   vectors and the metadata row, and left the three derived tables that arrived
   after it was written — `chunks`, `links` and `entities`. Each of the three

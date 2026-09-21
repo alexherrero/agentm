@@ -43,9 +43,24 @@ scanning covers top-level keys and their block-list items, not deeper nesting �
 the corpus keeps frontmatter flat. Parse errors are caught at any depth, since
 the parse is over the whole block.
 
-The vault path is resolved at runtime via `harness_memory.vault_path()` —
-`$MEMORY_ROOT`, then `plugins.obsidian-vault.vault_path` from the kernel
-config. Never a literal (see AGENTS.md § Vault-path convention).
+The scan root is the vault root, resolved at runtime via
+`harness_memory.vault_path()`: derived from `$MEMORY_ROOT` when that is
+exported (the export names the memory root, and the configured
+`plugins.obsidian-vault.memory_root` comes off its end), else
+`plugins.obsidian-vault.vault_path` from the kernel config. Never a literal
+(see AGENTS.md § Vault-path convention).
+
+The vault root, not the memory root. From 2026-08-09 to 2026-09-20 this gate
+scanned `memory_root()`, pinned there while the agent's tree still held
+`projects/<slug>/_harness/`. The vault then grew around the pin: filing v2
+moved `projects/` up beside `agent/`, the always-load notes left for a new
+vault-root `standards/`, and `calendar/` was created there. The scan shrank
+without a word, from 96% of the vault's notes on 2026-08-11 to 15% (446 of
+2,975) when it was measured, and every tracker, plan and design was among the
+notes it never read. The machinery writes frontmatter across every space, so
+every space is scanned. The report's `scope:` line names each top-level
+directory walked and how many notes it held, so a narrowed root shows where
+the gate is run.
 
 Usage:
   python3 scripts/check-vault-frontmatter.py            # scan the resolved vault
@@ -95,6 +110,10 @@ _SKIP_DIR_PREFIXES = (".",)
 # Offset from a 0-based frontmatter-block index to a 1-based file line: one for
 # the opening `---`, one for the 1-based count.
 _FILE_LINE = 2
+
+# How the scope line names notes sitting directly in the scan root, which
+# belong to no top-level directory — the vault's own index.md and Ideas.md.
+_TOP_LEVEL = "(top level)"
 
 
 class Finding:
@@ -173,8 +192,11 @@ def _block_list_items(lines: list[str], key_index: int) -> list[tuple[int, str]]
 # resolvable contract, and a rule that silently stops checking when the
 # contract cannot be found is a rule that stops checking on every runner.
 # Changing the vocabulary is an edit to the contract and a line here, which
-# is the right amount of friction for a set that decides a trust tier.
-_TRANSPORTS = frozenset({"operator-direct", "conversation", "external-fetch", "email"})
+# is the right amount of friction for a set that decides a trust tier. The
+# unit suite holds this line to the packaged contract's `sources:` block:
+# agentm-vault plan 16 traded `email` for `inbox` in the contract alone, which
+# left this gate set to refuse every card the inbox review files.
+_TRANSPORTS = frozenset({"operator-direct", "conversation", "external-fetch", "inbox"})
 
 
 def scan_block(rel: str, block: str, doc: dict) -> list[Finding]:
@@ -336,8 +358,13 @@ def iter_notes(root: Path):
                 yield Path(dirpath) / name
 
 
-def scan_vault(root: Path, yaml_mod) -> tuple[list[Finding], int]:
-    """Scan every note under root. Returns (findings, notes scanned)."""
+def scan_vault(root: Path, yaml_mod, spaces: dict | None = None) -> tuple[list[Finding], int]:
+    """Scan every note under root. Returns (findings, notes scanned).
+
+    `spaces`, when given, is filled with the notes scanned per top-level
+    directory, counted in the same walk so the scope the report prints is
+    the scope that was scanned.
+    """
     findings: list[Finding] = []
     scanned = 0
     for path in iter_notes(root):
@@ -346,6 +373,9 @@ def scan_vault(root: Path, yaml_mod) -> tuple[list[Finding], int]:
             rel = path.relative_to(root).as_posix()
         except ValueError:  # pragma: no cover - path always under root
             rel = str(path)
+        if spaces is not None:
+            space = rel.split("/", 1)[0] if "/" in rel else _TOP_LEVEL
+            spaces[space] = spaces.get(space, 0) + 1
         findings.extend(check_note(path, rel, yaml_mod))
     return findings, scanned
 
@@ -361,14 +391,28 @@ def _write(stream, text: str) -> None:
         print(text.encode(encoding, "replace").decode(encoding), file=stream)
 
 
-def report(findings: list[Finding], scanned: int, root: Path) -> int:
+def scope_line(spaces: dict) -> str:
+    """The top-level directories a scan walked, with the notes in each."""
+    named = sorted(s for s in spaces if s != _TOP_LEVEL)
+    parts = [f"{s} {spaces[s]}" for s in named]
+    if _TOP_LEVEL in spaces:
+        parts.append(f"{_TOP_LEVEL} {spaces[_TOP_LEVEL]}")
+    return "  scope: " + (", ".join(parts) or "no notes")
+
+
+def report(findings: list[Finding], scanned: int, root: Path,
+           spaces: dict | None = None) -> int:
     if not findings:
         _write(sys.stdout, f"check-vault-frontmatter: {scanned} notes clean ({root})")
+        if spaces is not None:
+            _write(sys.stdout, scope_line(spaces))
         return 0
     _write(sys.stderr, (
         f"check-vault-frontmatter: {len(findings)} violation(s) across "
         f"{scanned} notes in {root}"
     ))
+    if spaces is not None:
+        _write(sys.stderr, scope_line(spaces))
     _write(sys.stderr, (
         "  Frontmatter must parse as a YAML mapping. Quote any value holding "
         "a colon-space or a `#`."
@@ -386,9 +430,10 @@ def resolve_vault(explicit: str | None) -> Path | None:
         return Path(os.path.expanduser(explicit))
     try:
         import harness_memory
-        # The agent's own tree only. The operator's folders alongside it are
-        # free-form notes with no frontmatter contract to enforce.
-        return harness_memory.memory_root()
+        # The vault root, never memory_root(): projects/, personal/,
+        # standards/, calendar/ and the root notes sit beside the memory
+        # root, and a scan rooted there skips them all while reporting clean.
+        return harness_memory.vault_path()
     except Exception as exc:  # noqa: BLE001 - import or backend-guard failure
         print(
             f"check-vault-frontmatter: no vault resolved ({exc}) — skipping",
@@ -612,8 +657,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{message} — skipping", file=stream)
         return 0
 
-    findings, scanned = scan_vault(root, yaml)
-    return report(findings, scanned, root)
+    spaces: dict = {}
+    findings, scanned = scan_vault(root, yaml, spaces)
+    return report(findings, scanned, root, spaces)
 
 
 if __name__ == "__main__":

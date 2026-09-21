@@ -13,6 +13,8 @@ expected outcome, never one recomputed with the scanner's own logic.
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -237,8 +239,12 @@ class TestCli(unittest.TestCase):
         # What a CI runner hits. A skip keeps the gate off the critical path of
         # machines that have no vault; it must never read as a pass over notes
         # that were not looked at.
+        # Both export names: `$MEMORY_ROOT` wins over its deprecated alias, so
+        # setting the alias alone leaves a live export in charge and the gate
+        # scans the real vault.
         env = {
-            **{k: v for k, v in __import__("os").environ.items()},
+            **os.environ,
+            "MEMORY_ROOT": str(_HERE / "no-such-vault-dir"),
             "MEMORY_VAULT_PATH": str(_HERE / "no-such-vault-dir"),
             "AGENTM_INSTALL_PREFIX": str(_HERE / "no-such-prefix"),
         }
@@ -249,6 +255,68 @@ class TestCli(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("skipping", result.stdout + result.stderr)
         self.assertNotIn("clean", result.stdout)
+
+
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class TestScanRoot(unittest.TestCase):
+    """Which directory the gate scans when nobody names one."""
+
+    def _run_resolved(self, tmp: str, notes: dict[str, str]) -> subprocess.CompletedProcess:
+        # The shipped layout: the memory root is <vault>/agent, and the
+        # operator's spaces sit beside it. The export names the memory root,
+        # as the hooks and the runner set it.
+        vault = _vault(str(Path(tmp) / "vault"), notes)
+        prefix = Path(tmp) / "prefix"
+        prefix.mkdir()
+        (prefix / ".agentm-config.json").write_text(
+            json.dumps({"plugins.obsidian-vault.memory_root": "agent"}), encoding="utf-8",
+        )
+        env = {
+            **os.environ,
+            "MEMORY_ROOT": str(vault / "agent"),
+            "MEMORY_VAULT_PATH": str(vault / "agent"),
+            "AGENTM_INSTALL_PREFIX": str(prefix),
+        }
+        return subprocess.run(
+            [sys.executable, str(_GATE)], capture_output=True, text=True, env=env,
+        )
+
+    def test_every_space_beside_the_memory_root_is_scanned(self) -> None:
+        # The regression: rooted at memory_root(), the gate read agent/ alone,
+        # reported it clean, and never opened a tracker, a plan, a standard
+        # or the operator's own notes.
+        broken = "---\nkind: note\nstatus: a: b\n---\n"
+        beside = [
+            "projects/agentm/tasks/001-a/tracker.md",
+            "personal/Home/note.md",
+            "standards/storage-rules.md",
+            "calendar/2026/09/2026-09-20-diary.md",
+            "index.md",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self._run_resolved(tmp, {
+                "agent/memory/semantic/fine.md": "---\nkind: reference\n---\n",
+                **{rel: broken for rel in beside},
+            })
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("5 violation(s) across 6 notes", result.stderr)
+        for rel in beside:
+            self.assertIn(f"{rel} [parse-error]", result.stderr)
+
+    def test_the_report_names_the_spaces_it_scanned(self) -> None:
+        # The scope line is what makes a narrowed root visible where the gate
+        # runs: a scan of the memory root would name memory/ and inbox/, not
+        # agent/ and projects/.
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self._run_resolved(tmp, {
+                "agent/memory/semantic/a.md": "---\nkind: reference\n---\n",
+                "agent/inbox/b.md": "---\nkind: reference\n---\n",
+                "projects/agentm/tasks/001-a/tracker.md": "---\nkind: tracker\n---\n",
+                "Ideas.md": "# No frontmatter\n",
+            })
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("4 notes clean", result.stdout)
+        self.assertIn("scope: agent 2, projects 1, (top level) 1", result.stdout)
 
 
 @unittest.skipIf(yaml is None, "PyYAML not installed")
@@ -303,11 +371,22 @@ class TestSourceIsATransport(unittest.TestCase):
     def test_every_transport_the_contract_names_is_clean(self) -> None:
         notes = {
             f"memory/semantic/{t}.md": f"---\nkind: reference\nstatus: active\nsource: {t}\n---\n\nx.\n"
-            for t in ("operator-direct", "conversation", "external-fetch", "email")
+            for t in ("operator-direct", "conversation", "external-fetch", "inbox")
         }
         with tempfile.TemporaryDirectory() as tmp:
             findings = _scan(tmp, notes)
         self.assertEqual(_codes(findings), [])
+
+    def test_the_gate_names_exactly_the_packaged_contracts_transports(self) -> None:
+        # The gate keeps its own copy of the vocabulary, since a CI runner has
+        # no contract to resolve, and a copy drifts: agentm-vault plan 16 traded
+        # `email` for `inbox` in the contract alone, which left the gate set to
+        # refuse every card the inbox review files. The packaged contract is in
+        # every checkout, so the copy is held to it here, in both directions.
+        shipped = _HERE.parent / "daemon" / "internal" / "rules" / "storage-rules.default.md"
+        text = shipped.read_text(encoding="utf-8")
+        block = text.split("```storage-rules\n", 1)[1].split("\n```", 1)[0]
+        self.assertEqual(sorted(yaml.safe_load(block)["sources"]), sorted(_mod._TRANSPORTS))
 
     def test_a_url_in_the_transport_field(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
