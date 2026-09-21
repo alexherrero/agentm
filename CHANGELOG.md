@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **The inbox: a chat surface's write path is a folder in Drive (agentm-vault
-  plan 16).** `agent/` gains a fourth standard child. `agent/inbox/` is where
-  claude.ai, Claude Code's cloud agent, the Gemini Gem and the Claude app on a
-  phone drop a card, over the Google Drive mirror the vault already is — no
-  credential on any device, no inbound connection to the machine. The hourly
+  plan 16).** `agent/` gains a fourth standard child. `agent/inbox/` is where a
+  chat surface drops a card, over the Google Drive mirror the vault already is —
+  no credential on any device, no inbound connection to the machine. Tested,
+  that means claude.ai; Claude Code's cloud agent is reasoned but untested, and
+  Gemini cannot create a file in Drive at all, so it prints the card and you
+  drop it in, where nothing downstream can tell the difference. The hourly
   sweep cannot reach the folder and the legacy `memory/_inbox/` walk retires so
   the path cannot come back by accident; `check-memory-root-shape` names a vault
   that still holds one rather than letting its cards be swept silently. `agent/inbox`
