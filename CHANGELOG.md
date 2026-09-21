@@ -255,6 +255,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the unit suite holds it to the packaged contract in both directions, so
   the next vocabulary edit that misses this line fails the build instead of the
   vault.
+- **`check-vault-frontmatter` stays out of the recall wall.** Widened to the
+  vault root, the gate walked into the one area the contract walls, the folder
+  that holds certificates and recovery codes, and parsed the 14 notes there.
+  The daemon's index never reads that folder, and a finding quotes the block it
+  came from, so a broken note behind the wall would have printed its
+  frontmatter into every `check-all` run. The walk now prunes the contract's
+  `recall_exempt_areas` the way the index and the vocabulary audit do: a walled
+  directory is never entered and a walled file never opened. The areas are
+  read once per scan and fall back closed to the shipped list when no contract
+  resolves. They are named from the vault root, so a scan rooted below it with
+  `--vault` is placed under the resolved vault root before they are matched.
+  The self-test now carries a broken note behind a wall of its own, so every CI
+  run proves the pruning.
 - **Deleting a note deletes the note.** `Delete` cleared the lexical row, the
   vectors and the metadata row, and left the three derived tables that arrived
   after it was written — `chunks`, `links` and `entities`. Each of the three

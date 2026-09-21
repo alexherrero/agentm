@@ -62,6 +62,17 @@ every space is scanned. The report's `scope:` line names each top-level
 directory walked and how many notes it held, so a narrowed root shows where
 the gate is run.
 
+Every space but one. The contract's `recall_exempt_areas` — the folder that
+holds certificates and recovery codes — are never entered, and a walled file
+is never opened, the rule the daemon's index keeps. A finding quotes the
+block it came from, so a broken note behind the wall would have printed its
+frontmatter into every `check-all` run. Between the widening to the vault root
+on 2026-09-20 and this rule, the gate opened the 14 notes there. The
+areas are read once per scan and fail closed to the shipped contract's list
+when no contract resolves, which is how every other walker reads them. They
+are named from the vault root, so a scan rooted below it with `--vault` is
+placed under the resolved vault root before they are matched.
+
 Usage:
   python3 scripts/check-vault-frontmatter.py            # scan the resolved vault
   python3 scripts/check-vault-frontmatter.py --vault DIR
@@ -82,6 +93,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "harness" / "skills" / "memory" / "scripts"))
 
 
 # ── frontmatter extraction ────────────────────────────────────────────────────
@@ -347,27 +359,74 @@ def check_note(path: Path, rel: str, yaml_mod) -> list[Finding]:
 
 # ── walk ──────────────────────────────────────────────────────────────────────
 
-def iter_notes(root: Path):
-    """Every `.md` under root, dot-directories pruned, sorted for determinism."""
+def _walled_areas() -> list:
+    """The contract's `recall_exempt_areas`, read once per scan.
+
+    Once, never per file: Python reaches the contract by spawning `agentmd
+    rules --json`. Fails closed to the shipped contract's own list when the
+    contract cannot be read, which is every machine without the daemon.
+    """
+    import storage_rules  # noqa: E402 - the memory toolkit, on sys.path above
+
+    try:
+        return list(storage_rules.rules().recall_exempt_areas())
+    except Exception:  # noqa: BLE001 - any failure to reach the contract
+        return list(storage_rules._FALLBACK_RECALL_EXEMPT_AREAS)
+
+
+def _root_under_vault(root: Path) -> str:
+    """A named scan root's path under the resolved vault root, with a trailing
+    slash, so the wall's areas match however the scan was rooted. Empty when
+    the root is the vault root, or sits outside the resolved vault: a scratch
+    vault is its own vault root."""
+    try:
+        import harness_memory
+        vault = harness_memory.vault_path()
+    except Exception:  # noqa: BLE001 - import or backend-guard failure
+        return ""
+    if vault is None:
+        return ""
+    try:
+        rel = root.resolve().relative_to(Path(vault).resolve()).as_posix()
+    except (ValueError, OSError):
+        return ""
+    return "" if rel == "." else f"{rel}/"
+
+
+def iter_notes(root: Path, wall=None, root_rel: str = ""):
+    """Every `.md` under root, sorted for determinism. Dot-directories are
+    pruned, and so are the recall wall's areas: a walled directory is never
+    entered and a walled file never opened. `wall` defaults to the contract's
+    areas; `root_rel` is the root's own path under the vault root, the root
+    the areas are named from."""
+    import storage_rules  # noqa: E402 - the memory toolkit, on sys.path above
+
+    if wall is None:
+        wall = _walled_areas()
     for dirpath, dirs, files in os.walk(root):
+        rel_dir = Path(dirpath).relative_to(root).as_posix()
+        base = root_rel if rel_dir == "." else f"{root_rel}{rel_dir}/"
         dirs[:] = sorted(
-            d for d in dirs if not d.startswith(_SKIP_DIR_PREFIXES)
+            d for d in dirs
+            if not d.startswith(_SKIP_DIR_PREFIXES)
+            and not storage_rules.in_area(base + d, wall)
         )
         for name in sorted(files):
-            if name.endswith(".md"):
+            if name.endswith(".md") and not storage_rules.in_area(base + name, wall):
                 yield Path(dirpath) / name
 
 
-def scan_vault(root: Path, yaml_mod, spaces: dict | None = None) -> tuple[list[Finding], int]:
+def scan_vault(root: Path, yaml_mod, spaces: dict | None = None,
+               wall=None, root_rel: str = "") -> tuple[list[Finding], int]:
     """Scan every note under root. Returns (findings, notes scanned).
 
     `spaces`, when given, is filled with the notes scanned per top-level
     directory, counted in the same walk so the scope the report prints is
-    the scope that was scanned.
+    the scope that was scanned. `wall` and `root_rel` are `iter_notes`'s.
     """
     findings: list[Finding] = []
     scanned = 0
-    for path in iter_notes(root):
+    for path in iter_notes(root, wall, root_rel):
         scanned += 1
         try:
             rel = path.relative_to(root).as_posix()
@@ -572,16 +631,28 @@ _FIXTURES: list[tuple[str, str, list[tuple[str, int | None]]]] = [
 ]
 
 
+# A broken note behind a recall wall, which the scan must neither report nor
+# count. The self-test names its own wall rather than the contract's, so it
+# proves the pruning whatever folder a machine's contract walls.
+_SELF_TEST_WALL = ("walled",)
+_WALLED_FIXTURE = (
+    "walled/deep/codes.md",
+    "---\nstatus: a colon-space: behind the wall\n---\n\nNever opened.\n",
+)
+
+
 def run_self_test(yaml_mod) -> int:
     """Build a scratch vault of known-bad notes and assert the exact findings."""
     with tempfile.TemporaryDirectory(prefix="check-vault-frontmatter-") as tmp:
         root = Path(tmp)
-        for rel, body, _ in _FIXTURES:
+        for rel, body, _ in (*_FIXTURES, (*_WALLED_FIXTURE, [])):
             path = root / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body, encoding="utf-8")
 
-        findings, scanned = scan_vault(root, yaml_mod)
+        # The walled note is broken and not in `_FIXTURES`, so reading it
+        # fails both the count and the spurious-finding check below.
+        findings, scanned = scan_vault(root, yaml_mod, wall=_SELF_TEST_WALL)
 
         expected = sorted(
             (rel, code, line)
@@ -612,7 +683,8 @@ def run_self_test(yaml_mod) -> int:
         _write(sys.stdout, (
             f"check-vault-frontmatter --self-test: PASS — {len(expected)} "
             f"violation(s) detected at the expected file:line across "
-            f"{scanned} fixture notes, {clean} of them clean."
+            f"{scanned} fixture notes, {clean} of them clean, and the walled "
+            f"note never opened."
         ))
         return 0
 
@@ -658,7 +730,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     spaces: dict = {}
-    findings, scanned = scan_vault(root, yaml, spaces)
+    root_rel = _root_under_vault(root) if args.vault else ""
+    findings, scanned = scan_vault(root, yaml, spaces, root_rel=root_rel)
     return report(findings, scanned, root, spaces)
 
 
