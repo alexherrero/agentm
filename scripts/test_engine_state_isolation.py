@@ -176,11 +176,13 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
     # Four suites left the list with their subjects in agentm-vault plan 04:
     # the crystallize staging and its console section, the opinion supplement,
     # and the sampled audit's console surface. The needs-review suite joined
-    # it, because the map now reads the dream cycle's findings from here.
+    # it, because the map now reads the dream cycle's findings from here. The
+    # incubator lint left with its subject in agentm-vault plan 13, when
+    # `Ideas.md` became a generated file.
     NAMED = (
         "test_backfill_reference_bodies", "test_calendar_promotion", "test_console",
         "test_correction", "test_dream_storage_rules",
-        "test_incubator_lint", "test_lint", "test_notes_link_discovery",
+        "test_lint", "test_notes_link_discovery",
         "test_orchestration_briefing", "test_orchestration_idle",
         "test_repair_excerpts", "test_retro_mining_cleanup", "test_needs_review",
         "test_skill_modules_file_loadable", "test_storage_rules", "test_vault_lint",

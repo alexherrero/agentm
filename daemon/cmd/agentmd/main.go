@@ -1413,13 +1413,18 @@ func cmdEnrich(args []string) error {
 			return derr
 		}
 		inboxDir := enrichInboxDir(cfg)
-		var inbox, cards, records int
+		var inbox, cards, ideas, records int
 		for _, rel := range queue {
 			switch {
 			case strings.HasPrefix(rel, inboxDir):
 				inbox++
 			case enrich.IsProjectRecord(rel):
 				records++
+			case enrich.IsIdeaCard(rel):
+				// In the cards' tier, but not under the directories the line
+				// names, so counted apart rather than folded into a number that
+				// would then describe the wrong folders.
+				ideas++
 			default:
 				cards++
 			}
@@ -1444,9 +1449,15 @@ func cmdEnrich(args []string) error {
 				light++
 			}
 		}
-		fmt.Printf("dry run: %d inbox card(s) under %s, %d card(s) under %s and "+
+		// The idea cards' clause appears only when there are any, so a vault
+		// without the folder reads exactly as it always did.
+		ideaClause := ""
+		if ideas > 0 {
+			ideaClause = fmt.Sprintf(", %d idea card(s) under %s", ideas, enrich.IdeasDir)
+		}
+		fmt.Printf("dry run: %d inbox card(s) under %s, %d card(s) under %s%s and "+
 			"%d project record(s), served in that order and oldest first\n",
-			inbox, inboxDir, cards, strings.Join(dirs, ", "), records)
+			inbox, inboxDir, cards, strings.Join(dirs, ", "), ideaClause, records)
 		fmt.Printf("  owed the deep pass %d · the light pass %d · unchanged at this "+
 			"pass %d · unreadable %d\n", deep, light, unchanged, unreadable)
 		fmt.Printf("  budget: the %d-call guard · strong %s tokens · cheap %s tokens · %s\n",
@@ -1580,6 +1591,10 @@ func cmdEnrich(args []string) error {
 		// whole reason it reaches the folder — and may never promote it to
 		// `active`, however sure the model is.
 		stamp.NeverFiles = strings.HasPrefix(rel, enrichInboxDir(cfg))
+		// An idea card's posture, the same way and for the same reason: the
+		// operator filed it, so the night may think it through under its own
+		// heading and may never re-grade it (agentm-vault part 13, ruling 6).
+		stamp.OperatorFiled = enrich.IsIdeaCard(rel)
 		// New frontmatter over the card's own text, byte for byte, and on a deep
 		// pass the dated section below it. Compose refuses a composition that
 		// would change a byte of what the session wrote.
@@ -1610,7 +1625,10 @@ func cmdEnrich(args []string) error {
 		// about notes this machine wrote; this folder's notes are somebody
 		// else's until they are filed.
 		newSlug := r.Slug
-		if stamp.NeverFiles {
+		// Nor inside `personal/ideas/`: the space is the operator's, the card's
+		// name is the one they filed it under, and `Ideas.md` links it by that
+		// name.
+		if stamp.NeverFiles || stamp.OperatorFiled {
 			newSlug = ""
 		}
 		dest, err := applier.Apply(ctx, enrich.WriteRequest{
@@ -1630,9 +1648,12 @@ func cmdEnrich(args []string) error {
 			})
 			return err
 		}
-		if record {
+		switch {
+		case record:
 			verdicts.Records++
-		} else {
+		case stamp.OperatorFiled:
+			verdicts.Ideas++
+		default:
 			verdicts.count(dest, verdict)
 		}
 		landed[rel] = next

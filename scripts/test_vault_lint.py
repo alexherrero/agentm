@@ -301,6 +301,27 @@ class TestChecks(unittest.TestCase):
             self.assertEqual(len(wl), 1)  # [[Ideas]] resolves at the root; ghost-note doesn't
             self.assertIn("ghost-note", wl[0].message)
 
+    def test_a_duplicate_idea_names_its_survivor_in_personal_ideas(self):
+        # agentm-vault part 13: a duplicate idea stays in memory/semantic/,
+        # superseded, naming a survivor that moved to the vault root's
+        # personal/ideas/ — outside what this lint walks. The survivor resolves;
+        # a survivor that is not there is still an integrity error.
+        with tempfile.TemporaryDirectory() as td:
+            obs = Path(td)
+            (obs / ".obsidian").mkdir()
+            vault = obs / "agent"
+            (vault / "memory" / "semantic").mkdir(parents=True)
+            (obs / "personal" / "ideas").mkdir(parents=True)
+            (obs / "personal" / "ideas" / "the-survivor.md").write_text(
+                "---\ntitle: The survivor\ntype: idea\narea: blog\n---\n\nThe idea.\n", encoding="utf-8")
+            for name, target in (("dup-a", "personal/ideas/the-survivor.md"),
+                                 ("dup-b", "personal/ideas/gone.md")):
+                _write(vault, f"memory/semantic/{name}.md",
+                       _clean(name) + ["lifecycle: superseded", f"superseded_by: {target}"])
+            _, findings = vl.lint_vault(vault)
+            bad = [f.entry_path for f in findings if f.check_id == "supersede-integrity"]
+            self.assertEqual(bad, ["memory/semantic/dup-b.md"], findings)
+
     def test_supersede_dangling(self):
         with _Vault() as v:
             fm = _clean("newer") + ["supersedes: nonexistent-slug"]

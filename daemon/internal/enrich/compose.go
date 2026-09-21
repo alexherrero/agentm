@@ -167,11 +167,25 @@ func Compose(previous string, r Response, s Stamp, depth Depth, offered []Neighb
 	}
 
 	verdict := VerdictForNote(previous, r, s.ConfidenceFloor, s.NeverFiles)
+	if s.OperatorFiled {
+		// A card the operator filed keeps what they filed it as: its standing,
+		// its name and its kind. Taken from the card, over the response, at
+		// either depth — the light pass's own rule above only covers a response
+		// below the floor, and a confident one must not re-grade an idea either.
+		verdict = KeptFiling(previous)
+		if t := frontmatterValue(previous, "title"); t != "" {
+			r.Title = t
+		}
+		if t := frontmatterValue(previous, "type"); t != "" {
+			r.Type = t
+		}
+	}
 	body := joinBody(captured, section, after)
 	// The card leaves in the card's order (agentm-vault § The card). The render
 	// writes the judgment and the carry appends the provenance, and neither
 	// order is the one the operator reads.
-	next := cardshape.Reorder(CarryProvenance(previous, RenderFrontmatter(r, s, verdict)+separator(body)+body))
+	next := cardshape.Reorder(carryProvenance(previous,
+		RenderFrontmatter(r, s, verdict)+separator(body)+body, !s.OperatorFiled))
 
 	// The guard, checked on the bytes about to be written rather than on the
 	// intent: everything the session wrote is still there, unchanged, directly

@@ -83,7 +83,7 @@ If wall-time depletes mid-pass-3, the sub-agent emits whatever fetches completed
 ## See also
 
 - [`ideas_incubator.py`](../skills/memory/scripts/ideas_incubator.py) — Python skeleton creator that this sub-agent fills.
-- [`ideas_surface.py`](../skills/memory/scripts/ideas_surface.py) — Tier-1 surface writer; complements this Tier-2 worker.
+- The Tier-1 surface writer (`ideas_surface.py`) retired in agentm-vault part 13: `Ideas.md` is generated over the idea cards in `personal/ideas/` by the dreaming binary, and an idea is filed there from the inbox with its group.
 - [`recall.py`](../skills/memory/scripts/recall.py) — recall engine the sub-agent invokes for the cross-reference scan.
 - [evaluator sub-agent](evaluator.md) — reference shape for the caller-supplies-inline-rubric pattern. Same fresh-context framing applies: the researcher reads the skeleton's `_index.md` + the rubric the caller dispatched with, nothing more.
 - [MemoryVault idea-ledger part](../wiki/explanation/designs/memoryvault/parts/idea-ledger.md) — full architectural context including the two-tier capture system + promotion + GC.

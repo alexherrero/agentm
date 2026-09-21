@@ -97,6 +97,37 @@ def select_population(vault: "Path | str", letter: str, *, claimed: "dict | None
     return rows
 
 
+def select_paths(vault: "Path | str", rels: list) -> list:
+    """Rows for an explicit list the operator ruled, in the manifest shape
+    `apply` reads (agentm-vault part 13's deletion list).
+
+    A named list is the narrowest criterion there is, so it is held to the
+    narrowest shape: every path a memory in a class directory under
+    `memory/`, each named once, each on disk. Anything else refuses the whole
+    list — a typo is not a note to skip, it is a list nobody confirmed."""
+    vault = Path(vault)
+    seen: set = set()
+    rows = []
+    for raw in rels:
+        rel = raw.strip().replace("\\", "/")
+        parts = rel.split("/")
+        if (len(parts) != 3 or parts[0] != "memory" or not parts[2].endswith(".md")
+                or ".." in parts or parts[1].startswith(("_", "."))):
+            raise RefusedPurge(f"{raw!r} is not a memory in a class directory (memory/<class>/<name>.md)")
+        if rel in seen:
+            raise RefusedPurge(f"{rel} is named twice")
+        seen.add(rel)
+        p = vault / rel
+        if p.is_symlink() or not p.is_file():
+            raise RefusedPurge(f"{rel} is not on disk")
+        text = p.read_text(encoding="utf-8")
+        fm, _ = _frontmatter(text)
+        rows.append({"rel": rel, "title": str(fm.get("title") or p.stem),
+                     "lifecycle": lt.lifecycle_of(text), "since": str(fm.get("lifecycle_since") or "")[:10],
+                     "status": str(fm.get("status") or ""), "sha256": _hash(text)})
+    return rows
+
+
 def inbound_links(vault: "Path | str", rels: list) -> list:
     """Wikilinks elsewhere in the vault that still resolve to a row's stem —
     what a purge would break. Reported, never acted on."""
@@ -167,6 +198,9 @@ def main(argv=None) -> int:
     s.add_argument("--lifecycle", default="archived", choices=lt.STATES)
     s.add_argument("--older-than-days", type=int, help="only memories in that state at least this long (by lifecycle_since)")
     s.add_argument("--population", help="re-select one ruled residue population (A-F) instead of a lifecycle state")
+    s.add_argument("--paths-file",
+                   help="select exactly the memories a ruled list names, one memory/<class>/<name>.md per line "
+                        "(# comments allowed); needs --expect-count")
     s.add_argument("--expect-count", type=int,
                    help="the ruled count; select exits 4 and refuses when today's count differs")
     s.add_argument("--report-dir", help="where the manifest goes (default: <vault>/diagnostics/migrations/purge/<ts>)")
@@ -175,6 +209,30 @@ def main(argv=None) -> int:
     a_.add_argument("--confirm-count", type=int, required=True, help="the manifest's row count, typed by the operator")
     a = ap.parse_args(argv)
     vault = Path(a.vault)
+    if a.cmd == "select" and a.paths_file:
+        if a.population:
+            print("purge refused: --paths-file and --population are two different rulings; pass one",
+                  file=sys.stderr)
+            return 2
+        if a.expect_count is None:
+            print("purge refused: a named list is selected only against the count it was ruled at — "
+                  "pass --expect-count", file=sys.stderr)
+            return 2
+        names = [l for l in Path(a.paths_file).read_text(encoding="utf-8").splitlines()
+                 if l.strip() and not l.lstrip().startswith("#")]
+        rows = select_paths(vault, names)
+        if len(rows) != a.expect_count:
+            print(f"purge refused: the list names {len(rows)} memories against the confirmed "
+                  f"{a.expect_count}. Nothing written, nothing deleted.", file=sys.stderr)
+            return 4
+        path = write_manifest(vault, rows, criteria={"paths_file": str(a.paths_file),
+                                                     "expected_count": a.expect_count},
+                              out_dir=a.report_dir)
+        links = json.loads(path.read_text(encoding="utf-8"))["inbound_links"]
+        print(f"{len(rows)} memor{'y' if len(rows) == 1 else 'ies'} selected from {a.paths_file}, "
+              f"{len(links)} inbound link(s) would break; manifest at {path}. Nothing deleted. "
+              f"To apply: purge.py --vault {vault} apply --manifest {path} --confirm-count {len(rows)}")
+        return 0
     if a.cmd == "select":
         if a.population:
             letter = a.population.upper()

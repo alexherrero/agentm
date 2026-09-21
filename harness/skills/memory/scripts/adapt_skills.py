@@ -143,7 +143,7 @@ def _seed_trusted_sources(target: Path) -> bool:
     for org in _DEFAULT_TRUSTED_ORGS:
         lines.append(org)
     # Write bytes to guarantee LF-only line endings on all platforms
-    # (matches save.py + ideas_surface.py convention). Path.write_text's
+    # (matches save.py's convention). Path.write_text's
     # default newline-translation on Windows would convert \n → \r\n,
     # breaking downstream regex/grep parsers that expect LF.
     content = ("\n".join(lines).rstrip() + "\n").encode("utf-8")

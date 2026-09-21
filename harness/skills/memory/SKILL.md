@@ -292,11 +292,13 @@ The review pass over `agent/inbox/` — the fourth standard child of `agent/`, w
 ```
 python3 harness/skills/memory/scripts/inbox_review.py [--memory-root <path>] [--json]
 python3 harness/skills/memory/scripts/inbox_review.py --file <name> [--type <t>] [--project <p>] [--why <w>]
+python3 harness/skills/memory/scripts/inbox_review.py --file <name> --type idea --area <group> [--why <w>]
 ```
 
 - **(no flags)** — the rendered review: each card's fields in the card's own order, a quoted lead of its body, then anything the pass could not read and any DriveFS conflict copy it found.
 - **`--json`** — the same result as data, for a caller that wants to drive the conversation itself. Both surfaces read one `read_inbox()` result, so they cannot disagree.
 - **`--file <name>`** — file one card the operator has named, and only after they have said where it goes. A **separate verb on purpose**: the listing above files nothing, and this is what "decided in conversation, card by card" looks like as a command. `--type` is the memory type they chose and it routes the destination through the filing contract, not a default this command picked; `--why` and `--project` override whatever the card's own text guessed. The card leaves the folder only once the write has landed, so a refused write leaves it exactly where it was. Reaching a card is a containment check — no path separators, no symlink, resolved parent equals the resolved folder — because `(folder / name).parent == folder` is string arithmetic that is true of any slash-free name.
+- **`--file <name> --type idea --area <group>`** — an idea goes where ideas live: the vault root's `personal/ideas/`, not the class directory the contract would route an `idea` to (agentm-vault part 13). The card lands `status: active` at `filing_confidence: high` under the group you named — one lower-case word, hyphens allowed, which becomes its heading in `Ideas.md` the next night. Its words, its `why`, its source and its `trust: untrusted` travel with it; `lifecycle` does not, because `personal/` has no aging axis. A card that already calls itself `type: idea` takes this path without `--type`. An idea filed **without** `--area` is refused and stays in the inbox, since a new idea gets its group at this review; a card already at the destination name is never overwritten.
 
 #### Failure modes (graceful)
 
@@ -710,77 +712,9 @@ Output: one JSON record per line (`{"pass": "memory", "category": ..., "confiden
 > [!NOTE]
 > **Tri-modal routing implementation status**: plan #7a part 3 task 5 wires the actual HIGH→auto-save / MEDIUM→interactive-review / LOW→_inbox/ branches. Tasks 1-2 (this commit) ship the mining + skill body; tasks 3-4 add Stop + idle triggers; task 5 closes the routing loop; task 6 adds crash-recovery markers; task 7 documents the full surface.
 
-### `/memory promote`
+### `/memory promote` — retired
 
-Graduates an `_idea-incubator/<slug>/` entry to a real project at `desk/projects/<slug>/` + annotates the corresponding `Ideas.md` section. Plan #7a part 4 ships this body + the canonical Python implementation at `skills/memory/scripts/ideas_promote.py`.
-
-#### Invocation shape
-
-```
-/memory promote idea <slug> [--ideas-path <path>] [--mode <silent|interactive|auto>]
-```
-
-| Arg | Required | Default | Meaning |
-|---|---|---|---|
-| `<slug>` | yes | — | Existing incubator slug under `personal-private/_idea-incubator/<slug>/`. |
-| `--ideas-path <path>` | no | `$IDEAS_SURFACE_PATH` env or `~/Obsidian/Ideas.md` | Override Ideas.md location. |
-| `--mode <m>` | no | `interactive` (or `$MEMORY_REVIEW_MODE`) | Permeable-boundary mode for the Ideas.md annotation write. `silent` pre-approves; explicit user-typed promotion typically passes `silent` since the user already requested the operation. |
-
-#### Step-by-step flow
-
-**Step 1 — Resolve vault path** via the chain `--vault-path` arg → `MEMORY_ROOT` env. Halt with clear next-step on failure.
-
-**Step 2 — Verify incubator entry exists** at `<vault>/personal-private/_idea-incubator/<slug>/`. If missing, halt with `"incubator entry not found: <path> (check slug; list with ls _idea-incubator/)"`. If a `desk/projects/<slug>/` already exists, halt to avoid clobber — operator picks a new slug or removes the existing.
-
-**Step 3 — Move the directory.** `shutil.move(_idea-incubator/<slug>, projects/<slug>)`. Cross-filesystem-safe (uses copy + delete fallback). Atomic at the OS level for same-FS moves.
-
-**Step 4 — Annotate Ideas.md section.** Find the section whose wikilink references `_idea-incubator/<slug>/_index.md`; append `→ promoted YYYY-MM-DD to personal-private/projects/<slug>/` annotation right after the wikilink line. **Permeable-boundary check fires here** (Ideas.md is outside MemoryVault — the A3 helper `confirm_write_outside_memoryvault()` confirms via `--mode` resolution). If denied, the move already happened — the operator can manually annotate; the return value indicates "ideas_annotation: denied".
-
-**Step 6 — Return confirmation.** Display:
-
-```
-Promoted <slug> to personal-private/projects/<slug>/
-  incubator_dir → moved
-  ideas_annotation: written | denied | section_not_found
-```
-
-If section_not_found: the operator can manually annotate (the auto-search assumed the wikilink format from the original `_idea-incubator/<slug>/_index.md` reference; if the operator edited the section format, the regex won't find it).
-
-#### `/memory promote gc` — garbage collection
-
-Variant subcommand for the 6-month GC sweep:
-
-```
-python3 ~/Antigravity/crickets/skills/memory/scripts/ideas_promote.py gc \
-  --vault-path <vault> [--gc-months 6]
-```
-
-Walks `_idea-incubator/<slug>/` dirs, computes age from `_index.md` `updated:` frontmatter (falls back to file mtime if absent). Entries older than `gc_months × 30` days get an interactive **Keep / Archive / Delete** prompt:
-
-```
-────────────────────────────────────────────────────────────────────────
-Incubator entry idle: <slug> (<N> days since last update)
-────────────────────────────────────────────────────────────────────────
-Action: [k]eep (defer) / [a]rchive / [d]elete (default: k):
-```
-
-- **Keep**: `_index.md` mtime touched (entry exits the GC window; re-evaluated in 6 months).
-- **Archive**: moves to `_idea-incubator/_archive/<slug>/` (preserves history, excludes from active recall).
-- **Delete**: `rm -rf` the dir (irreversible).
-- **Default (non-TTY or empty input)**: Keep — locked design call B1.i is *never silent deletion*; without operator confirmation the entry stays.
-
-#### Failure modes (graceful)
-
-- **Slug not found** → halt step 2 with the actual path that was checked.
-- **Target collision** (`desk/projects/<slug>/` exists) → halt with operator next-step.
-- **Cross-filesystem move** → falls back to copy+delete via shutil.move; slow but correct.
-- **Ideas.md missing** → ideas_annotation = "no_ideas_file"; promotion otherwise succeeds.
-- **A3 boundary denied** for Ideas.md write → ideas_annotation = "denied"; promotion otherwise succeeds (operator can manually annotate).
-
-#### Anti-patterns
-
-- **Don't pick the same slug as an existing projects/<slug>/.** Pre-check would help here but the operator typed the slug; we halt rather than guess.
-- **Don't run GC in batch / non-interactive contexts without `--mode silent`.** Default GC behavior defaults every prompt to Keep when stdin isn't a TTY, which is correct (never silent deletion), but means non-TTY runs do nothing. For batch GC with explicit pre-approval, the operator runs the gc subcommand interactively.
+Retired in agentm-vault part 13, with the hand-kept `Ideas.md` it annotated and the `ideas_promote.py` that did both halves. An idea is a card in the vault root's `personal/ideas/` now, filed there from the inbox with its group (`/memory inbox --file <name> --type idea --area <group>`), and `Ideas.md` is generated over that folder every night by the dreaming binary (`agentmdream ideas` prints the rendering). There is no graduation step and no garbage collection: an idea card stays where the operator filed it, and they retire one by giving it a `dismissed:` date. The incubator's research skeleton (`ideas_incubator.py`) and its researcher are not part of this retirement; they wait on their own follow-up.
 
 ### `/memory index-skills`
 
@@ -1158,7 +1092,7 @@ Reports vault-wide rot the write-time guards can't catch on their own: orphans (
 
 `dream.py`'s nightly cycle runs the identical engine via `_stage_lint()` and reports its counts, the mis-cased links it would repair among them. It applies nothing: the cycle's auto-repair lane retired with every other lane that applied anything (agentm-vault plan 04). `/memory lint` and the nightly stage share one code path, so they can't drift.
 
-**The idea ledger is linted by a separate pass**, since neither the `_idea-incubator/` files nor `Ideas.md` use the `save.py` frontmatter schema — `incubator_lint.py` checks their own shapes instead (the five-field core, `kind`-matches-file-role, the `incubator:` back-reference, `_index`/`_summary` agreement, and `Ideas.md` heading form). It runs inside `vault_lint.py` at `--scope all`, or alone via `--scope incubator`. Full catalog: [Vault lint checks reference](../../../wiki/reference/Vault-Lint-Checks.md).
+**`Ideas.md` is not linted here.** The separate idea-ledger pass (`incubator_lint.py`) retired in agentm-vault part 13: the file is generated over `personal/ideas/` by the dreaming binary, which holds its shape with its own tests, and a lint of the old heading form would only report the new one as wrong. Full catalog: [Vault lint checks reference](../../../wiki/reference/Vault-Lint-Checks.md).
 
 #### Invocation
 

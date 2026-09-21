@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`Ideas.md` is a list the night generates over idea cards (agentm-vault
+  plan 13).** An idea is a card in the vault root's `personal/ideas/`, with an
+  `area:` holding one of your own group names, and the dreaming binary rebuilds
+  `Ideas.md` over the folder with the maps: one heading per group the cards
+  carry, one line per idea linking its card with its title and summary, and
+  the dismissed ideas in one collapsed callout. Everything from the top of the
+  file through the end marker is yours and is copied into every rebuild byte
+  for byte; a file without the markers is never written, so the first rebuild
+  is one deliberate adoption after `agentmdream ideas` has shown you the dry
+  run. A rebuild over an unchanged folder writes nothing.
+- **`/memory inbox --file <name> --type idea --area <group>`** files an idea
+  from the inbox into `personal/ideas/`, `active` at the group you named, its
+  words, `why`, source and `trust: untrusted` carried. A card that already calls
+  itself `type: idea` takes the same path; an idea without a group is refused
+  and stays in the inbox; nothing at the destination is ever overwritten.
+- **The night thinks an idea through and never re-grades it.** `personal/ideas/`
+  joins the queue in the cards' tier — and nothing else under `personal/` does.
+  The pass may add its section under `## Added by dreaming` and write the
+  summary, tags, related links and `importance_proposed`; the card keeps its
+  status, filing confidence, title and type whatever the score, gains no
+  `lifecycle`, and is never renamed. Driven through the night itself in a
+  fixture test, above and below the floor, with a recipe under `personal/Home`
+  beside it that is never written.
+- **`scripts/migrate/ideas_migration.py`** — the one-time move, from the mapping
+  the operator corrects: ideas move to `personal/ideas/`, duplicates are
+  superseded in place, notes that are not ideas are relabelled, entries without
+  a card become one with their links re-pointed; dry run first, refused while
+  Obsidian or the daemon is up, journaled before every write, revertible.
+- **`purge.py select --paths-file`** selects exactly the memories a ruled list
+  names, against the count it was ruled at, into the same manifest `apply`
+  consumes.
 - **The inbox: a chat surface's write path is a folder in Drive (agentm-vault
   plan 16).** `agent/` gains a fourth standard child. `agent/inbox/` is where a
   chat surface drops a card, over the Google Drive mirror the vault already is —
@@ -73,6 +104,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An idea card's two fields travel through every rewrite.** `area` and
+  `dismissed` join the fields enrichment carries and the card's read order
+  (Go and Python together), and `personal/ideas` joins the vector arm's default
+  scope by name. The enrichment dry run names the idea cards as their own
+  population, and the night's record counts them apart from its filing
+  verdicts. The lint resolves a duplicate's `superseded_by` into
+  `personal/ideas/` without linting the folder.
+- **The hand-kept idea ledger's machinery retired with it.**
+  `ideas_surface.py`, `ideas_promote.py` (`/memory promote idea` and its GC),
+  `incubator_lint.py`, the ingest sweep's idea fold, the briefing's idea-ledger
+  and promote-suggest nudges, and the doctor's `IDEAS_SURFACE_PATH` pointer —
+  each with its tests. The sweep now leaves an idea card exactly as it is. The
+  incubator skeleton and its researcher, which never touch `Ideas.md`, stay
+  for their own follow-up.
 - **The email door's transport retires, and its filing half stays.** Gone: IMAP,
   TLS negotiation, the `Authentication-Results` reader, the sender allow-list,
   and the four `agentm_config` mail keys (`mailbox_url`,

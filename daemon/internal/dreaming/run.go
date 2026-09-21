@@ -60,9 +60,11 @@ type Report struct {
 	// it had moved since the plan read it. Named in the dreaming facet rather
 	// than swallowed: the reconcile step at the end of the same night is what
 	// repairs them, and a repair nobody can see is indistinguishable from a loss.
-	SkippedByHandMove []string  `json:"skipped_by_hand_move,omitempty"`
-	Mocs              MocsPlan  `json:"mocs"`
-	Dates             DatesPlan `json:"dates"`
+	SkippedByHandMove []string `json:"skipped_by_hand_move,omitempty"`
+	Mocs              MocsPlan `json:"mocs"`
+	// Ideas is `Ideas.md`, rebuilt with the maps (agentm-vault part 13).
+	Ideas IdeasPlan `json:"ideas"`
+	Dates DatesPlan `json:"dates"`
 	// The report-only checks: nothing below mutates a note.
 	Vocabulary VocabularyReport `json:"vocabulary"`
 	Trends     TrendReport      `json:"trends"`
@@ -282,6 +284,14 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	mocs.Intents = append(mocs.Intents, rootMap.Intents...)
 	rep.Mocs = mocs
 	intents = append(intents, mocs.Intents...)
+	// `Ideas.md` rides with the maps: a list generated over the idea cards,
+	// under the operator's own head, and only once they have adopted it.
+	ideas, err := PlanIdeas(root, "")
+	if err != nil {
+		return rep, err
+	}
+	rep.Ideas = ideas
+	intents = append(intents, ideas.Intents...)
 	dates, err := PlanDates(root, contract, now)
 	if err != nil {
 		return rep, err

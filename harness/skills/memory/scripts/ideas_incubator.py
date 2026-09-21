@@ -22,8 +22,10 @@
 # triage path).
 #
 # The incubator dir lives INSIDE MemoryVault/, so no permeable-boundary
-# confirmation is needed (in contrast to ideas_surface.py which writes to
-# ~/Obsidian/Ideas.md outside the vault root).
+# confirmation is needed. (Its tier-1 companion, ideas_surface.py, which wrote
+# the hand-kept Ideas.md, retired in agentm-vault part 13; the list is generated
+# over personal/ideas/ now. This module's own retirement, with the researcher
+# sub-agent that fills its skeletons, is a separate follow-up.)
 #
 # Plan #7a part 4 task 3 (this commit) ships:
 #   1. This Python skeleton writer.
@@ -296,8 +298,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         prog="memory-ideas-incubator",
         description=(
             "Create the `_idea-incubator/<slug>/` skeleton for a freshly-"
-            "surfaced idea candidate. Tier-2 of the two-tier idea-capture; "
-            "complements ideas_surface.py (tier-1). Sub-agent "
+            "surfaced idea candidate. Tier-2 of the two-tier idea-capture "
+            "(tier-1, the hand-kept Ideas.md, retired). Sub-agent "
             "memory-idea-researcher fills the research-*.md / related-*.md "
             "placeholders. Plan #7a part 4 task 3."
         ),

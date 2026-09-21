@@ -124,20 +124,26 @@ class TestCounters(unittest.TestCase):
         (self.vault / "memory" / "_idea-incubator" / "idea-one").mkdir(parents=True)
         self.assertEqual(ob.count_incubator_pending(self.vault), 0)
 
-    def test_idea_ledger_stale(self) -> None:
+    def test_no_signal_reads_the_hand_kept_ideas_ledger(self) -> None:
+        # The idea-ledger signal and the promote-suggest nudge retired with the
+        # hand-kept Ideas.md (agentm-vault part 13). A ledger in the old shape —
+        # stale, and one title three times — raises neither.
         ideas = self.vault / "Ideas.md"
         ideas.write_text(
             "# Ideas\n\n"
-            "## 2025-01-01: Old idea\nbody\n\n"   # >6mo before _NOW → stale
-            "## 2026-05-20: Recent idea\nbody\n"  # recent → not stale
-            "## not-a-date: x\n",
+            "## 2020-01-01: Recurring idea\nb\n\n## 2020-02-01: Recurring idea\nb\n\n"
+            "## 2020-03-01: Recurring idea\nb\n",
             encoding="utf-8",
         )
         os.environ["IDEAS_SURFACE_PATH"] = str(ideas)
         try:
-            self.assertEqual(ob.count_idea_ledger_stale(_NOW, 6), 1)
+            sig = ob.gather_signals(self.vault, dict(ao.DEFAULT_CONFIG), _NOW)
         finally:
             del os.environ["IDEAS_SURFACE_PATH"]
+        self.assertNotIn("idea_ledger", sig)
+        self.assertNotIn("promote_suggest", sig)
+        self.assertFalse(hasattr(ob, "count_idea_ledger_stale"))
+        self.assertFalse(hasattr(ob, "count_promote_suggest"))
 
     def test_staged_adapt_counts_only_unevaluated(self) -> None:
         # v4.13.1: staged Pass-1 candidates WITHOUT a watchlist entry = awaiting
@@ -154,44 +160,6 @@ class TestCounters(unittest.TestCase):
 
     def test_staged_adapt_absent_is_zero(self) -> None:
         self.assertEqual(ob.count_staged_adapt(self.vault), 0)
-
-    def test_idea_ledger_naive_now_does_not_raise(self) -> None:
-        # Adversarial #2: a timezone-naive `now` must not raise (counters never
-        # raise) — the ledger dates are tz-aware, so subtraction would TypeError.
-        ideas = self.vault / "Ideas.md"
-        ideas.write_text("## 2025-01-01: Old idea\nbody\n", encoding="utf-8")
-        os.environ["IDEAS_SURFACE_PATH"] = str(ideas)
-        try:
-            naive = datetime(2026, 6, 1, 12, 0, 0)  # no tzinfo
-            self.assertEqual(ob.count_idea_ledger_stale(naive, 6), 1)
-        finally:
-            del os.environ["IDEAS_SURFACE_PATH"]
-
-    def test_promote_suggest_counts_recurring_titles(self) -> None:
-        ideas = self.vault / "Ideas.md"
-        ideas.write_text(
-            "# Ideas\n\n"
-            "## 2026-01-01: Build an orchestration mode\nbody\n\n"
-            "## 2026-02-01: Build an orchestration mode\nbody\n\n"   # same title x3
-            "## 2026-03-01: build an ORCHESTRATION mode\nbody\n\n"   # case-insensitive
-            "## 2026-01-05: One-off idea\nbody\n\n"                  # x1
-            "## 2026-02-05: Twice idea\nbody\n\n"
-            "## 2026-03-05: Twice idea\nbody\n",                     # x2
-            encoding="utf-8",
-        )
-        os.environ["IDEAS_SURFACE_PATH"] = str(ideas)
-        try:
-            self.assertEqual(ob.count_promote_suggest(3), 1)   # only the x3 title
-            self.assertEqual(ob.count_promote_suggest(2), 2)   # x3 + x2
-        finally:
-            del os.environ["IDEAS_SURFACE_PATH"]
-
-    def test_promote_suggest_absent_surface_is_zero(self) -> None:
-        os.environ["IDEAS_SURFACE_PATH"] = str(self.vault / "nope.md")
-        try:
-            self.assertEqual(ob.count_promote_suggest(3), 0)
-        finally:
-            del os.environ["IDEAS_SURFACE_PATH"]
 
     def test_stale_promoted_counts_only_old_promoted(self) -> None:
         _promoted_entry(self.vault, "src", "p1", (_NOW - timedelta(days=45)).isoformat())  # stale → counts
@@ -236,48 +204,42 @@ class TestRender(unittest.TestCase):
         return c
 
     def test_nothing_over_threshold_is_empty(self) -> None:
-        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0}
+        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0}
         self.assertEqual(ob.build_briefing(signals, self._cfg()), "")
 
     def test_renders_active_signals(self) -> None:
-        signals = {"inbox": 12, "watchlist_high": 3, "incubator": 0, "idea_ledger": 1}
+        signals = {"inbox": 12, "watchlist_high": 3, "incubator": 0}
         out = ob.build_briefing(signals, self._cfg())
         self.assertIn("MemoryVault — pending", out)
         self.assertIn("12 inbox entries", out)
         self.assertIn("3 HIGH skill-watchlist patterns", out)
         self.assertIn("/memory watchlist", out)
-        self.assertIn("1 idea-ledger entry", out)
         self.assertNotIn("incubator", out)  # below threshold (0)
 
     def test_renders_nudges(self) -> None:
-        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0,
-                   "promote_suggest": 2, "stale_promoted": 1}
+        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "stale_promoted": 1}
         out = ob.build_briefing(signals, self._cfg())
-        self.assertIn("2 ideas surfaced", out)
-        self.assertIn("/memory promote", out)
         self.assertIn("1 skill-watchlist pattern promoted >30d ago", out)
         self.assertIn("author or dismiss", out)
 
     def test_nudge_singular(self) -> None:
-        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0,
-                   "promote_suggest": 1, "stale_promoted": 1}
+        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "stale_promoted": 1}
         out = ob.build_briefing(signals, self._cfg())
-        self.assertIn("1 idea surfaced", out)
         self.assertIn("1 skill-watchlist pattern promoted", out)
 
     def test_renders_staged_adapt(self) -> None:
-        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0,
+        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0,
                    "staged_adapt": 3}
         out = ob.build_briefing(signals, self._cfg())
         self.assertIn("3 skill candidates staged for adapt-evaluation", out)
         self.assertIn("/memory adapt-skills", out)
 
     def test_inbox_below_threshold_suppressed(self) -> None:
-        signals = {"inbox": 5, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0}
+        signals = {"inbox": 5, "watchlist_high": 0, "incubator": 0}
         self.assertEqual(ob.build_briefing(signals, self._cfg(inbox_threshold=10)), "")
 
     def test_singular_plural(self) -> None:
-        signals = {"inbox": 1, "watchlist_high": 1, "incubator": 1, "idea_ledger": 1}
+        signals = {"inbox": 1, "watchlist_high": 1, "incubator": 1}
         out = ob.build_briefing(signals, self._cfg(inbox_threshold=1))
         self.assertIn("1 inbox entry to sort", out)
         self.assertIn("1 HIGH skill-watchlist pattern ", out)
@@ -378,23 +340,19 @@ class TestEmit(unittest.TestCase):
         self.assertEqual(ao.load_state(self.vault)["last_shown"],
                          {"watchlist_high": 1, "staged_adapt": 1})
 
-    def test_promote_suggest_toggle_off_suppresses(self) -> None:
-        ideas = self.vault / "Ideas.md"
-        ideas.write_text(
-            "## 2026-01-01: Recurring\nb\n## 2026-02-01: Recurring\nb\n## 2026-03-01: Recurring\nb\n",
-            encoding="utf-8",
-        )
-        os.environ["IDEAS_SURFACE_PATH"] = str(ideas)
+    def test_a_config_still_carrying_the_retired_keys_loads(self) -> None:
+        # An operator's config seeded before agentm-vault part 13 carries the
+        # three idea keys. They are ignored, and everything else still reads.
         ao.seed_config(self.vault)
         p = ao.config_path(self.vault)
         p.write_text(p.read_text(encoding="utf-8").replace(
-            "enable_promote_suggest = true", "enable_promote_suggest = false"), encoding="utf-8")
-        try:
-            cfg = ao.load_config(self.vault)
-            sig = ob.gather_signals(self.vault, cfg, _NOW)
-            self.assertEqual(sig["promote_suggest"], 0)  # toggled off → 0, no parse
-        finally:
-            del os.environ["IDEAS_SURFACE_PATH"]
+            "inbox_threshold = 10",
+            "inbox_threshold = 7\nenable_promote_suggest = false\n"
+            "idea_ledger_stale_months = 6\npromote_mention_threshold = 3"), encoding="utf-8")
+        cfg = ao.load_config(self.vault)
+        self.assertEqual(cfg["inbox_threshold"], 7)
+        for retired in ("enable_promote_suggest", "idea_ledger_stale_months", "promote_mention_threshold"):
+            self.assertNotIn(retired, cfg)
 
     def test_disabled_is_silent(self) -> None:
         ao.seed_config(self.vault)
