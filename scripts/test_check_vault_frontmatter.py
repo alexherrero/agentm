@@ -15,11 +15,13 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _GATE = _HERE / "check-vault-frontmatter.py"
@@ -419,6 +421,147 @@ class TestSourceIsATransport(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             findings = _scan(tmp, {"memory/semantic/a.md": "---\nkind: reference\n---\n\nx.\n"})
         self.assertEqual(_codes(findings), [])
+
+
+_PACKAGED_CONTRACT = _HERE.parent / "daemon" / "internal" / "rules" / "storage-rules.default.md"
+# The packaged contract's one walled area.
+_WALLED = "personal/Home/Important Docs"
+
+
+@unittest.skipIf(yaml is None, "PyYAML not installed")
+class TestRecallWall(unittest.TestCase):
+    """The contract's one wall. The folder that holds certificates and
+    recovery codes is never entered, so nothing in it is parsed, counted or
+    quoted. A finding quotes the block it came from, and until this rule the
+    gate opened every file there."""
+
+    # Broken, so a parse of it would quote the sentinel in its finding.
+    _BROKEN = "---\nstatus: sentinel-behind-the-wall: a colon-space\n---\n"
+    _CLEAN = "---\nkind: note\n---\n"
+    _built = None
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls._built is not None:
+            cls._built.cleanup()
+
+    def _agentmd(self) -> str:
+        binary = os.environ.get("AGENTMD", "").strip()
+        if binary:
+            return binary
+        if shutil.which("go") is None:
+            self.skipTest("go is not on this machine; set $AGENTMD to a built binary")
+        if TestRecallWall._built is None:
+            TestRecallWall._built = tempfile.TemporaryDirectory(prefix="agentmd-build-")
+            subprocess.run(
+                ["go", "build", "-o", str(Path(TestRecallWall._built.name) / "agentmd"), "./cmd/agentmd"],
+                cwd=_HERE.parent / "daemon", check=True, capture_output=True,
+            )
+        return str(Path(TestRecallWall._built.name) / "agentmd")
+
+    def test_a_walled_directory_is_never_entered(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _vault(tmp, {
+                f"{_WALLED}/codes.md": self._BROKEN,
+                f"{_WALLED}/deeper/more.md": self._BROKEN,
+                "personal/Home/recipe.md": self._CLEAN,
+            })
+            findings, scanned = _mod.scan_vault(root, yaml, wall=[_WALLED])
+        self.assertEqual((findings, scanned), ([], 1))
+
+    def test_a_walled_file_is_never_opened(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _vault(tmp, {
+                "standards/secret.md": self._BROKEN,
+                "standards/open.md": self._CLEAN,
+            })
+            findings, scanned = _mod.scan_vault(root, yaml, wall=["standards/secret.md"])
+        self.assertEqual((findings, scanned), ([], 1))
+
+    def test_a_root_below_the_vault_root_is_placed_under_it(self) -> None:
+        # Areas are named from the vault root. Scanned from `personal/`, the
+        # folder reads `Home/Important Docs`, which matches no area unless the
+        # root's own place comes first.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _vault(tmp, {f"{_WALLED}/codes.md": self._BROKEN})
+            findings, scanned = _mod.scan_vault(
+                root / "personal", yaml, wall=[_WALLED], root_rel="personal/",
+            )
+        self.assertEqual((findings, scanned), ([], 0))
+
+    def test_without_a_contract_the_wall_falls_back_closed(self) -> None:
+        import storage_rules
+        failing = mock.patch.object(
+            storage_rules, "rules", side_effect=storage_rules.StorageRulesError("no daemon"),
+        )
+        with failing:
+            self.assertEqual(_mod._walled_areas(), [_WALLED])
+
+    def _layout(self, tmp: Path) -> tuple:
+        """A configured vault with a broken note behind each of two walls, and
+        a contract that walls one more area than the shipped one — so the
+        contract being honoured cannot be mistaken for the fallback."""
+        vault = _vault(str(tmp / "vault"), {
+            "agent/memory/semantic/fine.md": "---\nkind: reference\n---\n",
+            "personal/Home/recipe.md": self._CLEAN,
+            f"{_WALLED}/codes.md": self._BROKEN,
+            "projects/walled/plan.md": self._BROKEN,
+        })
+        prefix = tmp / "prefix"
+        prefix.mkdir()
+        (prefix / ".agentm-config.json").write_text(json.dumps({
+            "plugins.obsidian-vault.vault_path": str(vault),
+            "plugins.obsidian-vault.memory_root": "agent",
+        }), encoding="utf-8")
+        text = _PACKAGED_CONTRACT.read_text(encoding="utf-8")
+        marker = f"recall_exempt_areas:\n  - {_WALLED}\n"
+        self.assertIn(marker, text, "the packaged contract's wall moved; update this fixture")
+        contract = tmp / "storage-rules.md"
+        contract.write_text(text.replace(marker, marker + "  - projects/walled\n"), encoding="utf-8")
+        return vault, prefix, contract
+
+    def _run(self, prefix: Path, contract: Path, agentmd: str, *args: str) -> subprocess.CompletedProcess:
+        env = {k: v for k, v in os.environ.items() if k not in ("MEMORY_ROOT", "MEMORY_VAULT_PATH")}
+        env.update({
+            "AGENTMD": agentmd,
+            "AGENTM_INSTALL_PREFIX": str(prefix),
+            "AGENTM_STORAGE_RULES": str(contract),
+        })
+        return subprocess.run(
+            [sys.executable, str(_GATE), *args], capture_output=True, text=True, env=env,
+        )
+
+    def test_the_contracts_wall_holds_end_to_end(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            _vault_root, prefix, contract = self._layout(tmp)
+            result = self._run(prefix, contract, self._agentmd())
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("2 notes clean", result.stdout)
+        self.assertIn("scope: agent 1, personal 1", result.stdout)
+        self.assertNotIn("sentinel-behind-the-wall", result.stdout + result.stderr)
+
+    def test_without_a_daemon_the_shipped_wall_still_holds(self) -> None:
+        # The contract cannot be read, so its extra area is not walled, and
+        # the note there is parsed and reported. The shipped area is.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            _vault_root, prefix, contract = self._layout(tmp)
+            result = self._run(prefix, contract, str(tmp / "no-such-agentmd"))
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("1 violation(s) across 3 notes", result.stderr)
+        self.assertIn("projects/walled/plan.md [parse-error]", result.stderr)
+        self.assertNotIn("Important Docs", result.stdout + result.stderr)
+
+    def test_a_named_root_below_the_vault_root_still_honours_the_wall(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            vault, prefix, contract = self._layout(tmp)
+            result = self._run(prefix, contract, str(tmp / "no-such-agentmd"),
+                               "--vault", str(vault / "personal"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("1 notes clean", result.stdout)
+        self.assertNotIn("sentinel-behind-the-wall", result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
