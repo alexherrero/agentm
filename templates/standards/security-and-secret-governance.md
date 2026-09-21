@@ -46,13 +46,14 @@ does anything else in this vault.
 - Purge and deletion are yours alone, with a manifest first. Deletion is
   never a policy outcome — a lifecycle pass demotes and archives, it does
   not delete.
-- Chat surfaces (Claude.ai, Claude Code's cloud agent, the Gemini Gem) read
-  everywhere and write in exactly one place: `agent/inbox/`, the drop folder
-  they reach over the Drive mirror (agentm-vault plan 16). Everywhere else
-  they are read-only, whatever tools their environment exposes. A card in the
+- A chat surface may write in exactly one place: `agent/inbox/`, the drop
+  folder it reaches over the Drive mirror (agentm-vault plan 16). Everywhere
+  else it is read-only, whatever tools its environment exposes. A card in the
   drop folder is not filed: it sits `unfiled` and `untrusted` until you read
   it at `/memory inbox` and say where it goes. Nothing files an inbox card
-  except you, at the pass.
+  except you, at the pass — and that holds however the card arrived, so a
+  card you paste in by hand from a surface that cannot reach Drive is
+  governed by exactly this rule and no other.
 - `scripts/health/results/**` and `_harness/archive/**` are frozen evidence.
 - The daemon's MCP surface stays exactly two tools: search and capture.
 

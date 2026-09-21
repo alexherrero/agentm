@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Status: implemented** — shipped by agentm-vault plan 16 (`tasks/173-the-inbox`).
-> **Goal:** Keep something durable from claude.ai, Claude Code's cloud agent, the Gemini Gem or the Claude app on your phone, without any of them gaining write access to the vault.
+> **Goal:** Keep something durable from claude.ai without it gaining write access to the vault — and from Gemini, which cannot write here, by dropping in the card it prints.
 > **Prereqs:** The vault folder syncing to Google Drive (see [Back the vault with Google Drive](Back-The-Vault-With-Drive)), and the surface's Drive connector allowed to create a file in it.
 
 A chat surface reads the vault and writes in exactly one place: `agent/inbox/`, a folder in your Drive. A card dropped there syncs down to the machine on the next sync, sits untouched by the hourly sweep, is enriched by the night, and waits for you. **Nothing files an inbox card except you, at the review pass.**
@@ -19,13 +19,14 @@ Paste `templates/inbox-card-prompt.md` into each surface that should be able to 
 |---|---|
 | claude.ai | Settings → Custom instructions, or a Project's instructions |
 | Claude Code's cloud agent | **no instructions field — see below** |
-| Gemini Gem | the Gem's **Instructions** |
+
+**Gemini is not on the list, and no paste would put it there.** It cannot create a file in Drive at all. A Gem does not inherit the main agent's Drive access, and the main agent, asked in a plain chat to create one named file in one named folder, answers that it cannot create files in Drive. That is a missing capability, not a wording problem — an instruction box changes behaviour, not permissions — so a shorter paste for Gemini's smaller personalization box would not help either. Ask Gemini for the card in the card's shape and copy it into `agent/inbox/` yourself. Nothing downstream can tell a card you dropped in from one that synced: everything in that folder is `unfiled` and `untrusted` however it got there, and the rest of this page applies to it unchanged.
 
 This is a second paste, separate from the context payload `/memory payload` prints. That one is about reading the vault and goes to every surface; this one is about writing to one folder and goes only to a surface whose Drive connector can create a file there.
 
 The prompt is gated: `scripts/check-card-prompt.py` fails when the field list it teaches and `card_shape.py` disagree, so the paste cannot quietly go stale while the card changes underneath it.
 
-**The cloud agent has no instructions box.** Claude Code's standing-instruction mechanism is a committed file — `CLAUDE.md` or `AGENTS.md` in the repo — and `~/.claude/CLAUDE.md` does not travel to a cloud session. It *can* reach Drive: connectors added on claude.ai are passed into cloud sessions by the cloud host, and that traffic bypasses the environment's network allowlist. It is still not recommended, because a committed `CLAUDE.md` is read by every session on that repo including local ones, where a card should go through `memory_capture` to the daemon instead. See the plan's `handoff.md` for the conditional wording if you want it anyway.
+**The cloud agent has no instructions box.** Claude Code's standing-instruction mechanism is a committed file — `CLAUDE.md` or `AGENTS.md` in the repo — and `~/.claude/CLAUDE.md` does not travel to a cloud session. It can very probably reach Drive — connectors added on claude.ai are passed into cloud sessions by the cloud host, and that traffic bypasses the environment's network allowlist — but that is reasoned from how connectors work and has never been tested with a card. It is still not recommended, because a committed `CLAUDE.md` is read by every session on that repo including local ones, where a card should go through `memory_capture` to the daemon instead. See the plan's `handoff.md` for the conditional wording if you want it anyway.
 
 ### 2. Allow the connector to create files
 
@@ -38,15 +39,16 @@ In ordinary words. The surface writes one file per card into `Vault/agent/inbox/
 ### 4. Read the inbox when you feel like it
 
 ```bash
-python3 harness/skills/memory/scripts/inbox_review.py
+python3 harness/skills/memory/scripts/inbox_review.py --memory-root "<vault>/agent"
 ```
 
-or ask for it in a session: **`/memory inbox`**. Every card is listed oldest first, with the frontmatter the night gave it — `summary`, `importance_proposed`, `related`; the `why` is the one you or the surface wrote, and no pass overwrites it — and none of them is filed. Everything a card supplies is quoted behind a `| ` gutter and labelled as data: the filename, every frontmatter key and value, and the body. Only the pass's own headings appear without one. A model on a chat surface wrote all of it and it may be quoting a web page.
+or ask for it in a session: **`/memory inbox`**. The flag is not optional from a terminal: the script takes the memory root — the `agent/` folder inside your vault — from `--memory-root` or `$MEMORY_ROOT` and nowhere else. `/memory inbox` passes it and the session hooks export it; a bare shell has neither, and without it the script stops and says so. Every card is listed oldest first, with the frontmatter the night gave it — `summary`, `importance_proposed`, `related`; the `why` is the one you or the surface wrote, and no pass overwrites it — and none of them is filed. Everything a card supplies is quoted behind a `| ` gutter and labelled as data: the filename, every frontmatter key and value, and the body. Only the pass's own headings appear without one. A model on a chat surface wrote all of it and it may be quoting a web page.
 
 ### 5. File the ones you want, one at a time
 
 ```bash
-python3 harness/skills/memory/scripts/inbox_review.py --file drive-as-the-write-path.md \
+python3 harness/skills/memory/scripts/inbox_review.py --memory-root "<vault>/agent" \
+    --file drive-as-the-write-path.md \
     --type reference --project agentm --why "it reverses the door's premise"
 ```
 
@@ -72,6 +74,7 @@ A card that changed in the last five minutes is left alone for the night: it may
 - **Check the sync, not the folder.** DriveFS brings the file down when it is ready; the review pass reads what is on disk and does not wait.
 - **A `(conflicted copy)` file** means two writers touched one card. `/memory inbox` names any it finds. Read both and keep the one you meant — resolving a conflict is yours.
 - **Nothing at all, ever** — the surface's connector may not have file-creation permission for that folder. Re-check step 2.
+- **The surface says it wrote the card, and nothing arrives** — it may have written into **My Drive**. The vault is mirrored from Drive's *Computers* section, under this machine's name, which is a different tree from My Drive; a connector told to "create a file in Drive" reaches for My Drive most naturally, and a card there never comes down to the machine. Search My Drive for a stray `Vault/agent/inbox/`.
 - **A card reported as "a symbolic link, not a card"** — nothing that arrives over Drive is a symlink, so something local put it there. It is named and never read, and filing it is refused: the pass will not hand an arbitrary file's contents to the write path.
 
 ## Related

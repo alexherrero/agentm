@@ -2,9 +2,10 @@
 """Gate: the inbox card prompt teaches the shape the card actually has
 (agentm-vault plan 16).
 
-`templates/inbox-card-prompt.md` is pasted into claude.ai, Claude Code's cloud
-agent and the Gemini Gem, and from then on it is the only thing those surfaces
-know about a card. Nobody re-reads it. So the one failure that matters is the
+`templates/inbox-card-prompt.md` is pasted into a chat surface whose Drive
+connector can create a file — claude.ai, tested on 2026-09-20; Gemini cannot
+and is not a target — and from then on it is the only thing that surface knows
+about a card. Nobody re-reads it. So the one failure that matters is the
 silent one: the card's shape moves in `card_shape.py` and the paste keeps
 teaching the old field for months, because a paste has no CI.
 

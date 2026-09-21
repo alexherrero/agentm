@@ -1,10 +1,12 @@
 <!--
   inbox-card-prompt — what a chat surface is told about writing a card.
 
-  agentm-vault part `16-the-inbox`. This is the paste that gives claude.ai,
-  Claude Code's cloud agent and the Gemini Gem a write path into the vault: a
-  file dropped into `agent/inbox/` over the Google Drive mirror, with no
-  credential on any device and no inbound connection to the machine.
+  agentm-vault part `16-the-inbox`. This is the paste that gives a chat
+  surface a write path into the vault: a file dropped into `agent/inbox/` over
+  the Google Drive mirror, with no credential on any device and no inbound
+  connection to the machine. It works only where the surface's Drive connector
+  can create a file, and tested on 2026-09-20 that was claude.ai and not
+  Gemini.
 
   It is a SEPARATE paste from `agentmemory-context.md`. That one is about
   reading the vault and goes to every surface; this one is about writing to one
@@ -19,8 +21,17 @@
 
   Where it goes:
     - claude.ai:  Settings -> Custom instructions, or a Project's instructions
-    - Claude Code's cloud agent: its own instructions
-    - Gemini:     the Gem's "Instructions"
+
+  Where it does not:
+    - Gemini, in a Gem or out of one. It cannot create a file in Drive at all:
+      a Gem does not inherit the main agent's Drive access, and the main
+      agent, asked directly, said it cannot create files in Drive. No wording
+      reaches a missing tool, so it is not a target. A card from Gemini is
+      one you copy out of the chat and drop in yourself.
+    - Claude Code's cloud agent. It has no instructions box; its standing
+      instructions are a committed CLAUDE.md, which every session on that
+      repo reads, local ones included. Connectors reach cloud sessions, so it
+      can probably write here, but that is reasoned and was never tested.
 -->
 
 # Keeping something in my vault
