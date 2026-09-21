@@ -433,11 +433,17 @@ def call_model(prompt: str, model: str, timeout: int) -> str:
     This does not close the *global* `~/.claude/CLAUDE.md`, which is not
     cwd-gated. `--bare` would, but it skips keychain reads and demands an
     `ANTHROPIC_API_KEY` that is not available in this environment.
+
+    `--no-session-persistence` keeps the call from saving a transcript under
+    `~/.claude/projects/`: the prompt carries each note's path, frontmatter and
+    body, so every saved transcript was a plaintext copy of vault content
+    outside the vault. The flag is honoured only beside `-p`.
     """
     cmd = [
         "claude",
         "-p",
         prompt,
+        "--no-session-persistence",
         "--model",
         model,
         "--settings",

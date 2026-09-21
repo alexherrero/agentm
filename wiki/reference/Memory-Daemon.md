@@ -692,14 +692,15 @@ processed; see [Usage, printed and recorded](#usage-printed-and-recorded).
 
 ### What the call keeps out
 
-Each call is a `claude -p` subprocess, isolated three ways in
-`Caller.command` and `Caller.Call` (`daemon/internal/enrich/model.go:121-201`):
+Each call is a `claude -p` subprocess, isolated four ways in
+`Caller.command` and `Caller.Call` (`daemon/internal/enrich/model.go:130-229`):
 
 | Measure | How | What it keeps out |
 |---|---|---|
 | Hooks | `--settings '{"disableAllHooks":true}'` | this project's recall hooks, which would query the daemon and put the vault into the prompt that is rewriting it |
 | MCP servers | `--strict-mcp-config --mcp-config '{"mcpServers":{}}'` | every MCP server the operator has configured, with its tool definitions |
 | Working directory | a fresh temporary directory per call (`agentm-neutral-cwd-*`) | any `CLAUDE.md` or `AGENTS.md` above the daemon's own directory |
+| Transcript | `--no-session-persistence` | the note, from `~/.claude/projects/`, where Claude Code would save the call as a plaintext transcript outside the vault |
 
 A missing measure fails silently, because the call still returns a
 well-formed answer, so `model_test.go` asserts each one on the command
@@ -709,10 +710,21 @@ MCP measure also cut most of a call's baseline. Measured on 2026-09-11, one
 trivial call carried 113,509 input tokens with the operator's servers
 loaded and 30,783 without.
 
+The transcript measure arrived on 2026-09-20. Until then Claude Code saved
+every call, in a project directory named for its working directory, so each
+call left an `agentm-neutral-cwd-*` directory holding the note in plain
+text. There were 2,572 of them that day, and purging a note from the vault
+left those copies behind. Nothing reads them: hooks are off inside the call,
+so no Stop hook captures its cost, and the night's spend comes from the
+envelope. `reflect.py corpus` skips those directories, so it never mines an
+enrichment prompt as conversation. The ones already saved are left to
+Claude Code's 30-day retention sweep. The flag works only beside `-p`, so
+the test that pins it pins `-p` too.
+
 ### Usage, printed and recorded
 
 Every enrichment call now passes `--output-format json`
-(`Caller.command`, `model.go:164`), and `usage.go` reads the envelope it
+(`Caller.command`, `model.go:192`), and `usage.go` reads the envelope it
 gets back: `usage` (input, cache read, cache write, output tokens) and
 `total_cost_usd`. Output that is not the envelope is refused rather than
 read as zero-cost text — a call the token line cannot count would

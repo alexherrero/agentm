@@ -230,6 +230,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An enrichment call no longer leaves the note behind as a transcript.**
+  Claude Code saves every session under `~/.claude/projects/`, a `claude -p`
+  call included, and an enrichment call's only prompt is the note it is
+  rewriting. Every call the daemon made, the grounding judge's included, left
+  one `agentm-neutral-cwd-*` directory holding that note in plain text,
+  outside the vault. On 2026-09-20 there were 2,572 of them, and purging a note
+  from the vault left its copies there. `Caller.command` now passes
+  `--no-session-persistence`, and so does `scripts/alias_backfill.py`, the
+  other caller with the same working-directory prefix. A live call with the
+  flag saved no transcript; the same call without it saved one. Nothing read
+  them: hooks are off inside the call, so no cost capture saw it, the
+  observability rollup reads the telemetry event log, and
+  `recall_traffic.py` already skipped the prefix. `reflect.py corpus` did not
+  skip it. Its discovery listed 8,680 transcripts, and 2,572 of them were
+  enrichment calls waiting to be mined as conversation. None had been mined
+  yet. Discovery now skips any project directory named for that prefix. The
+  directories already saved are left for Claude Code's 30-day retention sweep.
+
 - **`check-vault-frontmatter` parses the whole vault, where it had been parsing
   15% of it.** The gate was pinned to `memory_root()` on 2026-08-09, while the
   agent's tree still held `projects/<slug>/_harness/`, the notes it was written
