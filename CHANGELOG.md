@@ -285,6 +285,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in their tables, and the daemon would have logged that number every five
   minutes.
 
+- **`check-vocabulary-membership` reads the corpus in the battery, and all of
+  it.** The gate read `$MEMORY_ROOT` and nothing else, and `check-all.sh` has
+  never exported it, so from the day the gate landed on 2026-09-01 its corpus
+  half printed a skip line and the battery showed PASS over zero notes. It now
+  finds the corpus the way the sibling gates do, with the export as the
+  override and the configured memory root otherwise, and skips only when
+  nothing resolves, which is every CI runner. Its walk had fallen behind the
+  vault as well. It walked a hand-kept list of directories under the memory
+  root plus a `projects/` sibling, two of the list's three names existed
+  nowhere by 2026-09-20, and `standards/`, `calendar/`, `personal/` and the
+  root notes sat outside it. The audit now walks the whole vault root, as the
+  daemon's index does, and never enters the contract's recall wall, so a
+  walled file is never opened. A `scope:` line names each top-level directory
+  walked with the notes read in it, so a narrowed walk shows. Read that way,
+  the live vault held 2,951 notes on 2026-09-20 and **12 unregistered values,
+  all in the operator's own notes: `plan` ×8, `how-to` ×2, `progress` ×1 and
+  `proposal` ×1**. Registering a kind is the operator's ruling, made in
+  `standards/storage-rules.md`, so the notes are reported rather than edited,
+  `--strict` was not loosened, and `check-all` stays red on this gate until the
+  operator rules. `check-kind-taxonomy.sh` had the same export-only skip. It
+  now prints the gate's new `--report` mode: the same audit, over the same
+  notes. `graph_snapshot.py` keeps its own hand-listed walk, because it feeds
+  the nightly lint, and drops only its dead top-level `_idea-incubator/` root,
+  since the incubator lives under `memory/` now.
+
+- **Two gate descriptions no longer claim what their gates do not do.**
+  `CI-Gates.md` said the vocabulary gate's strict run read 0 offenders over
+  2,291 notes, a hand run from 2026-09-03 made while the battery's own run
+  skipped. It and `check-tracker-schema.py`'s docstring said that gate reads no
+  trackers and passes. It reads 295, and fails on 2 findings in files the
+  operator owns, which were failing before this change.
+
 - **The walled folder is walled in the tables, not only in the answers.** The
   contract's `recall_exempt_areas` promises `personal/Home/Important Docs` is
   never indexed, embedded or served, and every door to a ranked answer refused

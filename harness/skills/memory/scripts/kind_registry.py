@@ -37,6 +37,7 @@ This module never mutates a vault note. `audit()` is read-only.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -62,64 +63,105 @@ REQUIRED_UNIVERSAL_FIELDS: tuple = (
     "kind", "status", "created", "updated", "tags", "group", "slug",
 )
 
-# Vault walk roots. Shared with `graph_snapshot.py`, which is the walk to keep
-# this in step with.
-_WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
+# The audit walks the corpus: every note under the vault root, which is where
+# the daemon's index looks too. It used to walk a hand-kept list — `memory/`,
+# `desk/projects/` and `_idea-incubator/` under the memory root, plus a
+# `projects/` sibling found through an `.obsidian/` witness — and each move of
+# the vault left the list further behind. By 2026-09-20 two of its three names
+# existed nowhere, and `standards/`, `calendar/`, `personal/` and the root
+# notes sat outside it. A walk that names no directory cannot fall behind one.
+# It skips what the index skips, plus the archives this audit never counted:
+#
+#   dot-directories   `.obsidian/`, `.trash/`, `.git/`: never notes
+#   the recall wall   the contract's `recall_exempt_areas`, never entered, so
+#                     a file behind it is never opened
+#   `_archive/`       at any depth
+#   `PLAN.archive.*`  completed plans
+#
+# `graph_snapshot.py` keeps a hand-listed walk of its own, and deliberately so;
+# its `_walk_vault_paths` says why.
+_ARCHIVE_DIRNAME = "_archive"
+_PLAN_ARCHIVE_PREFIX = "PLAN.archive."
+
+# How a scope count names the notes directly in the corpus root, which belong
+# to no directory: the vault's own `index.md` and `Ideas.md`.
+TOP_LEVEL = "(top level)"
 
 
-# Filing-v2 2b: the newest project-space generation is the vault-root
-# `projects/`, a SIBLING of the memory root this module is handed. During the
-# merge window both it and `desk/projects/` exist and either may hold projects,
-# so walkers take the union. A root-space path cannot be keyed relative to the
-# memory root; it is keyed relative to the vault root ("projects/<slug>/…").
-_ROOT_PROJECTS_DIRNAME = "projects"
+def corpus_root(root, vault_root=None) -> Path:
+    """The directory the audit walks: the vault root, never the memory root.
+
+    `vault_root` is the caller's answer, and the vocabulary gate gives one
+    whenever the export or the kernel config resolves it. Without it, the vault
+    root is found the way this module used to find the `projects/` sibling:
+    the memory root's parent when an Obsidian vault is witnessed there
+    (`.obsidian/` at the parent and none at the root), else the root itself,
+    a flat vault being both roots at once. A root at the top of its own vault
+    has no parent space, whatever sits beside it: its parent is the
+    operator's home or a sync folder."""
+    if vault_root is not None:
+        return Path(vault_root)
+    root = Path(root)
+    parent = root.parent
+    if (parent / ".obsidian").is_dir() and not (root / ".obsidian").is_dir():
+        return parent
+    return root
 
 
-def _root_projects_dir(vault):
-    """The vault-root `projects/` space, discovered never conjured (filing-v2
-    2b). Flat layout: `<memory-root>/projects`. Nested layout — the memory
-    root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
-    parent and none at the memory root itself: the sibling
-    `<vault-root>/projects`. A memory root at the top of its own vault has no
-    sibling, whatever directory named `Projects` sits beside it (its parent
-    is the operator's home or a sync folder, where one is common and is not
-    the vault's). None when no root space exists. Both rungs match the
-    directory's exact case."""
-    vault = Path(vault)
-    flat = vault / "projects"
-    if _is_dir_exact(flat):
-        return flat
-    parent = vault.parent
-    if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
-        sibling = parent / "projects"
-        if _is_dir_exact(sibling):
-            return sibling
-    return None
-
-
-def _is_dir_exact(path):
-    """`path` is a directory whose name matches exactly — on a case-insensitive
-    filesystem a directory still spelled the retired way, `Projects` with the capital, would otherwise answer for it, and a vault the casing rename has not reached would read as renamed."""
-    try:
-        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
-    except OSError:
+def _walked(name: str, rel: str) -> bool:
+    """Whether the walk enters a directory, by its name and its path from the
+    corpus root."""
+    if name.startswith(".") or name == _ARCHIVE_DIRNAME:
         return False
+    return not storage_rules.is_recall_exempt(rel)
 
 
-def _walk_roots(vault: Path) -> list:
-    roots = [vault / d for d in _WALK_SUBDIRS]
-    root_space = _root_projects_dir(vault)
-    if root_space is not None and root_space not in roots:
-        roots.append(root_space)
-    return [r for r in roots if _is_dir_exact(r)]
+def _is_note(name: str, rel: str) -> bool:
+    return (name.endswith(".md") and not name.startswith((".", _PLAN_ARCHIVE_PREFIX))
+            and not storage_rules.is_recall_exempt(rel))
 
 
-def _vault_rel(path: Path, vault: Path) -> str:
+def _walk_roots(vault, vault_root=None) -> list:
+    """The top-level directories of the corpus the audit walks, in order."""
+    corpus = corpus_root(vault, vault_root)
     try:
-        rel = path.relative_to(vault)
-    except ValueError:
-        rel = path.relative_to(vault.parent)
-    return str(rel).replace("\\", "/")
+        children = sorted(corpus.iterdir())
+    except OSError:
+        return []
+    return [c for c in children if c.is_dir() and _walked(c.name, c.name)]
+
+
+def corpus_notes(vault, vault_root=None) -> list:
+    """Every note the audit reads, as `(path, key)` pairs sorted by key.
+
+    The key is the note's path from the corpus root, in POSIX form: the
+    spelling the daemon keys its rows on and the contract names its areas in.
+    That is `agent/memory/…` on the shipped layout and `memory/…` on a flat
+    one."""
+    corpus = corpus_root(vault, vault_root)
+    try:
+        notes = [(p, p.name) for p in corpus.iterdir()
+                 if p.is_file() and _is_note(p.name, p.name)]
+    except OSError:
+        return []
+    for top in _walk_roots(vault, vault_root):
+        for dirpath, dirnames, filenames in os.walk(top):
+            here = Path(dirpath)
+            rel_dir = here.relative_to(corpus).as_posix()
+            dirnames[:] = [d for d in dirnames if _walked(d, f"{rel_dir}/{d}")]
+            notes.extend((here / name, f"{rel_dir}/{name}") for name in filenames
+                         if _is_note(name, f"{rel_dir}/{name}"))
+    notes.sort(key=lambda pair: pair[1])
+    return notes
+
+
+def scope_line(spaces: dict) -> str:
+    """The top-level directories a walk read, with the notes in each."""
+    named = sorted(s for s in spaces if s != TOP_LEVEL)
+    parts = [f"{s} {spaces[s]}" for s in named]
+    if TOP_LEVEL in spaces:
+        parts.append(f"{TOP_LEVEL} {spaces[TOP_LEVEL]}")
+    return "scope: " + (", ".join(parts) or "no notes")
 
 
 def __getattr__(name: str):
@@ -197,8 +239,14 @@ def note_kind(content: str):
         return "<both type and kind>"
 
 
-def audit(vault_path: Path | str) -> dict:
+def audit(vault_path: Path | str, *, vault_root=None, spaces: dict | None = None) -> dict:
     """Read-only scan of the corpus's vocabulary. Never writes anything.
+
+    `vault_path` is the memory root, as every caller has always passed it. The
+    walk covers the vault root it sits in (`corpus_root`), which `vault_root`
+    names outright when the caller has resolved it. `spaces`, when given, is
+    filled with the notes read per top-level directory, counted in the same
+    walk, so the scope a caller prints is the scope that was read.
 
     Returns `{"by_kind", "malformed", "unrecognized", "retired", "total_files"}`.
     `malformed` fails kebab-case; `retired` is a value the deprecation map has a
@@ -221,30 +269,26 @@ def audit(vault_path: Path | str) -> dict:
     known = storage_rules.known_values()
     deprecations = storage_rules.rules().deprecations()
 
-    walk_roots = _walk_roots(vault)
-    for root in walk_roots:
-        for md in sorted(root.rglob("*.md")):
-            if any(p == "_archive" for p in md.parts):
-                continue
-            if md.name.startswith("PLAN.archive."):
-                continue
-            try:
-                content = md.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            total_files += 1
-            raw = note_kind(content)
-            if raw is None:
-                continue
-            rel = _vault_rel(md, vault)
-            if not is_kebab(raw):
-                malformed.append((rel, raw))
-                continue
-            by_kind[raw] = by_kind.get(raw, 0) + 1
-            if raw in deprecations:
-                retired.append((rel, raw))
-            elif raw not in known:
-                unrecognized.append((rel, raw))
+    for md, rel in corpus_notes(vault, vault_root):
+        try:
+            content = md.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        total_files += 1
+        if spaces is not None:
+            space = rel.split("/", 1)[0] if "/" in rel else TOP_LEVEL
+            spaces[space] = spaces.get(space, 0) + 1
+        raw = note_kind(content)
+        if raw is None:
+            continue
+        if not is_kebab(raw):
+            malformed.append((rel, raw))
+            continue
+        by_kind[raw] = by_kind.get(raw, 0) + 1
+        if raw in deprecations:
+            retired.append((rel, raw))
+        elif raw not in known:
+            unrecognized.append((rel, raw))
 
     return {
         "by_kind": by_kind,
@@ -255,8 +299,10 @@ def audit(vault_path: Path | str) -> dict:
     }
 
 
-def _print_report(result: dict) -> None:
+def print_report(result: dict, spaces: dict | None = None) -> None:
     print(f"total files scanned: {result['total_files']}")
+    if spaces is not None:
+        print(scope_line(spaces))
     print(f"distinct values found: {len(result['by_kind'])}")
     for kind, count in sorted(result["by_kind"].items(), key=lambda kv: -kv[1]):
         print(f"  {count:5d}  {kind}")
@@ -283,14 +329,15 @@ def _parse_args(argv: list) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="the note-vocabulary registry")
     sub = parser.add_subparsers(dest="command", required=True)
     audit_p = sub.add_parser("audit", help="read-only scan of a vault's vocabulary")
-    audit_p.add_argument("vault", help="path to the vault root")
+    audit_p.add_argument("vault", help="the memory root; the walk covers the vault root it sits in")
     return parser.parse_args(argv)
 
 
 def main(argv: list) -> int:
     args = _parse_args(argv)
     if args.command == "audit":
-        _print_report(audit(args.vault))
+        spaces: dict = {}
+        print_report(audit(args.vault, spaces=spaces), spaces)
         return 0
     return 1
 

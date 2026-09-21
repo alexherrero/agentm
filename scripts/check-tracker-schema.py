@@ -15,9 +15,11 @@ A tracker names the project it sits in, a task's tracker names its task, and a
 project's own tracker names none. A Markdown file anywhere else in a project
 that declares `kind: tracker` is reported as misplaced.
 
-No tracker exists until the crickets release starts writing them, so today the
-gate reads zero files and passes. Every run first proves the checks fire on
-fixtures, so a vault-less machine still exercises them.
+Trackers exist now, because the crickets release writes them, so the gate
+reads every tracker in the live vault and fails on any finding. When this line
+was corrected on 2026-09-20 it read 295 and failed on 2, both in files the
+operator owns. Every run first proves the checks fire on fixtures, so a
+vault-less machine still exercises them.
 
 Usage:
   python3 scripts/check-tracker-schema.py                  # the resolved vault

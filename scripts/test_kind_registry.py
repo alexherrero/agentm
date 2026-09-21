@@ -6,10 +6,12 @@ Run directly:
 """
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _SKILL_SCRIPTS = _HERE.parent / "harness" / "skills" / "memory" / "scripts"
@@ -157,6 +159,69 @@ class TestAudit(unittest.TestCase):
             result = kr.audit(vault)
             self.assertEqual(result["by_kind"], {})
             self.assertEqual(result["total_files"], 0)
+
+
+class TestCorpusWalk(unittest.TestCase):
+    """The audit walks the vault root the memory root sits in, not a list of
+    directories under it. The list it replaced reached `agent/memory/` and
+    `projects/` and nothing else beside them."""
+
+    def setUp(self):
+        # The packaged contract, whatever this machine's vault says: its
+        # recall wall is the one these cases lean on.
+        env = mock.patch.dict(os.environ, {"AGENTM_STORAGE_RULES": str(
+            _HERE.parent / "daemon" / "internal" / "rules" / "storage-rules.default.md")})
+        env.start()
+        self.addCleanup(env.stop)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.vault = Path(tmp.name) / "vault"
+        self.memory_root = self.vault / "agent"
+        (self.memory_root / "memory").mkdir(parents=True)
+
+    def test_every_space_under_the_vault_root_is_walked(self):
+        placed = {
+            "agent/memory/semantic/a.md": "stray-in-memory",
+            "agent/diagnostics/b.md": "stray-in-diagnostics",
+            "agent/inbox/c.md": "stray-in-inbox",
+            "calendar/2026/d.md": "stray-in-calendar",
+            "personal/Home/e.md": "stray-in-personal",
+            "projects/p/tasks/001-a/f.md": "stray-in-projects",
+            "standards/g.md": "stray-in-standards",
+            "index.md": "stray-at-the-top",
+        }
+        for rel, kind in placed.items():
+            _write_note(self.vault / rel, kind)
+        spaces: dict = {}
+        result = kr.audit(self.memory_root, vault_root=self.vault, spaces=spaces)
+        # Keyed from the vault root, the spelling the daemon's rows and the
+        # contract's areas use.
+        self.assertEqual(sorted(result["unrecognized"]), sorted(placed.items()))
+        self.assertEqual(spaces, {"agent": 3, "calendar": 1, "personal": 1, "projects": 1,
+                                  "standards": 1, kr.TOP_LEVEL: 1})
+        self.assertEqual(kr.scope_line(spaces), "scope: agent 3, calendar 1, personal 1, "
+                                                "projects 1, standards 1, (top level) 1")
+
+    def test_what_the_walk_leaves_out(self):
+        for rel in (".obsidian/plugin-note.md", ".trash/deleted.md", "projects/p/.hidden.md",
+                    "projects/p/_archive/old.md", "projects/p/PLAN.archive.20260101-x.md",
+                    "personal/Home/Important Docs/codes.md"):
+            _write_note(self.vault / rel, "left-out")
+        _write_note(self.vault / "personal" / "Home" / "kept.md", "kept")
+        spaces: dict = {}
+        result = kr.audit(self.memory_root, vault_root=self.vault, spaces=spaces)
+        self.assertEqual(result["unrecognized"], [("personal/Home/kept.md", "kept")])
+        # Counted only once read, so the wall's note was never opened.
+        self.assertEqual(result["total_files"], 1)
+        self.assertEqual(spaces, {"personal": 1})
+
+    def test_without_a_vault_root_an_obsidian_witness_finds_it(self):
+        _write_note(self.vault / "standards" / "g.md", "stray-in-standards")
+        self.assertEqual(kr.audit(self.memory_root)["unrecognized"], [],
+                         "no witness: the memory root is taken for a flat vault")
+        (self.vault / ".obsidian").mkdir()
+        self.assertEqual(kr.audit(self.memory_root)["unrecognized"],
+                         [("standards/g.md", "stray-in-standards")])
 
 
 if __name__ == "__main__":

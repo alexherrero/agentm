@@ -488,12 +488,14 @@ class MigrateArcsOnARootSpaceProject(unittest.TestCase):
 
 class RootSpaceHelperCopiesAgree(unittest.TestCase):
     """The one predicate is vendored per file (the skill scripts stay
-    self-contained); the copies must not drift."""
+    self-contained); the copies must not drift. `kind_registry.py` carried one
+    until its audit began walking the whole vault root, which names no
+    directory for the predicate to find."""
 
     FILES = ("scripts/harness_memory.py",) + tuple(
         f"harness/skills/memory/scripts/{n}" for n in (
             "save.py", "promote.py", "ideas_promote.py", "moc_generator.py", "arc_registry.py",
-            "kind_registry.py", "frontmatter_validator.py", "vault_lint.py", "graph_snapshot.py",
+            "frontmatter_validator.py", "vault_lint.py", "graph_snapshot.py",
             "recall.py", "migrate_arcs.py"))
 
     def test_every_copy_is_byte_identical(self):

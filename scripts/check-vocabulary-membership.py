@@ -30,19 +30,40 @@ every parse. `--self-test` proves both rules executable without touching the
 live corpus: a collision fixture must be refused by the daemon, and a scratch
 vault with an unregistered value must be caught by the audit.
 
+Where the corpus is. `$MEMORY_ROOT`, or its deprecated alias, is the override
+(`vault_layout.env_memory_root()`); unset, the configured memory root
+(`harness_memory.memory_root()`), the order the sibling gates resolve it in.
+Until 2026-09-20 the gate read the export alone, and `check-all.sh` exports
+neither name, so the battery's run printed a skip line and passed over zero
+notes. An export that names no directory still skips rather than falling
+through to the configured vault: an override is hermetic, and the configured
+vault is the operator's real one. Nothing resolving skips too, which is every
+CI runner.
+
+What it walks. The whole vault root the memory root sits in
+(`harness_memory.vault_path()`), the way the daemon's index walks it, minus
+the contract's recall wall, which is never entered (see
+`kind_registry.corpus_notes`). The walk it replaced covered `agent/memory/`
+and `projects/` and missed `standards/`, `calendar/`, `personal/` and the root
+notes. The report's `scope:` line names each top-level directory walked and
+the notes read in it, so a narrowed walk shows where the gate runs.
+
 Usage:
   python3 scripts/check-vocabulary-membership.py --self-test   # fixture proof, no vault
   python3 scripts/check-vocabulary-membership.py               # ratchet vs baseline
   python3 scripts/check-vocabulary-membership.py --strict      # baseline ignored
+  python3 scripts/check-vocabulary-membership.py --report      # the full audit; always exit 0
 
 Environment:
-  MEMORY_ROOT              the corpus root; unset → corpus mode skips (CI has no vault)
-  AGENTM_VOCAB_BASELINE          baseline path override (tests); default
-                                 ~/.local/state/agentm/vocabulary-membership-baseline.json
-  AGENTMD                        the daemon binary the contract is asked through
+  MEMORY_ROOT              the memory root, overriding the configured one;
+                           $MEMORY_VAULT_PATH is its deprecated alias
+  AGENTM_INSTALL_PREFIX    where the kernel config is read from (tests)
+  AGENTM_VOCAB_BASELINE    baseline path override (tests); default
+                           ~/.local/state/agentm/vocabulary-membership-baseline.json
+  AGENTMD                  the daemon binary the contract is asked through
 
 Exit:
-  0  no new offenders (or corpus mode skipped; or self-test passed)
+  0  no new offenders (or nothing resolved to audit; or self-test passed; or --report)
   1  a new offender appeared, or --strict found any violation, or self-test failed
   2  setup error (contract unavailable)
 """
@@ -57,10 +78,13 @@ import tempfile
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
+for _p in (str(_REPO / "scripts"), str(_REPO / "harness" / "skills" / "memory" / "scripts")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import kind_registry  # noqa: E402
 import storage_rules  # noqa: E402
+import vault_layout  # noqa: E402
 from storage_rules import StorageRulesError  # noqa: E402
 
 _DEFAULT_BASELINE = Path.home() / ".local" / "state" / "agentm" / "vocabulary-membership-baseline.json"
@@ -131,14 +155,54 @@ def _write_baseline(path: Path, offenders: set) -> None:
         encoding="utf-8")
 
 
-def run_corpus_check(vault: Path, baseline_path: Path, *, strict: bool) -> int:
-    audit = kind_registry.audit(vault)
+def _within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def resolve_corpus() -> tuple:
+    """Where the corpus is: `(memory root, vault root, None)`, or
+    `(None, None, why)` when nothing resolves.
+
+    The export first, then the configured memory root. The vault root is
+    `harness_memory.vault_path()`, which derives it from the same export or
+    reads it from the same config, so the two agree; should it not contain the
+    memory root, it is left to `kind_registry.corpus_root` to find.
+    """
+    memory_root = vault_layout.env_memory_root()
+    if memory_root is None:
+        try:
+            import harness_memory
+            memory_root = harness_memory.memory_root()
+        except Exception as exc:  # noqa: BLE001 - import or backend-guard failure
+            return None, None, f"no vault resolves ({exc})"
+        if memory_root is None:
+            return None, None, "$MEMORY_ROOT is unset and no vault is configured"
+    if not memory_root.is_dir():
+        return None, None, f"the memory root is not a directory ({memory_root})"
+    try:
+        import harness_memory
+        vault_root = harness_memory.vault_path()
+    except Exception:  # noqa: BLE001 - the audit can still find the vault root itself
+        vault_root = None
+    if vault_root is not None and not _within(memory_root, vault_root):
+        vault_root = None
+    return memory_root, vault_root, None
+
+
+def run_corpus_check(vault: Path, baseline_path: Path, *, strict: bool, vault_root=None) -> int:
+    spaces: dict = {}
+    audit = kind_registry.audit(vault, vault_root=vault_root, spaces=spaces)
     current = _offenders(audit)
     retired = len(audit["retired"])
 
-    print(f"check-vocabulary-membership: {audit['total_files']} notes scanned, "
-          f"{len(current)} unregistered-value offender(s), {retired} retired-value "
-          f"note(s) awaiting the migration")
+    print(f"check-vocabulary-membership: {audit['total_files']} notes scanned in "
+          f"{kind_registry.corpus_root(vault, vault_root)}, {len(current)} unregistered-value "
+          f"offender(s), {retired} retired-value note(s) awaiting the migration")
+    print(f"  {kind_registry.scope_line(spaces)}")
 
     if strict:
         if current:
@@ -194,7 +258,9 @@ def run_self_test() -> int:
         notes.mkdir(parents=True)
         (notes / "stray.md").write_text(
             "---\nkind: definitely-not-registered\n---\n\nbody\n", encoding="utf-8")
-        audit = kind_registry.audit(vault)
+        # Named as its own vault root, so nothing beside the scratch directory
+        # can be taken for the vault it sits in.
+        audit = kind_registry.audit(vault, vault_root=vault)
         if ("memory/semantic/stray.md", "definitely-not-registered") not in _offenders(audit):
             failures.append("an unregistered value in a scratch vault was not caught by the audit")
 
@@ -207,17 +273,42 @@ def run_self_test() -> int:
     return 0
 
 
+def run_report() -> int:
+    """The whole audit over the resolved corpus, for reading: every value with
+    its count, then the retired, the unregistered and the malformed ones.
+    Report-only, so it always exits 0. `check-kind-taxonomy.sh` runs this, so
+    the advisory report and the gate read the same notes."""
+    memory_root, vault_root, why = resolve_corpus()
+    if memory_root is None:
+        print(f"check-vocabulary-membership: {why} — skipping the report")
+        return 0
+    spaces: dict = {}
+    try:
+        result = kind_registry.audit(memory_root, vault_root=vault_root, spaces=spaces)
+    except StorageRulesError as exc:
+        print(f"check-vocabulary-membership: the filing contract is unavailable, so there is "
+              f"no report: {exc}")
+        return 0
+    print(f"corpus: {kind_registry.corpus_root(memory_root, vault_root)}")
+    kind_registry.print_report(result, spaces)
+    return 0
+
+
 def main(argv: list) -> int:
     parser = argparse.ArgumentParser(description="vocabulary membership gate (set-ratchet)")
     parser.add_argument("--self-test", action="store_true",
                         help="prove the collision + membership rules on fixtures; no vault needed")
     parser.add_argument("--strict", action="store_true",
                         help="ignore the baseline; any violation fails (post-migration mode)")
+    parser.add_argument("--report", action="store_true",
+                        help="print the whole audit over the resolved corpus; always exits 0")
     args = parser.parse_args(argv)
 
     try:
         if args.self_test:
             return run_self_test()
+        if args.report:
+            return run_report()
 
         # The bare invocation is the battery's: prove the rules fire on
         # fixtures first, then ratchet the live corpus when one resolves.
@@ -225,13 +316,13 @@ def main(argv: list) -> int:
         if code != 0:
             return code
 
-        vault = (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
-        if not vault or not Path(vault).is_dir():
-            print("check-vocabulary-membership: MEMORY_ROOT unset or not a directory — "
-                  "corpus mode skipped (the self-test half runs in CI regardless)")
+        memory_root, vault_root, why = resolve_corpus()
+        if memory_root is None:
+            print(f"check-vocabulary-membership: {why} — skipping the corpus audit "
+                  f"(the self-test half runs in CI regardless)")
             return 0
         baseline = Path(os.environ.get("AGENTM_VOCAB_BASELINE", "").strip() or _DEFAULT_BASELINE)
-        return run_corpus_check(Path(vault), baseline, strict=args.strict)
+        return run_corpus_check(memory_root, baseline, strict=args.strict, vault_root=vault_root)
     except BaselineCorrupt as exc:
         print(f"check-vocabulary-membership: HALT — the baseline is corrupt, and "
               f"corruption halts where absence falls through: {exc}", file=sys.stderr)
