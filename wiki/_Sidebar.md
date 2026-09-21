@@ -27,6 +27,7 @@
 - [Enable the daily email](Enable-Email-Digest-Delivery)
 - [Ingest an article](Ingest-An-Article)
 - [Capture from your phone](Capture-From-Your-Phone)
+- [Manage your ideas list](Manage-Your-Ideas-List)
 - [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards)
 - [Archive a finished project](Archive-A-Finished-Project)
 - [Tune the archive](Tune-The-Archive)

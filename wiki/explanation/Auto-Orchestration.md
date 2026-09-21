@@ -4,11 +4,11 @@ Why the memory skills became a *push* surface instead of a *pull* one — and ho
 
 ## The gap it closes
 
-The memory skills — recall, reflect, discover-skills, adapt-skills, the watchlist — already did real work, but you had to *remember* to use them. Pending work piled up unseen: an inbox over threshold, watchlist patterns waiting for review, incubator ideas that never got researched, stale idea-ledger entries that should have been collected. The skills sat there until you thought to ask.
+The memory skills — recall, reflect, discover-skills, adapt-skills, the watchlist — already did real work, but you had to *remember* to use them. Pending work piled up unseen: an inbox over threshold, watchlist patterns waiting for review, incubator ideas that never got researched. The skills sat there until you thought to ask.
 
 Auto-orchestration closes that gap on three surfaces, and the *posture* is the whole point — it is plumbing and nudges, never an autonomous actor:
 
-- **At session start**, a briefing tells you what needs attention — *"3 watchlist patterns to review · inbox over threshold · 2 incubator ideas pending research"* — in one tight block, plus two nudges (ideas you keep having that are worth promoting, and watchlist patterns you said you'd author but haven't).
+- **At session start**, a briefing tells you what needs attention — *"3 watchlist patterns to review · inbox over threshold · 2 incubator ideas pending research"* — in one tight block, plus a nudge for watchlist patterns you said you'd author but haven't.
 - **During idle time**, a bounded discover → adapt chain runs itself in passes, staging candidates so you stop hand-invoking `adapt-skills`.
 - **At the phase boundaries**, a finished `/work` session gets reflected and a finished `/release` refreshes the skill surfaces, without you running `reflect` or `index-skills` by hand. The entry point is `phase_dispatch()` in [`scripts/harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py) (V5-5 / LC-3); the valid phases are locked in the `_BRIDGE_PHASES` frozenset in that same module. **Live since 2026-07-25** — crickets' `development-lifecycle` calls in through this bridge (see the Developer plugin note below). On Claude Code, session reflection also happens on every session through the Stop hook; on Antigravity, which has no Stop hook, this phase-dispatch call is the only session-completion reflect.
 

@@ -600,12 +600,14 @@ is a snapshot taken once per run (`enrichQueue`, `enrich_run.go:201-228`)
 cursor underneath the one in progress. `--dry-run` sizes the night against
 this same queue: how many of its notes are owed the deep pass, the light
 pass, are unchanged at this pass, or unreadable, alongside the budget the
-run would run under. It counts the cards and the project records apart —
-one number over both reads as a card count and is not — and it sizes from
-the position a cursor resumes at (`queueStart`, `enrich_run.go`), which is
-where the lister pages from, rather than from every path that sorts after
-`--after`. `--sample` draws from the same queue, and the coverage
-ledger's population (`pendingFor`) is the same queue too.
+run would run under. It counts the cards, the idea cards under
+`personal/ideas/`, and the project records apart — one number over any two
+reads as a card count and is not, and the idea-card count is named only
+when it is non-zero (see [Idea cards](#idea-cards) below) — and it sizes
+from the position a cursor resumes at (`queueStart`, `enrich_run.go`),
+which is where the lister pages from, rather than from every path that
+sorts after `--after`. `--sample` draws from the same queue, and the
+coverage ledger's population (`pendingFor`) is the same queue too.
 
 The project records queue after the cards, inside the same line
 (agentm-vault § Projects and tasks): `enrichRecordQueue` walks the index
@@ -655,6 +657,69 @@ record's composition, so a record is never renamed. The run counts it in
 `verdicts.records` rather than in `filed_active` or `below_floor` — see
 [the morning note](#the-morning-note) below for where that count
 surfaces.
+
+### Idea cards
+
+`personal/ideas/` is the one folder under `personal/` the night reaches
+(agentm-vault part 13; `enrich.IdeasDir`, `daemon/internal/enrich/ideas.go:18`).
+Nothing else there is queued at all. An idea card joins the queue in the
+cards' tier rather than getting one of its own — `enrichIdeasQueue`
+(`daemon/cmd/agentmd/enrich_run.go:366`) walks the folder flat (a markdown
+file directly inside it, no dotfile, no subfolder — `enrich.IsIdeaCard`,
+`ideas.go:27`) and appends every match to the card queue `enrichServeOrder`
+already built, so it is served oldest-first alongside the class directories'
+cards rather than ahead of or behind them. The dry-run line names it as its
+own population only when there are any — `, N idea card(s) under
+personal/ideas/` — so a vault with no folder yet reads exactly as it always
+did (`ideaClause`, `main.go:1454-1456`); the night's run record counts idea
+cards in `verdicts.Ideas`, apart from `filed_active` and `below_floor`, the
+same way a project record is counted apart. `personal/ideas` also joined
+`defaultEmbedScope` (`daemon/internal/config/config.go`), named alone the
+way `standards/voice` is beside it — the rest of `personal/` stays out of
+the vector arm's scope, but leaving this one folder out would give the
+lexical arm an idea card the dense arm cannot see.
+
+What is different about an idea card is what the night may write to it, and
+that is the stamp's business, not the queue's. `Stamp.OperatorFiled`
+(`daemon/internal/enrich/render.go:103`) is set from the path — `stamp.OperatorFiled
+= enrich.IsIdeaCard(rel)` (`main.go:1597`) — the same way `NeverFiles` is set
+for the drop folder. Under it:
+
+- **No filing verdict is written.** `Compose` substitutes `KeptFiling`
+  (`render.go:283`) for the ordinary `VerdictFor` judgment: `status` and
+  `filing_confidence` stay exactly what the card carried — a card with
+  neither reads as `active` at `high`, because a card in `personal/ideas/`
+  is filed by being there, not by a score — and the card never sinks to
+  `dormant`, however low a response scores.
+- **`title` and `type` stand over the response.** `Compose` overwrites the
+  model's proposed `title`/`type` with the card's own, so a card that
+  stopped reading `type: idea` because a response proposed a different one
+  would silently drop off `Ideas.md` — a demotion by another name.
+- **No `lifecycle` is written or defaulted.** `carryProvenance`'s
+  `defaultLifecycle` argument is `!s.OperatorFiled` (`compose.go`): a
+  `lifecycle` the card already happens to carry still travels, because it is
+  the operator's, but the ordinary "no lifecycle of its own starts `active`"
+  default never fires — an idea card has no aging axis.
+- **`area` and `dismissed` travel through every rewrite, and nothing writes
+  them.** They ride `carriedFields` (above) and only the carry touches them;
+  losing either would move an idea to the wrong `Ideas.md` heading, or back
+  onto the live list, with nothing on the card saying why. The final reorder
+  (`cardshape.Reorder`, called from `Compose`) places them by the same rule
+  every other card field follows — read where they're read: `area` right
+  after `type`/`kind`, `dismissed` right before `status` (`ReadOrder`,
+  `daemon/internal/cardshape/cardshape.go:24`; the Python toolkit scripts'
+  `card_shape.READ_ORDER` matches it field for field).
+- **The card is never renamed.** `newSlug` is cleared for an `OperatorFiled`
+  card the same way it is for a `NeverFiles` one (`main.go:1627-1632`):
+  `personal/ideas/` is the operator's space, the filename is the one they
+  filed it under, and `Ideas.md` links it by that name.
+
+What the pass **may** still write, on either depth: the summary, the tags,
+`related`, `importance_proposed`, and — on a deep pass — its own dated
+`## Added by dreaming` section under the card's body, the same mechanic a
+card outside `personal/` gets. Thinking an idea through is the one thing the
+design asks the night to do with one; re-grading it is the one thing it must
+not.
 
 ### The budget, and what stops a run
 
@@ -929,15 +994,19 @@ one judgment this pass makes about its own number, and a third band would
 be a threshold nobody measured. The needs-review reading selects on
 `filing_confidence` without knowing what floor produced it.
 
-`CarryProvenance` (`daemon/internal/enrich/carry.go:68`) copies every
+`CarryProvenance` (`daemon/internal/enrich/carry.go:89`) copies every
 capture-record and review-mark field the composed note doesn't already
 set — `source`, `source_id`, `source_url`, `source_fetched`, `lifecycle`,
 `lifecycle_since`, `superseded_by`, `supersedes`, `promoted_at`,
 `promoted_to`, `derived_from`, `created`, `via`, `surface`, `instructions`,
 `review_flags`, `related`, `trust`, `why`, `project`, `task`, `importance`,
-`importance_proposed`, `slug`, `fingerprint`, `occurrences`
-(`carriedFields`, `carry.go:41-49`) — from the note as it stood before
-enrichment. `filing_confidence` is deliberately excluded from that list:
+`importance_proposed`, `slug`, `fingerprint`, `occurrences`, `area`,
+`dismissed`
+(`carriedFields`, `carry.go:60-70`) — from the note as it stood before
+enrichment. `area` and `dismissed` are an idea card's own two fields
+(agentm-vault part 13); see [Idea cards](#idea-cards) below for what makes
+them different from the rest of the list. `filing_confidence` is
+deliberately excluded from that list:
 the pass re-judges it, which is how an unfiled capture actually clears the
 needs-review reading rather than carrying its old low stamp forward
 unread. `why` rides the carry list and is never written by the pass itself
@@ -968,11 +1037,15 @@ byte-for-byte guarantee above, since the block quotes the note's source
 material and the pass was never entitled to rewrite or drop it.
 
 A note with no `lifecycle` of its own starts `active` — an enriched note is
-an auto-filed note either way, the same default a fresh write gets.
+an auto-filed note either way, the same default a fresh write gets. An idea
+card is the one exception: it has no aging axis, so none is written onto it
+either — see [Idea cards](#idea-cards) below.
 `main.go`'s `cmdEnrich` is the one caller: it reads the note as it stood,
 calls `Compose` with the response, the stamp, the pass depth and the
-neighbours offered, and `Compose` calls `CarryProvenance` on the
-frontmatter it renders before the write applies (`main.go:1480-1499`).
+neighbours offered, and `Compose` calls `carryProvenance` — the unexported
+function `CarryProvenance` above wraps with the `lifecycle` default fixed
+`true` — on the frontmatter it renders before the write applies
+(`main.go:1581-1638`).
 
 Two gates retired with the rewrite they existed to check. The
 token-preservation post-gate (`tokens.go`) held a rewrite to keep every
@@ -1094,7 +1167,7 @@ The second Go binary the design names, built beside `agentmd` by `install.sh`. W
 | | |
 |---|---|
 | Binary | `agentmdream` — built beside `agentmd` by `install.sh` |
-| Subcommands | `run`, `status`, `journal`, `version` |
+| Subcommands | `run`, `status`, `journal`, `ideas`, `version` |
 | Gate | elapsed ≥ `-every` since the last *applying* pass (flag default 168h; the scheduled job passes 12h) **and** activity since then |
 | Lock | mkdir + heartbeat, stale-window pid takeover; a second start exits 3 |
 | Journal | fsynced intent → applied → skipped, hash-checked resume after a crash |
@@ -1106,9 +1179,12 @@ The second Go binary the design names, built beside `agentmd` by `install.sh`. W
 "$HOME/.local/bin/agentmdream" run -every 12h -apply   # the applying pass the runner schedules nightly
 agentmdream status                                       # the last pass, the gate's answer now, the lock
 agentmdream journal -tail 20                              # the mutation journal, newest last
+agentmdream ideas                                         # print Ideas.md as the night would rebuild it (dry run)
 ```
 
 `run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-json` (emit the report as JSON). The morning note shows a pass written since the night window opened as a table, one row per job; see [the morning note](#the-morning-note).
+
+`ideas`'s own flags (agentm-vault part 13; `cmdIdeas`, `daemon/cmd/agentmdream/main.go:139`): with none, it prints `Ideas.md` exactly as a rebuild would write it, under the file's own existing head, and touches nothing. `-intro <file>` builds the head from that file's text instead — the one-time adoption of an operator's existing, hand-kept `Ideas.md`, read only once and copied byte for byte into every later rebuild. `-write` makes the write for real, journaled and under this binary's own lock, so `-intro <file> -write` is the whole adoption in one command; without `-write` the command only ever prints. `-json` emits the plan as JSON instead of the rendering. A file with no `<!-- ideas:intro:start -->` / `:end` marker pair and no `-intro` given prints nothing to write and exits 4 — there is no operator text yet to keep, so there is no rewrite to make.
 
 ### Its jobs, in order
 
@@ -1120,6 +1196,7 @@ agentmdream journal -tail 20                              # the mutation journal
 | `promote` | Reads every session trace's `## Captured` and `## Candidates` sections (agentm-vault plan 04, task 4); the recall hook's own `## Recalled` list is basenames, not judgments, and promote no longer reads it. A `## Candidates` line three or more distinct traces carry becomes a semantic candidate at `memory/semantic/candidate-<first-words>.md` — `status: unfiled`, no `why`, `derived_from` naming the traces — for the next enrichment batch to judge; capped at 10 new candidates a pass. A `## Captured` link three traces carry already has a card and is only reported. Nothing is ever written to `crystallized/`, which holds model syntheses made at a task's close or on request. |
 | `calendar` | Writes the daily register's weekly and monthly reviews, and, beside each year that has a facet note, that year's generated map (`moc-calendar-YYYY.md`, agentm-vault plan 07). A period gets a review only when one of its facet notes holds a timed entry or prose beyond the daily template. A day of prose alone is listed without an entry count. |
 | `mocs` | A page per memory type, `<type>.md`, once it holds `moc_min_members` (5) live notes — past `moc_split_at` (40) it paginates inside itself, a section per 40 members, never into a second file (agentm-vault plan 07 retired the old numbered pages). When the type falls below `moc_min_members`, the job removes its page through the journal. `moc-memory.md` lists every type — a type at or past the floor by its page's link, a smaller one with its notes in full — and `moc-root.md` lists every area's map, both regenerated alongside it. A type's page is flagged `stale: true` past `moc_stale_after_days` (90). Over the projects space (agentm-vault plan 09) the job also writes a map at each project's root, `moc-<slug>.md`: the project's tasks, in flight first by importance and the rest folded under the day they closed, then its decisions and designs, newest `created` first, and its research as a count per bundle. `Projects/moc-tasks.md` lists every project's tasks once any tracker exists, and `Projects/moc-projects.md` lists every project folder, leaving out `_archive/` and `completed/`, with its tracker's first State line or else its charter's What line. A task is a tracker in either layout: `tasks/<task>/tracker.md`, or `tracker-<task>.md` beside a flat plan pair. The root map lists a `Projects/moc-*.md` map on the night it is first written. |
+| `ideas` | Rebuilds `Ideas.md` over the idea cards in `personal/ideas/` (agentm-vault part 13; `PlanIdeas`, `daemon/internal/dreaming/ideas.go:254`): one `## <area>` heading per group name the cards actually carry, alphabetical, cards with no `area:` last under "no group yet"; one `- [[slug\|title]] — summary` line per idea, title order within its heading; the dismissed ideas (a `dismissed:` date on the card) in one collapsed `> [!note]- Dismissed (N)` callout at the end instead of a heading of their own. Everything from the top of the file through the operator's own end marker is copied into the rewrite byte for byte. A file carrying no marker pair is never touched — the first write is the deliberate adoption `agentmdream ideas -intro <file> -write` makes, above — so a vault that has not adopted the file yet is untouched by the nightly run too. A rebuild over a folder that has not changed writes nothing. |
 | `dates` | Additive relative-date glosses (`last week (the week of 2026-08-24)`) in notes older than `date_gloss_after_days` (30) — never a rewrite, never inside a fence. |
 
 Then three checks that write nothing: a vocabulary audit (every `type:`/`kind:` against the contract's own registers), trend flags (writes doubling week over week, a day at the cap, a class growing by half since the last pass), and a sampled re-classification diff (`reclassify_sample`, 30 notes) whenever the filing-pass version has changed since the last pass, or on `-reclassify`.

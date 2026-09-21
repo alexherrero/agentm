@@ -54,6 +54,16 @@ python3 harness/skills/memory/scripts/inbox_review.py --memory-root "<vault>/age
 
 The card goes through the write path a capture already takes, to the class directory the filing contract routes **your** type to — not a default the command picked — and leaves the folder only once the write has landed. A card you say nothing about stays where it is. A card the pass cannot parse is reported by name, left in place, and raised again next time; there is no `rejected/` folder, because that moves your own words somewhere you will not look.
 
+An idea goes to a different place — `personal/ideas/`, not a class directory — and takes a group instead of a type (agentm-vault part 13):
+
+```bash
+python3 harness/skills/memory/scripts/inbox_review.py --memory-root "<vault>/agent" \
+    --file a-thought-from-the-couch.md \
+    --type idea --area home-tech
+```
+
+`--area` is one lower-case word, hyphens allowed — it becomes the card's `area:` and the heading it lands under the next time `Ideas.md` rebuilds. A card that already carries `type: idea` in its own frontmatter takes this path without needing `--type` said again. An idea filed without `--area` is refused and stays in the inbox, because a new idea gets its group at this review, not a default; a card already sitting at the destination name is never overwritten. See [Manage your ideas list](Manage-Your-Ideas-List) for what happens to it from here.
+
 ## What the night does to a waiting card
 
 The nightly enrichment reaches `agent/inbox/` and takes the **front** of the backlog, ahead of the class cards and the project records, so the card you read in the morning already carries a summary and a reason. Two things follow from that, and both are deliberate:
@@ -80,5 +90,6 @@ A card that changed in the last five minutes is left alone for the night: it may
 ## Related
 
 - [Find your way around the vault](Find-Your-Way-Around-The-Vault) — where `agent/inbox/` sits among the standard children.
+- [Manage your ideas list](Manage-Your-Ideas-List) — what happens to an idea once it's filed here.
 - [The AgentMemory context payload](AgentMemory-Context-Payload) — the *other* paste, the one about reading.
 - [CI gates](CI-Gates) — `check-card-prompt` and `check-memory-root-shape`, the two that hold this page's promises.

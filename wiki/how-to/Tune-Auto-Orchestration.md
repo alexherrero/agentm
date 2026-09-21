@@ -34,7 +34,7 @@ The tunables live in `<vault>/personal/auto-orchestration-config.md`, auto-seede
    + inbox_threshold = 25
    ```
 
-   The other thresholds are `watchlist_high_threshold`, `incubator_pending_threshold`, `idea_ledger_stale_months`, plus the two nudge thresholds `promote_mention_threshold` and `stale_promotion_days`.
+   The other thresholds are `watchlist_high_threshold` and `incubator_pending_threshold`, plus the nudge threshold `stale_promotion_days`.
 
 3. **Change a cooldown so a chain fires more or less often.** Cooldowns are in hours; a non-positive value means "always eligible". To let the idle chain run twice a day instead of once:
 
@@ -52,7 +52,7 @@ The tunables live in `<vault>/personal/auto-orchestration-config.md`, auto-seede
    + enable_briefing = false
    ```
 
-   The toggles are `enable_briefing`, `enable_idle_chain`, `enable_phase_integration`, `enable_promote_suggest`, `enable_stale_promotion_nudge`. (There is no per-step toggle inside the idle chain — `enable_idle_chain` gates the whole chain.)
+   The toggles are `enable_briefing`, `enable_idle_chain`, `enable_phase_integration`, `enable_stale_promotion_nudge`. (There is no per-step toggle inside the idle chain — `enable_idle_chain` gates the whole chain.)
 
 5. **Verify the change took effect.** Confirm the config parses to the values you expect:
 

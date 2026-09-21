@@ -22,7 +22,7 @@ The vault is five lowercase root spaces beside two root notes. Every space is sp
 
 3. **Look inside `calendar/`.** One `YYYY/` directory per year, holding facet notes, plus a generated `moc-calendar-YYYY.md` beside each year. `_daily-template.md` sits at the calendar root — it stays there until plan 10 wires the diary facet.
 
-4. **Look inside `personal/`.** Your own filing, Title Case inside and untouched by the root casing migration — that migration renamed only the four root spaces themselves, never anything below them. `personal/Home/`, `personal/Church/`, and the rest of your tree read exactly as you left them.
+4. **Look inside `personal/`.** Your own filing, Title Case inside and untouched by the root casing migration — that migration renamed only the four root spaces themselves, never anything below them. `personal/Home/`, `personal/Church/`, and the rest of your tree read exactly as you left them. One folder there is also read by the machinery: `personal/ideas/`, lowercase, is where an idea card lives once you file it. The night may add its thoughts to a card there, and `Ideas.md` is rebuilt from the folder (agentm-vault part 13) — see [Manage your ideas list](Manage-Your-Ideas-List).
 
 5. **Look inside `projects/`.** One tree per project: `charter.md`, `tracker.md`, `followups.md`, `decisions/`, `designs/`, `research/`, `drafts/`, `tasks/`, and a generated `moc-<slug>.md` (the design's skeleton; a project that predates the projects migration, agentm-vault plan 10, still carries its `_harness/` tree and whatever else it grew). A finished project's tree lives under `projects/completed/` instead.
 
@@ -65,4 +65,5 @@ The vault is five lowercase root spaces beside two root notes. Every space is sp
 - [AgentM Vault design](../designs/agentm-vault) — "The root spaces are lowercase," the ruling this layout follows.
 - [Run the root casing migration](Run-The-Root-Casing-Migration) — the migration that got the vault here.
 - [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault) — reading this same layout through Obsidian's graph and backlinks.
+- [Manage your ideas list](Manage-Your-Ideas-List) — `personal/ideas/`, the one code-recognized folder inside `personal/`.
 - [CI gates reference](CI-Gates) — `check-no-title-case-roots` and `check-memory-root-consistency`, the two gates step 8 runs by hand.
