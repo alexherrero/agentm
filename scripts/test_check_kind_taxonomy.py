@@ -12,6 +12,7 @@ Run directly:
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
@@ -26,6 +27,10 @@ def _run(env_overrides: dict) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env.pop("MEMORY_ROOT", None)
     env.pop("MEMORY_VAULT_PATH", None)
+    # With no export, the script now reads the configured vault. A prefix that
+    # does not exist keeps this machine's own vault out of every case below
+    # unless a test names a config of its own.
+    env["AGENTM_INSTALL_PREFIX"] = str(_REPO_ROOT / "no-such-prefix")
     env.update(env_overrides)
     return subprocess.run(
         ["bash", str(_SCRIPT)], cwd=_REPO_ROOT,
@@ -69,6 +74,29 @@ class TestCheckKindTaxonomyAlwaysExitsZero(unittest.TestCase):
             result = _run({"MEMORY_VAULT_PATH": str(vault)})
             self.assertEqual(result.returncode, 0)
             self.assertIn("malformed", result.stdout)
+
+    def test_with_nothing_exported_the_configured_vault_is_reported(self):
+        # What check-all.sh does: it exports neither name. The script used to
+        # skip here every time; it now reports on the configured vault, every
+        # space beside the memory root included.
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            (vault / "agent" / "memory").mkdir(parents=True)
+            (vault / "standards").mkdir()
+            (vault / "standards" / "rule.md").write_text(
+                "---\nkind: not-a-registered-kind\n---\n\nbody\n", encoding="utf-8",
+            )
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            (prefix / ".agentm-config.json").write_text(json.dumps({
+                "plugins.obsidian-vault.vault_path": str(vault),
+                "plugins.obsidian-vault.memory_root": "agent",
+            }), encoding="utf-8")
+            result = _run({"AGENTM_INSTALL_PREFIX": str(prefix)})
+            self.assertEqual(result.returncode, 0)
+            self.assertNotIn("skipping", result.stdout)
+            self.assertIn("scope: standards 1", result.stdout)
+            self.assertIn("standards/rule.md: 'not-a-registered-kind'", result.stdout)
 
 
 if __name__ == "__main__":

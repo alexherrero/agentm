@@ -7,14 +7,20 @@ any offender not in it fails immediately (a *set* comparison, so a swap cannot
 hide inside a stable count); the baseline only ever shrinks; retired values are
 migration-pending, never violations; `--strict` ignores the baseline entirely.
 
-No daemon binary: the contract is injected through `storage_rules`' module
-cache, which is the same seam the runtime uses — these tests exercise the real
-audit walker and the real gate logic over scratch vaults.
+No daemon binary for the ratchet: the contract is injected through
+`storage_rules`' module cache, which is the same seam the runtime uses — these
+tests exercise the real audit walker and the real gate logic over scratch
+vaults. `CorpusResolution` drives the real script the way check-all does, so it
+asks a built daemon, pointed at the packaged contract.
 """
 from __future__ import annotations
 
 import contextlib
 import io
+import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -165,6 +171,159 @@ class SelfTestMembershipHalf(unittest.TestCase):
                               offenders)
         finally:
             storage_rules._CACHE = saved
+
+
+_GATE = _HERE / "check-vocabulary-membership.py"
+_PACKAGED_CONTRACT = _HERE.parent / "daemon" / "internal" / "rules" / "storage-rules.default.md"
+
+# The shipped layout: the memory root is <vault>/agent, and the operator's
+# spaces sit beside it. Each value is the note's vocabulary line, or None for a
+# note that carries none.
+_NESTED_VAULT = {
+    "agent/memory/semantic/fine.md": "type: reference",
+    "agent/diagnostics/2026-09-20-brief.md": "kind: brief",
+    "projects/p/tasks/001-a/plan.md": "kind: unregistered-in-projects",
+    "standards/rule.md": "kind: unregistered-in-standards",
+    "personal/Home/recipe.md": None,
+    # The packaged contract's recall_exempt_areas: never indexed, never served,
+    # and never read by this gate either.
+    "personal/Home/Important Docs/codes.md": "kind: behind-the-wall",
+}
+
+
+class CorpusResolution(unittest.TestCase):
+    """Where the gate looks when check-all runs it, and what it reads there.
+
+    check-all.sh exports no `$MEMORY_ROOT`, and until 2026-09-20 the gate read
+    nothing else: it printed a skip line, exited 0, and the battery showed PASS
+    over zero notes. With the export set, it walked the memory root's
+    `memory/` and a `projects/` sibling it could only find through an
+    `.obsidian/` witness, and never opened `standards/`.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._build = None
+        binary = os.environ.get("AGENTMD", "").strip()
+        if not binary:
+            if shutil.which("go") is None:
+                raise unittest.SkipTest("go is not on this machine; set $AGENTMD to a built binary")
+            cls._build = tempfile.TemporaryDirectory(prefix="agentmd-build-")
+            binary = str(Path(cls._build.name) / "agentmd")
+            subprocess.run(["go", "build", "-o", binary, "./cmd/agentmd"],
+                           cwd=_HERE.parent / "daemon", check=True, capture_output=True)
+        cls._agentmd = binary
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._build is not None:
+            cls._build.cleanup()
+
+    def _vault(self, tmp: Path, *, configured: bool) -> tuple:
+        """The nested vault, and an install prefix whose config names its
+        memory root — and, when `configured`, the vault itself."""
+        vault = tmp / "vault"
+        for rel, line in _NESTED_VAULT.items():
+            path = vault / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(_note(line) if line else "# no frontmatter\n", encoding="utf-8")
+        prefix = tmp / "prefix"
+        prefix.mkdir()
+        config = {"plugins.obsidian-vault.memory_root": "agent"}
+        if configured:
+            config["plugins.obsidian-vault.vault_path"] = str(vault)
+        (prefix / ".agentm-config.json").write_text(json.dumps(config), encoding="utf-8")
+        return vault, prefix
+
+    def _run(self, tmp: Path, prefix: Path, export) -> subprocess.CompletedProcess:
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("MEMORY_ROOT", "MEMORY_VAULT_PATH")}
+        env.update({
+            "AGENTMD": self._agentmd,
+            "AGENTM_INSTALL_PREFIX": str(prefix),
+            "AGENTM_STORAGE_RULES": str(_PACKAGED_CONTRACT),
+            "AGENTM_STATE_DIR": str(tmp / "state"),
+            "AGENTM_VOCAB_BASELINE": str(tmp / "baseline.json"),
+        })
+        if export is not None:
+            # Both names: `$MEMORY_ROOT` wins over its deprecated alias, so an
+            # alias left alone would put a live export in charge.
+            env["MEMORY_ROOT"] = str(export)
+            env["MEMORY_VAULT_PATH"] = str(export)
+        return subprocess.run([sys.executable, str(_GATE), "--strict"],
+                              capture_output=True, text=True, env=env)
+
+    def _assert_both_spaces_caught(self, result: subprocess.CompletedProcess) -> None:
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("2 unregistered-value offender(s)", result.stdout)
+        self.assertIn("projects/p/tasks/001-a/plan.md: 'unregistered-in-projects'", result.stdout)
+        self.assertIn("standards/rule.md: 'unregistered-in-standards'", result.stdout)
+
+    def test_a_nested_export_reaches_projects_and_standards(self):
+        # The export names the memory root, as the hooks set it. The vault
+        # root comes off the configured prefix, with no `.obsidian/` to witness
+        # it, so only the resolver can find the spaces beside `agent/`.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            vault, prefix = self._vault(tmp, configured=False)
+            result = self._run(tmp, prefix, vault / "agent")
+        self._assert_both_spaces_caught(result)
+
+    def test_with_nothing_exported_the_configured_vault_is_read(self):
+        # What check-all.sh does: it exports neither name. The gate used to
+        # skip here and pass the battery over zero notes.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            _vault, prefix = self._vault(tmp, configured=True)
+            result = self._run(tmp, prefix, None)
+        self._assert_both_spaces_caught(result)
+        self.assertNotIn("skipping", result.stdout)
+
+    def test_the_report_names_the_spaces_it_walked(self):
+        # A walk that narrows again shows in the output: the scope line names
+        # each top-level directory under the vault root and the notes read in
+        # it, counted in the walk itself.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            vault, prefix = self._vault(tmp, configured=False)
+            result = self._run(tmp, prefix, vault / "agent")
+        self.assertIn("5 notes scanned", result.stdout)
+        self.assertIn("scope: agent 2, personal 1, projects 1, standards 1", result.stdout)
+
+    def test_the_recall_wall_is_never_read(self):
+        # The note behind the wall carries an unregistered value. Reported, it
+        # would prove the file was opened; counted, it would too. It is
+        # neither: the walk never enters the area.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            _vault, prefix = self._vault(tmp, configured=True)
+            result = self._run(tmp, prefix, None)
+        self.assertNotIn("behind-the-wall", result.stdout + result.stderr)
+        self.assertNotIn("Important Docs", result.stdout + result.stderr)
+        self.assertIn("5 notes scanned", result.stdout)
+
+    def test_a_broken_export_skips_rather_than_reading_the_configured_vault(self):
+        # The export is the override, and an override is hermetic: one that
+        # names nothing must not fall through to the configured vault, which on
+        # this machine is the operator's own.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            _vault, prefix = self._vault(tmp, configured=True)
+            result = self._run(tmp, prefix, tmp / "no-such-memory-root")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("skipping", result.stdout)
+        self.assertNotIn("notes scanned", result.stdout)
+
+    def test_nothing_resolving_skips(self):
+        # A CI runner: no export, no config. The self-test half still runs; the
+        # corpus half names why it did not.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            result = self._run(tmp, tmp / "no-such-prefix", None)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("self-test OK", result.stdout)
+        self.assertIn("skipping", result.stdout)
+        self.assertNotIn("notes scanned", result.stdout)
 
 
 if __name__ == "__main__":

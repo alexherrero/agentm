@@ -251,10 +251,19 @@ def _open(vault: Path) -> sqlite3.Connection:
 
 
 def _walk_vault_paths(vault: Path) -> list[str]:
-    """Walk roots: personal/,
-    projects/<slug>/ (or legacy personal-projects/), _idea-incubator/;
+    """Walk roots: `memory/` (the idea incubator included, which lives
+    there now), the memory root's own projects space (`desk/projects/`, or
+    the legacy `personal-projects/`) and the vault-root `projects/` sibling;
     excludes _archive/, _inbox/ (at any depth) and PLAN.archive.*.md.
     Returns vault-relative POSIX path strings.
+
+    Hand-listed on purpose, where `kind_registry`'s vocabulary audit walks
+    the whole vault root. This graph feeds the nightly lint's orphan count
+    and quality scores over the notes `vault_lint` models, so widening it
+    would change what the nightly cycle reports. `desk/projects/` is not
+    retired here the way it is in the audit: `promote.project_dir_for`
+    still writes there on a vault with no root-space `projects/`, and the
+    lint still models it.
     """
     walk_roots: list[Path] = []
     private = vault / "memory"
@@ -265,9 +274,6 @@ def _walk_vault_paths(vault: Path) -> list[str]:
     for projects in (_vault_projects_dir(vault), _root_projects_dir(vault)):
         if projects is not None and _is_dir_exact(projects) and projects not in walk_roots:
             walk_roots.append(projects)
-    incubator = vault / "_idea-incubator"
-    if incubator.is_dir():
-        walk_roots.append(incubator)
 
     out: list[str] = []
     for root in walk_roots:
