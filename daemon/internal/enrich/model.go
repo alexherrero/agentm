@@ -152,15 +152,34 @@ const hookIsolation = `{"disableAllHooks":true}`
 // before the first note was read.
 const mcpIsolation = `{"mcpServers":{}}`
 
+// transcriptIsolation keeps the call from leaving a copy of the note behind.
+//
+// The other measures keep things out of the call; this one is about what the
+// call leaves. Claude Code saves every session as a transcript under
+// `~/.claude/projects/`, a `-p` call included, and the transcript holds the
+// whole prompt — the note being enriched, in plain text. Every call was one more
+// copy of vault content outside the vault, where nothing that purges a note from
+// the vault can reach it: 2,572 of them by 2026-09-20, a directory each, because
+// each call gets its own working directory.
+//
+// Nothing reads them. Hooks are off inside the call, so no Stop hook captures
+// its cost, and the night meters its spend from the envelope (usage.go). The
+// flag is honoured only beside `-p`, which is why the test that pins it pins
+// `-p` too. `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1` in the child's environment would
+// do the same; a flag is visible in the command, where the tests look.
+const transcriptIsolation = "--no-session-persistence"
+
 // command builds the invocation.
 //
-// Split out from Call so a test can inspect what would run. Both isolation
-// measures below fail silently — a contaminated generation looks exactly like a
-// clean one — so they are asserted on the command rather than inferred from a
-// result.
+// Split out from Call so a test can inspect what would run. Every measure below
+// fails silently — a contaminated generation looks exactly like a clean one, and
+// a call that leaves its transcript behind answers exactly like one that does
+// not — so they are asserted on the command rather than inferred from a result.
 func (c *Caller) command(ctx context.Context, prompt, cwd string) *exec.Cmd {
 	args := []string{
 		"-p", prompt,
+		// Load-bearing, and honoured only beside -p. See transcriptIsolation.
+		transcriptIsolation,
 		"--model", c.Model,
 		// Load-bearing. See hookIsolation.
 		"--settings", hookIsolation,

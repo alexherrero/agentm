@@ -10,14 +10,16 @@ import (
 	"time"
 )
 
-// The three isolation measures are asserted on the command rather than on a
+// The four isolation measures are asserted on the command rather than on a
 // result, and that is the whole point of this file.
 //
 // All of them fail *silently*. A call that runs with hooks enabled returns a
 // perfectly well-formed enrichment — one that happens to have had the vault read
 // into the prompt that is rewriting the vault. A call that inherits the daemon's
 // working directory returns a perfectly well-formed enrichment that had this
-// repository's own CLAUDE.md folded into it. Neither produces an error, a
+// repository's own CLAUDE.md folded into it. A call that saves its transcript
+// returns the same enrichment and leaves the note behind, in plain text, under
+// ~/.claude/projects/. None of them produces an error, a
 // warning, or a difference you could see in the output. The Python pass this is
 // ported from ran two alias pilots before anyone noticed the second one, and it
 // was caught by hand-reading generations rather than by anything automatic.
@@ -72,6 +74,32 @@ func TestTheCommandLoadsNoMCPServers(t *testing.T) {
 	if strict != strings.Contains(strings.Join(cmd.Args, " "), mcpIsolation) {
 		t.Errorf("--strict-mcp-config and the empty server set must travel together: %v",
 			cmd.Args)
+	}
+}
+
+func TestTheCommandSavesNoTranscript(t *testing.T) {
+	c := DefaultCaller("sonnet")
+	cmd := c.command(context.Background(), "a prompt", t.TempDir())
+
+	var print, noPersist bool
+	for _, a := range cmd.Args {
+		switch a {
+		case "-p":
+			print = true
+		case "--no-session-persistence":
+			noPersist = true
+		}
+	}
+	if !noPersist {
+		t.Errorf("the call does not pass --no-session-persistence, so Claude Code "+
+			"saves it as a transcript under ~/.claude/projects/ — the note being "+
+			"enriched, in plain text, outside the vault and out of reach of any "+
+			"purge.\nargs: %v", cmd.Args)
+	}
+	// The flag is honoured only in print mode. Without -p it saves nothing less.
+	if !print {
+		t.Errorf("the call is not a -p call, and --no-session-persistence works "+
+			"only beside -p: %v", cmd.Args)
 	}
 }
 

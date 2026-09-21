@@ -69,6 +69,25 @@ class TestDiscoverTranscripts(unittest.TestCase):
         found = reflect._discover_transcripts(self.root)
         self.assertNotIn(journal.resolve(), found)
 
+    def test_excludes_enrichment_call_project_dirs(self) -> None:
+        # Claude Code names the project directory after the call's cwd: Go's
+        # MkdirTemp suffix is digits, Python's TemporaryDirectory can start
+        # with `_`, which slugs to a second dash.
+        operator = self.root / "-Users-op-src-app" / "sess-1.jsonl"
+        daemon = self.root / "-var-folders-xy-T-agentm-neutral-cwd-1234567" / "sess-2.jsonl"
+        backfill = self.root / "-tmp-agentm-neutral-cwd--k3j2h1" / "sess-3.jsonl"
+        for p in (operator, daemon, backfill):
+            _write_transcript(p, "always use tabs")
+        found = reflect._discover_transcripts(self.root)
+        self.assertEqual(found, [operator.resolve()])
+
+    def test_marker_above_the_root_does_not_hide_the_root(self) -> None:
+        root = self.root / "agentm-neutral-cwd-scratch" / "projects"
+        operator = root / "-Users-op-src-app" / "sess-1.jsonl"
+        _write_transcript(operator, "hello")
+        found = reflect._discover_transcripts(root)
+        self.assertEqual(found, [operator.resolve()])
+
     def test_includes_ordinary_operator_transcript(self) -> None:
         operator = self.root / "proj" / "sess-1.jsonl"
         _write_transcript(operator, "hello")

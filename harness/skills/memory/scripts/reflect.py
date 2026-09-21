@@ -1016,6 +1016,14 @@ def _resolve_projects_root(arg_path: str | None) -> Path:
     return Path.home() / ".claude" / "projects"
 
 
+# The prefix every enrichment `claude -p` call's temporary working directory
+# carries (daemon/internal/enrich/model.go, scripts/alias_backfill.py). Claude
+# Code names a transcript's project directory after its cwd, so the prefix
+# survives into the directory name. scripts/health/recall_traffic.py skips the
+# same marker for the same reason.
+_NEUTRAL_CWD_MARKER = "agentm-neutral-cwd"
+
+
 def _discover_transcripts(projects_root: Path) -> list[Path]:
     """Find every operator-session .jsonl transcript under projects_root.
 
@@ -1026,6 +1034,15 @@ def _discover_transcripts(projects_root: Path) -> list[Path]:
     R0.3 source of the HIGH-lane junk-slug pollution — a subagent prompt or a
     quoted design doc saying "always X" is not the operator stating a
     preference.
+
+    Also excludes every project directory named for an `agentm-neutral-cwd-*`
+    working directory. Those are enrichment calls — the daemon's, and
+    `scripts/alias_backfill.py`'s — whose only user turn is a vault note
+    wrapped in the enrichment prompt. Both pass `--no-session-persistence`
+    from 2026-09-20; transcripts saved before then stay until Claude Code's
+    retention sweep ages them out. The marker is matched below
+    `projects_root` only, so a root that itself sits under such a directory
+    still yields its own transcripts.
 
     Returns a sorted list of absolute paths. Deterministic ordering (by
     relative path) so batch boundaries are stable across runs.
@@ -1042,6 +1059,9 @@ def _discover_transcripts(projects_root: Path) -> list[Path]:
         if any(part.startswith("wf_") for part in parts):
             continue
         if p.name == "journal.jsonl":
+            continue
+        rel_dirs = p.relative_to(projects_root).parts[:-1]
+        if any(_NEUTRAL_CWD_MARKER in part for part in rel_dirs):
             continue
         found.append(p.resolve())
     return sorted(found)

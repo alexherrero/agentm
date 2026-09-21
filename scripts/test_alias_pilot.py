@@ -592,6 +592,7 @@ class GenerationTransportTests(unittest.TestCase):
             stderr = ""
 
         def fake_run(cmd, **kw):
+            captured["cmd"] = cmd
             captured["cwd"] = kw.get("cwd")
             # The directory must still exist while the subprocess would be running.
             captured["exists"] = Path(kw["cwd"]).is_dir() if kw.get("cwd") else False
@@ -620,6 +621,14 @@ class GenerationTransportTests(unittest.TestCase):
         captured = self._capture_cwd()
         self.assertNotEqual(Path(captured["cwd"]).resolve(),
                             Path(__file__).resolve().parent.parent)
+
+    def test_call_model_saves_no_transcript(self):
+        # The prompt carries each note's path, frontmatter and body. A saved
+        # transcript is a plaintext copy of them under ~/.claude/projects/,
+        # outside the vault. The flag is honoured only beside -p.
+        cmd = self._capture_cwd()["cmd"]
+        self.assertIn("--no-session-persistence", cmd)
+        self.assertIn("-p", cmd)
 
 
 if __name__ == "__main__":
