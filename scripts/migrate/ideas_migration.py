@@ -23,7 +23,13 @@ vault as it is, and plans every write:
 
 The deletion list is not this script's to act on. It is written out as
 `deletions.txt` for `purge.py select --paths-file`, which deletes only on the
-count the operator confirms.
+count the operator confirms. A scrap the night retyped after the mapping was
+drawn up (it still sits in `memory/semantic/`, no longer typed `idea`) stays on
+the list, and the plan names it. Any other verdict on a retyped note is refused,
+because it was a ruling on an idea card. A `leave` line keeps a card out of the
+move altogether: one filed after the operator approved the mapping has no
+ruling of its own, and deleting it would not keep it gone, since the miner
+re-files a remark whose card has vanished.
 
   dry run   (default) Prints every write and the deletion list, and records
             the plan with every note's bytes before and after. Nothing changes.
@@ -119,6 +125,23 @@ def read_cards(memory_root: Path) -> dict:
     return out
 
 
+def read_retyped(memory_root: Path, stems) -> dict:
+    """The mapping's notes still in `memory/semantic/` but no longer typed `idea`:
+    retyped by the night after the mapping was drawn up. Only a `delete` line may
+    stand on one (`check`)."""
+    out = {}
+    folder = memory_root / SEMANTIC
+    for stem in sorted(stems):
+        p = folder / f"{stem}.md"
+        if not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8")
+        parsed = card_shape.split_note(text)
+        kind = card_shape.scalar(card_shape.raw_value(parsed[0], "type")) if parsed else ""
+        out[stem] = {"rel": f"{SEMANTIC}/{p.name}", "text": text, "type": kind or "no type"}
+    return out
+
+
 def parse_mapping(text: str) -> dict:
     """The operator's corrected worksheet, read back: each card's verdict and
     group, each entry's verdict, group and slug."""
@@ -143,13 +166,19 @@ def parse_mapping(text: str) -> dict:
 
 # ── checking ──────────────────────────────────────────────────────────────────
 
-def check(mapping: dict, cards: dict, entries: list, ideas_dir: Path) -> list:
+def check(mapping: dict, cards: dict, entries: list, ideas_dir: Path, retyped: "dict | None" = None) -> list:
     """Every reason the mapping cannot be applied to this vault, or []."""
     errs = []
     mc, me = mapping["cards"], mapping["entries"]
+    retyped = retyped or {}
     for stem in sorted(set(cards) - set(mc)):
         errs.append(f"{stem} is an idea card in {SEMANTIC}/ with no line in the mapping")
     for stem in sorted(set(mc) - set(cards)):
+        if stem in retyped:
+            if mc[stem][0] not in ("delete", "leave"):
+                errs.append(f"{stem} was retyped to {retyped[stem]['type']} since the mapping, and its line "
+                            f"({mc[stem][0]}) was a ruling on an idea card; read it again")
+            continue
         errs.append(f"{stem} has a line in the mapping and no idea card in {SEMANTIC}/")
     for n in range(1, len(entries) + 1):
         if n not in me:
@@ -171,8 +200,8 @@ def check(mapping: dict, cards: dict, entries: list, ideas_dir: Path) -> list:
         elif verdict.startswith("relabel:"):
             if verdict[8:] not in RELABEL_TYPES:
                 errs.append(f"{stem}: {verdict[8:]!r} is not one of {', '.join(RELABEL_TYPES)}")
-        elif verdict != "delete":
-            errs.append(f"{stem}: {verdict!r} is not idea, dup:<survivor>, relabel:<type> or delete")
+        elif verdict not in ("delete", "leave"):
+            errs.append(f"{stem}: {verdict!r} is not idea, dup:<survivor>, relabel:<type>, delete or leave")
     for n, (verdict, group, slug) in sorted(me.items()):
         if verdict.startswith("absorbed:"):
             if verdict[9:] not in ideas:
@@ -337,8 +366,9 @@ def build_plan(vault_root: Path, memory_root: Path, mapping_text: str, *, today:
     entries = read_entries(ideas_file.read_text(encoding="utf-8")) if ideas_file.is_file() else []
     cards = read_cards(memory_root)
     mapping = parse_mapping(mapping_text)
+    retyped = read_retyped(memory_root, set(mapping["cards"]) - set(cards))
     ideas_dir = vault_root / "personal" / "ideas"
-    errs = check(mapping, cards, entries, ideas_dir)
+    errs = check(mapping, cards, entries, ideas_dir, retyped)
     if errs:
         raise Refused("the mapping cannot be applied as it stands:\n  " + "\n  ".join(errs))
     mem_rel = memory_root.relative_to(vault_root).as_posix()
@@ -359,8 +389,14 @@ def build_plan(vault_root: Path, memory_root: Path, mapping_text: str, *, today:
         e = entries[n - 1]
         titles[e["title"]] = card
         titles[f"{e['date']}: {e['title']}"] = card
-    ops, report, deletions = [], [], []
+    ops, report, deletions, left = [], [], [], []
     for stem, (verdict, group) in sorted(mc.items()):
+        if verdict == "leave":
+            left.append(stem)
+            continue
+        if stem in retyped:  # a `delete` line; check() refused any other
+            deletions.append(retyped[stem]["rel"])
+            continue
         src = f"{mem_rel}/{cards[stem]['rel']}"
         before = cards[stem]["text"]
         if verdict == "idea":
@@ -411,6 +447,7 @@ def build_plan(vault_root: Path, memory_root: Path, mapping_text: str, *, today:
                     "before_sha": None, "before": None, "after": after})
     return {"written": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), "vault": str(vault_root),
             "memory_root": str(memory_root), "today": today, "ops": ops, "deletions": deletions,
+            "retyped": {s: r["type"] for s, r in sorted(retyped.items())}, "left": left,
             "links": report, "count": len(ops)}
 
 
@@ -422,6 +459,10 @@ def summary(plan: dict) -> str:
     lines = [f"idea cards: {plan['count']} write(s) — " + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items())),
              f"  personal/ideas/ would hold {len(moves) + kinds.get('create', 0)} card(s)",
              f"  deletion list: {len(plan['deletions'])} (purge.py select --paths-file, on your confirmed count)"]
+    for stem, kind in (plan.get("retyped") or {}).items():
+        lines.append(f"    {stem}: retyped to {kind} since the mapping; on the list as ruled")
+    if plan.get("left"):
+        lines.append(f"  left where they are: {len(plan['left'])} ({', '.join(plan['left'])})")
     for op in plan["ops"]:
         lines.append(f"  {op['op']:9} {op['from'] or '(new)'} -> {op['to']}")
     if plan["links"]:
@@ -433,10 +474,26 @@ def summary(plan: dict) -> str:
 # ── applying ──────────────────────────────────────────────────────────────────
 
 def live_writers() -> list:
-    """What would write the vault under the move: Obsidian, the daemon."""
+    """What could write the vault under the move. These are the four writers the
+    root-casing and projects migrations refuse on:
+    - the daemon and the runner, while launchd holds them;
+    - Obsidian;
+    - a session's memory-reflect hook, which files new idea cards and rewrites
+      the twins it finds.
+    A daemon started by hand, outside launchd, counts as well."""
     found = []
+    uid = os.getuid() if hasattr(os, "getuid") else None
+    for job in ("com.agentm.daemon", "com.agentm.runner"):
+        if uid is None:
+            continue
+        try:
+            if subprocess.run(["launchctl", "print", f"gui/{uid}/{job}"], capture_output=True).returncode == 0:
+                found.append(f"{job} (loaded in launchd; boot it out first)")
+        except FileNotFoundError:
+            found.append(f"{job} (launchctl unavailable, so it cannot be ruled out)")
     for args, name in ((["pgrep", "-x", "Obsidian"], "Obsidian"),
-                       (["pgrep", "-f", r"agentmd serve"], "the agentm daemon")):
+                       (["pgrep", "-f", r"agentmd serve"], "the agentm daemon"),
+                       (["pgrep", "-f", "memory-reflect"], "a memory-reflect hook")):
         try:
             if subprocess.run(args, capture_output=True).returncode == 0:
                 found.append(name)

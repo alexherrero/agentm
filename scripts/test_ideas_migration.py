@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 for _p in (_HERE / "migrate", _HERE.parent / "harness" / "skills" / "memory" / "scripts", _HERE):
@@ -224,6 +226,73 @@ class ThePlan(_Vault):
         with self.assertRaises(mig.Refused) as cm:
             self._plan()
         self.assertIn("never overwritten", str(cm.exception))
+
+    def test_a_scrap_the_night_retyped_stays_on_the_deletion_list(self) -> None:
+        # Between the mapping and the move the night can retype a scrap; two
+        # were, on 2026-09-21. The operator's `delete` still stands on it, and
+        # the plan says which ones it was.
+        scrap = self.root / "memory" / "semantic" / "scrap.md"
+        scrap.write_text(SCRAP.replace("type: idea", "type: reference", 1), encoding="utf-8")
+        plan = self._plan()
+        self.assertEqual(plan["deletions"], ["memory/semantic/scrap.md"])
+        self.assertEqual(plan["retyped"], {"scrap": "reference"})
+        self.assertEqual(plan["count"], 5)
+        self.assertIn("scrap: retyped to reference since the mapping", mig.summary(plan))
+
+    def test_any_other_line_on_a_retyped_note_is_refused(self) -> None:
+        # A duplicate's, a relabel's or an idea's line was a ruling on an idea
+        # card; the note it names is no longer one.
+        twin = self.root / "memory" / "semantic" / "twin.md"
+        twin.write_text(TWIN.replace("type: idea", "type: reference", 1), encoding="utf-8")
+        with self.assertRaises(mig.Refused) as cm:
+            self._plan()
+        self.assertIn("twin was retyped to reference since the mapping", str(cm.exception))
+
+    def test_a_delete_line_on_a_note_that_is_gone_is_still_refused(self) -> None:
+        (self.root / "memory" / "semantic" / "scrap.md").unlink()
+        with self.assertRaises(mig.Refused) as cm:
+            self._plan()
+        self.assertIn("scrap has a line in the mapping and no idea card", str(cm.exception))
+
+    def test_a_card_filed_after_the_mapping_needs_a_line_and_leave_moves_nothing(self) -> None:
+        # A card the miner files after the operator approved the mapping has no
+        # ruling. Unmapped, it refuses the run; `leave` keeps it out of the move
+        # without widening the deletion list the operator counted.
+        late = self.root / "memory" / "semantic" / "late.md"
+        late.write_text(SCRAP.replace("follow-up c", "follow-up d"), encoding="utf-8")
+        with self.assertRaises(mig.Refused) as cm:
+            self._plan()
+        self.assertIn("late is an idea card", str(cm.exception))
+        plan = self._plan(MAPPING + "| `late` | leave | (untitled) | filed after approval | 0 |\n")
+        self.assertEqual(plan["left"], ["late"])
+        self.assertEqual(plan["deletions"], ["memory/semantic/scrap.md"])
+        self.assertEqual(plan["count"], 5)
+        self.assertFalse(any("late" in o["to"] for o in plan["ops"]))
+        self.assertIn("left where they are: 1 (late)", mig.summary(plan))
+
+
+class TheWriters(unittest.TestCase):
+    """The four writers the root-casing and projects migrations refuse on."""
+
+    def _found(self, running: set) -> list:
+        def fake_run(args, capture_output=True):
+            return types.SimpleNamespace(returncode=0 if tuple(args) in running else 1)
+        with mock.patch.object(mig.subprocess, "run", fake_run), \
+                mock.patch.object(mig.os, "getuid", return_value=501, create=True):
+            return mig.live_writers()
+
+    def test_a_quiet_machine_has_no_writers(self) -> None:
+        self.assertEqual(self._found(set()), [])
+
+    def test_each_writer_is_named(self) -> None:
+        for args, word in ((("launchctl", "print", "gui/501/com.agentm.daemon"), "com.agentm.daemon"),
+                           (("launchctl", "print", "gui/501/com.agentm.runner"), "com.agentm.runner"),
+                           (("pgrep", "-x", "Obsidian"), "Obsidian"),
+                           (("pgrep", "-f", "memory-reflect"), "memory-reflect")):
+            with self.subTest(word=word):
+                found = self._found({args})
+                self.assertEqual(len(found), 1, found)
+                self.assertIn(word, found[0])
 
 
 class TheApply(_Vault):
