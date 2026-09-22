@@ -1013,9 +1013,19 @@ def _resolver_offenders(projects_dir: Path, backend) -> "tuple[list, int]":
             for path in paths or ():
                 if _RETIRED_STATE_DIRNAME in Path(path).parts:
                     offenders.append(f"{project.name} ({name or 'bare call'} → "
-                                     f"{Path(path).relative_to(projects_dir.parent)})")
+                                     f"{_vault_relative(Path(path), projects_dir)})")
                     break
     return offenders, checked
+
+
+def _vault_relative(path: Path, projects_dir: Path) -> str:
+    """`path` relative to the vault root, with forward slashes on every
+    platform, so the row reads the same on Windows; absolute when it is not
+    under the vault at all."""
+    try:
+        return path.relative_to(projects_dir.parent).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def check_harness_dirs(*, projects_dir: Optional[Path] = None, backend=None) -> Check:
@@ -1055,7 +1065,7 @@ def check_harness_dirs(*, projects_dir: Optional[Path] = None, backend=None) -> 
     offenders, checked = _resolver_offenders(projects_dir, backend)
     problems = []
     if found:
-        shown = ", ".join(str(p.relative_to(projects_dir.parent)) for p in found[:3])
+        shown = ", ".join(_vault_relative(p, projects_dir) for p in found[:3])
         more = f" and {len(found) - 3} more" if len(found) > 3 else ""
         problems.append(f"{len(found)} `_harness/` director{'y' if len(found) == 1 else 'ies'} "
                         f"under projects/: {shown}{more}")
