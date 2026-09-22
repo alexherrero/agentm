@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""queue_status_lite — a read-only dashboard of every active plan in `_harness/`.
+"""queue_status_lite — a read-only dashboard of every active plan of a project.
 
-The coordinator's glance: enumerate each active plan (`PLAN.md` plus every named
-`PLAN-<name>.md`) and, for each, print its name, its `Status:` line, and the
-most-recent entry of the matching `progress*.md`.
+The coordinator's glance: enumerate each active plan — every task under the
+project's `tasks/` whose tracker is not done or dropped, or, for a project with no
+vault, the repo-local `PLAN.md` plus every named `PLAN-<name>.md` — and, for each,
+print its name, its status (the tracker's, else the plan's `Status:` line), and
+the most-recent entry of its progress log.
 
 **Read-only by contract** (V5-10 design call): no claim arbitration, no leases,
 no writes — the human is the arbiter. This is the agentm read logic; the crickets
@@ -11,10 +13,11 @@ no writes — the human is the arbiter. This is the agentm read logic; the crick
 
 Usage:
 
-    python3 queue_status_lite.py [--harness-dir PATH]
+    python3 queue_status_lite.py [--state-dir PATH]
 
-With no `--harness-dir`, the directory is resolved from the cwd (vault-backed, or
-`<repo>/.harness/` in local mode). Always exits 0 — a status read, not a gate.
+With no `--state-dir`, the directory is resolved from the cwd: the project's vault
+directory, or `<repo>/.harness/` for a project with no vault. Always exits 0 — a
+status read, not a gate.
 """
 from __future__ import annotations
 
@@ -70,27 +73,16 @@ def _tracker_status(plan_path: Path) -> Optional[str]:
         return None
 
 
-def list_plan_files(harness_dir: Path) -> list[Path]:
-    """Every *active* plan file in `harness_dir`: the singleton `PLAN.md` plus each
-    `PLAN-<name>.md`.
+def list_plan_files(state: Path) -> list[Path]:
+    """Every *active* plan file under `state`: each task whose tracker is not done
+    or dropped, or a repo-local `.harness/`'s `PLAN.md` plus each `PLAN-<name>.md`.
 
-    Excludes archived plans (`PLAN.archive.*.md` — they start with `PLAN.`, not
-    `PLAN-`, so the `PLAN-*` glob already skips them) and GDrive conflict artifacts
-    (`PLAN-foo (conflicted copy …).md` — the conflict-janitor's domain, surfaced
-    via `hm._conflict_family`, not an active plan).
+    The enumeration is the resolver's own (`hm.list_plan_files`), so archived
+    plans and GDrive conflict artifacts are left out the same way everywhere; a
+    finished task is left out here, as `list-plans` does, because a dashboard of
+    active work does not list closed tasks.
     """
-    files: list[Path] = []
-    singleton = harness_dir / "PLAN.md"
-    if singleton.is_file():
-        files.append(singleton)
-    for p in harness_dir.glob("PLAN-*.md"):
-        if p.is_file() and hm._conflict_family(p.name) is None:
-            files.append(p)
-    # A task's plan beside a vault `_harness/` (agentm-vault plan 09).
-    if harness_dir.name == "_harness":
-        for p in (harness_dir.parent / hm._TASKS_DIRNAME).glob("*/plan.md"):
-            if p.is_file() and hm._is_safe_plan_slug(p.parent.name):
-                files.append(p)
+    files = [p for p in hm.list_plan_files(state) if not hm._task_is_finished(p)]
     return sorted(files, key=lambda p: _plan_sort_key(_plan_label(p)))
 
 
@@ -121,8 +113,8 @@ def _progress_head(path: Path) -> str:
     return head
 
 
-def collect_plan_statuses(harness_dir: Path) -> list[PlanStatus]:
-    """Read-only: build a `PlanStatus` row for each active plan in `harness_dir`.
+def collect_plan_statuses(state: Path) -> list[PlanStatus]:
+    """Read-only: build a `PlanStatus` row for each active plan under `state`.
 
     No writes, no mutation — the directory is byte-identical after this call. The
     PLAN→progress filename mapping reuses the centralized resolver helpers
@@ -130,7 +122,7 @@ def collect_plan_statuses(harness_dir: Path) -> list[PlanStatus]:
     exactly one place (the contract task 1/2 lock).
     """
     rows: list[PlanStatus] = []
-    for plan_path in list_plan_files(harness_dir):
+    for plan_path in list_plan_files(state):
         plan_name = _plan_label(plan_path)
         try:
             plan_text = plan_path.read_text(encoding="utf-8")
@@ -143,52 +135,54 @@ def collect_plan_statuses(harness_dir: Path) -> list[PlanStatus]:
             progress_head = _progress_head(plan_path.parent / "progress.md")
         else:
             progress_name = hm._plan_pair(hm._normalize_plan_name(plan_name))[1]
-            progress_head = _progress_head(harness_dir / progress_name)
+            progress_head = _progress_head(state / progress_name)
         rows.append(PlanStatus(plan_name, status, progress_name, progress_head))
     return rows
 
 
-def render(harness_dir: Path, rows: list[PlanStatus]) -> str:
+def render(state: Path, rows: list[PlanStatus]) -> str:
     """A deterministic, human-scannable block. Output depends only on
-    `harness_dir`'s contents — no wall-clock, no color — so it is test-stable."""
+    `state`'s contents — no wall-clock, no color — so it is test-stable."""
     if not rows:
-        return f"No plans found in {harness_dir}\n"
+        return f"No plans found in {state}\n"
     width = max(len(r.plan_name) for r in rows)
-    lines = [f"Active plans in {harness_dir}:", ""]
+    lines = [f"Active plans in {state}:", ""]
     for r in rows:
         lines.append(f"  {r.plan_name:<{width}}  [{r.status}]")
         lines.append(f"  {'':<{width}}  last: {r.progress_head}")
     return "\n".join(lines) + "\n"
 
 
-def _resolve_harness_dir(explicit: Optional[str]) -> Optional[Path]:
+def _resolve_state_dir(explicit: Optional[str]) -> Optional[Path]:
     if explicit is not None:
         return Path(explicit)
     resolution = hm.resolve_project({"cwd": Path.cwd()})
-    return hm.harness_state_dir(resolution)
+    return hm.state_dir(resolution)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="queue_status_lite",
-        description="Read-only dashboard of every active plan in _harness/.",
+        description="Read-only dashboard of every active plan of a project.",
     )
     parser.add_argument(
-        "--harness-dir",
+        "--state-dir", "--harness-dir",
+        dest="state_dir",
         default=None,
-        help="the _harness/ directory to enumerate (default: resolve from cwd).",
+        help="the project's vault directory, or a repo-local .harness/, to "
+             "enumerate (default: resolve from cwd).",
     )
     args = parser.parse_args(argv)
 
-    harness_dir = _resolve_harness_dir(args.harness_dir)
-    if harness_dir is None or not harness_dir.is_dir():
-        # Graceful: no resolvable _harness/ is not an error for a status read.
-        where = harness_dir if harness_dir is not None else "(unresolved)"
-        print(f"No _harness/ directory to read ({where}).")
+    state = _resolve_state_dir(args.state_dir)
+    if state is None or not state.is_dir():
+        # Graceful: no resolvable state directory is not an error for a status read.
+        where = state if state is not None else "(unresolved)"
+        print(f"No plan state directory to read ({where}).")
         return 0
 
-    rows = collect_plan_statuses(harness_dir)
-    sys.stdout.write(render(harness_dir, rows))
+    rows = collect_plan_statuses(state)
+    sys.stdout.write(render(state, rows))
     return 0
 
 

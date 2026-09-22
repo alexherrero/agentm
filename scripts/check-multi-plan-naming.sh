@@ -6,9 +6,10 @@
 #
 #   1. The resolver exposes the named-plan surface. scripts/harness_memory.py must
 #      define resolve_active_plan() (the (plan, progress) binding the crickets
-#      phase loop consumes) and harness_state_dir() (the directory enumerator
-#      queue_status_lite + the session-start hooks use). A refactor that drops
-#      either silently breaks named-plan binding — this fails loudly instead.
+#      phase loop consumes) and state_dir() (the directory list-plans,
+#      queue_status_lite and the session-start hooks enumerate plans under). A
+#      refactor that drops either silently breaks named-plan binding — this fails
+#      loudly instead.
 #
 #   2. No curated harness/*.md doc hard-asserts a SINGLETON plan. Task 4 rewrote
 #      the "the PLAN.md" / "PLAN.md's" singleton framings to acknowledge named
@@ -47,7 +48,7 @@ if [ ! -f "$HM" ]; then
   echo "check-multi-plan-naming: missing $HM" >&2
   exit 2
 fi
-for sym in resolve_active_plan harness_state_dir; do
+for sym in resolve_active_plan state_dir; do
   if ! grep -qE "^def ${sym}\b" "$HM"; then
     echo "check-multi-plan-naming: harness_memory.py lost the named-plan surface 'def ${sym}(…)'" >&2
     fail=1

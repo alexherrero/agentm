@@ -87,8 +87,8 @@ class _SeamFixture(unittest.TestCase):
             json.dumps({"vault_project": _SLUG}) + "\n", encoding="utf-8"
         )
         self.vault = self.root / "vault"
-        self.vault_harness = self.vault / "desk/projects" / _SLUG / "_harness"
-        self.vault_harness.mkdir(parents=True)
+        self.vault_project = self.vault / "desk/projects" / _SLUG
+        self.vault_project.mkdir(parents=True)
         self._prev_vault = os.environ.get("MEMORY_VAULT_PATH")
         self._unset_vault()  # default posture: memory absent
 
@@ -221,11 +221,12 @@ class StatePath(_SeamFixture):
         self._unset_vault()
         self.assertEqual(seam.state_path(self._ctx(), "plan"), self.harness / "PLAN.md")
 
-    def test_vault_mode_resolves_vault_when_synced(self) -> None:
-        # ADR 0020 (reverses V5-3 DC-1): vault mode + a live synced backend routes
-        # state into <vault>/projects/<slug>/_harness/. V5-3 deleted the kernel
-        # storage_vault.py, so we mock select_backend to return a vault stub
-        # (same approach as test_present_enriches_with_project_and_target).
+    def test_vault_mode_resolves_a_task_when_synced(self) -> None:
+        # ADR 0020 + agentm-vault plan 15: vault mode + a live synced backend
+        # routes state into the project's own vault directory, where every plan
+        # is a task; a bare call has no singleton there and refuses. V5-3 deleted
+        # the kernel storage_vault.py, so we mock select_backend to return a vault
+        # stub (same approach as test_present_enriches_with_project_and_target).
         import unittest.mock
         from vault_backend_stub import VaultBackend
 
@@ -235,8 +236,11 @@ class StatePath(_SeamFixture):
             "backend_selection.select_backend", return_value=vault_backend
         ):
             self.assertEqual(
-                seam.state_path(self._ctx(), "plan"), self.vault_harness / "PLAN.md"
+                seam.state_path(self._ctx(plan="foo"), "plan"),
+                self.vault_project / "tasks" / "001-foo" / "plan.md",
             )
+            with self.assertRaises(hm.TaskNameRequired):
+                seam.state_path(self._ctx(), "plan")
 
     def test_named_plan_via_context(self) -> None:
         self._local_mode()
@@ -275,8 +279,9 @@ class StatePath(_SeamFixture):
         )
 
     def test_task_layout_resolves_on_a_synced_vault(self) -> None:
-        # agentm-vault plan 09: a task at tasks/<slug>/ wins over the flat pair,
-        # and a slug with no task still resolves to the flat pair.
+        # agentm-vault plans 09 and 15: a task at tasks/<slug>/ resolves, and a
+        # slug no task carries is placed as the next numbered task — never a
+        # flat pair in the vault.
         from vault_backend_stub import VaultBackend
 
         task = self.vault / "desk/projects" / _SLUG / "tasks" / "foo"
@@ -292,7 +297,8 @@ class StatePath(_SeamFixture):
                         seam.state_path(self._ctx(plan="foo"), which), task / f"{which}.md"
                     )
             self.assertEqual(
-                seam.state_path(self._ctx(plan="bar"), "plan"), self.vault_harness / "PLAN-bar.md"
+                seam.state_path(self._ctx(plan="bar"), "plan"),
+                self.vault_project / "tasks" / "001-bar" / "plan.md",
             )
 
 
@@ -310,7 +316,8 @@ class SeamIsReadOnly(_SeamFixture):
     # none of them — patched to raise so a regression that adds a write fails loud.
     _WRITE_FNS = (
         "offer_save",
-        "write_state_file",
+        "write_machine_file",
+        "append_progress",
         "_write_repo_local_state_file",
         "safe_write_replace_style",
         "_invoke_toolkit_save",
@@ -422,7 +429,7 @@ class CLIShim(_SeamFixture):
     def test_a_bare_state_path_on_a_migrated_project_exits_4(self) -> None:
         # agentm-vault plan 10, task 7(b): a project that keeps its plans in
         # numbered tasks has no singleton, so the seam refuses rather than naming
-        # a `_harness/PLAN.md` the migration removed. Exit 4, nothing on stdout,
+        # a plan file that will never exist. Exit 4, nothing on stdout,
         # one line on stderr — the shape the crickets release handles.
         with unittest.mock.patch.object(
             seam._hm, "resolve_active_plan",

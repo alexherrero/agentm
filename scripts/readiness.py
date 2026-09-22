@@ -5,7 +5,8 @@ Two-stage check:
 
   Stage 1 — Ready?
     A queued plan is *ready* if every plan slug in its ``depends_on`` list
-    has ``Status: done`` in the current plan graph.
+    reads ``done`` in the current plan graph — its tracker's status, or its
+    ``Status:`` line where no tracker parses.
 
   Stage 2 — Safe together?
     Among ready plans, find pairs whose ``touches:`` glob lists are disjoint
@@ -17,7 +18,7 @@ Two-stage check:
 
 Usage::
 
-    python3 scripts/readiness.py [--harness-dir PATH] [--json]
+    python3 scripts/readiness.py [--state-dir PATH] [--json]
 
 Return structure (JSON)::
 
@@ -89,7 +90,10 @@ def build_readiness(harness_dir: Path) -> dict:
     degrade_warnings: List[str] = []
 
     # --- Stage 1: dependency check on queued plans ---
-    queued_plans = [p for p in plans if not p.active]
+    # A staged plan: a task whose tracker is queued, or a plan in queued-plans/.
+    # A finished task is not waiting for anything; it stays in the graph so a
+    # dependency on it reads as met.
+    queued_plans = [p for p in plans if not p.active and not p.finished]
     if not queued_plans:
         # Also check active plans that haven't started (status == "planning").
         queued_plans = [p for p in plans if p.active and p.status == "planning"]
@@ -180,7 +184,9 @@ def _main() -> None:
     ap = argparse.ArgumentParser(
         description="Readiness + safe-to-run-together check for queued plans."
     )
-    ap.add_argument("--harness-dir", help="Path to the _harness/ directory.")
+    ap.add_argument("--state-dir", "--harness-dir", dest="harness_dir",
+                    help="The project's vault directory, or a repo-local .harness/ "
+                         "(default: resolve from cwd).")
     ap.add_argument(
         "--json", action="store_true",
         help="Emit JSON instead of the human-readable summary.",
@@ -190,12 +196,12 @@ def _main() -> None:
     if args.harness_dir:
         harness_dir = Path(args.harness_dir)
     else:
-        harness_dir = hm.harness_state_dir(hm.resolve_project({"cwd": Path.cwd()}))
+        harness_dir = hm.state_dir(hm.resolve_project({"cwd": Path.cwd()}))
         if harness_dir is None:
             print(
-                "readiness: could not resolve a _harness/ directory for this "
+                "readiness: could not resolve a plan state directory for this "
                 "project (no synced backend, no device-local project root) — "
-                "pass --harness-dir explicitly",
+                "pass --state-dir explicitly",
                 file=sys.stderr,
             )
             raise SystemExit(1)

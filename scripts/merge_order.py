@@ -24,8 +24,8 @@ Ordering rules (applied in priority order):
 
 Usage::
 
-    python3 scripts/merge_order.py [--harness-dir PATH] [--json]
-    python3 scripts/merge_order.py [--harness-dir PATH] [--json] [--no-git]
+    python3 scripts/merge_order.py [--state-dir PATH] [--json]
+    python3 scripts/merge_order.py [--state-dir PATH] [--json] [--no-git]
 
 ``--no-git`` forces the alphabetical fallback (useful in tests and CI).
 """
@@ -133,10 +133,11 @@ def build_merge_order(
     """
     plans = pg.build_plan_graph(harness_dir)
 
-    # Finished = all tasks done (and at least one task exists).
+    # Finished = all steps checked (and at least one exists), on a plan not yet
+    # closed: a task whose tracker is done or dropped has already landed.
     finished = [
         p for p in plans
-        if p.tasks_total > 0 and p.tasks_done == p.tasks_total
+        if not p.finished and p.tasks_total > 0 and p.tasks_done == p.tasks_total
     ]
 
     if not finished:
@@ -211,7 +212,9 @@ def _main() -> None:
     ap = argparse.ArgumentParser(
         description="Merge-order recommendation for finished plans."
     )
-    ap.add_argument("--harness-dir", help="Path to the _harness/ directory.")
+    ap.add_argument("--state-dir", "--harness-dir", dest="harness_dir",
+                    help="The project's vault directory, or a repo-local .harness/ "
+                         "(default: resolve from cwd).")
     ap.add_argument(
         "--json", action="store_true",
         help="Emit JSON array instead of the human-readable summary.",
@@ -225,12 +228,12 @@ def _main() -> None:
     if args.harness_dir:
         harness_dir = Path(args.harness_dir)
     else:
-        harness_dir = hm.harness_state_dir(hm.resolve_project({"cwd": Path.cwd()}))
+        harness_dir = hm.state_dir(hm.resolve_project({"cwd": Path.cwd()}))
         if harness_dir is None:
             print(
-                "merge_order: could not resolve a _harness/ directory for this "
+                "merge_order: could not resolve a plan state directory for this "
                 "project (no synced backend, no device-local project root) — "
-                "pass --harness-dir explicitly",
+                "pass --state-dir explicitly",
                 file=sys.stderr,
             )
             raise SystemExit(1)

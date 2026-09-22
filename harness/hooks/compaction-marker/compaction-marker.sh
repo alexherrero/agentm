@@ -16,8 +16,10 @@
 # halves are now wrong: state may live in the vault rather than the repo, the
 # active plan may be a named `progress-<slug>.md` rather than the singleton, and
 # a direct append bypasses the vault write lock that the daemon and other
-# sessions rely on. This resolves the file through the process seam and writes
-# through `write-state`, which goes via `vault_lock.atomic_write`.
+# sessions rely on. This hands the marker to `append-progress`, which resolves
+# the active plan's log the way `resolve-active-plan` does — a task's
+# `tasks/<name>/progress.md` in the vault, or a repo-local pair's — and appends
+# through the storage backend, so the vault's write lock is held.
 
 set -uo pipefail   # no -e: must never block a compaction (graceful-skip).
 
@@ -74,24 +76,6 @@ elif command -v timeout >/dev/null 2>&1; then
     TIMEOUT_CMD="timeout 5"
 fi
 
-# ── Which progress file? Ask the seam, so a named plan gets its own log ───────
-# resolve-active-plan prints "<plan_path>\t<progress_path>" — absolute, and
-# already routed to the vault or to repo-local .harness/ per the state-mode
-# axis. A non-harness directory resolves nothing and we leave silently.
-PAIR="$($TIMEOUT_CMD python3 "$RESOLVER" resolve-active-plan --project-root "$EVENT_CWD" 2>/dev/null || true)"
-[[ -n "$PAIR" ]] || exit 0
-PROGRESS_PATH="$(printf '%s' "$PAIR" | awk -F'\t' '{print $2}')"
-[[ -n "$PROGRESS_PATH" ]] || exit 0
-
-# read-state / write-state take a shortname, not a path. Taking the basename of
-# what the seam resolved keeps the named-plan case right: progress-<slug>.md
-# when a named plan is active, progress.md for the singleton.
-PROGRESS_NAME="$(basename "$PROGRESS_PATH")"
-[[ -n "$PROGRESS_NAME" ]] || exit 0
-
-CURRENT="$($TIMEOUT_CMD python3 "$RESOLVER" read-state --project-root "$EVENT_CWD" "$PROGRESS_NAME" 2>/dev/null || true)"
-[[ -n "$CURRENT" ]] || exit 0   # nothing to append to → not an initialized project
-
 TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 # `git rev-parse --abbrev-ref HEAD` in a repo with no commits prints "HEAD" to
 # stdout AND exits non-zero, so the obvious `$(cmd || echo unknown)` captures
@@ -108,7 +92,6 @@ TMP="$(mktemp -t agentm-compaction.XXXXXX 2>/dev/null || echo "")"
 trap 'rm -f "$TMP"' EXIT
 
 {
-    printf '%s\n' "$CURRENT"
     printf '\n'
     printf '## compaction event — %s\n' "$TS"
     printf -- '- trigger: %s\n' "$TRIGGER"
@@ -119,9 +102,14 @@ trap 'rm -f "$TMP"' EXIT
     printf -- '  alone does not carry the per-file specifics /work and /review need.\n'
 } > "$TMP"
 
-# write-state, not a direct append: it routes through vault_lock.atomic_write,
-# so this cannot race the daemon or another session writing the same log.
-$TIMEOUT_CMD python3 "$RESOLVER" write-state --project-root "$EVENT_CWD" \
-    --content-file "$TMP" "$PROGRESS_NAME" >/dev/null 2>&1 || true
+# ── Append it to the active plan's log ───────────────────────────────────────
+# append-progress picks the log from the worktree's active-plan marker, else a
+# bare call: a task's log in the vault, or the repo-local pair's. A bare call on
+# a project that keeps its plans in tasks exits 4, and a log that is absent or
+# empty — not an initialized plan — is left alone; either way we leave silently.
+# It writes through the storage backend, so this cannot race the daemon or
+# another session writing the same log.
+$TIMEOUT_CMD python3 "$RESOLVER" append-progress --project-root "$EVENT_CWD" \
+    --content-file "$TMP" >/dev/null 2>&1 || true
 
 exit 0

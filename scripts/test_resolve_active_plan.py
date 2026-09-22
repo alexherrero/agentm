@@ -276,11 +276,12 @@ class ResolveActivePlanCLI(unittest.TestCase):
 
 
 class ResolveActivePlanTaskLayout(unittest.TestCase):
-    """The task layout (agentm-vault plan 09, task 1).
+    """The task layout (agentm-vault plans 09 and 15).
 
-    On a synced backend a task at `tasks/<slug>/plan.md` wins over the flat
-    `PLAN-<slug>.md`, which stays the fallback until the migration; the tracker
-    path rides beside the pair in both layouts; slug safety holds in both.
+    On a synced backend every plan is a task at `tasks/<name>/plan.md`, with the
+    tracker beside it. Nothing else is read there: a flat pair in a stray
+    retired state directory is never a plan, a singleton name is a bare call,
+    and slug safety holds. A project with no vault keeps the repo-local pair.
     """
 
     def setUp(self) -> None:
@@ -293,8 +294,7 @@ class ResolveActivePlanTaskLayout(unittest.TestCase):
         self.proj = root / "repo"
         (self.proj / ".harness").mkdir(parents=True)
         self.project_dir = self.vault / "projects" / "fixture"
-        self.harness = self.project_dir / "_harness"
-        self.harness.mkdir(parents=True)
+        self.project_dir.mkdir(parents=True)
         self.resolution = {
             "backend": VaultBackend(root=self.vault, lock_root=root / "locks"),
             "project_locator": Locator("projects/fixture"),
@@ -305,28 +305,23 @@ class ResolveActivePlanTaskLayout(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def _write_flat(self, slug: str = "foo", body: str = "# plan\n") -> None:
-        (self.harness / f"PLAN-{slug}.md").write_text(body, encoding="utf-8")
-
     def _write_task(self, slug: str = "foo", body: str = "# plan\n") -> Path:
         task = self.project_dir / "tasks" / slug
         task.mkdir(parents=True, exist_ok=True)
         (task / "plan.md").write_text(body, encoding="utf-8")
         return task
 
+    def _write_stray_flat_pair(self, slug: str = "foo") -> Path:
+        # The retired per-project state directory, come back with a flat pair
+        # in it — the shape a stray writer or an old charter left behind.
+        stray = self.project_dir / "_harness"
+        stray.mkdir(parents=True, exist_ok=True)
+        (stray / f"PLAN-{slug}.md").write_text("# a stray flat plan\n", encoding="utf-8")
+        (stray / "PLAN.md").write_text("# a stray singleton\n", encoding="utf-8")
+        return stray
+
     def _write_marker(self, text: str) -> None:
         (self.proj / ".harness" / "active-plan").write_text(text, encoding="utf-8")
-
-    def test_the_flat_layout_resolves_its_pair_and_tracker(self) -> None:
-        self._write_flat()
-        active = hm.resolve_active_plan(self.resolution, plan_arg="foo")
-        self.assertEqual(active, _NAMED)
-        self.assertEqual((active.layout, active.tracker), ("flat", "tracker-foo.md"))
-        self.assertEqual(
-            hm.active_plan_paths(self.resolution, plan_arg="foo"),
-            (self.harness / "PLAN-foo.md", self.harness / "progress-foo.md",
-             self.harness / "tracker-foo.md"),
-        )
 
     def test_the_task_layout_resolves_the_task_directory(self) -> None:
         task = self._write_task()
@@ -337,30 +332,20 @@ class ResolveActivePlanTaskLayout(unittest.TestCase):
             (task / "plan.md", task / "progress.md", task / "tracker.md"),
         )
 
-    def test_both_layouts_resolve_the_same_plan(self) -> None:
-        # One slug names one piece of work in either layout: the plan path each
-        # layout resolves to holds that plan, and the tracker sits beside it.
-        for layout, write in (("flat", self._write_flat), ("task", self._write_task)):
-            with self.subTest(layout=layout):
-                shutil.rmtree(self.project_dir)
-                self.harness.mkdir(parents=True)
-                write(body="# the foo plan\n")
-                plan, progress, tracker = hm.active_plan_paths(self.resolution, plan_arg="foo")
-                self.assertEqual(plan.read_text(encoding="utf-8"), "# the foo plan\n")
-                self.assertEqual(progress.parent, plan.parent)
-                self.assertEqual(tracker.parent, plan.parent)
-                self.assertEqual(hm.resolve_active_plan(self.resolution, plan_arg="foo").slug, "foo")
-
-    def test_the_task_wins_over_the_flat_pair(self) -> None:
-        self._write_flat()
+    def test_a_stray_flat_pair_is_never_read(self) -> None:
+        stray = self._write_stray_flat_pair()
         task = self._write_task()
-        plan, _progress, _tracker = hm.active_plan_paths(self.resolution, plan_arg="foo")
-        self.assertEqual(plan, task / "plan.md")
+        plan, progress, tracker = hm.active_plan_paths(self.resolution, plan_arg="foo")
+        self.assertEqual((plan, progress, tracker),
+                         (task / "plan.md", task / "progress.md", task / "tracker.md"))
+        for path in (plan, progress, tracker):
+            self.assertNotEqual(path.parent, stray)
 
-    def test_a_blank_task_plan_falls_back_to_the_flat_pair(self) -> None:
-        self._write_flat()
-        self._write_task(body="   \n")
-        self.assertEqual(hm.resolve_active_plan(self.resolution, plan_arg="foo").layout, "flat")
+    def test_a_name_no_task_carries_is_placed_even_beside_a_stray_flat_pair(self) -> None:
+        self._write_stray_flat_pair()
+        active = hm.resolve_active_plan(self.resolution, plan_arg="foo")
+        self.assertEqual((active.layout, active.slug), ("task", "001-foo"))
+        self.assertEqual(Path(active[0]), self.project_dir / "tasks" / "001-foo" / "plan.md")
 
     def test_a_marker_bound_to_a_task_validates(self) -> None:
         task = self._write_task()
@@ -369,14 +354,15 @@ class ResolveActivePlanTaskLayout(unittest.TestCase):
         self.assertEqual(active.layout, "task")
         self.assertEqual(Path(active[0]), task / "plan.md")
 
-    def test_a_marker_bound_to_neither_layout_still_raises(self) -> None:
+    def test_a_marker_bound_to_no_task_raises_even_with_a_stray_flat_pair(self) -> None:
+        self._write_stray_flat_pair()
         self._write_marker("foo\n")
         with self.assertRaises(hm.ActivePlanError) as caught:
             hm.resolve_active_plan(self.resolution)
         self.assertIn("tasks/foo/plan.md", str(caught.exception))
+        self.assertNotIn("PLAN-foo.md", str(caught.exception))
 
-    def test_an_unsafe_slug_is_refused_in_both_layouts(self) -> None:
-        self._write_flat()
+    def test_an_unsafe_slug_is_refused(self) -> None:
         self._write_task()
         for bad in ("../etc", "a/b", "..", "x\\y"):
             with self.subTest(bad=bad):
@@ -386,18 +372,32 @@ class ResolveActivePlanTaskLayout(unittest.TestCase):
         with self.assertRaises(hm.ActivePlanError):
             hm.resolve_active_plan(self.resolution)
 
-    def test_the_singleton_carries_its_tracker(self) -> None:
-        active = hm.resolve_active_plan(self.resolution)
-        self.assertEqual(active, _SINGLETON)
-        self.assertEqual(active.tracker, "tracker.md")
+    def test_a_singleton_name_is_a_bare_call(self) -> None:
+        self._write_stray_flat_pair()
+        for arg in (None, "PLAN", "PLAN.md", ""):
+            with self.subTest(arg=arg):
+                with self.assertRaises(hm.TaskNameRequired):
+                    hm.resolve_active_plan(self.resolution, plan_arg=arg)
 
-    def test_a_device_local_harness_keeps_the_flat_layout(self) -> None:
+    def test_a_device_local_harness_keeps_the_repo_local_pair(self) -> None:
         # No synced backend: a tasks/ directory in the repo is not a task.
         (self.proj / "tasks" / "foo").mkdir(parents=True)
         (self.proj / "tasks" / "foo" / "plan.md").write_text("# plan\n", encoding="utf-8")
         local = {"project_root": self.proj, "slug": "fixture"}
         active = hm.resolve_active_plan(local, plan_arg="foo")
-        self.assertEqual((active, active.layout), (_NAMED, "flat"))
+        self.assertEqual((active, active.layout, active.tracker),
+                         (_NAMED, "local", "tracker-foo.md"))
+        self.assertEqual(
+            hm.active_plan_paths(local, plan_arg="foo"),
+            (self.proj / ".harness" / "PLAN-foo.md", self.proj / ".harness" / "progress-foo.md",
+             self.proj / ".harness" / "tracker-foo.md"),
+        )
+
+    def test_the_repo_local_singleton_carries_its_tracker(self) -> None:
+        local = {"project_root": self.proj, "slug": "fixture"}
+        active = hm.resolve_active_plan(local)
+        self.assertEqual(active, _SINGLETON)
+        self.assertEqual((active.layout, active.tracker), ("local", "tracker.md"))
 
 
 # ── Plan-name contract — golden vectors shared with the crickets twin ───────────
@@ -449,13 +449,13 @@ class TaskPlacementAndLookup(unittest.TestCase):
     """A project that keeps its plans in numbered tasks (agentm-vault plan 10,
     task 7).
 
-    The migration leaves a project with no `_harness/` and a `tasks/` full of
-    `NNN-<verb-slug>/` directories. Three things have to hold from that day on: a
-    new plan lands in a new numbered task rather than back in the directory the
-    migration removed; a task is found by its own name or by the verb slug inside
+    Every project on a synced backend keeps its plans in a `tasks/` full of
+    `NNN-<verb-slug>/` directories. Three things hold: a new plan lands in a new
+    numbered task; a task is found by its own name or by the verb slug inside
     it, and two tasks sharing a verb slug are refused by name; and a bare call,
     which has no singleton to answer with, exits 4 rather than naming a file that
-    will never exist.
+    will never exist. None of it depends on what else the project directory
+    holds (agentm-vault plan 15).
     """
 
     def setUp(self) -> None:
@@ -522,17 +522,17 @@ class TaskPlacementAndLookup(unittest.TestCase):
         active = hm.resolve_active_plan(self.resolution, plan_arg="042-build-the-brief")
         self.assertEqual(active.slug, "042-build-the-brief")
 
-    def test_a_project_that_still_has_a_harness_keeps_the_flat_pair(self) -> None:
-        # The discriminator is the `_harness/` directory, so an unmigrated
-        # project's new plan still lands flat — placement is not retroactive.
+    def test_a_stray_retired_state_directory_does_not_stop_placement(self) -> None:
+        # The retired directory came back once, seventeen hours after the move,
+        # and turned placement off; it no longer decides anything.
         self.harness.mkdir(parents=True)
         active = hm.resolve_active_plan(self.resolution, plan_arg="build-the-brief")
-        self.assertEqual((active.layout, active[0]), ("flat", "PLAN-build-the-brief.md"))
+        self.assertEqual((active.layout, active.slug), ("task", "001-build-the-brief"))
 
-    def test_a_repo_with_no_vault_keeps_the_flat_pair(self) -> None:
+    def test_a_repo_with_no_vault_keeps_the_repo_local_pair(self) -> None:
         local = {"project_root": self.proj, "slug": "fixture"}
         active = hm.resolve_active_plan(local, plan_arg="build-the-brief")
-        self.assertEqual((active.layout, active[0]), ("flat", "PLAN-build-the-brief.md"))
+        self.assertEqual((active.layout, active[0]), ("local", "PLAN-build-the-brief.md"))
 
     # --- lookup: both forms of a task's name ---
 
@@ -614,13 +614,14 @@ class TaskPlacementAndLookup(unittest.TestCase):
         self.assertEqual((rc, out), (2, ""))
         self.assertIn("043-build-the-brief", err)
 
-    def test_a_bare_call_on_a_project_with_a_harness_answers_the_singleton(self) -> None:
+    def test_a_bare_call_still_answers_4_beside_a_stray_retired_directory(self) -> None:
+        # The live defect of 2026-09-22: the overnight job's pack recreated the
+        # directory, and a bare call on agentm answered its singleton.
         self.harness.mkdir(parents=True)
+        (self.harness / "PLAN.md").write_text("# a stray singleton\n", encoding="utf-8")
         rc, out, err = self._run()
-        self.assertEqual((rc, err), (0, ""))
-        self.assertEqual(out.strip().split("\t"),
-                         [str(self.harness / "PLAN.md"),
-                          str(self.harness / "progress.md")])
+        self.assertEqual((rc, out), (4, ""))
+        self.assertIn("numbered tasks", err)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """plan_graph — shared map engine for the team-coordinator persona (V5-11).
 
-Reads `_harness/` (active plans) and `_harness/queued-plans/` (staged plans)
-and returns a structured picture: every plan, its status, task counts,
-last-touched timestamp (from the progress log), plus any declared `depends_on`
-and `touches` metadata from the plan's YAML frontmatter.
+Reads a project's plans — the tasks under its vault directory's `tasks/`, or,
+for a project with no vault, the flat pairs in its repo-local `.harness/` and the
+staged plans in `.harness/queued-plans/` — and returns a structured picture:
+every plan, its status, step counts, last-touched timestamp (from the progress
+log), plus any declared `depends_on` and `touches` metadata from the plan's YAML
+frontmatter.
+
+A plan's status is its tracker's — `tasks/<name>/tracker.md` beside a task's
+plan, `tracker-<slug>.md` beside a repo-local pair — and the plan's own
+`**Status:**` line only when no tracker parses (agentm-vault plan 15: the line
+has one writer left, and it stops writing it).
 
 The three team-coordinator capability scripts (standup, readiness, merge_order)
 all call `build_plan_graph()` and work from the returned list — no re-reading
@@ -14,19 +21,23 @@ the vault.
 
 Usage (diagnostic, not a gate)::
 
-    python3 scripts/plan_graph.py [--harness-dir PATH]
+    python3 scripts/plan_graph.py [--state-dir PATH]
 
 Fields per plan:
-    slug          "" for the singleton PLAN.md; "foo" for PLAN-foo.md.
-    filename      Bare filename, e.g. "PLAN-foo.md".
-    status        Value of the **Status:** line: "planning" / "in-progress" /
-                  "done" / "—".
+    slug          A task's directory name ("042-build-the-brief"); "" for the
+                  repo-local singleton PLAN.md; "foo" for PLAN-foo.md.
+    filename      "tasks/<name>/plan.md", or a bare filename, e.g. "PLAN-foo.md".
+    status        The tracker's status ("queued" / "active" / "parked" / "done"
+                  / "dropped"), else the **Status:** line's value ("planning" /
+                  "in-progress" / "done"), else "—".
     tasks_done    Count of [x] task checkboxes in the plan body.
     tasks_total   Count of [ ] + [x] task checkboxes.
     last_touched  datetime of the most-recent progress-log timestamp, or None.
     depends_on    List of plan slugs this plan must wait for (from frontmatter).
     touches       List of file globs this plan edits (from frontmatter).
-    active        True → active plan dir; False → queued-plans dir.
+    active        False for a staged plan: a task whose tracker is queued, or a
+                  plan in queued-plans/; also False for a finished task.
+    finished      True for a task whose tracker is done or dropped.
 """
 from __future__ import annotations
 
@@ -62,7 +73,8 @@ class PlanInfo:
     last_touched: Optional[datetime]
     depends_on: List[str] = field(default_factory=list)
     touches: List[str] = field(default_factory=list)
-    active: bool = True  # False → queued plan
+    active: bool = True  # False → a staged (queued) plan, or a finished task
+    finished: bool = False  # True → a task whose tracker is done or dropped
 
 
 # ---------------------------------------------------------------------------
@@ -174,11 +186,11 @@ def _slug_from_filename(name: str) -> str:
     return m.group(1) if m else name
 
 
-def _progress_path_for(harness_dir: Path, plan_name: str) -> Path:
-    """Map a plan filename to its progress file (both in *harness_dir*)."""
+def _progress_path_for(state: Path, plan_name: str) -> Path:
+    """Map a repo-local plan filename to its progress file (both in *state*)."""
     norm = hm._normalize_plan_name(plan_name)
     progress_name = hm._plan_pair(norm)[1]
-    return harness_dir / progress_name
+    return state / progress_name
 
 
 def _is_task_plan(plan_path: Path) -> bool:
@@ -192,26 +204,52 @@ def _slug_for(plan_path: Path) -> str:
     return plan_path.parent.name if _is_task_plan(plan_path) else _slug_from_filename(plan_path.name)
 
 
-def _progress_for(harness_dir: Path, plan_path: Path) -> Path:
-    """The progress log beside a task's plan, or the flat pair's in *harness_dir*."""
+def _progress_for(state: Path, plan_path: Path) -> Path:
+    """The progress log beside a task's plan, or a repo-local pair's in *state*."""
     if _is_task_plan(plan_path):
         return plan_path.parent / "progress.md"
-    return _progress_path_for(harness_dir, plan_path.name)
+    return _progress_path_for(state, plan_path.name)
+
+
+def _tracker_for(state: Path, plan_path: Path) -> Path:
+    """The tracker beside a task's plan, or beside a repo-local pair in *state*."""
+    if _is_task_plan(plan_path):
+        return plan_path.parent / "tracker.md"
+    return state / hm._tracker_name(hm._normalize_plan_name(plan_path.name))
+
+
+def _tracker_status(tracker_path: Path) -> Optional[str]:
+    """The tracker's status, or None when there is no tracker or it does not
+    parse — an unreadable tracker is check-tracker-schema's to report."""
+    if not tracker_path.is_file():
+        return None
+    try:
+        import tracker  # the one tracker schema (agentm-vault plan 09)
+        return tracker.read(tracker_path)[0].status
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
 # Core builder
 # ---------------------------------------------------------------------------
 
-def _parse_plan(plan_path: Path, progress_path: Path, active: bool) -> PlanInfo:
-    """Parse one plan file into a ``PlanInfo``."""
+def _parse_plan(plan_path: Path, progress_path: Path, active: bool,
+                tracker_path: Optional[Path] = None) -> PlanInfo:
+    """Parse one plan file into a ``PlanInfo``. The status is the tracker's when
+    one parses, else the plan's own Status line. A task whose tracker is queued
+    is staged, and one whose tracker is final is finished; neither is active."""
     try:
         text = plan_path.read_text(encoding="utf-8")
     except OSError:
         text = ""
     fm, body = _split_frontmatter(text)
     slug = _slug_for(plan_path)
-    status = _extract_status(body)
+    tracked = _tracker_status(tracker_path) if tracker_path is not None else None
+    status = tracked or _extract_status(body)
+    finished = _is_task_plan(plan_path) and tracked in ("done", "dropped")
+    if _is_task_plan(plan_path) and (tracked == "queued" or finished):
+        active = False
     tasks_done, tasks_total = _count_tasks(body)
     touched = _last_touched(progress_path)
     depends_on = _parse_frontmatter_list(fm, "depends_on")
@@ -227,28 +265,34 @@ def _parse_plan(plan_path: Path, progress_path: Path, active: bool) -> PlanInfo:
         depends_on=depends_on,
         touches=touches,
         active=active,
+        finished=finished,
     )
 
 
-def build_plan_graph(harness_dir: Path) -> list[PlanInfo]:
-    """Return every plan (active + queued) from *harness_dir*.
+def build_plan_graph(state: Path) -> list[PlanInfo]:
+    """Return every plan under *state* — the directory ``hm.state_dir`` answers.
 
-    Active plans come first (singleton first, then named alphabetically),
-    followed by queued plans (alphabetically).  The order is deterministic.
+    A project's vault directory yields its tasks, sorted by name, finished ones
+    included and marked so a dependency on one reads as met. A repo-local
+    ``.harness/`` yields its flat pairs (singleton first, then named
+    alphabetically), then its staged plans in ``queued-plans/``. The order is
+    deterministic.
     """
     plans: list[PlanInfo] = []
+    state = Path(state)
 
-    # --- active plans ---
+    # --- the resolver's own enumeration: tasks, or repo-local pairs ---
     for plan_path in sorted(
-        _list_active_plans(harness_dir),
+        hm.list_plan_files(state),
         key=lambda p: ((0, "") if p.name == "PLAN.md"
                        else (2, _slug_for(p)) if _is_task_plan(p) else (1, p.name)),
     ):
-        progress = _progress_for(harness_dir, plan_path)
-        plans.append(_parse_plan(plan_path, progress, active=True))
+        progress = _progress_for(state, plan_path)
+        plans.append(_parse_plan(plan_path, progress, active=True,
+                                 tracker_path=_tracker_for(state, plan_path)))
 
-    # --- queued plans ---
-    queued_dir = harness_dir / _QUEUED_SUBDIR
+    # --- staged plans (a repo-local .harness/ only; a task stages as queued) ---
+    queued_dir = state / _QUEUED_SUBDIR
     if queued_dir.is_dir():
         queued_files: list[Path] = []
         singleton_q = queued_dir / "PLAN.md"
@@ -259,27 +303,10 @@ def build_plan_graph(harness_dir: Path) -> list[PlanInfo]:
                 queued_files.append(p)
         for plan_path in queued_files:
             # progress log lives in the active dir (staged plan has no run log yet)
-            progress = _progress_path_for(harness_dir, plan_path.name)
+            progress = _progress_path_for(state, plan_path.name)
             plans.append(_parse_plan(plan_path, progress, active=False))
 
     return plans
-
-
-def _list_active_plans(harness_dir: Path) -> list[Path]:
-    """Fallback list_plan_files in case harness_memory doesn't export it."""
-    files: list[Path] = []
-    singleton = harness_dir / "PLAN.md"
-    if singleton.is_file():
-        files.append(singleton)
-    for p in harness_dir.glob("PLAN-*.md"):
-        if p.is_file() and hm._conflict_family(p.name) is None:
-            files.append(p)
-    # A task's plan beside a vault `_harness/` (agentm-vault plan 09).
-    if harness_dir.name == "_harness":
-        for p in sorted((harness_dir.parent / hm._TASKS_DIRNAME).glob("*/plan.md")):
-            if p.is_file() and hm._is_safe_plan_slug(p.parent.name):
-                files.append(p)
-    return files
 
 
 # ---------------------------------------------------------------------------
@@ -287,24 +314,29 @@ def _list_active_plans(harness_dir: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 def _main() -> None:
-    ap = argparse.ArgumentParser(description="Dump the plan graph for a _harness/ dir.")
-    ap.add_argument("--harness-dir", help="Path to the _harness/ directory.")
+    ap = argparse.ArgumentParser(description="Dump the plan graph for a project.")
+    ap.add_argument("--state-dir", "--harness-dir", dest="state_dir",
+                    help="The project's vault directory, or a repo-local .harness/ "
+                         "(default: resolve from cwd).")
     args = ap.parse_args()
 
-    if args.harness_dir:
-        harness_dir = Path(args.harness_dir)
+    if args.state_dir:
+        state = Path(args.state_dir)
     else:
-        harness_dir = hm.harness_state_dir()
+        state = hm.state_dir(hm.resolve_project({"cwd": Path.cwd()}))
+    if state is None:
+        print("(no plan state directory resolves from here)")
+        return
 
-    plans = build_plan_graph(harness_dir)
+    plans = build_plan_graph(state)
     if not plans:
         print("(no plans found)")
         return
     for p in plans:
-        state = "active" if p.active else "queued"
+        label = "done" if p.finished else "active" if p.active else "queued"
         touched = p.last_touched.strftime("%Y-%m-%d %H:%M") if p.last_touched else "—"
         print(
-            f"[{state}] {p.filename}  status={p.status!r}  "
+            f"[{label}] {p.filename}  status={p.status!r}  "
             f"tasks={p.tasks_done}/{p.tasks_total}  touched={touched}"
         )
         if p.depends_on:

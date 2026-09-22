@@ -5,9 +5,8 @@
 # context was lost" rather than as one continuous history.
 #
 # See compaction-marker.sh for the full reasoning — in particular why the
-# progress file is resolved through the process seam and written via
-# `write-state` (which routes through vault_lock.atomic_write) rather than
-# appended to directly.
+# marker goes through `append-progress`, which resolves the active plan's log
+# and writes through the storage backend, rather than being appended directly.
 
 $ErrorActionPreference = 'Continue'   # never block a compaction
 
@@ -49,17 +48,6 @@ if (-not $resolver) {
 }
 if (-not $resolver) { exit 0 }
 
-# Which progress file? Ask the seam, so a named plan gets its own log.
-$pair = & $py.Source $resolver 'resolve-active-plan' '--project-root' $eventCwd 2>$null
-if (-not $pair) { exit 0 }
-$progressPath = ($pair -split "`t")[1]
-if (-not $progressPath) { exit 0 }
-$progressName = Split-Path -Leaf $progressPath
-if (-not $progressName) { exit 0 }
-
-$current = & $py.Source $resolver 'read-state' '--project-root' $eventCwd $progressName 2>$null
-if (-not $current) { exit 0 }   # nothing to append to -> not an initialized project
-
 $ts = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 $branch = 'unknown'
 try {
@@ -70,7 +58,6 @@ try {
 } catch { }
 
 $lines = New-Object System.Collections.Generic.List[string]
-$lines.Add(($current -join "`n"))
 $lines.Add('')
 $lines.Add("## compaction event — $ts")
 $lines.Add("- trigger: $trigger")
@@ -82,9 +69,11 @@ $lines.Add('  alone does not carry the per-file specifics /work and /review need
 
 $tmp = [System.IO.Path]::GetTempFileName()
 try {
-    ($lines -join "`n") | Set-Content -LiteralPath $tmp -NoNewline
-    # write-state, not a direct append: it routes through vault_lock.atomic_write.
-    & $py.Source $resolver 'write-state' '--project-root' $eventCwd '--content-file' $tmp $progressName *>$null
+    (($lines -join "`n") + "`n") | Set-Content -LiteralPath $tmp -NoNewline
+    # append-progress picks the active plan's log (a task's in the vault, or the
+    # repo-local pair's) and writes through the storage backend; a bare call on a
+    # project that keeps tasks exits 4 and an absent or empty log is left alone.
+    & $py.Source $resolver 'append-progress' '--project-root' $eventCwd '--content-file' $tmp *>$null
 } finally {
     Remove-Item -LiteralPath $tmp -ErrorAction SilentlyContinue
 }

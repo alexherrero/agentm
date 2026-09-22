@@ -2,16 +2,17 @@
 """Tests for scripts/queue_status_lite.py (V5-10 part 1, task 3).
 
 `queue_status_lite` is the **read-only** coordinator's-glance dashboard: enumerate
-every active plan (`PLAN.md` plus each named `PLAN-<name>.md`) in a `_harness/`
-directory and report each plan's `Status:` line and the head of its matching
-`progress*.md`. The load-bearing contracts these tests lock:
+every active plan — a project's unfinished tasks, or a repo-local `.harness/`'s
+`PLAN.md` plus each named `PLAN-<name>.md` — and report each plan's status and
+the head of its progress log. The load-bearing contracts these tests lock:
 
   - all active plans listed (singleton + named), archives and GDrive conflict
     copies excluded;
   - status + progress-head extracted correctly (bold and un-bold `Status:`);
   - **zero filesystem mutation** — the directory is byte-identical afterwards;
   - the CLI always exits 0 (a status read, never a gate);
-  - `harness_state_dir` resolves the right directory per state mode.
+  - a project's tasks are listed with their tracker's status, finished ones left out;
+  - `state_dir` resolves the right directory per state mode.
 
 Run directly:
 
@@ -36,7 +37,7 @@ if str(_HERE) not in sys.path:
 import harness_memory as hm  # noqa: E402
 import queue_status_lite as qsl  # noqa: E402
 
-# Sandbox AGENTM_INSTALL_PREFIX module-wide so `harness_state_dir`'s mode probe
+# Sandbox AGENTM_INSTALL_PREFIX module-wide so `state_dir`'s mode probe
 # (`_read_project_mode` → `_read_config_state_mode`) never reads the operator's
 # real ~/.claude/.agentm-config.json — a device default of state_mode=local would
 # flip the vault-mode resolution test. Mirrors the sibling named-plan tests.
@@ -63,12 +64,13 @@ def _snapshot(d: Path) -> dict:
 
 
 class QueueStatusLiteFixture(unittest.TestCase):
-    """A `_harness/` with three active plans — the singleton plus two named —
-    each with a matching progress log, exercising enumeration + extraction."""
+    """A repo-local `.harness/` — a project with no vault — with three active
+    plans, the singleton plus two named, each with a matching progress log,
+    exercising enumeration + extraction."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp(prefix="agentm-queue-status-")
-        self.harness = Path(self._tmp) / "_harness"
+        self.harness = Path(self._tmp) / ".harness"
         self.harness.mkdir(parents=True)
         # Singleton plan — bold Status: form.
         self._write("PLAN.md", "# Plan: legacy\n\n**Status:** in-progress\n")
@@ -158,7 +160,7 @@ class QueueStatusLiteFixture(unittest.TestCase):
     def test_cli_exits_zero(self) -> None:
         script = _HERE / "queue_status_lite.py"
         proc = subprocess.run(
-            [sys.executable, str(script), "--harness-dir", str(self.harness)],
+            [sys.executable, str(script), "--state-dir", str(self.harness)],
             capture_output=True,
             text=True,
         )
@@ -172,8 +174,9 @@ class QueueStatusLiteFixture(unittest.TestCase):
         )
 
     def test_empty_dir_exits_zero(self) -> None:
-        empty = Path(self._tmp) / "empty_harness"
-        empty.mkdir()
+        # `--harness-dir` stays as an alias of `--state-dir`.
+        empty = Path(self._tmp) / "empty" / ".harness"
+        empty.mkdir(parents=True)
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(qsl.main(["--harness-dir", str(empty)]), 0)
 
@@ -183,10 +186,60 @@ class QueueStatusLiteFixture(unittest.TestCase):
             self.assertEqual(qsl.main(["--harness-dir", str(missing)]), 0)
 
 
-class HarnessStateDirResolution(unittest.TestCase):
-    """`harness_state_dir` resolves the `_harness/` directory per the active backend
-    (ADR 0020, amends ADR 0018 DC-1): a synced backend → the vault path; no synced
-    backend (or a `.project-mode=local` opt-out) → device-local `<repo>/.harness/`."""
+class TaskLayoutDashboard(unittest.TestCase):
+    """A project directory in the vault (agentm-vault plan 15): its plans are the
+    tasks under `tasks/`, each task's status is its tracker's, and a finished
+    task is not an active plan."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.mkdtemp(prefix="agentm-queue-status-tasks-")
+        self.project = Path(self._tmp) / "projects" / "fixture"
+        self._task("001-ship-the-old-thing", "done", "2026-09-01 10:00 /work — closed\n")
+        self._task("002-build-the-brief", "active", "2026-09-20 09:00 /work — step 2\n",
+                   plan="# Plan\n\n**Status:** in-progress\n")
+        self._task("003-plan-the-next", "queued", "")
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _task(self, name: str, status: str, progress: str, plan: str = "# Plan\n") -> None:
+        import tracker as tk
+        task = self.project / "tasks" / name
+        task.mkdir(parents=True)
+        (task / "plan.md").write_text(plan, encoding="utf-8")
+        if progress:
+            (task / "progress.md").write_text(progress, encoding="utf-8")
+        body = tk.Tracker(title=name, project="fixture", task=name, status=status,
+                          opened="2026-09-01", updated="2026-09-20",
+                          closed="2026-09-02" if status == "done" else None)
+        (task / "tracker.md").write_text(tk.render(body), encoding="utf-8")
+
+    def test_the_unfinished_tasks_are_listed_by_name(self) -> None:
+        labels = [qsl._plan_label(p) for p in qsl.list_plan_files(self.project)]
+        self.assertEqual(labels, ["tasks/002-build-the-brief/plan.md",
+                                  "tasks/003-plan-the-next/plan.md"])
+
+    def test_status_is_the_trackers_and_progress_sits_beside_the_plan(self) -> None:
+        rows = {r.plan_name: r for r in qsl.collect_plan_statuses(self.project)}
+        brief = rows["tasks/002-build-the-brief/plan.md"]
+        # The tracker says active; the plan's own Status line is not read.
+        self.assertEqual(brief.status, "active")
+        self.assertEqual(brief.progress_name, "tasks/002-build-the-brief/progress.md")
+        self.assertEqual(brief.progress_head, "2026-09-20 09:00 /work — step 2")
+        self.assertEqual(rows["tasks/003-plan-the-next/plan.md"].status, "queued")
+
+    def test_a_flat_pair_beside_the_tasks_is_not_a_plan(self) -> None:
+        # The flat layout lives only in a repo-local `.harness/`.
+        (self.project / "PLAN-stray.md").write_text("**Status:** planning\n", encoding="utf-8")
+        labels = [qsl._plan_label(p) for p in qsl.list_plan_files(self.project)]
+        self.assertNotIn("PLAN-stray.md", labels)
+
+
+class StateDirResolution(unittest.TestCase):
+    """`state_dir` resolves where a project's plans live per the active backend
+    (ADR 0020, amends ADR 0018 DC-1): a synced backend → the project's own vault
+    directory; no synced backend (or a `.project-mode=local` opt-out) →
+    device-local `<repo>/.harness/`."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp(prefix="agentm-state-dir-")
@@ -202,11 +255,11 @@ class HarnessStateDirResolution(unittest.TestCase):
         # ADR 0020: a stale vault_path key with no synced backend → device-local.
         resolution = {"vault_path": self.vault, "project_root": self.proj}
         self.assertEqual(
-            hm.harness_state_dir(resolution), self.proj / ".harness"
+            hm.state_dir(resolution), self.proj / ".harness"
         )
 
     def test_synced_backend_returns_vault(self) -> None:
-        # ADR 0020: a synced backend routes state to <vault>/projects/<slug>/_harness/.
+        # A synced backend: the project directory itself is the state root.
         from vault_backend_stub import VaultBackend
         from storage_seam import Locator
         backend = VaultBackend(root=self.vault, lock_root=self.root / "locks")
@@ -216,19 +269,19 @@ class HarnessStateDirResolution(unittest.TestCase):
             "project_root": self.proj,
         }
         self.assertEqual(
-            hm.harness_state_dir(resolution),
-            self.vault / "desk/projects" / "repo" / "_harness",
+            hm.state_dir(resolution),
+            self.vault / "desk/projects" / "repo",
         )
 
     def test_local_mode_dir(self) -> None:
         resolution = {"vault_path": self.vault, "project_root": self.proj}
         self.assertEqual(
-            hm.harness_state_dir(resolution), self.proj / ".harness"
+            hm.state_dir(resolution), self.proj / ".harness"
         )
 
     def test_no_project_root_is_none(self) -> None:
-        # No backend and no project_root → harness_state_dir cannot resolve.
-        self.assertIsNone(hm.harness_state_dir({"vault_path": self.vault}))
+        # No backend and no project_root → state_dir cannot resolve.
+        self.assertIsNone(hm.state_dir({"vault_path": self.vault}))
 
 
 if __name__ == "__main__":

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Named-plan contract tests for scripts/harness_memory.py (V5-10 part 1, task 1).
 
-Locks the contract that the state resolver is **filename-agnostic**: a named
-plan (`PLAN-<name>.md` / `progress-<name>.md`) round-trips, CAS-guards, and
-conflict-detects *exactly* like the singleton `PLAN.md` / `progress.md`. The
-resolver already takes an arbitrary `filename` (`read_state_file` /
-`write_state_file`) and `safe_write_replace_style` does content-hash CAS on an
-arbitrary path keying on no literal "PLAN.md" — so named plans are a naming
-convention, not a new code path. These tests *codify* that so a later edit can't
-silently re-introduce a singleton assumption.
+Locks the contract that the repo-local flat pair — a project with no vault
+([LC-3]) — is **name-agnostic**: a named plan (`PLAN-<name>.md` /
+`progress-<name>.md`) resolves, round-trips, CAS-guards, and conflict-detects
+*exactly* like the singleton `PLAN.md` / `progress.md`. `active_plan_paths`
+composes either pair onto the repo-local `.harness/`, and
+`safe_write_replace_style` does content-hash CAS on an arbitrary path keying on
+no literal "PLAN.md" — so named plans are a naming convention, not a new code
+path. These tests *codify* that so a later edit can't silently re-introduce a
+singleton assumption. (On a synced backend every plan is a task instead;
+test_resolve_active_plan covers that layout.)
 
 Run directly:
 
@@ -60,9 +62,9 @@ class NamedPlanResolverContract(unittest.TestCase):
         self._tmp = tempfile.mkdtemp(prefix="agentm-named-plans-")
         self.root = Path(self._tmp)
         self.vault = self.root / "vault"
-        (self.vault / "_harness").mkdir(parents=True)
+        self.vault.mkdir(parents=True)
         self.proj = self.root / "repo"
-        self.proj.mkdir()
+        (self.proj / ".harness").mkdir(parents=True)
         self.resolution = {
             "vault_path": self.vault,
             "project_root": self.proj,
@@ -83,39 +85,37 @@ class NamedPlanResolverContract(unittest.TestCase):
     # --- write/read round-trip: identical for singleton and named ---
 
     def test_round_trip_singleton_and_named(self) -> None:
-        """V5-3: write+read round-trip via device-local .harness/."""
-        for plan_name, prog_name in (_SINGLETON, _NAMED):
+        """Both pairs resolve into the repo-local .harness/ and round-trip there."""
+        for (plan_name, prog_name), arg in ((_SINGLETON, None), (_NAMED, "foo")):
             with self.subTest(plan=plan_name):
-                plan_body = f"# {plan_name}\nStatus: in-progress\n"
+                plan, progress, _tracker = hm.active_plan_paths(self.resolution, plan_arg=arg)
+                self.assertEqual(plan, self.proj / ".harness" / plan_name)
+                self.assertEqual(progress, self.proj / ".harness" / prog_name)
+                plan_body = f"# {plan_name}\n"
                 prog_body = f"log entry for {prog_name}\n"
-                wrote_plan = hm.write_state_file(self.resolution, plan_name, plan_body)
-                wrote_prog = hm.write_state_file(self.resolution, prog_name, prog_body)
-                # V5-3: writes land in project_root/.harness/, not vault.
-                self.assertEqual(wrote_plan, self.proj / ".harness" / plan_name)
-                self.assertEqual(wrote_prog, self.proj / ".harness" / prog_name)
-                self.assertEqual(
-                    hm.read_state_file(self.resolution, plan_name), plan_body
-                )
-                self.assertEqual(
-                    hm.read_state_file(self.resolution, prog_name), prog_body
-                )
+                hm.safe_write_replace_style(plan, plan_body)
+                hm.safe_write_replace_style(progress, prog_body)
+                self.assertEqual(plan.read_text(encoding="utf-8"), plan_body)
+                self.assertEqual(progress.read_text(encoding="utf-8"), prog_body)
 
     def test_named_plans_are_independent_files(self) -> None:
         # Two workers' distinct named plans must not clobber each other — the
         # core of LC-1: per-worker distinct files → no inter-worker contention.
-        hm.write_state_file(self.resolution, "PLAN-foo.md", "FOO\n")
-        hm.write_state_file(self.resolution, "PLAN-bar.md", "BAR\n")
-        hm.write_state_file(self.resolution, "PLAN.md", "SINGLETON\n")
-        self.assertEqual(hm.read_state_file(self.resolution, "PLAN-foo.md"), "FOO\n")
-        self.assertEqual(hm.read_state_file(self.resolution, "PLAN-bar.md"), "BAR\n")
-        self.assertEqual(hm.read_state_file(self.resolution, "PLAN.md"), "SINGLETON\n")
+        paths = {arg: hm.active_plan_paths(self.resolution, plan_arg=arg)[0]
+                 for arg in ("foo", "bar", None)}
+        for arg, body in (("foo", "FOO\n"), ("bar", "BAR\n"), (None, "SINGLETON\n")):
+            hm.safe_write_replace_style(paths[arg], body)
+        self.assertEqual(len(set(paths.values())), 3)
+        self.assertEqual(paths["foo"].read_text(encoding="utf-8"), "FOO\n")
+        self.assertEqual(paths["bar"].read_text(encoding="utf-8"), "BAR\n")
+        self.assertEqual(paths[None].read_text(encoding="utf-8"), "SINGLETON\n")
 
     # --- content-hash CAS: identical for singleton and named ---
 
     def test_cas_raises_on_stale_hash(self) -> None:
         for plan_name, _prog in (_SINGLETON, _NAMED):
             with self.subTest(plan=plan_name):
-                path = self.vault / "_harness" / plan_name
+                path = self.proj / ".harness" / plan_name
                 hm.safe_write_replace_style(path, "v1\n")  # initial, no CAS
                 stale_hash = hm.content_hash(path.read_bytes())
                 # A concurrent writer lands between our read and our write.
@@ -128,7 +128,7 @@ class NamedPlanResolverContract(unittest.TestCase):
     def test_cas_succeeds_on_current_hash(self) -> None:
         for plan_name, _prog in (_SINGLETON, _NAMED):
             with self.subTest(plan=plan_name):
-                path = self.vault / "_harness" / plan_name
+                path = self.proj / ".harness" / plan_name
                 hm.safe_write_replace_style(path, "v1\n")
                 current = hm.content_hash(path.read_bytes())
                 hm.safe_write_replace_style(path, "v2\n", expected_hash=current)

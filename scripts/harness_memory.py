@@ -18,15 +18,13 @@ Sub-commands:
     available           — exit 0 if vault accessible, 1 otherwise
     list-plans          — V5-5 bridge: enumerate active plans + active-plan
                           binding for a project root (feeds session-start hook;
-                          routes through harness_state_dir for V5-6 compat)
+                          routes through state_dir for V5-6 compat)
     phase-dispatch      — V5-5 orchestration bridge (LC-3): fire a named phase
                           chain through the kernel core; always non-blocking;
                           the importable ``phase_dispatch()`` function is the
                           contract, the CLI verb is the shell shim over it
-    read-state          — read a project state file via the resolver (backend-aware:
-                          vault when a synced backend is active, else device-local)
-    write-state         — write a project state file via the resolver (backend-aware:
-                          vault when a synced backend is active, else device-local)
+    append-progress     — append to the active plan's progress log (backend-aware:
+                          a task's log in the vault, else the repo-local pair's)
     documenter-context  — V4 #35: doc-write-time recall bundle (operator conventions
                           + project decisions + wiki-style) for the documenter
                           sub-agent + wiki-author/diataxis-author skills
@@ -894,11 +892,13 @@ def resolve_project(context: Optional[dict] = None) -> dict:
 
 
 def _state_backend_target(resolution: dict) -> Optional[tuple]:
-    """Resolve the synced-backend ``_harness/`` target for this project's state,
-    or ``None`` when state should live device-local in ``<project_root>/.harness/``.
+    """Resolve the synced-backend project directory that holds this project's
+    state, or ``None`` when state lives device-local in ``<project_root>/.harness/``.
 
-    The discriminator that re-routes harness state onto the V5-6 storage seam
-    (ADR 0020 — amends the V5-3 device-local cutover, ADR 0018 DC-1):
+    The project directory itself is the state root (agentm-vault § Projects and
+    tasks): tasks under ``tasks/``, machine files under ``desk/``. The
+    discriminator (ADR 0020 — amends the V5-3 device-local cutover, ADR 0018
+    DC-1):
 
       - **explicit force-local** — ``_read_project_mode(resolution) == "local"``
         (a repo-local ``.harness/.project-mode`` marker or device-level
@@ -906,10 +906,9 @@ def _state_backend_target(resolution: dict) -> Optional[tuple]:
         over any backend (preserves DC-2 / DC-8).
       - **synced backend present** — the resolution carries a ``backend`` whose
         ``capabilities.sync`` is ``True`` (the obsidian-vault backend) plus a
-        ``project_locator`` → return ``(backend, harness_locator, backend_root)``
+        ``project_locator`` → return ``(backend, project_locator, backend_root)``
         so reads/writes route through the backend verbs (vault_mutex + content-hash
-        CAS + atomic_write) and discovery resolves the real
-        ``<vault>/projects/<slug>/_harness/`` path.
+        CAS + atomic_write) and discovery resolves the real project directory.
       - **otherwise** — no backend, a device-local (``sync=False``) backend, or a
         backend missing a ``root`` → ``None``: device-local fallback. This is the
         graceful degradation a vault-absent machine relies on (``select_backend``
@@ -936,28 +935,42 @@ def _state_backend_target(resolution: dict) -> Optional[tuple]:
     backend_root = getattr(backend, "root", None)
     if backend_root is None:
         return None
-    return backend, locator.child("_harness"), Path(backend_root)
+    return backend, locator, Path(backend_root)
 
 
-def harness_state_dir(resolution: dict) -> Optional[Path]:
-    """Return the ``_harness/`` directory to enumerate for this project.
+# The repo-local state directory: a project with no vault keeps its plans here
+# as a flat pair, `PLAN.md` or `PLAN-<slug>.md` beside its progress log ([LC-3]).
+_LOCAL_STATE_DIRNAME = ".harness"
 
-    Honors the active storage backend (ADR 0020, amends ADR 0018 DC-1): on a
-    synced backend (the obsidian vault) this is the real vault path
-    ``<vault>/projects/<slug>/_harness/``; otherwise — no vault, a device-local
-    backend, or a ``.project-mode=local`` opt-out — it degrades to the
-    device-local ``<project_root>/.harness/``. Returns ``None`` only when neither
-    a synced backend nor a ``project_root`` is available.
 
-    Used by `queue_status_lite` and named-plan-aware session-start discovery to
-    glob every `PLAN*.md`. Pure path-construction; does not check existence.
+def state_dir(resolution: dict) -> Optional[Path]:
+    """Where this project's plans live: its own vault directory on a synced
+    backend, else the repo-local ``.harness/``.
+
+    On a synced backend (the obsidian vault) this is the project directory —
+    ``<vault>/projects/<slug>/`` — and its plans are the tasks under ``tasks/``.
+    Otherwise — no vault, a device-local backend, or a ``.project-mode=local``
+    opt-out — it is ``<project_root>/.harness/``, where a project with no vault
+    keeps a flat pair ([LC-3]). ``None`` only when neither a synced backend nor
+    a ``project_root`` is available.
+
+    Used by `list-plans`, `queue_status_lite` and the coordinator scripts to find
+    every plan. Pure path construction; does not check existence.
     """
-    target = _state_backend_target(resolution)
-    if target is not None:
-        _backend, harness_loc, backend_root = target
-        return backend_root.joinpath(*harness_loc.parts)
+    root = project_state_root(resolution)
+    if root is not None:
+        return root
+    return local_state_dir(resolution)
+
+
+def local_state_dir(resolution: dict) -> Optional[Path]:
+    """The repo-local ``<project_root>/.harness/`` of a project with no vault,
+    or ``None`` on a synced backend (whose state is its vault directory) or
+    with no ``project_root``."""
+    if _state_backend_target(resolution) is not None:
+        return None
     root = resolution.get("project_root")
-    return Path(root) / ".harness" if root else None
+    return Path(root) / _LOCAL_STATE_DIRNAME if root else None
 
 
 def project_state_root(resolution: dict) -> Optional[Path]:
@@ -979,32 +992,32 @@ def project_state_root(resolution: dict) -> Optional[Path]:
     return backend_root.joinpath(*locator.parts)
 
 
-def list_plan_files(harness_dir: Path) -> list:
-    """Every plan file in harness_dir: singleton PLAN.md plus named plans, then
-    each task's `tasks/<slug>/plan.md` beside a vault `_harness/`, finished or
-    not. The ``list-plans`` verb leaves the finished tasks out
-    (``_task_is_finished``); the dashboards that call this want them.
+def list_plan_files(state: Path) -> list:
+    """Every plan file under `state`, the directory `state_dir` answers.
 
-    Sorting: singleton first, then named alphabetically, then tasks by slug —
-    deterministic.
-    Excludes archived plans (PLAN.archive.* — the `PLAN-*` glob skips them) and
-    GDrive conflict copies (detected by ``_conflict_family``).
-    Used by the ``list-plans`` CLI verb and ``queue_status_lite``.
+    A project directory in the vault holds its plans as tasks: each
+    `tasks/<name>/plan.md`, finished or not, sorted by name. The ``list-plans``
+    verb leaves the finished tasks out (``_task_is_finished``); the dashboards
+    that call this want them. A repo-local ``.harness/`` — a project with no
+    vault ([LC-3]) — holds a flat pair instead: the singleton ``PLAN.md`` first,
+    then ``PLAN-<slug>.md`` alphabetically; the repo's own ``tasks/`` is not plan
+    state. Archived plans (``PLAN.archive.*`` — the ``PLAN-*`` glob skips them)
+    and GDrive conflict copies (``_conflict_family``) are left out.
+    Used by the ``list-plans`` CLI verb and the coordinator scripts.
     """
+    state = Path(state)
     files = []
-    singleton = harness_dir / "PLAN.md"
-    if singleton.is_file():
-        files.append(singleton)
-    for p in sorted(harness_dir.glob("PLAN-*.md")):
-        if p.is_file() and _conflict_family(p.name) is None:
-            files.append(p)
-    # The task layout (agentm-vault plan 09): a task's plan is `tasks/<slug>/plan.md`
-    # in the project directory beside a vault `_harness/`. A device-local
-    # `.harness/` sits in a repo, and the repo's own `tasks/` is not plan state.
-    if harness_dir.name == "_harness":
-        for p in sorted((harness_dir.parent / _TASKS_DIRNAME).glob("*/plan.md")):
-            if p.is_file() and _is_safe_plan_slug(p.parent.name):
+    if state.name == _LOCAL_STATE_DIRNAME:
+        singleton = state / "PLAN.md"
+        if singleton.is_file():
+            files.append(singleton)
+        for p in sorted(state.glob("PLAN-*.md")):
+            if p.is_file() and _conflict_family(p.name) is None:
                 files.append(p)
+        return files
+    for p in sorted((state / _TASKS_DIRNAME).glob("*/plan.md")):
+        if p.is_file() and _is_safe_plan_slug(p.parent.name):
+            files.append(p)
     return files
 
 
@@ -1032,49 +1045,14 @@ def _task_is_finished(plan_path: Path) -> bool:
 
 
 # -----------------------------------------------------------------------------
-# Backward-compat read/write dispatcher (V4 #26 task 3)
+# State-mode resolution and machine files
 # -----------------------------------------------------------------------------
-
-# Session-scoped set of (filename, source) tuples we've already warned about.
-# Resets when the Python process exits (the recall hooks are short-lived
-# subprocess invocations; this set lives for one invocation. Per-session
-# semantics from the operator perspective = per-invocation in practice).
-# Per locked design call DC-2: warn once per session per file.
-_warned_legacy_reads: set = set()
-
-
-def warn_once(filename: str, source: str = "legacy") -> None:
-    """Emit a deprecation-warn on stderr — only the first time per session per file.
-
-    `filename` is the state file shortname (e.g. "PLAN.md", "progress.md").
-    `source` describes the read origin (currently "legacy" is the only value;
-    leaves room for future "vault-stale" or similar markers).
-
-    Idempotent. Safe to call from any phase / hook.
-    """
-    key = (filename, source)
-    if key in _warned_legacy_reads:
-        return
-    _warned_legacy_reads.add(key)
-    if source == "legacy":
-        print(
-            f"[harness_memory] reading {filename} from legacy <project>/.harness/ "
-            f"— run `bash agentm/scripts/migrate-harness-to-vault.sh <project>` "
-            f"to move state to <vault>/projects/<slug>/_harness/. "
-            f"This warning will not repeat this session.",
-            file=sys.stderr,
-        )
-    else:
-        print(
-            f"[harness_memory] {filename}: {source}",
-            file=sys.stderr,
-        )
 
 
 def _reset_warn_state() -> None:
-    """Test-only: clear the warned-set and migration flag. Not part of the public API."""
+    """Test-only: clear the vault-path migration warning flag. Not part of the
+    public API."""
     global _warned_vault_path_migration
-    _warned_legacy_reads.clear()
     _warned_vault_path_migration = False
 
 
@@ -1127,16 +1105,16 @@ def _read_project_mode(resolution: dict) -> Optional[str]:
     return _read_config_state_mode()
 
 
-def _read_repo_local_state_file(project_root: Path, filename: str) -> str:
-    """Read ``<project_root>/.harness/<filename>`` as the *configured* local-mode
-    home — without the legacy-migration warning.
+# The project directory's home for the files a session does not open — the
+# board mirror, `project.json`, `features.json`, session markers, packs
+# (agentm-vault § Projects and tasks).
+_DESK_DIRNAME = "desk"
 
-    Distinct from ``_read_legacy_state_file``: that path is a *fallback* (a vault
-    is expected but the file happens to live in the repo, so it nags the operator
-    to migrate). Local mode is a deliberate opt-in, so the repo-local ``.harness/``
-    is the canonical home and reading it is not a deprecation event.
-    """
-    local = Path(project_root) / ".harness" / filename
+
+def _read_repo_local_state_file(project_root: Path, filename: str) -> str:
+    """Read ``<project_root>/.harness/<filename>``, the repo-local home of a
+    project with no vault ([LC-3]); "" when absent or unreadable."""
+    local = Path(project_root) / _LOCAL_STATE_DIRNAME / filename
     if local.is_file():
         try:
             return local.read_text(encoding="utf-8")
@@ -1148,24 +1126,20 @@ def _read_repo_local_state_file(project_root: Path, filename: str) -> str:
     return ""
 
 
-def read_state_file(resolution: dict, filename: str) -> str:
-    """Read a project state file, honoring the active storage backend.
+def read_machine_file(resolution: dict, filename: str) -> str:
+    """Read one of the project's machine files (``project.json`` and its kind),
+    honoring the active storage backend.
 
-    Resolution (ADR 0020, amends the V5-3 device-local cutover, ADR 0018 DC-1):
-      1. a synced backend (the vault) is present and the project has not opted out
-         via `.project-mode=local` → `backend.read(projects/<slug>/_harness/<file>)`
-         — the read routes through the seam verb, no raw vault path I/O in the
-         engine; a missing file degrades to "" rather than raising.
-      2. otherwise → `<project_root>/.harness/<filename>` (device-local fallback /
-         explicit local mode), "" when absent.
-
-    Warn-once state is module-level (session-scoped); reset via `_reset_warn_state()`.
+    On a synced backend not opted out via ``.project-mode=local`` the file is in
+    the project directory's ``desk/``, read through the backend verb, so the
+    engine does no raw vault path I/O; a missing file reads as "". Otherwise it
+    is ``<project_root>/.harness/<filename>``, "" when absent ([LC-3]).
     """
     target = _state_backend_target(resolution)
     if target is not None:
-        backend, harness_loc, _backend_root = target
+        backend, project_loc, _backend_root = target
         try:
-            return backend.read(harness_loc.child(filename))
+            return backend.read(project_loc.child(_DESK_DIRNAME, filename))
         except FileNotFoundError:
             return ""
         except Exception as exc:  # a backend read error degrades to absent, not crash
@@ -1178,36 +1152,21 @@ def read_state_file(resolution: dict, filename: str) -> str:
     return _read_repo_local_state_file(project_root, filename)
 
 
-def _read_legacy_state_file(project_root: Path, filename: str) -> str:
-    legacy = project_root / ".harness" / filename
-    if legacy.is_file():
-        warn_once(filename, "legacy")
-        try:
-            return legacy.read_text(encoding="utf-8")
-        except OSError as exc:
-            print(
-                f"[harness_memory] failed to read legacy {legacy}: {exc}",
-                file=sys.stderr,
-            )
-            return ""
-    return ""
+def write_machine_file(resolution: dict, filename: str, content: str) -> Path:
+    """Write one of the project's machine files, honoring the active storage
+    backend, and return the path written.
 
-
-def write_state_file(resolution: dict, filename: str, content: str) -> Path:
-    """Write a project state file, honoring the active storage backend.
-
-    On a synced backend (the vault) not opted out via `.project-mode=local`, the
-    write routes through `backend.write()` — the full V5-0 stack (vault_mutex +
-    content-hash CAS + atomic_write) — landing at
-    `<vault>/projects/<slug>/_harness/<filename>`, whose absolute path is
-    returned. Otherwise it writes device-local `<project_root>/.harness/<filename>`
-    (atomic_write only — each checkout owns its own `.harness/`, nothing to lock).
-    ADR 0020 (amends ADR 0018 DC-1).
+    On a synced backend the write routes through ``backend.write()`` — the full
+    V5-0 stack (vault_mutex + content-hash CAS + atomic_write) — and lands in the
+    project directory's ``desk/``. Otherwise it writes
+    ``<project_root>/.harness/<filename>`` (atomic_write only — each checkout owns
+    its own ``.harness/``, nothing to lock). ``read_machine_file`` reads the same
+    place, so a read-modify-write never splits across two homes.
     """
     target = _state_backend_target(resolution)
     if target is not None:
-        backend, harness_loc, backend_root = target
-        loc = harness_loc.child(filename)
+        backend, project_loc, backend_root = target
+        loc = project_loc.child(_DESK_DIRNAME, filename)
         backend.write(loc, content)
         return backend_root.joinpath(*loc.parts)
     project_root = resolution.get("project_root") or Path.cwd()
@@ -1220,7 +1179,7 @@ def _write_repo_local_state_file(project_root: Path, filename: str, content: str
     Used when the effective `.project-mode` = "local" (DC-2/DC-3). Same
     atomic-write semantics as the vault path. Works with no vault configured.
     """
-    target = Path(project_root) / ".harness" / filename
+    target = Path(project_root) / _LOCAL_STATE_DIRNAME / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     # V5-0: repo-local path (not the shared GDrive vault) — partitioned by
     # construction (each checkout owns its own .harness/), so NO vault mutex.
@@ -1229,15 +1188,51 @@ def _write_repo_local_state_file(project_root: Path, filename: str, content: str
     return atomic_write(target, content)
 
 
+def append_progress(resolution: dict, text: str, *, plan_arg: Optional[str] = None) -> Optional[Path]:
+    """Append `text` to the active plan's progress log; return the log's path,
+    or None when the log is absent or empty — a plan that has not started one.
+
+    The plan is the one ``resolve_active_plan`` answers, so a task's
+    ``tasks/<name>/progress.md`` and a repo-local flat pair's log are both
+    reached, and a bare call on a project that keeps its plans in tasks raises
+    ``TaskNameRequired`` rather than guessing. On a synced backend the append is
+    a read and a ``backend.write()`` under the vault's lock; off it, an atomic
+    write of the repo-local file. Used by the compaction marker.
+    """
+    active = resolve_active_plan(resolution, plan_arg=plan_arg)
+    target = _state_backend_target(resolution)
+    if active.layout == "task" and target is not None:
+        backend, project_loc, backend_root = target
+        loc = project_loc.child(_TASKS_DIRNAME, active.slug, "progress.md")
+        try:
+            current = backend.read(loc)
+        except FileNotFoundError:
+            return None
+        if not (current or "").strip():
+            return None
+        backend.write(loc, current + text)
+        return backend_root.joinpath(*loc.parts)
+    local = local_state_dir(resolution)
+    if local is None:
+        return None
+    path = local / active[1]
+    current = _read_repo_local_state_file(local.parent, active[1])
+    if not current.strip():
+        return None
+    return atomic_write(path, current + text)
+
+
 # -----------------------------------------------------------------------------
 # Active-plan resolution (V5-10 part 1: named multi-plan state)
 # -----------------------------------------------------------------------------
 
-# A worker session works exactly one plan. With named plans (`PLAN-<name>.md` /
-# `progress-<name>.md`, flat in the shared vault `_harness/`), *which* plan a
+# A worker session works exactly one plan. On a synced backend every plan is a
+# task, `tasks/NNN-<verb-slug>/` in the project directory; a project with no
+# vault keeps a flat pair in its repo-local `.harness/` ([LC-3]). *Which* plan a
 # session owns is resolved here: explicit arg → a sticky worktree-local marker →
-# the legacy singleton. The marker is WRITTEN by the worktree-spawn helper (V5-10
-# component 2, a later slice); this is the READER plus its loud-error contract.
+# a bare call, which only a project with no vault can answer. The marker is
+# WRITTEN by the worktree-spawn helper; this is the READER plus its loud-error
+# contract.
 
 _PLAN_PREFIX = "PLAN-"
 _PROGRESS_PREFIX = "progress-"
@@ -1246,13 +1241,14 @@ _SINGLETON_PLAN = ("PLAN.md", "progress.md")
 
 class ActivePlanError(RuntimeError):
     """The `.harness/active-plan` marker exists but does not resolve to a present,
-    non-empty `PLAN-<name>.md`.
+    non-empty plan — a task's `plan.md`, or `PLAN-<name>.md` in a repo-local
+    `.harness/` — or a name matches two tasks.
 
-    Raised instead of silently falling back to the singleton `PLAN.md`. A worktree
-    bound to plan "foo" whose plan file vanished must NOT quietly run whatever
-    `PLAN.md` happens to be in `_harness/` — that is exactly the worker→plan
-    mis-binding the V5-10 design calls out (Risk #7). Fail loud so the operator
-    fixes the binding rather than letting two workers stomp one plan.
+    Raised instead of silently falling back to some other plan. A worktree bound
+    to plan "foo" whose plan file vanished must NOT quietly run another one —
+    that is exactly the worker→plan mis-binding the V5-10 design calls out (Risk
+    #7). Fail loud so the operator fixes the binding rather than letting two
+    workers stomp one plan.
     """
 
 
@@ -1300,8 +1296,9 @@ def _normalize_plan_name(raw: str) -> Optional[str]:
 
 
 def _is_safe_plan_slug(slug: str) -> bool:
-    """A plan slug must be a single path component so it can't escape `_harness/`
-    when interpolated into `PLAN-<slug>.md`. Rejects separators and parent refs."""
+    """A plan slug must be a single path component so it can't escape the
+    directory it is joined onto — `tasks/<slug>/` or `PLAN-<slug>.md`. Rejects
+    separators and parent refs."""
     return (
         slug not in (".", "..")
         and "/" not in slug
@@ -1321,9 +1318,9 @@ def _plan_pair(slug: Optional[str]) -> tuple[str, str]:
 _TRACKER_PREFIX = "tracker-"
 _SINGLETON_TRACKER = "tracker.md"
 # The task layout (agentm-vault § Projects and tasks): a task is a directory
-# under its project, `tasks/<slug>/`, holding `plan.md`, `progress.md` and
-# `tracker.md`. The migration (agentm-vault plan 10) moves every flat pair into
-# one; until it has, the resolver reads both and the flat pair is the fallback.
+# under its project, `tasks/<name>/`, holding `plan.md`, `progress.md` and
+# `tracker.md`. On a synced backend it is the only layout; the resolver reads
+# nothing else there.
 _TASKS_DIRNAME = "tasks"
 _TASK_FILES = ("plan.md", "progress.md", "tracker.md")
 # A task's name is its directory name, number included — `NNN-<verb-slug>`. The
@@ -1336,17 +1333,17 @@ _TASK_DIR = re.compile(r"^(\d{3})-(.+)$")
 class TaskNameRequired(RuntimeError):
     """A bare call on a project that keeps its plans in numbered tasks.
 
-    Such a project has no singleton `PLAN.md` to fall back to — `_harness/` is
-    gone and every plan lives in its own `tasks/NNN-<verb-slug>/`. Answering with
-    the singleton pair would name a file that will never exist, so the resolver
-    refuses and the caller asks which task. Both entry points map it to exit 4,
-    which is the code the crickets development-lifecycle release handles.
+    Every project on a synced backend does: each plan lives in its own
+    `tasks/NNN-<verb-slug>/`, and there is no singleton `PLAN.md` to fall back
+    to. Answering with one would name a file that will never exist, so the
+    resolver refuses and the caller asks which task. Both entry points map it to
+    exit 4, which is the code the crickets development-lifecycle release handles.
     """
 
 
 def _tracker_name(slug: Optional[str]) -> str:
-    """The tracker beside a flat pair: `tracker-<slug>.md`, or `tracker.md` beside
-    the singleton. It sits with the pair it describes, so it moves with them."""
+    """The tracker beside a repo-local flat pair: `tracker-<slug>.md`, or
+    `tracker.md` beside the singleton."""
     return _SINGLETON_TRACKER if slug is None else f"{_TRACKER_PREFIX}{slug}.md"
 
 
@@ -1358,11 +1355,10 @@ class ActivePlan(tuple):
     `resolve-active-plan` verb, and crickets through both — reads what it read
     before. The tracker, the layout and the slug ride along as attributes.
 
-    `layout` is ``"flat"`` for `PLAN-<slug>.md` beside `progress-<slug>.md` in
-    `_harness/`, where all three names are bare filenames, and ``"task"`` for
-    `tasks/<slug>/`, where all three are absolute paths. Joining an absolute path
-    onto `harness_state_dir(resolution)` keeps it, so `state_dir / name` composes
-    both; `active_plan_paths` does that for a caller.
+    `layout` is ``"task"`` for `tasks/<name>/` on a synced backend, where all
+    three are absolute paths, and ``"local"`` for `PLAN-<slug>.md` beside
+    `progress-<slug>.md` in a repo-local `.harness/`, where all three are bare
+    filenames. `active_plan_paths` composes both into paths.
     """
 
     def __new__(cls, plan: str, progress: str, *, tracker: str, layout: str,
@@ -1378,24 +1374,19 @@ class ActivePlan(tuple):
                 f"tracker={self.tracker!r}, layout={self.layout!r})")
 
 
-def _flat_plan(slug: Optional[str]) -> ActivePlan:
+def _local_plan(slug: Optional[str]) -> ActivePlan:
+    """The repo-local flat pair for `slug` — a project with no vault ([LC-3])."""
     plan, progress = _plan_pair(slug)
-    return ActivePlan(plan, progress, tracker=_tracker_name(slug), layout="flat", slug=slug)
+    return ActivePlan(plan, progress, tracker=_tracker_name(slug), layout="local", slug=slug)
 
 
 def _tasks_dir(resolution: dict) -> Optional[Path]:
     """The project's `tasks/` directory, or None off a synced backend.
 
     `tasks/` is the vault's projects shape; a device-local `.harness/` sits in a
-    repo and the repo's own `tasks/` is not plan state. Composed the way
-    `harness_state_dir` composes `_harness/` — from the backend's root and the
-    project locator — so both name the same tree."""
-    target = _state_backend_target(resolution)
-    locator = resolution.get("project_locator")
-    if target is None or locator is None:
-        return None
-    _backend, _harness_loc, backend_root = target
-    return backend_root.joinpath(*locator.child(_TASKS_DIRNAME).parts)
+    repo and the repo's own `tasks/` is not plan state."""
+    root = project_state_root(resolution)
+    return root / _TASKS_DIRNAME if root is not None else None
 
 
 def _task_dir_names(resolution: dict) -> list:
@@ -1443,37 +1434,26 @@ def _resolve_task_dir(resolution: dict, slug: str) -> Optional[str]:
 
 def _task_at(resolution: dict, name: str) -> ActivePlan:
     """The `ActivePlan` for the task directory `name`. Pure path construction."""
-    task_loc = resolution["project_locator"].child(_TASKS_DIRNAME, name)
-    _backend, _harness_loc, backend_root = _state_backend_target(resolution)
-    plan, progress, tracker = (
-        str(backend_root.joinpath(*task_loc.child(leaf).parts)) for leaf in _TASK_FILES
-    )
+    task = _tasks_dir(resolution) / name
+    plan, progress, tracker = (str(task / leaf) for leaf in _TASK_FILES)
     return ActivePlan(plan, progress, tracker=tracker, layout="task", slug=name)
 
 
-def _task_plan(resolution: dict, slug: Optional[str]) -> Optional[ActivePlan]:
-    """The task-layout plan for `slug`, or None when that layout has none.
+def _task_plan(resolution: dict, slug: str) -> Optional[ActivePlan]:
+    """The task `slug` names, or None when no task with a plan carries it.
 
-    Looked up only on a synced backend: `tasks/` is the vault's projects shape,
-    and a device-local `.harness/` has no project directory to hold it. `slug` is
-    a task's own directory name (`042-build-the-brief`) or the verb slug inside
-    it (`build-the-brief`); either finds the one task, and two tasks sharing a
-    verb slug raise rather than resolve. A task whose `plan.md` is absent or
-    blank is not there, the same rule the marker applies to `PLAN-<slug>.md`.
-    Read through the backend verb, like every other state read here."""
-    if slug is None:
-        return None
-    target = _state_backend_target(resolution)
-    if target is None:
-        return None
-    backend, _harness_loc, _backend_root = target
+    `slug` is a task's own directory name (`042-build-the-brief`) or the verb
+    slug inside it (`build-the-brief`); either finds the one task, and two tasks
+    sharing a verb slug raise rather than resolve. A task whose `plan.md` is
+    absent or blank is not there. Read through the backend verb, like every other
+    state read here."""
+    backend, project_loc, _backend_root = _state_backend_target(resolution)
     name = _resolve_task_dir(resolution, slug)
     if name is None:
         return None
-    task_loc = resolution["project_locator"].child(_TASKS_DIRNAME, name)
     try:
-        body = backend.read(task_loc.child("plan.md"))
-    except Exception:  # absent, unreadable or refused: not a task in this layout
+        body = backend.read(project_loc.child(_TASKS_DIRNAME, name, "plan.md"))
+    except Exception:  # absent, unreadable or refused: not a task
         return None
     if not (body or "").strip():
         return None
@@ -1492,26 +1472,23 @@ def _next_task_number(names: list) -> str:
 
 
 def _keeps_plans_in_tasks(resolution: dict) -> bool:
-    """Whether this project keeps its plans in numbered tasks rather than a flat
-    `_harness/`. True on a synced backend whose `_harness/` is gone — which is
-    what the migration leaves behind. A project that still has one, a repo with
-    no vault, and a `.project-mode=local` opt-out all read False, so nothing
-    changes for them."""
-    if _state_backend_target(resolution) is None:
-        return False
-    harness = harness_state_dir(resolution)
-    return harness is not None and not harness.is_dir()
+    """Whether this project keeps its plans in numbered tasks: every project on
+    a synced backend does. A repo with no vault, a device-local backend and a
+    `.project-mode=local` opt-out read False and keep the repo-local flat pair.
+
+    Nothing on disk is consulted. The migration once left this keyed on a
+    directory's absence, and a writer that recreated that directory silently
+    turned a migrated project's bare call back into the retired singleton
+    (agentm-vault plan 15)."""
+    return _state_backend_target(resolution) is not None
 
 
-def _placed_task(resolution: dict, slug: Optional[str]) -> Optional[ActivePlan]:
-    """Where a new plan for `slug` goes on a project that keeps its plans in
-    tasks: a new `tasks/NNN-<verb-slug>/` with the next free number.
+def _placed_task(resolution: dict, slug: str) -> ActivePlan:
+    """Where a new plan for `slug` goes: a new `tasks/NNN-<verb-slug>/` with the
+    next free number.
 
     Composes the path and writes nothing — `/plan` writes the plan there, and the
-    directory is what makes the task exist. Without this a new plan after the
-    migration would land back in the `_harness/` the migration removed."""
-    if slug is None or not _keeps_plans_in_tasks(resolution):
-        return None
+    directory is what makes the task exist."""
     names = _task_dir_names(resolution)
     # A slug the operator typed with its number already on it keeps that number;
     # re-prefixing it would make `001-042-build-the-brief`.
@@ -1522,41 +1499,44 @@ def _placed_task(resolution: dict, slug: Optional[str]) -> Optional[ActivePlan]:
 def resolve_active_plan(
     resolution: dict, *, plan_arg: Optional[str] = None
 ) -> ActivePlan:
-    """Resolve which plan this session owns, in either layout.
+    """Resolve which plan this session owns.
+
+    On a synced backend every plan is a task, and a call answers one of three
+    ways: the task a name finds, a new numbered task for a name that finds none,
+    or ``TaskNameRequired`` (exit 4) for a bare call. A project with no vault —
+    no backend, a device-local one, or a ``.project-mode=local`` opt-out — keeps
+    a flat pair in its repo-local ``.harness/`` ([LC-3]) and resolves it by the
+    same precedence.
 
     Precedence — first hit wins:
 
       1. **explicit `plan_arg`** — the caller named a plan (e.g. `/work foo`).
-         Normalized, so "foo" / "PLAN-foo.md" / "PLAN-foo" all map to the same
-         pair; an arg that normalizes to the singleton ("PLAN" / "PLAN.md" / "")
-         yields the unnamed pair. No existence check on the flat pair — naming a
-         plan explicitly is the caller's deliberate choice. Raises ``ValueError``
-         on a slug that is not a single path component (traversal guard).
+         Normalized, so "foo" / "PLAN-foo.md" / "PLAN-foo" all name the same
+         plan. On a synced backend it is a task's own directory name
+         (`042-build-the-brief`) or the verb slug inside it (`build-the-brief`);
+         two tasks sharing a verb slug raise ``ActivePlanError`` naming both, and
+         a name no task carries is **placed**: `tasks/NNN-<verb-slug>/` with the
+         next free number, composed and never written. A name that normalizes to
+         the singleton ("PLAN" / "PLAN.md" / "") is a bare call there. With no
+         vault it names the pair `PLAN-<slug>.md`, unchecked — naming a plan is
+         the caller's deliberate choice. Raises ``ValueError`` on a slug that is
+         not a single path component (traversal guard).
       2. **worktree-local `<project_root>/.harness/active-plan`** — the sticky
-         binding written by the worktree-spawn helper (V5-10 component 2). If the
-         file is **present**, it MUST resolve to a present, non-empty plan —
-         `tasks/<name>/plan.md` or `PLAN-<name>.md` in the resolved `_harness/`;
-         otherwise ``ActivePlanError``. A present-but-blank, malformed, or
-         dangling marker never degrades to the singleton (Risk #7).
-      3. **legacy singleton** — no arg, no marker file → ``("PLAN.md", "progress.md")``,
-         unless the project keeps its plans in numbered tasks (a synced backend
-         with no `_harness/`), which has no singleton: ``TaskNameRequired``, which
-         both entry points answer with exit 4 (agentm-vault plan 10, task 7(b)).
+         binding written by the worktree-spawn helper. If the file is
+         **present**, it MUST resolve to a present, non-empty plan — the task it
+         names, or `PLAN-<name>.md` in the repo-local `.harness/`; otherwise
+         ``ActivePlanError``. A present-but-blank, malformed, or dangling marker
+         never degrades to another plan (Risk #7).
+      3. **a bare call** — no arg, no marker. ``TaskNameRequired`` on a synced
+         backend; the singleton ``("PLAN.md", "progress.md")`` with no vault.
 
-    Within a slug, a task on a synced backend wins and the flat `PLAN-<slug>.md`
-    pair is the fallback (agentm-vault plan 09). A slug names a task by its own
-    directory name (`042-build-the-brief`) or by the verb slug inside it
-    (`build-the-brief`); two tasks sharing a verb slug raise ``ActivePlanError``
-    naming both. On a project that keeps its plans in tasks, a slug with no task
-    is **placed**: `tasks/NNN-<verb-slug>/` with the next free number, so a new
-    plan lands in a task rather than in the `_harness/` the migration removed
-    (plan 10, task 7(a)). Placement composes a path and writes nothing.
-
-    Reader only: never writes the marker (component 2 owns the writer). Returns an
-    ``ActivePlan``: the `(plan, progress)` pair — bare filenames in the flat
-    layout, absolute paths in the task layout — with `.tracker` beside it. Compose
-    paths with ``active_plan_paths``, or read a flat name with ``read_state_file``.
+    Reader only: never writes the marker. Returns an ``ActivePlan``: the
+    `(plan, progress)` pair — absolute paths for a task, bare filenames for a
+    repo-local pair — with `.tracker` beside it. Compose paths with
+    ``active_plan_paths``.
     """
+    tasks = _keeps_plans_in_tasks(resolution)
+
     # 1. Explicit arg — highest precedence, the caller's deliberate choice.
     if plan_arg is not None:
         slug = _normalize_plan_name(plan_arg)
@@ -1565,11 +1545,11 @@ def resolve_active_plan(
                 f"unsafe plan name {plan_arg!r}: a plan slug must be a single "
                 f"path component (no '/', '\\', or '..')."
             )
-        return (
-            _task_plan(resolution, slug)
-            or _placed_task(resolution, slug)
-            or _flat_plan(slug)
-        )
+        if not tasks:
+            return _local_plan(slug)
+        if slug is None:
+            raise TaskNameRequired(_task_name_message(resolution))
+        return _task_plan(resolution, slug) or _placed_task(resolution, slug)
 
     # 2. Worktree-local sticky binding. Present ⇒ must resolve, else raise loud.
     project_root = Path(resolution.get("project_root") or Path.cwd())
@@ -1580,36 +1560,44 @@ def resolve_active_plan(
             raise ActivePlanError(
                 f".harness/active-plan exists in {project_root} but is blank or "
                 f"names no usable plan (raw={raw!r}). A present-but-dangling "
-                f"binding must not silently fall back to the singleton PLAN.md "
-                f"(V5-10 Risk #7). Write a plan name into the marker, or remove "
-                f"it to use PLAN.md."
+                f"binding must not silently fall back to another plan "
+                f"(V5-10 Risk #7). Write a plan name into the marker, or remove it."
             )
-        task = _task_plan(resolution, slug)
-        if task is not None:
+        if tasks:
+            task = _task_plan(resolution, slug)
+            if task is None:
+                raise ActivePlanError(
+                    f".harness/active-plan binds this session to {slug!r}, but no "
+                    f"task of {resolution.get('slug')!r} carries that name with a "
+                    f"plan (tasks/{slug}/plan.md or tasks/NNN-{slug}/plan.md). "
+                    f"Refusing to guess another plan — that would mis-bind this "
+                    f"worker. Restore the task's plan or fix the marker."
+                )
             return task
-        active = _flat_plan(slug)
-        plan_name = active[0]
-        if not read_state_file(resolution, plan_name).strip():
+        active = _local_plan(slug)
+        if not _read_repo_local_state_file(project_root, active[0]).strip():
             raise ActivePlanError(
-                f".harness/active-plan binds this session to {plan_name!r}, but "
-                f"that plan is absent or empty in the resolved _harness/ "
-                f"(slug={resolution.get('slug')!r}), and there is no "
-                f"tasks/{slug}/plan.md either. Refusing to fall back to the "
-                f"singleton PLAN.md — that would mis-bind this worker to another "
-                f"plan. Restore {plan_name!r} or fix the marker."
+                f".harness/active-plan binds this session to {active[0]!r}, but "
+                f"that plan is absent or empty in {project_root / _LOCAL_STATE_DIRNAME}. "
+                f"Refusing to fall back to the singleton PLAN.md — that would "
+                f"mis-bind this worker to another plan. Restore {active[0]!r} or "
+                f"fix the marker."
             )
         return active
 
-    # 3. Legacy singleton default — no arg, no marker. A project that keeps its
-    #    plans in numbered tasks has no singleton to default to, so it refuses
-    #    and the caller names the task (agentm-vault plan 10, task 7(b)).
-    if _keeps_plans_in_tasks(resolution):
-        raise TaskNameRequired(
-            f"{resolution.get('slug') or 'this project'} keeps its plans in "
-            f"numbered tasks and has no singleton PLAN.md. Name the task: "
-            f"`--plan <NNN-verb-slug>` or `--plan <verb-slug>`."
-        )
-    return _flat_plan(None)
+    # 3. A bare call. A project that keeps its plans in tasks has no singleton,
+    #    so it refuses and the caller names the task (agentm-vault plan 10).
+    if tasks:
+        raise TaskNameRequired(_task_name_message(resolution))
+    return _local_plan(None)
+
+
+def _task_name_message(resolution: dict) -> str:
+    return (
+        f"{resolution.get('slug') or 'this project'} keeps its plans in numbered "
+        f"tasks and has no singleton PLAN.md. Name the task: "
+        f"`--plan <NNN-verb-slug>` or `--plan <verb-slug>`."
+    )
 
 
 def active_plan_paths(
@@ -1617,17 +1605,18 @@ def active_plan_paths(
 ) -> Optional[tuple[Path, Path, Path]]:
     """The active plan's `(plan, progress, tracker)` as paths.
 
-    `resolve_active_plan` composed with `harness_state_dir`: a flat name joins the
-    resolved `_harness/` (or the device-local `.harness/`), and a task-layout path
-    is already absolute. None when the project has no state directory to resolve
-    against. Raises whatever `resolve_active_plan` raises, before that check, so a
-    dangling marker is loud even then.
+    A task's are absolute already; a repo-local pair's names join
+    `<project_root>/.harness/`. None when a repo-local pair has no project root
+    to join. Raises whatever `resolve_active_plan` raises, before that check, so
+    a dangling marker is loud even then.
     """
     active = resolve_active_plan(resolution, plan_arg=plan_arg)
-    state_dir = harness_state_dir(resolution)
-    if state_dir is None:
+    if active.layout == "task":
+        return (Path(active[0]), Path(active[1]), Path(active.tracker))
+    local = local_state_dir(resolution)
+    if local is None:
         return None
-    return (state_dir / active[0], state_dir / active[1], state_dir / active.tracker)
+    return (local / active[0], local / active[1], local / active.tracker)
 
 
 # -----------------------------------------------------------------------------
@@ -2251,31 +2240,26 @@ def _build_parser() -> argparse.ArgumentParser:
     p_phase.add_argument("--dry-run", action="store_true",
                          help="print the resolved dispatch plan without executing")
 
-    # V4 #37 task 7: dispatcher CLI for state-file reads/writes/path lookups.
-    # Phase specs + bugfix pipeline invoke these instead of bare `Read .harness/<file>`
-    # so the workflow actually uses the vault canonical path post-V4 #26.
-    p_read_state = sub.add_parser(
-        "read-state",
-        help="read a project state file via the resolver (device-local)",
+    # append-progress (agentm-vault plan 15): the compaction marker's write. It
+    # replaces read-state + write-state, which took a bare filename and could
+    # only name a flat pair; this appends to whichever progress log the active
+    # plan resolves to, a task's included.
+    p_append = sub.add_parser(
+        "append-progress",
+        help="append to the active plan's progress log (a task's, or the "
+             "repo-local pair's); nothing when the log is absent or empty",
     )
-    p_read_state.add_argument("filename", help="state file shortname (e.g. PLAN.md)")
-    p_read_state.add_argument(
-        "--project-root", default=None,
-        help="path to project root (default: cwd); resolver auto-detects slug from here",
-    )
-
-    p_write_state = sub.add_parser(
-        "write-state",
-        help="write a project state file via the resolver (device-local)",
-    )
-    p_write_state.add_argument("filename", help="state file shortname (e.g. PLAN.md)")
-    p_write_state.add_argument(
+    p_append.add_argument(
         "--project-root", default=None,
         help="path to project root (default: cwd)",
     )
-    p_write_state.add_argument(
+    p_append.add_argument(
+        "--plan", default=None,
+        help="the plan or task to append to; omit to use the .harness/active-plan marker",
+    )
+    p_append.add_argument(
         "--content-file", default="-",
-        help="path to file containing new content, or '-' for stdin (default)",
+        help="path to a file holding the text to append, or '-' for stdin (default)",
     )
 
     # resolve-active-plan (V5-10 part 1): emit the active (PLAN, progress) path
@@ -2283,16 +2267,16 @@ def _build_parser() -> argparse.ArgumentParser:
     # plans without reimplementing resolution — they shell to this verb (the
     # function `resolve_active_plan` itself is not otherwise reachable from a
     # bash spec). Precedence is owned here: explicit --plan → worktree
-    # active-plan marker → singleton.
+    # active-plan marker → a bare call (exit 4 on a project that keeps tasks).
     p_rap = sub.add_parser(
         "resolve-active-plan",
-        help="emit the active (PLAN, progress) on-disk path pair for a named "
-             "or singleton plan (V5-10 part 1)",
+        help="emit the active (plan, progress) on-disk path pair for a task, or "
+             "for a repo-local plan on a project with no vault (V5-10 part 1)",
     )
     p_rap.add_argument(
         "--plan", default=None,
-        help="explicit plan name/slug ('foo', 'PLAN-foo', 'PLAN-foo.md'); omit "
-             "to resolve via the .harness/active-plan marker, else the singleton",
+        help="explicit plan or task name ('042-foo', 'foo', 'PLAN-foo.md'); omit "
+             "to resolve via the .harness/active-plan marker",
     )
     p_rap.add_argument(
         "--project-root", default=None,
@@ -2301,19 +2285,19 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rap.add_argument(
         "--with-tracker", action="store_true",
         help="append the tracker path as a third tab-separated field: "
-             "tasks/<slug>/tracker.md for a task, tracker-<slug>.md beside a "
-             "flat pair (agentm-vault plan 09)",
+             "tasks/<name>/tracker.md for a task, tracker-<slug>.md beside a "
+             "repo-local pair (agentm-vault plan 09)",
     )
 
     # list-plans (V5-5 task 3): enumerate active plan files + active-plan binding
     # for a project root — used by the harness-context-session-start hook so plan
-    # discovery routes through harness_state_dir (V5-6 compat) instead of inline
-    # shell path construction.
+    # discovery routes through state_dir (V5-6 compat) instead of inline shell
+    # path construction.
     p_lp = sub.add_parser(
         "list-plans",
-        help="list active plan files (PLAN.md + PLAN-*.md, and each task not yet "
-             "done or dropped) for a project root; also emits the active-plan "
-             "binding when set (V5-5 task 3)",
+        help="list active plan files (each task not yet done or dropped, or a "
+             "repo-local PLAN.md + PLAN-*.md) for a project root; also emits the "
+             "active-plan binding when set (V5-5 task 3)",
     )
     p_lp.add_argument(
         "--project-root", default=None,
@@ -2460,43 +2444,46 @@ def main(argv: Optional[list[str]] = None) -> int:
             sys.stdout.write(tail)
         return 0
 
-    # V4 #37 task 7: dispatcher CLI subcommands. Phase specs invoke these
-    # explicitly so the workflow uses the post-V4 #26 vault path via the
-    # resolver chain (with legacy fallback + .project-mode=local opt-out).
-
-    if args.cmd == "read-state":
-        root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
-        resolution = resolve_project({"cwd": root})
-        content = read_state_file(resolution, args.filename)
-        sys.stdout.write(content)
-        return 0
-
-    if args.cmd == "write-state":
+    if args.cmd == "append-progress":
+        # agentm-vault plan 15: append to the active plan's progress log. Exit
+        # codes match resolve-active-plan's:
+        #   0 — appended, the log's path printed; or nothing to append to (the log
+        #       is absent or empty: a plan that has not started one), nothing printed.
+        #   2 — LOUD error: a dangling marker, an unsafe slug, two tasks sharing a
+        #       slug, or an unreadable --content-file.
+        #   4 — NAME THE TASK: a bare call on a project that keeps its plans in tasks.
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
         resolution = resolve_project({"cwd": root})
         try:
-            content = _read_content_file(args.content_file)
+            text = _read_content_file(args.content_file)
         except OSError as exc:
             print(f"[harness_memory] cannot read --content-file: {exc}", file=sys.stderr)
             return 2
-        path = write_state_file(resolution, args.filename, content)
-        print(str(path))
+        try:
+            path = append_progress(resolution, text, plan_arg=args.plan)
+        except TaskNameRequired as exc:
+            print(f"[harness_memory] {exc}", file=sys.stderr)
+            return 4
+        except (ActivePlanError, ValueError) as exc:
+            print(f"[harness_memory] {exc}", file=sys.stderr)
+            return 2
+        if path is not None:
+            print(str(path))
         return 0
 
     if args.cmd == "resolve-active-plan":
         # V5-10 part 1: emit the active (plan, progress) on-disk path pair as a
-        # single tab-separated line — "<plan_path>\t<progress_path>". Honors the
-        # effective state mode (vault vs local) via harness_state_dir, the same
-        # dir read_state_file / write_state_file target, and a task directory
-        # when one exists (agentm-vault plan 09). `--with-tracker` appends the
-        # tracker as a third field; without it the line is the pair, unchanged.
+        # single tab-separated line — "<plan_path>\t<progress_path>". On a synced
+        # backend the pair is a task's (agentm-vault plans 09 and 15); with no
+        # vault it is the repo-local flat pair ([LC-3]). `--with-tracker` appends
+        # the tracker as a third field; without it the line is the pair, unchanged.
         # Exit codes:
         #   0 — resolved; pair printed.
-        #   1 — state_dir is None (project_root absent from resolution): dead code
-        #       post-V5-3 (harness_state_dir always resolves when project_root set).
+        #   1 — a repo-local pair with no project root to join it to (unreachable
+        #       from here: resolve_project always sets one).
         #   2 — LOUD error: a dangling .harness/active-plan marker (Risk #7), an
         #       unsafe plan slug, or two tasks sharing one verb slug. Never a
-        #       silent singleton fallback.
+        #       silent fallback to another plan.
         #   4 — NAME THE TASK: a bare call on a project that keeps its plans in
         #       numbered tasks, which has no singleton (agentm-vault plan 10).
         #       Nothing on stdout; the caller asks which task, or proposes a name.
@@ -2521,23 +2508,20 @@ def main(argv: Optional[list[str]] = None) -> int:
         # V5-5 task 3: enumerate active plan files for the project root and
         # emit the active-plan binding when present. Used by the
         # harness-context-session-start hook so plan discovery routes through
-        # harness_state_dir (V5-6 compat). Output format (one per line):
-        #   <absolute-path-to-PLAN.md>           (singleton, first if present)
-        #   <absolute-path-to-PLAN-<slug>.md>    (named plans, sorted)
-        #   <absolute-path-to-tasks/<slug>/plan.md> (tasks beside a vault _harness/, sorted;
+        # state_dir (V5-6 compat). Output format (one per line):
+        #   <absolute-path-to-tasks/<name>/plan.md> (a project's tasks, sorted;
         #                                         a task whose tracker is done or dropped is left out)
+        #   <absolute-path-to-PLAN.md>           (repo-local singleton, first if present)
+        #   <absolute-path-to-PLAN-<slug>.md>    (repo-local named plans, sorted)
         #   active-binding=<slug>                (only when .harness/active-plan set)
-        # Always exits 0 — graceful-skip when no harness dir or no plans.
+        # Always exits 0 — graceful-skip when no state directory or no plans.
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
         resolution = resolve_project({"cwd": root})
-        harness_dir = harness_state_dir(resolution)
-        # Not gated on the directory existing. After the projects migration there
-        # is no `_harness/` to find, and `list_plan_files` reads the task layout
-        # from its parent — so an `is_dir()` guard here returned nothing at all
-        # on a migrated project, and `/orient`, which lists plans through this
-        # verb, had nothing to show. The globs are safe on an absent directory.
-        if harness_dir is not None:
-            for p in list_plan_files(harness_dir):
+        state = state_dir(resolution)
+        # Not gated on the directory existing: the globs are safe on an absent
+        # one, and a guard here once hid every task of a migrated project.
+        if state is not None:
+            for p in list_plan_files(state):
                 if not _task_is_finished(p):
                     print(p)
         try:

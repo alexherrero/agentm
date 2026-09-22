@@ -7,7 +7,7 @@ Pins, across the merge window:
   - the seam chokepoint (`harness_memory.resolve_project`) resolves a project
     on the root generation, flat or nested, and the root wins a slug held by
     both; the near-empty root shell does not hide a project still on desk;
-    `harness_state_dir` composes the root path through the sibling backend;
+    `state_dir` composes the root path through the sibling backend;
   - walkers take the union of both spaces and key root-space entries relative
     to the vault root;
   - a project's own tree resolves on whichever generation holds it.
@@ -55,7 +55,7 @@ class ResolveProjectAcrossGenerations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             vault = tmp / "vault"
-            (vault / "projects" / "fixture" / "_harness").mkdir(parents=True)
+            (vault / "projects" / "fixture" / "tasks").mkdir(parents=True)
             res = self._resolve(VaultBackend(root=vault), _project_root(tmp))
             self.assertEqual(res["layout"], "root")
             self.assertEqual(res["project_locator"].key, "projects/fixture")
@@ -67,25 +67,25 @@ class ResolveProjectAcrossGenerations(unittest.TestCase):
             memory_root = tmp / "Vault" / "agent"
             (tmp / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
             memory_root.mkdir(parents=True)
-            (tmp / "Vault" / "projects" / "fixture" / "_harness").mkdir(parents=True)
+            (tmp / "Vault" / "projects" / "fixture" / "tasks").mkdir(parents=True)
             res = self._resolve(VaultBackend(root=memory_root), _project_root(tmp))
             self.assertEqual(res["layout"], "root")
             self.assertEqual(Path(res["backend"].root), tmp / "Vault")
-            self.assertEqual(hm.harness_state_dir(res),
-                             tmp / "Vault" / "projects" / "fixture" / "_harness")
+            self.assertEqual(hm.state_dir(res),
+                             tmp / "Vault" / "projects" / "fixture")
 
     def test_window_root_shell_does_not_hide_a_project_still_on_desk(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             memory_root = tmp / "Vault" / "agent"
             (tmp / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
-            (memory_root / "desk" / "projects" / "fixture" / "_harness").mkdir(parents=True)
+            (memory_root / "desk" / "projects" / "fixture" / "tasks").mkdir(parents=True)
             (tmp / "Vault" / "projects").mkdir(parents=True)
             (tmp / "Vault" / "projects" / "index.md").write_text("# Projects\n", encoding="utf-8")
             res = self._resolve(VaultBackend(root=memory_root), _project_root(tmp))
             self.assertEqual(res["layout"], "new")
-            self.assertEqual(hm.harness_state_dir(res),
-                             memory_root / "desk" / "projects" / "fixture" / "_harness")
+            self.assertEqual(hm.state_dir(res),
+                             memory_root / "desk" / "projects" / "fixture")
 
     def test_root_generation_wins_a_slug_held_by_both(self):
         with tempfile.TemporaryDirectory() as td:
@@ -224,8 +224,8 @@ class WritersFollowTheTree(unittest.TestCase):
             with mock.patch("backend_selection.select_backend", return_value=backend):
                 res = hm.resolve_project({"cwd": _project_root(Path(td), "fresh")})
             self.assertEqual(res["layout"], "root")
-            self.assertEqual(hm.harness_state_dir(res),
-                             Path(td) / "Vault" / "projects" / "fresh" / "_harness")
+            self.assertEqual(hm.state_dir(res),
+                             Path(td) / "Vault" / "projects" / "fresh")
 
     def test_lowercase_root_group_derives_the_slug(self):
         import recall

@@ -5,8 +5,9 @@
 #
 # Drives the DETERMINISTIC, non-LLM seams of a /setup → /plan → /work → /release
 # lifecycle against a throwaway fixture project: project registration + the
-# enablement block, recall graceful-skip, state read/write round-trips (PLAN.md,
-# features.json, progress.md appends), and the post-phase dispatch plumbing
+# enablement block, recall graceful-skip, the plan placed where the resolver
+# names it and read back, progress appends through the kernel (by name and by the
+# worktree's binding), and the post-phase dispatch plumbing
 # (post-work / post-release, dry-run). It does NOT — and cannot — run the
 # agent-driven reasoning of those phases; it tests exactly the plumbing that
 # regresses silently (state I/O + dispatch + where writes LAND per mode), which
@@ -15,8 +16,10 @@
 # Runs the REAL `harness_memory.py` / `project_config.py` CLIs against a `mktemp`
 # scratch — never a real vault, never the network, never a sub-agent dispatch.
 # The whole suite runs TWICE:
-#   • vault pass  — MEMORY_ROOT set; state lands <vault>/desk/projects/<slug>/_harness/
-#   • local pass  — device state_mode:local, NO vault; state lands <repo>/.harness/
+#   • vault pass  — MEMORY_ROOT set; the plan is a task,
+#                   <vault>/desk/projects/<slug>/tasks/NNN-<slug>/, and machine
+#                   files land in the project directory's desk/
+#   • local pass  — device state_mode:local, NO vault; everything lands <repo>/.harness/
 # so a write that lands in the wrong place (or a vault-assumption that breaks
 # without a vault) fails loudly in one of the two passes.
 #
@@ -24,9 +27,9 @@
 # Exit:    0 iff every check passes (CI / integration-test friendly).
 #
 # Negative check (task-5 verification): VERIFY_PHASES_FAULT=drop-plan-write skips
-# the PLAN.md write so the downstream round-trip assertions MUST fail — proving a
+# the plan write so the downstream round-trip assertions MUST fail — proving a
 # broken state-write path is caught, not silently passed. CI runs WITHOUT the
-# fault. See the `write_state` helper.
+# fault. See the `write_plan` helper.
 
 set -uo pipefail
 
@@ -87,7 +90,6 @@ echo "verify-phases: scratch root = $SCRATCH"
 
 SLUG="phasedemo"
 PLAN_BODY=$'# Plan: fixture\n\n### 1. Task one\n- **Status:** [ ]\n'
-FEATURES_BODY='[{"name": "fixture-feature", "passes": false}]'
 
 # MODE_ENV is set per-pass; the helpers below run the CLIs under it. `-u` of BOTH
 # vault + prefix vars keeps each pass hermetic (no leak from the other mode or the
@@ -96,53 +98,68 @@ MODE_ENV=()
 hm()  { env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX "${MODE_ENV[@]+"${MODE_ENV[@]}"}" "$PY" "$HM" "$@"; }
 pcli(){ env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX "${MODE_ENV[@]+"${MODE_ENV[@]}"}" PYTHONPATH="$REPO/scripts" "$PY" "$PC" "$@"; }
 
-# write_state <proj> <file>  (content on stdin) — the state-write seam, with the
-# fault hook for the negative check.
-write_state() {
-  if [ "${VERIFY_PHASES_FAULT:-}" = "drop-plan-write" ] && [ "$2" = "PLAN.md" ]; then
+# write_plan <path>  (content on stdin) — /plan's write at the path the resolver
+# named, with the fault hook for the negative check.
+write_plan() {
+  if [ "${VERIFY_PHASES_FAULT:-}" = "drop-plan-write" ]; then
     cat >/dev/null   # consume stdin, write NOTHING → downstream asserts fail
     return 0
   fi
-  hm write-state --project-root "$1" "$2" >/dev/null
+  mkdir -p "$(dirname "$1")" && cat > "$1"
 }
 
-# run_lifecycle <label> <proj_root> <expect_state_dir> <vault_mode:0|1>
+# run_lifecycle <label> <proj_root> <machine_dir> <vault_mode:0|1> <expect_plan> <marker_name>
+#   <machine_dir>  where the project's machine files land: its vault directory's
+#                  desk/, or the repo-local .harness/ with no vault
+#   <expect_plan>  where the resolver must place the plan named verify-lifecycle
+#   <marker_name>  the name the worktree's .harness/active-plan carries for it
 run_lifecycle() {
-  local label="$1" proj="$2" expect="$3" vault_mode="$4"
+  local label="$1" proj="$2" machine="$3" vault_mode="$4" expect_plan="$5" marker="$6"
 
   # ── /setup seam: register the project + recall (graceful) ─────────────────
   local reg rc
   reg="$(pcli register "$proj" 2>&1)"; rc=$?
   assert_equals  "$label setup: register exits 0"                  "$rc" "0"
   assert_contains "$label setup: register emits the project type"   "$reg" '"type": "coding"'
-  # The enablement block must land in this mode's state home (vault vs repo-local).
-  assert_exists  "$label setup: enablement block at $expect/project.json" "$expect/project.json"
-  if [ -f "$expect/project.json" ]; then
+  # The enablement block is a machine file: it lands in this mode's machine home.
+  assert_exists  "$label setup: enablement block at $machine/project.json" "$machine/project.json"
+  if [ -f "$machine/project.json" ]; then
     assert_contains "$label setup: project.json carries the skills block" \
-      "$(cat "$expect/project.json")" '"skills"'
+      "$(cat "$machine/project.json")" '"skills"'
   fi
   # recall is invoked by every phase; with an empty/absent vault it graceful-skips.
   hm recall --phase setup --project "$SLUG" >/dev/null 2>&1
   assert_equals  "$label setup: recall graceful-skip (exit 0)"     "$?" "0"
 
-  # ── /plan seam: write PLAN.md + features.json; round-trip; correct location ─
-  printf '%s' "$PLAN_BODY" | write_state "$proj" PLAN.md
-  assert_exists  "$label plan: PLAN.md lands in this mode's home"  "$expect/PLAN.md"
-  assert_contains "$label plan: PLAN.md round-trips" \
-    "$(hm read-state --project-root "$proj" PLAN.md 2>/dev/null)" "Task one"
-  printf '%s' "$FEATURES_BODY" | write_state "$proj" features.json
-  assert_contains "$label plan: features.json round-trips" \
-    "$(hm read-state --project-root "$proj" features.json 2>/dev/null)" '"passes": false'
+  # ── /plan seam: resolve the plan's place, write it there, read it back ─────
+  local line plan progress tracker
+  line="$(hm resolve-active-plan --project-root "$proj" --plan verify-lifecycle --with-tracker 2>/dev/null)"
+  plan="$(printf '%s' "$line" | cut -f1)"; progress="$(printf '%s' "$line" | cut -f2)"
+  tracker="$(printf '%s' "$line" | cut -f3)"
+  assert_equals  "$label plan: the plan is placed at $expect_plan" "$plan" "$expect_plan"
+  assert_equals  "$label plan: its tracker sits beside it" "$(dirname "$tracker")" "$(dirname "$plan")"
+  printf '%s' "$PLAN_BODY" | write_plan "$plan"
+  assert_exists  "$label plan: the plan lands in this mode's home" "$expect_plan"
+  local again
+  again="$(hm resolve-active-plan --project-root "$proj" --plan verify-lifecycle 2>/dev/null | cut -f1)"
+  assert_contains "$label plan: resolving the name again finds the written plan" \
+    "$(cat "$again" 2>/dev/null)" "Task one"
 
-  # ── /work seam: progress.md append round-trip (read → append → write) ──────
-  printf '%s\n' "2026-01-01 /plan — seeded" | write_state "$proj" progress.md
-  local prev
-  prev="$(hm read-state --project-root "$proj" progress.md 2>/dev/null)"
-  printf '%s\n%s\n' "$prev" "2026-01-02 /work — task one done" | write_state "$proj" progress.md
+  # ── /work seam: the progress log, appended through the kernel ─────────────
+  if [ -n "$progress" ]; then printf '%s\n' "2026-01-01 /plan — seeded" > "$progress"; fi
+  printf '%s\n' "2026-01-02 /work — task one done" | \
+    hm append-progress --project-root "$proj" --plan verify-lifecycle >/dev/null 2>&1
   local prog
-  prog="$(hm read-state --project-root "$proj" progress.md 2>/dev/null)"
-  assert_contains "$label work: progress.md append landed"        "$prog" "task one done"
-  assert_contains "$label work: progress.md preserved prior line" "$prog" "/plan — seeded"
+  prog="$(cat "$progress" 2>/dev/null)"
+  assert_contains "$label work: progress append landed"        "$prog" "task one done"
+  assert_contains "$label work: progress preserved prior line" "$prog" "/plan — seeded"
+  # A worktree bound to the plan appends with a bare call.
+  printf '%s\n' "$marker" > "$proj/.harness/active-plan"
+  printf '%s\n' "2026-01-03 /work — bound append" | \
+    hm append-progress --project-root "$proj" >/dev/null 2>&1
+  assert_contains "$label work: a bare append follows the worktree's binding" \
+    "$(cat "$progress" 2>/dev/null)" "bound append"
+  rm -f "$proj/.harness/active-plan"
 
   # ── post-phase dispatch plumbing (dry-run, non-blocking) ──────────────────
   # vault mode → renders the real dry-run plan; local mode (no vault) → the
@@ -175,17 +192,20 @@ _VP_SHIM="$SCRATCH/vault-plugin"
 mkdir -p "$_VP_SHIM"
 printf 'from vault_backend_stub import VaultBackend\nPROTOCOL = "vault"\n' > "$_VP_SHIM/storage_vault.py"
 MODE_ENV=("MEMORY_ROOT=$V_VAULT" "HARNESS_MEMORY_TOOLKIT_PATH=$S" "OBSIDIAN_VAULT_SCRIPTS=$_VP_SHIM")
-run_lifecycle "[vault]" "$V_PROJ" "$V_VAULT/desk/projects/$SLUG/_harness" 1
+V_PROJECT_DIR="$V_VAULT/desk/projects/$SLUG"
+run_lifecycle "[vault]" "$V_PROJ" "$V_PROJECT_DIR/desk" 1 \
+  "$V_PROJECT_DIR/tasks/001-verify-lifecycle/plan.md" "001-verify-lifecycle"
 # The vault repo_registry seam fired (cross-device index).
 assert_exists "[vault] setup: repo_registry index written (the engine store, plan 05)" "$AGENTM_STATE_DIR/repos.json"
 assert_absent "[vault] setup: no registry under the vault's retired _meta/" "$V_VAULT/_meta/repos.json"
-# ADR 0020 (reverses V5-3 DC-1): a synced backend routes state into the vault
-# _harness/; the device-local .harness/ stays the thin {vault_project} pointer and
-# must NOT carry the kernel-written plan state.
-assert_exists "[vault] isolation: vault _harness/ written by kernel (ADR 0020)" \
-  "$V_VAULT/desk/projects/$SLUG/_harness/PLAN.md"
+# ADR 0020 + agentm-vault plan 15: a synced backend routes plan state into the
+# project's own vault directory — a task, and machine files in desk/; the
+# device-local .harness/ stays the thin {vault_project} pointer and must NOT
+# carry the plan.
 assert_absent "[vault] isolation: device-local .harness/ free of kernel plan state" \
-  "$V_PROJ/.harness/PLAN.md"
+  "$V_PROJ/.harness/PLAN-verify-lifecycle.md"
+BARE_RC=0; hm resolve-active-plan --project-root "$V_PROJ" >/dev/null 2>&1 || BARE_RC=$?
+assert_equals "[vault] plan: a bare call names no plan (exit 4)" "$BARE_RC" "4"
 
 # ── PASS 2: repo-local (device state_mode:local, NO vault) ───────────────────
 echo "verify-phases: ── pass 2/2 — repo-local (vault-less) ──"
@@ -195,7 +215,10 @@ printf '{"schema_version": 2, "mode": "release", "state_mode": "local"}\n' \
 L_PROJ="$SCRATCH/local-proj"; mkdir -p "$L_PROJ/.harness"
 printf '{"vault_project": "%s"}\n' "$SLUG" > "$L_PROJ/.harness/project.json"
 MODE_ENV=("AGENTM_INSTALL_PREFIX=$L_PREFIX")
-run_lifecycle "[local]" "$L_PROJ" "$L_PROJ/.harness" 0
+run_lifecycle "[local]" "$L_PROJ" "$L_PROJ/.harness" 0 \
+  "$L_PROJ/.harness/PLAN-verify-lifecycle.md" "verify-lifecycle"
+
+
 # Local mode (no vault) must not invent a vault repo_registry — neither under the
 # device prefix nor the project tree (the register() guard skips it when vault is None).
 assert_absent "[local] isolation: no registry under device prefix" "$L_PREFIX/_meta/repos.json"

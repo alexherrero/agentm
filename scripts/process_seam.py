@@ -34,7 +34,7 @@ Design contract (parent design `v5-4-process-seam`, Locked design calls):
   is enforced by ``check-process-seam-import-direction.sh``.
 
 Frozen-API anchoring: every call routes through ``harness_memory``'s *public*
-surface (``resolve_project`` / ``resolve_active_plan`` / ``harness_state_dir`` /
+surface (``resolve_project`` / ``resolve_active_plan`` / ``active_plan_paths`` /
 ``is_available``). It never touches engine internals and never widens the
 engine's surface — a consumer that needs something the frozen API lacks is a
 separate engine change, not a seam widening.
@@ -125,22 +125,24 @@ def offer_save_here(context: Optional[dict], candidate: Any) -> list[dict]:
 def state_path(context: Optional[dict], which: str) -> Path:
     """Resolve the harness state path for ``which`` in the current context.
 
-    Wraps ``resolve_project`` + ``resolve_active_plan`` (so V5-10 named-plan
-    awareness comes for free) + ``harness_state_dir``. Vault-backed when memory
-    is present; **degrades to repo-local ``<project_root>/.harness/<file>``**
-    ([LC-3]) when not — never ``None``.
+    Wraps ``resolve_project`` + ``active_plan_paths`` (so V5-10 named-plan
+    awareness comes for free). On a synced backend the answer is a task's file,
+    ``tasks/<name>/…`` in the project's vault directory; with no vault it
+    **degrades to repo-local ``<project_root>/.harness/<file>``** ([LC-3]) —
+    never ``None``.
 
     Args:
         context: the shared context dict; ``cwd`` selects the project root,
-            ``plan`` (optional) names a plan (``"foo"`` → ``PLAN-foo.md`` /
-            ``progress-foo.md``) via ``resolve_active_plan``'s explicit-arg path.
+            ``plan`` (optional) names a plan or task (``"foo"`` finds
+            ``tasks/NNN-foo/``, or ``PLAN-foo.md`` with no vault) via
+            ``resolve_active_plan``'s explicit-arg path.
         which: ``"plan"``, ``"progress"`` or ``"tracker"`` — which file of the
-            active plan. The tracker sits beside the pair: ``tracker-foo.md`` in
-            ``_harness/``, or ``tracker.md`` inside a task directory.
+            active plan. The tracker sits beside the plan: ``tracker.md`` in a
+            task directory, ``tracker-foo.md`` beside a repo-local pair.
 
     Returns:
-        The resolved ``Path`` (vault ``_harness/``, a vault ``tasks/<slug>/``
-        directory when that task exists, or repo-local ``.harness/``).
+        The resolved ``Path`` (a vault ``tasks/<name>/`` file, or repo-local
+        ``.harness/``).
 
     Raises:
         ValueError: if ``which`` is not one of those three — a caller bug,
@@ -161,15 +163,13 @@ def state_path(context: Optional[dict], which: str) -> Path:
         )
     ctx = context or {}
     resolution = _hm.resolve_project(ctx)
-    active = _hm.resolve_active_plan(resolution, plan_arg=ctx.get("plan"))
-    filename = {"plan": active[0], "progress": active[1], "tracker": active.tracker}[which]
-
-    directory = _hm.harness_state_dir(resolution)
-    if directory is None:
-        # Vault-mode but no vault configured → repo-local degrade ([LC-3]).
-        directory = _project_root(ctx) / ".harness"
-    # A task-layout name is already absolute, and joining an absolute path keeps it.
-    return directory / filename
+    paths = _hm.active_plan_paths(resolution, plan_arg=ctx.get("plan"))
+    index = _STATE_WHICH.index(which)
+    if paths is None:
+        # No project root in the resolution → repo-local degrade ([LC-3]).
+        active = _hm.resolve_active_plan(resolution, plan_arg=ctx.get("plan"))
+        return _project_root(ctx) / ".harness" / (active[0], active[1], active.tracker)[index]
+    return paths[index]
 
 
 # -----------------------------------------------------------------------------

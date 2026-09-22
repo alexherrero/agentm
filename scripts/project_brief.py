@@ -180,8 +180,9 @@ def brief_for(cwd: Path) -> Optional[list]:
     if not binding.project:
         return None
     resolution = hm.resolve_project({"cwd": Path(cwd)})
-    state_dir = hm.harness_state_dir(resolution)
-    project_dir = state_dir.parent if state_dir is not None and state_dir.name == "_harness" else None
+    # The project's own vault directory holds its tracker and `followups.md`
+    # (agentm-vault § Projects and tasks); a project with no vault has neither.
+    project_dir = hm.project_state_root(resolution)
     try:
         paths = hm.active_plan_paths(resolution)
     except (hm.ActivePlanError, hm.TaskNameRequired, ValueError):
@@ -193,14 +194,12 @@ def brief_for(cwd: Path) -> Optional[list]:
     if binding.task is None:
         tracker_path = None  # an unbound session has a project, not a task
     followups = 0
-    for candidate in ((project_dir / "followups.md") if project_dir else None,
-                      (state_dir / "FOLLOWUPS.md") if state_dir else None):
-        if candidate is not None and candidate.is_file():
-            try:
-                followups = count_open_followups(candidate.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError):
-                followups = 0
-            break
+    candidate = project_dir / "followups.md" if project_dir is not None else None
+    if candidate is not None and candidate.is_file():
+        try:
+            followups = count_open_followups(candidate.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            followups = 0
     try:
         memory_root = hm.memory_root()
     except Exception:
