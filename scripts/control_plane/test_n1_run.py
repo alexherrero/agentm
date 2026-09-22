@@ -330,7 +330,10 @@ class HandoffPackStaysOutOfTheCheckoutTests(unittest.TestCase):
                 self._run(cwd, builder)
                 self.assertOutsideCheckout(builder.targets[0], cwd)
 
-    def test_with_a_vault_the_pack_goes_under_the_project_harness_directory(self):
+    def test_with_a_vault_the_pack_goes_to_the_project_desk(self):
+        # agentm-vault plan 15: the project directory is the state root, and a
+        # pack is a machine file, so it goes to `desk/` — not to a `_harness/`
+        # the writer would bring back beside it.
         from storage_seam import Locator
         from vault_backend_stub import VaultBackend
 
@@ -346,8 +349,9 @@ class HandoffPackStaysOutOfTheCheckoutTests(unittest.TestCase):
         builder = _recording_handoff_builder()
         with mock.patch.object(hm, "resolve_project", return_value=resolution):
             self._run(self.checkout, builder)
-        self.assertEqual(builder.targets[0], vault / "projects" / "repo" / "_harness" / "n1-handoff")
+        self.assertEqual(builder.targets[0], vault / "projects" / "repo" / "desk" / "n1-handoff")
         self.assertOutsideCheckout(builder.targets[0], self.checkout)
+        self.assertFalse((vault / "projects" / "repo" / "_harness").exists())
 
     def test_this_repositorys_own_checkout(self):
         # The live case: n1-overnight's --cwd is the agentm clone itself.

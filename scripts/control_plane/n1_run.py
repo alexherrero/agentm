@@ -53,6 +53,8 @@ import harness_memory as hm  # noqa: E402
 
 # The handoff pack's directory, under whichever root `resolve_handoff_dir` picks.
 HANDOFF_DIRNAME = "n1-handoff"
+# The project directory's home for machine files, where the pack lives.
+DESK_DIRNAME = "desk"
 
 
 @dataclass
@@ -88,19 +90,19 @@ def resolve_handoff_dir(cwd: "str | Path") -> Path:
     """Where the batch's handoff pack goes: never inside the checkout the run
     works in.
 
-    A handoff pack is harness state, and `/handoff-pack` keeps each pack in a
-    directory under the project's `_harness/` in the vault. So this asks
-    `harness_memory.harness_state_dir()`, the resolver the plans go through,
-    and the pack goes to `n1-handoff/` there. With no synced vault that
-    resolver answers `<project_root>/.harness/`, which is inside the checkout,
-    so the pack goes to `n1-handoff/<project>/` in the engine state directory
-    instead.
+    A handoff pack is a machine file, the kind a project keeps in its vault
+    directory's `desk/` beside the board mirror and the session markers
+    (agentm-vault § Projects and tasks). So this asks
+    `harness_memory.project_state_root()` for the project's directory, and the
+    pack goes to `desk/n1-handoff/` there. With no synced vault there is no
+    project directory, so the pack goes to `n1-handoff/<project>/` in the
+    engine state directory instead.
     """
     project_root = Path(cwd).resolve()
     resolution = hm.resolve_project({"cwd": project_root})
-    harness_dir = hm.harness_state_dir(resolution)
-    if harness_dir is not None and not _is_within(Path(harness_dir), project_root):
-        return Path(harness_dir) / HANDOFF_DIRNAME
+    state_root = hm.project_state_root(resolution)
+    if state_root is not None and not _is_within(Path(state_root), project_root):
+        return Path(state_root) / DESK_DIRNAME / HANDOFF_DIRNAME
     return hm.engine_state_dir() / HANDOFF_DIRNAME / (resolution.get("slug") or project_root.name)
 
 

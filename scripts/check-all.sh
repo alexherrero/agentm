@@ -110,6 +110,9 @@ gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/ch
 gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts/check-governs-index.py
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
 gate "check-no-title-case-roots (no literal spells a root space Title Case)" "$PY" scripts/check-no-title-case-roots.py
+# Inventory only while agentm-vault plan 15 retires the readers; its task 3
+# drops --inventory and the gate enforces from then on.
+gate "check-no-harness-paths (no code names the retired project state directory — inventory)" "$PY" scripts/check-no-harness-paths.py --inventory
 gate "check-sync-artifacts (the Drive Icon rule has one home)" "$PY" scripts/check-sync-artifacts.py
 gate "check-storage-rules (the filing contract parses + the taxonomy growth rule)" "$PY" scripts/check-storage-rules.py
 gate "check-payload-layout-free (the pasted payload names no folder a migration moves)" "$PY" scripts/check-payload-layout-free.py

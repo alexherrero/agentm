@@ -816,6 +816,82 @@ class TheDoctorsRowCountFell(unittest.TestCase):
         self.assertFalse(hasattr(md, "claude_desktop_config_path"))
 
 
+class HarnessDirsRowTests(unittest.TestCase):
+    """agentm-vault plan 15: the `harness-dirs` row fails on any `_harness/`
+    under the projects space and on a resolver whose answer names one, and
+    passes on a vault in the task layout. The backend is the test stub rooted
+    at a scratch vault, so the live vault is never read."""
+
+    def _vault(self, tmp: str):
+        from vault_backend_stub import VaultBackend
+        vault = Path(tmp) / "vault"
+        task = vault / "projects" / "alpha" / "tasks" / "001-build-the-thing"
+        task.mkdir(parents=True)
+        (task / "plan.md").write_text("# Plan\n", encoding="utf-8")
+        (vault / "projects" / "beta").mkdir(parents=True)
+        (vault / "projects" / "beta" / "charter.md").write_text("# Beta\n", encoding="utf-8")
+        return vault, VaultBackend(vault, lock_root=Path(tmp) / "locks")
+
+    def _check(self, vault: Path, backend):
+        with mock.patch("harness_memory._read_project_mode", return_value=None):
+            return md.check_harness_dirs(projects_dir=vault / "projects", backend=backend)
+
+    def test_a_vault_in_the_task_layout_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault, backend = self._vault(tmp)
+            c = self._check(vault, backend)
+            self.assertEqual(c.status, "OK", c.detail)
+            self.assertIn("2 projects", c.detail)
+            # alpha bare + its one task, beta bare.
+            self.assertIn("3 answers checked", c.detail)
+
+    def test_a_harness_directory_under_a_project_fails_and_names_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault, backend = self._vault(tmp)
+            (vault / "projects" / "alpha" / "_harness" / "n1-handoff").mkdir(parents=True)
+            c = self._check(vault, backend)
+            self.assertEqual(c.status, "FAIL", c.detail)
+            self.assertIn("projects/alpha/_harness", c.detail)
+            # The directory's return is also what flips a bare call back to
+            # the retired singleton — the live defect the row exists for.
+            self.assertIn("alpha (bare call", c.detail)
+
+    def test_a_harness_directory_at_any_depth_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault, backend = self._vault(tmp)
+            (vault / "projects" / "beta" / "research" / "_harness").mkdir(parents=True)
+            c = self._check(vault, backend)
+            self.assertEqual(c.status, "FAIL", c.detail)
+            self.assertIn("projects/beta/research/_harness", c.detail)
+
+    def test_a_hidden_directory_is_not_walked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault, backend = self._vault(tmp)
+            (vault / "projects" / ".trash" / "_harness").mkdir(parents=True)
+            c = self._check(vault, backend)
+            self.assertEqual(c.status, "OK", c.detail)
+
+    def test_a_resolver_that_composes_one_fails_with_no_directory_on_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault, backend = self._vault(tmp)
+            composed = vault / "projects" / "alpha" / "_harness" / "PLAN.md"
+            with mock.patch("harness_memory.active_plan_paths",
+                            return_value=(composed, composed, composed)):
+                c = md.check_harness_dirs(projects_dir=vault / "projects", backend=backend)
+            self.assertEqual(c.status, "FAIL", c.detail)
+            self.assertNotIn("under projects/", c.detail)
+            self.assertIn("the resolver answers `_harness/` for alpha", c.detail)
+
+    def test_no_vault_is_unverified(self):
+        with mock.patch("harness_memory.memory_root", return_value=None):
+            c = md.check_harness_dirs()
+        self.assertEqual(c.status, "UNVERIFIED")
+
+    def test_the_row_is_in_the_inventory(self):
+        rows = {c.name for c in md.run_inventory(md.repo_root())}
+        self.assertIn("harness-dirs", rows)
+
+
 # The doctor reads the runner's markers, watchdog records and last cycle
 # through the runner's default state root. That root follows `XDG_CACHE_HOME`
 # since 2026-09-14, so this keeps a hand run off the live runner's records;

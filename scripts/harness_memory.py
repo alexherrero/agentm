@@ -960,6 +960,25 @@ def harness_state_dir(resolution: dict) -> Optional[Path]:
     return Path(root) / ".harness" if root else None
 
 
+def project_state_root(resolution: dict) -> Optional[Path]:
+    """The project's own directory in the vault — its state root — or None off a
+    synced backend.
+
+    Since the projects migration a project keeps its state in its skeleton:
+    tasks under `tasks/`, machine files (the board mirror, `features.json`,
+    session markers, packs) under `desk/`, designs under `designs/`
+    (agentm-vault § Projects and tasks). A writer composes its path from here,
+    never from a directory beside it. None — no vault, a device-local backend,
+    or a `.project-mode=local` opt-out — means the project has no vault
+    directory, and the caller keeps its state somewhere of its own."""
+    target = _state_backend_target(resolution)
+    locator = resolution.get("project_locator")
+    if target is None or locator is None:
+        return None
+    _backend, _state_loc, backend_root = target
+    return backend_root.joinpath(*locator.parts)
+
+
 def list_plan_files(harness_dir: Path) -> list:
     """Every plan file in harness_dir: singleton PLAN.md plus named plans, then
     each task's `tasks/<slug>/plan.md` beside a vault `_harness/`, finished or
