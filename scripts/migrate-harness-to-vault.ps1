@@ -1,4 +1,5 @@
 # migrate-harness-to-vault.ps1 — Windows twin of the bash migration tool.
+# harness-deprecation: file — a finished migration; it records the layout of its day, and its revert compares against what it recorded (agentm-vault plan 15).
 #
 # Copies <target>/.harness/<file> → <vault>/desk/projects/<slug>/_harness/<file>.
 # Idempotent, reversible. See migrate-harness-to-vault.sh for full

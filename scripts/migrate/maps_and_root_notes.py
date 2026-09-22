@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# harness-deprecation: file — a finished migration; it records the layout of its day, and its revert compares against what it recorded (agentm-vault plan 15).
 """maps_and_root_notes — the vault half of the maps and root notes (agentm-vault plan 07).
 
 The code half ships first: the mocs job paginates a type's page in place and
@@ -295,7 +296,7 @@ def build_plan(vault, memory_root, rules=None, index_draft=None, also_delete=())
 
     index_path = vault / "index.md"
     not_written = []
-    for note in root_notes._notes(vault):
+    for note in root_notes._notes(vault, _SKIP_DIRS):
         key = root_notes._key(note)
         if key in in_scope or retired.holds(note) or root_notes._key(note.parent) == root_notes._key(maps) \
                 or key == root_notes._key(index_path):
@@ -460,13 +461,13 @@ def finish(vault, memory_root, recorded, out_dir, rules=None) -> list:
     problems = [f"memory/mocs/{name}.md: missing; run the dreaming pass and needs-review first"
                 for name in ms.MAP_NAMES if not (memory_root / "memory" / "mocs" / f"{name}.md").is_file()]
     problems += ms.mocs_findings(memory_root, rules)
-    problems += root_notes.findings(memory_root)
+    problems += root_notes.findings(memory_root, _SKIP_DIRS)
     problems += calendar_gate.findings(memory_root)[0]
     problems += _year_map_problems(memory_root, rules)
     problems += _root_map_problems(memory_root)
     retired = Retired(recorded["retired"])
     maps = root_notes._key(memory_root / "memory" / "mocs")
-    for note in root_notes._notes(vault):
+    for note in root_notes._notes(vault, _SKIP_DIRS):
         if root_notes._key(note.parent) == maps:
             continue
         _text, changes = rewrite(vault, note, note.read_text(encoding="utf-8", errors="replace"), retired)

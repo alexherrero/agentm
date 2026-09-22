@@ -49,6 +49,9 @@ func projectsFixture(t *testing.T) (root, vault string) {
 		trackerNote("Plan", "demo", "002-plan", "queued", "9", "2026-09-09", "", "Not started."))
 	writeAt(t, vault, "projects/demo/tasks/000-start/tracker.md",
 		trackerNote("Start", "demo", "000-start", "done", "5", "2026-09-10", "2026-09-10", "Started."))
+	// A returned copy of the retired per-project state directory, with a flat
+	// pair's tracker in it: no longer a place a task is read from (agentm-vault
+	// plan 15), so the maps never list it.
 	writeAt(t, vault, "projects/demo/_harness/tracker-flat.md",
 		trackerNote("Flat", "demo", "flat", "parked", "", "2026-09-08", "", "Parked on purpose."))
 	writeAt(t, vault, "projects/demo/_harness/PLAN-flat.md", "# Plan: flat\n")
@@ -115,21 +118,20 @@ func TestTheProjectsSpaceGetsAMapPerProjectAMapOfTasksAndAMapOfProjects(t *testi
 		"# Demo\n\n[[moc-projects]] · [[projects/demo/_index|charter]] · [[projects/demo/tracker|tracker]]\n\nBuilding the maps.\n",
 		"## Tasks\n\n"+
 			"- [[projects/demo/tasks/002-plan/tracker|Plan]] · queued · importance 9\n"+
-			"- [[projects/demo/tasks/001-build/tracker|Build]] · active · importance 7\n"+
-			"- [[projects/demo/_harness/tracker-flat|Flat]] · parked\n\n"+
+			"- [[projects/demo/tasks/001-build/tracker|Build]] · active · importance 7\n\n"+
 			"> [!done]- Closed 2026-09-10\n"+
 			"> - [[projects/demo/tasks/000-start/tracker|Start]] · done · importance 5\n",
 		"## Decisions\n\n- [[projects/demo/decisions/a-ruling|A ruling]] · 2026-09-05\n",
 		"## Designs\n\n- [[projects/demo/designs/the-design|The design]] · 2026-09-03\n",
 		"## Research\n\n- `bundle-a/` — 2 notes\n- 1 loose note in `research/`\n")
-	if strings.Contains(demo, "PLAN-flat") {
-		t.Errorf("a plan was listed as a task:\n%s", demo)
+	if strings.Contains(demo, "PLAN-flat") || strings.Contains(demo, "tracker-flat") {
+		t.Errorf("a flat pair in a returned retired directory was listed as a task:\n%s", demo)
 	}
 
 	tasks := plannedText(plan, "../projects/moc-tasks.md")
 	mustContain(t, "moc-tasks", tasks,
-		"slug: moc-tasks\n", "members: 4\n",
-		"[[moc-root]] · [[moc-projects]]\n\n4 tasks across 1 project: in flight first",
+		"slug: moc-tasks\n", "members: 3\n",
+		"[[moc-root]] · [[moc-projects]]\n\n3 tasks across 1 project: in flight first",
 		"## In flight\n\n- [[projects/demo/tasks/002-plan/tracker|Plan]] · demo · queued · importance 9\n",
 		"## Closed\n\n> [!done]- Closed 2026-09-10\n> - [[projects/demo/tasks/000-start/tracker|Start]] · demo · done · importance 5\n")
 
@@ -140,7 +142,7 @@ func TestTheProjectsSpaceGetsAMapPerProjectAMapOfTasksAndAMapOfProjects(t *testi
 		"through the promotion door", "lands all of it as one revertible commit.",
 		"[[../index|index]] says who writes where.",
 		"## Projects\n\n"+
-			"- [[projects/demo/moc-demo|demo]] — Building the maps. · 3 tasks in flight\n"+
+			"- [[projects/demo/moc-demo|demo]] — Building the maps. · 2 tasks in flight\n"+
 			"- empty\n"+
 			"- [[projects/other/moc-other|other]] — Another project.\n")
 	if strings.Contains(projects, "_archive") || strings.Contains(projects, "\n- old") {

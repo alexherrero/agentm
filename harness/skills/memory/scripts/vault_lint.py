@@ -58,8 +58,8 @@ from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task
 # `_idea-incubator` carries a bespoke shape — it stays excluded HERE because
 # these checks are save.py-schema checks and that tree is not save.py-shaped
 # (its own lint retired with the hand-kept Ideas.md, agentm-vault part 13); `_meta`
-# holds machine files (repos.json, cursors); `_harness` holds per-project plan
-# state (PLAN.md/progress.md — not entries); `_inbox`/`_dream-staging` are
+# holds machine files (repos.json, cursors); `tasks` holds a project's plan
+# state (plan.md/progress.md/tracker.md — not entries); `_inbox`/`_dream-staging` are
 # transient staging areas. `_archive` (any depth) holds retired entries —
 # recall.py and frontmatter_validator.py already skip it; L7 closes the gap
 # where vault_lint.py was the one walker still descending into it.
@@ -75,10 +75,10 @@ _EXCLUDE_DIRS = frozenset(
     # NOTE: matched per path SEGMENT, so this holds the last component of the
     # scratch space ("scratch"), not its "desk/scratch" spelling — a
     # two-segment entry here silently matches nothing.
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "scratch", "_archive",
+    {"_idea-incubator", "_meta", "_inbox", "scratch", "_archive",
      "_opinions", "_crystallize-staging",
-     # A project's session-owned plan, progress and tracker, once `_harness/`
-     # dissolves into `tasks/<slug>/` (agentm-vault plan 09).
+     # A project's session-owned plan, progress and tracker, in
+     # `tasks/<slug>/` (agentm-vault plans 09 and 15).
      "tasks"}
 )
 

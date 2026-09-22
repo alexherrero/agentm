@@ -158,7 +158,7 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
     phase-commands    [OK]  0 harness-vendored; 6 dev-loop + recent-wiki-changes crickets-provided ([SKIP] if unpaired)
     sub-agents        [OK]  2/2 required (adapt-evaluator, memory-idea-researcher); review agents crickets-provided
     skills            [OK]  1/1 required, optional present
-    state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
+    state files       [OK]  vault-resident — <vault>/projects/<slug>/tasks/
     storage           [OK]  selected backend 'vault' (existing vault_path) — registered; seeded from <vault>
     host wiring       [OK]  AGENTS.md + CLAUDE.md
     hooks             [OK]  6 hooks wired (memory-recall-session-start, harness-context-session-start, …)

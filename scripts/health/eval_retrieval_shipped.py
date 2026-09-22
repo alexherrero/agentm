@@ -75,7 +75,7 @@ _MERGE_REMAPS = (
     # Filing-v2 part 3 (2026-09-03): the operator's whole-tree moves, which the
     # migration's disposition reports do not record (they were not routes).
     ("Agent/external/primos/", "Projects/primos/"),  # root-casing: the gold set's frozen spelling on the old side
-    ("Agent/_vault-archive/ag-design-history/", "Projects/agentm/_harness/archive/designs/ag-design-history/"),  # root-casing: the gold set's frozen spelling on the old side
+    ("Agent/_vault-archive/ag-design-history/", "Projects/agentm/_harness/archive/designs/ag-design-history/"),  # root-casing: the gold set's frozen spelling on the old side · harness-deprecation: the frozen gold set's spelling, remapped at score time
     ("Agent/memory/_inbox/20260711-digest-daily.md", "Agent/diagnostics/digests/20260711-digest-daily.md"),  # root-casing: the gold set's frozen spelling on the old side
 )
 
@@ -147,10 +147,16 @@ def _remap_trims(path: str, vault_root: "Path | None | bool" = False) -> str:
     return path
 
 
-# The projects migration (agentm-vault plan 10, 2026-09-16): `_harness/`
-# dissolves and every plan unit becomes `tasks/NNN-<verb-slug>/`. The gold set
-# is frozen evidence and keeps its pinned paths; the move is corrected here at
-# score time, like the two above it.
+# The projects migration (agentm-vault plan 10, 2026-09-16): the per-project
+# state directory dissolves and every plan unit becomes `tasks/NNN-<verb-slug>/`.
+# The gold set is frozen evidence and keeps its pinned paths; the move is
+# corrected here at score time, like the two above it.
+#
+# The old side of each row still spells the retired directory, and must: it is
+# the gold set's own text, and the row is what lets that frozen path resolve now
+# the directory is gone. Deleting a row because it names the directory breaks
+# the gate (agentm-vault plan 15, the operator's ruling of 2026-09-22), so each
+# carries check-no-harness-paths' marker instead.
 #
 # Each row is a whole path, not a prefix. Eleven of them carry a task number
 # that only the migration's own recorded plan knows, so the table is generated
@@ -163,32 +169,32 @@ _PROJECTS_REMAPS = (
     ("projects/_archive/agent-m-v4/_index.md", "projects/completed/agent-m-v4/_index.md"),
     ("projects/_archive/experimental/onenote-migration-summary.md", "projects/completed/experimental/onenote-migration-summary.md"),
     ("projects/_archive/memoryvault/conversations/2026-05-10-vault-design.md", "projects/completed/memoryvault/conversations/2026-05-10-vault-design.md"),
-    ("projects/agentm/_harness/archive/PLAN.archive.20260725-eval-v6-retrieval-failloud.md", "projects/agentm/tasks/116-eval-v6-retrieval-failloud/plan.md"),
-    ("projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md", "projects/agentm/completed/ROADMAP-AgentMemoryV4.md"),
-    ("projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md", "projects/agentm/designs/consolidation-review/E0-coordinator-log.md"),
-    ("projects/agentm/_harness/archive/friday/PLAN.archive.20260718-capture-article-ingestion.md", "projects/agentm/tasks/100-capture-article-ingestion/plan.md"),
-    ("projects/agentm/_harness/archive/friday/PLAN.archive.20260718-proactive-delivery.md", "projects/agentm/tasks/103-proactive-delivery/plan.md"),
-    ("projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-newcomer-onboarding.md", "projects/agentm/tasks/112-loose-ends-newcomer-onboarding/plan.md"),
-    ("projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-os-install-matrix.md", "projects/agentm/tasks/113-loose-ends-os-install-matrix/plan.md"),
-    ("projects/agentm/_harness/archive/v3/PLAN.archive.20260517-memoryvault-recall-loop.md", "projects/agentm/tasks/008-memoryvault-recall-loop/plan.md"),
-    ("projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md", "projects/agentm/designs/architecture-governance/PHASE-5B-wiki-transformation.md"),
-    ("projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md", "projects/agentm/designs/architecture-governance/abbreviated-design-template.md"),
-    ("projects/agentm/_harness/designs/architecture-governance/hld-template.md", "projects/agentm/designs/architecture-governance/hld-template.md"),
-    ("projects/agentm/_harness/designs/friday/F1-REAUDIT.md", "projects/agentm/designs/friday/F1-REAUDIT.md"),
-    ("projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md", "projects/agentm/designs/roadmap-finish/PROMPTS-FIN.md"),
-    ("projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md", "projects/agentm/designs/roadmap-finish/friday-surface-audit.md"),
-    ("projects/agentm/_harness/designs/roadmap-research-2026-06/R06-token-efficiency.md", "projects/agentm/designs/roadmap-research-2026-06/R06-token-efficiency.md"),
-    ("projects/agentm/_harness/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md", "projects/agentm/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md"),
-    ("projects/agentm/_harness/designs/v5-10-coordinator-team/design-doc.md", "projects/agentm/designs/v5-10-coordinator-team/design-doc.md"),
-    ("projects/agentm/_harness/designs/vault-backing/vault-drive.md", "projects/agentm/designs/vault-backing/vault-drive.md"),
-    ("projects/agentm/_harness/designs/vault-backing/vault-git.md", "projects/agentm/designs/vault-backing/vault-git.md"),
-    ("projects/agentm/_harness/research/SYNTHESIS-memory-ingestion.md", "projects/agentm/research/SYNTHESIS-memory-ingestion.md"),
-    ("projects/blog/_harness/PLAN.md", "projects/blog/tasks/015-write-the-assistant-arc/plan.md"),
-    ("projects/blog/_harness/progress.md", "projects/blog/tasks/015-write-the-assistant-arc/progress.md"),
-    ("projects/crickets/_harness/archive/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md", "projects/crickets/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md"),
-    ("projects/crickets/_harness/archive/progress-model-routing-and-levers.md", "projects/crickets/tasks/044-model-routing-and-levers/progress.md"),
-    ("projects/crickets/_harness/archive/wave-c/PLAN.archive.20260706-wave-c-design-and-conventions.md", "projects/crickets/tasks/079-wave-c-design-and-conventions/plan.md"),
-    ("projects/dev-setup/_harness/progress.md", "projects/dev-setup/desk/progress.md"),
+    ("projects/agentm/_harness/archive/PLAN.archive.20260725-eval-v6-retrieval-failloud.md", "projects/agentm/tasks/116-eval-v6-retrieval-failloud/plan.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md", "projects/agentm/completed/ROADMAP-AgentMemoryV4.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md", "projects/agentm/designs/consolidation-review/E0-coordinator-log.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/archive/friday/PLAN.archive.20260718-capture-article-ingestion.md", "projects/agentm/tasks/100-capture-article-ingestion/plan.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/archive/friday/PLAN.archive.20260718-proactive-delivery.md", "projects/agentm/tasks/103-proactive-delivery/plan.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-newcomer-onboarding.md", "projects/agentm/tasks/112-loose-ends-newcomer-onboarding/plan.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-os-install-matrix.md", "projects/agentm/tasks/113-loose-ends-os-install-matrix/plan.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/archive/v3/PLAN.archive.20260517-memoryvault-recall-loop.md", "projects/agentm/tasks/008-memoryvault-recall-loop/plan.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md", "projects/agentm/designs/architecture-governance/PHASE-5B-wiki-transformation.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md", "projects/agentm/designs/architecture-governance/abbreviated-design-template.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/architecture-governance/hld-template.md", "projects/agentm/designs/architecture-governance/hld-template.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/friday/F1-REAUDIT.md", "projects/agentm/designs/friday/F1-REAUDIT.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md", "projects/agentm/designs/roadmap-finish/PROMPTS-FIN.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md", "projects/agentm/designs/roadmap-finish/friday-surface-audit.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/roadmap-research-2026-06/R06-token-efficiency.md", "projects/agentm/designs/roadmap-research-2026-06/R06-token-efficiency.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md", "projects/agentm/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/v5-10-coordinator-team/design-doc.md", "projects/agentm/designs/v5-10-coordinator-team/design-doc.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/vault-backing/vault-drive.md", "projects/agentm/designs/vault-backing/vault-drive.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/designs/vault-backing/vault-git.md", "projects/agentm/designs/vault-backing/vault-git.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/agentm/_harness/research/SYNTHESIS-memory-ingestion.md", "projects/agentm/research/SYNTHESIS-memory-ingestion.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/blog/_harness/PLAN.md", "projects/blog/tasks/015-write-the-assistant-arc/plan.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/blog/_harness/progress.md", "projects/blog/tasks/015-write-the-assistant-arc/progress.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/crickets/_harness/archive/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md", "projects/crickets/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/crickets/_harness/archive/progress-model-routing-and-levers.md", "projects/crickets/tasks/044-model-routing-and-levers/progress.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/crickets/_harness/archive/wave-c/PLAN.archive.20260706-wave-c-design-and-conventions.md", "projects/crickets/tasks/079-wave-c-design-and-conventions/plan.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+    ("projects/dev-setup/_harness/progress.md", "projects/dev-setup/desk/progress.md"),  # harness-deprecation: the frozen gold set's spelling, remapped at score time
     ("projects/home-tech-next/_index.md", "projects/home-tech-next/charter.md"),
     ("projects/primos/_index.md", "projects/primos/charter.md"),
     ("projects/sherwood/_index.md", "projects/sherwood/charter.md"),

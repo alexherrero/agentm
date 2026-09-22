@@ -3075,8 +3075,8 @@ def prompt_submit(
     raw_hits: list[dict] = []
     raw_sources: list[dict] = []  # excerpt inputs, index-aligned with raw_blocks
     # Reading a whole entry only to learn it cannot be injected is I/O spent
-    # reaching a conclusion the file's size already gives away, and the live
-    # vault's `_harness/progress.md` is a megabyte the daemon ranks highly for a
+    # reaching a conclusion the file's size already gives away, and a live
+    # project's progress log can be a megabyte the daemon ranks highly for a
     # great many queries. So read a bounded head instead. `token_budget` tokens
     # is the largest block that could ever fit whole, and the slack sits above
     # it — which means any read that gets clipped here produces a block that

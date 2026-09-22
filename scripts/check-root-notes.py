@@ -11,9 +11,8 @@ run has gone:
 
 A link is matched by its text, not by where it resolves. With the map gone, a
 bare `[[Home]]` quietly opens `personal/Home/…/Home.md`, and a dangling-link
-check reads that as green. A record under a `_harness/` directory keeps the
-names it was written with, `personal/` is yours, and a link shown inside code
-is not a link, so none of those is a finding.
+check reads that as green. `personal/` is yours, and a link shown inside code
+is not a link, so neither is a finding.
 
 It reads the live vault, resolved at runtime. Until the maps data run writes
 `memory/.maps-and-root-notes-complete` it reports what it finds and exits 0;
@@ -42,7 +41,7 @@ import maps_shape as ms  # noqa: E402
 import markdown_spans  # noqa: E402
 import vault_layout  # noqa: E402
 
-SKIP_DIRS = {".git", ".obsidian", ".trash", "_harness"}
+SKIP_DIRS = {".git", ".obsidian", ".trash"}
 OWNER_SPACES = {"personal"}
 RETIRED_NAMES = {"home", "filing"}
 _WIKILINK = re.compile(r"\[\[([^\]\n]+?)\]\]")
@@ -82,10 +81,13 @@ def authority_tables(text: str) -> int:
     return count
 
 
-def _notes(vault: Path):
+def _notes(vault: Path, skip_dirs=None):
+    """Every note the gate reads. `skip_dirs` defaults to the gate's own set; a
+    finished migration passes the set of its day, which it records."""
+    skip = SKIP_DIRS if skip_dirs is None else skip_dirs
     for dirpath, dirnames, filenames in os.walk(vault):
         top = Path(dirpath) == vault
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not (top and d in OWNER_SPACES))
+        dirnames[:] = sorted(d for d in dirnames if d not in skip and not (top and d in OWNER_SPACES))
         for name in sorted(filenames):
             if name.endswith(".md"):
                 yield Path(dirpath) / name
@@ -95,7 +97,7 @@ def _key(path: Path) -> str:
     return os.path.normcase(os.path.abspath(path)).lower()
 
 
-def retired_links(vault: Path, memory_root: Path):
+def retired_links(vault: Path, memory_root: Path, skip_dirs=None):
     """`(note, line, link)` for every link naming `Home.md` or `Filing.md`."""
     retired = {_key(memory_root / "Home.md"), _key(vault / "Filing.md")}
 
@@ -109,7 +111,7 @@ def retired_links(vault: Path, memory_root: Path):
             path += ".md"
         return any(_key(base / path) in retired for base in (vault, note.parent))
 
-    for note in _notes(vault):
+    for note in _notes(vault, skip_dirs):
         if _key(note) in retired:
             continue
         try:
@@ -133,7 +135,7 @@ def _rel(path: Path, vault: Path) -> str:
         return str(path)
 
 
-def findings(memory_root: Path) -> list:
+def findings(memory_root: Path, skip_dirs=None) -> list:
     memory_root = Path(memory_root)
     vault = vault_root(memory_root)
     out = []
@@ -148,7 +150,7 @@ def findings(memory_root: Path) -> list:
             out.append(f"index.md: carries the write-authority table {n} time(s), not once")
     else:
         out.append("index.md: missing; it is the vault's one root map")
-    for note, line, link in retired_links(vault, memory_root):
+    for note, line, link in retired_links(vault, memory_root, skip_dirs):
         out.append(f"{_rel(note, vault)}:{line}: {link} names a retired note")
     return out
 

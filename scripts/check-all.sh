@@ -110,9 +110,7 @@ gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/ch
 gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts/check-governs-index.py
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
 gate "check-no-title-case-roots (no literal spells a root space Title Case)" "$PY" scripts/check-no-title-case-roots.py
-# Inventory only while agentm-vault plan 15 retires the readers; its task 3
-# drops --inventory and the gate enforces from then on.
-gate "check-no-harness-paths (no code names the retired project state directory — inventory)" "$PY" scripts/check-no-harness-paths.py --inventory
+gate "check-no-harness-paths (no code names the retired project state directory)" "$PY" scripts/check-no-harness-paths.py
 gate "check-sync-artifacts (the Drive Icon rule has one home)" "$PY" scripts/check-sync-artifacts.py
 gate "check-storage-rules (the filing contract parses + the taxonomy growth rule)" "$PY" scripts/check-storage-rules.py
 gate "check-payload-layout-free (the pasted payload names no folder a migration moves)" "$PY" scripts/check-payload-layout-free.py
@@ -129,7 +127,7 @@ gate "check-root-notes (Home.md and Filing.md retired, nothing links to them, in
 gate "check-index-self-description (index.md carries the payload's reading order and card guide)" "$PY" scripts/check-index-self-description.py
 gate "check-always-load-budget (the packaged always-load tier stays under 40,000 tokens)" "$PY" scripts/check-always-load-budget.py
 gate "check-measurement-surface (a pass that grades searching says so)" "$PY" scripts/check-measurement-surface.py
-gate "check-calendar-root (the calendar root holds years and their maps, and the daily note's two allowances until plan 10)" "$PY" scripts/check-calendar-root.py
+gate "check-calendar-root (the calendar root holds years, their maps and the daily-note template)" "$PY" scripts/check-calendar-root.py
 gate "check-tracker-schema (every tracker in the projects space has the one schema, in its place)" "$PY" scripts/check-tracker-schema.py
 gate "check-memory-root-consistency (daemon spaces sit beneath memory_root)" "$PY" scripts/check-memory-root-consistency.py
 gate "check-registry-hygiene (no throwaway temp path registered as a repo)" "$PY" scripts/check-registry-hygiene.py

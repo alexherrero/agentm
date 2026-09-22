@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# harness-deprecation: file — a finished migration; it records the layout of its day, and its revert compares against what it recorded (agentm-vault plan 15).
 """root_casing — the vault half of the root casing (agentm-vault plan 08).
 
 The code half ships first: every literal that named a root space by its Title

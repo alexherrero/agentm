@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# harness-deprecation: file — a finished migration; it records the layout of its day, and its revert compares against what it recorded (agentm-vault plan 15).
 """projects_layout — the projects half of the vault layout (agentm-vault plan 10).
 
 The code half ships first: the resolver reads both layouts, places a new plan in

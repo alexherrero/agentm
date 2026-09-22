@@ -73,14 +73,14 @@ _PLACEHOLDER_REAL_PREFIX = "desk/projects/agentm/"
 # this is a real move, not a deletion, and is corrected here rather than by
 # editing v0.
 _ARCHIVED_PATH_CORRECTIONS = {
-    "desk/projects/agentm/_harness/PLAN-wave-e-v6-index.md":
-        "desk/projects/agentm/_harness/archive/wave-e/PLAN.archive.20260707-wave-e-v6-index.md",
-    "desk/projects/agentm/_harness/PLAN.archive.20260705-r3-uplift-scoring.md":
-        "desk/projects/agentm/_harness/archive/roadmap-finish/PLAN.archive.20260705-r3-uplift-scoring.md",
-    "desk/projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md":
-        "desk/projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
-    "desk/projects/agentm/_harness/designs/v5-acceleration-plan.md":
-        "desk/projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
+    "desk/projects/agentm/_harness/PLAN-wave-e-v6-index.md":  # harness-deprecation: the frozen query set's spelling, corrected at score time
+        "desk/projects/agentm/_harness/archive/wave-e/PLAN.archive.20260707-wave-e-v6-index.md",  # harness-deprecation: the frozen query set's spelling, corrected at score time
+    "desk/projects/agentm/_harness/PLAN.archive.20260705-r3-uplift-scoring.md":  # harness-deprecation: the frozen query set's spelling, corrected at score time
+        "desk/projects/agentm/_harness/archive/roadmap-finish/PLAN.archive.20260705-r3-uplift-scoring.md",  # harness-deprecation: the frozen query set's spelling, corrected at score time
+    "desk/projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md":  # harness-deprecation: the frozen query set's spelling, corrected at score time
+        "desk/projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",  # harness-deprecation: the frozen query set's spelling, corrected at score time
+    "desk/projects/agentm/_harness/designs/v5-acceleration-plan.md":  # harness-deprecation: the frozen query set's spelling, corrected at score time
+        "desk/projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",  # harness-deprecation: the frozen query set's spelling, corrected at score time
 }
 
 

@@ -153,16 +153,17 @@ class TestValidateVault(unittest.TestCase):
             after = note.read_text(encoding="utf-8")
             self.assertEqual(before, after)
 
-    def test_excludes_harness_meta_inbox_dream_staging_dirs(self):
+    def test_excludes_tasks_meta_inbox_dream_staging_dirs(self):
         # DC-4 (matches vault_lint.py's _EXCLUDE_DIRS): these subdirectories
-        # hold non-memory-entry content (harness state, dev-loop infra) that
+        # hold non-memory-entry content (plan state, dev-loop infra) that
         # was never meant to carry the universal frontmatter contract. A
         # real bug here flooded a real-vault run with ~1800 false
-        # "no frontmatter block found" violations on plain PLAN.md/progress.md
-        # harness state files nested under projects/<repo>/_harness/.
+        # "no frontmatter block found" violations on plain plan and progress
+        # files — then in each project's state directory, now in its tasks/
+        # (agentm-vault plan 15).
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "desk/projects" / "some-repo" / "_harness" / "PLAN.md", "# Plan\n\nno frontmatter here\n")
+            _write(vault / "desk/projects" / "some-repo" / "tasks" / "001-build-it" / "plan.md", "# Plan\n\nno frontmatter here\n")
             _write(vault / "memory" / "_meta" / "notes.md", "no frontmatter here\n")
             _write(vault / "memory" / "_inbox" / "capture.md", "no frontmatter here\n")
             _write(vault / "desk/scratch" / "proposal.md", "no frontmatter here\n")

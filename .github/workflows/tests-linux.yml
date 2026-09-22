@@ -123,9 +123,7 @@ jobs:
       - name: check-no-title-case-roots (no literal spells a root space Title Case)
         run: python3 scripts/check-no-title-case-roots.py
       - name: check-no-harness-paths (no code names the retired project state directory)
-        # Inventory only while agentm-vault plan 15 retires the readers; its
-        # task 3 drops --inventory and the step enforces from then on.
-        run: python3 scripts/check-no-harness-paths.py --inventory
+        run: python3 scripts/check-no-harness-paths.py
       - name: "check-vocabulary-membership (set-ratchet self-test — collision + membership fire)"
         # A runner has no vault, so the corpus ratchet half skips itself with a
         # named line; what runs in full here is the self-test — the collision

@@ -21,8 +21,8 @@ What counts as a hit, per line, comment lines skipped:
 
 What is allowed, and reported as allowed by `--inventory`:
 
-  - documentation and records: `wiki/`, `CHANGELOG.md`, every `_harness/`
-    tree, `scripts/health/results/` and `scripts/health/fixtures/` (frozen
+  - documentation and records: `wiki/`, `CHANGELOG.md`,
+    `scripts/health/results/` and `scripts/health/fixtures/` (frozen
     measurements, the gold set among them — the eval corrects a moved path
     at score time, never in the fixture);
   - the finished migrations under `scripts/migrate/` and their tests: each is
@@ -63,7 +63,7 @@ _CODE_SUFFIXES = frozenset({".py", ".go", ".sh", ".ps1"})
 _EXTENSIONS = frozenset({".py", ".go", ".sh", ".ps1", ".md", ".txt", ".yml", ".yaml", ".json", ".toml"})
 _COMMENT_STARTS = ("#", "//", "/*", "*", "--", "<!--", ";")
 
-_SKIP_DIRS = frozenset({".git", "__pycache__", "node_modules", ".harness", ".claude", "_harness"})
+_SKIP_DIRS = frozenset({".git", "__pycache__", "node_modules", ".harness", ".claude"})
 # Repo-relative prefixes that are documentation or frozen records.
 _ALLOWED_PREFIXES = (
     "wiki/",
@@ -114,8 +114,6 @@ def _allowed_by_place(rel: str) -> str | None:
     for prefix in _ALLOWED_PREFIXES:
         if rel.startswith(prefix):
             return "frozen records" if prefix.startswith("scripts/health") else "documentation"
-    if "/_harness/" in "/" + rel:
-        return "documentation"
     return None
 
 

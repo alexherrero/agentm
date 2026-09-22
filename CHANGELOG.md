@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`check-no-harness-paths` and the doctor's `harness-dirs` row keep the
+  retired per-project state directory gone (agentm-vault plan 15).** The gate
+  fails on the literal `_harness` in tracked non-test files, comments included
+  and identifiers excluded; history that keeps the word says why where it sits,
+  with an inline `harness-deprecation:` marker or a file-scope one on a finished
+  migration. It enforces in `check-all` and CI: 204 literals in 48 files before
+  the plan, none after, 927 allowed in 63 files. The doctor row fails on any
+  such directory under `projects/` and on a project whose plan resolver answers
+  one — which it did live on 2026-09-22, because the overnight job's handoff
+  pack had recreated `projects/agentm/_harness/` and so switched off agentm's
+  exit 4. The pack now goes to the project's `desk/n1-handoff/`.
+- **`harness_memory.py append-progress`** appends to the active plan's progress
+  log — a task's in the vault, or a repo-local pair's — through the storage
+  backend. The compaction marker uses it; in a task the marker had never landed.
+
 - **`Ideas.md` is a list the night generates over idea cards (agentm-vault
   plan 13).** An idea is a card in the vault root's `personal/ideas/`, with an
   `area:` holding one of your own group names, and the dreaming binary rebuilds
@@ -103,6 +118,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still strictly better than the truncate-and-fill window it replaced.
 
 ### Changed
+
+- **A project's state root is the project directory itself (agentm-vault plan
+  15).** On a synced backend every plan is a task: `resolve_active_plan`
+  answers the task a name finds, places a new numbered task for a name none
+  carries, or exits 4 for a bare call — no flat pair, no singleton, no fallback,
+  and nothing on disk decides it. A project with no vault keeps its flat pair in
+  the repo-local `.harness/`. `harness_state_dir` became `state_dir`;
+  `read-state` / `write-state` and their functions retired for `append-progress`
+  and `read_machine_file` / `write_machine_file`, which put `project.json` in the
+  project's `desk/`. `plan_graph` reads a plan's status from its tracker first
+  and the `**Status:**` line only as a fallback, and readiness, merge order and
+  standup follow it; the coordinator scripts take `--state-dir` (`--harness-dir`
+  stays as an alias). The readers, gates, linters' exclusion rules, the dreaming
+  binary's project maps, the session-start hooks and the doctor lose their
+  `_harness` branches; `check-tracker-schema` knows two tracker places; the
+  calendar root's template allowance is permanent and its bare-date one
+  retired. `verify-state-routing` and `verify-phases` prove the task layout.
+  Breaking for a vault that never migrated; the work vault is on the skeleton.
 
 - **An idea card's two fields travel through every rewrite.** `area` and
   `dismissed` join the fields enrichment carries and the card's read order

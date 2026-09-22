@@ -5,12 +5,15 @@
 map, `moc-calendar-YYYY.md`, beside its directory. Anything else at the calendar
 root is a finding, and so is a year map with no year beside it.
 
-Two things stay allowed there until plan 10 moves the daily note into its year:
-Obsidian's daily-notes setting still names `Calendar` as its folder and
-`calendar/_daily-template` as its template, so the template stays, and the next
-bare-date note you open (`YYYY-MM-DD.md`) lands at the root. Both are reported
-as notes. So is a year whose map the night has not written yet: its first
-facet note can land during the day, and the map follows that night.
+One thing stays allowed there for good: Obsidian's daily-notes setting names
+`calendar/_daily-template` as its template, so the template sits at the root,
+and it is reported as a note. The setting is yours, and the template lives
+where it names it (agentm-vault plan 15 decided this; plan 10 had left it
+open). The bare-date allowance retired with plan 10: the setting's format is
+`YYYY/YYYY-MM-DD-diary`, so a day note lands in its year, and a `YYYY-MM-DD.md`
+at the root is a finding like any other stray. A year whose map the night has
+not written yet is reported as a note too: its first facet note can land during
+the day, and the map follows that night.
 
 It reads the live vault, resolved at runtime. Until the maps data run writes
 `memory/.maps-and-root-notes-complete` it reports what it finds and exits 0;
@@ -43,7 +46,6 @@ IGNORABLE = {".DS_Store", ".gitkeep"}
 DAILY_TEMPLATE = "_daily-template.md"
 YEAR = re.compile(r"^\d{4}$")
 YEAR_MAP = re.compile(r"^moc-calendar-(\d{4})\.md$")
-BARE_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}\.md$")
 FACET_NOTE = re.compile(r"^\d{4}-\d{2}-\d{2}-.+\.md$")
 
 
@@ -87,8 +89,8 @@ def findings(memory_root: Path) -> tuple[list, list]:
         m = YEAR_MAP.match(name)
         if m:
             maps.add(m.group(1))
-        elif name == DAILY_TEMPLATE or BARE_DAY.match(name):
-            notes.append(f"calendar/{name}: allowed at the root until plan 10 moves the daily note into its year")
+        elif name == DAILY_TEMPLATE:
+            notes.append(f"calendar/{name}: allowed at the root — Obsidian's daily-notes setting names it there")
         else:
             failures.append(f"calendar/{name}: the calendar root holds years and their maps")
     for year in sorted(maps - years):

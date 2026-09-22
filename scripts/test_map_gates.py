@@ -226,17 +226,26 @@ class RootNotes(unittest.TestCase):
             self.assertIn(f"projects/agentm/pattern/funnel.md:{line}: {link}", out)
         self.assertIn("projects/agentm/pattern/funnel.md:5:", out)
 
-    def test_code_a_record_and_your_own_space_are_not_findings(self):
+    def test_code_and_your_own_space_are_not_findings(self):
         self.retired_shape()
         self.write("agent/memory/episodic/trace.md",
                    "- **The `[[Home]]` trap:** a bare link would open the personal note.\n\n"
                    "```\n[[Filing]]\n```\n")
-        self.write("projects/agentm/_harness/progress-x.md", "Links [[Home]] and [[Filing]] as written then.\n")
         self.write("personal/Home/To Do, Lists, Specs/list.md", "Back to [[Home]].\n")
         self.write("projects/other.md", "My list: [[personal/Home/To Do, Lists, Specs/Home]].\n")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 0, out)
+
+    def test_a_note_in_a_returned_retired_state_directory_is_a_finding(self):
+        # agentm-vault plan 15: the per-project state directory is gone, and so
+        # is its carve-out; a note in a copy that came back is read like any other.
+        self.retired_shape()
+        self.write("projects/agentm/_harness/progress-x.md", "Links [[Home]] as written then.\n")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("projects/agentm/_harness/progress-x.md", out)
 
     def test_the_authority_table_appears_once(self):
         self.retired_shape()
@@ -323,17 +332,26 @@ class CalendarRoot(unittest.TestCase):
         buf = io.StringIO()
         return calroot.check(self.root, out=buf), buf.getvalue()
 
-    def test_years_their_maps_and_the_daily_note_allowances_pass(self):
+    def test_years_their_maps_and_the_daily_note_template_pass(self):
         self.write("2026/2026-08-10-diary.md")
         self.write("moc-calendar-2026.md")
         self.write("_daily-template.md")
-        self.write("2026-09-13.md")
         self.data_run_done()
         code, out = self.gate()
         self.assertEqual(code, 0, out)
-        self.assertIn("note — calendar/_daily-template.md: allowed at the root until plan 10", out)
-        self.assertIn("note — calendar/2026-09-13.md: allowed at the root until plan 10", out)
+        self.assertIn("note — calendar/_daily-template.md: allowed at the root", out)
         self.assertIn("clean", out)
+
+    def test_a_bare_date_note_at_the_root_fails(self):
+        # agentm-vault plan 15: the daily note lands in its year since plan 10's
+        # format change, so the bare-date allowance retired.
+        self.write("2026/2026-08-10-diary.md")
+        self.write("moc-calendar-2026.md")
+        self.write("2026-09-13.md")
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 1, out)
+        self.assertIn("calendar/2026-09-13.md: the calendar root holds years and their maps", out)
 
     def test_a_stray_note_or_folder_at_the_root_fails(self):
         self.write("2026/2026-08-10-diary.md")

@@ -34,7 +34,7 @@ on top; it never sources a fact.
 
 ### 1. `/standup` — where does the team stand?
 
-Call `scripts/standup.py --harness-dir <path>` (or omit `--harness-dir` to use
+Call `scripts/standup.py --state-dir <path>` (or omit `--state-dir` to use
 the project default). The script builds a plan graph from the vault and returns an
 annotated table: each active plan's slug, task progress (`done/total`), the
 timestamp of its most-recent progress-log entry, and a derived worker state:
@@ -52,7 +52,7 @@ omit the board mention if it isn't.
 
 ### 2. Readiness + safe-to-run-together
 
-Call `scripts/readiness.py --harness-dir <path>`. The script runs two stages:
+Call `scripts/readiness.py --state-dir <path>`. The script runs two stages:
 
 1. **Ready?** — a queued plan is *ready* if every plan in its `depends_on` list
    has `Status: done`.
@@ -76,7 +76,7 @@ add it to get a file-overlap verdict`.
 
 ### 3. Merge-order recommendation
 
-Call `scripts/merge_order.py --harness-dir <path>`. The script takes plans with
+Call `scripts/merge_order.py --state-dir <path>`. The script takes plans with
 `Status: done` (all tasks checked, not yet merged) and produces an ordered list:
 
 1. **Dependency order first** — a plan that others `depends_on` goes earlier.
@@ -116,4 +116,4 @@ design call in ADR 0016 § Design Calls.
 - [ADR 0016 — Persona tier](../wiki/decisions/0016-persona-tier.md)
 - [Persona tier schema reference](../wiki/reference/persona-tier-schema.md)
 - [check-personas gate](../scripts/check-personas.py)
-- [V5-11 design doc](../_harness/designs/v5-11-pm-chief-of-staff/design-doc.md)
+- V5-11 design doc — `projects/agentm/designs/v5-11-pm-chief-of-staff/design-doc.md` in the vault

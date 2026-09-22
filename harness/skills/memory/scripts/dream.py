@@ -86,10 +86,10 @@ CYCLE_REPORT_NAME = "python-cycle.json"
 _EXCLUDE_DIRS = frozenset(
     # Matched per path SEGMENT, so this holds the scratch space's last
     # component ("scratch"), not its "desk/scratch" spelling.
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "scratch", "_archive",
+    {"_idea-incubator", "_meta", "_inbox", "scratch", "_archive",
      "_dream", ".obsidian", "_opinions", "_crystallize-staging",
-     # A project's session-owned plan, progress and tracker, once `_harness/`
-     # dissolves into `tasks/<slug>/` (agentm-vault plan 09).
+     # A project's session-owned plan, progress and tracker, in
+     # `tasks/<slug>/` (agentm-vault plans 09 and 15).
      "tasks"}
 )
 

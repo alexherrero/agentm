@@ -12,7 +12,7 @@ Two checks, both driven by `governs_resolver.build_index()` (the same index
      greenfield (agTrack#0's exact failure mode).
 
   2. **Unknown area** — a design's `area:` value isn't in the canonical AG
-     taxonomy (`_harness/designs/architecture-governance/area-taxonomy.md`
+     taxonomy (`projects/agentm/designs/architecture-governance/area-taxonomy.md`
      in the vault; mirrored here since gates must run without vault access).
 
 Exit:
