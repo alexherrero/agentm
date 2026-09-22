@@ -1529,6 +1529,27 @@ class TestStateBackendRouting(unittest.TestCase):
                 vault / "desk/projects" / "fixture" / "_harness",
             )
 
+    def test_project_state_root_is_the_project_directory(self) -> None:
+        # agentm-vault plan 15: the project directory is the state root; a
+        # writer composes `desk/` or `tasks/` from it, never a sibling.
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            backend = self._vault_backend(vault, Path(tmp) / "locks")
+            resolution = self._resolution(backend, Path(tmp) / "project")
+            self.assertEqual(hm.project_state_root(resolution),
+                             vault / "desk/projects" / "fixture")
+
+    def test_project_state_root_is_none_off_a_synced_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            device = self._resolution(self._device_backend(Path(tmp) / "dl"), project)
+            self.assertIsNone(hm.project_state_root(device))
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("local\n", encoding="utf-8")
+            vault = self._resolution(
+                self._vault_backend(Path(tmp) / "vault", Path(tmp) / "locks"), project)
+            self.assertIsNone(hm.project_state_root(vault))
+
     def test_read_routes_to_vault_and_wins_over_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"

@@ -961,6 +961,125 @@ def project_json_configs(repo: Path, *, mem_root: Optional[Path] = None) -> list
     return found
 
 
+# ── harness-dirs (agentm-vault plan 15) ─────────────────────────────────────
+# The name this row looks for. harness-deprecation: the row that catches a
+# directory that came back, so it must spell the one it refuses.
+_RETIRED_STATE_DIRNAME = "_harness"
+
+
+def _retired_state_dirs(projects_dir: Path) -> list:
+    """Every directory named `_harness` under the projects space, at any depth,
+    sorted. Hidden directories (`.git`, `.obsidian`, `.trash`) are not walked."""
+    found = []
+    for dirpath, dirs, _files in os.walk(projects_dir):
+        for d in dirs:
+            if d == _RETIRED_STATE_DIRNAME:
+                found.append(Path(dirpath) / d)
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d != _RETIRED_STATE_DIRNAME)
+    return sorted(found)
+
+
+def _resolver_offenders(projects_dir: Path, backend) -> "tuple[list, int]":
+    """Ask the plan resolver, as deployed, where each project's plans are, and
+    return `(offenders, answers_checked)`.
+
+    Every project directory under the projects space is asked twice over: once
+    bare, which on a project that keeps its plans in tasks must refuse
+    (`TaskNameRequired`, exit 4), and once per task directory, which must answer
+    that task's own files. An answer with a `_harness` component is an offender
+    — the resolver still composing the retired directory, whatever the disk
+    holds. `backend` is a synced backend rooted where `projects/` resolves."""
+    import harness_memory as hm  # noqa: PLC0415
+
+    offenders, checked = [], 0
+    for project in sorted(p for p in projects_dir.iterdir()
+                          if p.is_dir() and not p.name.startswith(".")):
+        resolution = {
+            "slug": project.name,
+            "project_locator": backend.resolve(projects_dir.name, project.name),
+            "backend": backend,
+            "project_root": project,
+            "layout": "root",
+        }
+        tasks = project / "tasks"
+        names = ([None] + sorted(t.name for t in tasks.iterdir() if t.is_dir())
+                 if tasks.is_dir() else [None])
+        for name in names:
+            checked += 1
+            try:
+                paths = hm.active_plan_paths(resolution, plan_arg=name)
+            except Exception:  # noqa: BLE001 — a refusal is the answer a bare call wants
+                continue
+            for path in paths or ():
+                if _RETIRED_STATE_DIRNAME in Path(path).parts:
+                    offenders.append(f"{project.name} ({name or 'bare call'} → "
+                                     f"{_vault_relative(Path(path), projects_dir)})")
+                    break
+    return offenders, checked
+
+
+def _vault_relative(path: Path, projects_dir: Path) -> str:
+    """`path` relative to the vault root, with forward slashes on every
+    platform, so the row reads the same on Windows; absolute when it is not
+    under the vault at all."""
+    try:
+        return path.relative_to(projects_dir.parent).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def check_harness_dirs(*, projects_dir: Optional[Path] = None, backend=None) -> Check:
+    """Whether `_harness/` is gone from the projects space and stays gone.
+
+    The projects migration dissolved every project's `_harness/`, and plan 15
+    retired the code that read or wrote one. A reader that composes the
+    directory fails soft once it is gone, so the code gate catches the literal;
+    this row catches the rest. It fails on any directory named `_harness`
+    anywhere under `projects/` — a writer or a charter that brought it back,
+    the way the overnight job's handoff pack did seventeen hours after the move
+    — and on a resolver whose answer for any project still names one.
+
+    `projects_dir` and `backend` are injectable for tests; production derives
+    both from the memory root and the selected storage backend."""
+    name = "harness-dirs"
+    try:
+        import harness_memory as hm  # noqa: PLC0415
+        if projects_dir is None:
+            mem_root = hm.memory_root()
+            if mem_root is None:
+                return Check(name, "UNVERIFIED", "no vault configured on this machine")
+            projects_dir = hm._root_projects_dir(Path(mem_root))
+            if projects_dir is None:
+                return Check(name, "UNVERIFIED", f"no projects space beside {mem_root}")
+        if backend is None:
+            import backend_selection  # noqa: PLC0415
+            candidates = hm._root_projects_candidates(backend_selection.select_backend())
+            if not candidates:
+                return Check(name, "UNVERIFIED", f"no backend resolves {projects_dir}")
+            backend = candidates[0][0]
+    except Exception as exc:  # noqa: BLE001 — a doctor row reports, never raises
+        return Check(name, "UNVERIFIED", f"the vault did not resolve: {exc}")
+
+    projects_dir = Path(projects_dir)
+    found = _retired_state_dirs(projects_dir)
+    offenders, checked = _resolver_offenders(projects_dir, backend)
+    problems = []
+    if found:
+        shown = ", ".join(_vault_relative(p, projects_dir) for p in found[:3])
+        more = f" and {len(found) - 3} more" if len(found) > 3 else ""
+        problems.append(f"{len(found)} `_harness/` director{'y' if len(found) == 1 else 'ies'} "
+                        f"under projects/: {shown}{more}")
+    if offenders:
+        more = f" and {len(offenders) - 3} more" if len(offenders) > 3 else ""
+        problems.append(f"the resolver answers `_harness/` for {'; '.join(offenders[:3])}{more}")
+    if problems:
+        return Check(name, "FAIL", " · ".join(problems)
+                     + " — a project's state root is its own directory (`tasks/`, `desk/`)")
+    projects = sum(1 for p in projects_dir.iterdir() if p.is_dir() and not p.name.startswith("."))
+    return Check(name, "OK", f"no `_harness/` under {projects_dir} ({projects} projects); the resolver "
+                             f"answers every project from its skeleton ({checked} answers checked)")
+
+
 
 # ── the clone that IS the installation (2026-09-06 stale-main regression) ───
 def _git_out(repo: Path, *args: str) -> "tuple[int, str]":
@@ -1257,6 +1376,7 @@ def run_inventory(
     checks.extend(check_payload_copies())
     for config_path, label in project_json_configs(repo):
         checks.append(check_project_json_pointers(config_path, label))
+    checks.append(check_harness_dirs())
     crickets_check = check_crickets_sibling()
     checks.append(crickets_check)
     crickets_root = find_crickets_root()
