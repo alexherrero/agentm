@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# harness-deprecation: file — a finished migration; it records the layout of its day, and its revert compares against what it recorded (agentm-vault plan 15).
 """migrate_arcs — the arc-as-metadata backfill (2026-07-18 convention).
 
 Mirrors the retired `migrate-adr.py`'s shape: dry-run by default, prints a

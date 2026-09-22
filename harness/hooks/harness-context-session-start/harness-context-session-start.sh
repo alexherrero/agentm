@@ -2,10 +2,10 @@
 # harness-context-session-start — inject the project's PLAN.md/progress.md
 # paths into session context on SessionStart.
 #
-# ADR 0020 (amends ADR 0018 DC-1): harness state is backend-aware — it lives in
-# <vault>/projects/<slug>/_harness/ when a synced backend is active, else
-# device-local <project_root>/.harness/. This hook resolves the location through
-# the bridge (list-plans -> harness_state_dir) and tells the agent where, on every
+# ADR 0020 (amends ADR 0018 DC-1): harness state is backend-aware — on a synced
+# backend a project's plans are its tasks, <vault>/projects/<slug>/tasks/<name>/,
+# else device-local <project_root>/.harness/. This hook resolves the location through
+# the bridge (list-plans -> state_dir) and tells the agent where, on every
 # session boot, so it reads PLAN.md before plan-status questions or phase commands.
 # Only fires the injection when PLAN.md or PLAN-*.md is resolved; silent no-op
 # otherwise. See hook.md for full docs. V4 #39, V5-3 cutover, ADR 0020 re-vault.
@@ -67,7 +67,7 @@ fi
 
 # ── V5-5: route plan discovery through the bridge (harness_memory.py list-plans) ──
 # Outputs plan file paths (one per line) + "active-binding=<slug>" when binding set.
-# Routes through harness_state_dir for V5-6 state_mode compat (no inline .harness/).
+# Routes through state_dir for V5-6 state_mode compat (no inline .harness/).
 PLANS_OUT="$($TIMEOUT_CMD python3 "$RESOLVER" list-plans --project-root "$EVENT_CWD" 2>/dev/null || true)"
 NAMED_PLANS=()
 PLAN_PATH=""
@@ -82,10 +82,10 @@ if [[ -n "$PLANS_OUT" ]]; then
     done <<< "$PLANS_OUT"
 fi
 # progress.md is the sibling of the resolved PLAN.md: co-locate it with whatever
-# _harness/ the bridge resolved PLAN_PATH into (vault when a synced backend is
-# active, else device-local), so the singleton injection fires on a synced backend
-# too (ADR 0020 — amends the V5-3 device-local hardcode). Fall back to the
-# device-local path only when no singleton plan was resolved.
+# directory the bridge resolved PLAN_PATH into, so the singleton injection reads
+# the right log (ADR 0020 — amends the V5-3 device-local hardcode). A singleton
+# is only ever a repo-local plan now: on a synced backend every plan is a task.
+# Fall back to the device-local path only when no singleton plan was resolved.
 if [[ -n "$PLAN_PATH" ]]; then
     PROGRESS_PATH="$(dirname "$PLAN_PATH")/progress.md"
 else
@@ -93,8 +93,9 @@ else
 fi
 
 # ── Inject: named-plan mode → singleton (DC-7, locked) → nudge/skip ────────────
-# A task's plan is tasks/<slug>/plan.md beside a vault _harness/ (agentm-vault
-# plan 09); a flat plan is PLAN-<slug>.md. Each is labelled by the name a reader types.
+# A task's plan is tasks/<slug>/plan.md in the project's vault directory
+# (agentm-vault plans 09 and 15); a repo-local flat plan is PLAN-<slug>.md. Each is
+# labelled by the name a reader types.
 _plan_label() {
     case "$1" in
         */tasks/*/plan.md) _t="${1%/plan.md}"; printf 'tasks/%s\n' "${_t##*/}" ;;

@@ -1,8 +1,8 @@
 #!/usr/bin/env pwsh
 # harness-context-session-start (pwsh twin) — inject the project's
 # PLAN.md/progress.md paths into session context on SessionStart. State is
-# backend-aware: <vault>/projects/<slug>/_harness/ when a synced backend is
-# active, else device-local <project_root>/.harness/ (ADR 0020, amends ADR 0018
+# backend-aware: a project's tasks, <vault>/projects/<slug>/tasks/<name>/, when a
+# synced backend is active, else device-local <project_root>/.harness/ (ADR 0020, amends ADR 0018
 # DC-1). Mirrors harness-context-session-start.sh. Never blocks boot. V4 #39.
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -53,7 +53,7 @@ if (-not $resolver) { Write-Skip "harness_memory.py resolver unavailable" }
 
 # ── V5-5: route plan discovery through the bridge (harness_memory.py list-plans) ──
 # Output: plan paths (one per line) + "active-binding=<slug>" when binding set.
-# Routes through harness_state_dir for V5-6 state_mode compat.
+# Routes through state_dir for V5-6 state_mode compat.
 $plansOut = ""
 try {
     Push-Location -LiteralPath $eventCwd
@@ -82,10 +82,10 @@ foreach ($line in ($plansOut -split "`n")) {
     }
 }
 # progress.md is the sibling of the resolved PLAN.md: co-locate it with whatever
-# _harness/ the bridge resolved $planPath into (vault when a synced backend is
-# active, else device-local), so the singleton injection fires on a synced backend
-# too (ADR 0020 — amends the V5-3 device-local hardcode). Fall back to the
-# device-local path only when no singleton plan was resolved.
+# directory the bridge resolved $planPath into, so the singleton injection reads
+# the right log (ADR 0020 — amends the V5-3 device-local hardcode). A singleton
+# is only ever a repo-local plan now: on a synced backend every plan is a task.
+# Fall back to the device-local path only when no singleton plan was resolved.
 if ($planPath) {
     $progressPath = Join-Path (Split-Path -Parent $planPath) "progress.md"
 } else {

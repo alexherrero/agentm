@@ -8,12 +8,12 @@ design puts one:
 
   <projects>/<slug>/tracker.md                  the project's own tracker
   <projects>/<slug>/tasks/<task>/tracker.md     a task's tracker
-  <projects>/<slug>/_harness/tracker.md         beside the singleton flat pair
-  <projects>/<slug>/_harness/tracker-<task>.md  beside a named flat pair
 
 A tracker names the project it sits in, a task's tracker names its task, and a
 project's own tracker names none. A Markdown file anywhere else in a project
-that declares `kind: tracker` is reported as misplaced.
+that declares `kind: tracker` is reported as misplaced — a tracker beside a flat
+pair in a copy of the retired per-project state directory among them, since
+that directory is gone (agentm-vault plan 15).
 
 Trackers exist now, because the crickets release writes them, so the gate
 reads every tracker in the live vault and fails on any finding. When this line
@@ -43,7 +43,7 @@ if str(_HERE) not in sys.path:
 import tracker as tk  # noqa: E402
 
 _HEAD_BYTES = 4096
-PLACES = "tracker.md, tasks/<task>/tracker.md, _harness/tracker.md or _harness/tracker-<task>.md"
+PLACES = "tracker.md or tasks/<task>/tracker.md"
 
 
 def placement(parts: tuple) -> Optional[tuple]:
@@ -52,11 +52,6 @@ def placement(parts: tuple) -> Optional[tuple]:
         return ("project", None)
     if len(parts) == 3 and parts[0] == "tasks" and parts[2] == "tracker.md":
         return ("task", parts[1])
-    if len(parts) == 2 and parts[0] == "_harness":
-        if parts[1] == "tracker.md":
-            return ("flat", None)
-        if parts[1].startswith("tracker-") and parts[1].endswith(".md"):
-            return ("flat", parts[1][len("tracker-"):-len(".md")])
     return None
 
 
@@ -153,30 +148,31 @@ def _put(path: Path, text: str) -> None:
 
 def self_test(out=None) -> int:
     """The checks fire on fixtures: a good tracker in each place passes, and a
-    malformed, a mismatched and a misplaced one are each named."""
+    malformed and a misplaced one are each named — the misplaced ones including
+    a tracker in a returned copy of the retired state directory."""
     # Resolved per call rather than when the module loads, so a caller that
     # redirects stdout reads the failure.
     out = sys.stdout if out is None else out
     good = tk.new(title="Fixture task", project="fixture", task="build-it",
                   objective="The fixture is built.", next_step="Start.", today="2026-09-12")
+    retired = "_harness"  # harness-deprecation: a returned copy, built to prove it is misplaced
     with tempfile.TemporaryDirectory(prefix="check-tracker-schema-") as tmp:
         projects = Path(tmp)
         project = projects / "fixture"
         _put(project / "tracker.md", tk.render(dataclasses.replace(good, task=None)))
         _put(project / "tasks" / "build-it" / "tracker.md", tk.render(good))
-        _put(project / "_harness" / "tracker-build-it.md", tk.render(good))
         _put(project / "tasks" / "broken" / "tracker.md",
              tk.render(dataclasses.replace(good, task="broken")).replace("status: queued", "status: complete"))
-        _put(project / "_harness" / "tracker-other.md", tk.render(good))
+        _put(project / retired / "tracker-build-it.md", tk.render(good))
         _put(project / "notes" / "stray.md", tk.render(good))
         _put(projects / "_archive" / "old" / "tracker.md", "not a tracker\n")
         count, findings = projects_findings(projects)
     flagged = sorted({f.split(": ", 1)[0] for f in findings})
-    expected = ["fixture/_harness/tracker-other.md", "fixture/notes/stray.md",
-                "fixture/tasks/broken/tracker.md"]
-    ok = count == 6 and flagged == expected
+    expected = sorted([f"fixture/{retired}/tracker-build-it.md", "fixture/notes/stray.md",
+                       "fixture/tasks/broken/tracker.md"])
+    ok = count == 5 and flagged == expected
     if not ok:
-        print(f"check-tracker-schema: self-test FAILED — read {count} (expected 6), "
+        print(f"check-tracker-schema: self-test FAILED — read {count} (expected 5), "
               f"flagged {flagged} (expected {expected})", file=out)
         return 1
     return 0

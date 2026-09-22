@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # migrate-harness-to-vault.sh — V4 #26 per-project state migration.
+# harness-deprecation: file — a finished migration; it records the layout of its day, and its revert compares against what it recorded (agentm-vault plan 15).
 #
 # Copies <target>/.harness/<file> → <vault>/desk/projects/<slug>/_harness/<file>
 # for the locked file set. Idempotent (safe to re-run) + reversible

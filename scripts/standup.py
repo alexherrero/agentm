@@ -10,7 +10,7 @@ and narrates the returned table as a standup paragraph.
 
 Usage::
 
-    python3 scripts/standup.py [--harness-dir PATH]
+    python3 scripts/standup.py [--state-dir PATH]
 
 Output is a deterministic, human-scannable table plus a JSON block that the
 persona's narration step consumes.
@@ -127,7 +127,9 @@ def render_table(rows: List[WorkerRow]) -> str:
 
 def _main() -> None:
     ap = argparse.ArgumentParser(description="Standup table for active workers.")
-    ap.add_argument("--harness-dir", help="Path to the _harness/ directory.")
+    ap.add_argument("--state-dir", "--harness-dir", dest="harness_dir",
+                    help="The project's vault directory, or a repo-local .harness/ "
+                         "(default: resolve from cwd).")
     ap.add_argument(
         "--json", action="store_true",
         help="Emit JSON array instead of the human-readable table.",
@@ -137,12 +139,12 @@ def _main() -> None:
     if args.harness_dir:
         harness_dir = Path(args.harness_dir)
     else:
-        harness_dir = hm.harness_state_dir(hm.resolve_project({"cwd": Path.cwd()}))
+        harness_dir = hm.state_dir(hm.resolve_project({"cwd": Path.cwd()}))
         if harness_dir is None:
             print(
-                "standup: could not resolve a _harness/ directory for this "
+                "standup: could not resolve a plan state directory for this "
                 "project (no synced backend, no device-local project root) — "
-                "pass --harness-dir explicitly",
+                "pass --state-dir explicitly",
                 file=sys.stderr,
             )
             raise SystemExit(1)

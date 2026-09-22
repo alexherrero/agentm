@@ -37,7 +37,7 @@ FORBIDDEN = [
     ("_inbox", "the retired staging directory; the drop folder is agent/inbox/"),
     ("_always-load", "the always-load pen folds into standards/"),
     ("_index.md", "the project anchor becomes tracker.md / charter.md"),
-    ("_harness", "harness state is not something a chat surface reads"),
+    ("_harness", "harness state is not something a chat surface reads"),  # harness-deprecation: a word the payload gate refuses
     ("Agent/desk", "the desk moves out of the capitalized root"),  # root-casing: the forbidden spelling the payload gate looks for
     ("Agent/_meta", "the machine directory and the payload twin retire"),  # root-casing: the forbidden spelling the payload gate looks for
     ("filing_confidence: low", "the unfiled marker is status: unfiled"),

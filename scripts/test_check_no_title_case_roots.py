@@ -105,9 +105,17 @@ class TestAllowed(unittest.TestCase):
     def test_documentation_and_frozen_records_are_allowed(self):
         with tempfile.TemporaryDirectory() as tmp:
             for rel in ("wiki/how-to/x.md", "CHANGELOG.md", "scripts/health/fixtures/gold/gold.json",
-                        "scripts/health/results/run.json", "Projects/agentm/_harness/PLAN.md"):
+                        "scripts/health/results/run.json"):
                 rc, _, _ = _run(tmp, rel, f'{{"path": "{AGENT}/memory/a.md"}}\n')
                 self.assertEqual(rc, 0, rel)
+
+    def test_a_retired_state_tree_is_no_longer_allowed(self):
+        # agentm-vault plan 15: the repo holds no per-project state tree any
+        # more, so a file under one is scanned like any other.
+        with tempfile.TemporaryDirectory() as tmp:
+            rc, _, err = _run(tmp, "Projects/agentm/_harness/PLAN.md", f'{{"path": "{AGENT}/memory/a.md"}}\n')
+            self.assertEqual(rc, 1)
+            self.assertIn("_harness/PLAN.md", err)
 
     def test_a_finished_migration_keeps_its_spelling(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -211,7 +211,7 @@ def build_arc_groups(vault_path: Path | str) -> dict[tuple[str, str], list[tuple
     vault = Path(vault_path)
     groups: dict[tuple[str, str], list[tuple[str, str, dict]]] = {}
     for root, md in _project_space_notes(vault):
-        if any(p == "_archive" or p == _OUTPUT_DIRNAME or p == "_harness" or p == "tasks" for p in md.parts):
+        if any(p == "_archive" or p == _OUTPUT_DIRNAME or p == "tasks" for p in md.parts):
             continue
         try:
             text = md.read_text(encoding="utf-8")

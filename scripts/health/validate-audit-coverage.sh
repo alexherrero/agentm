@@ -122,7 +122,7 @@ fi
 
 # ── agentmEngine#1: never-demote — the unconditional case-D guard exists ──
 SR_OUT="$(bash "$SCRIPTS_DIR/verify-state-routing.sh" 2>&1)"; SR_RC=$?
-if [ "$SR_RC" -eq 0 ] && printf '%s' "$SR_OUT" | grep -q "never-demote: write-state exits non-zero"; then
+if [ "$SR_RC" -eq 0 ] && printf '%s' "$SR_OUT" | grep -q "never-demote: resolve-active-plan exits non-zero"; then
   pass "agentmEngine#1: verify-state-routing.sh's unconditional never-demote check (case D) is live and green"
 else
   fail "agentmEngine#1: verify-state-routing.sh's unconditional never-demote check (case D) is live and green" "rc=$SR_RC; got: $(printf '%s' "$SR_OUT" | tail -3)"

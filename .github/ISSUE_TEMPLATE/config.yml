@@ -16,7 +16,7 @@ contact_links:
 
   - name: 📖 Read ROADMAP-MASTER (governance + bucket order)
     url: https://github.com/alexherrero/agentm/blob/main/wiki/Home.md
-    about: Master roadmap narrative lives in the vault (`<vault>/projects/agentm/_harness/ROADMAP-MASTER.md`). The wiki Home points at the published-side docs.
+    about: Master roadmap narrative lives in the vault (`<vault>/projects/agentm/roadmap.md`). The wiki Home points at the published-side docs.
 
   - name: 💬 General questions — open a Discussion
     url: https://github.com/alexherrero/agentm/discussions

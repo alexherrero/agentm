@@ -25,7 +25,8 @@ What is allowed, and reported as allowed by `--inventory`:
   - documentation and frozen records: `wiki/`, `CHANGELOG.md`,
     `scripts/health/results/` and `scripts/health/fixtures/` (the gold set
     among them — the eval translates a moved path at score time, never in the
-    fixture);
+    fixture), and the September payload kept to show the layout-free gate
+    failing;
   - a line carrying the marker `harness-deprecation:` with the reason where the
     literal sits: an eval remap row's old side, a gate's list of words it
     refuses;
@@ -68,7 +69,12 @@ _ALLOWED_PREFIXES = {
     "scripts/health/results/": "frozen records",
     "scripts/health/fixtures/": "frozen records",
 }
-_ALLOWED_FILES = {"CHANGELOG.md": "documentation"}
+_ALLOWED_FILES = {
+    "CHANGELOG.md": "documentation",
+    # The September payload, kept byte-for-byte so the layout-free gate can be
+    # shown to fail on it; a marker line would change what it records.
+    "scripts/fixtures/agentmemory-context.september.md": "frozen records",
+}
 # The gate names the pattern it looks for, and so does its test.
 _SKIP_NAMES = frozenset({Path(__file__).name, "test_check_no_harness_paths.py"})
 

@@ -11,13 +11,15 @@
 # `kind:`.
 #
 # Seeded 2026-07-18 from real vault evidence, three sources:
-#   (a) every top-level folder name under `_harness/designs/` and
-#       `_harness/archive/designs/` in both agentm's and crickets' vault
-#       projects — a folder already has arc identity, by construction;
+#   (a) every top-level design folder in both agentm's and crickets' vault
+#       projects, live and archived — a folder already has arc identity, by
+#       construction. They sat in each project's state directory then; since
+#       the projects migration a design and its parts sit under the project's
+#       `designs/<design>/` (`designs/<design>/parts/` for the parts);
 #   (b) the coarse roadmap-wave labels a version-numbered decisions/designs
 #       tag (e.g. `v6-1`, `v6-19`) coarsens to — `v4` through `v8`, matching
 #       `ROADMAP-AgentMemoryV{4..8}.md`; `friday` is both a coarse wave label
-#       and its own `_harness/designs/friday/` folder;
+#       and its own `designs/friday/` folder;
 #   (c) the lettered architecture-governance build waves (`wave-a` … `wave-e`),
 #       cross-repo, evidenced by recurring `PLAN.archive.*-wave-<letter>-*`
 #       filenames in both repos with no design folder of their own.
@@ -36,15 +38,15 @@ _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
 # Recognized arc slugs. See module docstring for provenance; extend this set
 # by adding a slug here, not by an entry inventing one no index will collect.
 KNOWN_ARCS: frozenset[str] = frozenset({
-    # (a) real _harness/designs/ folder names (agentm).
+    # (a) real design folder names (agentm, now under designs/).
     "architecture-governance", "consolidation-review", "friday",
     "friday-inputs", "post-ag-frontload", "roadmap-finish",
     "roadmap-research-2026-06", "seven-section-convergence",
     "token-efficiency-46", "v5-1-storage-seam", "v5-5-orchestration-split",
     "v5-9-mcp-server", "v5-10-coordinator-team", "v5-11-pm-chief-of-staff",
     "v6-25-external-thinking-audit", "v8-proving", "vault-backing",
-    # (a) real _harness/archive/designs/ folder names (crickets — already
-    # closed arcs, moved ahead of this convention being named).
+    # (a) real archived design folder names (crickets — already closed
+    # arcs, moved ahead of this convention being named; now under designs/).
     "crickets-v3-native-plugins", "developer-plugin-suite",
     "developer-workflows-autonomy", "efficiency-automation", "wiki-composer",
     "wiki-maintenance", "wiki-maintenance-provisioning",
@@ -54,9 +56,9 @@ KNOWN_ARCS: frozenset[str] = frozenset({
     # (c) lettered AG build waves — cross-repo, no design folder of their own.
     "wave-a", "wave-b", "wave-c", "wave-d", "wave-e",
     # (d) added 2026-07-18 during the UNMATCHED backfill pass — clusters found
-    # by date-range + thematic grouping in the real vault, none with their own
-    # _harness/designs/ folder (their build history is flat PLAN.archive.*
-    # files, not a design folder). `v3` above (agentm's own early wave,
+    # by date-range + thematic grouping in the real vault, none with a design
+    # folder of its own (their build history is finished tasks, not a design
+    # folder). `v3` above (agentm's own early wave,
     # predating v4) belongs to this same backfill pass.
     "worktree-native-flow", "observability", "ci-walltime-diet",
     "crickets-v3",

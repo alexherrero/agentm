@@ -223,9 +223,10 @@ class TestRegisterIntegration(unittest.TestCase):
                 else:
                     os.environ["MEMORY_VAULT_PATH"] = old_env
             # ADR 0020 (reverses V5-3 DC-1): a synced backend routes the rich
-            # project.json to <vault>/projects/<slug>/_harness/. The device-local
+            # project.json to the project directory's desk/, where a project keeps
+            # its machine files (agentm-vault plan 15). The device-local
             # .harness/project.json stays the thin {vault_project} routing pointer.
-            vault_pj = vault / "desk/projects" / "demo" / "_harness" / "project.json"
+            vault_pj = vault / "desk/projects" / "demo" / "desk" / "project.json"
             self.assertTrue(vault_pj.is_file())
             data = json.loads(vault_pj.read_text(encoding="utf-8"))
             self.assertIn("skills", data)
@@ -248,15 +249,15 @@ class TestRegisterIntegration(unittest.TestCase):
             self.assertIn("skills", config)
 
     def test_register_does_not_drop_github_env_under_local_mode(self):
-        # Regression (adversarial review 2026-05-29): read_state_file honors
-        # .project-mode=local (reads legacy), so write_config MUST write legacy
-        # too — else it clobbers the vault file, dropping github/env.
+        # Regression (adversarial review 2026-05-29): read_machine_file honors
+        # .project-mode=local (reads the repo-local file), so write_config MUST
+        # write there too — else it clobbers the vault file, dropping github/env.
         import harness_memory as hm
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             vault = root / "vault"
-            (vault / "desk/projects" / "demo" / "_harness").mkdir(parents=True)
-            vault_pj = vault / "desk/projects" / "demo" / "_harness" / "project.json"
+            (vault / "desk/projects" / "demo" / "desk").mkdir(parents=True)
+            vault_pj = vault / "desk/projects" / "demo" / "desk" / "project.json"
             vault_pj.write_text(
                 json.dumps({
                     "vault_project": "demo",

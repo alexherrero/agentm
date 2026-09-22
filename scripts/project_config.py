@@ -7,10 +7,12 @@ detection rationale for each. It is an ADDITIVE block on the existing
 new file, and explicitly NOT `features.json` (that stays the governed
 verification ledger). Per V4 #32 locked DC-1.
 
-`project.json` is vault-resident post-V4-#26: it resolves to
-`<vault>/projects/<slug>/_harness/project.json` via the harness_memory
-dispatcher. The merge-writer reads through that resolution and writes back via
-`safe_write_replace_style` (preserving `vault_project`/`github`/`env`).
+`project.json` is vault-resident post-V4-#26: it is a machine file, so it
+resolves to the project directory's `desk/project.json` through harness_memory's
+`read_machine_file` / `write_machine_file`, or to the repo-local
+`.harness/project.json` for a project with no vault. The merge-writer reads
+through that resolution and writes back to the same place (preserving
+`vault_project`/`github`/`env`).
 
 Pure functions (no I/O): `build_enablement_block`, `merge_enablement`,
 `apply_override`, `is_registered`, `diff_detection`, `apply_redetect`. I/O
@@ -452,7 +454,7 @@ def render_redetect_text(diff: RedetectDiff, *, repo_name: str, applied: bool = 
 
 def load_project_json(resolution: dict) -> dict:
     """Load project.json via the dispatcher resolution. Returns {} if absent."""
-    raw = hm.read_state_file(resolution, "project.json")
+    raw = hm.read_machine_file(resolution, "project.json")
     if not raw.strip():
         return {}
     try:
@@ -465,16 +467,16 @@ def load_project_json(resolution: dict) -> dict:
 def write_config(resolution: dict, config: dict) -> Path:
     """Atomically write `config` back to project.json.
 
-    Routes through the dispatcher's `write_state_file`, which is backend-aware
-    (ADR 0020): it writes to `<vault>/projects/<slug>/_harness/` when a live
-    synced backend is active, else to device-local `<repo>/.harness/` (vault
-    absent, or a `.project-mode=local` opt-out). This MUST match where
-    `load_project_json` read from — both traverse the same seam — otherwise a
-    project could read one location and write the other, dropping keys that live
-    only in the read location (e.g. `github`/`env`). Returns the path written.
+    Routes through the dispatcher's `write_machine_file`, which is backend-aware
+    (ADR 0020): it writes to the project directory's `desk/` when a live synced
+    backend is active, else to device-local `<repo>/.harness/` (vault absent, or
+    a `.project-mode=local` opt-out). This MUST match where `load_project_json`
+    read from — both traverse the same seam — otherwise a project could read one
+    location and write the other, dropping keys that live only in the read
+    location (e.g. `github`/`env`). Returns the path written.
     """
     payload = json.dumps(config, indent=2, ensure_ascii=False) + "\n"
-    return hm.write_state_file(resolution, "project.json", payload)
+    return hm.write_machine_file(resolution, "project.json", payload)
 
 
 def register(

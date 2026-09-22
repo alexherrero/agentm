@@ -54,7 +54,8 @@ does anything else in this vault.
   except you, at the pass — and that holds however the card arrived, so a
   card you paste in by hand from a surface that cannot reach Drive is
   governed by exactly this rule and no other.
-- `scripts/health/results/**` and `_harness/archive/**` are frozen evidence.
+- `scripts/health/results/**` and a finished task's records (a `tasks/<name>/`
+  whose tracker reads `done`) are frozen evidence.
 - The daemon's MCP surface stays exactly two tools: search and capture.
 
 ## What guards a commit

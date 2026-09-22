@@ -2,20 +2,26 @@
 # verify-state-routing.sh — the backend × project-mode matrix + the never-demote
 # guard (R1.3 / agentmEngine#1).
 #
-# Matrix (real CLIs against a scratch vault + scratch device-local project):
-#   A. storage.backend resolves to `vault` (via $MEMORY_ROOT) → state lands
-#      at <vault>/desk/projects/<slug>/_harness/, never the repo-local .harness/.
+# Matrix (real CLIs against a scratch vault + scratch device-local project). In
+# each case a named plan is resolved the way /plan resolves it, its progress log
+# is seeded where the resolver points, and the kernel's append-progress writes
+# to it — so both the path and the kernel write are proven per mode:
+#   A. storage.backend resolves to `vault` (via $MEMORY_ROOT) → the plan is a
+#      task, <vault>/desk/projects/<slug>/tasks/NNN-<slug>/, never the repo-local
+#      .harness/; a bare call names no plan (exit 4). A2 does the same for the
+#      vault-root projects/ generation.
 #   B. `.harness/.project-mode=local` opts out even with a vault configured →
-#      state lands repo-local, proving the opt-out still wins over a synced backend.
-#   C. no backend configured at all (fresh device) → device-local default.
+#      the repo-local pair, proving the opt-out still wins over a synced backend.
+#   C. no backend configured at all (fresh device) → the repo-local pair.
 #
 # Never-demote (D): `storage.backend=vault` explicitly configured (in
 # .agentm-config.json, not just env) but the vault directory doesn't exist →
 # `harness_memory.vault_path()` raises `StorageBackendNotInstalledError`,
 # `resolve_project()` propagates it (agentmEngine#1: the pre-fix bug was a bare
 # `except Exception` here swallowing it and silently returning backend=None,
-# i.e. a silent demotion to device-local) — asserted via the real `write-state`
-# CLI: non-zero exit, no file ever lands at the device-local fallback path.
+# i.e. a silent demotion to device-local) — asserted via the real
+# `resolve-active-plan` and `append-progress` CLIs: non-zero exit, no
+# device-local path answered, nothing written at the device-local fallback.
 #
 # VERIFY_STATE_ROUTING_FAULT=1 additionally reproduces the PRE-FIX shape inline
 # (a local shadow of the old bare-except resolve_project(), never patching
@@ -76,7 +82,7 @@ SCRATCH="$(mktemp -d)"
 # default; phases needing distinct state override per-invocation.
 export AGENTM_STATE_DIR="$SCRATCH/engine-state"
 mkdir -p "$AGENTM_STATE_DIR"
-# The write-state cases take the vault mutex, whose lock directory sits under
+# The append-progress cases take the vault mutex, whose lock directory sits under
 # $XDG_CACHE_HOME/agentm/locks, ~/.cache by default. Left there, every run of
 # this gate left a hash-named directory per fixture vault in the operator's
 # own cache.
@@ -112,44 +118,62 @@ hm() { env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$FRESH_PRE
   HARNESS_MEMORY_TOOLKIT_PATH="$S" OBSIDIAN_VAULT_SCRIPTS="$SHIM" "$PY" "$HM" "$@"; }
 
 if [ "$FAULT" != "1" ]; then
-  # ── A. vault backend routes into <vault>/desk/projects/<slug>/_harness/ ─────────
-  V_VAULT="$SCRATCH/vault"; mkdir -p "$V_VAULT/desk/projects"
+  # route <label> <proj> <expect-plan> <expect-progress> <absent-path>
+  #   Resolve the named plan the way /plan does, seed its progress log at the
+  #   path the resolver named (the plugin writes files where agentm points),
+  #   then append through the kernel's append-progress: the resolved path and
+  #   the kernel write must both land where the mode says, and nothing lands at
+  #   <absent-path>.
+  route() {
+    local label="$1" proj="$2" want_plan="$3" want_progress="$4" absent="$5" line plan progress
+    line="$(hm resolve-active-plan --project-root "$proj" --plan verify-routing --with-tracker)"
+    plan="$(printf '%s' "$line" | cut -f1)"; progress="$(printf '%s' "$line" | cut -f2)"
+    assert_equals "$label: the plan resolves to $want_plan" "$plan" "$want_plan"
+    assert_equals "$label: the progress log resolves beside it" "$progress" "$want_progress"
+    # /plan writes the plan and opens its log; a task directory with no plan in
+    # it is not a task, and the resolver would place a new one past it.
+    mkdir -p "$(dirname "$plan")" "$(dirname "$progress")"
+    printf '%s' "$PLAN_BODY" > "$plan"
+    printf '%s\n' "2026-09-22 /plan — seeded" > "$progress"
+    printf '%s\n' "2026-09-22 /work — step one" | hm append-progress --project-root "$proj" \
+      --plan verify-routing >/dev/null
+    assert_contains "$label: the kernel's append lands in the resolved log" \
+      "$(cat "$progress" 2>/dev/null)" "/work — step one"
+    assert_absent "$label: nothing lands at $absent" "$absent"
+  }
+
+  # ── A. vault backend: every plan is a task in the project's vault directory ─
+  V_VAULT="$SCRATCH/vault"; mkdir -p "$V_VAULT/desk/projects/$SLUG"
   V_PROJ="$SCRATCH/proj-vault"; seed_project "$V_PROJ"
   MODE_ENV=("MEMORY_ROOT=$V_VAULT")
-  printf '%s' "$PLAN_BODY" | hm write-state --project-root "$V_PROJ" PLAN.md >/dev/null
-  assert_exists "A. vault backend: state lands in <vault>/desk/projects/<slug>/_harness/" \
-    "$V_VAULT/desk/projects/$SLUG/_harness/PLAN.md"
-  assert_absent "A. vault backend: repo-local .harness/ carries no kernel state" \
-    "$V_PROJ/.harness/PLAN.md"
+  V_TASK="$V_VAULT/desk/projects/$SLUG/tasks/001-verify-routing"
+  route "A. vault backend" "$V_PROJ" "$V_TASK/plan.md" "$V_TASK/progress.md" \
+    "$V_PROJ/.harness/progress-verify-routing.md"
+  BARE_RC=0; hm resolve-active-plan --project-root "$V_PROJ" >/dev/null 2>&1 || BARE_RC=$?
+  assert_equals "A. vault backend: a bare call names no plan (exit 4)" "$BARE_RC" "4"
 
   # ── A2. the vault-root projects/ generation (filing-v2 2b): a project that
   #        already lives beside the memory root resolves there, through a
-  #        sibling-rooted backend, and state lands in its own _harness/ ─────────
+  #        sibling-rooted backend, and its tasks sit in its own directory ─────
   R_ROOT="$SCRATCH/Vault"; R_VAULT="$R_ROOT/agent"; mkdir -p "$R_VAULT/memory" "$R_ROOT/projects/$SLUG" "$R_ROOT/.obsidian"
   R_PROJ="$SCRATCH/proj-root"; seed_project "$R_PROJ"
   MODE_ENV=("MEMORY_ROOT=$R_VAULT")
-  printf '%s' "$PLAN_BODY" | hm write-state --project-root "$R_PROJ" PLAN.md >/dev/null
-  assert_exists "A2. root generation: state lands in <vault-root>/projects/<slug>/_harness/" \
-    "$R_ROOT/projects/$SLUG/_harness/PLAN.md"
-  assert_absent "A2. root generation: nothing written under the memory root's desk/projects" \
-    "$R_VAULT/desk/projects/$SLUG/_harness/PLAN.md"
+  R_TASK="$R_ROOT/projects/$SLUG/tasks/001-verify-routing"
+  route "A2. root generation" "$R_PROJ" "$R_TASK/plan.md" "$R_TASK/progress.md" \
+    "$R_VAULT/desk/projects/$SLUG/tasks"
   MODE_ENV=("MEMORY_ROOT=$V_VAULT")
 
   # ── B. .project-mode=local opts out even with a vault configured ───────────
   L_PROJ="$SCRATCH/proj-local-override"; seed_project "$L_PROJ"
   echo "local" > "$L_PROJ/.harness/.project-mode"
-  printf '%s' "$PLAN_BODY" | hm write-state --project-root "$L_PROJ" PLAN.md >/dev/null
-  assert_exists "B. .project-mode=local: state lands repo-local despite vault configured" \
-    "$L_PROJ/.harness/PLAN.md"
-  assert_absent "B. .project-mode=local: nothing written under the vault for this project" \
-    "$V_VAULT/desk/projects/stateroutedemo-local/_harness/PLAN.md"
+  route "B. .project-mode=local" "$L_PROJ" "$L_PROJ/.harness/PLAN-verify-routing.md" \
+    "$L_PROJ/.harness/progress-verify-routing.md" "$V_VAULT/desk/projects/$SLUG/tasks/002-verify-routing"
 
   # ── C. no backend configured at all → device-local default ─────────────────
   N_PROJ="$SCRATCH/proj-none"; seed_project "$N_PROJ"
   MODE_ENV=()
-  printf '%s' "$PLAN_BODY" | hm write-state --project-root "$N_PROJ" PLAN.md >/dev/null
-  assert_exists "C. no backend configured: device-local default write lands" \
-    "$N_PROJ/.harness/PLAN.md"
+  route "C. no backend configured" "$N_PROJ" "$N_PROJ/.harness/PLAN-verify-routing.md" \
+    "$N_PROJ/.harness/progress-verify-routing.md" "$N_PROJ/tasks"
 fi
 
 # ── D. never-demote: explicit storage.backend=vault + broken vault path ────
@@ -164,14 +188,22 @@ json.dump({'storage.backend': 'vault', 'plugins.obsidian-vault.vault_path': '$D_
 D_PROJ="$SCRATCH/proj-broken"; seed_project "$D_PROJ"
 hm_broken() { env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$D_PREFIX" \
   HARNESS_MEMORY_TOOLKIT_PATH="$S" OBSIDIAN_VAULT_SCRIPTS="$SHIM" "$PY" "$HM" "$@"; }
-D_OUT="$(printf '%s' "$PLAN_BODY" | hm_broken write-state --project-root "$D_PROJ" PLAN.md 2>&1)"
+D_OUT="$(hm_broken resolve-active-plan --project-root "$D_PROJ" --plan verify-routing 2>&1)"
 D_RC=$?
-assert_equals   "D. never-demote: write-state exits non-zero on broken vault + explicit backend=vault" \
+assert_equals   "D. never-demote: resolve-active-plan exits non-zero on broken vault + explicit backend=vault" \
   "$([ "$D_RC" -ne 0 ] && echo yes || echo no)" "yes"
 assert_contains "D. never-demote: fail-loud message names the never-demote invariant" \
   "$D_OUT" "never silently demoting"
-assert_absent   "D. never-demote: no silent write ever lands at the device-local fallback" \
-  "$D_PROJ/.harness/PLAN.md"
+assert_equals   "D. never-demote: no device-local plan path is ever answered" \
+  "$(printf '%s' "$D_OUT" | grep -c "$D_PROJ/.harness/PLAN")" "0"
+printf '# seeded\n' > "$D_PROJ/.harness/progress-verify-routing.md"
+D_APPEND_RC=0
+printf 'x\n' | hm_broken append-progress --project-root "$D_PROJ" --plan verify-routing \
+  >/dev/null 2>&1 || D_APPEND_RC=$?
+assert_equals   "D. never-demote: append-progress exits non-zero too, and writes nothing locally" \
+  "$([ "$D_APPEND_RC" -ne 0 ] && echo yes || echo no)$(cat "$D_PROJ/.harness/progress-verify-routing.md")" \
+  "yes# seeded"
+
 
 if [ "$FAULT" = "1" ]; then
   # ── fixture-validation: the pre-fix bare-except shape really would demote ──

@@ -296,19 +296,25 @@ try {
         Remove-Item Env:\MEMORY_VAULT_PATH -ErrorAction SilentlyContinue
         Remove-Item Env:\MEMORY_ROOT -ErrorAction SilentlyContinue
         try {
-            '# smoke PLAN' | & $py.Source (Join-Path $HarnessRoot 'scripts/harness_memory.py') `
-                write-state --project-root $localProject 'PLAN.md' | Out-Null
-            if (-not (Test-Path -LiteralPath (Join-Path $localProject '.harness/PLAN.md'))) {
-                Write-Host 'FAIL: -LocalState write-state did not land repo-local at .harness/PLAN.md'
+            # A project with no vault keeps its plan pair in the repo's .harness/:
+            # the resolver names it there, and a progress append lands there.
+            $pair = & $py.Source (Join-Path $HarnessRoot 'scripts/harness_memory.py') `
+                resolve-active-plan --project-root $localProject
+            $planPath = ("$pair" -split "`t")[0]
+            if ([IO.Path]::GetFullPath($planPath) -ne [IO.Path]::GetFullPath((Join-Path $localProject '.harness/PLAN.md'))) {
+                Write-Host "FAIL: -LocalState resolve-active-plan did not name .harness/PLAN.md: got '$pair'"
                 exit 1
             }
-            $got = & $py.Source (Join-Path $HarnessRoot 'scripts/harness_memory.py') `
-                read-state --project-root $localProject 'PLAN.md'
-            if ($got.Trim() -ne '# smoke PLAN') {
-                Write-Host "FAIL: -LocalState read-state round-trip mismatch: got '$got'"
+            $log = Join-Path $localProject '.harness/progress.md'
+            [IO.File]::WriteAllText($log, "# smoke log`n")
+            'appended' | & $py.Source (Join-Path $HarnessRoot 'scripts/harness_memory.py') `
+                append-progress --project-root $localProject | Out-Null
+            $got = [IO.File]::ReadAllText($log) -replace "`r`n", "`n"
+            if ($got.TrimEnd() -ne "# smoke log`nappended") {
+                Write-Host "FAIL: -LocalState append-progress round-trip mismatch: got '$got'"
                 exit 1
             }
-            Write-Host '    repo-local write/read round-trip OK'
+            Write-Host '    repo-local resolve + append round-trip OK'
         } finally {
             if ($prevVault) { $env:MEMORY_VAULT_PATH = $prevVault }
             if ($prevRoot) { $env:MEMORY_ROOT = $prevRoot }

@@ -60,9 +60,18 @@ class TrackerGate(unittest.TestCase):
     def test_a_good_tracker_in_every_place_is_clean(self) -> None:
         self._put("tracker.md", tk.render(dataclasses.replace(GOOD, task=None)))
         self._put("tasks/build-it/tracker.md", tk.render(GOOD))
+        self.assertEqual(self._findings(), (2, []))
+
+    def test_a_tracker_in_a_returned_retired_directory_is_misplaced(self) -> None:
+        # agentm-vault plan 15: the flat pair's two tracker places retired with
+        # the per-project state directory, so a tracker in a copy that came back
+        # is reported like any other stray.
         self._put("_harness/tracker-build-it.md", tk.render(GOOD))
         self._put("_harness/tracker.md", tk.render(GOOD))
-        self.assertEqual(self._findings(), (4, []))
+        count, findings = self._findings()
+        self.assertEqual(count, 2)
+        self.assertEqual(len(findings), 2)
+        self.assertTrue(all("outside a tracker's place" in f for f in findings))
 
     def test_a_malformed_tracker_is_named(self) -> None:
         self._put("tasks/build-it/tracker.md", tk.render(GOOD).replace("status: queued", "status: complete"))
@@ -74,12 +83,12 @@ class TrackerGate(unittest.TestCase):
     def test_a_tracker_names_the_place_it_sits_in(self) -> None:
         self._put("tracker.md", tk.render(GOOD))  # a project tracker naming a task
         self._put("tasks/other/tracker.md", tk.render(GOOD))  # the wrong task
-        self._put("_harness/tracker-build-it.md", tk.render(dataclasses.replace(GOOD, project="elsewhere")))
+        self._put("tasks/build-it/tracker.md", tk.render(dataclasses.replace(GOOD, project="elsewhere")))
         _count, findings = self._findings()
         joined = "\n".join(findings)
         self.assertIn("demo/tracker.md: a project's own tracker names no task", joined)
         self.assertIn("demo/tasks/other/tracker.md: `task: build-it` is not the task it sits beside (`other`)", joined)
-        self.assertIn("demo/_harness/tracker-build-it.md: `project: elsewhere` is not the project it sits in", joined)
+        self.assertIn("demo/tasks/build-it/tracker.md: `project: elsewhere` is not the project it sits in", joined)
 
     def test_a_tracker_outside_its_place_is_reported(self) -> None:
         self._put("research/copied-tracker.md", tk.render(GOOD))

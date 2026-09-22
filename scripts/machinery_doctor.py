@@ -942,18 +942,16 @@ def project_json_configs(repo: Path, *, mem_root: Optional[Path] = None) -> list
         return found
     if mem_root is None:
         return found
-    # Filing-v2 2b: the vault-root `Projects/` sibling is the newest generation;
-    # probe it first, then the memory-root layout the constant names.
+    # Filing-v2 2b: the vault-root `projects/` sibling is the newest generation;
+    # probe it first, then the memory-root layout the constant names. A project
+    # keeps its machine files, `project.json` among them, in its own `desk/`
+    # (agentm-vault § Projects and tasks).
     import harness_memory as _hm_rs  # noqa: PLC0415 — the one root-space predicate
     candidates = []
     root_space = _hm_rs._root_projects_dir(Path(mem_root))
-    # When `_harness/` dissolves, a project's machine files move to its `desk/`
-    # (agentm-vault § Projects and tasks); both homes are read until then.
     if root_space is not None:
-        for home in ("_harness", "desk"):
-            candidates.append(root_space / slug / home / "project.json")
-    for home in ("_harness", "desk"):
-        candidates.append(Path(mem_root).joinpath(*projects_rel.split("/"), slug, home, "project.json"))
+        candidates.append(root_space / slug / "desk" / "project.json")
+    candidates.append(Path(mem_root).joinpath(*projects_rel.split("/"), slug, "desk", "project.json"))
     for vault_cfg in candidates:
         if vault_cfg.is_file():
             found.append((vault_cfg, "vault"))
@@ -962,13 +960,13 @@ def project_json_configs(repo: Path, *, mem_root: Optional[Path] = None) -> list
 
 
 # ── harness-dirs (agentm-vault plan 15) ─────────────────────────────────────
-# The name this row looks for. harness-deprecation: the row that catches a
-# directory that came back, so it must spell the one it refuses.
-_RETIRED_STATE_DIRNAME = "_harness"
+# The name this row looks for, spelled once: the row catches a directory that
+# came back, so it must name the one it refuses.
+_RETIRED_STATE_DIRNAME = "_harness"  # harness-deprecation: the directory this row refuses
 
 
 def _retired_state_dirs(projects_dir: Path) -> list:
-    """Every directory named `_harness` under the projects space, at any depth,
+    """Every directory named `_RETIRED_STATE_DIRNAME` under the projects space, at any depth,
     sorted. Hidden directories (`.git`, `.obsidian`, `.trash`) are not walked."""
     found = []
     for dirpath, dirs, _files in os.walk(projects_dir):
@@ -986,7 +984,7 @@ def _resolver_offenders(projects_dir: Path, backend) -> "tuple[list, int]":
     Every project directory under the projects space is asked twice over: once
     bare, which on a project that keeps its plans in tasks must refuse
     (`TaskNameRequired`, exit 4), and once per task directory, which must answer
-    that task's own files. An answer with a `_harness` component is an offender
+    that task's own files. An answer inside the retired directory is an offender
     — the resolver still composing the retired directory, whatever the disk
     holds. `backend` is a synced backend rooted where `projects/` resolves."""
     import harness_memory as hm  # noqa: PLC0415
@@ -1029,12 +1027,13 @@ def _vault_relative(path: Path, projects_dir: Path) -> str:
 
 
 def check_harness_dirs(*, projects_dir: Optional[Path] = None, backend=None) -> Check:
-    """Whether `_harness/` is gone from the projects space and stays gone.
+    """Whether the retired per-project state directory is gone from the
+    projects space and stays gone.
 
-    The projects migration dissolved every project's `_harness/`, and plan 15
+    The projects migration dissolved every project's state directory, and plan 15
     retired the code that read or wrote one. A reader that composes the
     directory fails soft once it is gone, so the code gate catches the literal;
-    this row catches the rest. It fails on any directory named `_harness`
+    this row catches the rest. It fails on any directory with the retired name
     anywhere under `projects/` — a writer or a charter that brought it back,
     the way the overnight job's handoff pack did seventeen hours after the move
     — and on a resolver whose answer for any project still names one.
@@ -1067,16 +1066,16 @@ def check_harness_dirs(*, projects_dir: Optional[Path] = None, backend=None) -> 
     if found:
         shown = ", ".join(_vault_relative(p, projects_dir) for p in found[:3])
         more = f" and {len(found) - 3} more" if len(found) > 3 else ""
-        problems.append(f"{len(found)} `_harness/` director{'y' if len(found) == 1 else 'ies'} "
+        problems.append(f"{len(found)} `{_RETIRED_STATE_DIRNAME}/` director{'y' if len(found) == 1 else 'ies'} "
                         f"under projects/: {shown}{more}")
     if offenders:
         more = f" and {len(offenders) - 3} more" if len(offenders) > 3 else ""
-        problems.append(f"the resolver answers `_harness/` for {'; '.join(offenders[:3])}{more}")
+        problems.append(f"the resolver answers `{_RETIRED_STATE_DIRNAME}/` for {'; '.join(offenders[:3])}{more}")
     if problems:
         return Check(name, "FAIL", " · ".join(problems)
                      + " — a project's state root is its own directory (`tasks/`, `desk/`)")
     projects = sum(1 for p in projects_dir.iterdir() if p.is_dir() and not p.name.startswith("."))
-    return Check(name, "OK", f"no `_harness/` under {projects_dir} ({projects} projects); the resolver "
+    return Check(name, "OK", f"no `{_RETIRED_STATE_DIRNAME}/` under {projects_dir} ({projects} projects); the resolver "
                              f"answers every project from its skeleton ({checked} answers checked)")
 
 

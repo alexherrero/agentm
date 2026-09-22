@@ -24,9 +24,9 @@ import (
 //	                      or else its charter's What line, under what the
 //	                      space is for, which `projects/index.md` used to say
 //
-// A task is a tracker: `tasks/<task>/tracker.md`, or `tracker-<task>.md` beside
-// a flat plan pair in `_harness/` until the migration moves it. A record is
-// dated by its `created`, so the night's enrichment, which stamps `updated`,
+// A task is a tracker, `tasks/<task>/tracker.md`: the only place a project
+// keeps one since the per-project state directory retired (agentm-vault plan
+// 15). A record is dated by its `created`, so the night's enrichment, which stamps `updated`,
 // never reorders a map. A page carries its newest input's date as `updated`, so
 // a regeneration over unchanged inputs is byte-identical and writes nothing, and
 // `created` survives. A map of nothing is not written, and nothing here
@@ -208,9 +208,7 @@ func readProjectTask(vault, project, path, task string) (projectTask, bool) {
 		Link: projLink(vault, path, title)}, true
 }
 
-// projectTasks reads a project's trackers in both layouts: a task directory's
-// `tracker.md`, and `tracker-<task>.md` or the singleton `tracker.md` beside a
-// flat plan pair in `_harness/`.
+// projectTasks reads a project's trackers: each task directory's `tracker.md`.
 func projectTasks(vault, project, dir string) []projectTask {
 	var out []projectTask
 	if entries, err := os.ReadDir(filepath.Join(dir, "tasks")); err == nil {
@@ -220,25 +218,6 @@ func projectTasks(vault, project, dir string) []projectTask {
 			}
 			path := filepath.Join(dir, "tasks", e.Name(), "tracker.md")
 			if t, ok := readProjectTask(vault, project, path, e.Name()); ok {
-				out = append(out, t)
-			}
-		}
-	}
-	if entries, err := os.ReadDir(filepath.Join(dir, "_harness")); err == nil {
-		for _, e := range entries {
-			name := e.Name()
-			if e.IsDir() || !strings.HasSuffix(name, ".md") {
-				continue
-			}
-			task := ""
-			switch {
-			case strings.HasPrefix(name, "tracker-"):
-				task = strings.TrimSuffix(strings.TrimPrefix(name, "tracker-"), ".md")
-			case name == "tracker.md":
-			default:
-				continue
-			}
-			if t, ok := readProjectTask(vault, project, filepath.Join(dir, "_harness", name), task); ok {
 				out = append(out, t)
 			}
 		}

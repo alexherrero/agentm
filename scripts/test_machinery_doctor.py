@@ -852,9 +852,11 @@ class HarnessDirsRowTests(unittest.TestCase):
             c = self._check(vault, backend)
             self.assertEqual(c.status, "FAIL", c.detail)
             self.assertIn("projects/alpha/_harness", c.detail)
-            # The directory's return is also what flips a bare call back to
-            # the retired singleton — the live defect the row exists for.
-            self.assertIn("alpha (bare call", c.detail)
+            # Until plan 15's task 2 the directory's return also flipped a bare
+            # call back to the retired singleton — the live defect of
+            # 2026-09-22. The resolver no longer consults the disk, so only the
+            # directory half fires now.
+            self.assertNotIn("the resolver answers", c.detail)
 
     def test_a_harness_directory_at_any_depth_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

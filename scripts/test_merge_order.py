@@ -31,7 +31,7 @@ import merge_order as mo  # noqa: E402
 
 
 def _make_harness(slugs_config: dict) -> Path:
-    """Create a temporary _harness with the plans described by *slugs_config*.
+    """Create a temporary repo-local .harness with the plans described by *slugs_config*.
 
     ``slugs_config`` maps slug → dict with optional keys:
         done: bool   (default False) — all tasks checked
@@ -39,7 +39,7 @@ def _make_harness(slugs_config: dict) -> Path:
     Returns the harness dir path; caller must clean up.
     """
     tmp = tempfile.mkdtemp(prefix="agentm-mo-")
-    h = Path(tmp) / "_harness"
+    h = Path(tmp) / ".harness"
     h.mkdir(parents=True)
 
     for slug, cfg in slugs_config.items():
@@ -150,7 +150,7 @@ class TestCycleDetection(unittest.TestCase):
     def setUp(self) -> None:
         # Manually construct a cycle: a → b → a.
         self._tmp = tempfile.mkdtemp(prefix="agentm-mo-cycle-")
-        self._h = Path(self._tmp) / "_harness"
+        self._h = Path(self._tmp) / ".harness"
         self._h.mkdir()
 
     def tearDown(self) -> None:
@@ -172,7 +172,7 @@ class TestCycleDetection(unittest.TestCase):
 class TestEmptyHarness(unittest.TestCase):
     def test_empty_returns_empty(self) -> None:
         with tempfile.TemporaryDirectory(prefix="agentm-mo-empty-") as d:
-            h = Path(d) / "_harness"
+            h = Path(d) / ".harness"
             h.mkdir()
             order = mo.build_merge_order(h, use_git=False)
             self.assertEqual(order, [])
@@ -201,6 +201,55 @@ class TestDepChain(unittest.TestCase):
         r1 = mo.build_merge_order(self._h, use_git=False)
         r2 = mo.build_merge_order(self._h, use_git=False)
         self.assertEqual(r1, r2)
+
+
+def _task_fixture(project: Path, name: str, status: str, *, steps=(0, 0),
+                  depends_on=(), touches=(), plan_status=None) -> Path:
+    """One task in the vault layout (agentm-vault plan 15): `tasks/<name>/` with
+    a plan, and a tracker carrying `status`. `plan_status` writes the retired
+    `**Status:**` line into the plan, to prove the tracker wins over it."""
+    import tracker as tk
+    task = project / "tasks" / name
+    task.mkdir(parents=True)
+    fm = ""
+    if depends_on or touches:
+        fm = "---\n"
+        if depends_on:
+            fm += f"depends_on: [{', '.join(depends_on)}]\n"
+        if touches:
+            fm += f"touches: [{', '.join(touches)}]\n"
+        fm += "---\n"
+    body = f"{fm}# Plan: {name}\n\n" + (f"**Status:** {plan_status}\n" if plan_status else "")
+    done, total = steps
+    for i in range(1, total + 1):
+        body += f"\n### {i}. Step {i}\n- [{'x' if i <= done else ' '}]\n"
+    (task / "plan.md").write_text(body, encoding="utf-8")
+    if status is not None:
+        t = tk.Tracker(title=name, project="fixture", task=name, status=status,
+                       opened="2026-09-01", updated="2026-09-20",
+                       closed="2026-09-02" if status in tk.FINAL else None)
+        (task / "tracker.md").write_text(tk.render(t), encoding="utf-8")
+    return task
+
+
+class TestTaskLayout(unittest.TestCase):
+    """Merge order follows the tracker (agentm-vault plan 15): a task whose
+    tracker is done has landed, so only an unclosed task with every step
+    checked is waiting to merge."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.mkdtemp(prefix="agentm-mo-tasks-")
+        self.project = Path(self._tmp) / "projects" / "fixture"
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_a_closed_task_is_not_waiting_to_merge(self) -> None:
+        _task_fixture(self.project, "001-shipped", "done", steps=(3, 3))
+        _task_fixture(self.project, "002-ready", "active", steps=(2, 2))
+        _task_fixture(self.project, "003-underway", "active", steps=(1, 2))
+        order = [e["slug"] for e in mo.build_merge_order(self.project, use_git=False)]
+        self.assertEqual(order, ["002-ready"])
 
 
 if __name__ == "__main__":

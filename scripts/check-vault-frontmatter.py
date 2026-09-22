@@ -5,9 +5,9 @@ Nothing in the stack parsed frontmatter strictly before this gate. The two vault
 linters (`frontmatter_validator.py`, `vault_lint.py`) are stdlib-only by design —
 they split `key: value` on the first colon and never parse, so a syntax error is
 invisible to them: they read the value wrong and report nothing. Both also carry
-an `_EXCLUDE_DIRS` frozenset containing `_harness`, which is where the design and
-handoff memos live — the notes most likely to break, because their `status:` and
-`inputs:` fields carry long prose. The Go daemon has no YAML dependency at all;
+an `_EXCLUDE_DIRS` frozenset that held the per-project state directory, where the
+design and handoff memos lived then — the notes most likely to break, because
+their `status:` and `inputs:` fields carry long prose. The Go daemon has no YAML dependency at all;
 `splitFrontmatter` is a regex split. Nine notes carried unparseable frontmatter
 for up to two months under fully green CI, and surfaced only when
 `alias_backfill.py` refused to write them.
@@ -52,7 +52,7 @@ exported (the export names the memory root, and the configured
 
 The vault root, not the memory root. From 2026-08-09 to 2026-09-20 this gate
 scanned `memory_root()`, pinned there while the agent's tree still held
-`projects/<slug>/_harness/`. The vault then grew around the pin: filing v2
+each project's state directory. The vault then grew around the pin: filing v2
 moved `projects/` up beside `agent/`, the always-load notes left for a new
 vault-root `standards/`, and `calendar/` was created there. The scan shrank
 without a word, from 96% of the vault's notes on 2026-08-11 to 15% (446 of
@@ -115,7 +115,7 @@ _NULL_SPELLINGS = frozenset({"null", "Null", "NULL", "~"})
 # anchored, or tagged. Truncation cannot apply, so the scanner skips it.
 _NON_PLAIN_PREFIXES = ('"', "'", "|", ">", "[", "{", "&", "*", "!")
 
-# Directories pruned from the walk. Dot-directories only — `_harness`, `_inbox`,
+# Directories pruned from the walk. Dot-directories only — `tasks/`, `_inbox`,
 # `_archive` and the rest of the underscore namespace are scanned on purpose.
 _SKIP_DIR_PREFIXES = (".",)
 
@@ -507,8 +507,8 @@ def resolve_vault(explicit: str | None) -> Path | None:
 # is hand-written — counted off the fixture body by hand, never recomputed from
 # the scanner's own offsets, which is the only way it can catch an off-by-one in
 # them. `None` marks a whole-block finding, which carries no line. Paths put the
-# two hardest cases under `_harness/`, the directory both existing linters
-# exclude — a scanner that inherited `_EXCLUDE_DIRS` fails here.
+# two hardest cases in a task directory, which both existing linters exclude —
+# a scanner that inherited `_EXCLUDE_DIRS` fails here.
 _FIXTURES: list[tuple[str, str, list[tuple[str, int | None]]]] = [
     (
         "memory/clean.md",
@@ -516,13 +516,13 @@ _FIXTURES: list[tuple[str, str, list[tuple[str, int | None]]]] = [
         [],
     ),
     (
-        "desk/projects/agentm/_harness/designs/parse-error.md",
+        "desk/projects/agentm/tasks/042-design-it/parse-error.md",
         "---\nstatus: rendered 2026-07-06: the judgment layer for the re-audit\n"
         "kind: design\n---\n\nAn unquoted scalar holding a colon-space.\n",
         [("parse-error", None)],
     ),
     (
-        "desk/projects/agentm/_harness/designs/truncated.md",
+        "desk/projects/agentm/tasks/042-design-it/truncated.md",
         # `prd:` is file line 3 — fence, kind, prd.
         "---\nkind: design\nprd: <none, codified from ROADMAP item #13 plus the "
         "predecessor>\n---\n\nThe value ends at the issue reference.\n",

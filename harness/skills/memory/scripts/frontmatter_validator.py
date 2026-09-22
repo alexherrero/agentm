@@ -115,7 +115,7 @@ LEGACY_EQUIVALENTS = {"captured": "created"}
 # carry non-memory-entry content (harness state, dev-loop infra, staging
 # areas, retired entries, opinion-supplement lanes) that was never meant to
 # satisfy the universal frontmatter contract. Without this, e.g.
-# projects/<repo>/_harness/PLAN.md (plain harness state, no frontmatter at
+# projects/<repo>/tasks/<task>/plan.md (plain plan state, no frontmatter at
 # all) or a personal/_opinions/ lane entry (bespoke shape — no
 # `updated`/`tags`/`group`) floods every check-vault run with false
 # violations. A deliberate standalone copy, not an import (same-dir
@@ -124,10 +124,10 @@ _EXCLUDE_DIRS = frozenset(
     # NOTE: matched per path SEGMENT, so this holds the last component of the
     # scratch space ("scratch"), not its "desk/scratch" spelling — a
     # two-segment entry here silently matches nothing.
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "scratch", "_archive",
+    {"_idea-incubator", "_meta", "_inbox", "scratch", "_archive",
      "_opinions", "_crystallize-staging",
-     # A project's session-owned plan, progress and tracker, once `_harness/`
-     # dissolves into `tasks/<slug>/` (agentm-vault plan 09).
+     # A project's session-owned plan, progress and tracker, in
+     # `tasks/<slug>/` (agentm-vault plans 09 and 15).
      "tasks"}
 )
 

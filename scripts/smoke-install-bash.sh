@@ -278,21 +278,25 @@ print("    state_mode:local OK")
 PY
 
 printf '{"vault_project": "smokedemo"}\n' > "$LOCAL_PROJECT/.harness/project.json"
-echo "# smoke PLAN" | env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_PREFIX" \
-  python3 "$HARNESS_ROOT/scripts/harness_memory.py" write-state \
-  --project-root "$LOCAL_PROJECT" PLAN.md > /dev/null
-if [[ ! -f "$LOCAL_PROJECT/.harness/PLAN.md" ]]; then
-  echo "FAIL: --local-state write-state did not land repo-local at .harness/PLAN.md" >&2
+# A project with no vault keeps its plan pair in the repo's .harness/: the
+# resolver names it there, and a progress append lands there.
+PAIR="$(env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_PREFIX" \
+  python3 "$HARNESS_ROOT/scripts/harness_memory.py" resolve-active-plan \
+  --project-root "$LOCAL_PROJECT")"
+if [[ "${PAIR%%$'\t'*}" != "$LOCAL_PROJECT/.harness/PLAN.md" ]]; then
+  echo "FAIL: --local-state resolve-active-plan did not name .harness/PLAN.md: got '$PAIR'" >&2
   exit 1
 fi
-GOT="$(env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_PREFIX" \
-  python3 "$HARNESS_ROOT/scripts/harness_memory.py" read-state \
-  --project-root "$LOCAL_PROJECT" PLAN.md)"
-if [[ "$GOT" != "# smoke PLAN" ]]; then
-  echo "FAIL: --local-state read-state round-trip mismatch: got '$GOT'" >&2
+printf '# smoke log\n' > "$LOCAL_PROJECT/.harness/progress.md"
+echo "appended" | env -u MEMORY_ROOT -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_PREFIX" \
+  python3 "$HARNESS_ROOT/scripts/harness_memory.py" append-progress \
+  --project-root "$LOCAL_PROJECT" > /dev/null
+GOT="$(cat "$LOCAL_PROJECT/.harness/progress.md")"
+if [[ "$GOT" != $'# smoke log\nappended' ]]; then
+  echo "FAIL: --local-state append-progress round-trip mismatch: got '$GOT'" >&2
   exit 1
 fi
-echo "    repo-local write/read round-trip OK"
+echo "    repo-local resolve + append round-trip OK"
 
 # ── retired flags fail loudly rather than being ignored ─────────────────────
 echo "==> retired flags are rejected"

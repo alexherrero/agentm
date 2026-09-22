@@ -38,11 +38,11 @@ def _make_harness(
     queued: dict | None = None,
     active: dict | None = None,
 ) -> Path:
-    """Build a minimal _harness/ fixture and return its path.
+    """Build a minimal repo-local .harness/ fixture and return its path.
 
     *queued* and *active* are dicts mapping slug → plan-text.
     """
-    h = Path(tmp) / "_harness"
+    h = Path(tmp) / ".harness"
     qd = h / "queued-plans"
     qd.mkdir(parents=True)
 
@@ -228,13 +228,69 @@ class TestDeterminism(unittest.TestCase):
 class TestEmptyDir(unittest.TestCase):
     def test_empty_returns_empty_report(self) -> None:
         with tempfile.TemporaryDirectory(prefix="agentm-rd-empty-") as tmp:
-            h = Path(tmp) / "_harness"
+            h = Path(tmp) / ".harness"
             h.mkdir()
             report = rd.build_readiness(h)
             self.assertEqual(report["ready"], [])
             self.assertEqual(report["safe_together"], [])
             self.assertEqual(report["held_back"], [])
             self.assertEqual(report["degrade_warnings"], [])
+
+
+def _task_fixture(project: Path, name: str, status: str, *, steps=(0, 0),
+                  depends_on=(), touches=(), plan_status=None) -> Path:
+    """One task in the vault layout (agentm-vault plan 15): `tasks/<name>/` with
+    a plan, and a tracker carrying `status`. `plan_status` writes the retired
+    `**Status:**` line into the plan, to prove the tracker wins over it."""
+    import tracker as tk
+    task = project / "tasks" / name
+    task.mkdir(parents=True)
+    fm = ""
+    if depends_on or touches:
+        fm = "---\n"
+        if depends_on:
+            fm += f"depends_on: [{', '.join(depends_on)}]\n"
+        if touches:
+            fm += f"touches: [{', '.join(touches)}]\n"
+        fm += "---\n"
+    body = f"{fm}# Plan: {name}\n\n" + (f"**Status:** {plan_status}\n" if plan_status else "")
+    done, total = steps
+    for i in range(1, total + 1):
+        body += f"\n### {i}. Step {i}\n- [{'x' if i <= done else ' '}]\n"
+    (task / "plan.md").write_text(body, encoding="utf-8")
+    if status is not None:
+        t = tk.Tracker(title=name, project="fixture", task=name, status=status,
+                       opened="2026-09-01", updated="2026-09-20",
+                       closed="2026-09-02" if status in tk.FINAL else None)
+        (task / "tracker.md").write_text(tk.render(t), encoding="utf-8")
+    return task
+
+
+class TestTaskLayout(unittest.TestCase):
+    """Readiness follows the tracker (agentm-vault plan 15): a queued task is the
+    one waiting, and a dependency on a done task is met."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.mkdtemp(prefix="agentm-rd-tasks-")
+        self.project = Path(self._tmp) / "projects" / "fixture"
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_a_dependency_on_a_done_task_is_met_and_on_an_active_one_is_not(self) -> None:
+        _task_fixture(self.project, "001-lay-the-base", "done")
+        _task_fixture(self.project, "002-build-on-it", "active")
+        _task_fixture(self.project, "003-next", "queued", depends_on=["001-lay-the-base"],
+                      touches=["src/a/**"])
+        _task_fixture(self.project, "004-later", "queued", depends_on=["002-build-on-it"],
+                      touches=["src/b/**"])
+        report = rd.build_readiness(self.project)
+        self.assertIn("003-next", report["ready"])
+        held = {h["slug"]: h["reason"] for h in report["held_back"]}
+        self.assertIn("002-build-on-it", held["004-later"])
+        # Neither the finished nor the active task is treated as waiting.
+        self.assertNotIn("001-lay-the-base", report["ready"] + list(held))
+        self.assertNotIn("002-build-on-it", report["ready"] + list(held))
 
 
 if __name__ == "__main__":

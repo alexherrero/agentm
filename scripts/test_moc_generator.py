@@ -84,10 +84,10 @@ class TestBuildArcGroups(unittest.TestCase):
             slugs = [fm["slug"] for _rel, _created, fm in groups[("agentm", "wave-a")]]
             self.assertEqual(slugs, ["new", "old"])
 
-    def test_excludes_harness_and_archive_dirs(self):
+    def test_excludes_tasks_and_archive_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_project_note(vault / "desk/projects" / "agentm" / "_harness" / "a.md", "wave-a", "2026-07-01")
+            _write_project_note(vault / "desk/projects" / "agentm" / "tasks" / "001-build-it" / "a.md", "wave-a", "2026-07-01")
             _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "_archive" / "b.md", "wave-a", "2026-07-01")
             self.assertEqual(mg.build_arc_groups(vault), {})
 

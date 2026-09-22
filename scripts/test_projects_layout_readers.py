@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""The `_harness` readers in both layouts (agentm-vault plan 09, task 5).
+"""The plan-state readers in the task layout (agentm-vault plans 09 and 15).
 
-Until the migration moves every flat pair into `tasks/<slug>/`, each live reader
-of plan state accepts both: the plan listing, the queue dashboard, the plan
-graph, the doctor's `project.json` lookup, the session-start hook's plan block
-(bash and PowerShell), and the exclusion rules that keep plan state out of the
-memory linters, dreaming and the maps.
+A project's state root is its own vault directory: its plans are the tasks under
+`tasks/`, its machine files sit in `desk/`. Each live reader resolves from that
+skeleton alone: the plan listing, the queue dashboard, the plan graph, the
+doctor's `project.json` lookup, the session-start hook's plan block (bash and
+PowerShell), and the exclusion rules that keep plan state out of the memory
+linters, dreaming and the maps. A flat pair in a stray copy of the retired state
+directory is never read; the flat pair lives only in a repo-local `.harness/`,
+for a project with no vault.
 
 Run directly:
 
@@ -43,6 +46,9 @@ import tracker as tk  # noqa: E402
 import vault_lint as vl  # noqa: E402
 
 _HOOK_DIR = _REPO / "harness" / "hooks" / "harness-context-session-start"
+# The retired per-project state directory, spelled once: the tests below build a
+# stray copy of it on purpose, to prove no reader looks inside.
+_RETIRED = "_harness"
 
 
 def _write(path: Path, text: str) -> None:
@@ -55,12 +61,16 @@ class _Project(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp(prefix="agentm-layouts-"))
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.project = self.root / "projects" / "demo"
-        self.harness = self.project / "_harness"
-        self.harness.mkdir(parents=True)
+        self.project.mkdir(parents=True)
+        self.local = self.root / "repo" / ".harness"
 
-    def _flat(self, slug: str, status: str = "planning") -> None:
-        _write(self.harness / f"PLAN-{slug}.md", f"# Plan: {slug}\n\n**Status:** {status}\n\n- [x] one\n")
-        _write(self.harness / f"progress-{slug}.md", f"2026-09-12 10:00 /work — {slug} flat\n")
+    def _stray_flat(self, slug: str) -> None:
+        _write(self.project / _RETIRED / f"PLAN-{slug}.md", f"# Plan: {slug}\n\n**Status:** planning\n")
+        _write(self.project / _RETIRED / f"progress-{slug}.md", f"2026-09-12 10:00 /work — {slug} flat\n")
+
+    def _local_flat(self, slug: str, status: str = "planning") -> None:
+        _write(self.local / f"PLAN-{slug}.md", f"# Plan: {slug}\n\n**Status:** {status}\n\n- [x] one\n")
+        _write(self.local / f"progress-{slug}.md", f"2026-09-12 10:00 /work — {slug} flat\n")
 
     def _task(self, slug: str, status: str = "in-progress") -> Path:
         task = self.project / "tasks" / slug
@@ -70,24 +80,17 @@ class _Project(unittest.TestCase):
 
 
 class TheListing(_Project):
-    def test_both_layouts_are_listed(self) -> None:
-        self._flat("foo")
-        self._task("bar")
-        names = [p.relative_to(self.project).as_posix() for p in hm.list_plan_files(self.harness)]
-        self.assertEqual(names, ["_harness/PLAN-foo.md", "tasks/bar/plan.md"])
-
-    def test_the_tasks_are_listed_once_the_harness_directory_is_gone(self) -> None:
-        # What the projects migration leaves: `tasks/` with no `_harness/` beside
-        # it. The listing is composed against a path that no longer exists, and
-        # its globs have to be safe on one — the CLI gated on `is_dir()` and so
-        # returned nothing at all on a migrated project, which left `/orient`
-        # with no plans to show (2026-09-16).
+    def test_the_tasks_are_listed_from_the_project_directory(self) -> None:
         self._task("bar")
         self._task("baz")
-        shutil.rmtree(self.harness)
-        self.assertFalse(self.harness.exists())
-        names = [p.relative_to(self.project).as_posix() for p in hm.list_plan_files(self.harness)]
+        names = [p.relative_to(self.project).as_posix() for p in hm.list_plan_files(self.project)]
         self.assertEqual(names, ["tasks/bar/plan.md", "tasks/baz/plan.md"])
+
+    def test_a_stray_flat_pair_is_not_listed(self) -> None:
+        self._stray_flat("foo")
+        self._task("bar")
+        names = [p.relative_to(self.project).as_posix() for p in hm.list_plan_files(self.project)]
+        self.assertEqual(names, ["tasks/bar/plan.md"])
 
     def test_a_device_local_harness_does_not_read_the_repos_tasks(self) -> None:
         repo = self.root / "repo"
@@ -97,7 +100,7 @@ class TheListing(_Project):
 
 
 class TheListPlansVerb(unittest.TestCase):
-    """`harness_memory.py list-plans` on a migrated project: open tasks only.
+    """`harness_memory.py list-plans` on a project in the vault: open tasks only.
 
     A finished plan used to leave the listing by moving into `archive/`; a task
     never moves, so its tracker is what says it is over. Before this the verb
@@ -114,7 +117,7 @@ class TheListPlansVerb(unittest.TestCase):
         self.repo = self.root / "repo"
         (self.repo / ".harness").mkdir(parents=True)
         self.tasks = self.vault / "projects" / "demo" / "tasks"
-        self.tasks.mkdir(parents=True)  # migrated: tasks/ and no _harness/
+        self.tasks.mkdir(parents=True)
         self.resolution = {
             "backend": VaultBackend(root=self.vault, lock_root=self.root / "locks"),
             "project_locator": Locator("projects/demo"),
@@ -166,19 +169,21 @@ class TheListPlansVerb(unittest.TestCase):
         # verb leaves it out.
         self._task("001-ship-it", "done")
         self._task("002-build-it", "active")
-        harness = self.tasks.parent / "_harness"
-        names = [p.parent.name for p in hm.list_plan_files(harness)]
+        names = [p.parent.name for p in hm.list_plan_files(self.tasks.parent)]
         self.assertEqual(names, ["001-ship-it", "002-build-it"])
+
+    def test_a_stray_flat_pair_beside_the_tasks_is_not_listed(self) -> None:
+        self._task("001-build-it", "active")
+        _write(self.tasks.parent / _RETIRED / "PLAN-stray.md", "# a stray plan\n")
+        self.assertEqual(self._listed(), ["001-build-it"])
 
 
 class TheQueueDashboard(_Project):
-    def test_rows_in_both_layouts(self) -> None:
-        self._flat("foo", "planning")
+    def test_a_task_row_falls_back_to_its_status_line_without_a_tracker(self) -> None:
         self._task("bar", "in-progress")
         rows = [(r.plan_name, r.status, r.progress_name, r.progress_head)
-                for r in qsl.collect_plan_statuses(self.harness)]
+                for r in qsl.collect_plan_statuses(self.project)]
         self.assertEqual(rows, [
-            ("PLAN-foo.md", "planning", "progress-foo.md", "2026-09-12 10:00 /work — foo flat"),
             ("tasks/bar/plan.md", "in-progress", "tasks/bar/progress.md", "2026-09-12 11:00 /work — bar task"),
         ])
 
@@ -186,20 +191,33 @@ class TheQueueDashboard(_Project):
         task = self._task("bar", "in-progress")
         t = tk.new(title="Bar", project="demo", task="bar", objective="Done.", next_step="Start.", today="2026-09-12")
         tk.write(task / "tracker.md", t)
-        (row,) = qsl.collect_plan_statuses(self.harness)
+        (row,) = qsl.collect_plan_statuses(self.project)
         self.assertEqual(row.status, "queued")
+
+    def test_a_repo_local_pair_has_its_own_rows(self) -> None:
+        self._local_flat("foo", "planning")
+        rows = [(r.plan_name, r.status, r.progress_name, r.progress_head)
+                for r in qsl.collect_plan_statuses(self.local)]
+        self.assertEqual(rows, [
+            ("PLAN-foo.md", "planning", "progress-foo.md", "2026-09-12 10:00 /work — foo flat"),
+        ])
 
 
 class ThePlanGraph(_Project):
-    def test_both_layouts_build_the_same_fields(self) -> None:
-        self._flat("foo")
+    def test_a_task_builds_its_fields_from_its_own_directory(self) -> None:
+        self._stray_flat("foo")
         self._task("bar")
-        plans = {p.slug: p for p in pg.build_plan_graph(self.harness)}
-        self.assertEqual(set(plans), {"foo", "bar"})
+        plans = {p.slug: p for p in pg.build_plan_graph(self.project)}
+        self.assertEqual(set(plans), {"bar"})
         self.assertEqual(plans["bar"].filename, "tasks/bar/plan.md")
         self.assertEqual((plans["bar"].tasks_done, plans["bar"].tasks_total), (1, 2))
         self.assertIsNotNone(plans["bar"].last_touched, "the progress log beside the task was not read")
-        self.assertEqual([p.slug for p in pg.build_plan_graph(self.harness)], ["foo", "bar"])
+
+    def test_a_repo_local_pair_builds_the_same_fields(self) -> None:
+        self._local_flat("foo")
+        (plan,) = pg.build_plan_graph(self.local)
+        self.assertEqual((plan.slug, plan.filename, plan.status), ("foo", "PLAN-foo.md", "planning"))
+        self.assertIsNotNone(plan.last_touched)
 
 
 class TheExclusionRules(unittest.TestCase):
@@ -229,7 +247,7 @@ class TheExclusionRules(unittest.TestCase):
 
 
 class TheDoctorsProjectJson(unittest.TestCase):
-    def test_the_desk_home_is_read_when_harness_is_gone(self) -> None:
+    def test_the_desk_home_is_read_and_a_stray_retired_copy_is_not(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo = root / "repo"
@@ -237,12 +255,11 @@ class TheDoctorsProjectJson(unittest.TestCase):
             mem = root / "mem"
             desk_cfg = mem / "desk" / "projects" / "demo" / "desk" / "project.json"
             _write(desk_cfg, json.dumps({"vault_project": "demo"}))
+            stray_cfg = mem / "desk" / "projects" / "demo" / _RETIRED / "project.json"
+            _write(stray_cfg, json.dumps({"vault_project": "demo"}))
             found = [(p.resolve(), label) for p, label in md.project_json_configs(repo, mem_root=mem)]
             self.assertIn((desk_cfg.resolve(), "vault"), found)
-            harness_cfg = mem / "desk" / "projects" / "demo" / "_harness" / "project.json"
-            _write(harness_cfg, json.dumps({"vault_project": "demo"}))
-            found = [(p.resolve(), label) for p, label in md.project_json_configs(repo, mem_root=mem)]
-            self.assertIn((harness_cfg.resolve(), "vault"), found, "the `_harness/` home still comes first")
+            self.assertNotIn(stray_cfg.resolve(), [p for p, _label in found])
 
 
 class _HookStub(unittest.TestCase):
@@ -273,17 +290,18 @@ class _HookStub(unittest.TestCase):
         raise NotImplementedError
 
     def test_a_task_plan_is_labelled_and_binds(self) -> None:
-        self._listing("/v/projects/demo/_harness/PLAN-foo.md", "/v/projects/demo/tasks/bar/plan.md", "active-binding=bar")
+        self._listing("/v/projects/demo/tasks/foo/plan.md", "/v/projects/demo/tasks/bar/plan.md", "active-binding=bar")
         out = self._run().stdout
         self.assertIn("Named-plan mode", out)
         self.assertRegex(out, r"\n  tasks/bar +/v/projects/demo/tasks/bar/plan\.md\n")
         self.assertIn("Active plan (.harness/active-plan -> bar): /v/projects/demo/tasks/bar/plan.md", out)
         self.assertNotIn("DANGLING", out)
 
-    def test_a_flat_binding_still_binds(self) -> None:
-        self._listing("/v/projects/demo/_harness/PLAN-foo.md", "/v/projects/demo/tasks/bar/plan.md", "active-binding=foo")
+    def test_a_repo_local_binding_still_binds(self) -> None:
+        # A project with no vault keeps its named plans in the repo's .harness/.
+        self._listing("/r/repo/.harness/PLAN-foo.md", "/r/repo/.harness/PLAN-bar.md", "active-binding=foo")
         out = self._run().stdout
-        self.assertIn("Active plan (.harness/active-plan -> foo): /v/projects/demo/_harness/PLAN-foo.md", out)
+        self.assertIn("Active plan (.harness/active-plan -> foo): /r/repo/.harness/PLAN-foo.md", out)
 
     def test_a_binding_to_neither_layout_is_dangling(self) -> None:
         self._listing("/v/projects/demo/tasks/bar/plan.md", "active-binding=ghost")

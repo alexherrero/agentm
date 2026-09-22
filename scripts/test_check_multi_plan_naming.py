@@ -4,7 +4,7 @@
 The gate locks three halves of the named-plan naming contract:
 
   1. scripts/harness_memory.py exposes the resolver surface (`resolve_active_plan`,
-     `harness_state_dir`);
+     `state_dir`);
   2. no curated `harness/*.md` doc hard-asserts a singleton plan ("the `PLAN.md`" /
      "`PLAN.md`'s"), while still PERMITTING legitimate `PLAN-<name>.md` / `PLAN*.md`
      / CLI-example mentions;
@@ -54,7 +54,7 @@ _CURATED = (
 _HM_WITH_SURFACE = (
     "def resolve_active_plan(resolution, *, plan_arg=None):\n"
     "    return ('PLAN.md', 'progress.md')\n\n\n"
-    "def harness_state_dir(resolution):\n"
+    "def state_dir(resolution):\n"
     "    return None\n"
 )
 # ...and one that has lost it (assertion 1 must fail).
