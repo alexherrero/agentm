@@ -285,8 +285,8 @@ def _resolve_vault(cli_arg: "str | None") -> "Path | None":
     back (V5-5 LC-8 bridge extension, enforced by
     scripts/check-one-way-imports.py's lc8-bridge rule). The bridge — or any
     other caller — resolves `harness_memory.vault_path()` and exports it as
-    $MEMORY_ROOT before invoking this script. Same convention as
-    `ideas_promote.py::_resolve_vault_root`."""
+    $MEMORY_ROOT before invoking this script. Same convention the other
+    toolkit scripts follow (`inbox_review._resolve` among them)."""
     if cli_arg:
         p = Path(cli_arg)
         return p if p.is_dir() else None

@@ -23,7 +23,6 @@ Each `enable_*` toggle turns one emission off entirely. A `false` value short-ci
 | `enable_briefing` | the SessionStart pending-state briefing | `true` |
 | `enable_idle_chain` | the idle-time orchestration chain | `true` |
 | `enable_phase_integration` | post-`/work` reflect + post-`/release` skill refresh | `true` |
-| `enable_promote_suggest` | the "you keep having this idea — promote it?" nudge | `true` |
 | `enable_stale_promotion_nudge` | the stale-`promoted` watchlist safety-rail nudge | `true` |
 
 ## Briefing thresholds
@@ -35,15 +34,13 @@ These counts decide whether the SessionStart briefing reports a section. A signa
 | `inbox_threshold` | The `_inbox/*.md` count that triggers a briefing flag. Filing v2's write path retired `_inbox/` as a capture destination, so this still reads that directory and effectively sees nothing — it does not see the low-confidence filings (`filing_confidence: low`) that now live at their class directories instead | `10` |
 | `watchlist_high_threshold` | `_skill-watchlist/` HIGH + `pending-review` count to surface | `1` |
 | `incubator_pending_threshold` | `_idea-incubator/<slug>/` dirs pending research to surface | `1` |
-| `idea_ledger_stale_months` | months after which an Ideas-ledger entry is GC-eligible | `6` |
 
 ## Nudge thresholds
 
-These thresholds apply inside the two nudge counters before a nudge surfaces.
+This threshold applies inside the one remaining nudge counter before it surfaces. The idea-ledger signal and the "you keep having this idea — promote it?" nudge (`idea_ledger_stale_months`, `promote_mention_threshold`, `enable_promote_suggest`) retired in agentm-vault part 13 with the hand-kept `Ideas.md` they read — `Ideas.md` is generated over `personal/ideas/` now, and an idea card is never garbage-collected or flagged for recurring. A config file that still carries those three keys is read as before; nothing consults them any more.
 
 | Key | Controls | Default |
 |---|---|---|
-| `promote_mention_threshold` | times a single idea must recur in the Ideas ledger to suggest `/memory promote` | `3` |
 | `stale_promotion_days` | days a `_skill-watchlist/` entry can sit `status: promoted` before the nudge fires | `30` |
 
 ## Chain cooldowns

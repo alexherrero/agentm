@@ -41,8 +41,11 @@ waits for a person and is not this job's (agentm-vault plan 16).
      and surfaces in the digest for an attended session -- the worst case
      under a prompt-injection attempt against `instructions` is an inert,
      surfaced string, never an executed arbitrary action.
-  5. Idea-ledger fold: `kind: idea` candidates fold into `Ideas.md` via
-     the existing, real `ideas_surface.append_idea_to_surface()`.
+  5. Ideas are not this sweep's. A candidate typed `idea` is left exactly as it
+     is: an idea reaches `personal/ideas/` when the operator files it at the
+     inbox review, with its group, and `Ideas.md` is generated over that folder
+     by the dreaming binary (agentm-vault part 13). The fold that used to append
+     a line to `Ideas.md` retired with the hand-kept file.
   6. Timestamp re-stamp: a chat-surface candidate's model-estimated
      `captured:` is corrected against the file's own creation time when
      they disagree.
@@ -72,11 +75,6 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 import ingest  # noqa: E402  (fetch_url / extract_title_and_text / _slugify / ingest())
 from vault_lock import atomic_write, vault_mutex  # noqa: E402
-
-try:
-    from ideas_surface import append_idea_to_surface  # noqa: E402
-except Exception:  # pragma: no cover — degrade gracefully if the ideas surface path is unresolvable
-    append_idea_to_surface = None  # type: ignore[assignment]
 
 # The states a candidate waits in before anything has acted on it: `unfiled`
 # is what the write path stamps on a capture filed at its class directory
@@ -152,8 +150,6 @@ class SweepResult:
     duplicates_skipped: "list[tuple[str, str]]" = field(default_factory=list)
     acted: "list[tuple[str, str]]" = field(default_factory=list)
     surfaced_instructions: "list[tuple[str, str]]" = field(default_factory=list)
-    idea_folded: "list[str]" = field(default_factory=list)
-    idea_fold_denied: "list[tuple[str, str]]" = field(default_factory=list)
     restamped: "list[str]" = field(default_factory=list)
 
 
@@ -508,51 +504,6 @@ def apply_act_step(vault: Path, path: Path, *, now: "float | None" = None) -> "t
 
 
 # -----------------------------------------------------------------------------
-# Duty 5 — idea-ledger fold
-# -----------------------------------------------------------------------------
-
-def fold_idea_candidate(vault: Path, path: Path) -> "tuple[bool, str]":
-    """Fold a `kind: idea` candidate into Ideas.md via the real, existing
-    surface. `append_idea_to_surface()` itself gates on the A3 permeable-
-    write-boundary confirmation (`Ideas.md` lives outside `MemoryVault/`),
-    which DENIES by default in a non-interactive/unattended context --
-    exactly this sweep's own execution context. Returns (folded, detail):
-    `folded=False` with a clear reason when the boundary denies -- the
-    candidate is left untouched (still `status: inbox`, available for a
-    later cycle once the operator opts in, or an attended `/memory inbox`
-    review) rather than silently dropped or the boundary silently
-    overridden by force-passing a bypass mode.
-
-    `vault` is passed through as `ideas_path=<vault>/../Ideas.md` explicitly
-    -- the sweep already knows its own concrete vault path, so this must
-    not fall back to `ideas_surface`'s own independent env-var/config
-    resolution guesswork (which resolves against whatever vault is
-    configured on the machine, not necessarily the one this sweep run was
-    given, e.g. a scratch vault under test)."""
-    if append_idea_to_surface is None:
-        return False, "ideas_surface unavailable"
-    raw = path.read_text(encoding="utf-8")
-    fm, body = _parse_frontmatter(raw)
-    if not _is_idea(fm) or fm.get("status") not in _UNREVIEWED:
-        return False, "not an eligible idea candidate"
-    title = fm.get("slug", path.stem).replace("-", " ")
-    ideas_path = Path(vault).parent / "Ideas.md"
-    try:
-        written = append_idea_to_surface(title, body.strip(), incubator_slug=fm.get("slug"), ideas_path=ideas_path)
-    except (ValueError, FileNotFoundError) as e:
-        return False, str(e)
-    if written is None:
-        return False, (
-            "denied by the permeable-write-boundary gate (unattended context) -- "
-            "set MEMORY_REVIEW_MODE=silent for this job to opt in, or fold manually via /memory inbox"
-        )
-    with vault_mutex(vault):
-        fresh_raw = path.read_text(encoding="utf-8")
-        atomic_write(path, _patch_frontmatter(fresh_raw, {"status": "promoted", "promoted_to": "Ideas.md"}))
-    return True, str(written)
-
-
-# -----------------------------------------------------------------------------
 # Duty 6 — timestamp re-stamp
 # -----------------------------------------------------------------------------
 
@@ -610,11 +561,9 @@ def run_ingest_sweep(
 
         if status in _UNREVIEWED:
             if _is_idea(fm):
-                folded, detail = fold_idea_candidate(vault, path)
-                if folded:
-                    result.idea_folded.append(str(path))
-                else:
-                    result.idea_fold_denied.append((str(path), detail))
+                # Not this sweep's (duty 5, above): an idea waits for the
+                # operator, who files it into `personal/ideas/` with its group.
+                # Left byte for byte, as it always was when the fold declined.
                 continue
 
             # Ordering matters here, found by a retroactive /review: restamp
@@ -694,14 +643,6 @@ def _render_digest(result: SweepResult) -> str:
         lines.append("## Mechanical actions applied")
         for path, action in result.acted:
             lines.append(f"- {path}: {action}")
-    if result.idea_folded:
-        lines.append("")
-        lines.append(f"Ideas folded into the ledger: {len(result.idea_folded)}")
-    if result.idea_fold_denied:
-        lines.append("")
-        lines.append("## Idea folds needing an operator opt-in (Ideas.md is outside the vault)")
-        for path, reason in result.idea_fold_denied:
-            lines.append(f"- {path}: {reason}")
     if result.restamped:
         lines.append("")
         lines.append(f"Timestamps corrected: {len(result.restamped)}")

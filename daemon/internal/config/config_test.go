@@ -11,7 +11,7 @@ import (
 // notes and a vector arm with no vectors looks exactly like one that is cold.
 func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 	got := defaultEmbedScope("agent")
-	want := []string{"agent/memory", "agent/desk", "agent/external", "agent/diagnostics", "agent/inbox", "projects", "calendar", "standards/voice"}
+	want := []string{"agent/memory", "agent/desk", "agent/external", "agent/diagnostics", "agent/inbox", "projects", "calendar", "standards/voice", "personal/ideas"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,7 +23,7 @@ func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 	for _, root := range []string{"", "  ", "/"} {
 		got := defaultEmbedScope(root)
-		want := "memory,desk,external,diagnostics,inbox,projects,calendar,standards/voice"
+		want := "memory,desk,external,diagnostics,inbox,projects,calendar,standards/voice,personal/ideas"
 		if strings.Join(got, ",") != want {
 			t.Errorf("memory_root %q gave %v, want %s", root, got, want)
 		}
@@ -39,6 +39,27 @@ func TestDefaultEmbedScopeCoversTheDropFolder(t *testing.T) {
 	got := strings.Join(defaultEmbedScope("agent"), ",")
 	if !strings.Contains(got, "agent/inbox") {
 		t.Errorf("the drop folder is outside the vector arm's scope: %s", got)
+	}
+}
+
+// The idea cards are IN the default scope and the rest of `personal/` is not
+// (agentm-vault part 13). The cards left `memory/semantic/`, which is in scope,
+// for `personal/ideas/`; named alone, because `personal/` is the operator's and
+// the carve-out is one folder, not the space.
+func TestDefaultEmbedScopeCoversTheIdeaCardsAndNoOtherPersonalFolder(t *testing.T) {
+	scope := defaultEmbedScope("agent")
+	ideas := false
+	for _, s := range scope {
+		if s == "personal/ideas" {
+			ideas = true
+			continue
+		}
+		if s == "personal" || strings.HasPrefix(s, "personal/") {
+			t.Errorf("%q widens the vector arm into the operator's space: %v", s, scope)
+		}
+	}
+	if !ideas {
+		t.Fatalf("personal/ideas missing from the default embed scope: %v", scope)
 	}
 }
 

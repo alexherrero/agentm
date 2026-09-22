@@ -275,5 +275,55 @@ class TheRuledPopulations(_Vault):
         self.assertEqual(sorted(purge.CLAIM_ORDER), sorted(purge.POPULATIONS))
 
 
+class TheRuledList(_Vault):
+    """agentm-vault part 13: the deletion list the operator reads and confirms
+    is a named list, so the lane selects exactly it — or nothing."""
+
+    def _list(self, *lines):
+        p = self.top / "deletions.txt"
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return p
+
+    def test_exactly_the_named_memories_are_selected_and_then_deleted(self):
+        a = self._note("fragment-a", lifecycle="active")
+        b = self._note("fragment-b", lifecycle="dormant")
+        keep = self._note("a-real-idea", lifecycle="active")
+        out = self.top / "report"
+        code = purge.main(["--vault", str(self.vault), "select", "--paths-file",
+                           str(self._list("# the confirmed list", a, "", b)),
+                           "--expect-count", "2", "--report-dir", str(out)])
+        self.assertEqual(code, 0)
+        manifest = out / purge.MANIFEST_NAME
+        self.assertEqual([r["rel"] for r in json.loads(manifest.read_text(encoding="utf-8"))["rows"]], [a, b])
+        self.assertTrue((self.vault / a).exists(), "select deleted something")
+        self.assertEqual(purge.apply(self.vault, manifest, confirm_count=2), 2)
+        self.assertFalse((self.vault / a).exists())
+        self.assertFalse((self.vault / b).exists())
+        self.assertTrue((self.vault / keep).exists())
+
+    def test_a_count_that_differs_from_the_ruling_writes_nothing(self):
+        a = self._note("fragment-a")
+        out = self.top / "report"
+        code = purge.main(["--vault", str(self.vault), "select", "--paths-file", str(self._list(a)),
+                           "--expect-count", "2", "--report-dir", str(out)])
+        self.assertEqual(code, 4)
+        self.assertFalse((out / purge.MANIFEST_NAME).exists())
+        self.assertTrue((self.vault / a).exists())
+
+    def test_a_list_without_a_ruled_count_is_refused(self):
+        a = self._note("fragment-a")
+        code = purge.main(["--vault", str(self.vault), "select", "--paths-file", str(self._list(a))])
+        self.assertEqual(code, 2)
+
+    def test_anything_but_a_class_memory_named_once_refuses_the_whole_list(self):
+        a = self._note("fragment-a")
+        (self.vault / "Ideas.md").write_text("# Ideas\n", encoding="utf-8")
+        for bad in (["Ideas.md"], ["personal/ideas/x.md"], ["memory/semantic/../x.md"],
+                    ["memory/_inbox/x.md"], ["memory/semantic/missing.md"], [a, a]):
+            with self.subTest(bad=bad), self.assertRaises(purge.RefusedPurge):
+                purge.select_paths(self.vault, bad)
+        self.assertTrue((self.vault / a).exists())
+
+
 if __name__ == "__main__":
     unittest.main()

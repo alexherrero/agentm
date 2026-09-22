@@ -11,8 +11,9 @@
 # shape" (`wiki/designs/agentm-experience-and-dreaming.md`), so one CLI
 # reviews both rather than a second review surface being invented.
 # Presents each entry to the operator with promote / dismiss / defer
-# options. Pattern mirrors `ideas_promote.py`'s GC flow (keep / archive /
-# delete) — same interactive-prompt + non-TTY-default-to-keep semantics.
+# options. Pattern mirrored the GC flow of `ideas_promote.py` (retired in
+# agentm-vault part 13) — keep / archive / delete, with the same
+# interactive-prompt + non-TTY-default-to-keep semantics.
 #
 # Action semantics:
 #   - promote → frontmatter `status: promoted` + `promoted_at` timestamp.
@@ -32,8 +33,8 @@
 #     can filter `deferred_until` to surface only re-eligible entries.
 #
 # Locked design calls:
-#   - Never deletes outright (matches `ideas_promote.py gc`'s never-silent-
-#     deletion contract). Dismiss = archive, not rm.
+#   - Never deletes outright (the never-silent-deletion contract the retired
+#     `ideas_promote.py gc` held too). Dismiss = archive, not rm.
 #   - Non-TTY stdin → default to skip (no action taken; entry stays in
 #     watchlist). Batch dismissals require explicit --batch-action.
 #   - Promote is an annotation-only operation. The actual fork to
@@ -195,7 +196,7 @@ def _rewrite_frontmatter(
     out.append("---\n")
     out.extend(body_lines)
     # Write as bytes for LF-only line endings (Windows portability — same
-    # pattern as save.py / ideas_surface.py / adapt_skills.py).
+    # pattern as save.py / adapt_skills.py).
     path.write_bytes("".join(out).encode("utf-8"))
 
 
@@ -389,8 +390,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             "Review pending entries in _skill-watchlist/ and _watchlist/ — "
             "promote (mark accepted; adoption still happens by hand), "
             "dismiss (archive), defer (snooze for N days). Non-TTY stdin "
-            "defaults to skip (never silent action; same contract as "
-            "ideas_promote.py gc)."
+            "defaults to skip (never silent action)."
         ),
     )
     sub = parser.add_subparsers(dest="cmd")

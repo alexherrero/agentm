@@ -48,10 +48,12 @@ The first version of this design would have written the fetched content straight
   The candidate never moves house for any of this. Look for it at its class directory (`memory/semantic/` for a plain thought or a link), or in `_inbox/` for a phone capture.
 
 - **A fetch failed.** The candidate stays at its current status — `unfiled` or `inbox` — with nothing recorded as lost. The sweep's digest surfaces the failure explicitly (`_render_digest()`, `ingest_sweep.py:627-668`). Fix the link, or drop the candidate by hand; the sweep retries it on the next cycle either way.
-- **An idea capture (`idea: <thought>`) doesn't show up in `Ideas.md`.** `Ideas.md` lives outside the vault, so folding an idea into it crosses the A3 permeable-write-boundary — denied by default in this sweep's unattended context. Set `MEMORY_REVIEW_MODE=silent` for the job if you want ideas folded automatically, or add it to `Ideas.md` yourself.
+- **An idea capture (`idea: <thought>`) doesn't show up in `Ideas.md`.** It is never folded in automatically — since agentm-vault plan 16 it lands in `agent/inbox/` like any other phone capture (step 2, above) and waits for your review; since agentm-vault part 13 there is no automatic fold to opt into any more, and hand-editing `Ideas.md` below its markers doesn't stick either, since the file is rebuilt over `personal/ideas/` every night. File it explicitly, with its group: `python3 harness/skills/memory/scripts/inbox_review.py --file <name> --type idea --area <group>` (see [Drop a card in the inbox](Drop-A-Card-In-The-Inbox)). That lands the card in `personal/ideas/`; the next `agentmdream run` picks it up, or run `agentmdream ideas -write` yourself to rebuild `Ideas.md` sooner. See [Manage your ideas list](Manage-Your-Ideas-List) for the rest — including the one-time adoption `Ideas.md` needs before anything writes to it at all.
 
 ## See also
 
 - [Ingest an article](Ingest-An-Article) — the explicit, human-invoked door this sweep's promotion step reuses.
+- [Drop a card in the inbox](Drop-A-Card-In-The-Inbox) — filing a candidate once it lands, including an idea.
+- [Manage your ideas list](Manage-Your-Ideas-List) — where a filed idea goes from here.
 - [Memory MCP tools reference](Memory-MCP-Tools) — `memory_capture`'s field-level detail, the capture contract this sweep's candidates share.
 - `wiki/designs/agentm-capture.md` — the full design, including the Trust Boundary section this page's "Why the delay" summarizes.

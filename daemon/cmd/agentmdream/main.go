@@ -27,6 +27,7 @@ const usage = `agentmdream — the agentm dreaming binary (one pass, then exit)
   agentmdream run       decide whether a pass is due, take the lock, resume, plan, report or apply
   agentmdream status    the last pass, the gate's answer now, the lock
   agentmdream journal   the mutation journal, newest last
+  agentmdream ideas     print Ideas.md as the night would rebuild it; -write to make the one deliberate write
   agentmdream version
 
 Run any subcommand with -h for its flags.
@@ -53,6 +54,8 @@ func main() {
 		err = cmdStatus(os.Args[2:])
 	case "journal":
 		err = cmdJournal(os.Args[2:])
+	case "ideas":
+		err = cmdIdeas(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmdream", version)
 	case "-h", "--help", "help":
@@ -122,6 +125,67 @@ func cmdRun(args []string) error {
 		return &exitError{code: 3, quiet: *asJSON, err: fmt.Errorf("refused: %s", rep.Refused)}
 	}
 	return err
+}
+
+// cmdIdeas is `Ideas.md`'s dry run and its one deliberate write
+// (agentm-vault part 13).
+//
+// With no flags it prints the file exactly as the night would write it, under
+// the file's own head, and writes nothing. `-intro <file>` is the adoption: the
+// head is built from that introduction, so the operator reads the whole first
+// rendering before anything replaces their hand-kept file. `-write` makes the
+// write, journaled and under the dreaming lock, and only then; the nightly job
+// keeps it current afterwards.
+func cmdIdeas(args []string) error {
+	fs := newFlagSet("ideas")
+	opts := bindCommon(fs)
+	introPath := fs.String("intro", "", "the approved introduction, a file whose text goes between the markers (the adoption)")
+	write := fs.Bool("write", false, "make the write (default: print the rendering and touch nothing)")
+	asJSON := fs.Bool("json", false, "emit the plan as JSON rather than the rendering")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if extra := fs.Args(); len(extra) > 0 {
+		return fmt.Errorf("unexpected argument %q; usage: agentmdream ideas [-intro FILE] [-write] [-json]", extra[0])
+	}
+	intro := ""
+	if *introPath != "" {
+		raw, err := os.ReadFile(*introPath)
+		if err != nil {
+			return err
+		}
+		if intro = strings.TrimSpace(string(raw)); intro == "" {
+			return fmt.Errorf("%s is empty; the introduction is the one text the file keeps as it is", *introPath)
+		}
+	}
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	plan, err := dreaming.Ideas(cfg, dreaming.IdeasOptions{Intro: intro, Write: *write})
+	if *asJSON {
+		blob, _ := json.MarshalIndent(plan, "", "  ")
+		fmt.Println(string(blob))
+	} else if plan.NotWritten != "" {
+		fmt.Printf("ideas: %d card(s); nothing to render — %s\n", plan.Cards, plan.NotWritten)
+	} else {
+		fmt.Print(plan.Text)
+		verb := "would change"
+		if *write {
+			verb = "written"
+		}
+		if !plan.Changed {
+			verb = "unchanged"
+		}
+		fmt.Fprintf(os.Stderr, "ideas: %d card(s) in %d group(s) — Ideas.md %s\n", plan.Cards, plan.Groups, verb)
+	}
+	if err != nil {
+		return err
+	}
+	if plan.NotWritten != "" {
+		return &exitError{code: 4, quiet: true, err: errors.New(plan.NotWritten)}
+	}
+	return nil
 }
 
 func printReport(rep dreaming.Report) {
@@ -202,6 +266,14 @@ func printReport(rep dreaming.Report) {
 	}
 	fmt.Printf("mocs: %d page(s), %s%d regenerated, %d type(s) below the floor, %s%d page(s) removed · dates: %s%d gloss(es) across %d aging note(s)\n",
 		len(rep.Mocs.Pages), would, changed, len(rep.Mocs.BelowFloor), would, len(rep.Mocs.Removed), would, len(rep.Dates.Glossed), rep.Dates.Aging)
+	switch {
+	case rep.Ideas.NotWritten != "":
+		fmt.Printf("ideas: %d card(s), not written — %s\n", rep.Ideas.Cards, rep.Ideas.NotWritten)
+	case rep.Ideas.Changed:
+		fmt.Printf("ideas: %d card(s) in %d group(s), Ideas.md %srebuilt\n", rep.Ideas.Cards, rep.Ideas.Groups, would)
+	default:
+		fmt.Printf("ideas: %d card(s) in %d group(s), Ideas.md unchanged\n", rep.Ideas.Cards, rep.Ideas.Groups)
+	}
 	fmt.Printf("vocabulary: %d note(s) — %d unrecognized, %d malformed, %d retired\n", rep.Vocabulary.Considered,
 		len(rep.Vocabulary.Unrecognized), len(rep.Vocabulary.Malformed), len(rep.Vocabulary.Retired))
 	for _, f := range rep.Vocabulary.Unrecognized {

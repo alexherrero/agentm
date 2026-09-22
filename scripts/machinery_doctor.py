@@ -775,9 +775,10 @@ def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
 # must sit under. `MEMORY_ROOT` (and its deprecated alias `MEMORY_VAULT_PATH`,
 # the same meaning) names the memory tree itself and `items_source` addresses
 # per-project state inside it, so all of them belong under
-# `harness_memory.memory_root()`. `IDEAS_SURFACE_PATH` is the operator's own
-# note at the vault root, one level ABOVE the memory tree — checking it against
-# the memory root would flag a correctly-configured install.
+# `harness_memory.memory_root()`. `IDEAS_SURFACE_PATH` left the list in
+# agentm-vault part 13: nothing reads it since `Ideas.md` became a file the
+# dreaming binary generates at the vault root, so a check of it would be a check
+# of nothing.
 _PROJECT_JSON_PATH_KEYS = (
     # Filing-v2 2b put the project space at the vault root, beside the memory
     # root, so the board file is checked against the vault rather than the
@@ -785,7 +786,6 @@ _PROJECT_JSON_PATH_KEYS = (
     ("items_source", "vault"),
     ("env.MEMORY_ROOT", "memory"),
     ("env.MEMORY_VAULT_PATH", "memory"),
-    ("env.IDEAS_SURFACE_PATH", "vault"),
 )
 
 

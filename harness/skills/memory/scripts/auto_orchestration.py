@@ -57,15 +57,15 @@ DEFAULT_CONFIG: dict[str, object] = {
     "enable_briefing": True,
     "enable_idle_chain": True,
     "enable_phase_integration": True,
-    "enable_promote_suggest": True,
     "enable_stale_promotion_nudge": True,
     # briefing thresholds — a signal is "worth surfacing" at/above its threshold
+    # (the idea-ledger and promote-suggest keys retired with the hand-kept
+    # Ideas.md, agentm-vault part 13; a config file still carrying them is
+    # read as before, since unknown keys are ignored)
     "inbox_threshold": 10,
     "watchlist_high_threshold": 1,
     "incubator_pending_threshold": 1,
-    "idea_ledger_stale_months": 6,
     # nudge thresholds
-    "promote_mention_threshold": 3,
     "stale_promotion_days": 30,
     # cooldowns (hours) — minimum gap between fires of a chain
     "briefing_cooldown_hours": 8,

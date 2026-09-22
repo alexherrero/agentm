@@ -494,7 +494,8 @@ class RootSpaceHelperCopiesAgree(unittest.TestCase):
 
     FILES = ("scripts/harness_memory.py",) + tuple(
         f"harness/skills/memory/scripts/{n}" for n in (
-            "save.py", "promote.py", "ideas_promote.py", "moc_generator.py", "arc_registry.py",
+            # `ideas_promote.py` left with the hand-kept Ideas.md (agentm-vault 13).
+            "save.py", "promote.py", "moc_generator.py", "arc_registry.py",
             "frontmatter_validator.py", "vault_lint.py", "graph_snapshot.py",
             "recall.py", "migrate_arcs.py"))
 

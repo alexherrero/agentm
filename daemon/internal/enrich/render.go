@@ -84,6 +84,23 @@ type Stamp struct {
 	// Zero value is "may file", so every caller that predates the drop folder
 	// keeps exactly the behaviour it had.
 	NeverFiles bool
+	// OperatorFiled keeps the operator's filing on the card exactly as they
+	// left it. It is set for an idea card (IsIdeaCard), which the operator filed
+	// themselves and which the night may think about but never re-grade
+	// (agentm-vault part 13, the operator's ruling 6 of 2026-09-20).
+	//
+	// Under it the judgment writes no filing verdict at all: `status` and
+	// `filing_confidence` stay what the card carried, the card never sinks, no
+	// `lifecycle` is written onto it or defaulted in, and the card's own `title`
+	// and `type` stand over whatever the model proposed — a card that stopped
+	// being `type: idea` would drop off the operator's list, which is a
+	// demotion by another name. What the pass may still write is what the
+	// design allows in `personal/`: the summary, the tags, `importance_proposed`,
+	// the related links and its stamps, plus the one body exception, its section
+	// under `## Added by dreaming`.
+	//
+	// Like NeverFiles, a property of where the card is and not of what it says.
+	OperatorFiled bool
 }
 
 // RenderNote turns an enriched response into the bytes that go on disk.
@@ -251,6 +268,29 @@ func verdictFor(previous string, r Response, floor float64, neverFiles bool) Fil
 		}
 	}
 	v.Sank = true
+	return v
+}
+
+// KeptFiling is the verdict for a card the operator filed (Stamp.OperatorFiled):
+// whatever `status` and `filing_confidence` the card carries, unchanged, and no
+// sinking.
+//
+// A card with no `status` is read as `active`, because a card in the folder is
+// filed by being there — the ruling is that it stays `active` whatever the
+// score — and an empty status would render as a card with no standing at all.
+// A missing `filing_confidence` is `high` for the same reason: the operator
+// put it there. Neither default is a judgment of the model's.
+func KeptFiling(previous string) FilingVerdict {
+	v := FilingVerdict{
+		Status:           strings.TrimSpace(frontmatterValue(previous, "status")),
+		FilingConfidence: strings.TrimSpace(frontmatterValue(previous, "filing_confidence")),
+	}
+	if v.Status == "" {
+		v.Status = "active"
+	}
+	if v.FilingConfidence == "" {
+		v.FilingConfidence = "high"
+	}
 	return v
 }
 

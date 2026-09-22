@@ -17,9 +17,12 @@ import (
 // `lifecycle_since` sits beside `lifecycle`, where every writer puts it;
 // `consolidated_from` and `consolidated_into` sit after the supersession pair,
 // because a lesson's sources and a source's lesson are the same kind of
-// relation and a reader looking for one looks for the other.
+// relation and a reader looking for one looks for the other. An idea card's two
+// fields (agentm-vault part 13) sit where they are read: `area`, the operator's
+// group, beside what the card is; `dismissed`, the day the idea was retired,
+// beside its standing.
 var ReadOrder = []string{
-	"title", "type", "kind", "summary", "why", "importance",
+	"title", "type", "kind", "area", "summary", "why", "importance", "dismissed",
 	"status", "lifecycle", "lifecycle_since", "filing_confidence",
 	"source", "source_url", "source_id", "source_fetched", "trust",
 	"created", "updated", "tags",

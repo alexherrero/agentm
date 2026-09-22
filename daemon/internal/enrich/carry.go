@@ -50,6 +50,13 @@ import (
 // and `aliases` on opposite sides of the same paragraph deliberately. A probe's
 // aliases are the round trip's own nonce and are spent the moment it finishes,
 // while its marker is what every later run reads it by.
+//
+// `area` and `dismissed` are an idea card's (agentm-vault part 13): the
+// operator's group name and the day they retired the idea. The generated
+// `Ideas.md` is read off exactly these two, so a rewrite that dropped either
+// would move an idea to the wrong heading, or back onto the live list, with
+// nothing on the card saying why. No pass writes either one; the carry is the
+// only thing that touches them.
 var carriedFields = []string{
 	"source", "source_id", "source_url", "source_fetched",
 	"lifecycle", "lifecycle_since", "superseded_by", "supersedes",
@@ -59,6 +66,7 @@ var carriedFields = []string{
 	"importance", "importance_proposed",
 	"slug", "fingerprint", "occurrences",
 	"probe",
+	"area", "dismissed",
 }
 
 // EvidenceHeading opens the block quoting the excerpt a note came from. It is
@@ -79,6 +87,15 @@ const EvidenceHeading = "## Evidence"
 // pass was there. A reason guessed from a note reads exactly like a real one,
 // which is why the field is only worth having if it is always the room's.
 func CarryProvenance(previous, next string) string {
+	return carryProvenance(previous, next, true)
+}
+
+// carryProvenance is CarryProvenance with the lifecycle default made a choice.
+// `defaultLifecycle` false is a card the operator filed (Stamp.OperatorFiled):
+// a lifecycle the card already carries still travels, because it is theirs,
+// but none is invented — an idea card has no aging axis, and the ruling is that
+// nothing writes one onto it.
+func carryProvenance(previous, next string, defaultLifecycle bool) string {
 	if !strings.HasPrefix(next, "---\n") {
 		return next
 	}
@@ -98,7 +115,7 @@ func CarryProvenance(previous, next string) string {
 			value = earlierDate(value, rawFrontmatterValue(previous, "captured"))
 		}
 		if value == "" {
-			if key != "lifecycle" {
+			if key != "lifecycle" || !defaultLifecycle {
 				continue
 			}
 			value = "active"

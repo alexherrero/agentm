@@ -301,33 +301,37 @@ class ActStepTests(unittest.TestCase):
         mock_dispatch.assert_not_called()
 
 
-class IdeaFoldTests(unittest.TestCase):
+class IdeasAreNotTheSweepsTests(unittest.TestCase):
+    """The fold retired with the hand-kept `Ideas.md` (agentm-vault part 13).
+    An idea reaches `personal/ideas/` when the operator files it at the inbox
+    review, and the list is generated over that folder, so nothing the hourly
+    sweep does may write the list or change the card."""
+
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
-        self.vault = Path(self._tmp.name)
+        # Nested, as the live vault is: `Ideas.md` would land beside the
+        # memory root, in a directory this test owns.
+        self.vault = Path(self._tmp.name) / "agent"
+        self.vault.mkdir()
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def test_idea_fold_denied_in_unattended_context_leaves_candidate_untouched(self) -> None:
-        # append_idea_to_surface's own A3 permeable-write-boundary gate
-        # denies by default outside an interactive TTY -- this sweep's own
-        # execution context. The candidate must be left exactly as it was,
-        # not silently dropped, not force-written past the boundary.
-        path = _new_candidate(self.vault, kind="idea", content="a real idea worth keeping")
-        result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
-        self.assertEqual(result.idea_folded, [])
-        self.assertEqual(len(result.idea_fold_denied), 1)
-        fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
-        self.assertEqual(fm["status"], "unfiled")
-
-    def test_idea_fold_succeeds_when_boundary_is_opted_in(self) -> None:
-        path = _new_candidate(self.vault, kind="idea", content="a real idea worth keeping")
-        with mock.patch.dict("os.environ", {"MEMORY_REVIEW_MODE": "silent"}):
-            result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
-        self.assertEqual(len(result.idea_folded), 1)
-        fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
-        self.assertEqual(fm["status"], "promoted")
+    def test_an_idea_is_left_as_it_is_and_nothing_writes_ideas_md(self) -> None:
+        # Both the unattended default and the opt-in that used to let the fold
+        # append: neither writes a line, a status or a file.
+        for env in ({}, {"MEMORY_REVIEW_MODE": "silent"}):
+            with self.subTest(env=env):
+                path = _new_candidate(self.vault, kind="idea", content="a real idea worth keeping")
+                before = path.read_bytes()
+                with mock.patch.dict("os.environ", env):
+                    result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
+                self.assertEqual(path.read_bytes(), before, "the sweep changed an idea card")
+                self.assertFalse((self.vault.parent / "Ideas.md").exists(), "the sweep wrote Ideas.md")
+                self.assertFalse(list(self.vault.parent.glob("Ideas*.md")))
+                self.assertNotIn(str(path), result.promoted + result.restamped + result.fetched)
+                self.assertNotIn("Ideas", ingest_sweep._render_digest(result))
+                path.unlink()
 
 
 def _carry_captured(path: Path, value: str) -> None:
@@ -476,8 +480,7 @@ class InboxIsNotTheSweepsTests(unittest.TestCase):
         # carries `status: unfiled`, a `source_url` and an `instructions:` line,
         # so it would be fetched, restamped and acted on by three separate
         # duties if the walk could see it at all.
-        for name in ("fetched", "staged_clips", "promoted", "restamped",
-                     "idea_folded"):
+        for name in ("fetched", "staged_clips", "promoted", "restamped"):
             self.assertEqual(getattr(result, name), [], f"result.{name} named the inbox")
         self.assertEqual(result.acted, [])
         self.assertEqual(result.surfaced_instructions, [])

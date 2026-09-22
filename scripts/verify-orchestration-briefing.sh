@@ -55,7 +55,10 @@ export AGENTM_STATE_DIR="$SV/engine-state"
 mkdir -p "$AGENTM_STATE_DIR"
 cleanup() { rm -rf "$SV"; }
 trap cleanup EXIT
-# Isolate the Ideas surface (otherwise the idea counters read ~/Obsidian/Ideas.md).
+# Nothing reads this any more (agentm-vault part 13). It stays pointed at the
+# scratch vault so that a reader of the old ledger coming back would read the
+# old-shape file section D writes, and fail there, rather than read the
+# operator's real Ideas.md and pass.
 export IDEAS_SURFACE_PATH="$SV/Ideas.md"
 
 # Read-only render of the briefing from the scratch vault's current state.
@@ -108,10 +111,14 @@ printf -- '---\nstatus: promoted\npromoted_at: 2026-01-01T00:00:00+00:00\n---\nb
   > "$SV/projects/agentm/_skill-watchlist/src/stale.md"
 assert_contains "nudge: stale-promotion (>30d) surfaces"        "$(render)" "promoted >30d ago"
 
-TODAY="$(date -u +%Y-%m-%d)"   # today → never idea-ledger-stale; isolates the promote-suggest signal
-printf '## %s: Recurring idea\nb\n## %s: Recurring idea\nb\n## %s: Recurring idea\nb\n' "$TODAY" "$TODAY" "$TODAY" \
+# The two idea-ledger nudges retired with the hand-kept Ideas.md (agentm-vault
+# part 13): the file is generated over personal/ideas/ now, and an idea is never
+# garbage-collected. A ledger in the old shape, recurring and stale, must raise
+# neither.
+printf '## 2020-01-01: Recurring idea\nb\n## 2020-02-01: Recurring idea\nb\n## 2020-03-01: Recurring idea\nb\n' \
   > "$SV/Ideas.md"
-assert_contains "nudge: promote-suggest (idea x3) surfaces"     "$(render)" "/memory promote"
+assert_absent  "nudge: no promote-suggest from an old-shape ledger" "$(render)" "/memory promote"
+assert_absent  "nudge: no idea-ledger GC from an old-shape ledger"  "$(render)" "idea-ledger"
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo

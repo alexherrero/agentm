@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -355,7 +356,8 @@ def _card_in_folder(folder: Path, name: str) -> "Path | None":
 
 
 def file_one(memory_root: Path, name: str, *, why: "str | None" = None,
-             project: "str | None" = None, type_hint: "str | None" = None) -> dict:
+             project: "str | None" = None, type_hint: "str | None" = None,
+             area: "str | None" = None) -> dict:
     """File one card the operator named, and remove it from the folder.
 
     **This is never reached by the listing.** `/memory inbox` shows what is
@@ -392,6 +394,16 @@ def file_one(memory_root: Path, name: str, *, why: "str | None" = None,
     if card is None:
         out["reason"] = reason
         return out
+    # An idea goes where ideas live (agentm-vault part 13) — whether the
+    # operator said `--type idea` or the card already called itself one. The
+    # contract would route it to `memory/semantic`, which is where every idea
+    # card this plan moved out of came from.
+    effective = type_hint or fields.get("type") or card.get("type_hint")
+    if effective == "idea":
+        return file_one_idea(memory_root, name, area=area, why=why, project=project)
+    if area:
+        out["reason"] = "--area names an idea's group; pass --type idea with it"
+        return out
     result = untrusted_card.FileResult()
     written = untrusted_card.file_card(
         memory_root, card, result=result, why=why or fields.get("why") or None,
@@ -414,6 +426,85 @@ def file_one(memory_root: Path, name: str, *, why: "str | None" = None,
         return out
     out["filed"] = True
     out["path"] = str(written.path)
+    return out
+
+
+def file_one_idea(memory_root: Path, name: str, *, area: "str | None",
+                  why: "str | None" = None, project: "str | None" = None) -> dict:
+    """File one card the operator said is an idea into `personal/ideas/`, under
+    the group they named, and remove it from the inbox (agentm-vault part 13).
+
+    Not through `untrusted_card.file_card`, and that is the point. That path
+    asks the filing contract where the type goes, and the contract routes
+    `idea` to `memory/semantic` — a line in its hashed block that this plan does
+    not edit, because an edit there re-owes the corpus a pass for a rule about
+    one folder. An idea the operator files lands where ideas live now, as
+    `idea_cards.as_idea_card` shapes it: `active`, at their group, their words
+    and the card's provenance kept, `trust:` included.
+
+    A group is required: on the operator's ruling a new idea gets its group
+    when they review the inbox, so an idea filed without one is refused rather
+    than parked under "no group yet" by default. A card already at the
+    destination name is never overwritten. As with every filing here, the card
+    leaves the inbox only after the write has landed.
+    """
+    import idea_cards  # same skill dir
+
+    out = {"name": name, "filed": False, "reason": "", "path": ""}
+    if not idea_cards.valid_area(area):
+        out["reason"] = ("an idea is filed with its group — pass --area <group>, "
+                         "one lower-case word (hyphens allowed)")
+        return out
+    path = _card_in_folder(inbox_dir(memory_root), name)
+    if path is None:
+        out["reason"] = "no card by that name is in the inbox"
+        return out
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        out["reason"] = "unreadable"
+        return out
+    slug = card_shape.cut_slug(card_shape.kebab(path.stem)) or "idea"
+    dest_dir = idea_cards.ideas_dir(memory_root)
+    dest = dest_dir / f"{slug}.md"
+    if dest.exists() or dest.is_symlink():
+        out["reason"] = (f"personal/ideas/{dest.name} already exists and is never "
+                         f"overwritten — rename the inbox card, then file it again")
+        return out
+    try:
+        card = idea_cards.as_idea_card(text, area=area, why=why, project=project)
+    except ValueError as exc:
+        out["reason"] = str(exc)
+        return out
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    tmp = dest_dir / f".{dest.name}.tmp"
+    try:
+        with open(tmp, "x", encoding="utf-8") as f:
+            f.write(card)
+            f.flush()
+            os.fsync(f.fileno())
+        # A link, not a rename, so a card that appeared at the name between the
+        # check above and now is refused rather than replaced.
+        os.link(tmp, dest)
+    except FileExistsError:
+        out["reason"] = f"personal/ideas/{dest.name} appeared while filing; nothing was overwritten"
+        return out
+    except OSError as exc:
+        out["reason"] = f"write failed: {exc.strerror or exc}"
+        return out
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+    out["filed"] = True
+    out["path"] = str(dest)
+    try:
+        path.unlink()
+    except OSError as exc:
+        out["reason"] = (f"filed at {dest}, but the inbox copy could not be removed "
+                         f"({exc.strerror}) — delete it by hand or the next pass will "
+                         f"offer it again")
     return out
 
 
@@ -443,6 +534,9 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--type", default=None, help="with --file: the memory type to file it as")
     ap.add_argument("--project", default=None, help="with --file: the project it belongs to")
     ap.add_argument("--why", default=None, help="with --file: the reason it is worth keeping")
+    ap.add_argument("--area", default=None,
+                    help="with --file --type idea: the group it goes under in Ideas.md "
+                         "(one lower-case word); an idea lands in personal/ideas/")
     args = ap.parse_args(argv)
     root = _resolve(args.memory_root)
     if root is None or not root.is_dir():
@@ -451,7 +545,7 @@ def main(argv: "list | None" = None) -> int:
         return 2
     if args.file:
         out = file_one(root, args.file, why=args.why, project=args.project,
-                       type_hint=args.type)
+                       type_hint=args.type, area=args.area)
         if args.json:
             print(json.dumps(out, indent=2, ensure_ascii=False))
         elif out["filed"]:

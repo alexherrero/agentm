@@ -609,14 +609,21 @@ class ProjectJsonPointerTests(unittest.TestCase):
         items = self.mem / "desk" / "projects" / "p" / "_harness"
         items.mkdir(parents=True)
         (items / "board-items.json").write_text("[]", encoding="utf-8")
-        (self.vault / "Ideas.md").write_text("# Ideas", encoding="utf-8")
         c = self._check({
             "items_source": str(items / "board-items.json"),
-            "env": {"MEMORY_VAULT_PATH": str(self.mem),
-                    "IDEAS_SURFACE_PATH": str(self.vault / "Ideas.md")},
+            "env": {"MEMORY_VAULT_PATH": str(self.mem)},
         })
         self.assertEqual(c.status, "OK")
-        self.assertIn("3 vault pointer(s)", c.detail)
+        self.assertIn("2 vault pointer(s)", c.detail)
+
+    def test_the_retired_ideas_pointer_is_no_longer_checked(self):
+        # Nothing reads IDEAS_SURFACE_PATH since agentm-vault part 13, so an
+        # operator's project.json still carrying one — even a stale one — is not
+        # a finding, and is not counted as a pointer.
+        c = self._check({"env": {"MEMORY_ROOT": str(self.mem),
+                                 "IDEAS_SURFACE_PATH": str(self.stale / "Ideas.md")}})
+        self.assertEqual(c.status, "OK")
+        self.assertIn("1 vault pointer(s)", c.detail)
 
     def test_the_new_name_is_checked_the_same_way(self):
         c = self._check({"env": {"MEMORY_ROOT": str(self.mem)}})
@@ -637,15 +644,10 @@ class ProjectJsonPointerTests(unittest.TestCase):
         self.assertIn("does not exist", c.detail)
 
     def test_memory_and_vault_surfaces_are_distinguished(self):
-        """A file at the vault root is legitimate for IDEAS_SURFACE_PATH and
-        for items_source (the project space is a sibling of the memory root
-        since filing-v2 2b), and wrong for the memory-root pointers.
-        Collapsing both surfaces onto one root -- in either direction --
-        flips exactly one of these assertions."""
-        stray = self.vault / "Ideas.md"
-        stray.write_text("# Ideas", encoding="utf-8")
-        ok = self._check({"env": {"IDEAS_SURFACE_PATH": str(stray)}})
-        self.assertEqual(ok.status, "OK")
+        """A file at the vault root is legitimate for items_source (the project
+        space is a sibling of the memory root since filing-v2 2b), and wrong
+        for the memory-root pointers. Collapsing both surfaces onto one root --
+        in either direction -- flips exactly one of these assertions."""
         board = self.vault / "projects" / "agentm" / "_harness" / "board-items.json"
         board.parent.mkdir(parents=True, exist_ok=True)
         board.write_text("[]", encoding="utf-8")

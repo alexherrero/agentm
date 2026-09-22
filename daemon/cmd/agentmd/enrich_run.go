@@ -34,6 +34,10 @@ type enrichVerdicts struct {
 	// Records are project records the night merged into (agentm-vault plan 09).
 	// Not filed, so counted apart from active and below the floor.
 	Records int `json:"records"`
+	// Ideas are idea cards the night thought about (agentm-vault part 13). The
+	// operator filed them and the pass writes no verdict on them, so they are
+	// not "filed active" by this run and are counted apart, like the records.
+	Ideas int `json:"ideas"`
 	// SankNotes names the notes that sank, for the morning note's list.
 	SankNotes []string `json:"sank_notes,omitempty"`
 }
@@ -350,6 +354,29 @@ func enrichInboxQueue(cfg *config.Config, idx *index.Index) ([]string, error) {
 	return out, nil
 }
 
+// enrichIdeasQueue is every indexed idea card: the flat folder at the vault
+// root's `personal/ideas/`, and nothing else under `personal/`
+// (agentm-vault part 13).
+//
+// An idea card is a card, so it joins the cards' tier rather than getting one of
+// its own: the operator filed it, it is not waiting for a judgment the way an
+// inbox card is, and it is not a project record. What is different about it is
+// what the night may write, and that is the stamp's business (OperatorFiled),
+// not the queue's.
+func enrichIdeasQueue(idx *index.Index) ([]string, error) {
+	all, err := idx.Paths()
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range all {
+		if enrich.IsIdeaCard(p) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 // orderByAge sorts one tier oldest first, by the note's own age, with the path
 // as the tie-break so the order is total and two runs agree.
 //
@@ -409,6 +436,13 @@ func enrichServeOrder(cfg *config.Config, idx *index.Index, records bool) ([]str
 	if err != nil {
 		return nil, err
 	}
+	// The idea cards are cards: one tier with the class directories' cards,
+	// served oldest first among them.
+	ideas, err := enrichIdeasQueue(idx)
+	if err != nil {
+		return nil, err
+	}
+	cards = append(cards, ideas...)
 	out := append(orderByAge(inbox, ages), orderByAge(cards, ages)...)
 	if !records {
 		return out, nil

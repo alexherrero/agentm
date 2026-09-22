@@ -453,6 +453,12 @@ func defaultEmbedScope(memoryRoot string) []string {
 	// rule files are read whole by the loader every session, and plan 12
 	// drops them from recall altogether.
 	out = append(out, "standards/voice")
+	// The idea cards (agentm-vault part 13) moved out of `memory/semantic/`, which
+	// was in scope, to the vault-root `personal/ideas/`. Named alone, as the
+	// voice library is: the rest of `personal/` is the operator's and stays out.
+	// Leaving the folder out would give the lexical arm an idea card the dense
+	// arm cannot see — the absent-vector failure the inbox line above describes.
+	out = append(out, "personal/ideas")
 	return out
 }
 

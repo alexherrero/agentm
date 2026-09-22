@@ -17,18 +17,18 @@ Schema source of truth is `save.py` — this module imports its validators
 
 v1 covered `save.py`-shaped entries + vault-wide wikilink resolution, and
 skipped the idea-incubator `_summary.md` + `Ideas.md` bespoke shapes (DC-4).
-That deferral is closed (agentm #278): those two shapes now have their own
-rules in `incubator_lint.py`, run as a SEPARATE pass over a separate root.
-The `_EXCLUDE_DIRS` walk filter still excludes `_idea-incubator` here,
-because the exclusion means "not a save.py-shaped entry tree" — which stays
-true. See incubator_lint.py's module docstring for the bespoke rules.
+The separate pass that later linted those two (`incubator_lint.py`, agentm
+#278) retired in agentm-vault part 13: `Ideas.md` is generated over the idea
+cards in `personal/ideas/` now, and its shape is the generator's to hold, with
+its own tests. The `_EXCLUDE_DIRS` walk filter still excludes
+`_idea-incubator` here, because the exclusion means "not a save.py-shaped entry
+tree" — which stays true.
 
 Stdlib-only. Cross-platform.
 
 CLI:
     python3 vault_lint.py [--vault PATH] [--format json|text] [--scope SCOPE]
-    # SCOPE ∈ {all, always-load, projects, personal, incubator}; default all.
-    # `incubator` runs ONLY the bespoke idea-ledger pass.
+    # SCOPE ∈ {all, always-load, projects, memory}; default all.
 
 (The `audit` report mode lands in V4 #33 task 2.)
 """
@@ -55,9 +55,9 @@ import storage_rules  # noqa: E402  (the filing contract, asked of the daemon)
 from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task 7 — kind-taxonomy check)
 
 # Directories that are NOT memory-entry trees — skipped during the walk.
-# `_idea-incubator` carries a bespoke shape that `incubator_lint.py` now owns
-# (agentm #278, closing DC-4) — it stays excluded HERE because these checks
-# are save.py-schema checks and that tree is not save.py-shaped; `_meta`
+# `_idea-incubator` carries a bespoke shape — it stays excluded HERE because
+# these checks are save.py-schema checks and that tree is not save.py-shaped
+# (its own lint retired with the hand-kept Ideas.md, agentm-vault part 13); `_meta`
 # holds machine files (repos.json, cursors); `_harness` holds per-project plan
 # state (PLAN.md/progress.md — not entries); `_inbox`/`_dream-staging` are
 # transient staging areas. `_archive` (any depth) holds retired entries —
@@ -106,9 +106,6 @@ _SCOPE_DIRS = {
     "always-load": [],
     "projects": ["desk/projects"],
     "memory": ["memory"],
-    # No entry-walk roots: the bespoke idea-ledger pass walks its own root
-    # (see lint_vault). Link resolution still indexes the whole Obsidian vault.
-    "incubator": [],
 }
 
 
@@ -150,7 +147,6 @@ class VaultModel:
     vault: Path
     entries: list = field(default_factory=list)      # list[Entry] — IN the lint scope
     skipped: int = 0                                  # non-entry files skipped (in scope)
-    incubator_files: int = 0                          # bespoke idea-ledger files checked
     slugs: set = field(default_factory=set)           # linted-entry slugs
     by_slug: dict = field(default_factory=dict)       # slug -> Entry
     # Link-target index is VAULT-WIDE (every .md, incl. excluded-from-lint dirs
@@ -399,6 +395,16 @@ def build_model(vault: Path, scope: str = "all") -> VaultModel:
         # check_supersede's "still active" lookup resolves a stem reference too.
         model.by_slug.setdefault(slug, entry)
         model.by_slug.setdefault(path.stem, entry)
+    # The idea cards (agentm-vault part 13) are the operator's, in `personal/`,
+    # and are not linted as entries. But a duplicate idea left superseded in
+    # `memory/semantic/` names its survivor there, so their names resolve as a
+    # successor would — added to `slugs` only, never to `by_slug`, which is the
+    # set of entries this lint actually holds.
+    ideas = _obsidian_root(vault) / "personal" / "ideas"
+    if _is_dir_exact(ideas):
+        for card in ideas.glob("*.md"):
+            if not card.name.startswith("."):
+                model.slugs.add(card.stem)
     return model
 
 
@@ -818,17 +824,6 @@ def lint_model(model: VaultModel) -> list:
 def lint_vault(vault: Path, scope: str = "all") -> tuple[VaultModel, list]:
     model = build_model(vault, scope)
     findings = lint_model(model)
-    # The bespoke idea-ledger pass (agentm #278). Deferred import: incubator_lint
-    # imports Finding/parse_frontmatter from this module, so a top-level import
-    # here would be circular. Same lazy same-dir import pattern used elsewhere.
-    # Only at scope=all (or the dedicated `incubator` scope) — the ledger sits
-    # at the vault root, outside the personal/ and projects/ scope dirs.
-    if scope in ("all", "incubator"):
-        import incubator_lint
-        count, inc_findings = incubator_lint.lint_incubator(
-            model.vault, lambda t: _wikilink_resolves(t, model))
-        model.incubator_files = count
-        findings.extend(inc_findings)
     return model, findings
 
 
@@ -858,9 +853,7 @@ def build_report(model: VaultModel, findings: list, *, today: str) -> str:
         f"# MemoryVault lint audit — {today}",
         "",
         f"**Summary:** {errs} error · {warns} warn · {infos} info across "
-        f"{len(model.entries)} entries ({model.skipped} non-entry file(s) skipped)"
-        + (f" + {model.incubator_files} idea-ledger file(s)."
-           if model.incubator_files else "."),
+        f"{len(model.entries)} entries ({model.skipped} non-entry file(s) skipped).",
         "",
         "> Read-only audit. Each finding has a suggested fix — apply at your "
         "discretion; nothing here was changed automatically.",
@@ -928,9 +921,7 @@ def _render_text(model: VaultModel, findings: list) -> str:
     infos = sum(1 for f in findings if f.severity == "info")
     out = [
         f"vault-lint: {errs} error · {warns} warn · {infos} info "
-        f"across {len(model.entries)} entries ({model.skipped} non-entry files skipped)"
-        + (f" + {model.incubator_files} idea-ledger files"
-           if model.incubator_files else ""),
+        f"across {len(model.entries)} entries ({model.skipped} non-entry files skipped)",
         "",
     ]
     for f in findings:
@@ -984,7 +975,6 @@ def main(argv: Optional[list] = None) -> int:
         print(json.dumps({
             "entries": len(model.entries),
             "skipped": model.skipped,
-            "incubator_files": model.incubator_files,
             "findings": [f.to_dict() for f in findings],
         }, indent=2, ensure_ascii=False))
     else:

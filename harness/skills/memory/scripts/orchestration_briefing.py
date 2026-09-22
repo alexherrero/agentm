@@ -14,8 +14,10 @@ Signals (each defensive — absent/empty/malformed source → 0, never raises):
   - watchlist_high : _skill-watchlist entries with evaluator_classification HIGH
                      + status pending-review (awaiting `/memory watchlist`)
   - incubator      : count of _idea-incubator/<slug>/ dirs (ideas in research)
-  - idea_ledger    : "## YYYY-MM-DD:" entries in the Ideas surface older than the
-                     configured stale-months (GC-eligible)
+
+The idea-ledger signal and the promote-suggest nudge read the hand-kept
+`Ideas.md` and retired with it (agentm-vault part 13): the file is generated over
+`personal/ideas/` now, and nothing nudges an idea toward collection.
 
 Each signal surfaces only at/above its configured threshold. If nothing is over
 threshold, the briefing is empty (and nothing is recorded/printed).
@@ -33,7 +35,6 @@ yields an empty briefing, so a SessionStart hook can `|| true` around it safely.
 """
 from __future__ import annotations
 
-import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,7 +55,6 @@ import vault_layout  # noqa: E402
 import auto_orchestration as ao
 
 _CHAIN = "briefing"
-_DATE_HDR_RE = re.compile(r"^##\s+(\d{4})-(\d{2})-(\d{2})\b")
 _SKIP_INBOX = {"_index.md", "readme.md", "_readme.md"}
 
 
@@ -130,43 +130,11 @@ def count_incubator_pending(vault: Path) -> int:
         return 0
 
 
-def _ideas_surface_path() -> Path:
-    env = os.environ.get("IDEAS_SURFACE_PATH", "").strip()
-    if env:
-        return Path(env).expanduser()
-    return Path.home() / "Obsidian" / "Ideas.md"
-
-
-def count_idea_ledger_stale(now: datetime, stale_months: int) -> int:
-    """Count `## YYYY-MM-DD:` ledger entries older than stale_months."""
-    # Normalize a naive `now` → UTC so the offset-aware ledger dates below never
-    # raise a TypeError on subtraction (counters must never raise — the contract).
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
-    p = _ideas_surface_path()
-    if not p.is_file():
-        return 0
-    try:
-        text = p.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return 0
-    cutoff_days = max(0, int(stale_months)) * 30  # ~month; coarse is fine here
-    n = 0
-    for line in text.splitlines():
-        m = _DATE_HDR_RE.match(line)
-        if not m:
-            continue
-        try:
-            dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=timezone.utc)
-        except ValueError:
-            continue
-        if (now - dt).days >= cutoff_days:
-            n += 1
-    return n
-
-
-# ── nudge signals (V4 #23 task 6: sub-items f + g) ──────────────────────────
-_IDEA_TITLE_RE = re.compile(r"^##\s+\d{4}-\d{2}-\d{2}:\s*(.+?)\s*$")
+# ── nudge signals (V4 #23 task 6: sub-item g) ───────────────────────────────
+# Sub-item f, the promote-suggest nudge, retired with the idea-ledger signal in
+# agentm-vault part 13: both read the hand-kept `Ideas.md`, which is generated
+# over `personal/ideas/` now, and both pointed at a garbage collection of ideas
+# the operator ruled out — an idea card is never flagged or demoted.
 
 
 def _parse_iso_ts(s: str) -> datetime | None:
@@ -188,33 +156,6 @@ def _parse_iso_ts(s: str) -> datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt
-
-
-def count_promote_suggest(threshold: int) -> int:
-    """(f) Count distinct ideas surfaced ≥ `threshold` times in the Ideas ledger.
-
-    The reflection sidecar appends one `## YYYY-MM-DD: <Title>` section per
-    surfacing (append-only, no dedup), so an idea mined from N session
-    transcripts appears N times. A title at/above the mention threshold is a
-    "you keep having this idea — promote it?" signal. Never raises → 0."""
-    p = _ideas_surface_path()
-    if not p.is_file():
-        return 0
-    try:
-        text = p.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return 0
-    counts: dict[str, int] = {}
-    for line in text.splitlines():
-        m = _IDEA_TITLE_RE.match(line)
-        if not m:
-            continue
-        title = m.group(1).strip().lower()
-        if not title:
-            continue
-        counts[title] = counts.get(title, 0) + 1
-    thr = max(1, int(threshold))
-    return sum(1 for c in counts.values() if c >= thr)
 
 
 def count_stale_promoted(vault: Path, stale_days: int, now: datetime) -> int:
@@ -283,15 +224,10 @@ def gather_signals(vault: Path, config: dict, now: datetime) -> dict:
         "inbox": count_inbox(vault),
         "watchlist_high": count_watchlist_high_pending(vault),
         "incubator": count_incubator_pending(vault),
-        "idea_ledger": count_idea_ledger_stale(now, int(config.get("idea_ledger_stale_months", 6))),
         "staged_adapt": count_staged_adapt(vault),
     }
     # Nudges (task 6) — gated by their own toggles so a disabled nudge computes
     # 0 (no wasted parse) and stays out of the shifted-state snapshot.
-    sig["promote_suggest"] = (
-        count_promote_suggest(int(config.get("promote_mention_threshold", 3)))
-        if config.get("enable_promote_suggest", True) else 0
-    )
     sig["stale_promoted"] = (
         count_stale_promoted(vault, int(config.get("stale_promotion_days", 30)), now)
         if config.get("enable_stale_promotion_nudge", True) else 0
@@ -308,15 +244,11 @@ def _over_threshold(signals: dict, config: dict) -> dict:
         out["watchlist_high"] = signals["watchlist_high"]
     if signals["incubator"] >= int(config.get("incubator_pending_threshold", 1)):
         out["incubator"] = signals["incubator"]
-    if signals["idea_ledger"] >= 1:  # any stale ledger entry is worth a nudge
-        out["idea_ledger"] = signals["idea_ledger"]
     if signals.get("staged_adapt", 0) >= 1:  # candidates awaiting Pass-2 eval
         out["staged_adapt"] = signals["staged_adapt"]
-    # Nudges (task 6) — the mention/stale thresholds are applied inside the
-    # counters, and the toggle inside gather_signals, so any non-zero count here
-    # is already a qualifying, enabled signal.
-    if signals.get("promote_suggest", 0) >= 1:
-        out["promote_suggest"] = signals["promote_suggest"]
+    # Nudges (task 6) — the stale threshold is applied inside the counter, and
+    # the toggle inside gather_signals, so any non-zero count here is already a
+    # qualifying, enabled signal.
     if signals.get("stale_promoted", 0) >= 1:
         out["stale_promoted"] = signals["stale_promoted"]
     return out
@@ -339,13 +271,6 @@ def build_briefing(signals: dict, config: dict) -> str:
     if "incubator" in active:
         n = active["incubator"]
         parts.append(f"{n} incubator idea{'' if n == 1 else 's'} in research")
-    if "idea_ledger" in active:
-        n = active["idea_ledger"]
-        parts.append(f"{n} idea-ledger entr{'y' if n == 1 else 'ies'} >{config.get('idea_ledger_stale_months', 6)}mo (GC-eligible)")
-    if "promote_suggest" in active:
-        n = active["promote_suggest"]
-        thr = config.get("promote_mention_threshold", 3)
-        parts.append(f"{n} idea{'' if n == 1 else 's'} surfaced ≥{thr}× — consider `/memory promote`")
     if "stale_promoted" in active:
         n = active["stale_promoted"]
         d = config.get("stale_promotion_days", 30)
