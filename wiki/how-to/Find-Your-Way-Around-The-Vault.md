@@ -20,11 +20,11 @@ The vault is five lowercase root spaces beside two root notes. Every space is sp
 
    Nothing else sits loose in `agent/` except the data runs' dot-named markers, which the shape gate tolerates.
 
-3. **Look inside `calendar/`.** One `YYYY/` directory per year, holding facet notes, plus a generated `moc-calendar-YYYY.md` beside each year. `_daily-template.md` sits at the calendar root — it stays there until plan 10 wires the diary facet.
+3. **Look inside `calendar/`.** One `YYYY/` directory per year, holding facet notes, plus a generated `moc-calendar-YYYY.md` beside each year. `_daily-template.md` sits at the calendar root permanently — Obsidian's own daily-notes setting names it there (agentm-vault plan 15; plan 10 had left this open).
 
 4. **Look inside `personal/`.** Your own filing, Title Case inside and untouched by the root casing migration — that migration renamed only the four root spaces themselves, never anything below them. `personal/Home/`, `personal/Church/`, and the rest of your tree read exactly as you left them. One folder there is also read by the machinery: `personal/ideas/`, lowercase, is where an idea card lives once you file it. The night may add its thoughts to a card there, and `Ideas.md` is rebuilt from the folder (agentm-vault part 13) — see [Manage your ideas list](Manage-Your-Ideas-List).
 
-5. **Look inside `projects/`.** One tree per project: `charter.md`, `tracker.md`, `followups.md`, `decisions/`, `designs/`, `research/`, `drafts/`, `tasks/`, and a generated `moc-<slug>.md` (the design's skeleton; a project that predates the projects migration, agentm-vault plan 10, still carries its `_harness/` tree and whatever else it grew). A finished project's tree lives under `projects/completed/` instead.
+5. **Look inside `projects/`.** One tree per project: `charter.md`, `tracker.md`, `followups.md`, `decisions/`, `designs/`, `research/`, `drafts/`, `tasks/`, and a generated `moc-<slug>.md` (the design's skeleton). No code reads a `_harness/` tree any more (agentm-vault plan 15 retired the last fallback that did) — a project that never ran the projects migration and still carries one is a leftover the doctor's `harness-dirs` row flags, not a place anything writes. A finished project's tree lives under `projects/completed/` instead.
 
 6. **Look inside `standards/`.** The four always-load files, plus `voice/` for the on-demand voice rules. Nothing else lives here.
 

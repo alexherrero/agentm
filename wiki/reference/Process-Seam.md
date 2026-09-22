@@ -1,6 +1,6 @@
 # Process seam reference
 
-The memory↔process client seam ([`scripts/process_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/process_seam.py)) gives you a small, **read-only**, **graceful-no-op** view. You call this seam from a *process* (like the crickets development-lifecycle phases today, or the V5-9 MCP server tomorrow). You use it instead of reaching into the memory engine's internals. It exports two functions. It composes these functions only from the DC-7-frozen public memory readers (`resolve_project`, `resolve_active_plan`, `harness_state_dir`, `is_available`). It never uses a write path. The importable Python module forms the contract ([LC-1]). The `python -m` entrypoint gives you a convenience shim for non-Python shell callers.
+The memory↔process client seam ([`scripts/process_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/process_seam.py)) gives you a small, **read-only**, **graceful-no-op** view. You call this seam from a *process* (like the crickets development-lifecycle phases today, or the V5-9 MCP server tomorrow). You use it instead of reaching into the memory engine's internals. It exports two functions. It composes these functions only from the DC-7-frozen public memory readers (`resolve_project`, `resolve_active_plan`, `active_plan_paths`, `is_available` — `harness_state_dir` retired under agentm-vault plan 15). It never uses a write path. The importable Python module forms the contract ([LC-1]). The `python -m` entrypoint gives you a convenience shim for non-Python shell callers.
 
 > [!NOTE]
 > **R0.9 (agentmEngine#2):** A third function, `recall_here`, was retired. It went dead when the V5-3 vault-backend removal made it always return `""`. It has no live caller. The crickets' documenter sub-agent uses `harness_memory.py`'s own `documenter-context` CLI verb instead.
@@ -43,16 +43,16 @@ It **never persists** data. It imports no write path. It calls no write path. Yo
 
 ## `state_path(context, which)`
 
-You use this to resolve the harness state path for `which` in the current context. It wraps `resolve_project`, `resolve_active_plan`, and `harness_state_dir`. This gives you V5-10 named-plan awareness for free.
+You use this to resolve the harness state path for `which` in the current context. It wraps `resolve_project` and `active_plan_paths` (agentm-vault plan 15 dropped `harness_state_dir` from this composition — the seam now reads the same task-layout resolution `resolve_active_plan` returns). This gives you V5-10 named-plan awareness for free.
 
 | Parameter | Type | Detail |
 |---|---|---|
 | `context` | `dict \| None` | `cwd` selects the project root; `plan` (optional) names a plan via `resolve_active_plan`'s explicit-arg path. |
-| `which` | `str` | `"plan"`, `"progress"` or `"tracker"` — which file of the active plan. The tracker sits beside the pair: `tracker-<name>.md` in `_harness/`, or `tracker.md` inside a task directory. |
+| `which` | `str` | `"plan"`, `"progress"` or `"tracker"` — which file of the active plan. The tracker sits beside the pair: `tracker.md` inside a task directory, or `tracker-<name>.md` beside a repo-local pair. |
 
 | Condition | Result |
 |---|---|
-| Vault-backed memory present | The resolved `Path` under the vault `_harness/` dir, or — for a task's plan (agentm-vault plan 09) — the already-absolute path inside its `tasks/<slug>/` directory. |
+| A synced backend resolves | A task's file — the already-absolute path inside its `tasks/<name>/` directory (agentm-vault plans 09/15; there is no more vault-side `_harness/` to fall through to). |
 | No vault / memory configured | Repo-local degrade `<project_root>/.harness/<file>` ([LC-3]) — **never `None`**. |
 | `which` not `"plan"`/`"progress"`/`"tracker"` | Raises `ValueError` — a caller bug, distinct from the absent-memory degrade. |
 | `.harness/active-plan` marker present but dangling / names an unsafe slug | Propagates `harness_memory.ActivePlanError` / `ValueError` — **not** swallowed. |
