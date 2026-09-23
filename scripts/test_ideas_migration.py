@@ -13,6 +13,8 @@ journal.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
 import types
@@ -376,6 +378,49 @@ class TheApply(_Vault):
         self.assertEqual(mig.revert(journal, self.vault), 5)
         after = self._snapshot()
         self.assertEqual(after, before)
+
+
+class TheFinish(_Vault):
+    """The move's last step, added after it ran: the marker that turns
+    check-card-shape's idea walk from reporting into enforcing, written only
+    when every card the move left reads clean under that walk."""
+
+    MARKER = ".ideas-surface-complete"
+
+    def _applied(self) -> None:
+        journal = self.vault.parent / f"{self.vault.name}-j5.jsonl"
+        self.addCleanup(lambda: journal.unlink(missing_ok=True))
+        mig.apply(self._plan(), 5, journal, writers=lambda: [])
+
+    def test_the_marker_is_written_once_every_card_the_move_wrote_has_the_shape(self) -> None:
+        self._applied()
+        self.assertEqual(mig.finish(self.root), [])
+        marker = self.root / "memory" / self.MARKER
+        self.assertTrue(marker.is_file())
+        self.assertIn("cards 3", marker.read_text(encoding="utf-8"))
+
+    def test_an_off_shape_card_refuses_and_writes_no_marker(self) -> None:
+        self._applied()
+        card = self.vault / "personal" / "ideas" / "graduate.md"
+        card.write_text(card.read_text(encoding="utf-8").replace("status: active\n", "status: active\nlifecycle: active\n"),
+                        encoding="utf-8")
+        problems = mig.finish(self.root)
+        self.assertTrue(any("personal/ideas/graduate.md" in p and "`lifecycle`" in p for p in problems), problems)
+        self.assertFalse((self.root / "memory" / self.MARKER).exists())
+
+    def test_a_vault_the_move_never_ran_on_refuses(self) -> None:
+        problems = mig.finish(self.root)
+        self.assertTrue(any("holds no idea card" in p for p in problems), problems)
+        self.assertFalse((self.root / "memory" / self.MARKER).exists())
+
+    def test_the_command_writes_the_marker_and_names_the_vault_commit(self) -> None:
+        self._applied()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = mig.main(["--finish", "--vault", str(self.vault), "--memory-root", str(self.root)])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertTrue((self.root / "memory" / self.MARKER).is_file())
+        self.assertIn(f'add "agent/memory/{self.MARKER}"', out.getvalue())
 
 
 if __name__ == "__main__":
