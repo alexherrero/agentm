@@ -3,11 +3,12 @@
 
 A small, **read-only**, **graceful-no-op** view that a *process* (the crickets
 development-lifecycle phases today; the V5-9 MCP server + plugins tomorrow) calls
-instead of reaching into the memory engine's internals. It exports two
+instead of reaching into the memory engine's internals. It exports three
 functions over the DC-7-frozen public memory API:
 
     offer_save_here(context, candidate)             -> list[dict]
     state_path(context, which)                      -> Path
+    project_path(context, which)                    -> Path
 
 R0.9 (agentmEngine#2): a third function, recall_here, was retired — it
 delegated to harness_memory.phase_recall(), which has returned "" for every
@@ -35,20 +36,28 @@ Design contract (parent design `v5-4-process-seam`, Locked design calls):
 
 Frozen-API anchoring: every call routes through ``harness_memory``'s *public*
 surface (``resolve_project`` / ``resolve_active_plan`` / ``active_plan_paths`` /
-``is_available``). It never touches engine internals and never widens the
+``project_state_root`` / ``is_available``). It never touches engine internals and never widens the
 engine's surface — a consumer that needs something the frozen API lacks is a
 separate engine change, not a seam widening.
 
 The shared ``context`` dict (both functions):
 
     {"cwd": <project root>,   # optional; defaults to the process cwd
+     "project": <project slug>,  # optional; project_path only, a project with no checkout
      "phase": <dev-loop phase>,  # optional; offer_save_here only, passed through
      "plan": <named-plan slug>}  # optional; state_path only (named-plan awareness)
 
 Run directly for the shell shim:
 
     python3 scripts/process_seam.py state-path plan
+    python3 scripts/process_seam.py project-path desk [--cwd ROOT | --project SLUG]
     python3 scripts/process_seam.py offer-save-here --kind decision --slug foo --body-file -
+
+``project-path`` names a project's ``tasks/``, ``designs/`` or ``desk/`` and
+creates nothing: exit 0 with the path whether or not it exists yet, 1 when the
+project has no vault home (the reason on stderr), 2 on a usage error or an
+unsafe slug (agentm-vault, resolve-the-project-homes). The rest of this
+paragraph is ``state-path``'s.
 
 The shim's exit codes: 0 resolved, 2 a caller bug or a loud refusal the engine
 raised, and **4 name the task** — a bare ``state-path`` on a project that keeps
@@ -75,6 +84,16 @@ import harness_memory as _hm  # noqa: E402
 # Which `which` tokens state_path() accepts: the resolved (plan, progress) pair
 # from `resolve_active_plan`, and the tracker it carries beside them.
 _STATE_WHICH = ("plan", "progress", "tracker")
+
+# The homes `project_path` names: a project's tasks, its designs, and the desk
+# that holds its machine files (agentm-vault § Projects and tasks).
+_PROJECT_HOMES = ("tasks", "designs", "desk")
+
+
+class NoProjectHome(LookupError):
+    """The project has no vault home to name: no project is bound to the
+    checkout, no synced storage backend is active, or the project or the
+    device has opted into local state mode. The shim answers exit 1."""
 
 
 def _project_root(context: Optional[dict]) -> Path:
@@ -172,6 +191,44 @@ def state_path(context: Optional[dict], which: str) -> Path:
     return paths[index]
 
 
+def project_path(context: Optional[dict], which: str) -> Path:
+    """Name one of a project's homes: its ``tasks/``, ``designs/`` or ``desk/``.
+
+    The project is the one bound to ``context["cwd"]`` through its
+    ``.harness/project.json``, or the one ``context["project"]`` names by slug
+    for a project with no repo checkout. The answer is composed from the
+    project directory the resolver already names (``project_state_root``), so
+    it is the same on the vault-root and memory-root layouts, and it is
+    returned whether or not the directory exists yet. Nothing is created.
+
+    Raises:
+        ValueError: ``which`` is not a home, or the slug is not a single path
+            component — a caller bug or a refusal, never a degrade.
+        NoProjectHome: no project is bound, or the project has no vault home
+            (no synced backend, or a local opt-out). There is no [LC-3] degrade
+            here: a repo-local ``.harness/`` holds no tasks, designs or desk.
+    """
+    if which not in _PROJECT_HOMES:
+        raise ValueError(
+            f"project_path: which must be one of {_PROJECT_HOMES!r}, got {which!r}"
+        )
+    ctx = context or {}
+    resolution = _hm.resolve_project(ctx)
+    slug = resolution.get("slug")
+    if slug is None:
+        raise NoProjectHome(
+            f"no project is bound to {_project_root(ctx)}: its .harness/project.json "
+            f"names no vault_project. Pass --project SLUG to name one."
+        )
+    root = _hm.project_state_root(resolution)
+    if root is None:
+        raise NoProjectHome(
+            f"{slug} has no vault home: no synced storage backend is active, or "
+            f"the project or this device is in local state mode."
+        )
+    return root / which
+
+
 # -----------------------------------------------------------------------------
 # Thin shell entrypoint ([LC-1]) — the contract is the module API above; this
 # shim lets non-Python hosts shell out to the same functions. Always exits 0 on
@@ -193,6 +250,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p_state.add_argument("which", choices=list(_STATE_WHICH))
     p_state.add_argument("--cwd", default=None, help="project root (default: cwd)")
     p_state.add_argument("--plan", default=None, help="named-plan slug (e.g. 'foo' → PLAN-foo.md)")
+
+    p_home = sub.add_parser(
+        "project-path",
+        help="name a project's tasks, designs or desk directory (creates nothing)",
+    )
+    p_home.add_argument("which", choices=list(_PROJECT_HOMES))
+    home_where = p_home.add_mutually_exclusive_group()
+    home_where.add_argument("--cwd", default=None, help="project root (default: cwd)")
+    home_where.add_argument(
+        "--project", default=None, metavar="SLUG",
+        help="a project named by slug, for one with no repo checkout",
+    )
 
     p_offer = sub.add_parser("offer-save-here", help="emit advisory save candidate(s) as JSON")
     p_offer.add_argument("--cwd", default=None, help="project root (default: cwd)")
@@ -230,6 +299,30 @@ def main(argv: Optional[list[str]] = None) -> int:
             # and asks which task (agentm-vault plan 10, task 7(b)).
             print(f"[process_seam] {exc}", file=sys.stderr)
             return 4
+        print(resolved)
+        return 0
+
+    if args.cmd == "project-path":
+        # Exit 0 with the path (whether or not it exists), 1 when the project has
+        # no vault home (the reason on stderr), 2 on a usage error or an unsafe
+        # slug — the contract crickets' project_homes.py was written against.
+        if args.project is not None:
+            context = {"project": args.project}
+        else:
+            context = {"cwd": args.cwd} if args.cwd else {}
+        try:
+            resolved = project_path(context, args.which)
+        except ValueError as exc:
+            print(f"[process_seam] {exc}", file=sys.stderr)
+            return 2
+        except NoProjectHome as exc:
+            print(f"[process_seam] {exc}", file=sys.stderr)
+            return 1
+        except Exception as exc:  # noqa: BLE001 — a configured backend that will not load
+            # is no home to name, said loudly; never a quiet device-local answer.
+            print(f"[process_seam] no vault home: the storage backend did not resolve: {exc}",
+                  file=sys.stderr)
+            return 1
         print(resolved)
         return 0
 

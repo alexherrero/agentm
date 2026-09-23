@@ -178,6 +178,87 @@ class TheListPlansVerb(unittest.TestCase):
         self.assertEqual(self._listed(), ["001-build-it"])
 
 
+class TheListPlansVerbBySlug(unittest.TestCase):
+    """`harness_memory.py list-plans --project SLUG` (agentm-vault,
+    resolve-the-project-homes): a project with no repo checkout lists its open
+    tasks, and prints no binding, since a binding lives in a checkout."""
+
+    def setUp(self) -> None:
+        from vault_backend_stub import VaultBackend
+
+        self.root = Path(tempfile.mkdtemp(prefix="agentm-list-plans-slug-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.vault = self.root / "vault"
+        self.tasks = self.vault / "projects" / "demo" / "tasks"
+        self.tasks.mkdir(parents=True)
+        patcher = unittest.mock.patch("backend_selection.select_backend",
+                                      return_value=VaultBackend(root=self.vault,
+                                                                lock_root=self.root / "locks"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _task(self, name: str, status=None) -> None:
+        task = self.tasks / name
+        _write(task / "plan.md", f"# Plan: {name}\n")
+        if status is None:
+            return
+        t = tk.new(title=name, project="demo", task=name, objective="Do it.",
+                   next_step="Start.", today="2026-09-10")
+        for to in {"active": ("active",), "done": ("active", "done")}[status]:
+            t = tk.transition(t, to, today="2026-09-11",
+                              outcome="Finished." if to in tk.FINAL else None)
+        tk.write(task / "tracker.md", t)
+
+    def _main(self, *argv: str) -> tuple:
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = hm.main(["list-plans", *argv])
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_open_tasks_are_listed_by_slug_and_finished_ones_left_out(self) -> None:
+        self._task("041-ship-it", "done")
+        self._task("042-build-the-brief", "active")
+        rc, out, _err = self._main("--project", "demo")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.splitlines(), [str(self.tasks / "042-build-the-brief" / "plan.md")])
+
+    def test_no_binding_is_printed_even_from_a_bound_checkout(self) -> None:
+        # The process stands in a checkout with a binding; a slug lookup is not
+        # that checkout, so its binding is not printed.
+        self._task("042-build-the-brief", "active")
+        repo = self.root / "repo"
+        _write(repo / ".harness" / "active-plan", "042-build-the-brief\n")
+        here = Path.cwd()
+        os.chdir(repo)
+        try:
+            rc, out, _err = self._main("--project", "demo")
+        finally:
+            os.chdir(here)
+        self.assertEqual(rc, 0)
+        self.assertNotIn("active-binding=", out)
+
+    def test_a_project_with_no_tasks_lists_nothing(self) -> None:
+        rc, out, _err = self._main("--project", "nobody-here")
+        self.assertEqual((rc, out), (0, ""))
+
+    def test_an_unsafe_slug_exits_2(self) -> None:
+        for bad in ("../escape", "a/b", ".."):
+            with self.subTest(bad=bad):
+                rc, out, err = self._main("--project", bad)
+                self.assertEqual((rc, out), (2, ""))
+                self.assertIn("unsafe project slug", err)
+
+    def test_project_and_project_root_together_is_a_usage_error(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            hm.main(["list-plans", "--project", "demo", "--project-root", str(self.root)])
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_the_resolution_has_no_checkout(self) -> None:
+        res = hm.resolve_project({"project": "demo"})
+        self.assertIsNone(res["project_root"])
+        self.assertEqual(hm.project_state_root(res), self.vault / "projects" / "demo")
+
+
 class TheQueueDashboard(_Project):
     def test_a_task_row_falls_back_to_its_status_line_without_a_tracker(self) -> None:
         self._task("bar", "in-progress")
