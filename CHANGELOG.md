@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`process_seam.py project-path {tasks|designs|desk} [--cwd ROOT | --project
+  SLUG]` names a project's homes (agentm-vault, resolve-the-project-homes).** A
+  plugin asks agentm where a project keeps its tasks, its designs and its machine
+  files instead of composing a layout: exit 0 with the path whether or not it
+  exists yet, 1 with the reason on stderr when the project has no vault home, 2
+  on a usage error or an unsafe slug. Nothing is created. It is the prerequisite
+  of crickets' `retire-harness-in-the-other-plugins` and
+  `retire-the-flat-plan-layout`, and its contract is theirs.
+- **`harness_memory.py list-plans --project SLUG`** lists the open tasks of a
+  project with no repo checkout, with no binding line. `resolve_project` takes a
+  project by slug; such a project has no checkout, so only the device-level
+  `state_mode` applies to it.
+
 - **`check-no-harness-paths` and the doctor's `harness-dirs` row keep the
   retired per-project state directory gone (agentm-vault plan 15).** The gate
   fails on the literal `_harness` in tracked non-test files, comments included

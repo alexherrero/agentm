@@ -302,6 +302,123 @@ class StatePath(_SeamFixture):
             )
 
 
+class ProjectPath(_SeamFixture):
+    """`project_path` and the `project-path` verb (agentm-vault,
+    resolve-the-project-homes): a project's tasks, designs and desk, by checkout
+    or by slug, composed from the project directory and never created — the
+    contract crickets' project_homes.py was written against."""
+
+    def _synced(self):
+        from vault_backend_stub import VaultBackend
+        return unittest.mock.patch("backend_selection.select_backend",
+                                   return_value=VaultBackend(root=self.vault))
+
+    def _run(self, *argv: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = seam.main(list(argv))
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_each_home_is_the_same_by_checkout_and_by_slug(self) -> None:
+        with self._synced():
+            for which in ("tasks", "designs", "desk"):
+                with self.subTest(which=which):
+                    by_cwd = seam.project_path(self._ctx(), which)
+                    by_slug = seam.project_path({"project": _SLUG}, which)
+                    self.assertEqual(by_cwd, self.vault_project / which)
+                    self.assertEqual(by_slug, by_cwd)
+                    self.assertNotIn("_harness", by_cwd.parts)
+
+    def test_the_verb_prints_the_path_both_ways(self) -> None:
+        with self._synced():
+            for flags in (("--cwd", str(self.repo)), ("--project", _SLUG)):
+                with self.subTest(flags=flags):
+                    rc, out, err = self._run("project-path", "desk", *flags)
+                    self.assertEqual((rc, err), (0, ""))
+                    self.assertEqual(out.strip(), str(self.vault_project / "desk"))
+
+    def test_a_home_that_does_not_exist_yet_answers_and_is_not_created(self) -> None:
+        with self._synced():
+            rc, out, _err = self._run("project-path", "designs", "--project", _SLUG)
+            self.assertEqual(rc, 0)
+            self.assertFalse(Path(out.strip()).exists())
+            # A project not in the vault at all still has a home to name.
+            rc, out, _err = self._run("project-path", "desk", "--project", "brand-new")
+            self.assertEqual(rc, 0)
+            self.assertEqual(Path(out.strip()).name, "desk")
+            self.assertEqual(Path(out.strip()).parent.name, "brand-new")
+            self.assertFalse(Path(out.strip()).parent.exists())
+
+    def test_no_synced_backend_is_no_home(self) -> None:
+        self._unset_vault()
+        rc, out, err = self._run("project-path", "desk", "--cwd", str(self.repo))
+        self.assertEqual((rc, out), (1, ""))
+        self.assertIn("no vault home", err)
+
+    def test_a_repo_local_opt_out_is_no_home(self) -> None:
+        self._local_mode()
+        with self._synced():
+            rc, out, err = self._run("project-path", "tasks", "--cwd", str(self.repo))
+        self.assertEqual((rc, out), (1, ""))
+        self.assertIn("local state mode", err)
+
+    def test_device_local_mode_applies_to_a_slug_lookup(self) -> None:
+        cfg = Path(_TEST_INSTALL_PREFIX) / ".agentm-config.json"
+        cfg.write_text(json.dumps({"state_mode": "local"}), encoding="utf-8")
+        try:
+            with self._synced():
+                rc, out, _err = self._run("project-path", "desk", "--project", _SLUG)
+        finally:
+            cfg.unlink()
+        self.assertEqual((rc, out), (1, ""))
+
+    def test_another_repos_marker_never_applies_to_a_slug_lookup(self) -> None:
+        # The process stands in a checkout that opted out; a project named by
+        # slug has no checkout, so that marker is not its own.
+        self._local_mode()
+        here = Path.cwd()
+        os.chdir(self.repo)
+        try:
+            with self._synced():
+                self.assertEqual(seam.project_path({"project": _SLUG}, "desk"),
+                                 self.vault_project / "desk")
+        finally:
+            os.chdir(here)
+
+    def test_an_unbound_checkout_is_no_home(self) -> None:
+        bare = Path(self._tmp) / "bare-repo"
+        bare.mkdir()
+        with self._synced():
+            rc, out, err = self._run("project-path", "desk", "--cwd", str(bare))
+        self.assertEqual((rc, out), (1, ""))
+        self.assertIn("--project", err)
+
+    def test_an_unsafe_slug_exits_2(self) -> None:
+        with self._synced():
+            for bad in ("../escape", "a/b", "..", "x\\y", " "):
+                with self.subTest(bad=bad):
+                    rc, out, err = self._run("project-path", "desk", "--project", bad)
+                    self.assertEqual((rc, out), (2, ""))
+                    self.assertIn("unsafe project slug", err)
+
+    def test_usage_errors_exit_2(self) -> None:
+        for argv in (["project-path", "desk", "--cwd", str(self.repo), "--project", _SLUG],
+                     ["project-path", "plans", "--project", _SLUG]):
+            with self.subTest(argv=argv[1:]):
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+                    seam.main(argv)
+                self.assertEqual(caught.exception.code, 2)
+        with self.assertRaises(ValueError):
+            seam.project_path(self._ctx(), "plans")
+
+    def test_a_backend_that_will_not_load_is_no_home_said_loudly(self) -> None:
+        with unittest.mock.patch("backend_selection.select_backend",
+                                 side_effect=hm.StorageBackendNotInstalledError("the plugin is missing")):
+            rc, out, err = self._run("project-path", "desk", "--project", _SLUG)
+        self.assertEqual((rc, out), (1, ""))
+        self.assertIn("did not resolve", err)
+
+
 class SeamIsReadOnly(_SeamFixture):
     """The load-bearing read-only proof — LC-2 + the V5-4 "seam is read-only" claim.
 
@@ -396,6 +513,27 @@ class SeamIsReadOnly(_SeamFixture):
 
         self.assertEqual(reached, [], f"seam reached write path(s): {reached}")
         self.assertEqual(before, after, "seam mutated the filesystem — not read-only")
+
+
+    def test_project_path_reaches_no_write_and_creates_no_home(self) -> None:
+        # resolve-the-project-homes: naming a home never makes one.
+        from vault_backend_stub import VaultBackend
+
+        reached = self._install_tripwires()
+        try:
+            before = self._snapshot(self.vault, self.repo)
+            with unittest.mock.patch("backend_selection.select_backend",
+                                     return_value=VaultBackend(root=self.vault)):
+                for which in ("tasks", "designs", "desk"):
+                    seam.project_path(self._ctx(), which)
+                    seam.project_path({"project": _SLUG}, which)
+            after = self._snapshot(self.vault, self.repo)
+        finally:
+            self._remove_tripwires()
+        self.assertEqual(reached, [], f"project_path reached write path(s): {reached}")
+        self.assertEqual(before, after, "project_path mutated the filesystem")
+        for which in ("tasks", "designs", "desk"):
+            self.assertFalse((self.vault_project / which).exists())
 
 
 class CLIShim(_SeamFixture):

@@ -769,7 +769,10 @@ def resolve_project(context: Optional[dict] = None) -> dict:
     """Return a resolution dict: {slug, project_locator, backend, project_root, layout}.
 
     Resolution chain (V5-6 de-vaulting — routing plane onto the storage seam):
-      1. Read the project slug via `vault_project.read_vault_project(cwd)`.
+      1. Read the project slug via `vault_project.read_vault_project(cwd)` —
+         or take it from `context["project"]` for a project with no repo
+         checkout, where `project_root` is None. An unsafe slug raises
+         ``ValueError``.
       2. Obtain the active StorageBackend via backend_selection.select_backend().
       3. Resolve `backend.resolve("desk/projects", slug)` (new) or
          `backend.resolve("personal-projects", slug)` (legacy fallback).
@@ -792,13 +795,28 @@ def resolve_project(context: Optional[dict] = None) -> dict:
     """
     if context is None:
         context = {}
-    project_root = Path(context.get("cwd", Path.cwd()))
 
-    # Defer vault_project import to here to avoid circular imports if any.
-    sys.path.insert(0, str(_HERE)) if str(_HERE) not in sys.path else None
-    import vault_project  # noqa: E402
+    named = context.get("project")
+    if named is not None:
+        # A project named by its slug, with no repo checkout (`--project SLUG`,
+        # agentm-vault's resolve-the-project-homes): `project_root` is None, so
+        # no repo-local `.project-mode` marker applies, and the process's own
+        # cwd — possibly some other repo — is never read for one.
+        slug = str(named).strip()
+        if not slug or not _is_safe_plan_slug(slug):
+            raise ValueError(
+                f"unsafe project slug {named!r}: a slug must be a single path "
+                f"component (no '/', '\\', or '..')."
+            )
+        project_root = None
+    else:
+        project_root = Path(context.get("cwd", Path.cwd()))
 
-    slug = vault_project.read_vault_project(project_root)
+        # Defer vault_project import to here to avoid circular imports if any.
+        sys.path.insert(0, str(_HERE)) if str(_HERE) not in sys.path else None
+        import vault_project  # noqa: E402
+
+        slug = vault_project.read_vault_project(project_root)
     if slug is None:
         return {
             "slug": None,
@@ -1091,7 +1109,13 @@ def _read_project_mode(resolution: dict) -> Optional[str]:
     There is **no in-vault marker layer** — configuration never lives in the
     vault. The mode is never inferred from a missing ``vault_path`` (DC-3:
     that is ambiguous and would split-brain a transiently-unreachable vault).
+
+    A project named by slug has no checkout (`project_root` present and None),
+    so only the device-level layer applies to it; another repo's marker in the
+    process's cwd is never read in its place.
     """
+    if "project_root" in resolution and resolution["project_root"] is None:
+        return _read_config_state_mode()
     project_root = resolution.get("project_root") or Path.cwd()
 
     # 1. Repo-local marker — per-repo override, on-host, vault-independent.
@@ -2299,9 +2323,15 @@ def _build_parser() -> argparse.ArgumentParser:
              "repo-local PLAN.md + PLAN-*.md) for a project root; also emits the "
              "active-plan binding when set (V5-5 task 3)",
     )
-    p_lp.add_argument(
+    lp_where = p_lp.add_mutually_exclusive_group()
+    lp_where.add_argument(
         "--project-root", default=None,
         help="path to project root (default: cwd)",
+    )
+    lp_where.add_argument(
+        "--project", default=None, metavar="SLUG",
+        help="a project named by slug, for one with no repo checkout; no "
+             "active-plan binding is printed, since a binding lives in a checkout",
     )
 
     # documenter-context (V4 #35): doc-write-time recall bundle for the
@@ -2514,7 +2544,22 @@ def main(argv: Optional[list[str]] = None) -> int:
         #   <absolute-path-to-PLAN.md>           (repo-local singleton, first if present)
         #   <absolute-path-to-PLAN-<slug>.md>    (repo-local named plans, sorted)
         #   active-binding=<slug>                (only when .harness/active-plan set)
-        # Always exits 0 — graceful-skip when no state directory or no plans.
+        # With `--project SLUG` (a project with no repo checkout) it lists that
+        # project's tasks and prints no binding, since a binding lives in a
+        # checkout. Exits 0 — graceful-skip when no state directory or no plans —
+        # or 2 on an unsafe slug.
+        if args.project is not None:
+            try:
+                resolution = resolve_project({"project": args.project})
+            except ValueError as exc:
+                print(f"[harness_memory] {exc}", file=sys.stderr)
+                return 2
+            state = project_state_root(resolution)
+            if state is not None:
+                for p in list_plan_files(state):
+                    if not _task_is_finished(p):
+                        print(p)
+            return 0
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
         resolution = resolve_project({"cwd": root})
         state = state_dir(resolution)
