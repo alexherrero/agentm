@@ -53,6 +53,28 @@ AREA_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 #: What an idea card never carries in `personal/`.
 DROPPED_KEYS = ("lifecycle", "lifecycle_since")
 
+#: The type every idea card holds, and the status it holds when it carries one.
+#: A card with no `status` is read as `active`, because a card in the folder is
+#: filed by being there (the daemon's `enrich.KeptFiling`), and the night writes
+#: the field on its next pass.
+IDEA_TYPE = "idea"
+IDEA_STATUS = "active"
+
+#: What every idea card carries: `type: idea`, which makes it one, and `area:`,
+#: the group it is listed under. Nothing else is asked of a card the operator
+#: makes by hand. The class card's required set does not apply here: it
+#: requires `lifecycle`, which an idea card never carries.
+REQUIRED_FIELDS = ("type", "area")
+
+#: A `dismissed:` value: the day the idea was retired.
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+#: Written into `memory/` by the ideas move's `--finish`
+#: (`scripts/migrate/ideas_migration.py`) once every card in the folder has the
+#: idea card's shape. Until it exists, `scripts/check-card-shape.py` lists what
+#: it finds in the folder and passes; once it exists, the gate enforces.
+MARKER_NAME = ".ideas-surface-complete"
+
 
 def vault_root(memory_root) -> Path:
     """The vault root beside a memory root (the parent when the root is nested
@@ -62,6 +84,22 @@ def vault_root(memory_root) -> Path:
 
 def ideas_dir(memory_root) -> Path:
     return vault_root(memory_root).joinpath(*IDEAS_DIR_REL)
+
+
+def marker_path(memory_root) -> Path:
+    return Path(memory_root) / "memory" / MARKER_NAME
+
+
+def card_paths(memory_root) -> list:
+    """Every idea card, in name order: the markdown files directly in the
+    folder, with no dotfile and nothing in a subfolder. It is the set the
+    daemon's `enrich.IsIdeaCard` offers the night and the dreaming binary
+    lists."""
+    folder = ideas_dir(memory_root)
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir()
+                  if p.suffix == ".md" and not p.name.startswith(".") and p.is_file())
 
 
 def valid_area(area: "str | None") -> bool:
@@ -82,7 +120,7 @@ def as_idea_card(text: str, *, area: str, dismissed: "str | None" = None,
     """
     if not valid_area(area):
         raise ValueError(f"{area!r} is not a group name: one lower-case word, hyphens allowed")
-    if dismissed is not None and not re.match(r"^\d{4}-\d{2}-\d{2}$", dismissed):
+    if dismissed is not None and not DAY_RE.match(dismissed):
         raise ValueError(f"dismissed: {dismissed!r} is not a YYYY-MM-DD day")
     parsed = card_shape.split_note(text)
     if parsed is None:
@@ -92,9 +130,9 @@ def as_idea_card(text: str, *, area: str, dismissed: "str | None" = None,
     else:
         entries, rest = parsed
     entries = card_shape.drop_keys(entries, *DROPPED_KEYS)
-    entries = card_shape.set_value(entries, "type", "idea")
+    entries = card_shape.set_value(entries, "type", IDEA_TYPE)
     entries = card_shape.set_value(entries, "area", area)
-    entries = card_shape.set_value(entries, "status", "active")
+    entries = card_shape.set_value(entries, "status", IDEA_STATUS)
     entries = card_shape.set_value(entries, "filing_confidence", "high")
     if dismissed:
         entries = card_shape.set_value(entries, "dismissed", dismissed)

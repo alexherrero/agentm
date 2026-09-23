@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """The three card gates (agentm-vault plan 06). Each fails on a fixture that
 breaks its rule and passes one that keeps it; the two with a pre-backfill state
-report without failing until the backfill's marker exists."""
+report without failing until the backfill's marker exists. check-card-shape's
+second walk, the idea cards in `personal/ideas/` (agentm-vault plan 13), has a
+shape and a marker of its own."""
 from __future__ import annotations
 
 import importlib.util
@@ -19,6 +21,7 @@ for _p in (str(_REPO / "scripts"), str(_TOOLKIT)):
         sys.path.insert(0, _p)
 
 import card_shape as cs  # noqa: E402
+import idea_cards as ic  # noqa: E402
 
 
 def _load(name: str):
@@ -229,6 +232,173 @@ class NoEmptyTags(_Root):
         self.mark()
         code, out = self.gate(empty.check)
         self.assertEqual(code, 0, out)
+
+
+# An idea card as the ideas move left it: no `lifecycle`, `filing_confidence:
+# high` kept below the contract's floor (ruling 6: whatever the score), and the
+# machine block after the read block.
+IDEA = """---
+title: Port SimCity to the browser
+type: idea
+area: coding
+summary: "One line."
+status: active
+filing_confidence: high
+source: operator-direct
+trust: trusted
+created: 2026-05-20
+updated: 2026-09-21
+tags: [games]
+slug: port-simcity
+confidence: 0.45
+enriched_by: enrich/1+prompt/x
+enriched_at: "2026-09-22T09:00:00Z"
+rules_hash: h
+---
+
+An idea.
+"""
+
+# A card made by hand, as the how-to allows: a title, the type and the group,
+# plus the day it was dismissed. No status yet; the night writes `active`.
+BY_HAND = """---
+title: Unraid GitHub Actions runner
+type: idea
+area: home-tech
+dismissed: 2026-05-24
+---
+
+Run CI on the home server.
+"""
+
+
+class IdeaCards(unittest.TestCase):
+    """The idea walk, in the live layout: the memory root nested in an Obsidian
+    vault, and the cards at the vault root's `personal/ideas/`, not the memory
+    root's."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+        (self.vault / ".obsidian").mkdir()
+        self.root = self.vault / "agent"
+        for c in ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs"):
+            (self.root / "memory" / c).mkdir(parents=True)
+        # The class walk enforces and holds nothing, so the exit code is the idea walk's.
+        (self.root / "memory" / cs.MARKER_NAME).write_text("run test\n", encoding="utf-8")
+        self.ideas = self.vault / "personal" / "ideas"
+        self.ideas.mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write(self, name: str, text: str) -> None:
+        (self.ideas / name).write_text(text, encoding="utf-8")
+
+    def clear(self) -> None:
+        for p in list(self.ideas.iterdir()):
+            p.unlink()
+
+    def mark(self) -> None:
+        ic.marker_path(self.root).write_text("ideas move finished test\ncards 1\n", encoding="utf-8")
+
+    def gate(self):
+        out = io.StringIO()
+        return shape.check(self.root, CONTRACT, out=out), out.getvalue()
+
+    def test_an_idea_card_in_shape_passes_where_the_class_rules_would_fail_it(self):
+        self.write("port-simcity.md", IDEA)
+        self.write("unraid-runner.md", BY_HAND)
+        self.mark()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("clean — 2 idea card(s)", out)
+        # The class card's rules would fail the same card twice over, which is
+        # why the idea walk has its own: they require `lifecycle`, and they hold
+        # `filing_confidence` to the floor that ruling 6 sets aside.
+        as_class = shape.note_findings("memory/semantic/port-simcity.md", IDEA, CONTRACT)
+        self.assertTrue(any("missing `lifecycle`" in f for f in as_class), as_class)
+        self.assertTrue(any("the floor is" in f for f in as_class), as_class)
+
+    def test_before_the_marker_it_lists_each_finding_and_passes(self):
+        self.write("port-simcity.md", IDEA.replace("area: coding\n", "")
+                   .replace("status: active\n", "status: active\nlifecycle: active\n"))
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("idea cards report only — 2 finding(s) over 1 card(s)", out)
+        self.assertIn(f"enforced once memory/{ic.MARKER_NAME} exists", out)
+        self.assertIn("pending: personal/ideas/port-simcity.md: missing `area`", out)
+        self.assertIn("pending: personal/ideas/port-simcity.md: carries `lifecycle`", out)
+
+    def test_each_rule_fails_on_its_own_breach_and_names_the_file_and_field(self):
+        breaches = {
+            "lifecycle": (IDEA.replace("status: active\n", "status: active\nlifecycle: active\n"),
+                          "carries `lifecycle`"),
+            "lifecycle_since": (IDEA.replace("filing_confidence: high\n",
+                                             "lifecycle_since: 2026-09-01\nfiling_confidence: high\n"),
+                                "carries `lifecycle_since`"),
+            "a status other than active": (IDEA.replace("status: active", "status: dormant"),
+                                           "`status: dormant`"),
+            "no area": (IDEA.replace("area: coding\n", ""), "missing `area`"),
+            "an empty area": (IDEA.replace("area: coding", 'area: ""'), "missing `area`"),
+            "another type": (IDEA.replace("type: idea", "type: reference"), "`type: reference`"),
+            "a record": (IDEA.replace("type: idea", "kind: session-trace"), "`kind: session-trace`"),
+            "no type": (IDEA.replace("type: idea\n", ""), "no `type`"),
+            "no frontmatter": ("An idea with no block.\n", "no frontmatter block"),
+            "a dismissal that is not a day": (IDEA.replace('summary: "One line."\n',
+                                                           'summary: "One line."\ndismissed: someday\n'),
+                                              "`dismissed: someday`"),
+            "the read block out of order": (IDEA.replace("title: Port SimCity to the browser\ntype: idea\n",
+                                                         "type: idea\ntitle: Port SimCity to the browser\n"),
+                                            "out of order"),
+            "a retired field": (IDEA.replace("rules_hash: h\n", "rules_hash: h\ngroup: coding\n"),
+                                "retired field(s) ['group']"),
+        }
+        for label, (text, words) in breaches.items():
+            with self.subTest(label):
+                self.clear()
+                self.write("port-simcity.md", text)
+                self.mark()
+                code, out = self.gate()
+                self.assertEqual(code, 1, f"{label} passed:\n{out}")
+                self.assertTrue(any("personal/ideas/port-simcity.md" in line and words in line
+                                    for line in out.splitlines()),
+                                f"{label}: no finding names the file and {words!r}:\n{out}")
+
+    def test_a_card_is_a_markdown_file_directly_in_the_folder(self):
+        # Dotfiles (the inbox's temporary name), a subfolder the operator keeps
+        # for their own reasons and a file that is not a note are not cards:
+        # the set enrich.IsIdeaCard and the dreaming binary read.
+        stray = "---\ntype: reference\nlifecycle: active\n---\nnot an idea\n"
+        self.write("port-simcity.md", IDEA)
+        self.write(".port-simcity.md.tmp", stray)
+        self.write(".draft.md", stray)
+        (self.ideas / "later").mkdir()
+        (self.ideas / "later" / "old.md").write_text(stray, encoding="utf-8")
+        self.write("sketch.png", "not a note")
+        self.mark()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("clean — 1 idea card(s)", out)
+
+    def test_a_card_the_writer_files_has_the_shape_the_gate_holds(self):
+        # as_idea_card is what the inbox and the move both write through: a
+        # class card carrying `lifecycle: pinned` comes out in the idea card's
+        # shape, so the writer and the gate agree.
+        card = ic.as_idea_card(GOOD.replace("type: convention", "type: idea"), area="coding",
+                               dismissed="2026-09-01", today="2026-09-22")
+        self.write("a-good-card.md", card)
+        self.mark()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("clean — 1 idea card(s)", out)
+
+    def test_with_no_folder_it_says_so_and_passes(self):
+        self.ideas.rmdir()
+        self.mark()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertIn("no idea card to check", out)
 
 
 if __name__ == "__main__":

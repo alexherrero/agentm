@@ -39,10 +39,17 @@ re-files a remark whose card has vanished.
             made, and each result is read back.
   --revert  Undoes a run from its journal, newest first, refusing a note that
             no longer holds what the run wrote.
+  --finish  The move's last step, added after the move ran on 2026-09-21:
+            checks that every card in `personal/ideas/` reads clean under
+            `scripts/check-card-shape.py`'s idea walk and, when one or more
+            does and none fails, writes `memory/.ideas-surface-complete`. The
+            marker turns that walk from reporting into enforcing, as the other
+            data runs' markers do for their gates.
 
   python3 scripts/migrate/ideas_migration.py --mapping MAPPING [--out DIR]
   python3 scripts/migrate/ideas_migration.py --apply --plan PLAN --confirm-count N
   python3 scripts/migrate/ideas_migration.py --revert JOURNAL
+  python3 scripts/migrate/ideas_migration.py --finish
 """
 from __future__ import annotations
 
@@ -591,6 +598,39 @@ def revert(journal: Path, vault_root: Path) -> int:
     return undone
 
 
+# ── the marker ────────────────────────────────────────────────────────────────
+
+def _gate():
+    """`scripts/check-card-shape.py`. Its idea walk is the move's post-condition,
+    read from the gate itself so the marker and the gate cannot disagree about
+    what "in shape" means."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_card_shape", _REPO / "scripts" / "check-card-shape.py")
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+    return gate
+
+
+def finish(memory_root: Path, *, now: "datetime | None" = None) -> list:
+    """The post-conditions that still fail. The marker is written when none do.
+
+    Two hold: the memory root holds `memory/`, where the marker goes beside the
+    other data runs' markers, and `personal/ideas/` holds at least one card with
+    no finding under the gate's idea walk."""
+    memory_root = Path(memory_root)
+    if not (memory_root / "memory").is_dir():
+        return [f"{memory_root} holds no memory/; pass the memory root"]
+    findings, count = _gate().ideas_walk(memory_root)
+    problems = list(findings)
+    if count == 0:
+        problems.append("personal/ideas/ holds no idea card, so the move has not run here")
+    if not problems:
+        stamp = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        idea_cards.marker_path(memory_root).write_text(
+            f"ideas move finished {stamp}\ncards {count}\n", encoding="utf-8")
+    return problems
+
+
 # ── the command ───────────────────────────────────────────────────────────────
 
 def _roots(vault_arg: "str | None", memory_arg: "str | None") -> "tuple[Path, Path]":
@@ -614,8 +654,27 @@ def main(argv: "list | None" = None) -> int:
     ap.add_argument("--plan", help="the plan file the dry run recorded")
     ap.add_argument("--confirm-count", type=int, help="the plan's write count, typed by the operator")
     ap.add_argument("--revert", metavar="JOURNAL", help="undo a run from its journal")
+    ap.add_argument("--finish", action="store_true",
+                    help="check every idea card's shape and write the marker that arms check-card-shape")
     a = ap.parse_args(argv)
     try:
+        if a.finish:
+            vault, mem = _roots(a.vault, a.memory_root)
+            problems = finish(mem)
+            if problems:
+                print(f"idea cards: {len(problems)} post-condition(s) fail; no marker written", file=sys.stderr)
+                for problem in problems:
+                    print(f"  {problem}", file=sys.stderr)
+                return 1
+            marker = idea_cards.marker_path(mem)
+            try:
+                rel = marker.relative_to(vault).as_posix()
+            except ValueError:
+                rel = str(marker)
+            print(f"idea cards: every card in personal/ideas/ has the idea card's shape; wrote {marker}")
+            print(f'it is a new dot-named file, which the daemon does not commit: git -C "{vault}" add '
+                  f'"{rel}" && git -C "{vault}" commit -m "the ideas move: the data run\'s marker"')
+            return 0
         if a.revert:
             journal = Path(a.revert)
             plan = json.loads((journal.parent / "plan.json").read_text(encoding="utf-8"))

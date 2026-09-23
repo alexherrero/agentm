@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`check-card-shape` holds the idea cards in `personal/ideas/` to their own
+  shape (agentm-vault plan 13).** The gate walked only the class directories,
+  so the 39 cards the ideas move wrote were never checked. A second walk reads
+  every markdown file directly in the folder and names the file and the field
+  when a note there is not `type: idea`, has no `area:`, carries `lifecycle` or
+  `lifecycle_since`, carries a `status` other than `active`, or has a
+  `dismissed:` that is not a day. The card's order and its retired fields apply
+  as they do to any card. The class card's required set and its floor rule do
+  not, because an idea card never carries `lifecycle` and the night keeps its
+  filing whatever the score. The walk lists its findings until
+  `memory/.ideas-surface-complete` exists and enforces from then on. The ideas
+  move never wrote that marker, so `scripts/migrate/ideas_migration.py
+  --finish` now does: it runs the same walk and writes the marker only when
+  every card reads clean. `check-memory-root-shape` accepts the marker beside
+  the other data runs' markers. Over the live vault on 2026-09-22 the walk read
+  no finding across the 39 cards.
 - **`process_seam.py project-path {tasks|designs|desk} [--cwd ROOT | --project
   SLUG]` names a project's homes (agentm-vault, resolve-the-project-homes).** A
   plugin asks agentm where a project keeps its tasks, its designs and its machine

@@ -114,6 +114,18 @@ class ShapeGateTests(unittest.TestCase):
         self.assertEqual(rc, 0, text)
         self.assertNotIn(".root-casing-complete", text, "the data run's own marker was named")
 
+    def test_the_ideas_moves_marker_is_tolerated_in_memory(self):
+        # The ideas move (agentm-vault plan 13) writes
+        # `memory/.ideas-surface-complete` from its --finish, beside the other
+        # data runs' markers. The literal name is pinned here: a rename of the
+        # constant would strand the marker already on the operator's disk.
+        mrt.Trims(self.root, self.engine, apply=True, out=io.StringIO()).run()
+        (self.root / "memory" / ".ideas-surface-complete").write_text(
+            "ideas move finished t\ncards 39\n", encoding="utf-8")
+        rc, text = self._check()
+        self.assertEqual(rc, 0, text)
+        self.assertNotIn(".ideas-surface-complete", text, "the data run's own marker was named")
+
     def test_the_inbox_is_a_standard_child_and_a_fifth_one_is_not(self):
         # agentm-vault plan 16: `agent/` holds exactly archive/, diagnostics/,
         # inbox/ and memory/. The gate has to accept the fourth and still fail

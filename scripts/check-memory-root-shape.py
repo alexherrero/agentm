@@ -47,6 +47,7 @@ for _p in (str(_HERE), str(_TOOLKIT)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import idea_cards as ic  # noqa: E402
 import maps_shape as ms  # noqa: E402
 import vault_layout  # noqa: E402
 
@@ -67,6 +68,7 @@ IGNORABLE = {".DS_Store", "Icon\r", "Icon", ".rename-vault-root-complete", ".git
              ".card-backfill-complete",  # the card backfill's marker (agentm-vault plan 06)
              ".root-casing-complete",  # the root casing's marker (agentm-vault plan 08)
              ".projects-migration-complete",  # the projects migration's marker (agentm-vault plan 10)
+             ic.MARKER_NAME,  # the ideas move's marker, written by its --finish (agentm-vault plan 13)
              ms.MARKER_NAME}  # the maps data run's marker (agentm-vault plan 07)
 STANDARDS_SET = ("storage-rules.md", "user-preferences.md",
                  "security-and-secret-governance.md", "moc-standards.md")
