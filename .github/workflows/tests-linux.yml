@@ -105,6 +105,10 @@ jobs:
         # and a paste has no CI of its own. This is the CI it gets: the field
         # list it teaches has to match card_shape.py's.
         run: python3 scripts/check-card-prompt.py
+      - name: check-memory-skill-table (the /memory table names every section the skill has)
+        # Plan 12 built this gate and never wired it; the arc's orphan census
+        # found it with no caller (agentm-vault close-out, 2026-09-23).
+        run: python3 scripts/check-memory-skill-table.py
       - name: check-payload-parity (every payload copy is the template's derivation)
         # The Gemini half graceful-skips on a runner (no ~/.gemini); the tracked
         # Antigravity rule is checkable everywhere and never skips.
