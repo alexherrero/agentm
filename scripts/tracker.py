@@ -63,10 +63,12 @@ TRANSITIONS = {
     "dropped": (),
 }
 # The frontmatter, in the order it is written. `task` is absent on a project's
-# own tracker; `importance`, `issue` and `design` are written when they exist;
-# `closed` is always written and stays empty until the tracker is final.
+# own tracker; `importance`, `issue`, `design` and `sensitivity` are written
+# when they exist; `closed` is always written and stays empty until the tracker
+# is final. `sensitivity` is the operator's marking (`personal-financial` on
+# the home project's notes), carried through every rewrite and never set here.
 FIELDS = ("kind", "title", "project", "task", "status", "importance",
-          "opened", "updated", "closed", "issue", "design")
+          "opened", "updated", "closed", "issue", "design", "sensitivity")
 REQUIRED = ("kind", "title", "project", "status", "opened", "updated", "closed")
 SECTIONS = ("Objective", "State", "Next", "Outcome")
 NOT_STARTED = "Not started."
@@ -105,6 +107,7 @@ class Tracker:
     closed: Optional[str] = None
     issue: Optional[int] = None
     design: Optional[str] = None
+    sensitivity: Optional[str] = None
     objective: str = ""
     state: str = ""
     next_steps: str = ""
@@ -113,7 +116,7 @@ class Tracker:
     def __post_init__(self) -> None:
         for name in ("objective", "state", "next_steps", "outcome"):
             setattr(self, name, _clean(getattr(self, name)))
-        for name in ("task", "closed", "design"):
+        for name in ("task", "closed", "design", "sensitivity"):
             if getattr(self, name) == "":
                 setattr(self, name, None)
 
@@ -166,6 +169,8 @@ def render(t: Tracker) -> str:
         lines.append(f"issue: {t.issue}")
     if t.design:
         lines.append(f"design: {_scalar_out(t.design)}")
+    if t.sensitivity:
+        lines.append(f"sensitivity: {_scalar_out(t.sensitivity)}")
     lines.append("---")
     body = []
     for name, text in t.sections().items():
@@ -233,6 +238,7 @@ def parse(text: str) -> Tracker:
         task=fm.get("task") or None, importance=_int(fm.get("importance", ""), "importance"),
         opened=fm["opened"], updated=fm["updated"], closed=fm.get("closed") or None,
         issue=_int(fm.get("issue", ""), "issue"), design=fm.get("design") or None,
+        sensitivity=fm.get("sensitivity") or None,
         objective=sections["Objective"], state=sections["State"],
         next_steps=sections["Next"], outcome=sections["Outcome"],
     )

@@ -90,6 +90,21 @@ class RoundTrip(unittest.TestCase):
         self.assertEqual([line for line in body.split("\n") if line.startswith("## ")],
                          ["## Objective", "## State", "## Next", "## Outcome"])
 
+    def test_the_operators_sensitivity_marking_is_carried(self) -> None:
+        # The home project marks its notes `sensitivity: personal-financial`;
+        # its trackers carry the same line, written last and kept by a step.
+        t = _tracker(sensitivity="personal-financial")
+        self.assertRoundTrips(t)
+        head = tk.render(t).split("\n---\n", 1)[0].split("\n")
+        self.assertEqual(head[-1], "sensitivity: personal-financial")
+        stepped = tk.transition(tk.parse(tk.render(t)), "parked", today=TODAY,
+                                state="Waiting on the lender.", next_steps="1. Call Monday.")
+        self.assertEqual(stepped.sensitivity, "personal-financial")
+        self.assertIn("\nsensitivity: personal-financial\n", tk.render(stepped))
+
+    def test_a_tracker_without_sensitivity_writes_no_line(self) -> None:
+        self.assertNotIn("sensitivity:", tk.render(_tracker()))
+
     def test_the_frontmatter_parses_as_yaml(self) -> None:
         try:
             import yaml
