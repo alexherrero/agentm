@@ -1322,11 +1322,13 @@ def _normalize_plan_name(raw: str) -> Optional[str]:
 def _is_safe_plan_slug(slug: str) -> bool:
     """A plan slug must be a single path component so it can't escape the
     directory it is joined onto — `tasks/<slug>/` or `PLAN-<slug>.md`. Rejects
-    separators and parent refs."""
+    separators, parent refs and a colon: on Windows `D:evil` joined onto the
+    vault is a drive-relative path that leaves it."""
     return (
         slug not in (".", "..")
         and "/" not in slug
         and "\\" not in slug
+        and ":" not in slug
         and "\x00" not in slug
     )
 
@@ -1512,12 +1514,29 @@ def _placed_task(resolution: dict, slug: str) -> ActivePlan:
     next free number.
 
     Composes the path and writes nothing — `/plan` writes the plan there, and the
-    directory is what makes the task exist."""
+    directory is what makes the task exist.
+
+    A directory the name already finds, with no plan in it yet (an interrupted
+    `/plan`), is reused rather than joined by a second one. A numbered name whose
+    number or verb slug another task holds is refused: placing it would make two
+    tasks answer one name, the ambiguity the lookup refuses."""
     names = _task_dir_names(resolution)
+    existing = _match_task_dirs(names, slug)
+    if len(existing) == 1:
+        return _task_at(resolution, existing[0])
+    m = _TASK_DIR.match(slug)
+    if m is None:
+        return _task_at(resolution, f"{_next_task_number(names)}-{slug}")
     # A slug the operator typed with its number already on it keeps that number;
     # re-prefixing it would make `001-042-build-the-brief`.
-    name = slug if _TASK_DIR.match(slug) else f"{_next_task_number(names)}-{slug}"
-    return _task_at(resolution, name)
+    for name in names:
+        held = _TASK_DIR.match(name)
+        if held is not None and (held.group(1) == m.group(1) or held.group(2) == m.group(2)):
+            raise ActivePlanError(
+                f"{slug!r} would share {'its number' if held.group(1) == m.group(1) else 'its verb slug'} "
+                f"with {name}. Name that task, or a new name with neither."
+            )
+    return _task_at(resolution, slug)
 
 
 def resolve_active_plan(

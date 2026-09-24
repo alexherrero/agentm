@@ -354,6 +354,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The resolver never places a second task for a name one already holds, and
+  a dependency named by its verb slug is met (the plan 15 release review).**
+  - A task directory with no plan yet, left by an interrupted `/plan`, is
+    reused. Before, the resolver placed a second numbered directory beside it,
+    and from then on the verb slug named two tasks and was refused.
+  - A numbered name whose number or verb slug another task holds is refused
+    with exit 2.
+  - A name with a colon is unsafe, because on Windows `D:evil` joined onto the
+    vault is a drive-relative path that leaves it.
+  - `plan_graph` rewrites a `depends_on` entry that is one task's verb slug to
+    that task's directory name. Readiness and merge order then find a
+    dependency written as `build-the-brief` rather than
+    `041-build-the-brief`, which is how every plan written before the move
+    names them.
 - **An enrichment call no longer leaves the note behind as a transcript.**
   Claude Code saves every session under `~/.claude/projects/`, a `claude -p`
   call included, and an enrichment call's only prompt is the note it is
