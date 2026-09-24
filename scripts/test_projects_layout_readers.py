@@ -259,6 +259,128 @@ class TheListPlansVerbBySlug(unittest.TestCase):
         self.assertEqual(hm.project_state_root(res), self.vault / "projects" / "demo")
 
 
+class TheResolveVerbBySlug(unittest.TestCase):
+    """`harness_memory.py resolve-active-plan --plan NAME --project SLUG`
+    (crickets task 101's ruling 9): an existing task's files by project slug,
+    the checkout form's line, and exit 2 — never a placement — for no such plan."""
+
+    def setUp(self) -> None:
+        from vault_backend_stub import VaultBackend
+
+        self.root = Path(tempfile.mkdtemp(prefix="agentm-resolve-slug-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.vault = self.root / "vault"
+        self.tasks = self.vault / "projects" / "demo" / "tasks"
+        self.tasks.mkdir(parents=True)
+        self.repo = self.root / "repo"
+        _write(self.repo / ".harness" / "project.json", json.dumps({"vault_project": "demo"}))
+        patcher = unittest.mock.patch("backend_selection.select_backend",
+                                      return_value=VaultBackend(root=self.vault,
+                                                                lock_root=self.root / "locks"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _task(self, name: str, body: str = "# Plan\n") -> Path:
+        task = self.tasks / name
+        _write(task / "plan.md", body)
+        return task
+
+    def _main(self, *argv: str) -> tuple:
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = hm.main(list(argv))
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_the_line_is_the_checkout_forms(self) -> None:
+        self._task("042-build-the-brief")
+        for extra in ((), ("--with-tracker",)):
+            with self.subTest(extra=extra):
+                by_slug = self._main("resolve-active-plan", "--plan", "042-build-the-brief",
+                                     "--project", "demo", *extra)
+                by_root = self._main("resolve-active-plan", "--plan", "042-build-the-brief",
+                                     "--project-root", str(self.repo), *extra)
+                self.assertEqual(by_slug[0], 0, by_slug[2])
+                self.assertEqual(by_slug, by_root)
+        task = self.tasks / "042-build-the-brief"
+        self.assertEqual(by_slug[1].strip().split("\t"),
+                         [str(task / "plan.md"), str(task / "progress.md"), str(task / "tracker.md")])
+
+    def test_the_plan_path_is_the_one_list_plans_prints(self) -> None:
+        # crickets' bridge pairs its rows by comparing the two.
+        self._task("042-build-the-brief")
+        _rc, listed, _err = self._main("list-plans", "--project", "demo")
+        _rc, line, _err = self._main("resolve-active-plan", "--plan", "042-build-the-brief",
+                                     "--project", "demo", "--with-tracker")
+        self.assertEqual(line.split("\t")[0], listed.strip())
+
+    def test_the_verb_slug_finds_the_numbered_task(self) -> None:
+        task = self._task("042-build-the-brief")
+        rc, out, _err = self._main("resolve-active-plan", "--plan", "build-the-brief",
+                                   "--project", "demo")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.split("\t")[0], str(task / "plan.md"))
+
+    def test_no_such_plan_exits_2_and_places_nothing(self) -> None:
+        self._task("042-build-the-brief")
+        before = sorted(p.name for p in self.tasks.iterdir())
+        rc, out, err = self._main("resolve-active-plan", "--plan", "ship-the-brief",
+                                  "--project", "demo")
+        self.assertEqual((rc, out), (2, ""))
+        self.assertIn("no task named", err)
+        self.assertEqual(sorted(p.name for p in self.tasks.iterdir()), before)
+
+    def test_a_blank_plan_is_no_such_plan(self) -> None:
+        self._task("042-build-the-brief", body="  \n")
+        rc, out, _err = self._main("resolve-active-plan", "--plan", "042-build-the-brief",
+                                   "--project", "demo")
+        self.assertEqual((rc, out), (2, ""))
+
+    def test_a_duplicate_verb_slug_exits_2_naming_both(self) -> None:
+        self._task("012-build-the-brief")
+        self._task("043-build-the-brief")
+        rc, out, err = self._main("resolve-active-plan", "--plan", "build-the-brief",
+                                  "--project", "demo")
+        self.assertEqual((rc, out), (2, ""))
+        self.assertIn("012-build-the-brief", err)
+        self.assertIn("043-build-the-brief", err)
+
+    def test_refusals_exit_2_with_nothing_on_stdout(self) -> None:
+        self._task("042-build-the-brief")
+        for argv in (["--plan", "042-build-the-brief", "--project", "../escape"],
+                     ["--plan", "../escape", "--project", "demo"],
+                     ["--plan", "PLAN.md", "--project", "demo"],
+                     ["--project", "demo"]):
+            with self.subTest(argv=argv):
+                rc, out, _err = self._main("resolve-active-plan", *argv)
+                self.assertEqual((rc, out), (2, ""))
+
+    def test_project_and_project_root_together_is_a_usage_error(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            hm.main(["resolve-active-plan", "--plan", "x", "--project", "demo",
+                     "--project-root", str(self.repo)])
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_a_project_with_no_vault_home_has_no_such_plan(self) -> None:
+        self._task("042-build-the-brief")
+        with unittest.mock.patch("backend_selection.select_backend", return_value=None):
+            rc, out, _err = self._main("resolve-active-plan", "--plan", "042-build-the-brief",
+                                       "--project", "demo")
+        self.assertEqual((rc, out), (2, ""))
+
+    def test_a_marker_in_the_callers_checkout_is_never_read(self) -> None:
+        self._task("042-build-the-brief")
+        _write(self.repo / ".harness" / "active-plan", "ghost\n")
+        here = Path.cwd()
+        os.chdir(self.repo)
+        try:
+            rc, out, _err = self._main("resolve-active-plan", "--plan", "042-build-the-brief",
+                                       "--project", "demo")
+        finally:
+            os.chdir(here)
+        self.assertEqual(rc, 0)
+        self.assertIn("042-build-the-brief", out)
+
+
 class TheQueueDashboard(_Project):
     def test_a_task_row_falls_back_to_its_status_line_without_a_tracker(self) -> None:
         self._task("bar", "in-progress")
