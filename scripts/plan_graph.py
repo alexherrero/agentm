@@ -306,7 +306,29 @@ def build_plan_graph(state: Path) -> list[PlanInfo]:
             progress = _progress_path_for(state, plan_path.name)
             plans.append(_parse_plan(plan_path, progress, active=False))
 
+    _name_dependencies_by_directory(plans)
     return plans
+
+
+def _name_dependencies_by_directory(plans: list[PlanInfo]) -> None:
+    """Rewrite each `depends_on` entry that is a task's verb slug to that task's
+    directory name, so readiness and merge order find it under the key they use.
+
+    A task's name is its directory or the verb slug inside it, and every plan
+    written before the move names its dependencies by the bare slug. An entry
+    that is already a plan's slug, or that two tasks share, is left as written:
+    the first needs nothing, and the second is not ours to guess."""
+    known = {p.slug for p in plans}
+    by_verb: dict[str, list[str]] = {}
+    for p in plans:
+        m = hm._TASK_DIR.match(p.slug)
+        if m is not None:
+            by_verb.setdefault(m.group(2), []).append(p.slug)
+    for p in plans:
+        p.depends_on = [
+            dep if dep in known or len(by_verb.get(dep, ())) != 1 else by_verb[dep][0]
+            for dep in p.depends_on
+        ]
 
 
 # ---------------------------------------------------------------------------

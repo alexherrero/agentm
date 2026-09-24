@@ -578,10 +578,42 @@ class TaskPlacementAndLookup(unittest.TestCase):
 
     def test_a_blank_task_plan_is_placed_rather_than_resolved(self) -> None:
         # An empty plan.md is not a task, the same rule the flat layout applies;
-        # on a migrated project the slug is then placed, not answered flat.
+        # on a migrated project the slug is then placed, not answered flat. The
+        # placement is the directory that is already there: a second one beside
+        # it would make the verb slug name two tasks, refused from then on.
         self._task("042-build-the-brief", body="   \n")
+        self.assertIsNone(hm.task_paths(self.resolution, "build-the-brief"))
         active = hm.resolve_active_plan(self.resolution, plan_arg="build-the-brief")
-        self.assertEqual((active.layout, active.slug), ("task", "043-build-the-brief"))
+        self.assertEqual((active.layout, active.slug), ("task", "042-build-the-brief"))
+
+    def test_a_task_directory_with_no_plan_yet_is_reused(self) -> None:
+        # An interrupted /plan leaves a tracker and no plan.
+        (self.tasks / "050-foo").mkdir()
+        (self.tasks / "050-foo" / "tracker.md").write_text("---\n---\n", encoding="utf-8")
+        for name in ("foo", "050-foo"):
+            with self.subTest(name=name):
+                active = hm.resolve_active_plan(self.resolution, plan_arg=name)
+                self.assertEqual(active.slug, "050-foo")
+        self.assertEqual(sorted(p.name for p in self.tasks.iterdir()), ["050-foo"])
+
+    def test_a_numbered_name_that_would_share_a_number_or_verb_slug_is_refused(self) -> None:
+        self._task("042-bar")
+        for name, why in (("042-baz", "its number"), ("999-bar", "its verb slug")):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(hm.ActivePlanError, why):
+                    hm.resolve_active_plan(self.resolution, plan_arg=name)
+                rc, out, _err = self._run("--plan", name)
+                self.assertEqual((rc, out), (2, ""))
+        active = hm.resolve_active_plan(self.resolution, plan_arg="043-qux")
+        self.assertEqual(active.slug, "043-qux")
+
+    def test_a_drive_qualified_name_is_unsafe(self) -> None:
+        # `D:evil` joined onto a Windows vault root is drive-relative and leaves it.
+        for name in ("D:evil", "c:x", "a:b"):
+            with self.subTest(name=name):
+                self.assertFalse(hm._is_safe_plan_slug(name))
+                rc, out, _err = self._run("--plan", name)
+                self.assertEqual((rc, out), (2, ""))
 
     # --- the bare call: exit 4 ---
 

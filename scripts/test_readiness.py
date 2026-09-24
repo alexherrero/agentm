@@ -292,6 +292,27 @@ class TestTaskLayout(unittest.TestCase):
         self.assertNotIn("001-lay-the-base", report["ready"] + list(held))
         self.assertNotIn("002-build-on-it", report["ready"] + list(held))
 
+    def test_a_dependency_named_by_its_verb_slug_is_the_same_dependency(self) -> None:
+        # Every plan written before the move names its dependencies by bare slug.
+        _task_fixture(self.project, "041-build-the-brief", "done")
+        _task_fixture(self.project, "042-ship-it", "queued", depends_on=["build-the-brief"],
+                      touches=["src/a/**"])
+        _task_fixture(self.project, "043-after-open", "queued", depends_on=["open-work"],
+                      touches=["src/b/**"])
+        _task_fixture(self.project, "044-open-work", "active")
+        report = rd.build_readiness(self.project)
+        self.assertIn("042-ship-it", report["ready"])
+        held = {h["slug"]: h["reason"] for h in report["held_back"]}
+        self.assertEqual(held["043-after-open"], "waiting for: 044-open-work")
+
+    def test_a_verb_slug_two_tasks_share_is_left_unmet(self) -> None:
+        _task_fixture(self.project, "010-twin", "done")
+        _task_fixture(self.project, "011-twin", "done")
+        _task_fixture(self.project, "012-needs-twin", "queued", depends_on=["twin"],
+                      touches=["src/a/**"])
+        held = {h["slug"]: h["reason"] for h in rd.build_readiness(self.project)["held_back"]}
+        self.assertEqual(held["012-needs-twin"], "waiting for: twin")
+
 
 if __name__ == "__main__":
     unittest.main()
