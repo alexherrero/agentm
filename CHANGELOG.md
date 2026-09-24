@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.0.0] - 2026-09-23
+
+The vault-perfection series closes. This release lands plans 10, 11, 12, 13, 15 and 16 of agentm-vault. Every project is a directory of numbered tasks, each with a plan, a progress log and a tracker. The retired `_harness/` directory is gone from the vault and from the code, and a gate and a doctor row keep it gone. The resolver answers only a task, a placement or a refusal. A project with no checkout is read by slug. A memory ages on one curve per space, behind a wall that keeps `projects/`, `personal/` and `standards/` permanent. A chat surface writes to the vault by dropping a card into `agent/inbox/`. `Ideas.md` is rebuilt every night over idea cards the night thinks through and never re-grades. **Breaking:** the `read-state` and `write-state` verbs, `harness_state_dir`, `read_state_file` and `write_state_file` are retired, and so is every fallback to `_harness/`. A task's status is its tracker; a plan's `**Status:**` line is no longer written and is read only for a plan with no tracker. Use `state_dir`, `read_machine_file` and `write_machine_file`, the `append-progress` verb, and a task's tracker. crickets [v4.0.0](https://github.com/alexherrero/crickets/releases/tag/v4.0.0) and [v5.0.0](https://github.com/alexherrero/crickets/releases/tag/v5.0.0) are the paired releases.
+
 ### Added
 
 - **A tracker may carry the operator's `sensitivity` marking, and the contract

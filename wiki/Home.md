@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.24.0](https://github.com/alexherrero/agentm/releases/tag/v9.24.0).** The vault's root spaces are lowercase, `agent`, `calendar`, `personal` and `projects` beside `standards`, renamed in one data run with a gate that keeps the old spelling out of the code. A task can live in its own directory, one tracker schema holds every tracker, captures and traces carry their project and task, the projects space has maps, and the night enriches project records after the cards.
+> **Latest release: [v10.0.0](https://github.com/alexherrero/agentm/releases/tag/v10.0.0).** The vault-perfection series closes. Every project is a directory of numbered tasks with a tracker each. The retired per-project state directory is gone, and a gate keeps it gone. A chat surface writes through `agent/inbox/`, and `Ideas.md` is rebuilt every night.

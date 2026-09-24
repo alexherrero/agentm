@@ -1,6 +1,6 @@
 ---
 title: AgentM Vault
-status: final
+status: launched
 visibility: published
 kind: design
 scope: arc
@@ -8,7 +8,7 @@ area: agentm/vault-taxonomy
 author: alexherrero
 contributors: []
 created: 2026-09-06
-updated: 2026-09-21
+updated: 2026-09-23
 last_major_revision: 2026-09-07
 prd:
 project:
@@ -17,7 +17,7 @@ project:
 # AgentM Vault
 
 > [!NOTE]
-> **FINAL** — approved 2026-09-07 at the close of the vault-perfection series (seven sessions, 2026-09-06 to 2026-09-07). It succeeds [Filing v2](agentm-filing-v2.md), inherited unchanged unless a section says otherwise. Each session's decisions are its Detailed Design subsection; the build is fourteen plans, listed under Launch Plans. `launched` is set by `/release` when the last of them ships.
+> **LAUNCHED** — 2026-09-23 with [agentm v10.0.0](https://github.com/alexherrero/agentm/releases/tag/v10.0.0), when the last of its plans shipped; approved as final 2026-09-07. It succeeds [Filing v2](agentm-filing-v2.md), and each session's decisions are its Detailed Design subsection.
 
 ## Context
 
@@ -530,6 +530,7 @@ Each landing group reverts with `git revert` in the vault repository plus its re
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-09-23 | **Launched with [agentm v10.0.0](https://github.com/alexherrero/agentm/releases/tag/v10.0.0), the arc-closing release.** Parts 00 to 16 have all shipped, and the version (GH #609) and feature (GH #610) are closed. The coalescence checklist ran before the tag. Its orphan census found one gate built and never wired, `check-memory-skill-table`, which now runs ([PR #690](https://github.com/alexherrero/agentm/pull/690)). The release review found four resolver defects, fixed in [PR #691](https://github.com/alexherrero/agentm/pull/691). Still yours: the six notes in the home project's `plans/` folder that carry `kind: plan`, which a `plans/` folder cannot keep under this design. | launched |
 | 2026-09-23 | **Amended on the operator's rulings for the standing vault findings.** A tracker may carry `sensitivity`: the home project marks 32 notes `personal-financial`, and its trackers carried the line the schema refused. `scripts/tracker.py` now reads it, writes it last and keeps it through every step, and never sets it. The contract registers two record kinds the projects space already carried, `how-to` (a project's runbook) and `proposal`. Task files lose `kind:`, because a task file is known by its place. *Why not drop the marking:* it is how you mark the notes that hold your finances, and a tracker without it would be the one note in the project unmarked. *Re-audit trigger:* a pass starts reading `sensitivity` to decide anything. Today it is a label only. | final |
 | 2026-09-23 | **Amended as part 15, the `_harness/` retirement, landed (agentm-vault plan 15, [PR #679](https://github.com/alexherrero/agentm/pull/679) and [PR #680](https://github.com/alexherrero/agentm/pull/680); the project-homes verbs, [PR #681](https://github.com/alexherrero/agentm/pull/681) and [PR #686](https://github.com/alexherrero/agentm/pull/686); crickets [v4.0.0](https://github.com/alexherrero/crickets/pull/257) and [v5.0.0](https://github.com/alexherrero/crickets/pull/259)).** *The paired repoint* now dates the retirement of the resolver's fallbacks. A new paragraph, *Every plan lives in its task*, records the three rulings of 2026-09-14 that the part carried: no `plans/` folder, with an arc as a design; a task named by its directory; and a bare command that asks. It also records the Status line coming off 284 plans, the slug readers that never place, and the gate and the doctor row that keep the old path gone. § Launch Plans gains the part's row. *Why in the body rather than only in the plan:* the plan is archived at close, and the rulings govern every later task. *Re-audit trigger:* `harness-dirs` finds a `_harness/` again. | final |
 | 2026-09-21 | **Amended by the operator's seven rulings of 2026-09-20 for part 13, the ideas surface.** `area:` takes the operator's own group names, starting from `home-tech`, `coding`, `agentm`, `blog` and `other`, and no closed list enters the filing contract — the generator heads whatever values exist. The session proposes each card's group in one mapping the operator corrects, and the nightly reviewer proposes nothing, its instructions unedited (the pass version stays `5d3a4cca1b02`). The night never re-grades a filed idea: status, filing confidence, title and type are the card's, no `lifecycle` is written or defaulted, and the card is never renamed; `area` and `dismissed` join the fields every rewrite carries. `Ideas.md` is written only through its markers, and the first rewrite is one deliberate adoption after a dry run. An idea is filed from the inbox with its group, which replaces "a mailed idea lands as a card" — the door retired in part 16. A note typed `idea` that is not one is relabelled when it holds something real and otherwise deleted on a confirmed count; a duplicate stays in place, superseded. The ledger's own machinery retires — `ideas_surface.py`, `ideas_promote.py`, `incubator_lint.py`, the sweep's fold, the briefing's ledger nudges and `IDEAS_SURFACE_PATH` — while the incubator skeleton and its researcher, which never touch `Ideas.md`, wait on their own follow-up. *Why not let the night propose the group:* a group is the operator's word for where they look, and a proposal a model writes every night is a proposal the operator corrects every morning. *Why a byte-for-byte head rather than re-rendering the preamble:* re-rendering is how a preamble drifts, and copying cannot. *Re-audit trigger:* an idea card found re-graded or renamed by any writer, or a new idea card appearing in `memory/semantic/` — two writers (the reflection's idea lane and `memory_capture` of `type: idea`) still aim there, pending the operator's ruling. | final |
