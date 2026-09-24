@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `proposal`. Both are on the operator's ruling of 2026-09-23, which also
   cleared the standing vault findings in their own files.
 
+- **`check-memory-skill-table` runs in `check-all` and CI.** Plan 12 built the
+  gate, which holds the `/memory` table and the skill's sections to each other,
+  but never wired it anywhere. The arc's orphan census found it with no caller.
+  It reads clean.
+
 - **`check-card-shape` holds the idea cards in `personal/ideas/` to their own
   shape (agentm-vault plan 13).** The gate walked only the class directories,
   so the 39 cards the ideas move wrote were never checked. A second walk reads

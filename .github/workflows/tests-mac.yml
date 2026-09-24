@@ -71,6 +71,8 @@ jobs:
         run: python3 scripts/check-payload-layout-free.py
       - name: check-card-prompt (the inbox paste teaches the card's own shape)
         run: python3 scripts/check-card-prompt.py
+      - name: check-memory-skill-table (the /memory table names every section the skill has)
+        run: python3 scripts/check-memory-skill-table.py
       - name: check-payload-parity (every payload copy is the template's derivation)
         # The Gemini half graceful-skips on a runner (no ~/.gemini); the tracked
         # Antigravity rule is checkable everywhere and never skips.
