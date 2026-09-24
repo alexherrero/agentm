@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and identifiers excluded; history that keeps the word says why where it sits,
   with an inline `harness-deprecation:` marker or a file-scope one on a finished
   migration. It enforces in `check-all` and CI: 204 literals in 48 files before
-  the plan, none after, 927 allowed in 63 files. The doctor row fails on any
+  the plan, none after, 926 allowed in 63 files. The doctor row fails on any
   such directory under `projects/` and on a project whose plan resolver answers
   one — which it did live on 2026-09-22, because the overnight job's handoff
   pack had recreated `projects/agentm/_harness/` and so switched off agentm's

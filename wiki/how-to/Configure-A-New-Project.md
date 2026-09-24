@@ -29,7 +29,7 @@ When you open an unconfigured code project, the SessionStart hook emits a one-li
    - **(c) Skip** — `touch .agentm-no-register`. One-time scratch session; the nudge stays silent until you remove the marker.
 
 5. **On (a) or (b), finish registration.** `register` writes the enablement block to `project.json` (see [Project config](Project-Config)) and registers the repo in the vault `repo_registry`. Then:
-   - Create the vault `_index.md` at the project's resolved home — the vault-root `Projects/<slug>/_index.md` when that space exists (filing-v2 part 2b), else `<vault>/Agent/desk/projects/<slug>/_index.md` — if absent. Confirm the project dir resolves with `python3 scripts/harness_memory.py list-plans` (`vault-state-path` is retired — agentm-vault plan 15).
+   - Create the project's `charter.md` at `projects/<slug>/charter.md` in the vault if it is absent. Confirm the project resolves with `python3 scripts/process_seam.py project-path tasks --cwd .`, which prints where its tasks live, or with `python3 scripts/harness_memory.py list-plans` (`vault-state-path` is retired — agentm-vault plan 15).
    - Accept or decline the offer to add a `vault_slug: <slug>` line to `AGENTS.md` (operator-confirmed; never silent).
 
 6. **Re-open the repo.** `python3 scripts/project_config.py is-registered .` prints `registered` (exit 0) and the SessionStart nudge stays silent.
