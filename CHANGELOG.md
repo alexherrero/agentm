@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project with no repo checkout, with no binding line. `resolve_project` takes a
   project by slug; such a project has no checkout, so only the device-level
   `state_mode` applies to it.
+- **`harness_memory.py resolve-active-plan --plan NAME --project SLUG
+  [--with-tracker]` answers a task by project slug (crickets task 101, ruling
+  9).** The line is the checkout form's, and its plan path is the one
+  `list-plans --project` prints, so crickets' bridge gives `/open` every task's
+  progress and tracker on a project with no checkout. `--project` is exclusive
+  with `--project-root` and needs `--plan`; exit 0 answers, and exit 2 covers
+  an unsafe slug, a usage error, and a name no task carries. It never places a
+  task and creates nothing.
 
 - **`check-no-harness-paths` and the doctor's `harness-dirs` row keep the
   retired per-project state directory gone (agentm-vault plan 15).** The gate

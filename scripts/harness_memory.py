@@ -1624,6 +1624,35 @@ def _task_name_message(resolution: dict) -> str:
     )
 
 
+def task_paths(resolution: dict, name: str) -> Optional[tuple[Path, Path, Path]]:
+    """An existing task's `(plan, progress, tracker)`, found by its directory
+    name or the verb slug inside it; None when no task with a plan carries the
+    name, or the project keeps no tasks (it has no synced backend).
+
+    A reader for a caller that has a project and a name but no checkout — the
+    `resolve-active-plan --project` form (agentm-vault, crickets task 101's
+    ruling 9). Unlike `resolve_active_plan` it reads no `.harness/active-plan`
+    marker and never places a new task: a name no task carries is no such plan.
+    The paths are composed the way `list_plan_files` composes a task's plan, so
+    a caller can pair the two.
+
+    Raises ``ValueError`` on an unsafe or empty name, and ``ActivePlanError``
+    when two tasks share the verb slug.
+    """
+    slug = _normalize_plan_name(name)
+    if slug is None or not _is_safe_plan_slug(slug):
+        raise ValueError(
+            f"{name!r} names no task: a task's name is its directory name or the "
+            f"verb slug inside it, a single path component."
+        )
+    if not _keeps_plans_in_tasks(resolution):
+        return None
+    active = _task_plan(resolution, slug)
+    if active is None:
+        return None
+    return (Path(active[0]), Path(active[1]), Path(active.tracker))
+
+
 def active_plan_paths(
     resolution: dict, *, plan_arg: Optional[str] = None
 ) -> Optional[tuple[Path, Path, Path]]:
@@ -2302,9 +2331,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="explicit plan or task name ('042-foo', 'foo', 'PLAN-foo.md'); omit "
              "to resolve via the .harness/active-plan marker",
     )
-    p_rap.add_argument(
+    rap_where = p_rap.add_mutually_exclusive_group()
+    rap_where.add_argument(
         "--project-root", default=None,
         help="path to project root (default: cwd)",
+    )
+    rap_where.add_argument(
+        "--project", default=None, metavar="SLUG",
+        help="a project named by slug, for one with no repo checkout; needs "
+             "--plan, reads no marker, and never places a task",
     )
     p_rap.add_argument(
         "--with-tracker", action="store_true",
@@ -2517,6 +2552,28 @@ def main(argv: Optional[list[str]] = None) -> int:
         #   4 — NAME THE TASK: a bare call on a project that keeps its plans in
         #       numbered tasks, which has no singleton (agentm-vault plan 10).
         #       Nothing on stdout; the caller asks which task, or proposes a name.
+        # With `--project SLUG` (a project with no repo checkout; crickets task
+        # 101's ruling 9) it answers an existing task only: the same line, exit
+        # 0, or exit 2 with nothing on stdout for an unsafe slug, a missing
+        # `--plan`, or no such plan — never a placement, never a marker.
+        if args.project is not None:
+            if args.plan is None:
+                print("[harness_memory] --plan is required with --project: a binding "
+                      "lives in a checkout, so a slug lookup reads no marker.", file=sys.stderr)
+                return 2
+            try:
+                resolution = resolve_project({"project": args.project})
+                paths = task_paths(resolution, args.plan)
+            except (ActivePlanError, ValueError) as exc:
+                print(f"[harness_memory] {exc}", file=sys.stderr)
+                return 2
+            if paths is None:
+                print(f"[harness_memory] {args.project} has no task named {args.plan!r} "
+                      f"(or keeps no tasks: it has no vault home).", file=sys.stderr)
+                return 2
+            fields = paths if args.with_tracker else paths[:2]
+            print("\t".join(str(p) for p in fields))
+            return 0
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
         resolution = resolve_project({"cwd": root})
         try:
