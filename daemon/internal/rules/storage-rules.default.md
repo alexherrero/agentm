@@ -252,6 +252,11 @@ record_kinds:
   # agentm-vault plan 09 (2026-09-12): a task's or a project's living head, one
   # schema owned by scripts/tracker.py. A record, so no pass rewrites it.
   - tracker
+  # 2026-09-23, on the operator's ruling: two record shapes the projects space
+  # already carries — a project's runbook (`how-to`, movies-tv-games and
+  # temple-coordination) and a dated proposal for the temple shifts.
+  - how-to
+  - proposal
 
 deprecations:
   preferences: preference

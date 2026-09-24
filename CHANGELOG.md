@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A tracker may carry the operator's `sensitivity` marking, and the contract
+  registers `how-to` and `proposal`.** The home project marks its notes
+  `sensitivity: personal-financial`, and the tracker schema refused the line.
+  `tracker.py` now reads it, writes it last in the frontmatter and keeps it
+  through every step, and never sets it. `record_kinds` gains the two shapes the
+  projects space already carried: a project's runbook (`how-to`) and a dated
+  `proposal`. Both are on the operator's ruling of 2026-09-23, which also
+  cleared the standing vault findings in their own files.
+
 - **`check-card-shape` holds the idea cards in `personal/ideas/` to their own
   shape (agentm-vault plan 13).** The gate walked only the class directories,
   so the 39 cards the ideas move wrote were never checked. A second walk reads
