@@ -160,6 +160,20 @@ class MigratedPaths(unittest.TestCase):
                              "projects/agentm/research/sqlite/notes.md")
             self.assertEqual(ev._remap_convergence(card, None), card)
 
+    def test_a_trims_path_follows_the_file_on_to_desk(self):
+        """The settings files moved twice: out of `memory/` into the project
+        (the trims), then out of the project root into `desk/` (task 176).
+        Once only the second home exists, the gold set's path still reaches it
+        through both folds."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            gold = "Agent/memory/trusted-sources.md"  # root-casing: the gold set's spelling
+            (vault / "projects" / "agentm" / "desk").mkdir(parents=True)
+            (vault / "projects" / "agentm" / "desk" / "trusted-sources.md").write_text("x", encoding="utf-8")
+            folded = ev._remap_casing(ev._remap_trims(gold, vault), {"projects": "projects"})
+            self.assertEqual(folded, "projects/agentm/trusted-sources.md")
+            self.assertEqual(ev._remap_convergence(folded, vault), "projects/agentm/desk/trusted-sources.md")
+
     def test_purged_and_held_rows_do_not_enter_the_table(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._root(Path(td))

@@ -142,7 +142,13 @@ def _remap_trims(path: str, vault_root: "Path | None | bool" = False) -> str:
                 spellings = {n.lower(): n for n in os.listdir(root)}
             except OSError:
                 spellings = {}
-            if (Path(root) / _remap_casing(candidate, spellings)).exists():
+            folded = _remap_casing(candidate, spellings)
+            if (Path(root) / folded).exists():
+                return candidate
+            # A later move took the file on from where the trims left it (the
+            # AgentKV convergence put the settings files in `desk/`): the trims
+            # still happened, and the convergence fold finishes the path.
+            if _remap_convergence(folded, root) != folded:
                 return candidate
             return path
     return path

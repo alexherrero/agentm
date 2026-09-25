@@ -25,7 +25,7 @@ The engine runs the rules in registry order. `R-harness` runs first. A bypass sh
 | `R-dependabot` | `.github/dependabot.yml` or `.github/dependabot.yaml` | `dependabot-fixer` skill | Helps fix breakage on update PRs. |
 | `R-pii` | any `.env*` file (`.env`, `.env.*`) | `pii-scrubber` skill | Filename signal only — no content scanning. `.envrc` (direnv) is a known false positive the operator declines at approval; the decline is recorded in `operator_overrides`. |
 | `R-pkg-scripts` | `package.json` with a non-empty `scripts` key, or a `Makefile`, or a `justfile` | `kill-switch` + `steer` hooks | Long-running tasks → interrupt + redirect. |
-| `R-vault-content` | `_index.md` file, or `decisions/` dir **and** `conventions.md` | `memory` skill + the 4 memory hooks (`memory-recall-session-start`, `memory-recall-prompt-submit`, `memory-reflect-idle`, `memory-reflect-stop`) | Looks operator-personal → memory captures context. |
+| `R-vault-content` | `_index.md` file, or `decisions/` dir **and** `conventions.md` (checked at `docs/conventions.md` first, the root second — `conventions.md` moved to `docs/` for a vault project under task 176 step 3) | `memory` skill + the 4 memory hooks (`memory-recall-session-start`, `memory-recall-prompt-submit`, `memory-reflect-idle`, `memory-reflect-stop`) | Looks operator-personal → memory captures context. |
 | `R-design` | `wiki/explanation/designs/` or `docs/design/` dir | `design` skill | Manages the design-then-implement pipeline. |
 | `R-non-coding` | — (always returns `None`) | — | Stub in v1 per DC-6; the type taxonomy (build/vacation/research from `_index.md` frontmatter) is deferred to V5. |
 

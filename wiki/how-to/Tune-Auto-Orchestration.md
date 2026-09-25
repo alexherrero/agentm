@@ -4,11 +4,11 @@
 > **Goal:** Adjust the auto-orchestration toggles, thresholds, and cooldowns so the SessionStart briefing and idle-time memory chain fire on a cadence that fits how you work.
 > **Prereqs:** `MEMORY_ROOT` set; harness with the auto-orchestration push-surface installed (V4 #23). See [Auto-orchestration config](Auto-Orchestration-Config) for every key this page edits.
 
-The tunables live in `<vault>/personal/auto-orchestration-config.md`, auto-seeded with sensible defaults the first time the push-surface runs. The file is yours to edit — a re-seed never clobbers your edits. Every key sits in one `settings` fence; you change a value, save, and the next run picks it up. Below, you edit a threshold, a cooldown, or a toggle, then verify the change with `--dry-run`.
+The tunables live in `<vault>/projects/agentm/desk/auto-orchestration-config.md` (the project root as a fallback, on a vault that hasn't run task 176 step 3), auto-seeded with sensible defaults the first time the push-surface runs. The file is yours to edit — a re-seed never clobbers your edits. Every key sits in one `settings` fence; you change a value, save, and the next run picks it up. Below, you edit a threshold, a cooldown, or a toggle, then verify the change with `--dry-run`.
 
 ## Steps
 
-1. **Locate (or seed) the config.** Open `<vault>/personal/auto-orchestration-config.md`. If it doesn't exist yet, seed it with the defaults:
+1. **Locate (or seed) the config.** Open `<vault>/projects/agentm/desk/auto-orchestration-config.md`. If it doesn't exist yet, seed it with the defaults:
 
    ```bash
    python3 harness/skills/memory/scripts/auto_orchestration.py --vault-path "$MEMORY_ROOT" seed-config

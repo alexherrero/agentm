@@ -45,7 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   root; and the retrieval eval folds the gold set's moved paths at score time,
   only on a vault that holds the destination. The skill and agent docs name
   the new homes. Of crickets' 17 hits for `conventions.md`, none reads a
-  vault project's file, so crickets needs no change here.
+  vault project's file, so crickets needs no change here. The move ran on
+  2026-09-25: 25 files left the project roots, 100 path links in 57 notes
+  followed them, the heat and lifecycle clocks were re-keyed, and the
+  path-aware link audit read no new unresolved link.
 
 - **The agentm-vault design takes the operator's AgentKV layout rulings of
   2026-09-24.** Two shared root spaces join the layout: `resources/`, the
