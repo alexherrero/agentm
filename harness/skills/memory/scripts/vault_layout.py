@@ -158,6 +158,8 @@ def projects_dir_candidates(root) -> list[Path]:
 # for `projects/agentm/desk/` (the AgentKV layout rulings of 2026-09-24: the
 # root holds five files and no others, and `desk/` holds what nobody opens).
 # The watchlists are directories and keep their own paths.
+RESOURCES_DIRNAME = "resources"
+WATCHLIST_FEATURE = "_watchlist"
 DESK_FEATURE_FILES = frozenset({
     "auto-orchestration-config.md", "skill-discovery-sources.md",
     "trusted-sources.md", "forward-learning-sources.json",
@@ -173,6 +175,12 @@ def feature_state_candidates(root, name: str) -> list[Path]:
     projects = projects_dir_candidates(root)
     if name in DESK_FEATURE_FILES:
         return [p / FEATURE_PROJECT / "desk" / name for p in projects]
+    if name == WATCHLIST_FEATURE:
+        # The watchlist left the project for the shared reference library
+        # (task 176): `resources/watchlist/` at the vault root first, the
+        # project-space home while a vault has not had the move.
+        return ([v / RESOURCES_DIRNAME / "watchlist" for v in vault_root_candidates(root)]
+                + [p / FEATURE_PROJECT / name for p in projects])
     return [p / FEATURE_PROJECT / name for p in projects]
 
 
