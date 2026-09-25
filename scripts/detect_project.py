@@ -272,7 +272,10 @@ def rule_pkg_scripts(cwd: Path) -> Optional[RuleMatch]:
 
 def rule_vault_content(cwd: Path) -> Optional[RuleMatch]:
     has_index = (cwd / "_index.md").is_file()
-    has_decisions = (cwd / "decisions").is_dir() and (cwd / "conventions.md").is_file()
+    # A vault project keeps `conventions.md` in `docs/` since the root locked to
+    # five files (2026-09-24); a project not yet moved keeps it at the root.
+    has_conventions = (cwd / "docs" / "conventions.md").is_file() or (cwd / "conventions.md").is_file()
+    has_decisions = (cwd / "decisions").is_dir() and has_conventions
     if has_index or has_decisions:
         return RuleMatch(
             rule_id="R-vault-content",

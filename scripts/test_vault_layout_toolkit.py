@@ -115,8 +115,32 @@ class FeatureStateTests(unittest.TestCase):
             root = _nested(Path(td))
             (root / "memory").mkdir()
             (root / "memory" / "trusted-sources.md").write_text("x", encoding="utf-8")
+            # Nothing but the retired copy exists, so the answer is the newest
+            # home — `desk/` since the AgentKV layout rulings — never memory/.
             self.assertEqual(vl.feature_state_path(root, "trusted-sources.md"),
-                             root.parent / "projects" / "agentm" / "trusted-sources.md")
+                             root.parent / "projects" / "agentm" / "desk" / "trusted-sources.md")
+
+    def test_a_config_list_is_read_from_desk_first_and_the_project_root_second(self):
+        """The readers-before-movers half of the root lock (task 176 step 3):
+        a list still at the project root is found there, and once the move
+        puts it in `desk/` the desk copy wins."""
+        for name in sorted(vl.DESK_FEATURE_FILES):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as td:
+                root = _nested(Path(td))
+                project = root.parent / "projects" / "agentm"
+                project.mkdir(parents=True)
+                (project / name).write_text("root", encoding="utf-8")
+                self.assertEqual(vl.feature_state_path(root, name), project / name)
+                (project / "desk").mkdir()
+                (project / "desk" / name).write_text("desk", encoding="utf-8")
+                self.assertEqual(vl.feature_state_path(root, name), project / "desk" / name)
+
+    def test_the_watchlists_do_not_move_to_desk(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = _nested(Path(td))
+            for name in ("_watchlist", "_skill-watchlist"):
+                self.assertEqual(vl.feature_state_path(root, name),
+                                 root.parent / "projects" / "agentm" / name)
 
     def test_flat_vault_keeps_the_project_inside_the_root(self):
         with tempfile.TemporaryDirectory() as td:

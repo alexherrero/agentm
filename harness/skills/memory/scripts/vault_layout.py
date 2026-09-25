@@ -21,7 +21,9 @@ new path would miss everything a not-yet-migrated vault still holds.
 
 A feature's state no longer has that fallback. The vault moved, and nothing
 reads or writes `memory/<name>` any more, so feature_state_candidates()
-offers only `projects/agentm/<name>`, to readers and writers alike;
+offers only `projects/agentm/` spellings, to readers and writers alike — its
+config and source lists under `desk/` first, the project root second (the
+AgentKV layout move);
 `scripts/check-memory-root-shape.py` names a retired location that comes
 back.
 
@@ -152,18 +154,35 @@ def projects_dir_candidates(root) -> list[Path]:
     return [v / PROJECTS_DIRNAME for v in vault_root_candidates(root)]
 
 
+# The config and source lists machinery reads, which leave the project root
+# for `projects/agentm/desk/` (the AgentKV layout rulings of 2026-09-24: the
+# root holds five files and no others, and `desk/` holds what nobody opens).
+# The watchlists are directories and keep their own paths.
+DESK_FEATURE_FILES = frozenset({
+    "auto-orchestration-config.md", "skill-discovery-sources.md",
+    "trusted-sources.md", "forward-learning-sources.json",
+})
+
+
 def feature_state_candidates(root, name: str) -> list[Path]:
-    """`projects/agentm/<name>` under each vault-root spelling, newest first.
-    The retired `memory/<name>` is not a candidate: nothing reads or writes it
-    since the vault moved, even on a vault that still has one."""
-    return [p / FEATURE_PROJECT / name for p in projects_dir_candidates(root)]
+    """Where a feature's state may be, under each vault-root spelling, newest
+    home first. A config or source list is read from `projects/agentm/desk/`
+    first and the project root second, until the move runs and the root copy
+    is gone. The retired `memory/<name>` is not a candidate: nothing reads or
+    writes it since the vault moved, even on a vault that still has one."""
+    projects = projects_dir_candidates(root)
+    if name in DESK_FEATURE_FILES:
+        return ([p / FEATURE_PROJECT / "desk" / name for p in projects]
+                + [p / FEATURE_PROJECT / name for p in projects])
+    return [p / FEATURE_PROJECT / name for p in projects]
 
 
 def feature_state_path(root, name: str) -> Path:
     """Where a feature's state file or directory lives — `_watchlist`,
     `_skill-watchlist`, `auto-orchestration-config.md`,
     `skill-discovery-sources.md`, `trusted-sources.md`,
-    `forward-learning-sources.json`."""
+    `forward-learning-sources.json`. The first that exists, else the newest
+    home, so a list seeded fresh lands in `desk/`."""
     return _resolve(feature_state_candidates(root, name))
 
 

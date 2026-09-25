@@ -824,7 +824,7 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/discover_skills.py \
 
 #### Source whitelist
 
-Lives at `<vault>/personal-private/skill-discovery-sources.md` — operator-editable markdown. Format: `#`-prefixed comment lines, blank lines ignored, one URL per non-comment line. **Order matters** (sources scanned top-to-bottom; `--max-sources` truncates against this order).
+Lives at `<vault>/projects/agentm/desk/skill-discovery-sources.md` (read from the project root while a vault has not had the move) — operator-editable markdown. Format: `#`-prefixed comment lines, blank lines ignored, one URL per non-comment line. **Order matters** (sources scanned top-to-bottom; `--max-sources` truncates against this order).
 
 First-ever scan auto-seeds the file with the operator's confirmed v1 set in exactly this order:
 
@@ -856,7 +856,7 @@ Per-source cache lives under `<vault>/_meta/skill-discovery-cache/`:
 
 **Step 2 — Resolve cadence** via `--cadence-days` arg → `$MEMORY_SKILL_DISCOVERY_CADENCE_DAYS` env → default 7.
 
-**Step 3 — Load (or auto-seed) the source whitelist.** If `<vault>/personal-private/skill-discovery-sources.md` is missing, write the default 4-URL seed (operator-confirmed v1 order) + log `whitelist_seeded: true` in the summary. Otherwise read URLs in file order.
+**Step 3 — Load (or auto-seed) the source whitelist.** If `<vault>/projects/agentm/desk/skill-discovery-sources.md` is missing, write the default 4-URL seed (operator-confirmed v1 order) + log `whitelist_seeded: true` in the summary. Otherwise read URLs in file order.
 
 **Step 4 — Cadence check** (when `--cadence-check` is set). Load `state.json`; if `last_scan` is within `cadence_days × 86400 seconds`, skip the fetch entirely + return `cadence_skipped: true` in summary.
 
@@ -938,7 +938,7 @@ For each candidate that clears the rubric, Pass 1 enriches with:
 1. **GitHub metadata** (unauthenticated API; graceful-skip on rate-limit or no-github-link):
    - `github_owner`, `github_repo`, `github_stars`, `github_archived`, `github_last_commit_iso`, `github_license` (SPDX), `github_html_url`
 2. **Trustworthiness signals**:
-   - `from_trusted_org`: matches against operator-editable whitelist at `projects/agentm/trusted-sources.md` (auto-seeded with curated defaults: anthropics / google / microsoft / hashicorp / etc.)
+   - `from_trusted_org`: matches against operator-editable whitelist at `projects/agentm/desk/trusted-sources.md` (auto-seeded with curated defaults: anthropics / google / microsoft / hashicorp / etc.)
    - `cross_citation_count`: how many of the 4 discovery sources reference this candidate (independent-validation signal)
    - `high_stars` (≥500) / `low_stars` (<50) / `archived_warning` / `activity_recent` (committed in last 365d) / `permissive_license` (MIT / Apache-2.0 / BSD / ISC / MPL)
 3. **Rubric verdict**: `rubric_score`, `rubric_rules_fired`, `rubric_confidence`
@@ -950,7 +950,7 @@ Output: one JSON per candidate at `<vault>/_meta/skill-discovery-cache/adapt-sta
 Caller dispatches `adapt-evaluator` (see [`agents/adapt-evaluator.md`](../../agents/adapt-evaluator.md)). The sub-agent:
 
 1. **Reads** each enriched candidate JSON.
-2. **Cross-references** the operator's vault (`personal-skills/` / `personal-private/_always-load/` / `desk/projects/<repo>/conventions.md`) for fit.
+2. **Cross-references** the operator's vault (`personal-skills/` / `standards/` / `projects/<slug>/docs/conventions.md`) for fit.
 3. **Classifies** with semantic judgment (HIGH / MEDIUM / LOW) — overrides Pass 1's rubric verdict when context warrants.
 4. **Writes** the watchlist entry to `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` — the feature's state lives in its project since the memory-root trims, and the retired `memory/_skill-watchlist/` is neither read nor written (HIGH + MEDIUM only; LOW dropped silently).
 
@@ -958,7 +958,7 @@ Watchlist entry shape locked in [`agents/adapt-evaluator.md`](../../agents/adapt
 
 #### Trusted-sources whitelist
 
-`projects/agentm/trusted-sources.md` — operator-editable in Obsidian. Auto-seeds on first Pass 1 run with: anthropics, anthropic, google, googleworkspace, googlecloudplatform, microsoft, vercel, hashicorp, openai, cloudflare, github, supabase, redis, kubernetes, docker, pytorch, huggingface, modelcontextprotocol. Operator edits freely; one org-slug per non-comment line; case-insensitive match against GitHub URL owner.
+`projects/agentm/desk/trusted-sources.md` — operator-editable in Obsidian. Auto-seeds on first Pass 1 run with: anthropics, anthropic, google, googleworkspace, googlecloudplatform, microsoft, vercel, hashicorp, openai, cloudflare, github, supabase, redis, kubernetes, docker, pytorch, huggingface, modelcontextprotocol. Operator edits freely; one org-slug per non-comment line; case-insensitive match against GitHub URL owner.
 
 #### Failure modes (graceful)
 
