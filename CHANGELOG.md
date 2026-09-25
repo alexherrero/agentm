@@ -7,16 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **The watchlist's readers find it in the reference library first.**
-  `vault_layout.feature_state_candidates("_watchlist")` answers
-  `resources/watchlist/` at the vault root, then `projects/agentm/_watchlist/`
-  while that is still where the watchlist is, and gives a vault with neither
-  the new home; forward learning and the watchlist review follow through it.
-  The forward-learning job template names the new home. crickets' two
-  resolvers take the same first rung in the paired change (task 176, step 8).
-
 ### Added
 
 - **The night generates every project's `tracker.md` from its task
@@ -70,6 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   link check cannot see a broken path link. The walled area is never opened.
 
 ### Changed
+
+- **The watchlist's readers find it in the reference library first.**
+  `vault_layout.feature_state_candidates("_watchlist")` answers
+  `resources/watchlist/` at the vault root, then `projects/agentm/_watchlist/`
+  while that is still where the watchlist is, and gives a vault with neither
+  the new home; forward learning and the watchlist review follow through it.
+  The forward-learning job template names the new home. crickets' two
+  resolvers take the same first rung in the paired change (task 176, step 8).
 
 - **The door locks a project's root to five files.** Creating
   `project.yaml`, `charter.md`, `blueprint.md`, `tracker.md` or
