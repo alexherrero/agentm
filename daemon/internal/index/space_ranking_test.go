@@ -231,12 +231,13 @@ func TestTheWallStillWallsWhileTheInboxIsOnlyDampened(t *testing.T) {
 	}
 }
 
-// The two contract lines the AgentKV layout rulings of 2026-09-24 added, read
-// from the packaged contract itself rather than restated here: `resources`
-// joins `dampened_spaces`, and `standards/templates` joins the wall. A test
-// that set the lists by hand would pass with the contract unchanged; this one
-// fails the day either line leaves the file the binary embeds.
-func TestThePackagedContractDampensResourcesAndWallsTheTemplates(t *testing.T) {
+// The contract lines the AgentKV layout rulings added, read from the packaged
+// contract itself rather than restated here: `resources/watchlist` joins
+// `dampened_spaces` (narrowed on 2026-09-25 from all of `resources`, so a topic
+// card still answers a question about its topic), and `standards/templates`
+// joins the wall. A test that set the lists by hand would pass with the
+// contract unchanged; this one fails the day any of it drifts.
+func TestThePackagedContractDampensTheWatchlistAndWallsTheTemplates(t *testing.T) {
 	t.Setenv("AGENTM_STORAGE_RULES", "")
 	contract, err := rules.Load("")
 	if err != nil {
@@ -255,20 +256,28 @@ func TestThePackagedContractDampensResourcesAndWallsTheTemplates(t *testing.T) {
 
 	idx := openScratch(t)
 	body := "FTS5 columnsize stores a per-row token count for bm25.\n"
-	indexNote(t, idx, "resources/topics/sqlite/fts5-columnsize.md", "FTS5 columnsize", body)
+	indexNote(t, idx, "resources/watchlist/openai-research/fts5-columnsize.md", "FTS5 columnsize", body)
 	indexNote(t, idx, "agent/memory/semantic/fts5-columnsize.md", "FTS5 columnsize", body)
+	indexNote(t, idx, "resources/topics/sqlite/columnsize-detail.md", "Columnsize detail", body)
 	// The template carries the query's words too, so only the wall keeps it out:
 	// a body that missed the query would pass with the wall gone.
 	indexNote(t, idx, "standards/templates/charter.md", "Charter template",
 		"Placeholder. "+body)
 
-	var flags string
-	if err := idx.db.QueryRow(`SELECT flags FROM docmeta WHERE path = ?`,
-		"resources/topics/sqlite/fts5-columnsize.md").Scan(&flags); err != nil {
-		t.Fatalf("reading the resources card's flags: %v", err)
-	}
-	if !strings.Contains(flags, note.ClassSpace) {
-		t.Errorf("a resources/ hit does not carry the dampened class (flags %q)", flags)
+	for _, tc := range []struct {
+		rel      string
+		dampened bool
+	}{
+		{"resources/watchlist/openai-research/fts5-columnsize.md", true},
+		{"resources/topics/sqlite/columnsize-detail.md", false},
+	} {
+		var flags string
+		if err := idx.db.QueryRow(`SELECT flags FROM docmeta WHERE path = ?`, tc.rel).Scan(&flags); err != nil {
+			t.Fatalf("reading %s's flags: %v", tc.rel, err)
+		}
+		if got := strings.Contains(flags, note.ClassSpace); got != tc.dampened {
+			t.Errorf("%s: dampened = %v, want %v (flags %q)", tc.rel, got, tc.dampened, flags)
+		}
 	}
 
 	outcome, err := idx.Search(Query{Text: "fts5 columnsize token count", K: 5})
@@ -282,9 +291,17 @@ func TestThePackagedContractDampensResourcesAndWallsTheTemplates(t *testing.T) {
 			t.Errorf("a template's placeholder text was served: %s", r.Path)
 		}
 	}
-	if len(paths) < 2 || !strings.HasPrefix(paths[0], "agent/memory/") ||
-		!strings.HasPrefix(paths[1], "resources/") {
-		t.Errorf("want the memory first and the dampened reference card still present "+
-			"second, got %v", paths)
+	// The dampened watchlist item ranks below the identical memory and is still
+	// present; the undampened topic card is present too.
+	pos := map[string]int{}
+	for i, p := range paths {
+		pos[p] = i + 1
+	}
+	mem, watch := pos["agent/memory/semantic/fts5-columnsize.md"], pos["resources/watchlist/openai-research/fts5-columnsize.md"]
+	if mem == 0 || watch == 0 || watch < mem {
+		t.Errorf("want the memory above the dampened watchlist item, both present: %v", paths)
+	}
+	if pos["resources/topics/sqlite/columnsize-detail.md"] == 0 {
+		t.Errorf("the undampened topic card is missing: %v", paths)
 	}
 }
