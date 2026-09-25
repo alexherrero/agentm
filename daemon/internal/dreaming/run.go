@@ -272,6 +272,13 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	}
 	mocs.Pages = append(mocs.Pages, projectMaps.Pages...)
 	mocs.Intents = append(mocs.Intents, projectMaps.Intents...)
+	// The two shared spaces of 2026-09-24 ride in it too, once they hold a note.
+	spaceMaps, err := PlanSpaceMaps(root, now)
+	if err != nil {
+		return rep, err
+	}
+	mocs.Pages = append(mocs.Pages, spaceMaps.Pages...)
+	mocs.Intents = append(mocs.Intents, spaceMaps.Intents...)
 	planned := append([]string(nil), calendar.YearMaps...)
 	for _, p := range mocs.Pages {
 		planned = append(planned, p.Rel)

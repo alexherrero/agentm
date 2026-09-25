@@ -12,8 +12,9 @@
 //
 // Deny-by-default, same as the per-file-class half: a top-level segment the
 // table does not name answers Alignment. The operator ruling that created
-// this table named five spaces and the root files; anything else in the
-// vault's top level is either new (and gets its level decided in
+// this table named five spaces and the root files, and the operator's
+// rulings of 2026-09-24 added two more, `resources` and `systems`; anything
+// else in the vault's top level is either new (and gets its level decided in
 // conversation, not invented here) or a mistake worth surfacing.
 package door
 
@@ -75,7 +76,11 @@ type Authority struct {
 	ProjectRoots Roots
 }
 
-// DefaultAuthority is the five-space table the filing-v2 design locked.
+// DefaultAuthority is the space table: the five the filing-v2 design locked,
+// and the two shared spaces the operator added on 2026-09-24 (agentm-vault §
+// The layout) — `resources/`, the reference library, and `systems/`, the
+// systems the operator runs. Both are the agent's to maintain, like the
+// calendar, and neither needs a grant.
 func DefaultAuthority() Authority {
 	return Authority{
 		Spaces: map[string]Level{
@@ -83,7 +88,9 @@ func DefaultAuthority() Authority {
 			"calendar":  Shared,
 			"projects":  GrantRequired,
 			"personal":  PerTask,
+			"resources": Shared,
 			"standards": OperatorOwned,
+			"systems":   Shared,
 		},
 		ProjectRoots: Roots{Projects: "projects"},
 	}

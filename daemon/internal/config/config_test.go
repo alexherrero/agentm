@@ -11,7 +11,7 @@ import (
 // notes and a vector arm with no vectors looks exactly like one that is cold.
 func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 	got := defaultEmbedScope("agent")
-	want := []string{"agent/memory", "agent/desk", "agent/external", "agent/diagnostics", "agent/inbox", "projects", "calendar", "standards/voice", "personal/ideas"}
+	want := []string{"agent/memory", "agent/desk", "agent/external", "agent/diagnostics", "agent/inbox", "projects", "calendar", "standards/voice", "personal/ideas", "resources", "systems"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,7 +23,7 @@ func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 	for _, root := range []string{"", "  ", "/"} {
 		got := defaultEmbedScope(root)
-		want := "memory,desk,external,diagnostics,inbox,projects,calendar,standards/voice,personal/ideas"
+		want := "memory,desk,external,diagnostics,inbox,projects,calendar,standards/voice,personal/ideas,resources,systems"
 		if strings.Join(got, ",") != want {
 			t.Errorf("memory_root %q gave %v, want %s", root, got, want)
 		}
@@ -39,6 +39,32 @@ func TestDefaultEmbedScopeCoversTheDropFolder(t *testing.T) {
 	got := strings.Join(defaultEmbedScope("agent"), ",")
 	if !strings.Contains(got, "agent/inbox") {
 		t.Errorf("the drop folder is outside the vector arm's scope: %s", got)
+	}
+}
+
+// The two shared spaces of 2026-09-24 are IN the default scope, named at the
+// vault root like `projects` and `calendar` rather than under the memory root.
+// Their notes arrive by a move from spaces already in scope — the reference
+// cards and the watchlist from `projects`, the homelab notes from
+// `memory/semantic` — so leaving either out would drop vectors the dense arm
+// already had.
+func TestDefaultEmbedScopeCoversTheResourcesAndSystemsSpaces(t *testing.T) {
+	for _, root := range []string{"agent", ""} {
+		scope := defaultEmbedScope(root)
+		for _, want := range []string{"resources", "systems"} {
+			found := false
+			for _, s := range scope {
+				if s == want {
+					found = true
+				}
+				if s == root+"/"+want && root != "" {
+					t.Errorf("memory_root %q: %q is a vault-root sibling, not under the memory root: %v", root, s, scope)
+				}
+			}
+			if !found {
+				t.Errorf("memory_root %q: %q is outside the vector arm's scope: %v", root, want, scope)
+			}
+		}
 	}
 }
 

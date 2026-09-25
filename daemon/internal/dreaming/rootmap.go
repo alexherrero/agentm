@@ -12,7 +12,8 @@ import (
 // The root map — `memory/mocs/moc-root.md`, the entry point, generated with
 // the other maps. It lists every area's map: the memory map and the review
 // queue beside it, each year's calendar map, and the `moc-*.md` an area keeps
-// beside its files in `diagnostics/`, `standards/` and `Projects/`. A map
+// beside its files in `diagnostics/`, `standards/`, `projects/`, and since
+// 2026-09-24 `resources/` and `systems/`. A map
 // counts when it is on disk or when this pass plans it. The page is rewritten
 // only when that list changes, `updated` is the day it changed, and nothing
 // here deletes.
@@ -57,8 +58,8 @@ func mapsIn(dir, prefix string) []string {
 }
 
 // rootAreas is the area maps in the root map's order: memory, calendar
-// (newest year first), diagnostics, standards, projects. An area with no map
-// is left out.
+// (newest year first), diagnostics, standards, projects, resources, systems.
+// An area with no map is left out.
 func rootAreas(root string, planned []string) []rootArea {
 	has := map[string]bool{}
 	for _, rel := range planned {
@@ -100,6 +101,12 @@ func rootAreas(root string, planned []string) []rootArea {
 	add("Standards", mapsIn(filepath.Join(vault, "standards"), "moc-"))
 	projects := filepath.Join(vault, projectsSpaceName)
 	add("Projects", withPlannedMaps(mapsIn(projects, "moc-"), root, projects, has)) // root-casing: the map's heading, not a path
+	for _, space := range []struct{ heading, name string }{
+		{"Resources", ResourcesSpaceName}, {"Systems", SystemsSpaceName},
+	} {
+		dir := filepath.Join(vault, space.name)
+		add(space.heading, withPlannedMaps(mapsIn(dir, "moc-"), root, dir, has))
+	}
 	return areas
 }
 

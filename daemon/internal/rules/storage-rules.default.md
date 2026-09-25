@@ -257,6 +257,13 @@ record_kinds:
   # temple-coordination) and a dated proposal for the temple shifts.
   - how-to
   - proposal
+  # 2026-09-24, on the operator's AgentKV layout rulings: the shapes of the two
+  # new spaces' and the project front page's records — a system's overview
+  # (`systems/<name>/system.md`), one of its parts
+  # (`systems/<name>/components/*.md`), and a project's `blueprint.md`.
+  - system
+  - component
+  - blueprint
 
 deprecations:
   preferences: preference
@@ -361,6 +368,11 @@ dampened_spaces:
   # is a card you triage in order to find it, which makes the inbox a queue to
   # be drained rather than a place a thought can rest.
   - agent/inbox
+  # The reference library (2026-09-24): topic cards, the watchlist, study
+  # guides. It answers a question about its topic and stays below the memories
+  # in every other one — 233 reference cards about SQLite and llama.cpp had been
+  # competing with the operator's own notes in everyday recall.
+  - resources
 
 # Spaces no background model pass may read. This is a privacy boundary, not a
 # ranking one, and it is absolute: enrichment skips them, dreaming never sends
@@ -390,12 +402,22 @@ model_exempt_spaces: []
 # `model_exempt_spaces` bars an unattended model call; an area named here does
 # not enter the corpus at all, so there is nothing to rank and nothing to send.
 # Foreground recall is covered too, which is what makes it a wall rather than a
-# weight: the folder holds certificates and recovery codes, and a query that
-# happens to match them must not be able to serve them anywhere.
+# weight.
+#
+# Two kinds of area stand behind it, for two reasons. Private material first:
+# `Important Docs` holds certificates and recovery codes, and a query that
+# happens to match them must not be able to serve them anywhere. Then
+# placeholder text: `standards/templates/` holds the blank front page every
+# project starts from, and a search that matched a template's filler would
+# serve words nobody wrote, on every question that happened to share them.
+# Neither belongs in an answer; the wall is the one list that keeps a file out
+# of every arm at once, so both use it rather than a second list that would
+# have to be held to the same walkers.
 #
 # Matched by path from the vault root, directory and everything under it.
 recall_exempt_areas:
   - personal/Home/Important Docs
+  - standards/templates
 
 # Areas every session has already read in full, so recall never serves them
 # again. The fourth list, and the weakest of the four: it is not a wall and not
