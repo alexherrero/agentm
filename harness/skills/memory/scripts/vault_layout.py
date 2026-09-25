@@ -22,8 +22,8 @@ new path would miss everything a not-yet-migrated vault still holds.
 A feature's state no longer has that fallback. The vault moved, and nothing
 reads or writes `memory/<name>` any more, so feature_state_candidates()
 offers only `projects/agentm/` spellings, to readers and writers alike — its
-config and source lists under `desk/` first, the project root second (the
-AgentKV layout move);
+config and source lists under `desk/`, which is where the AgentKV layout move
+put them;
 `scripts/check-memory-root-shape.py` names a retired location that comes
 back.
 
@@ -166,14 +166,13 @@ DESK_FEATURE_FILES = frozenset({
 
 def feature_state_candidates(root, name: str) -> list[Path]:
     """Where a feature's state may be, under each vault-root spelling, newest
-    home first. A config or source list is read from `projects/agentm/desk/`
-    first and the project root second, until the move runs and the root copy
-    is gone. The retired `memory/<name>` is not a candidate: nothing reads or
-    writes it since the vault moved, even on a vault that still has one."""
+    first. A config or source list lives in `projects/agentm/desk/`, and only
+    there: the project root holds five files, the door refuses a sixth, and
+    the move emptied it (task 176). The retired `memory/<name>` is not a
+    candidate either: nothing reads or writes it since the vault moved."""
     projects = projects_dir_candidates(root)
     if name in DESK_FEATURE_FILES:
-        return ([p / FEATURE_PROJECT / "desk" / name for p in projects]
-                + [p / FEATURE_PROJECT / name for p in projects])
+        return [p / FEATURE_PROJECT / "desk" / name for p in projects]
     return [p / FEATURE_PROJECT / name for p in projects]
 
 

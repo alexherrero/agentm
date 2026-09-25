@@ -11,13 +11,16 @@
 // stream of approvals nobody reads, and a door that asked about none would not
 // be a door.
 //
-//	the project root      a new document is standing; changing an existing
-//	                      one takes explicit alignment
+//	the project root      one of the five front-page files may be created;
+//	                      any other new file, and any change to an existing
+//	                      one, takes explicit alignment
 //	any subfolder         standing — the agent adds and maintains freely
 //
-// The root is the project's visible face. Documents that earn top-level
-// placement live there in whatever number the project genuinely needs, and the
-// working bulk goes into subfolders so the face stays legible.
+// The root is the project's visible face, and since the operator's rulings of
+// 2026-09-24 it holds five files in every project: `project.yaml`,
+// `charter.md`, `blueprint.md`, `tracker.md` and `moc-<slug>.md`. The working
+// bulk goes into subfolders — living documents into `docs/`, the lists
+// machinery reads into `desk/` — so the face reads the same everywhere.
 //
 // # Which direction this fails in
 //
@@ -89,13 +92,35 @@ func DefaultRoots() Roots {
 	return Roots{Projects: "desk/projects", Tasks: "desk/tasks"}
 }
 
+// RootFiles is the project front page: the only files a project root holds
+// (agentm-vault § The project skeleton, the operator's ruling of 2026-09-24).
+// `moc-<slug>.md` is the fifth, named per project; see IsRootFile.
+var RootFiles = []string{"project.yaml", "charter.md", "blueprint.md", "tracker.md"}
+
+// IsRootFile reports whether `name` is one of the five files a project root
+// holds, for the project `slug`.
+func IsRootFile(slug, name string) bool {
+	if name == "moc-"+slug+".md" {
+		return true
+	}
+	for _, f := range RootFiles {
+		if name == f {
+			return true
+		}
+	}
+	return false
+}
+
 // Judge decides what the agent may do at `rel`.
 //
-// `exists` distinguishes creating a root document from changing one, and that
-// distinction is the design's own: a project may have as many root documents as
-// it needs, with no cap, and it is *modifying or replacing* one that takes
-// alignment. A door that asked about creation would make the no-cap rule
-// meaningless.
+// `exists` distinguishes creating a root document from changing one. Creating
+// one of the five front-page files is standing — a project that lacks its
+// `blueprint.md` is missing a page, and writing it is maintenance. Creating any
+// other file at the root answers Alignment: the operator ruled on 2026-09-24
+// that the root is locked to five files, reversing the earlier rule that a
+// project may have as many root documents as it needs, with no cap, because
+// root files accumulated in every project where nothing said no. Changing an
+// existing root document takes alignment, as it always has.
 func (r Roots) Judge(rel string, exists bool) Decision {
 	clean := strings.Trim(strings.ReplaceAll(rel, "\\", "/"), "/")
 	d := Decision{Path: clean}
@@ -156,10 +181,18 @@ func (r Roots) Judge(rel string, exists bool) Decision {
 			"explicit alignment — the root is the project's visible face", rest, slug)
 		return d
 	}
-	d.Permission = Standing
-	d.Why = fmt.Sprintf("a new document at %s's root, which the project may have "+
-		"as many of as it needs; it is changing an existing one that takes "+
-		"alignment", slug)
+	if IsRootFile(slug, rest) {
+		d.Permission = Standing
+		d.Why = fmt.Sprintf("%s is one of the five files at %s's root, and creating "+
+			"a missing one is maintenance; it is changing an existing one that "+
+			"takes alignment", rest, slug)
+		return d
+	}
+	d.Permission = Alignment
+	d.Why = fmt.Sprintf("a new file at %s's root, which holds five files and no "+
+		"others (project.yaml, charter.md, blueprint.md, tracker.md, moc-%s.md) — "+
+		"put it in a subfolder such as docs/ or desk/, or ask to add a sixth",
+		slug, slug)
 	return d
 }
 

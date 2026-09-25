@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The door locks a project's root to five files.** Creating
+  `project.yaml`, `charter.md`, `blueprint.md`, `tracker.md` or
+  `moc-<slug>.md` directly under `projects/<slug>/` is maintenance and
+  stands; creating any other file there answers Alignment and names
+  `docs/` and `desk/` as the places to put it. Changing an existing root
+  document asks, as it always has, and the subfolders keep their rules.
+  This reverses the door's no-cap rule on the operator's ruling of
+  2026-09-24. With nothing able to recreate a root copy, the step 3
+  fallbacks come out: the config lists resolve only from
+  `projects/agentm/desk/`, the brief reads only `docs/followups.md`, and
+  project detection reads only `docs/conventions.md` (task 176, step 4).
+
 ### Added
 
 - **The daemon knows the two new shared spaces before anything moves into

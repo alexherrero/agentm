@@ -24,13 +24,35 @@ func TestChangingARootDocumentRequiresAlignment(t *testing.T) {
 	}
 }
 
-// And the half that keeps the no-cap rule meaningful: a project may have as many
-// root documents as it needs, so *creating* one is not the thing that asks.
-func TestANewRootDocumentIsStanding(t *testing.T) {
-	d := roots().Judge("desk/projects/agentm/CHARTER.md", false)
-	if d.Permission != Standing {
-		t.Errorf("creating a root document is %s: %s — the design says a project "+
-			"may have as many as it needs, with no cap", d.Permission, d.Why)
+// The root holds five files (the operator's ruling of 2026-09-24, reversing the
+// no-cap rule): creating one of them is maintenance, creating anything else at
+// the root asks, and changing an existing root document asks as it always has.
+// Below the root nothing changes.
+func TestTheRootHoldsFiveFiles(t *testing.T) {
+	for _, tc := range []struct {
+		rel    string
+		exists bool
+		want   Permission
+		why    string
+	}{
+		{"desk/projects/agentm/project.yaml", false, Standing, "one of the five"},
+		{"desk/projects/agentm/charter.md", false, Standing, "one of the five"},
+		{"desk/projects/agentm/blueprint.md", false, Standing, "one of the five"},
+		{"desk/projects/agentm/tracker.md", false, Standing, "one of the five"},
+		{"desk/projects/agentm/moc-agentm.md", false, Standing, "one of the five"},
+		{"desk/projects/agentm/roadmap.md", false, Alignment, "holds five files"},
+		{"desk/projects/agentm/CHARTER.md", false, Alignment, "holds five files"},
+		{"desk/projects/agentm/moc-crickets.md", false, Alignment, "holds five files"},
+		{"desk/projects/agentm/docs/x.md", false, Standing, "adds and maintains freely"},
+		{"desk/projects/agentm/charter.md", true, Alignment, "visible face"},
+	} {
+		d := roots().Judge(tc.rel, tc.exists)
+		if d.Permission != tc.want {
+			t.Errorf("%s (exists=%v) is %s, want %s: %s", tc.rel, tc.exists, d.Permission, tc.want, d.Why)
+		}
+		if !strings.Contains(d.Why, tc.why) {
+			t.Errorf("%s: the reason %q does not say %q", tc.rel, d.Why, tc.why)
+		}
 	}
 }
 
