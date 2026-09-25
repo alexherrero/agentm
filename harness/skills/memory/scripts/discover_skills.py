@@ -448,7 +448,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             "the internet; cache + diff each fetch; emit 'new content since "
             "last scan' for the adapt-don't-import workflow (task 4) to "
             "evaluate. Source whitelist is operator-editable at "
-            "projects/agentm/skill-discovery-sources.md."
+            "projects/agentm/desk/skill-discovery-sources.md."
         ),
     )
     parser.add_argument(

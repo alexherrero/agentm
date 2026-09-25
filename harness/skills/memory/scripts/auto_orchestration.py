@@ -2,16 +2,17 @@
 """auto_orchestration.py — state + config primitives for the V4 #23 memory
 push-surface (auto-orchestration).
 
-Two operator-facing artifacts, both vault-resident:
+Two artifacts, one in the engine state and one in the vault:
 
-  <vault>/_meta/auto-orchestration-state.json
+  <engine state dir>/auto-orchestration-state.json
       Machine state. { "last_fire": {<chain>: <iso8601>},
                        "last_shown": {<signal>: <value>} }
       - last_fire  → cooldown bookkeeping (one timestamp per chain).
       - last_shown → the SessionStart "only when state shifted" guard:
                      a snapshot of the pending-state signal counts last surfaced.
 
-  <vault>/personal/auto-orchestration-config.md
+  <vault>/projects/agentm/desk/auto-orchestration-config.md
+      (the project root while a vault has not had task 176's move)
       Operator-editable markdown carrying thresholds / cooldowns / chain toggles
       inside a fenced ``` settings block. Auto-seeded with sensible defaults on
       first use; re-seeding NEVER clobbers an existing file (operator edits win).

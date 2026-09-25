@@ -4,7 +4,7 @@
 A project's state root is the project directory itself since the projects
 migration (agentm-vault plan 10, 2026-09-16): tasks under `tasks/NNN-<slug>/`,
 machine files under `desk/`, designs under `designs/`, `followups.md` and
-`roadmap.md` at the root. Plan 15 retired every fallback that still reached for
+`roadmap.md` in `docs/`. Plan 15 retired every fallback that still reached for
 the vault's `_harness/`. This gate keeps the word out of the code, because the
 behaviour cannot be caught any other way: a reader that composes `_harness/` and
 tests `is_dir()` fails soft on a vault where the directory is gone, so nothing
