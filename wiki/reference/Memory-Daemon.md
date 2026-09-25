@@ -240,6 +240,27 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 
 `daemon.spaces` and `daemon.shard` are the seam the `Agent/memory` + `Agent/desk` migration turned on. Moving to that layout was an edit to these two keys, not a rewrite — which is why the defaults derive from `memory_root` instead of naming directories as literals, with one deliberate exception: `projects` is now the unprefixed literal `Projects`, the vault-root sibling filing-v2 part 2b moved it to (the Python stack names the same sibling as `../Projects`, relative to its own root).
 
+### Two new spaces, pending: `resources/` and `systems/`
+
+> [!NOTE]
+> **Pending** — `tasks/176-converge-the-vault-layout` (steps 2, 8, 9). Neither space exists yet; `daemon.spaces`, `config.defaultEmbedScope`, and the contract's `dampened_spaces` are still exactly the values the table above names.
+
+The plan adds two shared spaces:
+
+| Space | Holds | Dampened? |
+|---|---|---|
+| `resources/` | `topics/<topic>/` — reference cards moved out of a project's `research/<topic>/reference/`, dropping the `reference/` level; `watchlist/<source>/` — moved out of `projects/agentm/_watchlist/`; `university/` — an index note first, study guides after | Yes — `resources` joins `dampened_spaces` at the daemon's fixed strength (see [Space, altitude, and the two that are not penalties](#space-altitude-and-the-two-that-are-not-penalties) above), so a strong distinctive match still surfaces it but a weak cosine neighbor doesn't crowd an everyday query |
+| `systems/` | `homelab/` — a `system.md` overview plus `components/*.md`, moved from `memory/semantic/`; a one-page front door per software system (`agentm/system.md`, `crickets/system.md`) | No |
+
+`door.DefaultAuthority()` grants both Shared. The mocs job (see [Its jobs, in order](#its-jobs-in-order) below) renders `moc-resources.md` and `moc-systems.md` once those spaces hold files.
+
+### The project root locks to five files (pending)
+
+> [!NOTE]
+> **Pending** — `tasks/176-converge-the-vault-layout` (steps 3, 4, 5). `door.Judge` does not enforce this yet — a project root can still take as many documents as it needs.
+
+The plan locks every project's root to exactly five files: `project.yaml`, `charter.md`, `blueprint.md`, `tracker.md`, and `moc-<slug>.md` (see [Vault project.yaml reference](Vault-Project-Yaml) for the new file's schema). Creating anything else directly under `projects/<slug>/` will answer Alignment — a session has to ask — while an edit to one of the five keeps today's Alignment, and subfolders (`docs/`, `desk/`, `decisions/`, `designs/`, `research/`) keep today's rules. Living documents that used to sit at a project root (`followups.md`, `roadmap.md`, and others) move to `docs/`; config and source lists move to `desk/`.
+
 ## The loud queue
 
 Filing is asynchronous, so the queue is meant to be busy — what must never happen again is a queue that stops draining and says nothing. The previous system's inbox reached 4,933 items in silence.

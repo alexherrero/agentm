@@ -59,6 +59,7 @@
 - [Completed features](Completed-Features)
 - [Known issues](Known-Issues)
 - [Memory daemon (agentmd)](Memory-Daemon)
+- [Vault project.yaml](Vault-Project-Yaml)
 - [Memory MCP tools](Memory-MCP-Tools)
 ### 🏛️ [Architecture](Architecture)
 - [AgentMemory](AgentMemory)
