@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`systems/` describes the systems the operator runs.** On 2026-09-25 the
+  six homelab notes left `agent/memory/semantic/` for
+  `systems/homelab/components/`, kept their names and became `kind:
+  component` records, so no link needed a rewrite; `systems/homelab/system.md`
+  is a new overview drawn from `homelab-domain` and `home-server`, and
+  `systems/agentm/system.md` and `systems/crickets/system.md` are one-page
+  front doors to each repo's wiki Home and designs index. The move tool
+  follows a renamed note's basename links when a move renames one, and it now
+  refuses, before anything moves, a batch whose rewrites would reach a note
+  under `personal/`, which is the operator's (task 176, step 9).
+
 - **The reference library holds agentm's reference cards and the
   watchlist.** The move ran on 2026-09-25 under quiesce: 233 reference
   cards left `projects/agentm/research/<topic>/reference/` for
