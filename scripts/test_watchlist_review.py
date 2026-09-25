@@ -2,7 +2,7 @@
 """Unit tests for `watchlist_review.py` — the operator review CLI, now
 generalized (AG Wave E experience plan, task 1) to scan BOTH
 `projects/agentm/_skill-watchlist/` (adapt-don't-import, pre-existing) and
-`projects/agentm/_watchlist/` (the new forward-learning findings) as one surface.
+`resources/watchlist/` (the new forward-learning findings) as one surface.
 The retired `memory/` homes are not part of it.
 
 `watchlist_review.py` lives in `harness/skills/memory/scripts/` (same
@@ -63,7 +63,7 @@ class _WatchlistReviewTestBase(unittest.TestCase):
 class ListMergesBothRootsTests(_WatchlistReviewTestBase):
     def test_list_includes_entries_from_both_roots(self) -> None:
         self._write_entry(Path("projects/agentm/_skill-watchlist"), "skill-src", "cool-skill")
-        self._write_entry(Path("projects/agentm/_watchlist"), "idea-src", "cool-idea")
+        self._write_entry(Path("resources/watchlist"), "idea-src", "cool-idea")
 
         entries = wr.list_watchlist_entries(self.vault)
         pairs = {(e["source_slug"], e["pattern_slug"]) for e in entries}
@@ -71,8 +71,8 @@ class ListMergesBothRootsTests(_WatchlistReviewTestBase):
 
     def test_list_excludes_archive_dirs_in_both_roots(self) -> None:
         self._write_entry(Path("projects/agentm/_skill-watchlist/_archive"), "skill-src", "old-skill")
-        self._write_entry(Path("projects/agentm/_watchlist/_archive"), "idea-src", "old-idea")
-        self._write_entry(Path("projects/agentm/_watchlist"), "idea-src", "fresh-idea")
+        self._write_entry(Path("resources/watchlist/_archive"), "idea-src", "old-idea")
+        self._write_entry(Path("resources/watchlist"), "idea-src", "fresh-idea")
 
         entries = wr.list_watchlist_entries(self.vault)
         pairs = {(e["source_slug"], e["pattern_slug"]) for e in entries}
@@ -89,32 +89,32 @@ class DismissArchivesIntoOwnRootTests(_WatchlistReviewTestBase):
         self.assertEqual(result["action"], "dismissed")
         expected = self.vault / "projects" / "agentm" / "_skill-watchlist" / "_archive" / "skill-src" / "cool-skill.md"
         self.assertTrue(expected.exists())
-        self.assertFalse((self.vault / "projects" / "agentm" / "_watchlist" / "_archive").exists())
+        self.assertFalse((self.vault / "resources" / "watchlist" / "_archive").exists())
 
     def test_general_watchlist_entry_archives_into_general_watchlist_archive(self) -> None:
-        path = self._write_entry(Path("projects/agentm/_watchlist"), "idea-src", "cool-idea")
+        path = self._write_entry(Path("resources/watchlist"), "idea-src", "cool-idea")
         result = wr.dismiss_entry(self.vault, path)
         self.assertEqual(result["action"], "dismissed")
-        expected = self.vault / "projects" / "agentm" / "_watchlist" / "_archive" / "idea-src" / "cool-idea.md"
+        expected = self.vault / "resources" / "watchlist" / "_archive" / "idea-src" / "cool-idea.md"
         self.assertTrue(expected.exists())
         self.assertFalse((self.vault / "projects" / "agentm" / "_skill-watchlist" / "_archive").exists())
 
     def test_dismissed_entry_no_longer_listed(self) -> None:
-        path = self._write_entry(Path("projects/agentm/_watchlist"), "idea-src", "cool-idea")
+        path = self._write_entry(Path("resources/watchlist"), "idea-src", "cool-idea")
         wr.dismiss_entry(self.vault, path)
         self.assertEqual(wr.list_watchlist_entries(self.vault), [])
 
 
 class PromoteAndDeferWorkRegardlessOfRootTests(_WatchlistReviewTestBase):
     def test_promote_a_general_watchlist_entry(self) -> None:
-        path = self._write_entry(Path("projects/agentm/_watchlist"), "idea-src", "cool-idea")
+        path = self._write_entry(Path("resources/watchlist"), "idea-src", "cool-idea")
         result = wr.promote_entry(path)
         self.assertEqual(result["action"], "promoted")
         fm = wr._parse_frontmatter(path)
         self.assertEqual(fm["status"], "promoted")
 
     def test_defer_a_general_watchlist_entry(self) -> None:
-        path = self._write_entry(Path("projects/agentm/_watchlist"), "idea-src", "cool-idea")
+        path = self._write_entry(Path("resources/watchlist"), "idea-src", "cool-idea")
         result = wr.defer_entry(path, until_date="2026-08-01")
         self.assertEqual(result["action"], "deferred")
         fm = wr._parse_frontmatter(path)
@@ -128,7 +128,7 @@ class EntryPathFromSlugsResolvesEitherRootTests(_WatchlistReviewTestBase):
         self.assertEqual(resolved, path)
 
     def test_resolves_general_watchlist_entry(self) -> None:
-        path = self._write_entry(Path("projects/agentm/_watchlist"), "idea-src", "cool-idea")
+        path = self._write_entry(Path("resources/watchlist"), "idea-src", "cool-idea")
         resolved = wr._entry_path_from_slugs(self.vault, "idea-src", "cool-idea")
         self.assertEqual(resolved, path)
 

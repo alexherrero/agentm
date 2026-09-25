@@ -141,17 +141,17 @@ class FeatureStateTests(unittest.TestCase):
             self.assertEqual(vl.feature_state_path(root, "_skill-watchlist"),
                              root.parent / "projects" / "agentm" / "_skill-watchlist")
 
-    def test_the_watchlist_is_the_reference_librarys_once_moved(self):
+    def test_the_watchlist_is_the_reference_librarys_only(self):
         """Task 176 step 8: `resources/watchlist/` at the vault root is the
-        watchlist's home; the project-space copy is read while it is the only
-        one, and a vault with neither gets the new home."""
+        watchlist's home, and a leftover project-space copy is never read or
+        written, so it cannot fork the watchlist."""
         with tempfile.TemporaryDirectory() as td:
             root = _nested(Path(td))
             new = root.parent / "resources" / "watchlist"
             old = root.parent / "projects" / "agentm" / "_watchlist"
             self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
             old.mkdir(parents=True)
-            self.assertEqual(vl.feature_state_path(root, "_watchlist"), old)
+            self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
             new.mkdir(parents=True)
             self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
 

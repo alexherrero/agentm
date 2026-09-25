@@ -4,7 +4,7 @@
 # Walks two watchlist roots' `<source-slug>/<pattern-slug>.md` entries as
 # ONE review surface: `Projects/agentm/_skill-watchlist/` (adapt-don't-
 # import candidate skills, the original consumer) and
-# `resources/watchlist/` (`projects/agentm/_watchlist/` before task 176) (AG Wave E experience-plan task 1's
+# `resources/watchlist/` (AG Wave E experience-plan task 1's
 # generalized forward-learning findings — ideas/patterns/references from
 # operator-approved sources, written by `forward_learning.py`). Same entry
 # shape, same review verbs — "the broader loop generalizes this same
