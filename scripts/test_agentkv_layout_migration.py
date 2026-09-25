@@ -126,6 +126,24 @@ class TestApply(_Vault):
         text = (self.vault / "projects/agentm/docs/followups.md").read_text()
         self.assertIn("[the roadmap](roadmap.md)", text)
 
+    def test_a_link_in_another_case_still_follows(self):
+        _w(self.vault, "projects/agentm/tasks/001-x/plan.md", "[r](../../ROADMAP.md)\n")
+        _git(self.vault, "add", "-A")
+        _git(self.vault, "commit", "-q", "-m", "case")
+        self.run_batch("root-files")
+        self.assertIn("[r](../../docs/roadmap.md)",
+                      (self.vault / "projects/agentm/tasks/001-x/plan.md").read_text())
+
+    def test_a_moved_notes_link_out_of_the_vault_is_recomputed(self):
+        outside = self.vault.parent / "repo" / "README.md"
+        _w(outside.parent, "README.md", "# repo\n")
+        _w(self.vault, "projects/agentm/roadmap.md", "# Roadmap\n\n[repo](../../../repo/README.md)\n")
+        _git(self.vault, "add", "-A")
+        _git(self.vault, "commit", "-q", "-m", "outside")
+        self.run_batch("root-files")
+        self.assertIn("[repo](../../../../repo/README.md)",
+                      (self.vault / "projects/agentm/docs/roadmap.md").read_text())
+
     def test_the_walled_area_is_never_rewritten(self):
         self.run_batch("root-files")
         self.assertEqual((self.vault / "personal/Home/Important Docs/codes.md").read_text(),

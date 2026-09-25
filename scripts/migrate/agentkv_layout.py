@@ -241,7 +241,7 @@ def _path_match(target: str, moved_old: dict) -> Optional[str]:
     """The old path a path-shaped wikilink target names, if any: a full path
     or a trailing part of one (Obsidian resolves `[[agentm/followups]]` as any
     file whose path ends that way), with or without the `.md`."""
-    t = target.strip().strip("/")
+    t = target.strip().strip("/").lower()
     if "/" not in t:
         return None
     for key in (t, _noext(t)):
@@ -265,12 +265,15 @@ def rewrite_text(text: str, src_old: str, src_new: str, moves: dict, exists) -> 
     for old in moves:
         moved_old[old] = old
         moved_old[_noext(old)] = old
+    # The disk is case-insensitive and so is Obsidian's resolution on it, so a
+    # link spelled `ROADMAP.md` names `roadmap.md` as surely as the exact case.
+    folded = {k.lower(): v for k, v in moved_old.items()}
     count = 0
 
     def wiki(m):
         nonlocal count
         bang, target, anchor, alias = m.group(1), m.group(2), m.group(3) or "", m.group(4)
-        old = _path_match(target, moved_old)
+        old = _path_match(target, folded)
         if old is None:
             return m.group(0)
         new = moves[old]
@@ -294,7 +297,8 @@ def rewrite_text(text: str, src_old: str, src_new: str, moves: dict, exists) -> 
         else:
             resolved = os.path.normpath(os.path.join(os.path.dirname(src_old), dec))
         resolved = resolved.replace(os.sep, "/")
-        target_new = moves.get(resolved)
+        old = folded.get(resolved.lower())
+        target_new = moves[old] if old is not None else None
         if target_new is None:
             if src_old == src_new or dec.startswith("/"):
                 return m.group(0)
@@ -465,7 +469,8 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
             continue
         p = vault / rel
         text = p.read_text(encoding="utf-8", errors="surrogateescape")
-        new, n = rewrite_text(text, inverse.get(rel, rel), rel, mapping, lambda r: r in after)
+        new, n = rewrite_text(text, inverse.get(rel, rel), rel, mapping,
+                              lambda r: r in after or (vault / r).exists())
         if n:
             p.write_text(new, encoding="utf-8", errors="surrogateescape")
             rewritten.append({"path": rel, "links": n})
