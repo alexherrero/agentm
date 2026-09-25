@@ -148,12 +148,12 @@ class MigratedPaths(unittest.TestCase):
             for path in (card, root_file, note):
                 self.assertEqual(ev._remap_convergence(path, vault), path, "before the move")
             for rel in ("resources/topics/sqlite/bm25-k1-b-constants.md",
-                        "projects/agentm/desk/trusted-sources.md", "systems/homelab/system.md"):
+                        "projects/agentm/desk/trusted-sources.md", "systems/homelab/components/homelab-domain.md"):
                 (vault / rel).parent.mkdir(parents=True, exist_ok=True)
                 (vault / rel).write_text("x", encoding="utf-8")
             self.assertEqual(ev._remap_convergence(card, vault), "resources/topics/sqlite/bm25-k1-b-constants.md")
             self.assertEqual(ev._remap_convergence(root_file, vault), "projects/agentm/desk/trusted-sources.md")
-            self.assertEqual(ev._remap_convergence(note, vault), "systems/homelab/system.md")
+            self.assertEqual(ev._remap_convergence(note, vault), "systems/homelab/components/homelab-domain.md")
             # A research note outside `reference/` never moved, and no vault
             # means no remap at all.
             self.assertEqual(ev._remap_convergence("projects/agentm/research/sqlite/notes.md", vault),

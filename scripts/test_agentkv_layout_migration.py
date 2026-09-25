@@ -103,7 +103,7 @@ class TestPlans(_Vault):
         with mock.patch("harness_memory.memory_root", return_value=str(self.vault / "agent")):
             moves = {m["src"]: m["dst"] for m in kv.build_plan(self.vault, "systems")["moves"]}
         self.assertEqual(moves, {
-            "agent/memory/semantic/homelab-domain.md": "systems/homelab/system.md",
+            "agent/memory/semantic/homelab-domain.md": "systems/homelab/components/homelab-domain.md",
             "agent/memory/semantic/home-server.md": "systems/homelab/components/home-server.md",
             "agent/memory/semantic/nas-backup.md": "systems/homelab/components/nas-backup.md",
         })
@@ -148,14 +148,33 @@ class TestApply(_Vault):
                       (self.vault / "projects/agentm/docs/roadmap.md").read_text())
 
     def test_a_renamed_notes_basename_links_follow_it(self):
+        """A move that renames a note takes its basename links with it, as
+        path links with their words kept; a name that did not change is left."""
+        moves = {"agent/memory/semantic/homelab-domain.md": "systems/homelab/system.md"}
+        renamed = {"homelab-domain": "agent/memory/semantic/homelab-domain.md"}
+        text, n = kv.rewrite_text("[[homelab-domain]], [[homelab-domain#Scope|the anchor]], [[nas-backup]]",
+                                  "x.md", "x.md", moves, lambda r: True, renamed)
+        self.assertEqual(n, 2)
+        self.assertEqual(text, "[[systems/homelab/system|homelab-domain]], "
+                               "[[systems/homelab/system#Scope|the anchor]], [[nas-backup]]")
+
+    def test_the_homelab_notes_keep_their_names_and_links(self):
         with mock.patch("harness_memory.memory_root", return_value=str(self.vault / "agent")):
-            self.run_batch("systems")
-        text = (self.vault / "agent/memory/semantic/linker.md").read_text()
-        self.assertIn("homelab [[systems/homelab/system|homelab-domain]]", text)
-        self.assertIn("[[systems/homelab/system#Scope|the anchor]]", text)
-        # A name that did not change keeps its basename link.
-        sys_text = (self.vault / "systems/homelab/system.md").read_text()
-        self.assertIn("See [[nas-backup]] and [[home-server]].", sys_text)
+            rec = self.run_batch("systems")
+        self.assertEqual(rec["links"], 0)
+        text = (self.vault / "systems/homelab/components/homelab-domain.md").read_text()
+        self.assertIn("See [[nas-backup]] and [[home-server]].", text)
+
+    def test_a_batch_that_would_edit_a_personal_note_is_refused(self):
+        _w(self.vault, "personal/ideas/an-idea.md", "Builds on [[projects/agentm/followups]].\n")
+        _git(self.vault, "add", "-A")
+        _git(self.vault, "commit", "-q", "-m", "idea")
+        plan = kv.build_plan(self.vault, "root-files")
+        with self.assertRaises(kv.Refused) as cm:
+            kv.apply(self.vault, plan, len(plan["moves"]), self.state, check_writers=lambda: [])
+        self.assertIn("personal/ideas/an-idea.md", str(cm.exception))
+        # Nothing moved.
+        self.assertTrue((self.vault / "projects/agentm/followups.md").is_file())
 
     def test_the_walled_area_is_never_rewritten(self):
         self.run_batch("root-files")

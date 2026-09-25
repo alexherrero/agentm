@@ -71,6 +71,7 @@ for _p in (str(_REPO / "scripts"), str(_TOOLKIT)):
 
 STAGE = "agentkv-layout"
 PROJECTS = "projects"
+PERSONAL = "personal"
 SKIP_DIRS = {".git", ".obsidian", ".trash", "node_modules", "__pycache__"}
 
 # The five files a project root is locked to (the operator's ruling, 2026-09-24).
@@ -87,10 +88,10 @@ DOCS_SUFFIXES = (".md",)
 REFERENCE_PROJECT = "agentm"
 HOMELAB_NOTES = ("home-server", "homelab-domain", "nas-unraid", "nas-backup",
                  "docker-inventory", "network-topology")
-# The overview: `homelab-domain` is the homelab's anchor note, and becomes
-# `system.md`; `home-server` is a short redirect to the NAS and keeps its own
-# name among the components, where the overview links to it.
-HOMELAB_OVERVIEW = "homelab-domain"
+# Every homelab note keeps its name among the components: a rename would
+# have to rewrite the basename links other notes hold, and some of those sit
+# in `personal/`, which is the operator's. The overview, `system.md`, is
+# written fresh from `home-server` and `homelab-domain` and links to them.
 
 
 class Refused(Exception):
@@ -204,8 +205,7 @@ def plan_systems(vault: Path) -> list:
         src = f"{semantic}/{stem}.md"
         if not (vault / src).is_file():
             continue
-        dst = "systems/homelab/system.md" if stem == HOMELAB_OVERVIEW else f"systems/homelab/components/{stem}.md"
-        moves.append({"src": src, "dst": dst})
+        moves.append({"src": src, "dst": f"systems/homelab/components/{stem}.md"})
     return moves
 
 
@@ -503,6 +503,20 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
         raise Refused("the vault's git tree is not clean; let it commit first")
     mapping = {m["src"]: m["dst"] for m in moves}
     walled = _walled(vault)
+    # `personal/` is the operator's: no batch edits a note there. A path link
+    # from a personal note into a moved file would need that edit, so such a
+    # batch is refused before anything moves, for the operator to decide.
+    before = set(vault_files(vault))
+    touched = []
+    for rel in sorted(before):
+        if not rel.startswith(PERSONAL + "/") or not rel.endswith(".md") or _is_walled(rel, walled):
+            continue
+        text = (vault / rel).read_text(encoding="utf-8", errors="surrogateescape")
+        if rewrite_text(text, rel, rel, mapping, lambda r: r in before)[1]:
+            touched.append(rel)
+    if touched:
+        raise Refused("the batch would rewrite links in the operator's personal/ notes: "
+                      + ", ".join(touched[:5]) + ("…" if len(touched) > 5 else ""))
     for src, dst in mapping.items():
         (vault / dst).parent.mkdir(parents=True, exist_ok=True)
         _git(vault, "mv", src, dst)
@@ -524,7 +538,7 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
     rewritten = []
     links = 0
     for rel in sorted(after):
-        if not rel.endswith(".md") or _is_walled(rel, walled):
+        if not rel.endswith(".md") or _is_walled(rel, walled) or rel.startswith(PERSONAL + "/"):
             continue
         p = vault / rel
         text = p.read_text(encoding="utf-8", errors="surrogateescape")

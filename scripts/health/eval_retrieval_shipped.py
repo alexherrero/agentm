@@ -276,7 +276,7 @@ _CONVERGENCE_REMAPS = (
     ("projects/agentm/version-summaries.md", "projects/agentm/docs/version-summaries.md"),
     ("projects/blog/writing-voice.md", "projects/blog/docs/writing-voice.md"),
     ("agent/memory/semantic/home-server.md", "systems/homelab/components/home-server.md"),
-    ("agent/memory/semantic/homelab-domain.md", "systems/homelab/system.md"),
+    ("agent/memory/semantic/homelab-domain.md", "systems/homelab/components/homelab-domain.md"),
     ("agent/memory/semantic/nas-unraid.md", "systems/homelab/components/nas-unraid.md"),
     ("agent/memory/semantic/network-topology.md", "systems/homelab/components/network-topology.md"),
 )
