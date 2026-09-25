@@ -110,8 +110,10 @@ func TestSpaceMapsSkipAbsentAndEmptySpaces(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(vault, "systems", "homelab"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeAt(t, vault, "systems/Icon\r", "")
+	// What a sync client or a desktop leaves behind is not a note. (Drive's
+	// `Icon\r` is the same case, and a name Windows cannot create.)
 	writeAt(t, vault, "systems/.DS_Store", "")
+	writeAt(t, vault, "systems/homelab/desktop.ini", "")
 	plan, _ = PlanSpaceMaps(root, projectsNow)
 	if len(plan.Intents) != 0 {
 		t.Errorf("an empty space got a map: %+v", plan.Intents)
