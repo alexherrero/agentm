@@ -240,19 +240,26 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 
 `daemon.spaces` and `daemon.shard` are the seam the `Agent/memory` + `Agent/desk` migration turned on. Moving to that layout was an edit to these two keys, not a rewrite — which is why the defaults derive from `memory_root` instead of naming directories as literals, with one deliberate exception: `projects` is now the unprefixed literal `Projects`, the vault-root sibling filing-v2 part 2b moved it to (the Python stack names the same sibling as `../Projects`, relative to its own root).
 
-### Two new spaces, pending: `resources/` and `systems/`
+### The two new spaces: `resources/` and `systems/`
 
 > [!NOTE]
-> **Pending** — `tasks/176-converge-the-vault-layout` (steps 2, 8, 9). Neither space exists yet; `daemon.spaces`, `config.defaultEmbedScope`, and the contract's `dampened_spaces` are still exactly the values the table above names.
+> **Step 2 shipped, steps 8 and 9 pending** — `tasks/176-converge-the-vault-layout`. The door, the embed scope, the storage contract, and the maps job all know both spaces now. Neither is a folder in the vault yet. None of this machinery has anything to act on: no note is authorized, embedded, dampened, or mapped until steps 8 and 9 move the first ones in.
 
 The plan adds two shared spaces:
 
 | Space | Holds | Dampened? |
 |---|---|---|
-| `resources/` | `topics/<topic>/` — reference cards moved out of a project's `research/<topic>/reference/`, dropping the `reference/` level; `watchlist/<source>/` — moved out of `projects/agentm/_watchlist/`; `university/` — an index note first, study guides after | Yes — `resources` joins `dampened_spaces` at the daemon's fixed strength (see [Space, altitude, and the two that are not penalties](#space-altitude-and-the-two-that-are-not-penalties) above), so a strong distinctive match still surfaces it but a weak cosine neighbor doesn't crowd an everyday query |
-| `systems/` | `homelab/` — a `system.md` overview plus `components/*.md`, moved from `memory/semantic/`; a one-page front door per software system (`agentm/system.md`, `crickets/system.md`) | No |
+| `resources/` | `topics/<topic>/` — reference cards moved from a project's `research/<topic>/reference/`, dropping the `reference/` level. `watchlist/<source>/` — moved from `projects/agentm/_watchlist/`. `university/` — an index note first, study guides after. | Yes — `resources` joins `dampened_spaces` (`daemon/internal/rules/storage-rules.default.md:375`) at the daemon's fixed strength (see [Space, altitude, and the two that are not penalties](#space-altitude-and-the-two-that-are-not-penalties) above). A strong, distinctive match still surfaces; a weak cosine neighbor just doesn't crowd an everyday query. |
+| `systems/` | `homelab/` — a `system.md` overview plus `components/*.md`, moved from `memory/semantic/`. A one-page front door per software system (`agentm/system.md`, `crickets/system.md`). | No |
 
-`door.DefaultAuthority()` grants both Shared. The mocs job (see [Its jobs, in order](#its-jobs-in-order) below) renders `moc-resources.md` and `moc-systems.md` once those spaces hold files.
+Step 2 wired these, ahead of any note moving:
+
+- **The door.** `door.DefaultAuthority()` grants both `resources` and `systems` the `Shared` level (`daemon/internal/door/authority.go:79-97`) — the same level `calendar` already carries: agent-maintained, operator co-writes, no grant needed.
+- **The embed scope.** `config.defaultEmbedScope` names both spaces at the vault root, beside `projects` and `calendar` (`daemon/internal/config/config.go:462-470`). A note that moves in from `projects/agentm/research/<topic>/reference/` or `memory/semantic/` keeps the vector it already had, rather than the dense arm losing sight of it the night it moves.
+- **The storage contract.** `resources` joins `dampened_spaces` (`storage-rules.default.md:375`, described in the table above). `record_kinds` gains `system`, `component`, and `blueprint` (`storage-rules.default.md:264-266`) — the shapes a system's overview (`systems/<name>/system.md`), one of its parts (`systems/<name>/components/*.md`), and a project's `blueprint.md` will carry. `standards/templates` joins `recall_exempt_areas` (`storage-rules.default.md:418-420`): the wall now keeps out placeholder text alongside the private material (`personal/Home/Important Docs`) it already walled. The Python fallback mirror (`harness/skills/memory/scripts/storage_rules.py:510`) carries the same two-entry list.
+- **The maps.** The mocs job's new `PlanSpaceMaps` (`daemon/internal/dreaming/spacemaps.go`, wired into the nightly run at `daemon/internal/dreaming/run.go:275-281`) writes `resources/moc-resources.md` and `systems/moc-systems.md` once a space holds a note: a section per folder, a folder's notes listed by title while there are 12 or fewer and counted once there are more (`spacemaps.go:34-36,142-159`), dated by `created`. `moc-root.md` lists a `Resources` or `Systems` area once either map is written (`daemon/internal/dreaming/rootmap.go:104-109`).
+
+Nothing above moves a note. `PlanSpaceMaps` skips a space outright when it isn't yet a directory — `isDirExact`, called from `spacemaps.go:170` — which is true of both spaces today. The door has nothing to authorize, the embed scope has nothing to embed, and the dampening has nothing to rank until steps 8 and 9 land the first files.
 
 ### The project root locks to five files (pending)
 
