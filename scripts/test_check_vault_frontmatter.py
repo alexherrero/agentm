@@ -495,7 +495,12 @@ class TestRecallWall(unittest.TestCase):
             storage_rules, "rules", side_effect=storage_rules.StorageRulesError("no daemon"),
         )
         with failing:
-            self.assertEqual(_mod._walled_areas(), [_WALLED])
+            walled = _mod._walled_areas()
+        # Closed means the shipped contract's own wall, mirrored — never an
+        # empty list. The list grew `standards/templates` on 2026-09-24; the
+        # private area is what "closed" must still cover.
+        self.assertEqual(walled, list(storage_rules._FALLBACK_RECALL_EXEMPT_AREAS))
+        self.assertIn(_WALLED, walled)
 
     def _layout(self, tmp: Path) -> tuple:
         """A configured vault with a broken note behind each of two walls, and

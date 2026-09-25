@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The daemon knows the two new shared spaces before anything moves into
+  them.** `resources/` and `systems/` are in the door's space table as shared
+  (the agent writes there without a grant) and in the vector arm's default
+  scope. The contract dampens `resources`, registers the record kinds
+  `system`, `component` and `blueprint`, and walls `standards/templates` from
+  every ranked arm, since a template is placeholder text; the wall list's
+  comment now names both reasons it exists, and the Python fallback mirror
+  follows. The nightly mocs job writes `resources/moc-resources.md` and
+  `systems/moc-systems.md` once a space holds a note: a section per folder,
+  small folders listed by title and large ones counted, and the root map lists
+  both. Nothing in the vault moves in this change (task 176, step 2).
+
 ### Changed
 
 - **The agentm-vault design takes the operator's AgentKV layout rulings of

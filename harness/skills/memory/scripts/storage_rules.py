@@ -507,7 +507,7 @@ def _area_segments(rel) -> list:
 # black out the whole corpus the moment a binary went missing. So it falls back
 # to the shipped contract's own list, mirrored here. `test_recall_wall.py` pins
 # this against the packaged default, so the two cannot drift.
-_FALLBACK_RECALL_EXEMPT_AREAS = ("personal/Home/Important Docs",)
+_FALLBACK_RECALL_EXEMPT_AREAS = ("personal/Home/Important Docs", "standards/templates")
 
 # The same mirrored fallback, for the same reason, on the fourth list. Failing
 # open here is the safe direction and not the dangerous one: the cost of missing

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // The end-to-end path the unit tests do not cover: a space named in the contract
@@ -227,5 +228,63 @@ func TestTheWallStillWallsWhileTheInboxIsOnlyDampened(t *testing.T) {
 	}
 	if !sawInbox {
 		t.Errorf("the inbox card was walled rather than dampened: %+v", outcome.Results)
+	}
+}
+
+// The two contract lines the AgentKV layout rulings of 2026-09-24 added, read
+// from the packaged contract itself rather than restated here: `resources`
+// joins `dampened_spaces`, and `standards/templates` joins the wall. A test
+// that set the lists by hand would pass with the contract unchanged; this one
+// fails the day either line leaves the file the binary embeds.
+func TestThePackagedContractDampensResourcesAndWallsTheTemplates(t *testing.T) {
+	t.Setenv("AGENTM_STORAGE_RULES", "")
+	contract, err := rules.Load("")
+	if err != nil {
+		t.Fatalf("loading the packaged contract: %v", err)
+	}
+	if !contract.IsPackagedDefault {
+		t.Fatalf("expected the embedded contract, got %s", contract.Source)
+	}
+	beforeD, beforeE := note.DampenedSpaces(), note.RecallExemptAreas()
+	note.SetDampenedSpaces(contract.DampenedSpaces)
+	note.SetRecallExemptAreas(contract.RecallExemptAreas)
+	t.Cleanup(func() {
+		note.SetDampenedSpaces(beforeD)
+		note.SetRecallExemptAreas(beforeE)
+	})
+
+	idx := openScratch(t)
+	body := "FTS5 columnsize stores a per-row token count for bm25.\n"
+	indexNote(t, idx, "resources/topics/sqlite/fts5-columnsize.md", "FTS5 columnsize", body)
+	indexNote(t, idx, "agent/memory/semantic/fts5-columnsize.md", "FTS5 columnsize", body)
+	// The template carries the query's words too, so only the wall keeps it out:
+	// a body that missed the query would pass with the wall gone.
+	indexNote(t, idx, "standards/templates/charter.md", "Charter template",
+		"Placeholder. "+body)
+
+	var flags string
+	if err := idx.db.QueryRow(`SELECT flags FROM docmeta WHERE path = ?`,
+		"resources/topics/sqlite/fts5-columnsize.md").Scan(&flags); err != nil {
+		t.Fatalf("reading the resources card's flags: %v", err)
+	}
+	if !strings.Contains(flags, note.ClassSpace) {
+		t.Errorf("a resources/ hit does not carry the dampened class (flags %q)", flags)
+	}
+
+	outcome, err := idx.Search(Query{Text: "fts5 columnsize token count", K: 5})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	var paths []string
+	for _, r := range outcome.Results {
+		paths = append(paths, r.Path)
+		if strings.HasPrefix(r.Path, "standards/templates/") {
+			t.Errorf("a template's placeholder text was served: %s", r.Path)
+		}
+	}
+	if len(paths) < 2 || !strings.HasPrefix(paths[0], "agent/memory/") ||
+		!strings.HasPrefix(paths[1], "resources/") {
+		t.Errorf("want the memory first and the dampened reference card still present "+
+			"second, got %v", paths)
 	}
 }

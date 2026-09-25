@@ -157,7 +157,7 @@ type Config struct {
 	EmbedderURL string
 
 	// EmbedScope is the set of vault-relative directories the vector arm covers.
-	// See defaultEmbedScope for why it is three names and not the whole tree.
+	// See defaultEmbedScope for which names it holds and why it is not the whole tree.
 	EmbedScope []string
 
 	// EnrichEnabled turns the enrichment pass on.
@@ -459,6 +459,15 @@ func defaultEmbedScope(memoryRoot string) []string {
 	// Leaving the folder out would give the lexical arm an idea card the dense
 	// arm cannot see — the absent-vector failure the inbox line above describes.
 	out = append(out, "personal/ideas")
+	// The two shared spaces the operator added on 2026-09-24 (agentm-vault §
+	// The layout). `resources/` receives the reference cards from
+	// `projects/agentm/research/<topic>/reference/` and the watchlist, both in
+	// scope under `projects` today; `systems/` receives the homelab notes from
+	// `memory/semantic/`, in scope under `memory`. Leaving either space out
+	// would drop the moved notes' vectors on the night they move — the
+	// absent-vector failure again. `resources/` is dampened by the contract, not
+	// here: the scope decides what the dense arm can see, never how it ranks.
+	out = append(out, "resources", "systems")
 	return out
 }
 
