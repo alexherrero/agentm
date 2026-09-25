@@ -368,11 +368,14 @@ dampened_spaces:
   # is a card you triage in order to find it, which makes the inbox a queue to
   # be drained rather than a place a thought can rest.
   - agent/inbox
-  # The reference library (2026-09-24): topic cards, the watchlist, study
-  # guides. It answers a question about its topic and stays below the memories
-  # in every other one — 233 reference cards about SQLite and llama.cpp had been
-  # competing with the operator's own notes in everyday recall.
-  - resources
+  # The reference library's watchlist (2026-09-24, narrowed 2026-09-25): the
+  # papers and posts forward learning surfaces, which nobody has reviewed yet.
+  # They answer a question that names them and stay below the memories in
+  # every other one. Only the watchlist: dampening all of `resources/` knocked
+  # seven of the ten gold questions that ask about a reference card out of the
+  # top five, because a dampened space is dampened whatever the question, and
+  # a topic card is exactly what a question about its topic wants.
+  - resources/watchlist
 
 # Spaces no background model pass may read. This is a privacy boundary, not a
 # ranking one, and it is absolute: enrichment skips them, dreaming never sends
