@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`check-project-yaml` holds every vault project's `project.yaml` to one
+  schema.** A session tells which project it is in by reading one small
+  YAML file at the project root: `slug` (the directory's name), `title`,
+  `status` (the tracker's five), `repositories` (`owner/repo`), `code_paths`
+  (home-relative), and an optional `board` and `sensitivity`; any other key
+  is a finding, so a typo cannot pass quietly. The gate runs against the live
+  vault in `check-all` and as a self-test in Linux CI, and checks the
+  template in `standards/templates/` the same way, minus the slug. All
+  twelve projects were seeded from their charters, the repositories cloned
+  on this machine and the board mapping (agentm on project 2, crickets on
+  5); home carries `sensitivity: personal-financial`. `standards/templates/`
+  also holds the charter, blueprint and tracker templates, walled from
+  recall (task 176, step 5).
+
 - **The daemon knows the two new shared spaces before anything moves into
   them.** `resources/` and `systems/` are in the door's space table as shared
   (the agent writes there without a grant) and in the vector arm's default
