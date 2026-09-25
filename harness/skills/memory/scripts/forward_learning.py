@@ -28,11 +28,13 @@ not a silent shortcut.
 Reuses `watchlist_review.py`'s operator review surface — the SAME CLI
 (list / review / promote / dismiss / defer) now scans BOTH
 `projects/agentm/_skill-watchlist/` (skills, untouched) and the new
-`projects/agentm/_watchlist/` (ideas/patterns/references, this module's
+`resources/watchlist/` (ideas/patterns/references, this module's
 output) — one review surface for both, per the design's "generalizes this
 same shape" framing. See `watchlist_review.py`'s `_watchlist_roots`.
 
-Contract: this module writes ONLY under `projects/agentm/_watchlist/**`
+Contract: this module writes ONLY under `resources/watchlist/**` (the
+reference library since task 176; `projects/agentm/_watchlist/**` on a vault
+that has not had the move)
 (MEDIUM/HIGH candidates; LOW is dropped, never written) and the
 forward-learning cache in agentm's engine state dir (source watermarks). It
 never adopts a finding anywhere else — the whole point of "surfaced, never
@@ -140,7 +142,8 @@ STATE_NAME = Path("forward-learning-cache") / "state.json"
 WATCHLIST_NAME = "_watchlist"
 # The pre-trims spelling of the sources whitelist, memory-root-relative.
 # Still read, as the fallback, by sources_config_path(); never written. The
-# watchlist has no fallback: watchlist_root() is `projects/agentm/_watchlist`.
+# watchlist is `resources/watchlist`, and `projects/agentm/_watchlist` while a
+# vault has not had task 176's move.
 SOURCES_CONFIG_REL = Path("standards") / SOURCES_CONFIG_NAME
 WATCHLIST_REL = Path("memory") / WATCHLIST_NAME  # the retired home; nothing writes here
 
@@ -232,7 +235,8 @@ def sources_config_path(vault_path: Path) -> Path:
 
 
 def watchlist_root(vault_path: Path) -> Path:
-    """`projects/agentm/_watchlist/`, where every entry is written and read.
+    """`resources/watchlist/` (else `projects/agentm/_watchlist/` before task 176's
+    move), where every entry is written and read.
     Never the retired `memory/_watchlist/`, even on a vault that still has it."""
     return vault_layout.feature_state_path(vault_path, WATCHLIST_NAME)
 
@@ -958,7 +962,7 @@ def _score_candidate(candidate: Candidate, source: Source, *, existing_tags: set
 
 
 # -----------------------------------------------------------------------------
-# Watchlist write (projects/agentm/_watchlist/ — the generalized sibling of
+# Watchlist write (resources/watchlist/ — the generalized sibling of
 # projects/agentm/_skill-watchlist/; watchlist_review.py scans both)
 # -----------------------------------------------------------------------------
 

@@ -26,7 +26,7 @@ lookback: 3d
 # environment, same as every other vault-reading script in this repo.
 command: python3 ../harness/skills/memory/scripts/forward_learning.py
 
-# Watchlist writes land under personal/_watchlist/ — new, agent-surfaced
+# Watchlist writes land under resources/watchlist/ — new, agent-surfaced
 # findings the operator has not yet reviewed, i.e. T3 (the agent's own
 # memory), not T2 (operator-curated). Nothing is ever auto-adopted.
 tier: T3
