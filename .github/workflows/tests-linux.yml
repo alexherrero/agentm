@@ -142,6 +142,13 @@ jobs:
         # caught at the expected file:line. check-all.sh runs the scan mode
         # locally, against the real vault.
         run: python3 scripts/check-vault-frontmatter.py --self-test
+      - name: check-project-yaml (self-test — a missing, unparsable or mismatched project.yaml fires)
+        # Scan mode reads the vault's projects/, which a runner does not have.
+        # --self-test builds a scratch projects space with a clean file, a slug
+        # that names another directory, missing and malformed keys, a file that
+        # will not parse and a project with none, and asserts each finding;
+        # check-all.sh runs the scan against the real vault.
+        run: python3 scripts/check-project-yaml.py --self-test
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit, closing a pre-v4.5.1 CI gap where a

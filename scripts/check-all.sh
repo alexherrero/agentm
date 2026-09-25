@@ -130,6 +130,7 @@ gate "check-always-load-budget (the packaged always-load tier stays under 40,000
 gate "check-measurement-surface (a pass that grades searching says so)" "$PY" scripts/check-measurement-surface.py
 gate "check-calendar-root (the calendar root holds years, their maps and the daily-note template)" "$PY" scripts/check-calendar-root.py
 gate "check-tracker-schema (every tracker in the projects space has the one schema, in its place)" "$PY" scripts/check-tracker-schema.py
+gate "check-project-yaml (every project root carries project.yaml in its one schema)" "$PY" scripts/check-project-yaml.py
 gate "check-memory-root-consistency (daemon spaces sit beneath memory_root)" "$PY" scripts/check-memory-root-consistency.py
 gate "check-registry-hygiene (no throwaway temp path registered as a repo)" "$PY" scripts/check-registry-hygiene.py
 # Graceful-skips (PASS) when no crickets checkout is reachable — it needs
