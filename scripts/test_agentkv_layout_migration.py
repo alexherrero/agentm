@@ -51,6 +51,7 @@ class _Vault(unittest.TestCase):
         _w(v, "projects/agentm/research/sqlite/notes.md", "# kept\n")
         _w(v, "projects/agentm/_watchlist/openai-research/paper.md", "# paper\n")
         _w(v, "agent/memory/semantic/home-server.md", "---\ntitle: Home server\n---\n\nBody.\n")
+        _w(v, "agent/memory/semantic/homelab-domain.md", "---\ntitle: Homelab\n---\n\nSee [[nas-backup]] and [[home-server]].\n")
         _w(v, "agent/memory/semantic/nas-backup.md", "---\ntitle: NAS backup\n---\n\nBody.\n")
         # The linkers: a full path, a partial path, a basename, a markdown link
         # from the vault root, and one into a walled area that is never opened.
@@ -58,7 +59,8 @@ class _Vault(unittest.TestCase):
            "---\ntitle: linker\nrelated: [\"[[projects/agentm/roadmap]]\"]\n---\n\n"
            "Full [[projects/agentm/followups]], partial [[agentm/followups#Open|open ones]], "
            "basename [[followups]], md [r](/projects/agentm/roadmap.md), "
-           "card [[projects/agentm/research/sqlite/reference/bm25]].\n")
+           "card [[projects/agentm/research/sqlite/reference/bm25]], "
+           "homelab [[homelab-domain]] and [[homelab-domain#Scope|the anchor]].\n")
         _w(v, "personal/Home/Important Docs/codes.md", "[[projects/agentm/followups]]\n")
         _git(v, "init", "-q")
         _git(v, "config", "user.email", "t@t")
@@ -101,7 +103,8 @@ class TestPlans(_Vault):
         with mock.patch("harness_memory.memory_root", return_value=str(self.vault / "agent")):
             moves = {m["src"]: m["dst"] for m in kv.build_plan(self.vault, "systems")["moves"]}
         self.assertEqual(moves, {
-            "agent/memory/semantic/home-server.md": "systems/homelab/system.md",
+            "agent/memory/semantic/homelab-domain.md": "systems/homelab/system.md",
+            "agent/memory/semantic/home-server.md": "systems/homelab/components/home-server.md",
             "agent/memory/semantic/nas-backup.md": "systems/homelab/components/nas-backup.md",
         })
 
@@ -143,6 +146,16 @@ class TestApply(_Vault):
         self.run_batch("root-files")
         self.assertIn("[repo](../../../../repo/README.md)",
                       (self.vault / "projects/agentm/docs/roadmap.md").read_text())
+
+    def test_a_renamed_notes_basename_links_follow_it(self):
+        with mock.patch("harness_memory.memory_root", return_value=str(self.vault / "agent")):
+            self.run_batch("systems")
+        text = (self.vault / "agent/memory/semantic/linker.md").read_text()
+        self.assertIn("homelab [[systems/homelab/system|homelab-domain]]", text)
+        self.assertIn("[[systems/homelab/system#Scope|the anchor]]", text)
+        # A name that did not change keeps its basename link.
+        sys_text = (self.vault / "systems/homelab/system.md").read_text()
+        self.assertIn("See [[nas-backup]] and [[home-server]].", sys_text)
 
     def test_the_walled_area_is_never_rewritten(self):
         self.run_batch("root-files")

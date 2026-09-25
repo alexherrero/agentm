@@ -144,7 +144,7 @@ class MigratedPaths(unittest.TestCase):
             vault = Path(td)
             card = "projects/agentm/research/sqlite/reference/bm25-k1-b-constants.md"
             root_file = "projects/agentm/trusted-sources.md"
-            note = "agent/memory/semantic/home-server.md"
+            note = "agent/memory/semantic/homelab-domain.md"
             for path in (card, root_file, note):
                 self.assertEqual(ev._remap_convergence(path, vault), path, "before the move")
             for rel in ("resources/topics/sqlite/bm25-k1-b-constants.md",

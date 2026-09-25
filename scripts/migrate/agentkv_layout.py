@@ -87,8 +87,10 @@ DOCS_SUFFIXES = (".md",)
 REFERENCE_PROJECT = "agentm"
 HOMELAB_NOTES = ("home-server", "homelab-domain", "nas-unraid", "nas-backup",
                  "docker-inventory", "network-topology")
-# The overview the operator named: `system.md` is drawn from these two.
-HOMELAB_OVERVIEW = "home-server"
+# The overview: `homelab-domain` is the homelab's anchor note, and becomes
+# `system.md`; `home-server` is a short redirect to the NAS and keeps its own
+# name among the components, where the overview links to it.
+HOMELAB_OVERVIEW = "homelab-domain"
 
 
 class Refused(Exception):
@@ -253,10 +255,14 @@ def _path_match(target: str, moved_old: dict) -> Optional[str]:
     return None
 
 
-def rewrite_text(text: str, src_old: str, src_new: str, moves: dict, exists) -> tuple:
+def rewrite_text(text: str, src_old: str, src_new: str, moves: dict, exists,
+                 renamed: Optional[dict] = None) -> tuple:
     """`text` with every path link into a moved file pointed at the new path.
 
-    `moves` maps old vault-relative path to new. `src_old`/`src_new` are this
+    `moves` maps old vault-relative path to new. `renamed` maps a lowercased
+    old stem to its old path for a move that changed the file's name and whose
+    old name no other file carries: a basename link to it follows the rename
+    as a path link, its words kept. `src_old`/`src_new` are this
     note's own paths before and after the run (the same when it did not move),
     so a relative markdown link inside a moved note is recomputed from where
     the note now sits. `exists(rel)` answers for the vault after the run.
@@ -274,6 +280,11 @@ def rewrite_text(text: str, src_old: str, src_new: str, moves: dict, exists) -> 
         nonlocal count
         bang, target, anchor, alias = m.group(1), m.group(2), m.group(3) or "", m.group(4)
         old = _path_match(target, folded)
+        if old is None and renamed and "/" not in target:
+            old = renamed.get(_noext(target.strip()).lower())
+            if old is not None:
+                count += 1
+                return f"{bang}[[{_noext(moves[old])}{anchor}{alias if alias else '|' + target.strip()}]]"
         if old is None:
             return m.group(0)
         new = moves[old]
@@ -498,6 +509,18 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
     pruned = prune_emptied(vault, list(mapping))
     inverse = {v: k for k, v in mapping.items()}
     after = set(vault_files(vault))
+    # A move that renamed a note leaves its old name to no file; a basename
+    # link to that name follows the rename, but only when the old name is
+    # unique — a name another file still carries resolves to that file.
+    stems = {}
+    for rel in after:
+        stems.setdefault(Path(rel).stem.lower(), []).append(rel)
+    renamed = {}
+    for src, dst in mapping.items():
+        old, new = Path(src).stem.lower(), Path(dst).stem.lower()
+        if src.endswith(".md") and old != new and old not in stems:
+            renamed[old] = None if old in renamed else src
+    renamed = {k: v for k, v in renamed.items() if v is not None}
     rewritten = []
     links = 0
     for rel in sorted(after):
@@ -506,7 +529,7 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
         p = vault / rel
         text = p.read_text(encoding="utf-8", errors="surrogateescape")
         new, n = rewrite_text(text, inverse.get(rel, rel), rel, mapping,
-                              lambda r: r in after or (vault / r).exists())
+                              lambda r: r in after or (vault / r).exists(), renamed)
         if n:
             p.write_text(new, encoding="utf-8", errors="surrogateescape")
             rewritten.append({"path": rel, "links": n})
