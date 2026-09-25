@@ -272,6 +272,14 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	}
 	mocs.Pages = append(mocs.Pages, projectMaps.Pages...)
 	mocs.Intents = append(mocs.Intents, projectMaps.Intents...)
+	// Every project's tracker is generated in the same job from its task
+	// trackers (task 176 step 6), so the checklist cannot disagree with them.
+	projectTrackers, err := PlanProjectTrackers(root, now)
+	if err != nil {
+		return rep, err
+	}
+	mocs.Pages = append(mocs.Pages, projectTrackers.Pages...)
+	mocs.Intents = append(mocs.Intents, projectTrackers.Intents...)
 	// The two shared spaces of 2026-09-24 ride in it too, once they hold a note.
 	spaceMaps, err := PlanSpaceMaps(root, now)
 	if err != nil {

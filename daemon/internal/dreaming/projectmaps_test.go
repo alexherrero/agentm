@@ -115,7 +115,7 @@ func TestTheProjectsSpaceGetsAMapPerProjectAMapOfTasksAndAMapOfProjects(t *testi
 		"kind: moc\n", "slug: moc-demo\n", "generated_by: agentmdream\n",
 		// The newest input is a task's update; the ruling's `updated` stamp is not an input.
 		"updated: 2026-09-12\n",
-		"# Demo\n\n[[moc-projects]] · [[projects/demo/_index|charter]] · [[projects/demo/tracker|tracker]]\n\nBuilding the maps.\n",
+		"# Demo\n\n[[moc-projects]] · [[projects/demo/_index|charter]] · [[projects/demo/tracker|tracker]]\n\nA demonstration project.\n",
 		"## Tasks\n\n"+
 			"- [[projects/demo/tasks/002-plan/tracker|Plan]] · queued · importance 9\n"+
 			"- [[projects/demo/tasks/001-build/tracker|Build]] · active · importance 7\n\n"+
@@ -142,7 +142,7 @@ func TestTheProjectsSpaceGetsAMapPerProjectAMapOfTasksAndAMapOfProjects(t *testi
 		"through the promotion door", "lands all of it as one revertible commit.",
 		"[[../index|index]] says who writes where.",
 		"## Projects\n\n"+
-			"- [[projects/demo/moc-demo|demo]] — Building the maps. · 2 tasks in flight\n"+
+			"- [[projects/demo/moc-demo|demo]] — A demonstration project. · 2 tasks in flight\n"+
 			"- empty\n"+
 			"- [[projects/other/moc-other|other]] — Another project.\n")
 	if strings.Contains(projects, "_archive") || strings.Contains(projects, "\n- old") {

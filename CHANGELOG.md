@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The night generates every project's `tracker.md` from its task
+  trackers.** No session writes a project's tracker any more: the mocs job
+  renders it in the tracker's one schema, so the brief, `/orient`, the gate
+  and the board read it unchanged. Its State opens on a count of open and
+  done tasks, then lists the open ones with their status, grouped by the
+  design that governs them, and collapses the done ones to one line naming
+  the latest; its Next is the first open task. `title`, `status` and the
+  operator's `sensitivity` marking come from `project.yaml`. A dry run over
+  the live vault plans twelve trackers, agentm's opening on
+  `3 open · 173 done`. The projects map now glosses each project with its
+  charter's What line rather than the tracker's first State line, which the
+  map's own task count already says (task 176, step 6).
+
 - **`check-project-yaml` holds every vault project's `project.yaml` to one
   schema.** A session tells which project it is in by reading one small
   YAML file at the project root: `slug` (the directory's name), `title`,
