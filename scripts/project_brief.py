@@ -172,14 +172,12 @@ def render(*, project: str, task: Optional[str], project_tracker: Optional[tk.Tr
 
 
 def followups_path(project_dir: Optional[Path]) -> Optional[Path]:
-    """The project's `followups.md`: `docs/` first, the project root while a
-    vault has not had the move yet, else None."""
+    """The project's `docs/followups.md`, else None. A copy at the project
+    root is not read: the root holds five files since task 176."""
     if project_dir is None:
         return None
-    for candidate in (project_dir / "docs" / "followups.md", project_dir / "followups.md"):
-        if candidate.is_file():
-            return candidate
-    return None
+    candidate = project_dir / "docs" / "followups.md"
+    return candidate if candidate.is_file() else None
 
 
 def brief_for(cwd: Path) -> Optional[list]:

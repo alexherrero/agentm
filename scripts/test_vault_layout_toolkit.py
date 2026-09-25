@@ -120,17 +120,17 @@ class FeatureStateTests(unittest.TestCase):
             self.assertEqual(vl.feature_state_path(root, "trusted-sources.md"),
                              root.parent / "projects" / "agentm" / "desk" / "trusted-sources.md")
 
-    def test_a_config_list_is_read_from_desk_first_and_the_project_root_second(self):
-        """The readers-before-movers half of the root lock (task 176 step 3):
-        a list still at the project root is found there, and once the move
-        puts it in `desk/` the desk copy wins."""
+    def test_a_config_list_lives_in_desk_and_a_root_copy_is_not_read(self):
+        """The project root holds five files (task 176, step 4 retired the
+        step 3 fallback): a list at the root is never the answer, so a stray
+        copy cannot shadow the real one or be written to."""
         for name in sorted(vl.DESK_FEATURE_FILES):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as td:
                 root = _nested(Path(td))
                 project = root.parent / "projects" / "agentm"
                 project.mkdir(parents=True)
                 (project / name).write_text("root", encoding="utf-8")
-                self.assertEqual(vl.feature_state_path(root, name), project / name)
+                self.assertEqual(vl.feature_state_path(root, name), project / "desk" / name)
                 (project / "desk").mkdir()
                 (project / "desk" / name).write_text("desk", encoding="utf-8")
                 self.assertEqual(vl.feature_state_path(root, name), project / "desk" / name)
