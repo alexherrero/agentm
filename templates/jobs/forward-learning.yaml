@@ -40,7 +40,7 @@ tier: T3
 # Opt-in by design (per the experience design's own framing: "the source
 # list and the cadence are operator-controlled"), and stays dry_run: true
 # until an operator has both configured real approved sources
-# (_meta/forward-learning-sources.json — absent by default, meaning this
+# (projects/agentm/desk/forward-learning-sources.json — absent by default, meaning this
 # job finds nothing even if registered) AND explicitly decided to promote
 # it live. Promoting to false is a separate, explicit decision — never an
 # automatic consequence of this manifest existing.

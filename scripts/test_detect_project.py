@@ -140,6 +140,21 @@ class TestSingleRules(unittest.TestCase):
             for h in ("memory-recall-session-start", "memory-reflect-idle"):
                 self.assertTrue(p.hooks[h].auto_detected)
 
+    def test_vault_content_conventions_at_the_root_or_in_docs(self):
+        """A vault project's `conventions.md` moves from its root to `docs/`
+        (task 176): detection keeps reading the shape on either side of it."""
+        for rel in ("conventions.md", "docs/conventions.md"):
+            with self.subTest(rel=rel), _TmpRepo() as root:
+                (root / "decisions").mkdir()
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text("# conventions\n", encoding="utf-8")
+                self.assertIn("R-vault-content", dp.detect(root).matched_rules)
+
+    def test_decisions_without_conventions_is_not_vault_content(self):
+        with _TmpRepo() as root:
+            (root / "decisions").mkdir()
+            self.assertNotIn("R-vault-content", dp.detect(root).matched_rules)
+
     def test_design_via_docs_dir(self):
         with _TmpRepo() as root:
             (root / "docs" / "design").mkdir(parents=True)

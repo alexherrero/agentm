@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from datetime import date
@@ -253,6 +254,43 @@ def _remap_desk(path: str, vault_root: "Path | None | bool" = False) -> str:
             return new
         return path
     return path
+
+
+# The AgentKV layout convergence (task 176, the operator's rulings of
+# 2026-09-24). A project root keeps five files, so the rest move to `docs/` or
+# `desk/`; agentm's reference cards leave `research/<topic>/reference/` for
+# `resources/topics/<topic>/`; the homelab notes leave `memory/semantic/` for
+# `systems/homelab/`. The gold set keeps its pinned paths, and each move is
+# folded here at score time, keyed on the paths as the folds above leave them
+# and taken only when the vault holds the destination — so the gate reads true
+# before the move, after it, and on CI, where no vault resolves.
+_CONVERGENCE_REMAPS = (
+    ("projects/agentm/skill-discovery-sources.md", "projects/agentm/desk/skill-discovery-sources.md"),
+    ("projects/agentm/trusted-sources.md", "projects/agentm/desk/trusted-sources.md"),
+    ("projects/agentm/version-summaries.md", "projects/agentm/docs/version-summaries.md"),
+    ("projects/blog/writing-voice.md", "projects/blog/docs/writing-voice.md"),
+    ("agent/memory/semantic/home-server.md", "systems/homelab/system.md"),
+    ("agent/memory/semantic/homelab-domain.md", "systems/homelab/components/homelab-domain.md"),
+    ("agent/memory/semantic/nas-unraid.md", "systems/homelab/components/nas-unraid.md"),
+    ("agent/memory/semantic/network-topology.md", "systems/homelab/components/network-topology.md"),
+)
+# The one move that is a whole folder: every card under a topic's `reference/`
+# went, and the `reference/` level went with it.
+_REFERENCE_CARDS = re.compile(r"^projects/agentm/research/([^/]+)/reference/(.+)$")
+
+
+def _remap_convergence(path: str, vault_root: "Path | None | bool" = False) -> str:
+    """A gold-set path as the AgentKV layout moves leave it, when they have run."""
+    root = _vault_root() if vault_root is False else vault_root
+    if root is None:
+        return path
+    new = dict(_CONVERGENCE_REMAPS).get(path)
+    if new is None:
+        m = _REFERENCE_CARDS.match(path)
+        if m is None:
+            return path
+        new = f"resources/topics/{m.group(1)}/{m.group(2)}"
+    return new if (Path(root) / new).exists() else path
 
 
 # Expectations whose note left the vault on purpose. These are not drift and
@@ -581,16 +619,16 @@ def load_gold() -> list:
 def resolve_expected(entry: dict) -> tuple:
     """`(live, retired)` for one entry's expectations, through the whole chain.
 
-    `_remap_projects` runs after the casing fold and `_remap_desk` after it,
-    for the reason the score loop's own note gives: a table keyed on the folded
-    path only matches once that fold has happened.
+    `_remap_projects` runs after the casing fold, `_remap_desk` after it and
+    `_remap_convergence` last, for the reason the score loop's own note gives:
+    a table keyed on the folded path only matches once that fold has happened.
     """
     live, retired = [], []
     for p in (entry.get(EXPECTED_FIELD) or []):
         if not p:
             continue
-        r = _remap_desk(_remap_projects(_remap_casing(
-            _migrated(_remap_trims(_remap_merged(p))))))
+        r = _remap_convergence(_remap_desk(_remap_projects(_remap_casing(
+            _migrated(_remap_trims(_remap_merged(p)))))))
         (retired if r in _RETIRED else live).append(r)
     return live, retired
 

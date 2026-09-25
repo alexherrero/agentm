@@ -45,7 +45,7 @@ For each JSON:
    - personal-skills/<repo>/*.md (already-indexed skills — does this overlap?)
    - personal-private/_always-load/*.md (operator's locked conventions —
      does this complement or contradict?)
-   - personal-projects/<repo>/conventions.md (per-project conventions —
+   - projects/<slug>/docs/conventions.md (per-project conventions —
      does this fit the operator's tech stack?)
 
 4. CLASSIFY with semantic judgment:

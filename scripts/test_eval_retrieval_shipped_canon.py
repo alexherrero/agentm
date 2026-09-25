@@ -136,6 +136,30 @@ class MigratedPaths(unittest.TestCase):
             self.assertEqual(ev._remap_trims("agent/memory/semantic/a.md", vault), "agent/memory/semantic/a.md")
             self.assertEqual(ev._remap_trims(old, None), old, "no vault: the eval stays pre-trims")
 
+    def test_the_convergence_remaps_fire_only_where_the_vault_has_moved(self):
+        """Task 176: root files, reference cards and homelab notes follow
+        their move only on a vault that holds the destination. Keyed on the
+        paths as the earlier folds leave them, lowercase."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            card = "projects/agentm/research/sqlite/reference/bm25-k1-b-constants.md"
+            root_file = "projects/agentm/trusted-sources.md"
+            note = "agent/memory/semantic/home-server.md"
+            for path in (card, root_file, note):
+                self.assertEqual(ev._remap_convergence(path, vault), path, "before the move")
+            for rel in ("resources/topics/sqlite/bm25-k1-b-constants.md",
+                        "projects/agentm/desk/trusted-sources.md", "systems/homelab/system.md"):
+                (vault / rel).parent.mkdir(parents=True, exist_ok=True)
+                (vault / rel).write_text("x", encoding="utf-8")
+            self.assertEqual(ev._remap_convergence(card, vault), "resources/topics/sqlite/bm25-k1-b-constants.md")
+            self.assertEqual(ev._remap_convergence(root_file, vault), "projects/agentm/desk/trusted-sources.md")
+            self.assertEqual(ev._remap_convergence(note, vault), "systems/homelab/system.md")
+            # A research note outside `reference/` never moved, and no vault
+            # means no remap at all.
+            self.assertEqual(ev._remap_convergence("projects/agentm/research/sqlite/notes.md", vault),
+                             "projects/agentm/research/sqlite/notes.md")
+            self.assertEqual(ev._remap_convergence(card, None), card)
+
     def test_purged_and_held_rows_do_not_enter_the_table(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._root(Path(td))

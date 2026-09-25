@@ -171,6 +171,17 @@ def render(*, project: str, task: Optional[str], project_tracker: Optional[tk.Tr
     return [_clip(ln) for ln in out][:MAX_LINES]
 
 
+def followups_path(project_dir: Optional[Path]) -> Optional[Path]:
+    """The project's `followups.md`: `docs/` first, the project root while a
+    vault has not had the move yet, else None."""
+    if project_dir is None:
+        return None
+    for candidate in (project_dir / "docs" / "followups.md", project_dir / "followups.md"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def brief_for(cwd: Path) -> Optional[list]:
     """Resolve the bound project's and task's files from `cwd`, and render."""
     import harness_memory as hm  # noqa: E402
@@ -180,8 +191,9 @@ def brief_for(cwd: Path) -> Optional[list]:
     if not binding.project:
         return None
     resolution = hm.resolve_project({"cwd": Path(cwd)})
-    # The project's own vault directory holds its tracker and `followups.md`
-    # (agentm-vault § Projects and tasks); a project with no vault has neither.
+    # The project's own vault directory holds its tracker, and `docs/` its
+    # `followups.md` (agentm-vault § Projects and tasks; the root locked to five
+    # files on 2026-09-24). A project with no vault has neither.
     project_dir = hm.project_state_root(resolution)
     try:
         paths = hm.active_plan_paths(resolution)
@@ -194,8 +206,8 @@ def brief_for(cwd: Path) -> Optional[list]:
     if binding.task is None:
         tracker_path = None  # an unbound session has a project, not a task
     followups = 0
-    candidate = project_dir / "followups.md" if project_dir is not None else None
-    if candidate is not None and candidate.is_file():
+    candidate = followups_path(project_dir)
+    if candidate is not None:
         try:
             followups = count_open_followups(candidate.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):

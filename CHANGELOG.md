@@ -23,6 +23,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every reader of a project-root file that moves now finds it on either side
+  of the move.** A project root keeps five files once task 176's step 3 moves
+  the rest, so the readers go first: the four config and source lists agentm
+  reads (`trusted-sources.md`, `forward-learning-sources.json`,
+  `skill-discovery-sources.md`, `auto-orchestration-config.md`) resolve from
+  `projects/agentm/desk/` and then the root, and a list seeded fresh lands in
+  `desk/`; the session brief counts followups from `docs/followups.md`, then
+  the root; project detection reads `conventions.md` from `docs/` or the
+  root; and the retrieval eval folds the gold set's moved paths at score time,
+  only on a vault that holds the destination. The skill and agent docs name
+  the new homes. Of crickets' 17 hits for `conventions.md`, none reads a
+  vault project's file, so crickets needs no change here.
+
+### Added
+
+- **`scripts/migrate/agentkv_layout.py` makes the AgentKV layout moves.** One
+  tool for the three batches — project-root files to `docs/` and `desk/`,
+  agentm's reference cards and watchlist to `resources/`, and the homelab
+  notes to `systems/homelab/`. A dry run records the plan; `--apply` refuses
+  a changed listing, a wrong count, a dirty vault or a live writer, then
+  moves each file by `git mv`, points every path link at the new path with
+  its words kept, re-keys the heat and lifecycle sidecars, and lands the batch
+  as one vault commit; `--revert` undoes it. `--audit` is a path-aware census
+  of unresolved links, the before-and-after instrument, since the basename
+  link check cannot see a broken path link. The walled area is never opened.
+
+### Changed
+
 - **The agentm-vault design takes the operator's AgentKV layout rulings of
   2026-09-24.** Two shared root spaces join the layout: `resources/`, the
   reference library (topics, the watchlist and a university shelf, dampened in

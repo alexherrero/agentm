@@ -115,6 +115,19 @@ class TheCounts(unittest.TestCase):
                 "- [ ] an unchecked one\n- [x] a checked one\n")
         self.assertEqual(pb.count_open_followups(text), 3)
 
+    def test_followups_are_read_from_docs_first_and_the_root_second(self) -> None:
+        """The root locks to five files (task 176): `followups.md` moves to
+        `docs/`, and the brief finds it on either side of the move."""
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td)
+            self.assertIsNone(pb.followups_path(project))
+            self.assertIsNone(pb.followups_path(None))
+            (project / "followups.md").write_text("- [ ] a\n", encoding="utf-8")
+            self.assertEqual(pb.followups_path(project), project / "followups.md")
+            (project / "docs").mkdir()
+            (project / "docs" / "followups.md").write_text("- [ ] b\n", encoding="utf-8")
+            self.assertEqual(pb.followups_path(project), project / "docs" / "followups.md")
+
     def test_unfiled_captures_are_counted_by_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
