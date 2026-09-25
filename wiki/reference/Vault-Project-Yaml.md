@@ -4,7 +4,7 @@
 > [!NOTE]
 > **Status: pending** — planned by `tasks/176-converge-the-vault-layout` (step 5). `project.yaml` does not exist in the vault yet. This page describes the schema the plan locks in, seeded from `standards/templates/project.yaml`.
 
-Every vault project's root carries a `project.yaml` — the grounding config a session reads to tell which project it is in and what that project touches, without parsing prose. It is one of the five files the project root is locked to; see [Memory daemon reference § The project root locks to five files](Memory-Daemon#the-project-root-locks-to-five-files-pending).
+Every vault project's root carries a `project.yaml` — the grounding config a session reads to tell which project it is in and what that project touches, without parsing prose. It is one of the five files the project root is locked to; see [Memory daemon reference § The project root locks to five files](Memory-Daemon#the-project-root-locks-to-five-files).
 
 ## ⚡ Quick Reference
 
