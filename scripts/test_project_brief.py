@@ -88,6 +88,33 @@ class TheRender(unittest.TestCase):
         self.assertNotIn("next 3", text, "the task's Next is capped at three lines")
         self.assertNotIn("Project next: second", text)
 
+    def test_the_generated_project_tracker_renders_in_the_budget(self) -> None:
+        """Since task 176 the night generates the project tracker: its State
+        opens on a count and then lists the open tasks, its Next names the
+        first. The brief reads it through the same schema, inside twenty
+        lines, with a long checklist cut rather than spilled."""
+        text = ("---\nkind: tracker\ntitle: AgentM\nproject: agentm\nstatus: active\n"
+                "opened: 2026-04-20\nupdated: 2026-09-25\nclosed:\n---\n\n## Objective\n\n"
+                "Phase-gated harness.\n\nGenerated nightly from this project's task trackers; "
+                "change those, not this file.\n\n## State\n\n3 open · 173 done\n"
+                + "".join(f"- [ ] {n:03d}-task — active\n" for n in range(1, 13))
+                + "- [x] done: 173 — the latest 175-x, closed 2026-09-23\n\n## Next\n\n"
+                "001-task (active)\n\n## Outcome\n")
+        project = tk.parse(text)
+        self.assertEqual(tk.findings(project), [])
+        lines = pb.render(
+            project="agentm", task="build-the-brief", project_tracker=project,
+            task_tracker=_tracker(state="\n".join(f"s{i}" for i in range(9)),
+                                  next_steps="\n".join(f"n{i}" for i in range(9))),
+            progress=["p1", "p2", "p3"], open_followups=4, unfiled=2,
+            plan_path=Path("/v/tasks/build-the-brief/plan.md"))
+        self.assertLessEqual(len(lines), pb.MAX_LINES)
+        out = "\n".join(lines)
+        self.assertIn("Project state: 3 open · 173 done", out)
+        self.assertIn("  - [ ] 001-task — active", out)
+        self.assertIn("Project next: 001-task (active)", out)
+        self.assertNotIn("002-task", out, "the project checklist is capped at two State lines")
+
     def test_no_tracker_is_no_brief(self) -> None:
         self.assertIsNone(pb.render(project="agentm", task="x", project_tracker=None, task_tracker=None,
                                     progress=["p"], open_followups=0, unfiled=0, plan_path=None))

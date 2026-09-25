@@ -3,7 +3,10 @@
 
 agentm-vault § Projects and tasks, "A session opens on twenty lines". For the
 project and task a session is bound to (`session_binding`), this prints the
-project tracker's State and Next, the task tracker's State and Next, the last
+project tracker's State and Next — the night generates that tracker from the
+task trackers since task 176, so its State is a count of open and done tasks
+and then the open ones, and its Next the first of them — the task tracker's
+State and Next, the last
 three progress lines, the count of open follow-ups, and the count of unfiled
 captures carrying this `project:`. The session-start surface collapses anything
 larger unread, so the brief never passes MAX_LINES.

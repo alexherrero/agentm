@@ -20,9 +20,9 @@ import (
 //	                      designs, newest first; and its research by bundle
 //	moc-tasks.md          every project's tasks in the same order, once any
 //	                      project has one
-//	moc-projects.md       every project, with its tracker's first State line
-//	                      or else its charter's What line, under what the
-//	                      space is for, which `projects/index.md` used to say
+//	moc-projects.md       every project, with its charter's What line, under
+//	                      what the space is for, which `projects/index.md`
+//	                      used to say
 //
 // A task is a tracker, `tasks/<task>/tracker.md`: the only place a project
 // keeps one since the per-project state directory retired (agentm-vault plan
@@ -55,8 +55,10 @@ type projectTask struct {
 	Title      string
 	Status     string
 	Importance int
+	Opened     string
 	Updated    string
 	Closed     string
+	Design     string
 	Link       string
 }
 
@@ -204,7 +206,8 @@ func readProjectTask(vault, project, path, task string) (projectTask, bool) {
 	}
 	importance, _ := strconv.Atoi(strings.TrimSpace(fm["importance"]))
 	return projectTask{Project: project, Task: task, Title: title, Status: strings.TrimSpace(fm["status"]),
-		Importance: importance, Updated: projDate(fm["updated"]), Closed: projDate(fm["closed"]),
+		Importance: importance, Opened: projDate(fm["opened"]), Updated: projDate(fm["updated"]),
+		Closed: projDate(fm["closed"]), Design: strings.TrimSpace(fm["design"]),
 		Link: projLink(vault, path, title)}, true
 }
 
@@ -330,11 +333,12 @@ func readProject(vault, dir string) projectEntry {
 		break
 	}
 	trackerPath := filepath.Join(dir, "tracker.md")
-	if fm, body, ok := projReadNote(trackerPath); ok && strings.TrimSpace(fm["kind"]) == "tracker" {
+	// The project's tracker is linked, and its date counts, but its State no
+	// longer glosses the project: since task 176 the night generates it as a
+	// checklist of the tasks, and the map already counts those. The charter's
+	// What line says what the project is.
+	if fm, _, ok := projReadNote(trackerPath); ok && strings.TrimSpace(fm["kind"]) == "tracker" {
 		p.Tracker = projLink(vault, trackerPath, "tracker")
-		if state := projSectionLine(body, "State"); state != "" {
-			p.Line = state
-		}
 		dates = append(dates, fm["updated"])
 	}
 	p.Tasks = projectTasks(vault, slug, dir)
