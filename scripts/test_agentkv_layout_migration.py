@@ -44,9 +44,9 @@ class _Vault(unittest.TestCase):
         _w(v, "projects/agentm/roadmap.md", "# Roadmap\n")
         _w(v, "projects/agentm/trusted-sources.md", "- anthropics\n")
         _w(v, "projects/agentm/forward-learning-sources.json", '{"sources": []}\n')
-        _w(v, "projects/home/charter.md", "# home\n")
-        _w(v, "projects/home/home_config.py", "A = {}\n")
-        _w(v, "projects/home/research/x.md", "# x\n")
+        _w(v, "projects/house/charter.md", "# home\n")
+        _w(v, "projects/house/home_config.py", "A = {}\n")
+        _w(v, "projects/house/research/x.md", "# x\n")
         _w(v, "projects/agentm/research/sqlite/reference/bm25.md", "# bm25\n")
         _w(v, "projects/agentm/research/sqlite/notes.md", "# kept\n")
         _w(v, "projects/agentm/_watchlist/openai-research/paper.md", "# paper\n")
@@ -61,7 +61,7 @@ class _Vault(unittest.TestCase):
            "card [[projects/agentm/research/sqlite/reference/bm25]].\n")
         _w(v, "personal/Home/Important Docs/codes.md", "[[projects/agentm/followups]]\n")
         _git(v, "init", "-q")
-        _git(v, "config", "user.email", "t@example.invalid")
+        _git(v, "config", "user.email", "t@t")
         _git(v, "config", "user.name", "t")
         _git(v, "add", "-A")
         _git(v, "commit", "-q", "-m", "fixture")
@@ -82,11 +82,11 @@ class TestPlans(_Vault):
             "projects/agentm/roadmap.md": "projects/agentm/docs/roadmap.md",
             "projects/agentm/trusted-sources.md": "projects/agentm/desk/trusted-sources.md",
             "projects/agentm/forward-learning-sources.json": "projects/agentm/desk/forward-learning-sources.json",
-            "projects/home/home_config.py": "projects/home/desk/home_config.py",
+            "projects/house/home_config.py": "projects/house/desk/home_config.py",
         })
 
     def test_a_root_file_with_no_rule_is_refused_not_guessed(self):
-        _w(self.vault, "projects/home/photo.png", "png")
+        _w(self.vault, "projects/house/photo.png", "png")
         with self.assertRaises(kv.Refused):
             kv.build_plan(self.vault, "root-files")
 
