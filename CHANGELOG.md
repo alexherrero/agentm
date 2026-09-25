@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The reference library holds agentm's reference cards and the
+  watchlist.** The move ran on 2026-09-25 under quiesce: 233 reference
+  cards left `projects/agentm/research/<topic>/reference/` for
+  `resources/topics/<topic>/`, and 101 watchlist items left
+  `projects/agentm/_watchlist/` for `resources/watchlist/` (334 files, one
+  vault commit, sidecars re-keyed, index rebuilt, embed backfill run, no new
+  unresolved link). `resources/university/` opens with an index note saying
+  what goes there. The first forward-learning pass afterwards wrote its two
+  new items under `resources/watchlist/` and skipped the 88 it had already
+  seen, so the watchlist's readers stop reading the project-space home: a
+  leftover copy there can no longer fork it. The move tool now removes a
+  folder its batch empties, so no `reference/` or `_watchlist/` shell is left
+  behind (task 176, step 8).
+
 - **The night generates every project's `tracker.md` from its task
   trackers.** No session writes a project's tracker any more: the mocs job
   renders it in the tracker's one schema, so the brief, `/orient`, the gate

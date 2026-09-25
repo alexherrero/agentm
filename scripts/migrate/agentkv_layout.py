@@ -439,6 +439,41 @@ def live_writers() -> list:
     return out
 
 
+# What a sync client or a desktop leaves in a folder is not content: a folder
+# holding only these is empty for the prune below.
+_LITTER = {".DS_Store", "Icon\r", "desktop.ini"}
+
+
+def prune_emptied(vault: Path, sources: list) -> list:
+    """Remove each folder a move emptied, deepest first, up to (never
+    including) its project or space root: `research/<topic>/reference/` and
+    `_watchlist/<source>/` are left with nothing once their files move, and
+    git does not carry an empty folder away. Only a folder holding nothing but
+    sync litter goes; one that still holds anything stays. Returns the pruned
+    folders, vault-relative."""
+    import shutil
+    stop = {vault.resolve()}
+    for top in ("projects", "agent", "resources", "systems"):
+        stop.add((vault / top).resolve())
+    for proj in (vault / "projects").glob("*"):
+        stop.add(proj.resolve())
+    candidates = set()
+    for src in sources:
+        d = (vault / src).parent
+        while d.resolve() not in stop and vault.resolve() in d.resolve().parents:
+            candidates.add(d)
+            d = d.parent
+    pruned = []
+    for d in sorted(candidates, key=lambda p: len(p.parts), reverse=True):
+        if not d.is_dir():
+            continue
+        entries = list(d.iterdir())
+        if all(e.is_file() and e.name in _LITTER for e in entries):
+            shutil.rmtree(d)
+            pruned.append(d.relative_to(vault).as_posix())
+    return sorted(pruned)
+
+
 def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
           check_writers=live_writers, now: Optional[datetime] = None) -> dict:
     now = now or datetime.now(timezone.utc)
@@ -460,6 +495,7 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
     for src, dst in mapping.items():
         (vault / dst).parent.mkdir(parents=True, exist_ok=True)
         _git(vault, "mv", src, dst)
+    pruned = prune_emptied(vault, list(mapping))
     inverse = {v: k for k, v in mapping.items()}
     after = set(vault_files(vault))
     rewritten = []
@@ -482,7 +518,7 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
     sha = _git(vault, "rev-parse", "HEAD").stdout.strip()
     run_id = now.strftime("%Y%m%dT%H%M%SZ") + "-" + recorded["batch"]
     record = {"run_id": run_id, "batch": recorded["batch"], "commit": sha, "moves": moves,
-              "rewritten": rewritten, "links": links, "sidecars": counts}
+              "rewritten": rewritten, "links": links, "sidecars": counts, "pruned": pruned}
     out = state_dir / STAGE / f"run-{run_id}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
@@ -546,7 +582,8 @@ def main(argv: Optional[list] = None) -> int:
                 raise Refused(f"the plan is for {recorded.get('batch')!r}, not {args.batch!r}")
             rec = apply(vault, recorded, args.confirm_count, state_dir)
             print(f"{STAGE}: {len(rec['moves'])} moved, {rec['links']} links rewritten in "
-                  f"{len(rec['rewritten'])} notes, sidecars {rec['sidecars']}, commit {rec['commit'][:10]}")
+                  f"{len(rec['rewritten'])} notes, {len(rec['pruned'])} emptied folders removed, "
+                  f"sidecars {rec['sidecars']}, commit {rec['commit'][:10]}")
             print(f"  record: {rec['record']}")
             print(f"  revert: python3 scripts/migrate/agentkv_layout.py --revert {rec['run_id']}")
             return 0

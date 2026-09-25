@@ -243,23 +243,23 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 ### The two new spaces: `resources/` and `systems/`
 
 > [!NOTE]
-> **Step 2 shipped, steps 8 and 9 pending** — `tasks/176-converge-the-vault-layout`. The door, the embed scope, the storage contract, and the maps job all know both spaces now. Neither is a folder in the vault yet. None of this machinery has anything to act on: no note is authorized, embedded, dampened, or mapped until steps 8 and 9 move the first ones in.
+> **Steps 2 and 8 shipped, step 9 pending** — `tasks/176-converge-the-vault-layout`. The door, the embed scope, the storage contract, and the maps job all know both spaces. Step 8 moved the first files into `resources/` live on 2026-09-25 (vault commit `7ac40ea5cd`): 233 reference cards to `topics/<topic>/` (file-watching, go-git, go-static-binaries, llama-cpp-embeddings, sqlite) and 101 watchlist items to `watchlist/<source>/`, plus a new `university/index.md`. `resources/` is a real directory now, with something for the door, the embed scope, and the dampening to act on. `systems/` is still empty — step 9 hasn't moved the homelab notes in, so that space's wiring has nothing to act on yet.
 
 The plan adds two shared spaces:
 
 | Space | Holds | Dampened? |
 |---|---|---|
-| `resources/` | `topics/<topic>/` — reference cards moved from a project's `research/<topic>/reference/`, dropping the `reference/` level. `watchlist/<source>/` — moved from `projects/agentm/_watchlist/`. `university/` — an index note first, study guides after. | Yes — `resources` joins `dampened_spaces` (`daemon/internal/rules/storage-rules.default.md:375`) at the daemon's fixed strength (see [Space, altitude, and the two that are not penalties](#space-altitude-and-the-two-that-are-not-penalties) above). A strong, distinctive match still surfaces; a weak cosine neighbor just doesn't crowd an everyday query. |
+| `resources/` | `topics/<topic>/` — 233 reference cards, moved from a project's `research/<topic>/reference/` on 2026-09-25 (step 8), dropping the `reference/` level. `watchlist/<source>/` — 101 items, moved from `projects/agentm/_watchlist/` the same day; the first forward-learning run afterward added 2 more. `university/` — opens with `index.md`, study guides after. | Yes — `resources` joins `dampened_spaces` (`daemon/internal/rules/storage-rules.default.md:375`) at the daemon's fixed strength (see [Space, altitude, and the two that are not penalties](#space-altitude-and-the-two-that-are-not-penalties) above). A strong, distinctive match still surfaces — `agentmd search "fts5 columnsize"` returns `resources/topics/sqlite/columnsize-detail-config-options.md` first; a weak cosine neighbor just doesn't crowd an everyday query. |
 | `systems/` | `homelab/` — a `system.md` overview plus `components/*.md`, moved from `memory/semantic/`. A one-page front door per software system (`agentm/system.md`, `crickets/system.md`). | No |
 
-Step 2 wired these, ahead of any note moving:
+Step 2 wired these, ahead of any note moving; step 8 then moved the first ones into `resources/`:
 
 - **The door.** `door.DefaultAuthority()` grants both `resources` and `systems` the `Shared` level (`daemon/internal/door/authority.go:79-97`) — the same level `calendar` already carries: agent-maintained, operator co-writes, no grant needed.
 - **The embed scope.** `config.defaultEmbedScope` names both spaces at the vault root, beside `projects` and `calendar` (`daemon/internal/config/config.go:462-470`). A note that moves in from `projects/agentm/research/<topic>/reference/` or `memory/semantic/` keeps the vector it already had, rather than the dense arm losing sight of it the night it moves.
 - **The storage contract.** `resources` joins `dampened_spaces` (`storage-rules.default.md:375`, described in the table above). `record_kinds` gains `system`, `component`, and `blueprint` (`storage-rules.default.md:264-266`) — the shapes a system's overview (`systems/<name>/system.md`), one of its parts (`systems/<name>/components/*.md`), and a project's `blueprint.md` will carry. `standards/templates` joins `recall_exempt_areas` (`storage-rules.default.md:418-420`): the wall now keeps out placeholder text alongside the private material (`personal/Home/Important Docs`) it already walled. The Python fallback mirror (`harness/skills/memory/scripts/storage_rules.py:510`) carries the same two-entry list.
 - **The maps.** The mocs job's new `PlanSpaceMaps` (`daemon/internal/dreaming/spacemaps.go`, wired into the nightly run at `daemon/internal/dreaming/run.go:275-281`) writes `resources/moc-resources.md` and `systems/moc-systems.md` once a space holds a note: a section per folder, a folder's notes listed by title while there are 12 or fewer and counted once there are more (`spacemaps.go:34-36,142-159`), dated by `created`. `moc-root.md` lists a `Resources` or `Systems` area once either map is written (`daemon/internal/dreaming/rootmap.go:104-109`).
 
-Nothing above moves a note. `PlanSpaceMaps` skips a space outright when it isn't yet a directory — `isDirExact`, called from `spacemaps.go:170` — which is true of both spaces today. The door has nothing to authorize, the embed scope has nothing to embed, and the dampening has nothing to rank until steps 8 and 9 land the first files.
+`PlanSpaceMaps` skips a space outright when it isn't yet a directory — `isDirExact`, called from `spacemaps.go:170`. Step 8 gave `resources/` real files, so it no longer skips: the next nightly run has a `resources/moc-resources.md` to write. `systems/` is still not a directory, so `PlanSpaceMaps` skips it exactly as before — its door grant and embed-scope entry sit unused, and it carries no dampening rule at all, until step 9 moves the homelab notes in.
 
 ### The project root locks to five files
 
@@ -618,9 +618,9 @@ derived classes it never owns — today `memory/semantic` and
 binary (`enrichQueueDirs`, `daemon/cmd/agentmd/enrich_run.go:166-199`).
 `memory/episodic` is never walked: no memory type routes there, and its
 notes are session traces, not cards. Nor is the watchlist offered: it lives
-in the project space (`Projects/agentm/_watchlist/`), outside every class
-directory, and its entries are `forward_learning.py`'s pending-review
-records. The
+in the shared reference library, `resources/watchlist/<source>/`, outside
+every class directory, and its entries are `forward_learning.py`'s
+pending-review records. The
 eligibility pre-gate adds a second refusal beside this: a note whose
 `kind` is one of the contract's `record_kinds` — a session trace, a
 directory index — is refused as a record rather than a card

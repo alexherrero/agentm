@@ -167,6 +167,19 @@ class TestApply(_Vault):
         self.assertEqual(_git(self.vault, "status", "--porcelain"), "")
         self.assertEqual(rec["commit"], _git(self.vault, "rev-parse", "HEAD").strip())
 
+    def test_an_emptied_source_folder_is_removed_and_a_kept_one_stays(self):
+        _w(self.vault, "projects/agentm/research/sqlite/reference/.DS_Store", "")
+        _git(self.vault, "add", "-A")
+        _git(self.vault, "commit", "-q", "-m", "litter")
+        rec = self.run_batch("resources")
+        self.assertFalse((self.vault / "projects/agentm/research/sqlite/reference").exists())
+        self.assertFalse((self.vault / "projects/agentm/_watchlist").exists())
+        # research/sqlite still holds notes.md, so it stays; the project stays.
+        self.assertTrue((self.vault / "projects/agentm/research/sqlite/notes.md").is_file())
+        self.assertTrue((self.vault / "projects/agentm").is_dir())
+        self.assertIn("projects/agentm/research/sqlite/reference", rec["pruned"])
+        self.assertIn("projects/agentm/_watchlist", rec["pruned"])
+
     def test_sidecars_follow_the_move(self):
         (self.state / ".heat.json").write_text(json.dumps(
             {"version": 2, "entries": {"projects/agentm/roadmap.md": {"hits": 3}}}))

@@ -176,11 +176,10 @@ def feature_state_candidates(root, name: str) -> list[Path]:
     if name in DESK_FEATURE_FILES:
         return [p / FEATURE_PROJECT / "desk" / name for p in projects]
     if name == WATCHLIST_FEATURE:
-        # The watchlist left the project for the shared reference library
-        # (task 176): `resources/watchlist/` at the vault root first, the
-        # project-space home while a vault has not had the move.
-        return ([v / RESOURCES_DIRNAME / "watchlist" for v in vault_root_candidates(root)]
-                + [p / FEATURE_PROJECT / name for p in projects])
+        # The watchlist lives in the shared reference library,
+        # `resources/watchlist/` at the vault root (task 176); the move ran
+        # on 2026-09-25 and the project-space home is no longer read.
+        return [v / RESOURCES_DIRNAME / "watchlist" for v in vault_root_candidates(root)]
     return [p / FEATURE_PROJECT / name for p in projects]
 
 

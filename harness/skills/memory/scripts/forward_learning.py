@@ -33,8 +33,7 @@ output) — one review surface for both, per the design's "generalizes this
 same shape" framing. See `watchlist_review.py`'s `_watchlist_roots`.
 
 Contract: this module writes ONLY under `resources/watchlist/**` (the
-reference library since task 176; `projects/agentm/_watchlist/**` on a vault
-that has not had the move)
+reference library since task 176)
 (MEDIUM/HIGH candidates; LOW is dropped, never written) and the
 forward-learning cache in agentm's engine state dir (source watermarks). It
 never adopts a finding anywhere else — the whole point of "surfaced, never
@@ -142,8 +141,7 @@ STATE_NAME = Path("forward-learning-cache") / "state.json"
 WATCHLIST_NAME = "_watchlist"
 # The pre-trims spelling of the sources whitelist, memory-root-relative.
 # Still read, as the fallback, by sources_config_path(); never written. The
-# watchlist is `resources/watchlist`, and `projects/agentm/_watchlist` while a
-# vault has not had task 176's move.
+# watchlist is `resources/watchlist`, since task 176's move.
 SOURCES_CONFIG_REL = Path("standards") / SOURCES_CONFIG_NAME
 WATCHLIST_REL = Path("memory") / WATCHLIST_NAME  # the retired home; nothing writes here
 
@@ -235,8 +233,7 @@ def sources_config_path(vault_path: Path) -> Path:
 
 
 def watchlist_root(vault_path: Path) -> Path:
-    """`resources/watchlist/` (else `projects/agentm/_watchlist/` before task 176's
-    move), where every entry is written and read.
+    """`resources/watchlist/`, where every entry is written and read.
     Never the retired `memory/_watchlist/`, even on a vault that still has it."""
     return vault_layout.feature_state_path(vault_path, WATCHLIST_NAME)
 
