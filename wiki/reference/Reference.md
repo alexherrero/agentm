@@ -33,6 +33,7 @@ Look up the exact details of the AgentM harness — the install flags, config sc
 | [Orchestration bridge](Orchestration-Bridge) | The read-only bridge that surfaces orchestration state to another process. |
 | [Queue status lite](Queue-Status-Lite) | The read-only coordinator dashboard that lists every active plan and its status. |
 | [Memory daemon (agentmd)](Memory-Daemon) | The resident Go daemon: index, search, capture, commit. |
+| [Vault project.yaml](Vault-Project-Yaml) | The grounding config at every vault project's root (pending). |
 | [Memory MCP tools](Memory-MCP-Tools) | The memory-engine tool surface exposed over MCP. |
 
 ## Plugin capabilities
