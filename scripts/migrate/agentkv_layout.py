@@ -209,7 +209,51 @@ def plan_systems(vault: Path) -> list:
     return moves
 
 
-PLANNERS = {"root-files": plan_root_files, "resources": plan_resources, "systems": plan_systems}
+# The movies project's cleanup batches (task 176 step 10): a batch is finished
+# when the movies tool's own journal of runs names its manifest and the run was
+# not wholly undone. The journals live on this Mac beside the tool's catalog,
+# outside the vault, so the directory is passed in (`--journals`); nothing else
+# reads the vault's copies, and the tool reads a manifest only to run it.
+MOVIES_PROJECT = "movies-tv-games"
+MOVIES_JOURNALS: Optional[Path] = None
+
+
+def finished_cleanup_manifests(journals: Path) -> set:
+    """The manifest ids at least one journal applied and did not wholly undo."""
+    done = set()
+    for j in sorted(Path(journals).glob("*.jsonl")):
+        rows = [json.loads(line) for line in j.read_text(encoding="utf-8").splitlines() if line.strip()]
+        if not rows or "manifest" not in rows[0]:
+            continue
+        moves = sum(1 for r in rows if "from" in r)
+        undone = sum(1 for r in rows if "undone" in r)
+        if moves and undone < moves:
+            done.add(rows[0]["manifest"])
+    return done
+
+
+def plan_movies_cleanup(vault: Path) -> list:
+    if MOVIES_JOURNALS is None:
+        raise Refused("the movies-cleanup batch needs --journals, the movies tool's journal folder")
+    folder = vault / PROJECTS / MOVIES_PROJECT / "cleanup"
+    if not folder.is_dir():
+        return []
+    manifests = sorted((p.stem for p in folder.glob("*.json")), key=len, reverse=True)
+    finished = finished_cleanup_manifests(MOVIES_JOURNALS)
+    moves = []
+    for f in sorted(folder.iterdir()):
+        if not f.is_file() or f.name.startswith("."):
+            continue
+        stem = f.name.rsplit(".", 1)[0]
+        owner = next((m for m in manifests if stem == m or stem.startswith(m + "-")), None)
+        if owner in finished:
+            moves.append({"src": f.relative_to(vault).as_posix(),
+                          "dst": f"{PROJECTS}/{MOVIES_PROJECT}/completed/cleanup/{f.name}"})
+    return moves
+
+
+PLANNERS = {"root-files": plan_root_files, "resources": plan_resources, "systems": plan_systems,
+            "movies-cleanup": plan_movies_cleanup}
 
 
 def build_plan(vault: Path, batch: str) -> dict:
@@ -595,7 +639,11 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--audit", action="store_true", help="write the unresolved-link census")
     ap.add_argument("--out", help="where --audit writes its JSON")
     ap.add_argument("--revert", metavar="RUN_ID")
+    ap.add_argument("--journals", help="movies-cleanup: the movies tool's journal folder")
     args = ap.parse_args(argv)
+    if args.journals:
+        global MOVIES_JOURNALS
+        MOVIES_JOURNALS = Path(args.journals).expanduser()
     vault = Path(args.vault) if args.vault else _vault_default()
     state_dir = Path(args.state_dir) if args.state_dir else _state_dir()
     try:

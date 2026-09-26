@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A one-time tidy of the vault (task 176, step 10).** On the operator's
+  approval of a deletion manifest in `agent/diagnostics/migrations/purge/`,
+  the seven dated backups of agentm's board ledger went to the macOS Trash;
+  git keeps the ledger at every one of those points. The movies project's
+  49 finished cleanup batches (173 files: manifests, run records and journal
+  copies) moved from `cleanup/` to `completed/cleanup/`, with the 33 links
+  that named a manifest by path following them. A batch counts as finished
+  when the movies tool's own journal names its manifest and the run was not
+  wholly undone, so the six batches with no journal and one undone batch
+  stay where the tool looks for them. The move tool's new `movies-cleanup`
+  batch does this, reading the journals from `--journals`.
+
 - **`systems/` describes the systems the operator runs.** On 2026-09-25 the
   six homelab notes left `agent/memory/semantic/` for
   `systems/homelab/components/`, kept their names and became `kind:
