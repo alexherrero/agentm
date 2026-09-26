@@ -29,7 +29,7 @@ func cmdDoor(args []string) error {
 	asJSON := fs.Bool("json", false, "emit the decision as JSON")
 	path := fs.String("path", "", "the vault-relative path to be written")
 	atVault := fs.Bool("at-vault-root", false,
-		"judge against the vault-level authority table (five spaces + session "+
+		"judge against the vault-level authority table (seven spaces + session "+
 			"grants) instead of the memory-root project door")
 	var grants grantFlags
 	fs.Var(&grants, "grant",

@@ -8,7 +8,7 @@ The vault is five lowercase root spaces beside two root notes. Every space is sp
 
 ## Steps
 
-1. **List the root.** `ls <vault>` prints the five spaces — `agent`, `calendar`, `personal`, `projects`, `standards` — and the two root notes, `index.md` and `Ideas.md`. Both are generated now; neither is hand-kept.
+1. **List the root.** `ls <vault>` prints the seven spaces — `agent`, `calendar`, `personal`, `projects`, `resources`, `standards`, `systems` — and the two root notes, `index.md` and `Ideas.md`. Both are generated now; neither is hand-kept.
 
 2. **Look inside `agent/`, the agent's own half.**
 

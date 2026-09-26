@@ -98,6 +98,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The vault's declared address space names seven spaces.** Under the plan's
+  grant, `index.md`'s space table gains `resources/` and `systems/`, both
+  shared, and its opening line counts seven spaces; `agentmd door`'s flag help
+  and the vault how-to follow. With it, task 176 — Plan A of the AgentKV
+  convergence — is complete: a final vault-wide link audit reads no new
+  unresolved link against the baseline taken before the first move, the
+  doctor has no failing row, and the battery is green (task 176, step 11).
+
 - **Only the reference library's watchlist is dampened in recall.** With all
   of `resources/` in `dampened_spaces`, seven of the ten gold questions that
   ask about a reference card lost their card from the top five after the
