@@ -118,16 +118,16 @@ class TestMoviesCleanup(_Vault):
     def setUp(self):
         super().setUp()
         c = "projects/movies-tv-games/cleanup"
-        for name in ("done.json", "done.md", "done-20260901-120000.jsonl", "done-20260901-120000.md",
+        for name in ("done.json", "done.md", "done-run-a.jsonl", "done-run-a.md",
                      "undone.json", "undone.md", "pending.json", "pending.md", "subs-x-refused.md"):
             _w(self.vault, f"{c}/{name}", "x\n")
         _git(self.vault, "add", "-A")
         _git(self.vault, "commit", "-q", "-m", "cleanup")
         j = Path(self._tmp.name) / "journals"
         j.mkdir()
-        (j / "done-20260901-120000.jsonl").write_text(
-            '{"run": "done-20260901-120000", "manifest": "done"}\n{"from": "/a", "to": "/q/a"}\n')
-        (j / "undone-20260902-120000.jsonl").write_text(
+        (j / "done-run-a.jsonl").write_text(
+            '{"run": "done-run-a", "manifest": "done"}\n{"from": "/a", "to": "/q/a"}\n')
+        (j / "undone-run-b.jsonl").write_text(
             '{"run": "undone-1", "manifest": "undone"}\n{"from": "/b", "to": "/q/b"}\n{"undone": "/b"}\n')
         patch = mock.patch.object(kv, "MOVIES_JOURNALS", j)
         patch.start()
@@ -135,7 +135,7 @@ class TestMoviesCleanup(_Vault):
 
     def test_only_a_journaled_finished_batch_moves_with_all_its_files(self):
         moves = {m["src"].rsplit("/", 1)[1] for m in kv.build_plan(self.vault, "movies-cleanup")["moves"]}
-        self.assertEqual(moves, {"done.json", "done.md", "done-20260901-120000.jsonl", "done-20260901-120000.md"})
+        self.assertEqual(moves, {"done.json", "done.md", "done-run-a.jsonl", "done-run-a.md"})
 
     def test_the_batch_needs_the_journals(self):
         with mock.patch.object(kv, "MOVIES_JOURNALS", None):
@@ -143,11 +143,11 @@ class TestMoviesCleanup(_Vault):
                 kv.build_plan(self.vault, "movies-cleanup")
 
     def test_a_moved_manifest_keeps_its_path_links(self):
-        _w(self.vault, "projects/movies-tv-games/cleanup/done-20260901-120000.md",
+        _w(self.vault, "projects/movies-tv-games/cleanup/done-run-a.md",
            "From the manifest [[movies-tv-games/cleanup/done|done]].\n")
         _git(self.vault, "commit", "-qam", "record")
         self.run_batch("movies-cleanup")
-        text = (self.vault / "projects/movies-tv-games/completed/cleanup/done-20260901-120000.md").read_text()
+        text = (self.vault / "projects/movies-tv-games/completed/cleanup/done-run-a.md").read_text()
         self.assertIn("[[projects/movies-tv-games/completed/cleanup/done|done]]", text)
         self.assertTrue((self.vault / "projects/movies-tv-games/cleanup/pending.json").is_file())
 
