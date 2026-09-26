@@ -23,8 +23,9 @@ import (
 // a tracker reads this one too:
 //
 //	frontmatter  kind, title, project (no task), status, opened, updated,
-//	             closed, and the operator's sensitivity marking when
-//	             project.yaml carries one
+//	             closed, the operator's sensitivity marking when project.yaml
+//	             carries one, and the projects job's activity and last_worked,
+//	             carried from the page as it stands
 //	Objective    the charter's What line, and that the file is generated
 //	State        a summary line, then the checklist: the open tasks first,
 //	             grouped by the design that governs them, each with its
@@ -106,7 +107,7 @@ func designName(design string) string {
 var trackerStatuses = map[string]bool{"queued": true, "active": true, "parked": true, "done": true, "dropped": true}
 
 func renderProjectTracker(slug, title, status, sensitivity, what, opened, updated, closed string,
-	tasks []projectTask) string {
+	carried [][2]string, tasks []projectTask) string {
 	var open, done []projectTask
 	for _, t := range tasks {
 		if t.Status == "done" || t.Status == "dropped" {
@@ -153,6 +154,9 @@ func renderProjectTracker(slug, title, status, sensitivity, what, opened, update
 	}
 	if sensitivity != "" {
 		fm = append(fm, "sensitivity: "+trackerScalar(sensitivity))
+	}
+	for _, kv := range carried {
+		fm = append(fm, kv[0]+": "+kv[1])
 	}
 	fm = append(fm, "---")
 
@@ -263,11 +267,33 @@ func PlanProjectTrackers(root string, now time.Time) (MocsPlan, error) {
 		if status == "done" || status == "dropped" {
 			closed = updated
 		}
-		text := renderProjectTracker(slug, title, status, cfg["sensitivity"], what, opened, updated, closed, tasks)
+		text := renderProjectTracker(slug, title, status, cfg["sensitivity"], what, opened, updated, closed,
+			carriedFields(before), tasks)
 		plan.add(MocPage{Rel: rel, Members: len(tasks), Newest: updated}, before, text,
 			fmt.Sprintf("the tracker of project %s regenerated (%d %s)", slug, len(tasks), mocPlural(len(tasks), "task", "tasks")))
 	}
 	return plan, nil
+}
+
+// carriedMachineFields are the lines another night job owns in a project's
+// tracker: the projects job writes `activity` and `last_worked` after this job
+// has run. They are carried from the page as it stands, in that job's own
+// order, so an unchanged night rewrites nothing and the projects job's
+// line-surgical edit finds its values already in place.
+var carriedMachineFields = []string{"activity", "last_worked"}
+
+func carriedFields(before []byte) [][2]string {
+	if before == nil {
+		return nil
+	}
+	fm, _ := ParseFrontmatter(string(before))
+	var out [][2]string
+	for _, k := range carriedMachineFields {
+		if v := strings.TrimSpace(fm[k]); v != "" {
+			out = append(out, [2]string{k, v})
+		}
+	}
+	return out
 }
 
 // projOldest is the earliest valid date among `dates`, or "".
