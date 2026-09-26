@@ -51,6 +51,7 @@ class _Vault(unittest.TestCase):
         _w(v, "projects/agentm/research/sqlite/notes.md", "# kept\n")
         _w(v, "projects/agentm/_watchlist/openai-research/paper.md", "# paper\n")
         _w(v, "agent/memory/semantic/home-server.md", "---\ntitle: Home server\n---\n\nBody.\n")
+        _w(v, "agent/memory/semantic/homelab-domain.md", "---\ntitle: Homelab\n---\n\nSee [[nas-backup]] and [[home-server]].\n")
         _w(v, "agent/memory/semantic/nas-backup.md", "---\ntitle: NAS backup\n---\n\nBody.\n")
         # The linkers: a full path, a partial path, a basename, a markdown link
         # from the vault root, and one into a walled area that is never opened.
@@ -58,7 +59,8 @@ class _Vault(unittest.TestCase):
            "---\ntitle: linker\nrelated: [\"[[projects/agentm/roadmap]]\"]\n---\n\n"
            "Full [[projects/agentm/followups]], partial [[agentm/followups#Open|open ones]], "
            "basename [[followups]], md [r](/projects/agentm/roadmap.md), "
-           "card [[projects/agentm/research/sqlite/reference/bm25]].\n")
+           "card [[projects/agentm/research/sqlite/reference/bm25]], "
+           "homelab [[homelab-domain]] and [[homelab-domain#Scope|the anchor]].\n")
         _w(v, "personal/Home/Important Docs/codes.md", "[[projects/agentm/followups]]\n")
         _git(v, "init", "-q")
         _git(v, "config", "user.email", "t@t")
@@ -101,7 +103,8 @@ class TestPlans(_Vault):
         with mock.patch("harness_memory.memory_root", return_value=str(self.vault / "agent")):
             moves = {m["src"]: m["dst"] for m in kv.build_plan(self.vault, "systems")["moves"]}
         self.assertEqual(moves, {
-            "agent/memory/semantic/home-server.md": "systems/homelab/system.md",
+            "agent/memory/semantic/homelab-domain.md": "systems/homelab/components/homelab-domain.md",
+            "agent/memory/semantic/home-server.md": "systems/homelab/components/home-server.md",
             "agent/memory/semantic/nas-backup.md": "systems/homelab/components/nas-backup.md",
         })
 
@@ -143,6 +146,35 @@ class TestApply(_Vault):
         self.run_batch("root-files")
         self.assertIn("[repo](../../../../repo/README.md)",
                       (self.vault / "projects/agentm/docs/roadmap.md").read_text())
+
+    def test_a_renamed_notes_basename_links_follow_it(self):
+        """A move that renames a note takes its basename links with it, as
+        path links with their words kept; a name that did not change is left."""
+        moves = {"agent/memory/semantic/homelab-domain.md": "systems/homelab/system.md"}
+        renamed = {"homelab-domain": "agent/memory/semantic/homelab-domain.md"}
+        text, n = kv.rewrite_text("[[homelab-domain]], [[homelab-domain#Scope|the anchor]], [[nas-backup]]",
+                                  "x.md", "x.md", moves, lambda r: True, renamed)
+        self.assertEqual(n, 2)
+        self.assertEqual(text, "[[systems/homelab/system|homelab-domain]], "
+                               "[[systems/homelab/system#Scope|the anchor]], [[nas-backup]]")
+
+    def test_the_homelab_notes_keep_their_names_and_links(self):
+        with mock.patch("harness_memory.memory_root", return_value=str(self.vault / "agent")):
+            rec = self.run_batch("systems")
+        self.assertEqual(rec["links"], 0)
+        text = (self.vault / "systems/homelab/components/homelab-domain.md").read_text()
+        self.assertIn("See [[nas-backup]] and [[home-server]].", text)
+
+    def test_a_batch_that_would_edit_a_personal_note_is_refused(self):
+        _w(self.vault, "personal/ideas/an-idea.md", "Builds on [[projects/agentm/followups]].\n")
+        _git(self.vault, "add", "-A")
+        _git(self.vault, "commit", "-q", "-m", "idea")
+        plan = kv.build_plan(self.vault, "root-files")
+        with self.assertRaises(kv.Refused) as cm:
+            kv.apply(self.vault, plan, len(plan["moves"]), self.state, check_writers=lambda: [])
+        self.assertIn("personal/ideas/an-idea.md", str(cm.exception))
+        # Nothing moved.
+        self.assertTrue((self.vault / "projects/agentm/followups.md").is_file())
 
     def test_the_walled_area_is_never_rewritten(self):
         self.run_batch("root-files")

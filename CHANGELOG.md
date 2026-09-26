@@ -7,19 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Only the reference library's watchlist is dampened in recall.** With all
-  of `resources/` in `dampened_spaces`, seven of the ten gold questions that
-  ask about a reference card lost their card from the top five after the
-  move, because a dampened space is dampened whatever the question; the
-  retrieval regression gate failed. On the operator's ruling of 2026-09-25
-  the contract dampens `resources/watchlist` only, the topic cards rank as
-  any note does, and topic-aware dampening is filed as a follow-up. The
-  agentm-vault design and the packaged-contract test follow (task 176,
-  step 8).
-
 ### Added
+
+- **`systems/` describes the systems the operator runs.** On 2026-09-25 the
+  six homelab notes left `agent/memory/semantic/` for
+  `systems/homelab/components/`, kept their names and became `kind:
+  component` records, so no link needed a rewrite; `systems/homelab/system.md`
+  is a new overview drawn from `homelab-domain` and `home-server`, and
+  `systems/agentm/system.md` and `systems/crickets/system.md` are one-page
+  front doors to each repo's wiki Home and designs index. The move tool
+  follows a renamed note's basename links when a move renames one, and it now
+  refuses, before anything moves, a batch whose rewrites would reach a note
+  under `personal/`, which is the operator's (task 176, step 9).
 
 - **The reference library holds agentm's reference cards and the
   watchlist.** The move ran on 2026-09-25 under quiesce: 233 reference
@@ -86,6 +85,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   link check cannot see a broken path link. The walled area is never opened.
 
 ### Changed
+
+- **Only the reference library's watchlist is dampened in recall.** With all
+  of `resources/` in `dampened_spaces`, seven of the ten gold questions that
+  ask about a reference card lost their card from the top five after the
+  move, because a dampened space is dampened whatever the question; the
+  retrieval regression gate failed. On the operator's ruling of 2026-09-25
+  the contract dampens `resources/watchlist` only, the topic cards rank as
+  any note does, and topic-aware dampening is filed as a follow-up. The
+  agentm-vault design and the packaged-contract test follow (task 176,
+  step 8).
 
 - **The watchlist's readers find it in the reference library first.**
   `vault_layout.feature_state_candidates("_watchlist")` answers

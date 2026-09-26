@@ -71,6 +71,7 @@ for _p in (str(_REPO / "scripts"), str(_TOOLKIT)):
 
 STAGE = "agentkv-layout"
 PROJECTS = "projects"
+PERSONAL = "personal"
 SKIP_DIRS = {".git", ".obsidian", ".trash", "node_modules", "__pycache__"}
 
 # The five files a project root is locked to (the operator's ruling, 2026-09-24).
@@ -87,8 +88,10 @@ DOCS_SUFFIXES = (".md",)
 REFERENCE_PROJECT = "agentm"
 HOMELAB_NOTES = ("home-server", "homelab-domain", "nas-unraid", "nas-backup",
                  "docker-inventory", "network-topology")
-# The overview the operator named: `system.md` is drawn from these two.
-HOMELAB_OVERVIEW = "home-server"
+# Every homelab note keeps its name among the components: a rename would
+# have to rewrite the basename links other notes hold, and some of those sit
+# in `personal/`, which is the operator's. The overview, `system.md`, is
+# written fresh from `home-server` and `homelab-domain` and links to them.
 
 
 class Refused(Exception):
@@ -202,8 +205,7 @@ def plan_systems(vault: Path) -> list:
         src = f"{semantic}/{stem}.md"
         if not (vault / src).is_file():
             continue
-        dst = "systems/homelab/system.md" if stem == HOMELAB_OVERVIEW else f"systems/homelab/components/{stem}.md"
-        moves.append({"src": src, "dst": dst})
+        moves.append({"src": src, "dst": f"systems/homelab/components/{stem}.md"})
     return moves
 
 
@@ -253,10 +255,14 @@ def _path_match(target: str, moved_old: dict) -> Optional[str]:
     return None
 
 
-def rewrite_text(text: str, src_old: str, src_new: str, moves: dict, exists) -> tuple:
+def rewrite_text(text: str, src_old: str, src_new: str, moves: dict, exists,
+                 renamed: Optional[dict] = None) -> tuple:
     """`text` with every path link into a moved file pointed at the new path.
 
-    `moves` maps old vault-relative path to new. `src_old`/`src_new` are this
+    `moves` maps old vault-relative path to new. `renamed` maps a lowercased
+    old stem to its old path for a move that changed the file's name and whose
+    old name no other file carries: a basename link to it follows the rename
+    as a path link, its words kept. `src_old`/`src_new` are this
     note's own paths before and after the run (the same when it did not move),
     so a relative markdown link inside a moved note is recomputed from where
     the note now sits. `exists(rel)` answers for the vault after the run.
@@ -274,6 +280,11 @@ def rewrite_text(text: str, src_old: str, src_new: str, moves: dict, exists) -> 
         nonlocal count
         bang, target, anchor, alias = m.group(1), m.group(2), m.group(3) or "", m.group(4)
         old = _path_match(target, folded)
+        if old is None and renamed and "/" not in target:
+            old = renamed.get(_noext(target.strip()).lower())
+            if old is not None:
+                count += 1
+                return f"{bang}[[{_noext(moves[old])}{anchor}{alias if alias else '|' + target.strip()}]]"
         if old is None:
             return m.group(0)
         new = moves[old]
@@ -492,21 +503,47 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
         raise Refused("the vault's git tree is not clean; let it commit first")
     mapping = {m["src"]: m["dst"] for m in moves}
     walled = _walled(vault)
+    # `personal/` is the operator's: no batch edits a note there. A path link
+    # from a personal note into a moved file would need that edit, so such a
+    # batch is refused before anything moves, for the operator to decide.
+    before = set(vault_files(vault))
+    touched = []
+    for rel in sorted(before):
+        if not rel.startswith(PERSONAL + "/") or not rel.endswith(".md") or _is_walled(rel, walled):
+            continue
+        text = (vault / rel).read_text(encoding="utf-8", errors="surrogateescape")
+        if rewrite_text(text, rel, rel, mapping, lambda r: r in before)[1]:
+            touched.append(rel)
+    if touched:
+        raise Refused("the batch would rewrite links in the operator's personal/ notes: "
+                      + ", ".join(touched[:5]) + ("…" if len(touched) > 5 else ""))
     for src, dst in mapping.items():
         (vault / dst).parent.mkdir(parents=True, exist_ok=True)
         _git(vault, "mv", src, dst)
     pruned = prune_emptied(vault, list(mapping))
     inverse = {v: k for k, v in mapping.items()}
     after = set(vault_files(vault))
+    # A move that renamed a note leaves its old name to no file; a basename
+    # link to that name follows the rename, but only when the old name is
+    # unique — a name another file still carries resolves to that file.
+    stems = {}
+    for rel in after:
+        stems.setdefault(Path(rel).stem.lower(), []).append(rel)
+    renamed = {}
+    for src, dst in mapping.items():
+        old, new = Path(src).stem.lower(), Path(dst).stem.lower()
+        if src.endswith(".md") and old != new and old not in stems:
+            renamed[old] = None if old in renamed else src
+    renamed = {k: v for k, v in renamed.items() if v is not None}
     rewritten = []
     links = 0
     for rel in sorted(after):
-        if not rel.endswith(".md") or _is_walled(rel, walled):
+        if not rel.endswith(".md") or _is_walled(rel, walled) or rel.startswith(PERSONAL + "/"):
             continue
         p = vault / rel
         text = p.read_text(encoding="utf-8", errors="surrogateescape")
         new, n = rewrite_text(text, inverse.get(rel, rel), rel, mapping,
-                              lambda r: r in after or (vault / r).exists())
+                              lambda r: r in after or (vault / r).exists(), renamed)
         if n:
             p.write_text(new, encoding="utf-8", errors="surrogateescape")
             rewritten.append({"path": rel, "links": n})
