@@ -4,11 +4,11 @@
 > **Goal:** Find where something lives in the vault, and confirm the CLI, the daemon, and the consistency gates all read the layout the same way.
 > **Prereqs:** A configured vault ([Choose a storage backend](Choose-A-Storage-Backend)). Shell access to the machine it lives on.
 
-The vault is five lowercase root spaces beside two root notes. Every space is spelled the way the code spells it, since the root casing migration (agentm-vault plan 08 — see [Run the root casing migration](Run-The-Root-Casing-Migration)). Read every name on this page exactly, case included: the disk is case-insensitive, so a stale Title Case directory still opens if you type its name by hand — that's the only thing the case-insensitivity hides. Every exact-string comparison in the codebase, and Linux CI's case-sensitive disk, see the mismatch and refuse it.
+The vault is seven lowercase root spaces beside two root notes. Every space is spelled the way the code spells it, since the root casing migration (agentm-vault plan 08 — see [Run the root casing migration](Run-The-Root-Casing-Migration)). Read every name on this page exactly, case included: the disk is case-insensitive, so a stale Title Case directory still opens if you type its name by hand — that's the only thing the case-insensitivity hides. Every exact-string comparison in the codebase, and Linux CI's case-sensitive disk, see the mismatch and refuse it.
 
 ## Steps
 
-1. **List the root.** `ls <vault>` prints the seven spaces — `agent`, `calendar`, `personal`, `projects`, `resources`, `standards`, `systems` — and the two root notes, `index.md` and `Ideas.md`. Both are generated now; neither is hand-kept.
+1. **List the root.** `ls <vault>` prints the seven spaces — `agent`, `calendar`, `personal`, `projects`, `resources`, `standards`, `systems` — and the two root notes, `index.md` and `Ideas.md`. `Ideas.md` is rebuilt every night; `index.md` is yours, kept by hand.
 
 2. **Look inside `agent/`, the agent's own half.**
 

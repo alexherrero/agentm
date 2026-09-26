@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v10.0.0](https://github.com/alexherrero/agentm/releases/tag/v10.0.0).** The vault-perfection series closes. Every project is a directory of numbered tasks with a tracker each. The retired per-project state directory is gone, and a gate keeps it gone. A chat surface writes through `agent/inbox/`, and `Ideas.md` is rebuilt every night.
+> **Latest release: [v10.1.0](https://github.com/alexherrero/agentm/releases/tag/v10.1.0).** The vault takes the AgentKV layout. A reference library, `resources/`, and a systems space, `systems/`, join the shared spaces, and every project opens on the same five root files, with its tracker written each night from its tasks.

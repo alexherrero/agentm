@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.1.0] - 2026-09-26
+
+Plan A of the AgentKV layout convergence: the home vault takes the layout half of the operator's 2026-09-24 rulings on the work vault's layout spec. Two shared spaces join the vault. `resources/` is the reference library: agentm's 233 reference cards, the forward-learning watchlist and a university shelf, with only the watchlist dampened in recall. `systems/` describes the systems the operator runs: the homelab in full, and a one-page front door each for agentm and crickets. Every project opens on the same five root files, `project.yaml`, `charter.md`, `blueprint.md`, `tracker.md` and `moc-<slug>.md`, and the door answers any other new root file with a question. A new gate holds every `project.yaml` to one schema. The night now writes each project's tracker from its task trackers, and a one-time tidy cleared the finished movie cleanup batches and the board ledger's old backups. Every move ran readers first, under quiesce, with its links rewritten; a vault-wide link audit reads no new broken link. Paired with crickets [v5.0.1](https://github.com/alexherrero/crickets/releases/tag/v5.0.1), whose research and wiki plugins follow the watchlist to its new home.
+
 ### Added
 
 - **A one-time tidy of the vault (task 176, step 10).** On the operator's
