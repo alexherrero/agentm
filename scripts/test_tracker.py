@@ -378,6 +378,23 @@ class CommandLine(unittest.TestCase):
         self.assertIn("Their step.", text)
         self.assertNotIn("My step.", text)
 
+    def test_a_project_tracker_carries_the_nights_activity_fields(self) -> None:
+        """The night's projects job writes `activity` and `last_worked` into a
+        project's own tracker (task 176): the schema reads them, a rewrite
+        keeps them last, and a task's tracker may not carry them."""
+        text = ("---\nkind: tracker\ntitle: AgentM\nproject: agentm\nstatus: active\n"
+                "opened: 2026-04-20\nupdated: 2026-09-25\nclosed:\nactivity: 1.0\n"
+                "last_worked: 2026-09-25\n---\n\n## Objective\n\nThe project.\n\n## State\n\n"
+                "1 open · 0 done\n\n## Next\n\nx\n\n## Outcome\n")
+        t = tk.parse(text)
+        self.assertEqual((t.activity, t.last_worked), (1.0, "2026-09-25"))
+        self.assertEqual(tk.findings(t), [])
+        self.assertEqual(tk.render(t), text)
+        task = tk.parse(text.replace("project: agentm\n", "project: agentm\ntask: 001-x\n"))
+        self.assertIn("belong on a project's own tracker", " ".join(tk.findings(task)))
+        bad = tk.parse(text.replace("activity: 1.0", "activity: 1.7"))
+        self.assertIn("outside 0-1", " ".join(tk.findings(bad)))
+
     def test_check_reports_a_malformed_tracker(self) -> None:
         self.path.write_text("---\nkind: tracker\ntitle: x\n---\n", encoding="utf-8")
         rc, out, _ = self._main("check", str(self.path))

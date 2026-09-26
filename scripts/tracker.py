@@ -68,7 +68,8 @@ TRANSITIONS = {
 # is final. `sensitivity` is the operator's marking (`personal-financial` on
 # the home project's notes), carried through every rewrite and never set here.
 FIELDS = ("kind", "title", "project", "task", "status", "importance",
-          "opened", "updated", "closed", "issue", "design", "sensitivity")
+          "opened", "updated", "closed", "issue", "design", "sensitivity",
+          "activity", "last_worked")
 REQUIRED = ("kind", "title", "project", "status", "opened", "updated", "closed")
 SECTIONS = ("Objective", "State", "Next", "Outcome")
 NOT_STARTED = "Not started."
@@ -108,6 +109,12 @@ class Tracker:
     issue: Optional[int] = None
     design: Optional[str] = None
     sensitivity: Optional[str] = None
+    # A project's own tracker only: the night's projects job writes how much the
+    # project is being worked (`activity`, a band from 0.3 to 1.0) and when it
+    # was last worked, in the tracker's machine block. Read and carried, never
+    # set here (agentm-vault § `projects/` is permanent; task 176 step 6).
+    activity: Optional[float] = None
+    last_worked: Optional[str] = None
     objective: str = ""
     state: str = ""
     next_steps: str = ""
@@ -116,7 +123,7 @@ class Tracker:
     def __post_init__(self) -> None:
         for name in ("objective", "state", "next_steps", "outcome"):
             setattr(self, name, _clean(getattr(self, name)))
-        for name in ("task", "closed", "design", "sensitivity"):
+        for name in ("task", "closed", "design", "sensitivity", "last_worked"):
             if getattr(self, name) == "":
                 setattr(self, name, None)
 
@@ -171,6 +178,10 @@ def render(t: Tracker) -> str:
         lines.append(f"design: {_scalar_out(t.design)}")
     if t.sensitivity:
         lines.append(f"sensitivity: {_scalar_out(t.sensitivity)}")
+    if t.activity is not None:
+        lines.append(f"activity: {t.activity:.1f}")
+    if t.last_worked:
+        lines.append(f"last_worked: {t.last_worked}")
     lines.append("---")
     body = []
     for name, text in t.sections().items():
@@ -202,6 +213,16 @@ def _sections(body: str) -> dict:
         stop = found[i + 1][1] if i + 1 < len(found) else len(body)
         out[name] = _clean(body[end:stop])
     return out
+
+
+def _float(value: str, key: str) -> Optional[float]:
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise TrackerError(f"`{key}: {value}` is not a number") from exc
 
 
 def _int(value: str, key: str) -> Optional[int]:
@@ -239,6 +260,8 @@ def parse(text: str) -> Tracker:
         opened=fm["opened"], updated=fm["updated"], closed=fm.get("closed") or None,
         issue=_int(fm.get("issue", ""), "issue"), design=fm.get("design") or None,
         sensitivity=fm.get("sensitivity") or None,
+        activity=_float(fm.get("activity", ""), "activity"),
+        last_worked=fm.get("last_worked") or None,
         objective=sections["Objective"], state=sections["State"],
         next_steps=sections["Next"], outcome=sections["Outcome"],
     )
@@ -293,6 +316,12 @@ def findings(t: Tracker) -> list[str]:
             out.append("`closed` is before `opened`")
     if t.importance is not None and not 1 <= t.importance <= 10:
         out.append(f"`importance: {t.importance}` is outside 1-10")
+    if (t.activity is not None or t.last_worked) and t.task:
+        out.append("`activity` and `last_worked` belong on a project's own tracker, not a task's")
+    if t.activity is not None and not 0 < t.activity <= 1:
+        out.append(f"`activity: {t.activity}` is outside 0-1")
+    if t.last_worked and not _is_date(t.last_worked):
+        out.append("`last_worked` is not a date (YYYY-MM-DD)")
     if t.issue is not None and t.issue < 1:
         out.append(f"`issue: {t.issue}` is not an issue number")
     if not t.objective:

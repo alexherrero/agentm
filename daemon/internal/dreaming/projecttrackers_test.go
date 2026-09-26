@@ -1,6 +1,7 @@
 package dreaming
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -73,6 +74,36 @@ func TestAProjectTrackerOverUnchangedTasksWritesNothing(t *testing.T) {
 	if len(again.Intents) != 0 {
 		t.Errorf("unchanged task trackers rewrote a project tracker: %+v", again.Intents)
 	}
+}
+
+// The projects job writes `activity` and `last_worked` into the tracker after
+// this job runs; carrying them keeps an unchanged night from rewriting the file
+// and the two jobs from undoing each other.
+func TestTheProjectsJobsActivityFieldsAreCarried(t *testing.T) {
+	root, _ := trackersFixture(t)
+	plan, _ := PlanProjectTrackers(root, projectsNow)
+	for _, in := range plan.Intents {
+		text := string(in.After)
+		text = strings.Replace(text, "\n---\n", "\nactivity: 0.7\nlast_worked: 2026-09-12\n---\n", 1)
+		writeAt(t, root, in.Rel, text)
+	}
+	again, _ := PlanProjectTrackers(root, projectsNow.AddDate(0, 0, 1))
+	if len(again.Intents) != 0 {
+		t.Errorf("carried fields were dropped, so the tracker was rewritten: %s", again.Intents[0].After)
+	}
+	if got := setActivityFields(mustRead(t, root, "../projects/demo/tracker.md"),
+		ActivityReading{Activity: 0.7, LastWorked: "2026-09-12"}); got != mustRead(t, root, "../projects/demo/tracker.md") {
+		t.Errorf("the projects job would still edit the carried page:\n%s", got)
+	}
+}
+
+func mustRead(t *testing.T, root, rel string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
 }
 
 // The generated file keeps the tracker's one schema: scripts/tracker.py reads
