@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   note, and is switched on after one run funded to finish, its weekly budget
   provisional until the operator sets it from the average.
 
+- **The machinery doctor reads a job registered with `enabled: false` as
+  switched off, not as a warning.** A shipped job template left unregistered
+  warns that nobody has set it up, and a registered job warns until it first
+  fires, so a job the operator had deliberately turned off warned forever.
+  `enabled: false` is the runner's own off switch, which skips the job by
+  name; the doctor now reads it as `registered and switched off` (OK).
+  `docs-drift` is registered this way on the operator's machine: it only
+  reports, wiki-watch is off on this device, and the documenter's sweep at
+  `/release` covers the same ground.
+
 ### Fixed
 
 - **Crystallize reads and writes under the vault's memory root (task 177,

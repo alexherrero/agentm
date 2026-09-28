@@ -240,6 +240,20 @@ class RunnerJobCheckTests(unittest.TestCase):
         self.assertEqual(c.status, "OK")
         self.assertEqual(c.last_fired, 1_700_000_000.0)
 
+    def test_ok_registered_and_switched_off(self):
+        # Registered with the runner's own off switch: a decision, not a job
+        # that has yet to fire, so it does not warn.
+        self._write_template("myjob")
+        jobs_dir = self.repo / ".harness" / "jobs"
+        jobs_dir.mkdir(parents=True)
+        (jobs_dir / "myjob.yaml").write_text(
+            (self.repo / "templates" / "jobs" / "myjob.yaml").read_text(encoding="utf-8")
+            + "enabled: false\n", encoding="utf-8"
+        )
+        c = md.check_runner_job(self.repo, "myjob", state_root=self.repo / "state")
+        self.assertEqual(c.status, "OK")
+        self.assertIn("switched off", c.detail)
+
     def test_job_names_discovers_all_templates(self):
         self._write_template("a")
         self._write_template("b")
