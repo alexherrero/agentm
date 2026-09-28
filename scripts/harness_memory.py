@@ -1227,7 +1227,8 @@ def append_progress(resolution: dict, text: str, *, plan_arg: Optional[str] = No
     target = _state_backend_target(resolution)
     if active.layout == "task" and target is not None:
         backend, project_loc, backend_root = target
-        loc = project_loc.child(_TASKS_DIRNAME, active.slug, "progress.md")
+        loc = project_loc.child(
+            *_task_home_parts(resolution, active.slug), active.slug, "progress.md")
         try:
             current = backend.read(loc)
         except FileNotFoundError:
@@ -1349,6 +1350,12 @@ _SINGLETON_TRACKER = "tracker.md"
 # nothing else there.
 _TASKS_DIRNAME = "tasks"
 _TASK_FILES = ("plan.md", "progress.md", "tracker.md")
+# A closed task's directory moves, whole and under its own name, to the
+# project's `completed/tasks/` two weeks after its tracker reads `done` or
+# `dropped` (agentm-vault, the 2026-09-24 rulings, section 2). Every reader that
+# finds a task by its name looks there too, so a moved task still resolves and
+# its number and slug stay taken. The listers of live work stay on `tasks/`.
+_COMPLETED_TASKS_PARTS = ("completed", _TASKS_DIRNAME)
 # A task's name is its directory name, number included — `NNN-<verb-slug>`. The
 # number is its place in creation order; the slug is the part you remember. Both
 # forms find it, and `--name <verb-slug>` refuses by name when two tasks share
@@ -1406,23 +1413,36 @@ def _local_plan(slug: Optional[str]) -> ActivePlan:
     return ActivePlan(plan, progress, tracker=_tracker_name(slug), layout="local", slug=slug)
 
 
-def _tasks_dir(resolution: dict) -> Optional[Path]:
-    """The project's `tasks/` directory, or None off a synced backend.
-
-    `tasks/` is the vault's projects shape; a device-local `.harness/` sits in a
-    repo and the repo's own `tasks/` is not plan state."""
-    root = project_state_root(resolution)
-    return root / _TASKS_DIRNAME if root is not None else None
+def _dir_names(d: Optional[Path]) -> set:
+    """The task-shaped directory names in `d`. `tasks/` is the vault's projects
+    shape; a device-local `.harness/` sits in a repo, and the repo's own
+    `tasks/` is not plan state, so a caller off a synced backend passes None."""
+    if d is None or not d.is_dir():
+        return set()
+    return {p.name for p in d.iterdir() if p.is_dir() and _is_safe_plan_slug(p.name)}
 
 
 def _task_dir_names(resolution: dict) -> list:
-    """Every task directory under the project, sorted — the names as they are."""
-    tasks = _tasks_dir(resolution)
-    if tasks is None or not tasks.is_dir():
+    """Every task directory under the project, open and completed, sorted — the
+    names as they are. A completed task keeps its name, so its number and its
+    verb slug stay taken: `/plan` numbers past it and refuses a name that would
+    share either."""
+    root = project_state_root(resolution)
+    if root is None:
         return []
-    return sorted(
-        p.name for p in tasks.iterdir() if p.is_dir() and _is_safe_plan_slug(p.name)
-    )
+    return sorted(_dir_names(root / _TASKS_DIRNAME)
+                  | _dir_names(root.joinpath(*_COMPLETED_TASKS_PARTS)))
+
+
+def _task_home_parts(resolution: dict, name: str) -> tuple:
+    """The folder task `name` sits in, as parts under the project directory:
+    `tasks/` while it is open, `completed/tasks/` once the night has moved it.
+    A name in neither is a task still to be placed, and it goes under `tasks/`."""
+    root = project_state_root(resolution)
+    if (root is not None and not (root / _TASKS_DIRNAME / name).is_dir()
+            and root.joinpath(*_COMPLETED_TASKS_PARTS, name).is_dir()):
+        return _COMPLETED_TASKS_PARTS
+    return (_TASKS_DIRNAME,)
 
 
 def _match_task_dirs(names: list, slug: str) -> list:
@@ -1459,8 +1479,9 @@ def _resolve_task_dir(resolution: dict, slug: str) -> Optional[str]:
 
 
 def _task_at(resolution: dict, name: str) -> ActivePlan:
-    """The `ActivePlan` for the task directory `name`. Pure path construction."""
-    task = _tasks_dir(resolution) / name
+    """The `ActivePlan` for the task directory `name`, in whichever of `tasks/`
+    and `completed/tasks/` holds it. Composes paths and writes nothing."""
+    task = project_state_root(resolution).joinpath(*_task_home_parts(resolution, name), name)
     plan, progress, tracker = (str(task / leaf) for leaf in _TASK_FILES)
     return ActivePlan(plan, progress, tracker=tracker, layout="task", slug=name)
 
@@ -1478,7 +1499,8 @@ def _task_plan(resolution: dict, slug: str) -> Optional[ActivePlan]:
     if name is None:
         return None
     try:
-        body = backend.read(project_loc.child(_TASKS_DIRNAME, name, "plan.md"))
+        body = backend.read(project_loc.child(
+            *_task_home_parts(resolution, name), name, "plan.md"))
     except Exception:  # absent, unreadable or refused: not a task
         return None
     if not (body or "").strip():

@@ -62,6 +62,25 @@ class TrackerGate(unittest.TestCase):
         self._put("tasks/build-it/tracker.md", tk.render(GOOD))
         self.assertEqual(self._findings(), (2, []))
 
+    def test_a_moved_tasks_tracker_is_in_its_place(self) -> None:
+        # Task 177: a closed task's directory moves whole to `completed/tasks/`
+        # two weeks after it closes, and its tracker is a task's tracker there.
+        done = dataclasses.replace(GOOD, status="done", closed="2026-09-12",
+                                   outcome="It is built.")
+        self._put("completed/tasks/build-it/tracker.md", tk.render(done))
+        self.assertEqual(self._findings(), (1, []))
+        self._put("completed/tasks/other/tracker.md", tk.render(done))
+        _count, findings = self._findings()
+        self.assertEqual(findings, ["demo/completed/tasks/other/tracker.md: `task: build-it` "
+                                    "is not the task it sits beside (`other`)"])
+
+    def test_a_tracker_elsewhere_under_completed_is_still_misplaced(self) -> None:
+        self._put("completed/research/tracker.md", tk.render(GOOD))
+        self._put("completed/tasks/build-it/notes/tracker.md", tk.render(GOOD))
+        count, findings = self._findings()
+        self.assertEqual(count, 2)
+        self.assertTrue(all("outside a tracker's place" in f for f in findings))
+
     def test_a_tracker_in_a_returned_retired_directory_is_misplaced(self) -> None:
         # agentm-vault plan 15: the flat pair's two tracker places retired with
         # the per-project state directory, so a tracker in a copy that came back

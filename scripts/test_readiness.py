@@ -313,6 +313,31 @@ class TestTaskLayout(unittest.TestCase):
         held = {h["slug"]: h["reason"] for h in rd.build_readiness(self.project)["held_back"]}
         self.assertEqual(held["012-needs-twin"], "waiting for: twin")
 
+    def test_a_dependency_on_a_moved_task_is_met(self) -> None:
+        # Task 177: two weeks after a task closes its directory moves whole to
+        # `completed/tasks/`. A plan naming it, by either name, still waits for
+        # nothing, and the moved task itself is never listed as waiting.
+        moved = _task_fixture(self.project, "041-build-the-brief", "done")
+        (self.project / "completed" / "tasks").mkdir(parents=True)
+        moved.rename(self.project / "completed" / "tasks" / moved.name)
+        _task_fixture(self.project, "042-ship-it", "queued", depends_on=["build-the-brief"],
+                      touches=["src/a/**"])
+        _task_fixture(self.project, "043-and-this", "queued",
+                      depends_on=["041-build-the-brief"], touches=["src/b/**"])
+        report = rd.build_readiness(self.project)
+        self.assertEqual(sorted(report["ready"]), ["042-ship-it", "043-and-this"])
+        self.assertEqual(report["held_back"], [])
+
+    def test_the_graph_names_a_moved_task_by_its_completed_path(self) -> None:
+        import plan_graph as pg
+        moved = _task_fixture(self.project, "041-build-the-brief", "done")
+        (self.project / "completed" / "tasks").mkdir(parents=True)
+        moved.rename(self.project / "completed" / "tasks" / moved.name)
+        plans = {p.slug: p for p in pg.build_plan_graph(self.project)}
+        p = plans["041-build-the-brief"]
+        self.assertEqual((p.filename, p.finished, p.active),
+                         ("completed/tasks/041-build-the-brief/plan.md", True, False))
+
 
 if __name__ == "__main__":
     unittest.main()

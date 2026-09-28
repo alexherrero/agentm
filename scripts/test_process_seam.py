@@ -301,6 +301,31 @@ class StatePath(_SeamFixture):
                 self.vault_project / "tasks" / "001-bar" / "plan.md",
             )
 
+    def test_a_moved_task_resolves_to_its_completed_paths(self) -> None:
+        # Task 177: a closed task's directory moves whole to `completed/tasks/`
+        # two weeks after it closes. The seam is what crickets' resolve_plan
+        # asks, so a phase command bound to the task still finds it, and a new
+        # plan is numbered past it.
+        from vault_backend_stub import VaultBackend
+
+        project = self.vault / "desk/projects" / _SLUG
+        moved = project / "completed" / "tasks" / "002-foo"
+        moved.mkdir(parents=True)
+        (moved / "plan.md").write_text("# plan\n", encoding="utf-8")
+        self._set_vault()
+        with unittest.mock.patch(
+            "backend_selection.select_backend", return_value=VaultBackend(root=self.vault)
+        ):
+            for which in ("plan", "progress", "tracker"):
+                with self.subTest(which=which):
+                    self.assertEqual(
+                        seam.state_path(self._ctx(plan="foo"), which), moved / f"{which}.md"
+                    )
+            self.assertEqual(
+                seam.state_path(self._ctx(plan="bar"), "plan"),
+                project / "tasks" / "003-bar" / "plan.md",
+            )
+
 
 class ProjectPath(_SeamFixture):
     """`project_path` and the `project-path` verb (agentm-vault,

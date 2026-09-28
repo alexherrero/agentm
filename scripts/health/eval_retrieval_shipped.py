@@ -226,7 +226,11 @@ def _remap_projects(path: str, vault_root: "Path | None | bool" = False) -> str:
             spellings = {n.lower(): n for n in os.listdir(root)}
         except OSError:
             spellings = {}
-        if (Path(root) / _remap_casing(new, spellings)).exists():
+        folded = _remap_casing(new, spellings)
+        # A task the table points at may since have closed and moved on to
+        # `completed/tasks/`; the migration still happened, and the fold below
+        # finishes the path.
+        if (Path(root) / folded).exists() or _remap_completed_tasks(folded, root) != folded:
             return new
         return path
     return path
@@ -297,6 +301,30 @@ def _remap_convergence(path: str, vault_root: "Path | None | bool" = False) -> s
             return path
         new = f"resources/topics/{m.group(1)}/{m.group(2)}"
     return new if (Path(root) / new).exists() else path
+
+
+# Closed tasks move (task 177; the 2026-09-24 rulings, section 2): two weeks
+# after a task's tracker reads `done` or `dropped`, the night moves its whole
+# directory, name kept, from `projects/<slug>/tasks/` to
+# `projects/<slug>/completed/tasks/`. A pattern rather than a table, because the
+# night keeps moving tasks as they age and no list of them could be frozen.
+# Taken only when the vault holds the moved file and not the open one, so the
+# gate reads true on both sides of the move.
+_OPEN_TASK = re.compile(r"^(projects/[^/]+)/tasks/([^/]+/.+)$")
+
+
+def _remap_completed_tasks(path: str, vault_root: "Path | None | bool" = False) -> str:
+    """A gold-set path as the closed-task move leaves it, when it has run."""
+    root = _vault_root() if vault_root is False else vault_root
+    if root is None:
+        return path
+    m = _OPEN_TASK.match(path)
+    if m is None:
+        return path
+    moved = f"{m.group(1)}/completed/tasks/{m.group(2)}"
+    if (Path(root) / path).exists() or not (Path(root) / moved).exists():
+        return path
+    return moved
 
 
 # Expectations whose note left the vault on purpose. These are not drift and
@@ -625,16 +653,18 @@ def load_gold() -> list:
 def resolve_expected(entry: dict) -> tuple:
     """`(live, retired)` for one entry's expectations, through the whole chain.
 
-    `_remap_projects` runs after the casing fold, `_remap_desk` after it and
-    `_remap_convergence` last, for the reason the score loop's own note gives:
-    a table keyed on the folded path only matches once that fold has happened.
+    `_remap_projects` runs after the casing fold, `_remap_desk` after it,
+    `_remap_convergence` next and `_remap_completed_tasks` last, for the reason
+    the score loop's own note gives: a table keyed on the folded path only
+    matches once that fold has happened, and a task a table names may since
+    have closed and moved.
     """
     live, retired = [], []
     for p in (entry.get(EXPECTED_FIELD) or []):
         if not p:
             continue
-        r = _remap_convergence(_remap_desk(_remap_projects(_remap_casing(
-            _migrated(_remap_trims(_remap_merged(p)))))))
+        r = _remap_completed_tasks(_remap_convergence(_remap_desk(_remap_projects(
+            _remap_casing(_migrated(_remap_trims(_remap_merged(p))))))))
         (retired if r in _RETIRED else live).append(r)
     return live, retired
 

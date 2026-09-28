@@ -656,5 +656,96 @@ class TaskPlacementAndLookup(unittest.TestCase):
         self.assertIn("numbered tasks", err)
 
 
+class CompletedTasksAreStillFound(TaskPlacementAndLookup):
+    """A closed task's directory moves to `completed/tasks/` two weeks after it
+    closes (agentm-vault, the 2026-09-24 rulings, section 2; task 177).
+
+    Every reader that finds a task by its name looks there too: the moved task
+    resolves to its completed paths, its number and verb slug stay taken, and
+    the listing of live work leaves it out. The placement and lookup tests it
+    inherits run again beside an empty `completed/tasks/`, where nothing they
+    assert may change."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.completed = self.project_dir / "completed" / "tasks"
+        self.completed.mkdir(parents=True)
+
+    def _moved(self, name: str, body: str = "# plan\n") -> Path:
+        task = self.completed / name
+        task.mkdir(parents=True, exist_ok=True)
+        (task / "plan.md").write_text(body, encoding="utf-8")
+        (task / "progress.md").write_text("log\n", encoding="utf-8")
+        return task
+
+    def test_a_moved_task_resolves_to_its_completed_paths_by_either_name(self) -> None:
+        task = self._moved("012-build-the-brief")
+        for name in ("012-build-the-brief", "build-the-brief"):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    hm.active_plan_paths(self.resolution, plan_arg=name),
+                    (task / "plan.md", task / "progress.md", task / "tracker.md"))
+                self.assertEqual(hm.task_paths(self.resolution, name),
+                                 (task / "plan.md", task / "progress.md", task / "tracker.md"))
+        self.assertEqual(sorted(p.name for p in self.tasks.iterdir()), [])
+
+    def test_a_new_plan_numbers_past_a_completed_task(self) -> None:
+        # dev-setup's case: both of its tasks closed and moved, and the next
+        # plan must not take `001` again.
+        self._moved("001-first")
+        self._moved("002-second")
+        active = hm.resolve_active_plan(self.resolution, plan_arg="third")
+        self.assertEqual(active.slug, "003-third")
+        self.assertEqual(Path(active[0]), self.tasks / "003-third" / "plan.md")
+
+    def test_the_highest_number_in_either_folder_wins(self) -> None:
+        self._task("004-open")
+        self._moved("009-closed")
+        self.assertEqual(hm.resolve_active_plan(self.resolution, plan_arg="next").slug,
+                         "010-next")
+
+    def test_a_name_sharing_a_completed_tasks_number_or_slug_is_refused(self) -> None:
+        self._moved("042-bar")
+        for name, why in (("042-baz", "its number"), ("999-bar", "its verb slug")):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(hm.ActivePlanError, why):
+                    hm.resolve_active_plan(self.resolution, plan_arg=name)
+
+    def test_a_verb_slug_open_in_one_folder_and_closed_in_the_other_is_ambiguous(self) -> None:
+        self._moved("012-build-the-brief")
+        self._task("043-build-the-brief")
+        with self.assertRaises(hm.ActivePlanError) as caught:
+            hm.resolve_active_plan(self.resolution, plan_arg="build-the-brief")
+        self.assertIn("012-build-the-brief", str(caught.exception))
+        self.assertIn("043-build-the-brief", str(caught.exception))
+
+    def test_the_listing_of_live_work_leaves_a_completed_task_out(self) -> None:
+        self._task("043-open")
+        self._moved("012-closed")
+        listed = [p.parent.name for p in hm.list_plan_files(self.project_dir)]
+        self.assertEqual(listed, ["043-open"])
+
+    def test_the_marker_binds_to_a_moved_task(self) -> None:
+        task = self._moved("012-build-the-brief")
+        (self.proj / ".harness" / "active-plan").write_text("012-build-the-brief\n",
+                                                            encoding="utf-8")
+        self.assertEqual(Path(hm.resolve_active_plan(self.resolution)[0]), task / "plan.md")
+
+    def test_the_compaction_marker_appends_to_a_moved_tasks_log(self) -> None:
+        task = self._moved("012-build-the-brief")
+        path = hm.append_progress(self.resolution, "more\n", plan_arg="build-the-brief")
+        self.assertEqual(path, task / "progress.md")
+        self.assertEqual((task / "progress.md").read_text(encoding="utf-8"), "log\nmore\n")
+        self.assertFalse((self.tasks / "012-build-the-brief").exists())
+
+    def test_the_cli_answers_the_completed_paths(self) -> None:
+        task = self._moved("012-build-the-brief")
+        rc, out, err = self._run("--plan", "build-the-brief", "--with-tracker")
+        self.assertEqual((rc, err), (0, ""))
+        self.assertEqual(out.strip().split("\t"),
+                         [str(task / "plan.md"), str(task / "progress.md"),
+                          str(task / "tracker.md")])
+
+
 if __name__ == "__main__":
     unittest.main()
