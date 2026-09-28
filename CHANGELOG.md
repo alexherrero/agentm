@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The agentm-vault design: a closed task moves to `completed/tasks/`, and
+  crystallize is switched on (task 177, step 2).** One amendment, body and
+  log together, on the operator's rulings of 2026-09-24 on the AgentKV layout
+  spec, sections 2 and 4. Fourteen days after a task's tracker reads `done` or
+  `dropped`, the night moves its whole folder, under its own name, to
+  `projects/<slug>/completed/tasks/`, journals the move and rewrites the links
+  into it; a folder whose rewrites would reach `personal/` or `standards/` is
+  held back and listed. Every reader that finds a task by name looks in both
+  folders, and reopening a task is a hand move back. This reverses the rule
+  that a task directory stays under `tasks/` for the life of the project.
+  Crystallize reads Outcomes from both folders, writes no per-task harvest
+  note, and is switched on after one run funded to finish, its weekly budget
+  provisional until the operator sets it from the average.
+
 ### Fixed
 
 - **Crystallize reads and writes under the vault's memory root (task 177,
