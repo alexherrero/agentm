@@ -1,0 +1,119 @@
+{
+ "moves": [
+  {
+   "from": "projects/agentm/tasks/042-build-it/plan.md",
+   "to": "projects/agentm/completed/tasks/042-build-it/plan.md"
+  },
+  {
+   "from": "projects/agentm/tasks/042-build-it/progress.md",
+   "to": "projects/agentm/completed/tasks/042-build-it/progress.md"
+  },
+  {
+   "from": "projects/agentm/tasks/042-build-it/tracker.md",
+   "to": "projects/agentm/completed/tasks/042-build-it/tracker.md"
+  },
+  {
+   "from": "projects/agentm/tasks/042-build-it/my notes.md",
+   "to": "projects/agentm/completed/tasks/042-build-it/my notes.md"
+  },
+  {
+   "from": "projects/agentm/tasks/042-build-it/diagram.png",
+   "to": "projects/agentm/completed/tasks/042-build-it/diagram.png"
+  }
+ ],
+ "exists": [
+  "ROADMAP.md",
+  "projects/ROADMAP.md",
+  "projects/agentm/charter.md",
+  "projects/agentm/docs/followups.md",
+  "projects/agentm/tasks/043-next/plan.md",
+  "agent/memory/semantic/a-card.md"
+ ],
+ "cases": [
+  {
+   "name": "a full-path wikilink with no alias takes the old target as its alias",
+   "src_old": "agent/memory/semantic/a-card.md",
+   "src_new": "agent/memory/semantic/a-card.md",
+   "text": "See [[projects/agentm/tasks/042-build-it/plan]] for the plan.\n",
+   "want": "See [[projects/agentm/completed/tasks/042-build-it/plan|projects/agentm/tasks/042-build-it/plan]] for the plan.\n"
+  },
+  {
+   "name": "an alias and an anchor are kept",
+   "src_old": "agent/memory/semantic/a-card.md",
+   "src_new": "agent/memory/semantic/a-card.md",
+   "text": "- [[projects/agentm/tasks/042-build-it/tracker#Outcome|042-build-it]]\n",
+   "want": "- [[projects/agentm/completed/tasks/042-build-it/tracker#Outcome|042-build-it]]\n"
+  },
+  {
+   "name": "a target written with its .md keeps it",
+   "src_old": "agent/memory/semantic/a-card.md",
+   "src_new": "agent/memory/semantic/a-card.md",
+   "text": "[[projects/agentm/tasks/042-build-it/plan.md]] and ![[projects/agentm/tasks/042-build-it/diagram.png]]\n",
+   "want": "[[projects/agentm/completed/tasks/042-build-it/plan.md|projects/agentm/tasks/042-build-it/plan.md]] and ![[projects/agentm/completed/tasks/042-build-it/diagram.png|projects/agentm/tasks/042-build-it/diagram.png]]\n"
+  },
+  {
+   "name": "a trailing part of the path matches, in any case",
+   "src_old": "projects/agentm/charter.md",
+   "src_new": "projects/agentm/charter.md",
+   "text": "[[agentm/tasks/042-build-it/plan|the plan]] and [[projects/Agentm/Tasks/042-Build-It/Tracker]]\n",
+   "want": "[[projects/agentm/completed/tasks/042-build-it/plan|the plan]] and [[projects/agentm/completed/tasks/042-build-it/tracker|projects/Agentm/Tasks/042-Build-It/Tracker]]\n"
+  },
+  {
+   "name": "basename links and backticked paths are left alone",
+   "src_old": "projects/agentm/charter.md",
+   "src_new": "projects/agentm/charter.md",
+   "text": "[[plan]] · [[tracker|the tracker]] · `projects/agentm/tasks/042-build-it/plan.md` · [[projects/agentm/tasks/042-build-it]]\n",
+   "want": "[[plan]] · [[tracker|the tracker]] · `projects/agentm/tasks/042-build-it/plan.md` · [[projects/agentm/tasks/042-build-it]]\n"
+  },
+  {
+   "name": "the one relative link in",
+   "src_old": "projects/agentm/docs/followups.md",
+   "src_new": "projects/agentm/docs/followups.md",
+   "text": "From [the plan](../tasks/042-build-it/plan.md#Steps \"Plan\").\n",
+   "want": "From [the plan](../completed/tasks/042-build-it/plan.md#Steps \"Plan\").\n"
+  },
+  {
+   "name": "a vault-rooted link, an encoded space and an angle-bracketed one",
+   "src_old": "projects/agentm/docs/followups.md",
+   "src_new": "projects/agentm/docs/followups.md",
+   "text": "[a](/projects/agentm/tasks/042-build-it/plan.md) [b](../tasks/042-build-it/my%20notes.md) [c](<../tasks/042-build-it/my notes.md>)\n",
+   "want": "[a](/projects/agentm/completed/tasks/042-build-it/plan.md) [b](../completed/tasks/042-build-it/my%20notes.md) [c](<../completed/tasks/042-build-it/my notes.md>)\n"
+  },
+  {
+   "name": "a moved plan's own relative links out go one level deeper",
+   "src_old": "projects/agentm/tasks/042-build-it/plan.md",
+   "src_new": "projects/agentm/completed/tasks/042-build-it/plan.md",
+   "text": "[roadmap](../../../ROADMAP.md) · [charter](../../charter.md) · [next](../043-next/plan.md) · [tracker](tracker.md) · [gone](../../missing.md)\n",
+   "want": "[roadmap](../../../../ROADMAP.md) · [charter](../../../charter.md) · [next](../../../tasks/043-next/plan.md) · [tracker](tracker.md) · [gone](../../missing.md)\n"
+  },
+  {
+   "name": "schemes, bare anchors and links to files that did not move are left alone",
+   "src_old": "projects/agentm/docs/followups.md",
+   "src_new": "projects/agentm/docs/followups.md",
+   "text": "[w](https://example.com/tasks/042-build-it/plan.md) [a](#Steps) [c](../charter.md) [m](mailto:x@example.com)\n",
+   "want": "[w](https://example.com/tasks/042-build-it/plan.md) [a](#Steps) [c](../charter.md) [m](mailto:x@example.com)\n"
+  },
+  {
+   "name": "an empty fragment and a link with no extension",
+   "src_old": "projects/agentm/docs/followups.md",
+   "src_new": "projects/agentm/docs/followups.md",
+   "text": "[p](../tasks/042-build-it/plan.md#) [q](../tasks/042-build-it/plan)\n"
+  },
+  {
+   "name": "a basename link follows a rename",
+   "src_old": "projects/agentm/charter.md",
+   "src_new": "projects/agentm/charter.md",
+   "renamed": {
+    "old-name": "projects/agentm/tasks/042-build-it/plan.md"
+   },
+   "text": "[[old-name]] and [[Old-Name.md#Top|here]]\n"
+  },
+  {
+   "name": "a title after a no-break space or a vertical tab, as Python reads \\s",
+   "src_old": "projects/agentm/docs/followups.md",
+   "src_new": "projects/agentm/docs/followups.md",
+   "text": "[a](../tasks/042-build-it/plan.md \"Plan\") [b](../tasks/042-build-it/plan.md\u000b\"Plan\")\n",
+   "want": "[a](../completed/tasks/042-build-it/plan.md \"Plan\") [b](../completed/tasks/042-build-it/plan.md\u000b\"Plan\")\n"
+  }
+ ]
+}
