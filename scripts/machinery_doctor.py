@@ -303,6 +303,12 @@ def check_runner_job(repo: Path, job_name: str, *, state_root: Optional[Path] = 
             f"(`agentm-runner.sh resume {job_name}`)",
             last_fired=last_run,
         )
+    # `enabled: false` is the runner's own off switch: registered and
+    # deliberately not run. It reads as a decision rather than a job that has
+    # not fired yet; the only other way to turn a job off, leaving it
+    # unregistered, reads as a template nobody has set up.
+    if not job.enabled:
+        return Check(job_name, "OK", "registered and switched off (enabled: false)", last_fired=last_run)
     if last_run is None:
         return Check(job_name, "WARN", f"registered ({mode}) but has never fired on this machine", last_fired=None)
     return Check(job_name, "OK", f"registered ({mode}), last fired", last_fired=last_run)
