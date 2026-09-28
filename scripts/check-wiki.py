@@ -43,6 +43,10 @@ Rules (hard = blocking under --strict; soft = always warn-only):
       (a fact-dump; fenced diagrams / code don't count) or a reference is mostly
       prose. The combined plugin-reference hybrid
       (## Architecture + ## Reference) is exempt.                       [soft]
+  (r) Every relative image a page embeds (`![alt](path)`) resolves to an
+      existing file, relative to the page. The publish step rewrites each one
+      to a raw asset URL, so a broken path here is a broken image on the wiki.
+      Code spans and fences are exempt.                                 [hard]
 
 Usage:
   python3 scripts/check-wiki.py               # warn, exit 0
@@ -363,6 +367,37 @@ def rule_h_links_resolve(p: Path, text: str, known_stems: set[str],
                  f"wiki-internal link to `{page}` does not resolve to a known page")
 
 
+IMAGE_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)")
+_INLINE_CODE_RE = re.compile(r"`+[^`]*`+")
+
+
+def extract_image_refs(text: str) -> list[tuple[int, str]]:
+    """Yield (lineno, path) for every relative image a page embeds. External
+    URLs are skipped, and so are code spans and fences, where an image is
+    illustrative markup rather than something the page shows."""
+    out: list[tuple[int, str]] = []
+    in_fence = False
+    for line_no, raw in enumerate(text.splitlines(), start=1):
+        if FENCE_RE.match(raw):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        prose = _INLINE_CODE_RE.sub("", raw)
+        for m in IMAGE_RE.finditer(prose):
+            ref = m.group(1).split("#", 1)[0]
+            if ref and not ref.startswith(("http://", "https://", "data:", "/")):
+                out.append((line_no, ref))
+    return out
+
+
+def rule_r_images_resolve(p: Path, text: str, issues: list[Issue]) -> None:
+    for line_no, ref in extract_image_refs(text):
+        if not (p.parent / ref).is_file():
+            emit(issues, p, line_no, "r",
+                 f"image `{ref}` does not resolve to a file relative to this page")
+
+
 def rule_i_orphan(modes: dict[Path, str | None],
                   link_graph: dict[str, set[str]],
                   stem_to_mode: dict[str, str],
@@ -571,6 +606,7 @@ def collect_issues(wiki_root: Path) -> list[Issue]:
         rule_a_location(p, wiki_root, issues)
         rule_g_filename(p, issues)
         rule_h_links_resolve(p, text, known_stems, issues)
+        rule_r_images_resolve(p, text, issues)
 
         if not is_structural(p):
             rule_b_mode_block(p, mode, lines, issues)

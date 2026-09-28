@@ -78,5 +78,40 @@ class TestJsonlOut(unittest.TestCase):
             self.assertEqual(rc, 0)  # no --jsonl-out, no file, no crash
 
 
+class TestRuleRImagesResolve(unittest.TestCase):
+    """An image path is resolved relative to the page, the way the publish
+    step resolves it. crickets shipped seventeen broken diagrams for months
+    after ten pages moved sections and their images stayed behind; the rule
+    is the same in both repos."""
+
+    def _issues(self, page_rel: str, text: str, files: tuple = ()):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for f in files:
+                (root / f).parent.mkdir(parents=True, exist_ok=True)
+                (root / f).write_text("<svg/>", encoding="utf-8")
+            page = root / page_rel
+            page.parent.mkdir(parents=True, exist_ok=True)
+            issues = []
+            cw.rule_r_images_resolve(page, text, issues)
+            return issues
+
+    def test_an_image_the_page_moved_away_from_fires(self):
+        issues = self._issues("explanation/Page.md", "![flow](diagrams/flow.svg)\n",
+                              files=("reference/diagrams/flow.svg",))
+        self.assertEqual([i.rule for i in issues], ["r"])
+
+    def test_a_path_that_resolves_from_the_page_passes(self):
+        issues = self._issues("explanation/Page.md", "![flow](../reference/diagrams/flow.svg)\n",
+                              files=("reference/diagrams/flow.svg",))
+        self.assertEqual(issues, [])
+
+    def test_external_images_code_spans_and_fences_are_exempt(self):
+        text = ("![badge](https://img.shields.io/x.svg)\n"
+                "`![not an image](missing.svg)`\n"
+                "```\n![example](also-missing.svg)\n```\n")
+        self.assertEqual(self._issues("explanation/Page.md", text), [])
+
+
 if __name__ == "__main__":
     unittest.main()
