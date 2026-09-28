@@ -63,8 +63,9 @@ Public surface:
         One raw item a fetcher returned for a source, pre-scoring.
 
     load_sources(vault_path) -> list[Source]
-        Reads the operator's sources config
-        (`_meta/forward-learning-sources.json`). Missing file -> `[]`
+        Reads the operator's sources config, `forward-learning-sources.json`
+        in agentm's project desk (`projects/agentm/desk/`; a vault that still
+        keeps it in `standards/` is read from there). Missing file -> `[]`
         (opt-in: no config means no sources means no scan).
 
     run_forward_learning(vault_path, *, fetcher=None, now=None) -> ScanResult

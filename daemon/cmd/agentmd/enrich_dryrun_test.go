@@ -121,14 +121,18 @@ func TestTheDryRunCountsCardsAndRecordsApartAndSizesWhatTheCursorWouldServe(t *t
 	// Stamped by this pass, so it is owed the light pass while everything else is
 	// owed the deep one: a count that took the cards for the records, or the
 	// records for the cards, would report a different split.
-	stamped := fmt.Sprintf("---\ntype: reference\nenriched_at: 2026-09-01T00:00:00Z\n"+
+	stamped := fmt.Sprintf("---\ntype: reference\ncreated: 2026-08-04\nenriched_at: 2026-09-01T00:00:00Z\n"+
 		"enriched_by: %s\n---\n\nArchived notes stay walled.\n", enrich.PassVersion)
+	// Each note carries its own `created:`, in the order the queue should serve
+	// it. Without one the queue's oldest-first order fell back to the file's
+	// mtime, and a map literal writes in random order: two records written in
+	// different seconds swapped places now and then (GH #708).
 	notes := map[string]string{
-		firstCard: "---\ntype: reference\nstatus: unfiled\n---\n\nDrive corrupts git.\n",
-		lastCard:  "---\ntype: reference\nstatus: unfiled\n---\n\nThe daemon runs the source clone.\n",
-		charter:   "---\nkind: charter\n---\n\n# agentm\n\nWhat it is.\n",
+		firstCard: "---\ntype: reference\nstatus: unfiled\ncreated: 2026-08-01\n---\n\nDrive corrupts git.\n",
+		lastCard:  "---\ntype: reference\nstatus: unfiled\ncreated: 2026-08-02\n---\n\nThe daemon runs the source clone.\n",
+		charter:   "---\nkind: charter\ncreated: 2026-08-03\n---\n\n# agentm\n\nWhat it is.\n",
 		decision:  stamped,
-		research:  "---\ntype: reference\n---\n\nWhat the sources said.\n",
+		research:  "---\ntype: reference\ncreated: 2026-08-05\n---\n\nWhat the sources said.\n",
 		// A session's files, which are in the projects space and in neither count.
 		"projects/agentm/tracker.md":          "---\nkind: tracker\n---\n\n## State\n\nBuilding.\n",
 		"projects/agentm/tasks/t/plan.md":     "# Build it\n\n- [ ] the first step\n",
