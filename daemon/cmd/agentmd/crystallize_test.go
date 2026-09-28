@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,7 +50,7 @@ func TestTheRunRecordNamesTheJobAndCarriesItsSpend(t *testing.T) {
 		Tier: string(tiers.Strong), ModelCalls: 2, Tokens: 48000, TotalCostUSD: 1.40,
 		ByJob: map[string]enrich.Usage{"crystallize": {
 			InputTokens: 40000, OutputTokens: 8000, CostUSD: 1.40, Calls: 2}},
-		Lessons: []crystallize.Written{{Rel: "memory/crystallized/a.md", Subject: "a"}},
+		Lessons: []crystallize.Written{{Rel: "agent/memory/crystallized/a.md", Subject: "a"}},
 	}
 	if err := appendCrystallizeRun(cfg, rec); err != nil {
 		t.Fatal(err)
@@ -106,5 +107,48 @@ func TestThePhaseRefusesWhileItsSwitchIsOff(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not mention %s: %v", want, err)
 		}
+	}
+}
+
+func TestThePhaseReadsTheMemoryRootFromTheVaultNotTheWorkingDirectory(t *testing.T) {
+	// The config carries the memory root vault-relative. Handed that bare name,
+	// the phase read `./agent/memory/...` from wherever the job started: it
+	// found no cards, saw none of its own lessons, and would have written the
+	// next one outside the vault.
+	dir := t.TempDir()
+	vault := filepath.Join(dir, "vault")
+	root := filepath.Join(vault, "agent")
+	cfg := &config.Config{VaultPath: vault, MemoryRoot: "agent"}
+	if got := crystallizeMemoryRoot(cfg); got != root {
+		t.Fatalf("the memory root is %q, want %q", got, root)
+	}
+
+	// And end to end: three cards over the bar, a run started somewhere else.
+	for i, d := range []string{"2026-08-01", "2026-08-20", "2026-09-10"} {
+		p := filepath.Join(root, "memory", "semantic", fmt.Sprintf("c%d.md", i))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "---\ntitle: c\nstatus: active\ncreated: " + d + "\nupdated: " + d +
+			"\nsource_session: s" + fmt.Sprint(i) + "\ntags: [git-worktree]\n---\n\n" +
+			"What happened with `git worktree`.\n"
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", dir)
+	t.Setenv("MEMORY_ROOT", root)
+	t.Chdir(t.TempDir())
+	out := captureStdout(t, func() error {
+		return cmdCrystallize([]string{"--dry-run", "--json"})
+	})
+	var rec crystallizeRun
+	if err := json.Unmarshal([]byte(out), &rec); err != nil {
+		t.Fatalf("the dry run did not answer JSON: %v\n%s", err, out)
+	}
+	if rec.Sources < 3 || rec.Clusters < 1 {
+		t.Errorf("the dry run read %d source(s) in %d recurrence(s); the three "+
+			"cards under the vault's memory root were not found:\n%s",
+			rec.Sources, rec.Clusters, out)
 	}
 }

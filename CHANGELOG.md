@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Crystallize reads and writes under the vault's memory root (task 177,
+  step 1).** `agentmd crystallize` handed the phase the memory root as the
+  config carries it, vault-relative (`agent`), so the phase resolved it
+  against whatever directory the job started in. It found no cards and no
+  trace candidates, saw none of the lessons it had already written, and would
+  have written its next lesson outside the vault. It now joins the root onto
+  the vault path, the way the night and the door do. A lesson is written with
+  `kind: crystallized`, the record kind the contract names for the folder,
+  and no longer with the retired `type: insight`; the run record names it from
+  the vault root (`agent/memory/crystallized/<subject>.md`), the same base
+  its `consolidated_from` links use.
+
 ## [10.1.0] - 2026-09-26
 
 Plan A of the AgentKV layout convergence: the home vault takes the layout half of the operator's 2026-09-24 rulings on the work vault's layout spec. Two shared spaces join the vault. `resources/` is the reference library: agentm's 233 reference cards, the forward-learning watchlist and a university shelf, with only the watchlist dampened in recall. `systems/` describes the systems the operator runs: the homelab in full, and a one-page front door each for agentm and crickets. Every project opens on the same five root files, `project.yaml`, `charter.md`, `blueprint.md`, `tracker.md` and `moc-<slug>.md`, and the door answers any other new root file with a question. A new gate holds every `project.yaml` to one schema. The night now writes each project's tracker from its task trackers, and a one-time tidy cleared the finished movie cleanup batches and the board ledger's old backups. Every move ran readers first, under quiesce, with its links rewritten; a vault-wide link audit reads no new broken link. Paired with crickets [v5.0.1](https://github.com/alexherrero/crickets/releases/tag/v5.0.1), whose research and wiki plugins follow the watchlist to its new home.
