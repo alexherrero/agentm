@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`check-wiki` rule (r): every image a page embeds resolves to a file,**
+  relative to the page, the way the publish step resolves it. Hard under
+  `--strict`; external images, code spans and fences are exempt. crickets
+  published seventeen broken diagrams for months after ten explanation pages
+  moved sections and left their images behind, with every gate green; the
+  rule lands in both repos' copies of the gate, which the cross-repo parity
+  check keeps in step. agentm's wiki passes it: all eighteen images resolve.
+
 ### Changed
 
 - **The agentm-vault design: a closed task moves to `completed/tasks/`, and
