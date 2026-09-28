@@ -56,6 +56,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *Closed*, linked at their new paths. Nothing has moved yet, so the first
   night after this lands plans no change to any tracker or map.
 
+### Internal
+
+- **A Go link rewriter for moved paths (task 177, step 5).** The new
+  `daemon/internal/linkrewrite` package ports `rewrite_text` from
+  `scripts/migrate/agentkv_layout.py`, so the night's task mover rewrites a
+  link the way the hand-run AgentKV moves did. A path wikilink into a moved
+  file, full or a trailing part of the path, keeps its anchor and alias or
+  takes the old target as its alias; a markdown link into a moved file,
+  relative or rooted at the vault, is recomputed; and a moved note's own
+  relative links out are recomputed from its new folder. Basename wikilinks
+  and backticked paths are left alone. A parity test runs the Python function
+  over the same fixtures and fails on any disagreement.
+
 ### Fixed
 
 - **Crystallize reads and writes under the vault's memory root (task 177,
