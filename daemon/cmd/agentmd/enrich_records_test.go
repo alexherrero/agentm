@@ -158,6 +158,76 @@ func TestTheQueueServesTheInboxFirstAndEachTierOldestFirst(t *testing.T) {
 	}
 }
 
+func TestTheQueueServesNotesAwaitingTheirFirstJudgmentAheadOfReJudgements(t *testing.T) {
+	// The queue-age alert counts the notes no enrichment has judged. Served
+	// oldest first inside the cards' tier, a capture from this week waited
+	// behind every judged card a pass-version bump made owed again, and the
+	// alert stayed red while the budget re-judged filed cards. The awaiting
+	// tier — the alert's own population — comes right after the inbox.
+	vault := t.TempDir()
+	cfg := configOverRules(t, vault, "reference")
+	cfg.MemoryRoot = "agent"
+
+	note := func(status, created, extra string) string {
+		return "---\ntype: reference\nstatus: " + status + "\ncreated: " + created +
+			"\n" + extra + "---\n\nA thought.\n"
+	}
+	notes := map[string]string{
+		"agent/inbox/dropped.md": note("inbox", "2026-09-20", ""),
+		// Judged and filed long ago: owed the pass again, but not waiting.
+		"agent/memory/semantic/filed-long-ago.md": note("active", "2026-01-01", "confidence: 0.9\n"),
+		// Judged and left below the floor: listed for the operator, not waiting.
+		"agent/memory/semantic/below-the-floor.md": note("unfiled", "2026-02-01", "confidence: 0.2\n"),
+		// Never judged: the newest cards, which oldest-first alone served last.
+		"agent/memory/semantic/captured-this-week.md": note("unfiled", "2026-09-26", ""),
+		"agent/memory/semantic/captured-last-week.md": note("unfiled", "2026-09-17", ""),
+		// A record never judged joins the awaiting tier; a judged one stays last.
+		"projects/agentm/decisions/waiting.md": "---\nkind: decision\nstatus: unfiled\ncreated: 2026-09-21\n---\n\nPending.\n",
+		"projects/agentm/decisions/settled.md": "---\nkind: decision\ncreated: 2020-01-01\n---\n\nSettled.\n",
+	}
+	x, err := index.Open(filepath.Join(t.TempDir(), "index.db"), vault, "agent", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer x.Close()
+	for rel, body := range notes {
+		putNote(t, x, vault, rel, body)
+	}
+
+	got, err := enrichServeOrder(cfg, x, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"agent/inbox/dropped.md",
+		"agent/memory/semantic/captured-last-week.md",
+		"projects/agentm/decisions/waiting.md",
+		"agent/memory/semantic/captured-this-week.md",
+		"agent/memory/semantic/filed-long-ago.md",
+		"agent/memory/semantic/below-the-floor.md",
+		"projects/agentm/decisions/settled.md",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("serve order\n got %v\nwant %v", got, want)
+	}
+
+	// The card population leaves the records out of both tiers.
+	cards, err := enrichServeOrder(cfg, x, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCards := []string{
+		"agent/inbox/dropped.md",
+		"agent/memory/semantic/captured-last-week.md",
+		"agent/memory/semantic/captured-this-week.md",
+		"agent/memory/semantic/filed-long-ago.md",
+		"agent/memory/semantic/below-the-floor.md",
+	}
+	if !reflect.DeepEqual(cards, wantCards) {
+		t.Errorf("card population\n got %v\nwant %v", cards, wantCards)
+	}
+}
+
 func TestAProjectCardsNeighboursLeadWithItsProjectsRecords(t *testing.T) {
 	vault := t.TempDir()
 	cfg := configOverRules(t, vault, "preference", "workflow")

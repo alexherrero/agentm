@@ -26,13 +26,18 @@ func TestTheQueueOffersIdeaCardsAsCardsAndNothingElseInPersonal(t *testing.T) {
 	card := func(created string) string {
 		return "---\ntype: reference\nstatus: unfiled\ncreated: " + created + "\n---\n\nA thought.\n"
 	}
+	// Judged cards, so they stay in the cards' tier: a card awaiting its first
+	// judgment is served ahead of the whole tier, ideas included.
+	judged := func(created string) string {
+		return "---\ntype: reference\nstatus: active\nconfidence: 0.8\ncreated: " + created + "\n---\n\nA thought.\n"
+	}
 	idea := func(created string) string {
 		return "---\ntype: idea\narea: coding\nstatus: active\ncreated: " + created + "\n---\n\nAn idea.\n"
 	}
 	notes := map[string]string{
 		"agent/inbox/dropped.md":                 card("2026-09-19"),
-		"agent/memory/semantic/newer-card.md":    card("2026-09-15"),
-		"agent/memory/semantic/older-card.md":    card("2026-05-01"),
+		"agent/memory/semantic/newer-card.md":    judged("2026-09-15"),
+		"agent/memory/semantic/older-card.md":    judged("2026-05-01"),
 		"personal/ideas/port-simcity-1989.md":    idea("2026-05-20"),
 		"personal/ideas/doom-llm-npcs.md":        idea("2026-06-07"),
 		"projects/agentm/decisions/keep-wall.md": "---\nkind: decision\ncreated: 2020-01-01\n---\n\nSettled.\n",

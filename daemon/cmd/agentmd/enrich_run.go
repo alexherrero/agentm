@@ -401,8 +401,19 @@ func orderByAge(paths []string, ages map[string]string) []string {
 }
 
 // enrichServeOrder is the night's queue, in the order it is served: the inbox
-// first, then the cards in the contract's class directories, then the project
-// records — and each tier oldest first.
+// first, then every card or record awaiting its first judgment, then the rest
+// of the cards in the contract's class directories, then the rest of the
+// project records — and each tier oldest first.
+//
+// **Never judged, ahead of judged again.** A pass-version bump makes every
+// judged card owed the pass again, and each night stops at the strong tier's
+// token line after about 48 judgments. Served oldest first inside the cards'
+// tier, a note captured this week sat behind hundreds of re-judgements, and
+// the queue-age alert, which counts only notes no enrichment has judged, stayed
+// red while the budget went to cards that had already been filed once: on
+// 2026-09-27 nine captures from 2026-09-17 on waited behind 496 notes owed a
+// pass. The awaiting tier is the alert's own population (index.AwaitingJudgment),
+// so the notes it watches age are the ones the night reaches first.
 //
 // **Tiers, where there were none.** The queue used to be the cards in path
 // order followed by the records in path order, which meant a card's position
@@ -443,15 +454,37 @@ func enrichServeOrder(cfg *config.Config, idx *index.Index, records bool) ([]str
 		return nil, err
 	}
 	cards = append(cards, ideas...)
-	out := append(orderByAge(inbox, ages), orderByAge(cards, ages)...)
-	if !records {
-		return out, nil
-	}
-	recs, err := enrichRecordQueue(idx)
+	awaiting, err := idx.AwaitingJudgment()
 	if err != nil {
 		return nil, err
 	}
+	first, cards := splitAwaiting(cards, awaiting)
+	var recs []string
+	if records {
+		if recs, err = enrichRecordQueue(idx); err != nil {
+			return nil, err
+		}
+		var recFirst []string
+		recFirst, recs = splitAwaiting(recs, awaiting)
+		first = append(first, recFirst...)
+	}
+	out := orderByAge(inbox, ages)
+	out = append(out, orderByAge(first, ages)...)
+	out = append(out, orderByAge(cards, ages)...)
 	return append(out, orderByAge(recs, ages)...), nil
+}
+
+// splitAwaiting takes the notes awaiting their first judgment out of one tier,
+// keeping the rest in the order they came.
+func splitAwaiting(paths []string, awaiting map[string]bool) (first, rest []string) {
+	for _, p := range paths {
+		if awaiting[p] {
+			first = append(first, p)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	return first, rest
 }
 
 // queueStart is the position a cursor resumes at: the one after the cursor's
