@@ -373,6 +373,38 @@ class TestMainCLI(unittest.TestCase):
             Path(path).unlink()
 
 
+class TheOnlineRecallSectionReadsTheProjectsLabellingFolder(unittest.TestCase):
+    # The panel moved into projects/agentm/labelling/ with the projects merge.
+    # Read from the memory root's old `desk/labelling/`, the section found no
+    # panel and rendered nothing — silence that reads as "no run recorded".
+    def test_the_panel_is_read_from_projects_agentm_labelling(self):
+        import tempfile
+        import online_recall_row
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lab = Path(tmp) / "projects" / "agentm" / "labelling"
+            lab.mkdir(parents=True)
+            (lab / "recall-sufficiency-v1-panel.json").write_text("{}", encoding="utf-8")
+            seen = {}
+
+            def compute(panel_path, **kw):
+                seen["panel"], seen["reasons"] = panel_path, kw.get("reasons_path")
+                return {"state": "ABSENT", "note": "stub"}
+
+            saved = (health_score._default_vault_path_fn, online_recall_row.compute, online_recall_row.render)
+            health_score._default_vault_path_fn = lambda: tmp
+            online_recall_row.compute = compute
+            online_recall_row.render = lambda section: ["rendered"]
+            try:
+                lines = health_score.online_recall_section()
+            finally:
+                (health_score._default_vault_path_fn, online_recall_row.compute,
+                 online_recall_row.render) = saved
+        self.assertEqual(lines, ["", "rendered"])
+        self.assertEqual(seen["panel"], lab / "recall-sufficiency-v1-panel.json")
+        self.assertEqual(seen["reasons"], lab / "recall-sufficiency-v1-reasons.json")
+
+
 # Engine state left the vault (filing-v2 part 2a), so a suite that touches it
 # and does not say where writes into the developer's own directory and reads
 # what the last run left there.

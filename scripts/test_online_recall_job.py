@@ -105,6 +105,16 @@ class TheAccumulation(unittest.TestCase):
         got = job.run(self.vault, cap=10.0)
         self.assertEqual(got["judged_tonight"], 2)
 
+    def test_the_pool_lands_in_the_agentm_projects_labelling_folder(self):
+        # The labelling artifacts moved into projects/agentm/labelling/ with the
+        # projects merge; the old spelling re-created `desk/` at the vault root,
+        # outside every space the vault declares.
+        self._serve(turns(1))
+        job.run(self.vault, cap=10.0)
+        self.assertTrue((self.vault / "projects" / "agentm" / "labelling"
+                         / "online-recall-pool.json").is_file())
+        self.assertFalse((self.vault / "desk").exists())
+
     def test_every_run_is_recorded_even_an_empty_one(self):
         # A job that stopped running should be visible as a gap in the log,
         # not as silence.

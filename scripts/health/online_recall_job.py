@@ -41,6 +41,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import build_label_worksheet as bw  # noqa: E402
+import online_recall_row  # noqa: E402
 import recall_traffic  # noqa: E402
 import sufficient_context as sc  # noqa: E402
 
@@ -49,7 +50,7 @@ POOL_NAME = "online-recall-pool.json"
 
 
 def pool_path(vault: pathlib.Path) -> pathlib.Path:
-    return vault / "desk" / "labelling" / POOL_NAME
+    return online_recall_row.labelling_dir(vault) / POOL_NAME
 
 
 def load_pool(path: pathlib.Path) -> dict:
