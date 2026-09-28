@@ -109,6 +109,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- **Two tests stop depending on luck and on the live vault, and two stale
+  paths are corrected.** The enrichment dry-run test wrote its fixture notes
+  from a map literal with no `created:` dates, so the queue's oldest-first
+  order fell back to mtimes and two records swapped whenever the writes
+  straddled a second (GH #708); each note now carries its own date. The
+  board-sync integration test read this checkout's real `project.json`, whose
+  `items_source` is the live ledger, so a malformed ledger row failed the unit
+  suite (GH #709); it now runs against a copy pointed at a one-row fixture
+  ledger. `forward_learning.py`'s docstring named the sources list at
+  `_meta/`, and the experience-and-dreaming design named the watermark cache
+  there; both now say where they live (GH #711).
+
 - **A Go link rewriter for moved paths (task 177, step 5).** The new
   `daemon/internal/linkrewrite` package ports `rewrite_text` from
   `scripts/migrate/agentkv_layout.py`, so the night's task mover rewrites a

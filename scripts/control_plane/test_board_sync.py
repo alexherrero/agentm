@@ -3,6 +3,7 @@
 task 3)."""
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -290,14 +291,37 @@ class PostDispatchProgressTierTests(unittest.TestCase):
 
 class RealDryRunAgainstAgentmProjectJsonTests(unittest.TestCase):
     """Integration-style: a real (--dry-run, no actual GitHub write) call
-    against this repo's own real .harness/project.json + real gh CLI."""
+    through the real project_sync.py and gh CLI, with this repo's real board
+    settings but a fixture ledger.
+
+    The real project.json names the machine's live board-items.json as its
+    `items_source`, so reading it made the unit suite depend on the live
+    ledger: a malformed row there failed a test that has nothing to do with it
+    (GH #709). The copy keeps every board setting and points `items_source` at
+    a one-row ledger in a temp dir."""
 
     @classmethod
     def setUpClass(cls):
         if not _REAL_PROJECT_JSON.is_file():
             raise unittest.SkipTest("no real .harness/project.json in this checkout")
-        if not bs.board_sync_available(config_path=_REAL_PROJECT_JSON):
+        cls._tmp = tempfile.TemporaryDirectory()
+        root = Path(cls._tmp.name)
+        ledger = root / "board-items.json"
+        ledger.write_text(json.dumps({"items": [
+            {"id": "fixture-item", "type": "backlog-item", "title": "A fixture row",
+             "status": "Todo", "fields": {"what": "Stands in for the live ledger."}},
+        ]}), encoding="utf-8")
+        config = json.loads(_REAL_PROJECT_JSON.read_text(encoding="utf-8"))
+        config["items_source"] = str(ledger)
+        cls.config = root / "project.json"
+        cls.config.write_text(json.dumps(config), encoding="utf-8")
+        if not bs.board_sync_available(config_path=cls.config):
+            cls._tmp.cleanup()
             raise unittest.SkipTest("board-sync preconditions (gh / project_sync.py) unavailable")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
 
     def test_real_dry_run_post_reaches_the_real_script(self):
         # Proves the wiring (subprocess invocation, argv shape, --dry-run
@@ -308,7 +332,7 @@ class RealDryRunAgainstAgentmProjectJsonTests(unittest.TestCase):
         # well-formed answer back, never a crash or a silent no-op.
         result = bs.post_dispatch_progress(
             "no-such-fleet-item-xyz", summary="board-sync dogfood (dry-run, no real write)",
-            config_path=_REAL_PROJECT_JSON, dry_run=True,
+            config_path=self.config, dry_run=True,
         )
         self.assertIsNotNone(result["returncode"])
         self.assertIn("no item with id", result["stderr"])
