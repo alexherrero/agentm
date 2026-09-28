@@ -247,3 +247,24 @@ func TestWithNoExemptSpacesAnyMemorySpaceLoads(t *testing.T) {
 		t.Errorf("a memory space no contract forbids was refused: %v", err)
 	}
 }
+
+// The closed-task mover ships reporting (task 177): off unless the operator
+// sets the switch, and on when they do.
+func TestTheTaskMoverIsOffUntilItsSwitchIsSet(t *testing.T) {
+	vault := vaultWithContract(t, "personal")
+	cfg, err := loadWith(t, vault, map[string]any{"plugins.obsidian-vault.memory_root": "agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TaskMoverEnabled {
+		t.Error("the task mover is on with no switch set")
+	}
+	cfg, err = loadWith(t, vault, map[string]any{"plugins.obsidian-vault.memory_root": "agent",
+		"daemon.task_mover_enabled": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.TaskMoverEnabled {
+		t.Error("daemon.task_mover_enabled: true did not turn the mover on")
+	}
+}

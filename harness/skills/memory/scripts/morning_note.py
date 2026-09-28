@@ -511,7 +511,27 @@ def _binary_rows(rep: dict) -> list:
         f"| calendar | {calendar} |",
         f"| mocs | {changed} regenerated of {n('pages', mocs)} pages |",
         f"| dates | {n('glossed', dates)} glosses across {dates.get('aging', 0)} aging notes |",
-    ]
+    ] + _tasks_row(rep)
+
+
+def _tasks_verb(tasks: dict) -> str:
+    return "moved" if tasks.get("mode") == "apply" else "would move"
+
+
+def _tasks_row(rep: dict) -> list:
+    """The task mover's row (task 177), when the pass carried one. Closed tasks
+    move to `completed/tasks/` two weeks after they close; until the operator
+    switches the mover on, the pass says what it would have moved."""
+    tasks = rep.get("tasks")
+    if not isinstance(tasks, dict):
+        return []
+    return [f"| tasks | {_tasks_verb(tasks)} {len(tasks.get('folders') or [])} closed task "
+            f"folder(s), {tasks.get('links', 0)} link(s) rewritten, held "
+            f"{len(tasks.get('held') or [])}, waiting on the cap {tasks.get('capped', 0)} |"]
+
+
+def _task_folder(f: dict) -> str:
+    return f"`{f.get('project', '?')}/{f.get('task', '?')}` ({f.get('status', '?')} {f.get('closed', '?')})"
 
 
 def _python_line(cycle: dict) -> str:
@@ -536,6 +556,11 @@ def what_ran(night: Night) -> list:
         lines.append(f"- **The dreaming binary** — {rep.get('mode', '?')} pass, outcome "
                      f"{rep.get('outcome', '?')}; gate: {decision.get('reason', '?')}.")
         lines += [""] + _binary_rows(rep) + [""]
+        tasks = rep.get("tasks") if isinstance(rep.get("tasks"), dict) else {}
+        folders = tasks.get("folders") or []
+        if folders:
+            lines.append(f"- **Closed tasks the night {_tasks_verb(tasks)} to `completed/tasks/`** "
+                         f"({len(folders)}): " + _first(folders, _task_folder))
     elif night.ran.get("dreaming") and night.binary:
         lines.append(f"- **The dreaming binary** — ran, and its gate held; the last pass was "
                      f"{_age(night.now - night.binary['_mtime'])} ({night.binary.get('outcome', '?')}).")
@@ -550,6 +575,18 @@ def what_ran(night: Night) -> list:
 
 def needs_you(night: Night) -> list:
     lines = []
+    tasks = (night.binary or {}).get("tasks") if night.binary_tonight else None
+    held = (tasks or {}).get("held") or [] if isinstance(tasks, dict) else []
+    if held:
+        lines.append(f"- **Closed tasks held back** ({len(held)}): " + _first(
+            held, lambda h: f"`{h.get('from', '?')}` — {h.get('reason', 'no reason recorded')}"))
+    stopped = (tasks or {}).get("stopped") or [] if isinstance(tasks, dict) else []
+    if stopped:
+        lines.append(f"- **Closed tasks the night began and did not finish** ({len(stopped)}; the next "
+                     f"night carries on): " + _first(stopped, lambda h: f"`{h.get('from', '?')}`"))
+    errors = (tasks or {}).get("errors") or [] if isinstance(tasks, dict) else []
+    if errors:
+        lines.append("- **The task mover reported** " + "; ".join(str(e) for e in errors[:3]) + ".")
     if night.below_floor:
         lines.append(f"- **Unfiled below the floor** ({len(night.below_floor)}): "
                      + _first(night.below_floor, lambda e: f"[[{e.slug}]]"))

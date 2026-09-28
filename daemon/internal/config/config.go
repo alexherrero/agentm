@@ -169,6 +169,13 @@ type Config struct {
 	// deciding to.
 	EnrichEnabled bool
 
+	// TaskMoverEnabled lets the night move a closed task's directory to its
+	// project's `completed/tasks/` (task 177). Off, the night plans the moves
+	// and reports them without making one; the operator turns it on after the
+	// first bulk move has been read, the way the decay and crystallize switches
+	// were turned on.
+	TaskMoverEnabled bool
+
 	// CrystallizeEnabled turns the weekly crystallize phase on.
 	//
 	// Its own switch rather than riding on EnrichEnabled, because it is the
@@ -678,6 +685,9 @@ func Load(opts Options) (*Config, error) {
 	}
 	if b, ok := raw["daemon.crystallize_enabled"].(bool); ok {
 		c.CrystallizeEnabled = b
+	}
+	if b, ok := raw["daemon.task_mover_enabled"].(bool); ok {
+		c.TaskMoverEnabled = b
 	}
 	if s := strVal(raw, "daemon.enrich_model"); s != "" {
 		c.EnrichModel = s

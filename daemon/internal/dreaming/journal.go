@@ -264,6 +264,14 @@ func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) 
 				return "", err
 			}
 			return settle(KindApplied, "applied on resume")
+		case srcErr == nil && dstErr == nil && Hash(cur) == e.BeforeHash && Hash(got) == e.AfterHash:
+			// The crash fell between the two halves of the move: the new copy
+			// is written and the old one not yet removed. Removing it is the
+			// half that is left; reading this as a conflict would leave both.
+			if err := os.Remove(src); err != nil {
+				return "", err
+			}
+			return settle(KindApplied, "finished on resume: the destination was written, the source not yet removed")
 		default:
 			return settle(KindSkipped, ErrConflict.Error())
 		}

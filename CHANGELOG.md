@@ -66,6 +66,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *Closed*, linked at their new paths. Nothing has moved yet, so the first
   night after this lands plans no change to any tracker or map.
 
+- **The night plans the closed-task moves, and reports them (task 177, step
+  6).** A new contract line, `task_completed_after_days: 14`, says how long a
+  closed task keeps its folder under `tasks/`. Every night the dreaming pass
+  plans a move for each task whose tracker has read `done` or `dropped` that
+  long, oldest first, at most `demotion_cap` (25) folders — the cap counts
+  folders, so a task is never split. Each file is one journaled move to
+  `<slug>/completed/tasks/<task>/`, and the tracker moves last and only once
+  every other file of the folder has: a crash, or a file edited between the
+  plan and the move, leaves the tracker where the next pass finds it and
+  finishes the folder. The links are repaired from disk rather than from one
+  pass's plan — every applying night rewrites each link that names a file now
+  under `completed/tasks/`, through the new link rewriter, and re-keys the
+  heat and recall-access sidecars the same way — so a crash between the moves
+  and the edits costs a night, never a repair. A folder a note under
+  `personal/` or `standards/` links into is held and listed rather than taking
+  a slot, and so is one holding a walled file, a file over 16 MB (the
+  journal's line limit), a file that cannot be read, or a destination already
+  taken; with no contract loaded the mover reads nothing. A move whose crash
+  fell between writing the new copy and removing the old one is now finished
+  on resume, for every mover. The mover ships reporting: it moves only once
+  `daemon.task_mover_enabled` is on (`agentm_config.py --task-mover-enabled
+  true`), and `agentmdream move-tasks -apply` moves by hand under the dreaming
+  lock; without `-apply` it writes nothing, and it refuses a copy of the vault
+  unless `AGENTM_STATE_DIR` gives the copy its own state. The morning note
+  gains a *tasks* row, the folders moved or that would move, and every folder
+  held or stopped. Planned read-only against the live vault on 2026-09-27:
+  278 folders, 675 files, 1,171 links in 72 notes, none held. An adversarial
+  review before merge found the crash, skip, size, wall and rehearsal gaps
+  this entry describes as closed.
+
 ### Internal
 
 - **A Go link rewriter for moved paths (task 177, step 5).** The new

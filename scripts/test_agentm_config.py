@@ -114,6 +114,18 @@ class TestAgentmConfig(unittest.TestCase):
         """Invoke ac.main(argv) capturing stdout + stderr."""
         return _capture_main(list(argv))
 
+    def test_the_task_mover_switch_is_written_refused_and_idempotent(self) -> None:
+        # Task 177: the night moves closed tasks only once this is on.
+        rc, out, err = self._run("--task-mover-enabled", "true")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertIs(config["daemon.task_mover_enabled"], True)
+        rc, out, _err = self._run("--task-mover-enabled", "true")
+        self.assertEqual((rc, out), (0, ""), "an unchanged switch writes nothing")
+        rc, _out, err = self._run("--task-mover-enabled", "maybe")
+        self.assertEqual(rc, 2)
+        self.assertIn("task_mover_enabled", err)
+
     # -----------------------------------------------------------------------
     # --vault-path: happy path + validation + idempotency
     # -----------------------------------------------------------------------

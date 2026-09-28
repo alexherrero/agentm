@@ -23,6 +23,8 @@ Operations:
                                             #   curve (daemon.decay_enabled; ranking only)
     agentm_config.py --crystallize-enabled true # let the weekly crystallize phase run
                                             #   (daemon.crystallize_enabled; it spends)
+    agentm_config.py --task-mover-enabled true  # let the night move closed tasks to
+                                            #   completed/tasks/ (daemon.task_mover_enabled)
     agentm_config.py --notify-enabled true # opt in to the daily on-device notification
                                             #   (plugins.autonomy.notify_enabled; FRIDAY feature 1)
     agentm_config.py --email-to <address>  # opt in to the daily digest email
@@ -90,6 +92,7 @@ _AUTONOMY_NOTIFY_ENABLED_KEY = "plugins.autonomy.notify_enabled"
 _DAEMON_ENRICH_ENABLED_KEY = "daemon.enrich_enabled"
 _DAEMON_DECAY_ENABLED_KEY = "daemon.decay_enabled"
 _DAEMON_CRYSTALLIZE_ENABLED_KEY = "daemon.crystallize_enabled"
+_DAEMON_TASK_MOVER_ENABLED_KEY = "daemon.task_mover_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
 # The mail door's four keys — the mailbox URL, the sender allow-list, the
@@ -409,6 +412,35 @@ def cmd_set_crystallize_enabled(prefix: Path, value: str) -> int:
     return 0
 
 
+def cmd_set_task_mover_enabled(prefix: Path, value: str) -> int:
+    """Let the night move closed tasks (`daemon.task_mover_enabled`).
+
+    Two weeks after a task's tracker reads `done` or `dropped`, the night moves
+    its whole folder to the project's `completed/tasks/` and rewrites the links
+    into it (task 177). Off, the night plans those moves every night and lists
+    them in the morning note without making one; the operator turns it on once
+    the first supervised move has been read. `agentmdream move-tasks -apply`
+    moves by hand without this. Idempotent: silent no-op when unchanged.
+    """
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        print(
+            f"[agentm_config] refusing to set task_mover_enabled: {value!r} is "
+            "not 'true' or 'false'",
+            file=sys.stderr,
+        )
+        return 2
+    enabled = normalized == "true"
+    config = _read_config(prefix) or {}
+    if config.get(_DAEMON_TASK_MOVER_ENABLED_KEY) == enabled:
+        return 0
+    config[_DAEMON_TASK_MOVER_ENABLED_KEY] = enabled
+    written = _write_config(prefix, config)
+    print(f"{_DAEMON_TASK_MOVER_ENABLED_KEY} = {enabled}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_set_decay_enabled(prefix: Path, value: str) -> int:
     """Let the ranker run the contract's decay curve (`daemon.decay_enabled`).
 
@@ -687,6 +719,9 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--crystallize-enabled", metavar="{true,false}",
                     help="set daemon.crystallize_enabled — let the weekly "
                          "crystallize phase run; it makes model calls, under its budget")
+    op.add_argument("--task-mover-enabled", metavar="{true,false}",
+                    help="set daemon.task_mover_enabled — let the night move a closed "
+                         "task's folder to completed/tasks/ two weeks after it closes")
     op.add_argument("--email-to", metavar="ADDRESS",
                     help="set plugins.autonomy.email_to — opt in to the daily digest email")
     op.add_argument("--email-smtp-url", metavar="URL",
@@ -722,6 +757,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_decay_enabled(prefix, args.decay_enabled)
     if args.crystallize_enabled is not None:
         return cmd_set_crystallize_enabled(prefix, args.crystallize_enabled)
+    if args.task_mover_enabled is not None:
+        return cmd_set_task_mover_enabled(prefix, args.task_mover_enabled)
     if args.email_to is not None:
         return cmd_set_email_to(prefix, args.email_to)
     if args.email_smtp_url is not None:
