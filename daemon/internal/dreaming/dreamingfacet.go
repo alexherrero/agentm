@@ -155,6 +155,15 @@ func renderDreamingFacet(rep *Report, now time.Time) (string, int) {
 	}
 	section("Removed by retention", removed)
 
+	var held []string
+	for _, row := range rep.Retain.Held {
+		held = append(held, fmt.Sprintf("`%s` — %s, %.0f days old, kept %.0f", row.Rel, row.What, row.Days, row.Keep))
+	}
+	if len(held) > 0 && rep.Retain.Gate != "" {
+		held = append(held, "nothing is deleted until you set `approved: true` in `"+rep.Retain.Gate+"`")
+	}
+	section("Held by retention until you approve", held)
+
 	var consolidated []string
 	for _, fam := range rep.Copies.Families {
 		if len(fam.Copies) == 0 {

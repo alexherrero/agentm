@@ -605,6 +605,20 @@ type DeletionRow struct {
 // The vault's git history holds the bytes; this holds the names, so the deep
 // search has something to look for.
 func WriteDeletionManifest(root, runID string, rows []DeletionRow, now time.Time) (string, error) {
+	return writeManifest(root, runID, rows, now, "manifest.json", "the night's lifecycle job",
+		"silent past the contract's forget_after_days, and archived for the wait between the archive and forget lines")
+}
+
+// WriteRetentionManifest is the same record for the retention sweep: its own
+// paper past the contract's `retention:` line for its kind. Its own file name,
+// because a night whose lifecycle job also deletes writes into the same
+// run folder, and one record must not overwrite the other.
+func WriteRetentionManifest(root, runID string, rows []DeletionRow, now time.Time) (string, error) {
+	return writeManifest(root, runID, rows, now, "retention.json", "the night's retention sweep",
+		"the night's own paper past the contract's retention line for its kind")
+}
+
+func writeManifest(root, runID string, rows []DeletionRow, now time.Time, name, by, criteria string) (string, error) {
 	if len(rows) == 0 {
 		return "", nil
 	}
@@ -616,8 +630,8 @@ func WriteDeletionManifest(root, runID string, rows []DeletionRow, now time.Time
 	manifest := map[string]any{
 		"written":  now.UTC().Format(time.RFC3339),
 		"run_id":   runID,
-		"by":       "the night's lifecycle job",
-		"criteria": "silent past the contract's forget_after_days, and archived for the wait between the archive and forget lines",
+		"by":       by,
+		"criteria": criteria,
 		"count":    len(rows),
 		"rows":     rows,
 	}
@@ -625,7 +639,7 @@ func WriteDeletionManifest(root, runID string, rows []DeletionRow, now time.Time
 	if err != nil {
 		return "", err
 	}
-	p := filepath.Join(dir, "manifest.json")
+	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, append(blob, '\n'), 0o644); err != nil {
 		return "", err
 	}

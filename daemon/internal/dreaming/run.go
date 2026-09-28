@@ -344,12 +344,20 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	}
 	rep.Retain = retain
 	if opt.Apply && len(retain.Intents) > 0 {
-		rows := DeletionRows(root, retain.Intents, nil)
-		for i := range rows {
-			rows[i].Days = 0
+		// The first deletion waits for the operator: until the gate note says
+		// `approved: true`, the pass lists what it would remove and removes
+		// nothing (RetentionApproved).
+		approved, gate, gErr := RetentionApproved(root, retain.Removed, now)
+		rows := RetentionRows(retain.Intents, retain.Removed)
+		var manifest string
+		var mErr error
+		if gErr == nil && approved {
+			manifest, mErr = WriteRetentionManifest(root, runID, rows, now)
 		}
-		manifest, mErr := WriteDeletionManifest(root, runID, rows, now)
-		if mErr != nil || manifest == "" {
+		if gErr != nil || !approved {
+			rep.Retain.Held, rep.Retain.Gate = retain.Removed, gate
+			rep.Retain.Removed = nil
+		} else if mErr != nil || manifest == "" {
 			rep.Retain.Removed = nil
 		} else {
 			if rep.DeletionManifest == "" {
