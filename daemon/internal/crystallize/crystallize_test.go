@@ -463,3 +463,52 @@ func TestTheReportIsTheRecordTheRunnerReads(t *testing.T) {
 		}
 	}
 }
+
+// Task 177: a closed task's directory moves to `completed/tasks/` two weeks
+// after it closes, and its Outcome still teaches.
+func TestAMovedTasksOutcomeIsStillASource(t *testing.T) {
+	f := newFixture(t)
+	f.outcome(t, "agentm", "101-one", "2026-08-01", "git worktree")
+	f.outcome(t, "agentm", "102-two", "2026-08-20", "git worktree")
+	moved := f.outcome(t, "agentm", "103-three", "2026-09-10", "git worktree")
+	to := filepath.Join(f.vault, "projects", "agentm", "completed", "tasks", "103-three")
+	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Dir(moved), to); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := f.run(t, Options{})
+
+	if len(rep.Lessons) != 1 || len(rep.Lessons[0].Sources) != 3 {
+		t.Fatalf("wrote %+v, want one lesson from all three Outcomes", rep.Lessons)
+	}
+	if !strings.Contains(strings.Join(rep.Lessons[0].Sources, " "),
+		"projects/agentm/completed/tasks/103-three/tracker|103-three") {
+		t.Errorf("the moved Outcome is not linked where it sits: %v", rep.Lessons[0].Sources)
+	}
+}
+
+// The folder's own `_index.md` is not a lesson. Read as one, it blocked every
+// subject its name or tags spell.
+func TestTheFoldersIndexIsNotALesson(t *testing.T) {
+	f := newFixture(t)
+	idx := filepath.Join(f.root, Dir, "_index.md")
+	if err := os.MkdirAll(filepath.Dir(idx), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(idx, []byte("---\nkind: dir-index\ntags: [git-worktree]\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.outcome(t, "agentm", "101-one", "2026-08-01", "git worktree")
+	f.outcome(t, "agentm", "102-two", "2026-08-20", "git worktree")
+	f.outcome(t, "agentm", "103-three", "2026-09-10", "git worktree")
+
+	rep := f.run(t, Options{})
+
+	if len(rep.Lessons) != 1 {
+		t.Fatalf("wrote %d lesson(s), skipped %+v; the folder's index blocked the subject",
+			len(rep.Lessons), rep.Skipped)
+	}
+}

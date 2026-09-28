@@ -423,6 +423,11 @@ func PlanCompleted(root string, closedTasks map[string]bool, doneProjects []stri
 	return plan, nil
 }
 
+// taskHomes are the folders under a project that hold task directories: the
+// open ones under `tasks/`, and the closed ones the night has moved to
+// `completed/tasks/` two weeks after their tracker closed (task 177).
+var taskHomes = []string{"tasks", filepath.Join(completedDirName, "tasks")}
+
 // ClosedTasks is every task whose tracker reads a final status, by task name.
 func ClosedTasks(root string) map[string]bool {
 	out := map[string]bool{}
@@ -435,28 +440,32 @@ func ClosedTasks(root string) map[string]bool {
 		if !e.IsDir() {
 			continue
 		}
-		tasks := filepath.Join(space, e.Name(), "tasks")
-		dirs, err := os.ReadDir(tasks)
-		if err != nil {
-			continue
-		}
-		for _, d := range dirs {
-			if !d.IsDir() {
+		// Both homes: a record naming a task the night has since moved to
+		// `completed/tasks/` still names a closed task, and still moves.
+		for _, home := range taskHomes {
+			tasks := filepath.Join(space, e.Name(), home)
+			dirs, err := os.ReadDir(tasks)
+			if err != nil {
 				continue
 			}
-			fm, _, ok := projReadNote(filepath.Join(tasks, d.Name(), "tracker.md"))
-			if !ok {
-				continue
+			for _, d := range dirs {
+				if !d.IsDir() {
+					continue
+				}
+				fm, _, ok := projReadNote(filepath.Join(tasks, d.Name(), "tracker.md"))
+				if !ok {
+					continue
+				}
+				status := strings.ToLower(strings.TrimSpace(fm["status"]))
+				if status != "done" && status != "dropped" && status != "withdrawn" {
+					continue
+				}
+				name := d.Name()
+				if named := strings.TrimSpace(fm["task"]); named != "" {
+					name = named
+				}
+				out[name] = true
 			}
-			status := strings.ToLower(strings.TrimSpace(fm["status"]))
-			if status != "done" && status != "dropped" && status != "withdrawn" {
-				continue
-			}
-			name := d.Name()
-			if named := strings.TrimSpace(fm["task"]); named != "" {
-				name = named
-			}
-			out[name] = true
 		}
 	}
 	return out

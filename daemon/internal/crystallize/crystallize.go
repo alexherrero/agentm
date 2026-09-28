@@ -777,7 +777,10 @@ func existingLessons(root string) map[string]bool {
 		return out
 	}
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+		// `_index.md` is the folder's own note, not a lesson: read as one, its
+		// name and tags blocked the subjects `index`, `memory-class` and
+		// `crystallized` from ever being written.
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || strings.HasPrefix(e.Name(), "_") {
 			continue
 		}
 		out[Term(strings.TrimSuffix(e.Name(), ".md"))] = true

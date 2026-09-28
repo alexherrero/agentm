@@ -239,3 +239,28 @@ func TestTheReadingsRoundTripForTheRanker(t *testing.T) {
 		t.Errorf("read back %v, want the readings as written", back)
 	}
 }
+
+// Task 177: two weeks after a task closes, the night moves its directory to the
+// project's `completed/tasks/`. A record naming it still names a closed task,
+// and still moves.
+func TestARecordNamingAMovedTaskStillMoves(t *testing.T) {
+	root, space := projectVault(t)
+	now := time.Date(2026, 9, 18, 9, 0, 0, 0, time.UTC)
+	writeProjectFile(t, filepath.Join(space, "agentm", "completed", "tasks", "001-done", "tracker.md"),
+		map[string]string{"kind": "tracker", "status": "dropped", "task": "001-done",
+			"closed": "2026-09-01"}, "## Outcome\n\nwithdrawn")
+	writeProjectFile(t, filepath.Join(space, "agentm", "research", "a-bundle.md"),
+		map[string]string{"kind": "note", "task": "001-done"}, "what it found")
+
+	closed := ClosedTasks(root)
+	if !closed["001-done"] {
+		t.Fatalf("closed tasks = %v, want the moved one", closed)
+	}
+	plan, err := PlanCompleted(root, closed, nil, now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Moved) != 1 || !strings.HasSuffix(plan.Moved[0].To, "completed/research/a-bundle.md") {
+		t.Errorf("moved %+v, want the bundle whose task has moved", plan.Moved)
+	}
+}
