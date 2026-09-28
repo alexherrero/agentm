@@ -243,7 +243,7 @@ def online_recall_section() -> list:
         vault = None
     if vault is None:
         return []
-    lab = Path(vault) / "desk" / "labelling"
+    lab = online_recall_row.labelling_dir(vault)
     panel_path = lab / "recall-sufficiency-v1-panel.json"
     if not panel_path.exists():
         return []

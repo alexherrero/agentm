@@ -45,6 +45,18 @@ import panel as panel_mod
 # Beyond this the artifact describes traffic that has moved on.
 STALE_AFTER_DAYS = 14
 
+# Where the online-recall artifacts live: the panel and its reasons, and the
+# nightly job's pool. They moved from the memory root's `desk/labelling/` into
+# the agentm project's `labelling/` with the projects merge, and two paths kept
+# the old spelling: the scorecard read a folder that no longer existed and went
+# silent, and the job re-created `desk/` at the vault root to write its pool.
+LABELLING_DIR = ("projects", "agentm", "labelling")
+
+
+def labelling_dir(vault) -> pathlib.Path:
+    """The agentm project's labelling folder under the vault root."""
+    return pathlib.Path(vault).joinpath(*LABELLING_DIR)
+
 VALIDATION_NOTE = (
     "machine panel only — three graders, two of them the same model family as "
     "the judge being scored. No independent human labels stand behind this "

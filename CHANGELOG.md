@@ -71,6 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its `consolidated_from` links use. The folder's own `_index.md` no longer
   counts as a lesson, which had blocked the subject `index` (step 4).
 
+- **The online-recall job and the scorecard read the agentm project's
+  `labelling/` folder.** The labelling artifacts moved from the memory root's
+  `desk/labelling/` into `projects/agentm/labelling/` with the projects merge,
+  and two paths kept the old spelling. The health scorecard looked for the
+  recall panel in a folder that no longer existed, so its Online recall
+  section rendered nothing, which reads as "no run recorded". The nightly job,
+  registered on 2026-09-27, re-created `desk/` at the vault root on its first
+  run to write its pool. Both now resolve the folder through
+  `online_recall_row.labelling_dir`, and the first night's pool moved into
+  place.
+
 - **Enrichment serves the notes awaiting their first judgment before it
   re-judges filed ones.** Each night stops at the strong tier's token line
   after about 48 judgments. The cards' tier was served oldest first, so a
