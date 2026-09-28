@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ const usage = `agentmdream — the agentm dreaming binary (one pass, then exit)
   agentmdream status    the last pass, the gate's answer now, the lock
   agentmdream journal   the mutation journal, newest last
   agentmdream ideas     print Ideas.md as the night would rebuild it; -write to make the one deliberate write
+  agentmdream move-tasks  plan the closed-task moves; -apply to make them now, whatever the switch says
   agentmdream version
 
 Run any subcommand with -h for its flags.
@@ -56,6 +58,8 @@ func main() {
 		err = cmdJournal(os.Args[2:])
 	case "ideas":
 		err = cmdIdeas(os.Args[2:])
+	case "move-tasks":
+		err = cmdMoveTasks(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmdream", version)
 	case "-h", "--help", "help":
@@ -103,6 +107,7 @@ func cmdRun(args []string) error {
 	// package's own 200, which quietly outranked the number the operator set.
 	cap := fs.Int("cap", 0, "at most this many moves along the axis per pass (0: the contract's `demotion_cap`)")
 	reclassify := fs.Bool("reclassify", false, "run the sampled re-classification diff this pass even if the filing pass version is unchanged")
+	taskCap := fs.Int("task-cap", 0, "at most this many closed task folders moved per pass (0: the contract's `demotion_cap`, counted in folders)")
 	asJSON := fs.Bool("json", false, "emit the report as JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -114,7 +119,7 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	rep, err := dreaming.Run(cfg, dreaming.Options{Apply: *apply, Force: *force, Every: *every, Pace: *pace, Cap: *cap, Reclassify: *reclassify})
+	rep, err := dreaming.Run(cfg, dreaming.Options{Apply: *apply, Force: *force, Every: *every, Pace: *pace, Cap: *cap, Reclassify: *reclassify, TaskCap: *taskCap})
 	if *asJSON {
 		blob, _ := json.MarshalIndent(rep, "", "  ")
 		fmt.Println(string(blob))
@@ -125,6 +130,123 @@ func cmdRun(args []string) error {
 		return &exitError{code: 3, quiet: *asJSON, err: fmt.Errorf("refused: %s", rep.Refused)}
 	}
 	return err
+}
+
+// cmdMoveTasks runs the closed-task mover on its own (task 177): the
+// supervised first move of the backlog, and the rehearsal against a copy of the
+// vault. It plans and prints by default. `-apply` moves, journaled and under
+// the dreaming lock, whether or not `daemon.task_mover_enabled` is on — running
+// it by hand is the decision the switch otherwise stands for.
+func cmdMoveTasks(args []string) error {
+	fs := newFlagSet("move-tasks")
+	opts := bindCommon(fs)
+	apply := fs.Bool("apply", false, "make the moves (default: plan and print, touch nothing)")
+	cap := fs.Int("cap", 0, "at most this many folders (0: the contract's `demotion_cap`, counted in folders)")
+	asJSON := fs.Bool("json", false, "emit the plan as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if extra := fs.Args(); len(extra) > 0 {
+		return fmt.Errorf("unexpected argument %q; usage: agentmdream move-tasks [-apply] [-cap N] [-json]", extra[0])
+	}
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	if err := refuseAStrangeVaultOnLiveState(*opts, cfg); err != nil {
+		return err
+	}
+	plan, rep, err := dreaming.MoveTasks(cfg, dreaming.MoveTasksOptions{Apply: *apply, Cap: *cap})
+	if *asJSON {
+		blob, _ := json.MarshalIndent(struct {
+			Plan    dreaming.TaskMovePlan `json:"tasks"`
+			RunID   string                `json:"run_id,omitempty"`
+			Applied int                   `json:"applied"`
+			Skipped int                   `json:"skipped"`
+			Resumed int                   `json:"resumed"`
+		}{plan, rep.RunID, rep.Applied, rep.Skipped, rep.Resumed}, "", "  ")
+		fmt.Println(string(blob))
+	} else {
+		verb := "would move"
+		if plan.Mode == "apply" {
+			verb = "moved"
+		}
+		fmt.Printf("closed tasks: %s %d folder(s) (%d link(s) rewritten in %d note(s) outside them); "+
+			"held %d; waiting on the cap %d; after %.0f days\n", verb, len(plan.Folders), plan.Links,
+			len(plan.Edited), len(plan.Held), plan.Capped, plan.AfterDays)
+		for _, f := range plan.Folders {
+			fmt.Printf("  %s %s -> %s (%s %s, %d file(s))\n", verb, f.From, f.To, f.Status, f.Closed, f.Files)
+		}
+		for _, h := range plan.Held {
+			fmt.Printf("  held %s: %s %v\n", h.From, h.Reason, h.Notes)
+		}
+		for _, h := range plan.Stopped {
+			fmt.Printf("  stopped %s: %s\n", h.From, h.Reason)
+		}
+		if plan.Pending > 0 {
+			fmt.Printf("  %d intent(s) a crashed pass left are pending; the next applying run settles them first\n", plan.Pending)
+		}
+		for _, e := range plan.Errors {
+			fmt.Println("  error:", e)
+		}
+		if plan.Mode == "apply" {
+			fmt.Printf("  run %s: %d applied, %d skipped, %d folder(s) pruned, sidecars re-keyed %v\n",
+				rep.RunID, rep.Applied, rep.Skipped, len(plan.Pruned), plan.Rekeyed)
+		}
+		if plan.Skipped != "" {
+			fmt.Println("  skipped:", plan.Skipped)
+		}
+	}
+	if errors.Is(err, dreaming.ErrRefused) {
+		return &exitError{code: 3, quiet: *asJSON, err: fmt.Errorf("refused: %s", rep.Refused)}
+	}
+	return err
+}
+
+// refuseAStrangeVaultOnLiveState stops a rehearsal against a copy of the vault
+// from writing the live engine state. `-vault` or `$MEMORY_ROOT` moves the
+// vault and nothing else: the journal, the sidecars and the lifecycle record
+// stay the live ones, so a copy's moves would be journaled where the live night
+// replays them and its re-keys would land in the live sidecars. A vault other
+// than the configured one is refused unless `$AGENTM_STATE_DIR` names state of
+// its own.
+func refuseAStrangeVaultOnLiveState(opts config.Options, cfg *config.Config) error {
+	if strings.TrimSpace(os.Getenv("AGENTM_STATE_DIR")) != "" {
+		return nil
+	}
+	path := opts.ConfigPath
+	if path == "" {
+		path = config.DefaultConfigPath()
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var kernel map[string]any
+	if json.Unmarshal(raw, &kernel) != nil {
+		return nil
+	}
+	configured, _ := kernel["plugins.obsidian-vault.vault_path"].(string)
+	if strings.TrimSpace(configured) == "" {
+		return nil
+	}
+	if strings.HasPrefix(configured, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			configured = filepath.Join(home, configured[2:])
+		}
+	}
+	real := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		return filepath.Clean(p)
+	}
+	if real(configured) == real(cfg.VaultPath) {
+		return nil
+	}
+	return fmt.Errorf("the vault is %s, not the configured %s, but the engine state is the live "+
+		"one; set AGENTM_STATE_DIR to a scratch directory so a rehearsal writes its own journal "+
+		"and sidecars", cfg.VaultPath, configured)
 }
 
 // cmdIdeas is `Ideas.md`'s dry run and its one deliberate write

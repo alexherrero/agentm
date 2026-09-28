@@ -305,9 +305,11 @@ func setFrontmatterField(text, key, value string) string {
 // reads `done`.
 //
 // The living documents never move — the charter, the tracker, `followups`,
-// `roadmap`, a launched design, a standing decision — and the tasks never move
-// at all: a task is the unit of work, and the sequence of task directories is
-// the history of the project as the operator reads it.
+// `roadmap`, a launched design, a standing decision. A task directory moves
+// whole, name kept, to `<slug>/completed/tasks/` two weeks after its tracker
+// closes; that is the task mover's (taskmover.go), and the sequence of task
+// numbers across the two folders is still the history of the project as the
+// operator reads it.
 //
 // Why "completed" and not "archive": the memory archive holds what has been
 // retired from use, and a project's completed folder holds finished work that

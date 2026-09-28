@@ -559,6 +559,27 @@ class TheNote(_Night):
         self.assertIn("**Enrichment** — 118 judged", text)
         self.assertNotIn("enrichment (not registered)", text)
 
+    def test_the_task_mover_lists_what_it_moved_held_and_stopped(self):
+        # Task 177: closed tasks move to completed/tasks/; the note says what
+        # the night moved or would have, and every folder held or stopped.
+        self.full_night()
+        report = _report()
+        report["tasks"] = {"mode": "report", "links": 12, "capped": 0,
+                           "folders": [{"project": "agentm", "task": "001-done",
+                                        "status": "done", "closed": "2026-09-01"}],
+                           "held": [{"from": "projects/agentm/tasks/002-linked",
+                                     "reason": "a note under personal/ links into it"}],
+                           "stopped": [{"from": "projects/blog/tasks/003-half",
+                                        "reason": "a file changed"}]}
+        self.binary(report=report)
+        text = self.build()[0]
+        self.assertIn("| tasks | would move 1 closed task folder(s), 12 link(s) rewritten, held 1, "
+                      "waiting on the cap 0 |", text)
+        self.assertIn("`agentm/001-done` (done 2026-09-01)", text)
+        self.assertIn("**Closed tasks held back** (1): `projects/agentm/tasks/002-linked` — "
+                      "a note under personal/ links into it", text)
+        self.assertIn("`projects/blog/tasks/003-half`", text)
+
     def test_a_binary_whose_gate_held(self):
         self.binary(at=THREE_DAYS_AGO)
         self.marker("dreaming")

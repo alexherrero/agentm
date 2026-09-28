@@ -38,6 +38,9 @@ type Options struct {
 	LockWait time.Duration
 	// Reclassify forces the sampled re-classification diff this pass.
 	Reclassify bool
+	// TaskCap bounds the closed task folders one pass moves, counted in
+	// folders (0: the contract's `demotion_cap`).
+	TaskCap int
 }
 
 // Report is the record of one invocation, printed by the command.
@@ -55,7 +58,10 @@ type Report struct {
 	Retain    RetainPlan    `json:"retain"`
 	Reconcile ReconcilePlan `json:"reconcile"`
 	Projects  ProjectsPlan  `json:"projects"`
-	Facet     FacetPlan     `json:"facet"`
+	// Tasks is the closed-task mover: what it moved, or would have moved while
+	// its switch is off, and every folder it held back.
+	Tasks TaskMovePlan `json:"tasks"`
+	Facet FacetPlan    `json:"facet"`
 	// SkippedByHandMove is every file an intent could not be applied to because
 	// it had moved since the plan read it. Named in the dreaming facet rather
 	// than swallowed: the reconcile step at the end of the same night is what
@@ -352,6 +358,26 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 			if err := applyAll(journal, root, runID, retain.Intents, now, opt.Pace, &rep); err != nil {
 				return rep, err
 			}
+		}
+	}
+
+	// Closed tasks, before the records that name them: two weeks after a
+	// task's tracker closes, its whole directory moves to its project's
+	// `completed/tasks/`. Planned every night; moved only once the operator has
+	// switched the mover on.
+	//
+	// A mover that cannot plan says so in its own row and the night goes on: the
+	// jobs below it — the projects pass, reconcile, the facet — owe the morning
+	// their record whatever happened here.
+	tasks, err := PlanTaskMoves(root, contract, now, TaskMoveCap(contract, opt.TaskCap))
+	if err != nil {
+		tasks.Skipped = "the mover could not plan: " + err.Error()
+		tasks.Folders, tasks.folders, tasks.Intents = nil, nil, nil
+	}
+	rep.Tasks = tasks
+	if opt.Apply && cfg.TaskMoverEnabled && err == nil {
+		if err := ApplyTaskMoves(journal, root, cfg.EngineStateDir, runID, &rep.Tasks, contract, now, opt.Pace, &rep); err != nil {
+			return rep, err
 		}
 	}
 

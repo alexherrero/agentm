@@ -523,6 +523,11 @@ thresholds:
   # than in one pass, so a wrong threshold is visible in the morning note before
   # it has moved the whole corpus.
   demotion_cap: 25
+  # How long a closed task stays under `projects/<slug>/tasks/`: this many days
+  # after its tracker's `closed:` date, a `done` or `dropped` task's whole folder
+  # moves to the project's `completed/tasks/`. The night moves at most
+  # `demotion_cap` folders, counted in folders, so a task is never split.
+  task_completed_after_days: 14
   # A note at or below this ranks quietly on an ordinary question. The rubric
   # above calls 1 residue and 2-3 the record of a moment that decides nothing,
   # and this is where that reading reaches the ranker. A note with no
@@ -577,6 +582,16 @@ past `moc_split_at`, and a map whose newest member is older than
 ones ("last week (the week of 2026-08-24)"). `reclassify_sample` is how many
 notes the sampled re-classification diff reads when the filing pass version
 changes.
+
+`task_completed_after_days` is how long a closed task keeps its folder under
+`projects/<slug>/tasks/`. Once its tracker has read `done` or `dropped` for that
+many days, the night moves the whole folder, name kept, to the project's
+`completed/tasks/`, where it ranks with the project's other finished work. The
+move is journaled and every link into the folder is rewritten; a folder a note
+under `personal/` or `standards/` links into stays where it is and is listed in
+the morning note, because those notes are yours. The move runs only once
+`daemon.task_mover_enabled` is on; until then the night lists what it would
+move.
 
 ## Importance
 
