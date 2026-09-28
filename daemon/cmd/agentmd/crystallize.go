@@ -72,6 +72,16 @@ func appendCrystallizeRun(cfg *config.Config, r crystallizeRun) error {
 	return err
 }
 
+// crystallizeMemoryRoot is the memory root as an absolute path. The config
+// carries it vault-relative (`agent`), and a phase handed that bare name reads
+// and writes under whatever directory the job happened to start in: it found
+// no cards, saw no lesson it had already written, and would have written its
+// lessons outside the vault altogether. The night and the door join it the same
+// way.
+func crystallizeMemoryRoot(cfg *config.Config) string {
+	return filepath.Join(cfg.VaultPath, filepath.FromSlash(cfg.MemoryRoot))
+}
+
 func cmdCrystallize(args []string) error {
 	fs := newFlagSet("crystallize")
 	opts := bindCommon(fs)
@@ -132,7 +142,7 @@ func cmdCrystallize(args []string) error {
 	started := time.Now()
 	now := started
 	rep, err := crystallize.Run(crystallize.Options{
-		Root: cfg.MemoryRoot, Vault: cfg.VaultPath, Now: now,
+		Root: crystallizeMemoryRoot(cfg), Vault: cfg.VaultPath, Now: now,
 		Topic: *topic, Cap: *cap, DryRun: *dryRun,
 	}, func(prompt string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), caller.Timeout)

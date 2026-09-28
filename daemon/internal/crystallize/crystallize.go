@@ -522,7 +522,10 @@ func Render(l Lesson, c Cluster, today string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "title: %s\n", yamlQuote(strings.TrimSpace(l.Title)))
-	b.WriteString("type: insight\n")
+	// The record kind the contract names for this folder, and only that: a
+	// note carries `type` or `kind`, never both, and `insight` is a retired
+	// type the vault's gates no longer read as a lesson.
+	b.WriteString("kind: crystallized\n")
 	fmt.Fprintf(&b, "why: %s\n", yamlQuote(strings.TrimSpace(l.Why)))
 	// A lesson is permanent learning: it never decays or sinks, and changes
 	// only when a later lesson supersedes it or the operator edits it.
@@ -724,8 +727,8 @@ func write(opt Options, l Lesson, c Cluster) (Written, error) {
 	// run record carries and the morning note renders as a link, and on Windows
 	// `filepath.Join` would make it `memory\crystallized\...` — a path no
 	// reader of that record joins correctly and no link resolves.
-	rel := path.Join(Dir, stem+".md")
-	p := filepath.Join(opt.Root, filepath.FromSlash(rel))
+	under := path.Join(Dir, stem+".md")
+	p := filepath.Join(opt.Root, filepath.FromSlash(under))
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return Written{}, err
 	}
@@ -733,6 +736,9 @@ func write(opt Options, l Lesson, c Cluster) (Written, error) {
 	if err := os.WriteFile(p, []byte(Render(l, c, today)), 0o644); err != nil {
 		return Written{}, err
 	}
+	// From the vault root, the base every source's link is built on, so the
+	// record names the lesson the way `consolidated_from` names what taught it.
+	rel := vaultRel(opt.Vault, p, under)
 	w := Written{Rel: rel, Subject: c.Subject, Title: l.Title, Why: l.Why}
 	for _, s := range c.Sources {
 		w.Sources = append(w.Sources, s.Link())

@@ -115,7 +115,7 @@ func TestThreeRecurringOutcomesWriteOneLesson(t *testing.T) {
 	if strings.ContainsRune(l.Rel, '\\') {
 		t.Errorf("the record's path is not slash-separated: %q", l.Rel)
 	}
-	raw, err := os.ReadFile(filepath.Join(f.root, filepath.FromSlash(l.Rel)))
+	raw, err := os.ReadFile(filepath.Join(f.vault, filepath.FromSlash(l.Rel)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,15 +126,21 @@ func TestThreeRecurringOutcomesWriteOneLesson(t *testing.T) {
 	for _, want := range []string{"consolidated_from:",
 		"[[projects/agentm/tasks/101-one/tracker|101-one]]",
 		"[[projects/agentm/tasks/103-three/tracker|103-three]]",
-		"lifecycle: pinned", "project: agentm"} {
+		"lifecycle: pinned", "project: agentm", "\nkind: crystallized\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the lesson is missing %q:\n%s", want, text)
 		}
 	}
+	// The contract's record kind and nothing beside it: a note carries `type`
+	// or `kind`, never both, and `insight` is a retired type.
+	if strings.Contains(text, "\ntype:") {
+		t.Errorf("the lesson carries a type: line beside its kind:\n%s", text)
+	}
 	// A lesson never decays and nothing ages it out, so it must not be written
-	// into a class the lifecycle job walks looking for something to sink.
-	if !strings.HasPrefix(l.Rel, "memory/crystallized/") {
-		t.Errorf("the lesson landed at %s, want memory/crystallized/", l.Rel)
+	// into a class the lifecycle job walks looking for something to sink. The
+	// record names it from the vault root, the base its sources' links use.
+	if !strings.HasPrefix(l.Rel, "agent/memory/crystallized/") {
+		t.Errorf("the lesson landed at %s, want agent/memory/crystallized/", l.Rel)
 	}
 }
 

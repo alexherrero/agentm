@@ -40,7 +40,7 @@ func TestAClosedArcIsSynthesisedUnderItsOwnName(t *testing.T) {
 		t.Fatalf("wrote %d lesson(s), want the arc's synthesis: %+v (skipped %+v)",
 			len(rep.Lessons), rep.Lessons, rep.Skipped)
 	}
-	if got := rep.Lessons[0].Rel; got != "memory/crystallized/agentm-vault-perfection.md" {
+	if got := rep.Lessons[0].Rel; got != "agent/memory/crystallized/agentm-vault-perfection.md" {
 		t.Errorf("the synthesis landed at %s; the closing session looks for it at "+
 			"<project>-<arc>", got)
 	}
