@@ -36,6 +36,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 )
 
 // The operator's recurrence bar, written here rather than configured.
@@ -517,22 +519,24 @@ func Stem(l Lesson, c Cluster) string {
 	return stem
 }
 
-// Render is the lesson as a card, in the field order the card shape locks.
+// Render is the lesson as a record of the contract's `crystallized` kind.
+//
+// A record, not a card: a note carries `type` or `kind`, never both, and a
+// record never carries the card's judgment fields — `why`, `filing_confidence`,
+// `trust` (the card shape's RECORD_NEVER). So the phase's reason is written in
+// the body, under the lesson, where a reader meets it, and what made the note
+// is named in `source_id:`: `source:` holds only a transport, and a lesson
+// arrived by none of them.
 func Render(l Lesson, c Cluster, today string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "title: %s\n", yamlQuote(strings.TrimSpace(l.Title)))
-	// The record kind the contract names for this folder, and only that: a
-	// note carries `type` or `kind`, never both, and `insight` is a retired
-	// type the vault's gates no longer read as a lesson.
 	b.WriteString("kind: crystallized\n")
-	fmt.Fprintf(&b, "why: %s\n", yamlQuote(strings.TrimSpace(l.Why)))
 	// A lesson is permanent learning: it never decays or sinks, and changes
 	// only when a later lesson supersedes it or the operator edits it.
 	b.WriteString("status: active\nlifecycle: pinned\n")
 	fmt.Fprintf(&b, "lifecycle_since: %s\n", today)
-	b.WriteString("filing_confidence: 1.0\n")
-	b.WriteString("source: crystallize\ntrust: derived\n")
+	b.WriteString("source_id: crystallize\n")
 	fmt.Fprintf(&b, "created: %s\nupdated: %s\n", today, today)
 	fmt.Fprintf(&b, "tags: [%s]\n", c.Subject)
 	b.WriteString("consolidated_from:\n")
@@ -545,6 +549,9 @@ func Render(l Lesson, c Cluster, today string) string {
 	fmt.Fprintf(&b, "slug: %s\n", Stem(l, c))
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimSpace(l.Lesson))
+	if why := strings.TrimSpace(l.Why); why != "" {
+		fmt.Fprintf(&b, "\n\n*Why it is a lesson:* %s", strings.ReplaceAll(why, "\n", " "))
+	}
 	b.WriteString("\n\n## What taught it\n\n")
 	for _, s := range c.Sources {
 		fmt.Fprintf(&b, "- [[%s]] — %s, %s\n", s.Link(), s.Kind, s.At.Format("2006-01-02"))
@@ -570,9 +577,8 @@ var consolidatedIntoRe = regexp.MustCompile(`(?m)^consolidated_into:[ \t]*.*$`)
 // once a lesson lands, the things that taught it must not crowd it out.
 //
 // Placed after `superseded_by` when the note has one and before `project`
-// otherwise, which is where the card shape's read order puts it. A note with
-// neither gets it at the end of the frontmatter, which the shape tolerates and
-// the next pass's reorder settles.
+// otherwise, and then the whole frontmatter is put in the card's order, so a
+// note with neither ends with the stamp in its read block too.
 func Stamp(text, lessonStem string) string {
 	line := fmt.Sprintf("consolidated_into: \"[[%s]]\"", lessonStem)
 	if consolidatedIntoRe.MatchString(text) {
@@ -603,7 +609,10 @@ func Stamp(text, lessonStem string) string {
 	out := append([]string{}, lines[:at]...)
 	out = append(out, line)
 	out = append(out, lines[at:]...)
-	return "---\n" + strings.Join(out, "\n") + rest
+	// Settled into the card's order here rather than left for a later pass: a
+	// card with neither `project`, `task` nor `slug` got the stamp after its
+	// machine block, which the card-shape gate refuses (task 177, step 9).
+	return cardshape.Reorder("---\n" + strings.Join(out, "\n") + rest)
 }
 
 // --- the run ----------------------------------------------------------------
