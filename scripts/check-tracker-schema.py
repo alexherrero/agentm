@@ -43,15 +43,19 @@ if str(_HERE) not in sys.path:
 import tracker as tk  # noqa: E402
 
 _HEAD_BYTES = 4096
-PLACES = "tracker.md or tasks/<task>/tracker.md"
+PLACES = "tracker.md, tasks/<task>/tracker.md or completed/tasks/<task>/tracker.md"
 
 
 def placement(parts: tuple) -> Optional[tuple]:
-    """Where the design puts a tracker, as `(place, task)`, or None."""
+    """Where the design puts a tracker, as `(place, task)`, or None. A closed
+    task's directory moves whole to `completed/tasks/` two weeks after it
+    closes, and its tracker is still a task's tracker there."""
     if parts == ("tracker.md",):
         return ("project", None)
     if len(parts) == 3 and parts[0] == "tasks" and parts[2] == "tracker.md":
         return ("task", parts[1])
+    if len(parts) == 4 and parts[:2] == ("completed", "tasks") and parts[3] == "tracker.md":
+        return ("task", parts[2])
     return None
 
 

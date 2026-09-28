@@ -13,6 +13,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -159,6 +160,42 @@ class MigratedPaths(unittest.TestCase):
             self.assertEqual(ev._remap_convergence("projects/agentm/research/sqlite/notes.md", vault),
                              "projects/agentm/research/sqlite/notes.md")
             self.assertEqual(ev._remap_convergence(card, None), card)
+
+    def test_a_closed_tasks_path_follows_it_into_completed(self):
+        """Task 177: two weeks after a task closes, the night moves its whole
+        directory to `completed/tasks/`. A gold path under `tasks/` follows it
+        only once the vault holds the moved file and not the open one."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            gold = "projects/agentm/tasks/116-eval-v6-retrieval-failloud/plan.md"
+            moved = "projects/agentm/completed/tasks/116-eval-v6-retrieval-failloud/plan.md"
+            (vault / gold).parent.mkdir(parents=True)
+            (vault / gold).write_text("x", encoding="utf-8")
+            self.assertEqual(ev._remap_completed_tasks(gold, vault), gold, "before the move")
+            (vault / moved).parent.mkdir(parents=True)
+            (vault / gold).rename(vault / moved)
+            self.assertEqual(ev._remap_completed_tasks(gold, vault), moved)
+            self.assertEqual(ev._remap_completed_tasks(gold, None), gold, "no vault, no remap")
+            # Only a task's own path moves; a project file named `tasks` does not.
+            self.assertEqual(ev._remap_completed_tasks("projects/agentm/charter.md", vault),
+                             "projects/agentm/charter.md")
+
+    def test_a_projects_remap_target_that_has_since_moved_is_followed(self):
+        """A frozen gold path the projects migration remapped to an open task
+        still reaches the task once it has closed and moved on."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            old = "projects/agentm/_harness/archive/PLAN.archive.20260725-eval-v6-retrieval-failloud.md"
+            moved = "projects/agentm/completed/tasks/116-eval-v6-retrieval-failloud/plan.md"
+            (vault / moved).parent.mkdir(parents=True)
+            (vault / moved).write_text("x", encoding="utf-8")
+            projects = ev._remap_projects(old, vault)
+            self.assertEqual(projects, "projects/agentm/tasks/116-eval-v6-retrieval-failloud/plan.md")
+            self.assertEqual(ev._remap_completed_tasks(projects, vault), moved)
+            # And through the whole chain the score loop runs.
+            with mock.patch.object(ev, "_VAULT_ROOT", vault), \
+                    mock.patch.object(ev, "_ROOT_SPELLINGS", None):
+                self.assertEqual(ev.resolve_expected({ev.EXPECTED_FIELD: [old]}), ([moved], []))
 
     def test_a_trims_path_follows_the_file_on_to_desk(self):
         """The settings files moved twice: out of `memory/` into the project

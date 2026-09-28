@@ -198,6 +198,15 @@ def _is_task_plan(plan_path: Path) -> bool:
     return plan_path.name == "plan.md" and plan_path.parent.parent.name == hm._TASKS_DIRNAME
 
 
+def _task_filename(plan_path: Path) -> str:
+    """A task's plan named from its project directory: `tasks/<slug>/plan.md`,
+    or `completed/tasks/<slug>/plan.md` once the night has moved it."""
+    parts = (hm._TASKS_DIRNAME, plan_path.parent.name, "plan.md")
+    if plan_path.parent.parent.parent.name == hm._COMPLETED_TASKS_PARTS[0]:
+        parts = (hm._COMPLETED_TASKS_PARTS[0],) + parts
+    return "/".join(parts)
+
+
 def _slug_for(plan_path: Path) -> str:
     """The plan's slug in either layout: a task directory's name, or the flat
     file name's."""
@@ -256,7 +265,7 @@ def _parse_plan(plan_path: Path, progress_path: Path, active: bool,
     touches = _parse_frontmatter_list(fm, "touches")
     return PlanInfo(
         slug=slug,
-        filename=(f"{hm._TASKS_DIRNAME}/{slug}/plan.md" if _is_task_plan(plan_path)
+        filename=(_task_filename(plan_path) if _is_task_plan(plan_path)
                   else plan_path.name),
         status=status,
         tasks_done=tasks_done,
@@ -290,6 +299,18 @@ def build_plan_graph(state: Path) -> list[PlanInfo]:
         progress = _progress_for(state, plan_path)
         plans.append(_parse_plan(plan_path, progress, active=True,
                                  tracker_path=_tracker_for(state, plan_path)))
+
+    # --- completed tasks: finished, listed only so a dependency on one is met ---
+    # A closed task's directory moves to `completed/tasks/` two weeks after it
+    # closes. It is not live work, and the resolver's listing leaves it out; a
+    # plan that names it in `depends_on` still has to read it as done.
+    completed = state.joinpath(*hm._COMPLETED_TASKS_PARTS)
+    if completed.is_dir():
+        for plan_path in sorted(completed.glob("*/plan.md")):
+            if plan_path.is_file() and hm._is_safe_plan_slug(plan_path.parent.name):
+                plans.append(_parse_plan(plan_path, plan_path.parent / "progress.md",
+                                         active=False,
+                                         tracker_path=plan_path.parent / "tracker.md"))
 
     # --- staged plans (a repo-local .harness/ only; a task stages as queued) ---
     queued_dir = state / _QUEUED_SUBDIR

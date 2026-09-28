@@ -33,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reports, wiki-watch is off on this device, and the documenter's sweep at
   `/release` covers the same ground.
 
+- **Every Python reader that finds a task by name looks in `completed/tasks/`
+  too (task 177, step 3).** Readers land before the mover. The resolver
+  answers a moved task's completed paths, by its directory name or its verb
+  slug, so `resolve-active-plan`, the worktree marker, the compaction marker's
+  progress append and crickets' `resolve_plan.py` all still find it, and
+  `plan_tracker.py status` reads it `done`; crickets needs no change. A new
+  plan is numbered past the highest task in either folder, and a name sharing
+  a completed task's number or verb slug is refused. `list-plans` and the
+  other listers of live work stay on `tasks/`. `check-tracker-schema` accepts
+  `completed/tasks/<task>/tracker.md` as a task tracker's place, a
+  `depends_on` naming a moved task reads as met, and the retrieval eval
+  follows a gold path under `tasks/` into `completed/tasks/` once the vault
+  holds it there.
+
 ### Fixed
 
 - **Crystallize reads and writes under the vault's memory root (task 177,
