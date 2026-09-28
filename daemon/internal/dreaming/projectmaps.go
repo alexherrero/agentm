@@ -211,15 +211,21 @@ func readProjectTask(vault, project, path, task string) (projectTask, bool) {
 		Link: projLink(vault, path, title)}, true
 }
 
-// projectTasks reads a project's trackers: each task directory's `tracker.md`.
+// projectTasks reads a project's trackers: each task directory's `tracker.md`,
+// open under `tasks/` and moved under `completed/tasks/`, each linked where it
+// sits.
 func projectTasks(vault, project, dir string) []projectTask {
 	var out []projectTask
-	if entries, err := os.ReadDir(filepath.Join(dir, "tasks")); err == nil {
+	for _, home := range taskHomes {
+		entries, err := os.ReadDir(filepath.Join(dir, home))
+		if err != nil {
+			continue
+		}
 		for _, e := range entries {
 			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 				continue
 			}
-			path := filepath.Join(dir, "tasks", e.Name(), "tracker.md")
+			path := filepath.Join(dir, home, e.Name(), "tracker.md")
 			if t, ok := readProjectTask(vault, project, path, e.Name()); ok {
 				out = append(out, t)
 			}

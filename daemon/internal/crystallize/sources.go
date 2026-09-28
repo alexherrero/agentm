@@ -161,6 +161,10 @@ func Gather(root, vault string, now time.Time) ([]Source, error) {
 	return out, nil
 }
 
+// taskHomes are the folders under a project that hold task directories: the
+// open ones, and the closed ones the night has moved (task 177).
+var taskHomes = []string{"tasks", filepath.Join("completed", "tasks")}
+
 // outcomes are the closed tasks' Outcomes, and the closed projects' own.
 //
 // A project's tracker is read as well as its tasks': when an arc closes, the
@@ -189,11 +193,17 @@ func outcomes(vault string) []Source {
 			slug := e.Name()
 			dir := filepath.Join(base, slug)
 			trackers := []string{filepath.Join(dir, "tracker.md")}
-			if tasks, err := os.ReadDir(filepath.Join(dir, "tasks")); err == nil {
+			// A closed task's directory moves to `completed/tasks/` two weeks
+			// after it closes, and its Outcome is still the phase's material.
+			for _, home := range taskHomes {
+				tasks, err := os.ReadDir(filepath.Join(dir, home))
+				if err != nil {
+					continue
+				}
 				for _, t := range tasks {
 					if t.IsDir() {
 						trackers = append(trackers,
-							filepath.Join(dir, "tasks", t.Name(), "tracker.md"))
+							filepath.Join(dir, home, t.Name(), "tracker.md"))
 					}
 				}
 			}

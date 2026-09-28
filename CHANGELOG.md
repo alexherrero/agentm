@@ -47,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   follows a gold path under `tasks/` into `completed/tasks/` once the vault
   holds it there.
 
+- **The night's Go readers find a task under `completed/tasks/` too (task
+  177, step 4).** Crystallize reads the Outcomes of moved tasks beside open
+  ones and links them where they sit. The projects job's `ClosedTasks` counts
+  a moved task as closed, so a record naming it still moves to the project's
+  `completed/`. The generated project tracker counts moved tasks in its
+  "M done" line, and the project map and `moc-tasks` fold them under
+  *Closed*, linked at their new paths. Nothing has moved yet, so the first
+  night after this lands plans no change to any tracker or map.
+
 ### Fixed
 
 - **Crystallize reads and writes under the vault's memory root (task 177,
@@ -59,7 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kind: crystallized`, the record kind the contract names for the folder,
   and no longer with the retired `type: insight`; the run record names it from
   the vault root (`agent/memory/crystallized/<subject>.md`), the same base
-  its `consolidated_from` links use.
+  its `consolidated_from` links use. The folder's own `_index.md` no longer
+  counts as a lesson, which had blocked the subject `index` (step 4).
 
 - **Enrichment serves the notes awaiting their first judgment before it
   re-judges filed ones.** Each night stops at the strong tier's token line

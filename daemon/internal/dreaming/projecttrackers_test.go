@@ -64,6 +64,44 @@ func TestAProjectTrackerIsTheChecklistOfItsTasks(t *testing.T) {
 	}
 }
 
+// Task 177: a task the night has moved to `completed/tasks/` still counts, so
+// the tracker's "M done" line is the same the night after the move as before
+// it, and the project's map links the task where it now sits.
+func TestAMovedTaskStillCountsAndIsLinkedWhereItSits(t *testing.T) {
+	root, vault := trackersFixture(t)
+	before, err := PlanProjectTrackers(root, projectsNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := filepath.Join(vault, "projects", "demo", "tasks", "001-start")
+	to := filepath.Join(vault, "projects", "demo", "completed", "tasks", "001-start")
+	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(from, to); err != nil {
+		t.Fatal(err)
+	}
+	after, err := PlanProjectTrackers(root, projectsNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	was, is := plannedText(before, "../projects/demo/tracker.md"), plannedText(after, "../projects/demo/tracker.md")
+	if was != is || !strings.Contains(is, "2 open · 2 done") {
+		t.Errorf("the move changed the project tracker:\n--- before\n%s\n--- after\n%s", was, is)
+	}
+	maps, err := PlanProjectMaps(root, projectsNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	demo := plannedText(maps, "../projects/demo/moc-demo.md")
+	if !strings.Contains(demo, "[[projects/demo/completed/tasks/001-start/tracker|Start]]") {
+		t.Errorf("the map does not link the moved task where it sits:\n%s", demo)
+	}
+	if strings.Contains(demo, "[[projects/demo/tasks/001-start/") {
+		t.Errorf("the map still links the moved task's old path:\n%s", demo)
+	}
+}
+
 func TestAProjectTrackerOverUnchangedTasksWritesNothing(t *testing.T) {
 	root, _ := trackersFixture(t)
 	plan, _ := PlanProjectTrackers(root, projectsNow)
