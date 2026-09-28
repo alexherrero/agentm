@@ -122,6 +122,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A crystallized lesson is written in the record's shape, and a stamped card
+  keeps the card's order (task 177, step 9).** The first funded crystallize
+  run wrote 42 lessons that both vault gates refused. A lesson is a `kind:
+  crystallized` record, and a record never carries the card's judgment fields
+  (`why`, `filing_confidence`, `trust`); its `source:` held `crystallize`,
+  which is not a transport. The writer now names itself in `source_id:
+  crystallize` and writes the phase's reason in the body, under the lesson,
+  as *Why it is a lesson:*. `Stamp` puts a source card's frontmatter back in
+  the card's order after adding `consolidated_into`, which had landed after
+  the machine block on a card with no `project`, `task` or `slug`. The 42
+  lessons and the four cards were reshaped in place to match; a new test runs
+  `check-vault-frontmatter` and `check-card-shape` over a written lesson and
+  its stamped cards.
+
 - **The retention sweep's deletions reach a manifest.** The lifecycle job's
   `DeletionRows` keeps only its own intents, so the sweep's deletions arrived
   as no rows, no manifest was written, and the run dropped them, as it must

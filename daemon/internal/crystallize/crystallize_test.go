@@ -2,9 +2,12 @@ package crystallize
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -132,9 +135,18 @@ func TestThreeRecurringOutcomesWriteOneLesson(t *testing.T) {
 		}
 	}
 	// The contract's record kind and nothing beside it: a note carries `type`
-	// or `kind`, never both, and `insight` is a retired type.
-	if strings.Contains(text, "\ntype:") {
-		t.Errorf("the lesson carries a type: line beside its kind:\n%s", text)
+	// or `kind`, never both, and `insight` is a retired type. A record never
+	// carries the card's judgment fields, and `source:` holds only a transport,
+	// so the phase names itself in `source_id:` and its reason goes in the body.
+	for _, never := range []string{"\ntype:", "\nwhy:", "\nfiling_confidence:", "\ntrust:", "\nsource:"} {
+		if strings.Contains(text, never) {
+			t.Errorf("the lesson carries %q, which a crystallized record never does:\n%s", never[1:], text)
+		}
+	}
+	for _, want := range []string{"\nsource_id: crystallize\n", "*Why it is a lesson:* Three tasks hit it."} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the lesson is missing %q:\n%s", want, text)
+		}
 	}
 	// A lesson never decays and nothing ages it out, so it must not be written
 	// into a class the lifecycle job walks looking for something to sink. The
@@ -510,5 +522,62 @@ func TestTheFoldersIndexIsNotALesson(t *testing.T) {
 	if len(rep.Lessons) != 1 {
 		t.Fatalf("wrote %d lesson(s), skipped %+v; the folder's index blocked the subject",
 			len(rep.Lessons), rep.Skipped)
+	}
+}
+
+// The shape is the vault's gates' to decide, so a written lesson is run
+// through them: the frontmatter gate and the card-shape gate, which a lesson
+// in the card's fields failed on its first live run (task 177, step 9).
+func TestAWrittenLessonPassesTheVaultsGates(t *testing.T) {
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not on PATH")
+	}
+	// The frontmatter gate parses YAML and says it cannot run without PyYAML;
+	// a daemon job with a bare python3 has no gate to run, and the Python
+	// suite runs this one where it can.
+	if err := exec.Command(py, "-c", "import yaml").Run(); err != nil {
+		t.Skip("PyYAML is not installed, so the vault gates cannot run here")
+	}
+	_, here, _, _ := runtime.Caller(0)
+	scripts := filepath.Join(filepath.Dir(here), "..", "..", "..", "scripts")
+	f := newFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.vault, ".obsidian"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Three cards, one with a machine field and no `project`, `task` or `slug`:
+	// the stamp it gains must still land in the card's read block.
+	for i, d := range []string{"2026-08-01", "2026-08-20", "2026-09-10"} {
+		p := filepath.Join(f.root, "memory", "semantic", fmt.Sprintf("c%d.md", i))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "---\ntitle: c\ntype: fix\nstatus: active\nlifecycle: active\nfiling_confidence: high\nsource: conversation\n" +
+			"trust: trusted\ncreated: " + d + "\nupdated: " + d + "\ntags: [git-worktree]\n" +
+			"confidence: 0.9\n---\n\nWhat happened with `git worktree`, session " + fmt.Sprint(i) + ".\n"
+		if i == 0 {
+			body = strings.Replace(body, "type: fix\n", "type: fix\nsummary: s\n", 1)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The card-shape gate enforces once the backfill has run, as it has live.
+	if err := os.WriteFile(filepath.Join(f.root, "memory", ".card-backfill-complete"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep := f.run(t, Options{})
+	if len(rep.Lessons) != 1 || len(rep.Lessons[0].Stamped) == 0 {
+		t.Fatalf("wrote %+v; want one lesson that stamps its cards", rep.Lessons)
+	}
+	for _, gate := range [][]string{
+		{filepath.Join(scripts, "check-vault-frontmatter.py"), "--vault", f.vault},
+		{filepath.Join(scripts, "check-card-shape.py"), "--memory-root", f.root},
+	} {
+		cmd := exec.Command(py, gate...)
+		cmd.Env = append(os.Environ(), "AGENTM_STORAGE_RULES=")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Errorf("%s refuses the lesson: %v\n%s", filepath.Base(gate[0]), err, out)
+		}
 	}
 }
