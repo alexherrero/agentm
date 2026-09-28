@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // The three free jobs the axis added, and the facet that reports them.
@@ -88,6 +90,84 @@ func TestRetentionWithNoContractRemovesNothing(t *testing.T) {
 	}
 	if len(plan.Removed) != 0 {
 		t.Error("a missing contract deleted something; the safe direction is to keep")
+	}
+}
+
+// The sweep's deletions reach a manifest. The lifecycle job's rows keep only
+// its own intents, so these arrived as no rows, no manifest was written, and
+// the run dropped every retention deletion: the sweep never deleted anything.
+func TestRetentionRowsReachTheManifest(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)
+	old := writeFile(t, root, "diagnostics/digests/20260711-digest-daily.md", "a day\n")
+	plan, err := PlanRetain(root, axisContract(t), now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := RetentionRows(plan.Intents, plan.Removed)
+	if len(rows) != 1 || rows[0].Rel != old || rows[0].SHA256 == "" {
+		t.Fatalf("retention rows %+v, want one row for %s with its hash", rows, old)
+	}
+	if len(DeletionRows(root, plan.Intents, nil)) != 0 {
+		t.Errorf("the lifecycle job's rows now carry retention's; the two records would merge")
+	}
+}
+
+// The operator's condition for plan 11: retention's first deletion is
+// report-only, and the list is read before anything goes. Held until the gate
+// note says `approved: true`; then deleted behind its own manifest.
+func TestRetentionHoldsItsFirstDeletionUntilTheOperatorApproves(t *testing.T) {
+	cfg, root := scratchConfig(t)
+	cfg.Rules = rules.NewHolder(root, time.Now())
+	old := writeFile(t, root, "diagnostics/digests/20260711-digest-daily.md", "a day\n")
+	gate := filepath.Join(root, filepath.FromSlash(RetentionGateRel))
+	run := func(day int) Report {
+		t.Helper()
+		rep, err := Run(cfg, Options{Apply: true, Force: true, Now: time.Date(2026, 10, day, 9, 0, 0, 0, time.UTC)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rep
+	}
+
+	rep := run(10)
+	if _, err := os.Stat(filepath.Join(root, old)); err != nil {
+		t.Fatalf("the first pass deleted %s before the operator read the list: %v", old, err)
+	}
+	if len(rep.Retain.Held) != 1 || len(rep.Retain.Removed) != 0 || rep.Retain.Gate != RetentionGateRel {
+		t.Errorf("held %+v removed %+v gate %q", rep.Retain.Held, rep.Retain.Removed, rep.Retain.Gate)
+	}
+	first, err := os.ReadFile(gate)
+	if err != nil || !strings.Contains(string(first), "approved: false") || !strings.Contains(string(first), old) {
+		t.Fatalf("the gate note should list %s at approved: false: %v\n%s", old, err, first)
+	}
+
+	// The same list on another night: nothing to rewrite, so nothing to commit.
+	run(11)
+	if again, _ := os.ReadFile(gate); string(again) != string(first) {
+		t.Errorf("an unchanged list rewrote the gate note:\n%s", again)
+	}
+
+	approved := strings.Replace(string(first), "approved: false", "approved: true", 1)
+	if err := os.WriteFile(gate, []byte(approved), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep = run(12)
+	if _, err := os.Stat(filepath.Join(root, old)); !os.IsNotExist(err) {
+		t.Errorf("an approved sweep kept %s", old)
+	}
+	if len(rep.Retain.Removed) != 1 || len(rep.Retain.Held) != 0 {
+		t.Errorf("after approval: removed %+v held %+v", rep.Retain.Removed, rep.Retain.Held)
+	}
+	manifests, _ := filepath.Glob(filepath.Join(root, filepath.FromSlash(PurgeManifestDir), "*", "retention.json"))
+	if len(manifests) != 1 {
+		t.Fatalf("retention manifests %v, want one", manifests)
+	}
+	if blob, _ := os.ReadFile(manifests[0]); !strings.Contains(string(blob), old) {
+		t.Errorf("the manifest does not name %s:\n%s", old, blob)
+	}
+	if kept, _ := os.ReadFile(gate); string(kept) != approved {
+		t.Errorf("the approved gate note changed; it is the record of the approval")
 	}
 }
 

@@ -26,7 +26,7 @@ Aging runs on its own. The nightly `agentmdream` pass sinks, archives and — pa
    | Deleted, manifest first | 2,555 days **and** the archive wait served | `forget_after_days` |
    | Most notes one pass may sink | 25 | `demotion_cap` |
 
-   A session trace runs on a shorter line — 90 · 365 · 1,095 — set in `lifecycle_overrides.episodic`. The diagnostics have their own `retention:` block, per file kind; migration and purge manifests are deliberately absent from it, because they are the record of what moved and what was forgotten.
+   A session trace runs on a shorter line — 90 · 365 · 1,095 — set in `lifecycle_overrides.episodic`. The diagnostics have their own `retention:` block, per file kind; migration and purge manifests are deliberately absent from it, because they are the record of what moved and what was forgotten. The sweep's first deletion waits for you: it lists what it would remove in `agent/diagnostics/migrations/purge/retention-first-deletion.md` and deletes nothing until you set `approved: true` there.
 
 3. **Know what the clock reads.** Only a genuine recall resets it. Opening a file, or reading it through a skill, does not. A recall before the archive line returns the note to day 0; after the archive move, serving it on an explicit archive query or moving it back returns it to `active` with its clock reset. A hand edit of `lifecycle:` counts as a touch, so a note you have just reconsidered does not sink the same night.
 

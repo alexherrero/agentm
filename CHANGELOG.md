@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rule lands in both repos' copies of the gate, which the cross-repo parity
   check keeps in step. agentm's wiki passes it: all eighteen images resolve.
 
+- **Retention's first deletion waits for the operator.** The operator's
+  condition for agentm-vault plan 11 was that retention's first deletion be
+  report-only, with the list read before anything goes, and nothing enforced
+  it. Until `agent/diagnostics/migrations/purge/retention-first-deletion.md`
+  says `approved: true`, a pass that would delete writes that note, listing
+  each held file with the date it crossed its line, and deletes nothing. The
+  note is rewritten only when the list changes. Once approved, the sweep
+  deletes on the contract's lines, behind its own manifest (`retention.json`
+  in the run's purge folder, beside the lifecycle job's `manifest.json`). The
+  dreaming facet lists what is held.
+
 ### Changed
 
 - **The agentm-vault design: a closed task moves to `completed/tasks/`, and
@@ -110,6 +121,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   over the same fixtures and fails on any disagreement.
 
 ### Fixed
+
+- **The retention sweep's deletions reach a manifest.** The lifecycle job's
+  `DeletionRows` keeps only its own intents, so the sweep's deletions arrived
+  as no rows, no manifest was written, and the run dropped them, as it must
+  drop a deletion with no record: retention never deleted anything. The first
+  file due, `20260711-digest-daily.md`, would have crossed its 90-day line on
+  2026-10-09 and silently stayed. `RetentionRows` builds the sweep's own rows,
+  and a test drives the whole gate through an applying run.
 
 - **Crystallize reads and writes under the vault's memory root (task 177,
   step 1).** `agentmd crystallize` handed the phase the memory root as the
