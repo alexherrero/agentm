@@ -1458,6 +1458,22 @@ func cmdEnrich(args []string) error {
 		fmt.Printf("dry run: %d inbox card(s) under %s, %d card(s) under %s%s and "+
 			"%d project record(s), served in that order and oldest first\n",
 			inbox, inboxDir, cards, strings.Join(dirs, ", "), ideaClause, records)
+		// The notes the queue-age alert counts, which the queue serves right after
+		// the inbox; a line only when there are any, so a drained queue reads as
+		// it always did.
+		awaiting, err := idx.AwaitingJudgment()
+		if err != nil {
+			return err
+		}
+		waiting := 0
+		for _, rel := range queue {
+			if awaiting[rel] && !strings.HasPrefix(rel, inboxDir) {
+				waiting++
+			}
+		}
+		if waiting > 0 {
+			fmt.Printf("  %d awaiting a first judgment, served right after the inbox\n", waiting)
+		}
 		fmt.Printf("  owed the deep pass %d · the light pass %d · unchanged at this "+
 			"pass %d · unreadable %d\n", deep, light, unchanged, unreadable)
 		fmt.Printf("  budget: the %d-call guard · strong %s tokens · cheap %s tokens · %s\n",

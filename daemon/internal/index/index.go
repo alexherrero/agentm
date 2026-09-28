@@ -804,6 +804,30 @@ func (x *Index) UnfiledSince(baseline time.Time) (QueueSince, error) {
 	return out, nil
 }
 
+// AwaitingJudgment names the notes the queue-age alert counts: waiting to be
+// filed, and never judged by enrichment. The night serves them ahead of the
+// re-judgements (enrichServeOrder), so the notes the alert watches age are the
+// ones the budget reaches first.
+func (x *Index) AwaitingJudgment() (map[string]bool, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	rows, err := x.db.Query(`SELECT path FROM docmeta
+		  WHERE status IN (`+unfiledPlaceholders+`)`+awaitingJudgment, unfiledArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("listing notes awaiting a judgment: %w", err)
+	}
+	defer rows.Close()
+	out := make(map[string]bool)
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out[p] = true
+	}
+	return out, rows.Err()
+}
+
 // CapturedSince counts the documents under `prefix` captured at or after
 // `since` — the volume gate's reading of the day so far (filing v2, task 4).
 // The index rather than a counter, so a daemon restart forgets nothing and
