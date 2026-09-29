@@ -345,6 +345,8 @@ def mined_candidates(messages: list) -> list:
             "excerpt": (getattr(c, "excerpts", None) or [getattr(c, "title", "")])[0],
             "count": getattr(c, "occurrences", 1),
         })
+    # A reply to the agent is never filed; the trace is where it is logged.
+    out.extend(mined.get("dropped_replies") or [])
     return out
 
 
