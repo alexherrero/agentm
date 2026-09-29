@@ -138,6 +138,9 @@ type Result struct {
 	// Updated says the capture found its source's note already in the vault
 	// and updated it in place, rather than writing a new one.
 	Updated bool `json:"updated,omitempty"`
+	// Appended says the capture was an idea that already has a card in
+	// personal/ideas/, and was added to it rather than filed (Path names it).
+	Appended bool `json:"appended,omitempty"`
 	// Note carries anything the caller should know that is not an error — a
 	// defaulted type, a slug that had to be disambiguated.
 	Note string `json:"note,omitempty"`
@@ -397,6 +400,38 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	} else if c.cfg.Shard == "date" {
 		dir = filepath.ToSlash(filepath.Join(spaceDir,
 			captured.Format("2006"), captured.Format("01")))
+	}
+
+	// An idea that already has a card adds to it (ideacard.go); a new idea is
+	// filed below as before.
+	if noteType == "idea" {
+		if card := c.matchIdeaCard(slugify(req.Title), title, text); card != "" {
+			label := strings.TrimSpace(req.Source)
+			if label == "" {
+				label = "conversation"
+			}
+			if u := strings.TrimSpace(req.SourceURL); u != "" {
+				label += " · " + u
+			}
+			added, err := c.appendToCard(card, text, label, captured)
+			if err != nil {
+				return Result{}, fmt.Errorf("adding to %s: %w", card, err)
+			}
+			res := Result{Path: card, Slug: strings.TrimSuffix(path.Base(card), ".md"), Type: noteType,
+				Status: "active", Captured: captured.Format(time.RFC3339), Appended: added,
+				Note: "an idea that already has a card: added to it under " + addedByCapture}
+			if !added {
+				res.Note = "an idea already on its card, word for word; nothing was written"
+			}
+			abs := filepath.Join(c.cfg.VaultPath, filepath.FromSlash(card))
+			if raw, err := os.ReadFile(abs); err == nil {
+				if info, err := os.Stat(abs); err == nil &&
+					c.idx.Upsert(note.Parse(card, string(raw), captured), info.ModTime().UnixNano(), info.Size()) == nil {
+					res.Indexed = true
+				}
+			}
+			return res, nil
+		}
 	}
 
 	base := slugify(title)

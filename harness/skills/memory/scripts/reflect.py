@@ -938,7 +938,7 @@ def route_candidates(
     """
     stats = {
         "auto_saved": 0, "approved": 0, "rejected": 0,
-        "skipped": 0, "filed_low": 0, "ideas_filed": 0, "capped": 0, "errors": 0,
+        "skipped": 0, "filed_low": 0, "ideas_filed": 0, "ideas_appended": 0, "capped": 0, "errors": 0,
         "opinion_supplements": 0, "deduped": 0, "refused": 0, "candidates": 0,
     }
     # One corpus index and one search per pass: every candidate is judged
@@ -1024,6 +1024,18 @@ def route_candidates(
     # sweep's idea fold and the ledger read them from the class directory —
     # the metadata marks them unreviewed, not a staging directory.
     for c in idea_candidates:
+        # An idea that already has a card adds to it rather than filing a copy
+        # (agentm-vault § Capture, amended 2026-09-28).
+        try:
+            import idea_cards  # same skill dir
+            label = "conversation" + (f" · session {session_id[:8]}" if session_id else "")
+            card = idea_cards.add_to_matching_card(vault, c.body or c.title, title=c.title, source=label)
+        except Exception as e:  # a card that cannot be read is no reason to lose the idea
+            print(f"[reflect.route] idea card match skipped: {e}", file=stderr)
+            card = None
+        if card is not None:
+            stats["ideas_appended"] += 1
+            continue
         if _file_capped(c, type_hint="idea"):
             stats["ideas_filed"] += 1
 

@@ -227,5 +227,92 @@ class FileAnIdeaFromTheInboxTests(unittest.TestCase):
         self.assertTrue((self.vault / "personal" / "ideas" / "playon.md").is_file())
 
 
+
+class AnIdeaAddsToItsCardTests(unittest.TestCase):
+    """An idea that already has a card adds to it (agentm-vault § Capture,
+    amended 2026-09-28): appended under a dated `## Added by capture`, with its
+    source, and no semantic note written. A new idea is filed as before."""
+
+    CARD = ("---\ntitle: \"Streaming, but not 4K Blu-ray yet\"\ntype: idea\narea: home-tech\nstatus: active\n"
+            "slug: streaming-but-not-4k-bluray-yet\n---\n\nStream the everyday catalogue, keep buying 4K discs "
+            "for the films worth the bitrate, and revisit once streaming bitrates catch up.\n")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name) / "vault"
+        self.root = self.vault / "agent"
+        (self.vault / ".obsidian").mkdir(parents=True)
+        (self.root / "memory").mkdir(parents=True)
+        self.ideas = self.vault / "personal" / "ideas"
+        self.ideas.mkdir(parents=True)
+        self.card = self.ideas / "streaming-but-not-4k-bluray-yet.md"
+        self.card.write_text(self.CARD, encoding="utf-8")
+
+    def _semantic(self):
+        return sorted((self.root / "memory").rglob("*.md"))
+
+    def test_an_idea_matching_a_card_is_appended_and_files_nothing(self):
+        import capture
+        text = ("Stream the everyday catalogue, keep buying 4K discs for the films worth the bitrate, "
+                "and revisit once streaming bitrates catch up. Also: the Apple TV handles Dolby Vision now.")
+        res = capture.capture(self.root, text, kind="idea", source="cli")
+        self.assertTrue(res.success, res.error)
+        self.assertTrue(res.appended)
+        self.assertEqual(res.path, self.card)
+        self.assertEqual(self._semantic(), [], "no semantic note is written for a carded idea")
+        after = self.card.read_text(encoding="utf-8")
+        self.assertTrue(after.startswith(self.CARD.rstrip("\n")), "nothing above the section changes")
+        self.assertIn("\n## Added by capture\n", after)
+        self.assertIn("· operator-direct · via cli**", after)
+        self.assertIn("Dolby Vision", after)
+
+    def test_the_same_words_twice_are_added_once(self):
+        for _ in range(2):
+            idea_cards.add_to_matching_card(self.root, "The Apple TV handles Dolby Vision now.",
+                                            slug="streaming-but-not-4k-bluray-yet", source="conversation",
+                                            day="2026-09-28")
+        self.assertEqual(self.card.read_text(encoding="utf-8").count("Dolby Vision"), 1)
+
+    def test_a_second_capture_joins_the_section_and_the_night_s_section_stays(self):
+        self.card.write_text(self.CARD + "\n## Added by dreaming\n\nThe night's thought.\n", encoding="utf-8")
+        idea_cards.append_capture(self.card, "First addition.", source="conversation", day="2026-09-27")
+        idea_cards.append_capture(self.card, "Second addition.", source="conversation", day="2026-09-28")
+        text = self.card.read_text(encoding="utf-8")
+        self.assertEqual(text.count("## Added by capture"), 1)
+        self.assertLess(text.index("First addition."), text.index("Second addition."))
+        self.assertIn("## Added by dreaming\n\nThe night's thought.\n", text)
+
+    def test_a_new_idea_is_filed_as_before(self):
+        import capture
+        res = capture.capture(self.root, "Drip lines on a timer for the tomato beds this spring.", kind="idea")
+        self.assertTrue(res.success, res.error)
+        self.assertFalse(res.appended)
+        self.assertEqual(len(self._semantic()), 1)
+        self.assertNotIn("Added by capture", self.card.read_text(encoding="utf-8"))
+
+    def test_the_route_pass_adds_a_mined_idea_to_its_card(self):
+        import io
+        import reflect
+        cand = reflect.Candidate(category="idea", confidence="LOW", slug="streaming",
+                                 title="Stream the everyday catalogue, keep buying 4K discs",
+                                 body="Stream the everyday catalogue, keep buying 4K discs for the films worth the "
+                                      "bitrate, and revisit once streaming bitrates catch up",
+                                 rationale="idea declaration", excerpts=[])
+        stats = reflect.route_candidates([], [cand], vault=self.root, mode=reflect.ROUTE_MODE_AUTO,
+                                         session_id="9b9d740e-0000", stdin=io.StringIO(),
+                                         stdout=io.StringIO(), stderr=io.StringIO())
+        self.assertEqual((stats["ideas_appended"], stats["ideas_filed"]), (1, 0))
+        self.assertEqual(self._semantic(), [])
+
+    def test_the_match_line_holds_against_a_long_unrelated_card(self):
+        long_card = self.ideas / "doom-llm-npcs.md"
+        long_card.write_text("---\ntitle: Doom with LLM NPCs\ntype: idea\narea: coding\n---\n\n"
+                             + " ".join(f"word{i}" for i in range(400)) + " tomato beds timer spring\n",
+                             encoding="utf-8")
+        self.assertIsNone(idea_cards.matching_card(self.root, title="Drip lines",
+                                                   body="Drip lines on a timer for the tomato beds this spring."))
+
+
 if __name__ == "__main__":
     unittest.main()
