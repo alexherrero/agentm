@@ -599,7 +599,7 @@ func cmdCapture(args []string) error {
 		Tags:         splitList(*tags), Aliases: splitList(*aliases),
 		Source: *source, SourceID: *sourceID, SourceURL: *sourceURL,
 		SourceHash: *sourceHash, SourceVersion: *sourceVersion,
-		Space: *space,
+		Space: *space, Cwd: workingDir(),
 	})
 	if err != nil {
 		return err
@@ -2040,4 +2040,14 @@ func dumpPairs(dir string, pairs []enrich.Pair, landed map[string]string) error 
 		}
 	}
 	return nil
+}
+
+// workingDir is this process's folder, for finding the capturing session's
+// project; "" when it cannot be read.
+func workingDir() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return wd
 }
