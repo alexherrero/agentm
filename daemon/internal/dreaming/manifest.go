@@ -107,7 +107,9 @@ func checkManifest(root string, m Manifest, res *ManifestResult) map[int][]byte 
 		abs := filepath.Clean(filepath.Join(root, filepath.FromSlash(a.Rel)))
 		inVault, err := filepath.Rel(vault, abs)
 		switch {
-		case a.Rel == "" || filepath.IsAbs(filepath.FromSlash(a.Rel)) || err != nil || inVault == ".." || strings.HasPrefix(inVault, ".."+string(filepath.Separator)):
+		case a.Rel == "" || filepath.IsAbs(filepath.FromSlash(a.Rel)) || strings.HasPrefix(a.Rel, "/") ||
+			strings.HasPrefix(a.Rel, `\`) || filepath.VolumeName(filepath.FromSlash(a.Rel)) != "" ||
+			err != nil || inVault == ".." || strings.HasPrefix(inVault, ".."+string(filepath.Separator)):
 			res.Refused = append(res.Refused, a.Rel+": outside the vault")
 			continue
 		case strings.HasPrefix(filepath.ToSlash(inVault), ".git/") || strings.HasPrefix(filepath.ToSlash(inVault), ".obsidian/"):

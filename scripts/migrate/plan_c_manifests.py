@@ -39,6 +39,13 @@ import card_shape  # noqa: E402
 import episodic_trace as et  # noqa: E402
 
 
+def _text(raw: bytes) -> str:
+    """A note's text with its line endings as the writers make them. A file a
+    Windows editor saved carries CRLF, and every frontmatter reader here reads
+    `---\n`; the hash in the manifest is still of the bytes as they are."""
+    return raw.decode("utf-8").replace("\r\n", "\n")
+
+
 def sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
@@ -76,7 +83,7 @@ def plan_traces(memory_root: Path) -> dict:
     groups = defaultdict(list)
     for p in sorted(folder.glob("*.md")):
         raw = p.read_bytes()
-        fm, _ = et._split_trace(raw.decode("utf-8"))
+        fm, _ = et._split_trace(_text(raw))
         sid = et._fm_value(fm, "session")
         if not sid:
             continue
@@ -91,19 +98,19 @@ def plan_traces(memory_root: Path) -> dict:
         members.sort(key=lambda m: m[0])
         _, survivor, s_raw = members[0]
         s_rel = survivor.relative_to(memory_root).as_posix()
-        merged = s_raw.decode("utf-8")
+        merged = _text(s_raw)
         newest = survivor.stat().st_mtime
         others = sorted(members[1:], key=lambda m: m[1].stat().st_mtime)
         for _, other, o_raw in others:
             mtime = other.stat().st_mtime
-            merged = et.merge_trace_text(merged, o_raw.decode("utf-8"), sid, newest_outcome=mtime >= newest)
+            merged = et.merge_trace_text(merged, _text(o_raw), sid, newest_outcome=mtime >= newest)
             newest = max(newest, mtime)
         acts.append(act(s_rel, s_raw, merged,
                         f"the session's one trace: {len(others)} other trace(s) of {sid} folded in"))
         folded = []
         for _, other, o_raw in others:
             o_rel = other.relative_to(memory_root).as_posix()
-            text = o_raw.decode("utf-8")
+            text = _text(o_raw)
             acts.append(act(o_rel, o_raw, supersede(text, s_rel),
                             f"a second trace of session {sid}, folded into {s_rel}",
                             frm=lifecycle_of(text), to="superseded"))

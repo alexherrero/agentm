@@ -75,6 +75,18 @@ class TraceFoldTests(unittest.TestCase):
                          "2026-09-13-let-s-do-follow-up-b-9b9d740e.md")
         self.assertEqual(pcm.plan_traces(self.root)["acts"], [])
 
+    def test_a_trace_saved_with_crlf_line_endings_is_folded_too(self):
+        # A Windows editor saves CRLF; the manifest hashes the bytes as they are.
+        self._write("2026-09-13-a-9b9d740e.md", "a", recalled=["memory/semantic/a.md"])
+        self._write("2026-09-13-session-9b9d740e.md", et.fallback_title(self.SID), recalled=["memory/semantic/b.md"])
+        for p in self.folder.glob("*.md"):
+            p.write_bytes(p.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        m = pcm.plan_traces(self.root)
+        self.assertEqual(len(m["acts"]), 2)
+        self.assertEqual(m["sessions"][0]["survivor"], "memory/episodic/2026-09-13-a-9b9d740e.md")
+        raw = (self.folder / "2026-09-13-a-9b9d740e.md").read_bytes()
+        self.assertEqual(m["acts"][0]["before_sha256"], hashlib.sha256(raw).hexdigest())
+
     def test_a_manifest_is_written_where_the_operator_reads_it(self):
         self._write("2026-09-13-a-9b9d740e.md", "a", recalled=["memory/semantic/a.md"])
         self._write("2026-09-13-b-9b9d740e.md", "b", recalled=["memory/semantic/b.md"])
