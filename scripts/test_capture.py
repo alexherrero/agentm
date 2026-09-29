@@ -200,5 +200,74 @@ class ConcurrencyTests(unittest.TestCase):
         self.assertEqual(len(seen_contents), 20, "no file's content was overwritten by another writer")
 
 
+
+class SameSourceUpdatesItsNoteTests(unittest.TestCase):
+    """The same outside source updates its note (agentm-vault § Capture,
+    amended 2026-09-28): the same source and title, captured again, rewrite the
+    card in place; a different source, a different title, a session id and a
+    superseded card each get a new file."""
+
+    URL = "https://example.com/always-on-agent"
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name)
+
+    def _files(self):
+        return sorted(p for p in (self.vault / "memory").rglob("*.md"))
+
+    def test_the_same_source_id_captured_again_updates_the_note(self) -> None:
+        first = cap.capture(self.vault, "The retention thread\nThe first reading.", source_id="gmail:thread-1234",
+                            why="kept for the ruling", now=_NOW)
+        self.assertTrue(first.success, first.error)
+        text = first.path.read_text(encoding="utf-8")
+        self.assertIn("source_id: gmail:thread-1234\n", text)
+        first.path.write_text(text.replace("slug: ", "importance: 9\nslug: ", 1), encoding="utf-8")
+        files = self._files()
+        again = cap.capture(self.vault, "The retention thread\nRead again after the last reply.",
+                            source_id="gmail:thread-1234", now=_NOW)
+        self.assertTrue(again.success, again.error)
+        self.assertTrue(again.updated)
+        self.assertEqual(again.path, first.path)
+        self.assertEqual(self._files(), files, "an update in place creates no file")
+        text = again.path.read_text(encoding="utf-8")
+        self.assertIn("Read again after the last reply.", text)
+        self.assertNotIn("The first reading.", text)
+        self.assertIn("importance: 9\n", text, "the operator's importance is kept")
+        self.assertIn('why: "kept for the ruling"\n', text, "a field the new capture lacks is kept as written")
+        import card_shape
+        self.assertEqual(card_shape.reorder(text), text, "the card stays in the card's order")
+
+    def test_the_same_page_captured_again_updates_the_note(self) -> None:
+        first = cap.capture(self.vault, "Always-on memory agent\nv1", source_url=self.URL, now=_NOW)
+        again = cap.capture(self.vault, "Always-on memory agent\nv2", source_url=self.URL, now=_NOW)
+        self.assertTrue(again.updated)
+        self.assertEqual(again.path, first.path)
+        self.assertEqual(len(self._files()), 1)
+
+    def test_a_different_source_or_title_files_a_new_note(self) -> None:
+        a = cap.capture(self.vault, "The retention thread\nOne.", source_id="gmail:thread-1", now=_NOW)
+        b = cap.capture(self.vault, "The retention thread\nTwo.", source_id="gmail:thread-2", now=_NOW)
+        c = cap.capture(self.vault, "A fact from the same thread\nThree.", source_id="gmail:thread-1", now=_NOW)
+        self.assertFalse(b.updated or c.updated)
+        self.assertEqual(len({a.path, b.path, c.path}), 3)
+
+    def test_a_session_id_is_no_source_identity(self) -> None:
+        a = cap.capture(self.vault, "Same title\nOne.", source_id="session:9b9d740e", now=_NOW)
+        b = cap.capture(self.vault, "Same title\nTwo.", source_id="session:9b9d740e", now=_NOW)
+        self.assertFalse(b.updated)
+        self.assertNotEqual(a.path, b.path)
+        self.assertNotIn("source_id:", a.path.read_text(encoding="utf-8"))
+
+    def test_a_superseded_card_is_never_updated(self) -> None:
+        a = cap.capture(self.vault, "The page\nOld.", source_url=self.URL, now=_NOW)
+        a.path.write_text(a.path.read_text(encoding="utf-8").replace("lifecycle: active", "lifecycle: superseded"),
+                          encoding="utf-8")
+        b = cap.capture(self.vault, "The page\nNew.", source_url=self.URL, now=_NOW)
+        self.assertFalse(b.updated)
+        self.assertNotEqual(a.path, b.path)
+
+
 if __name__ == "__main__":
     unittest.main()
