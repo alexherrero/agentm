@@ -560,8 +560,9 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 							"It sets the trust tier, so it names the transport and never the thing it came from.",
 					},
 					"source_id": map[string]any{
-						"type":        "string",
-						"description": "The unit this was mined from, as <namespace>:<ref> — a message-id, a session id.",
+						"type": "string",
+						"description": "The unit this came from, as <namespace>:<ref> — a message-id, a thread; never a session id. " +
+							"Capturing the same source under the same title again updates that note in place.",
 					},
 					"source_url": map[string]any{
 						"type":        "string",

@@ -129,6 +129,9 @@ type Result struct {
 	Status   string `json:"status"`
 	Captured string `json:"captured"`
 	Indexed  bool   `json:"indexed"`
+	// Updated says the capture found its source's note already in the vault
+	// and updated it in place, rather than writing a new one.
+	Updated bool `json:"updated,omitempty"`
 	// Note carries anything the caller should know that is not an error — a
 	// defaulted type, a slug that had to be disambiguated.
 	Note string `json:"note,omitempty"`
@@ -392,12 +395,39 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		base = strings.Trim(base[:72], "-")
 	}
 
-	rel, slug, err := c.reserve(dir, base, strings.Split(slugify(title+" "+text), "-"), text)
-	if err != nil {
-		return Result{}, err
+	// The same outside source updates its note (samesource.go): looked for in
+	// every class the contract routes a type to, since a note re-typed since its
+	// capture lives in another one.
+	var sameRel, sameRaw string
+	if field, value := sourceKey(req.SourceID, req.SourceURL); field != "" {
+		dirs := []string{dir}
+		if contract != nil && contractErr == nil {
+			types := make([]string, 0, len(contract.Routing))
+			for t := range contract.Routing {
+				types = append(types, t)
+			}
+			sort.Strings(types)
+			for _, t := range types {
+				if d := classDir(contract, nil, t, spaceDir); d != "" && d != dir {
+					dirs = append(dirs, d)
+				}
+			}
+		}
+		sameRel, sameRaw = c.sameSource(dirs, field, value, title)
 	}
-	if slug != base {
-		notes = append(notes, fmt.Sprintf("slug %q was taken; used %q", base, slug))
+	var rel, slug string
+	if sameRel != "" {
+		rel, slug = sameRel, strings.TrimSuffix(path.Base(sameRel), ".md")
+		notes = append(notes, fmt.Sprintf("the same source and title as %s, so it was updated in place; "+
+			"git keeps the old wording", sameRel))
+	} else {
+		rel, slug, err = c.reserve(dir, base, strings.Split(slugify(title+" "+text), "-"), text)
+		if err != nil {
+			return Result{}, err
+		}
+		if slug != base {
+			notes = append(notes, fmt.Sprintf("slug %q was taken; used %q", base, slug))
+		}
 	}
 
 	// Derived aliases, merged with whatever the caller supplied. Deterministic
@@ -434,6 +464,9 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		Probe:            req.Probe,
 		Text:             text,
 	})
+	if sameRaw != "" {
+		body = cardshape.Reorder(mergeInPlace(sameRaw, body))
+	}
 
 	abs := filepath.Join(c.cfg.VaultPath, filepath.FromSlash(rel))
 	if err := writeAtomic(abs, body); err != nil {
@@ -441,6 +474,7 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	}
 
 	res := Result{
+		Updated:  sameRel != "",
 		Path:     rel,
 		Slug:     slug,
 		Type:     noteType,

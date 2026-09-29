@@ -67,6 +67,9 @@ class CaptureResult:
     # reinforced it (occurrences + updated bump) instead of writing a new
     # file — `path`/`slug` then name the EXISTING candidate.
     deduplicated: bool = False
+    # True when the capture found its source's card already home — the same
+    # source and the same title — and updated it in place (`path` names it).
+    updated: bool = False
 
 
 def _iso(now: datetime) -> str:
@@ -98,6 +101,7 @@ def capture(
     tags: "list[str] | None" = None,
     instructions: "str | None" = None,
     source_url: "str | None" = None,
+    source_id: "str | None" = None,
     transport: "str | None" = None,
     type_hint: "str | None" = None,
     why: "str | None" = None,
@@ -157,6 +161,11 @@ def capture(
     frontmatter; neither can cause anything to happen, which is what separates
     them from `instructions`.
 
+    `source_id` is the registry identity (`<namespace>:<ref>`) of the unit this
+    came from. A capture whose source — that identity, else its `source_url` —
+    and title match an active card already home updates that card in place
+    rather than filing a second one (`update_same_source`).
+
     `lock_timeout` passes through to the vault mutex the writer takes.
     """
     if kind not in _KNOWN_KINDS:
@@ -175,8 +184,14 @@ def capture(
         import filing_engine  # same skill dir
 
         title = content.strip().splitlines()[0].strip()[:120]
+        updated = update_same_source(vault, content, title=title, source_id=source_id,
+                                     source_url=source_url, why=why, tags=tags, now=now,
+                                     lock_timeout=lock_timeout)
+        if updated is not None:
+            return CaptureResult(success=True, path=updated, slug=updated.stem, updated=True)
         extra = {"captured": _iso(now), "via": source, "surface": surface,
-                 "instructions": instructions, "why": why, "project": project}
+                 "instructions": instructions, "why": why, "project": project,
+                 "source_id": source_id if source_key(source_id, None)[0] == "source_id" else None}
         # Decide, then write; when a concurrent writer lands on the settled
         # name between the two, decide again against the disk — the next
         # pass sees the newcomer (a twin to reinforce, or a namesake to
@@ -231,6 +246,110 @@ def capture(
         # raises it. A refused capture is an outcome the caller sees, never
         # a note that quietly did not appear.
         return CaptureResult(success=False, error=str(e))
+
+
+# ── the same outside source updates its note ─────────────────────────────────
+#
+# agentm-vault § Capture, amended 2026-09-28 (the operator's ruling 6b): a
+# capture of something already home updates that note in place — the path, the
+# links and the slug stay, the body is replaced, git keeps the old wording.
+# "The same" is the same source and the same title, because one source yields
+# several memories (an article's facts share its address) and each is its own
+# note. The Go door (`daemon/internal/capture/samesource.go`) keeps the same rule.
+
+_REGISTRY_IDENTITY = re.compile(r"^[a-z][a-z0-9_.-]*:\S+$")
+_CLASSES = ("semantic", "procedural", "episodic", "entities", "crystallized")
+
+
+def source_key(source_id: "str | None", source_url: "str | None") -> tuple:
+    """`(field, value)` a capture's source is found by: a registry identity
+    (`<namespace>:<ref>`, never a `session:` id and never a bare word), else the
+    page's address; `(None, None)` when it names neither."""
+    sid = (source_id or "").strip()
+    if _REGISTRY_IDENTITY.match(sid) and not sid.lower().startswith("session:"):
+        return "source_id", sid
+    url = (source_url or "").strip()
+    return ("source_url", url) if url else (None, None)
+
+
+def _card_title(entries, rest: str) -> str:
+    import card_shape  # same skill dir
+    title = card_shape.scalar(card_shape.raw_value(entries, "title"))
+    if title:
+        return title.strip()
+    body = rest.split("\n", 1)[1] if rest.startswith("---") else rest
+    first = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+    return first[:120]
+
+
+def _same_source_card(vault: Path, field: str, value: str, title: str) -> "Path | None":
+    import card_shape  # same skill dir
+    want = _kebab(card_shape.kebab(title))
+    if not want:
+        return None
+    found = []
+    for cls in _CLASSES:
+        for p in sorted((vault / "memory" / cls).glob("*.md")):
+            try:
+                parsed = card_shape.split_note(p.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                continue
+            if parsed is None:
+                continue
+            entries, rest = parsed
+            value_of = lambda k: (card_shape.scalar(card_shape.raw_value(entries, k)) or "").strip()  # noqa: E731
+            if not value_of("type") or value_of("kind"):
+                continue
+            if value_of(field) != value or _kebab(card_shape.kebab(_card_title(entries, rest))) != want:
+                continue
+            if value_of("lifecycle").lower() in ("superseded", "archived") or value_of("superseded_by") \
+                    or value_of("status").lower() == "superseded":
+                continue
+            found.append(p)
+    return found[0] if found else None
+
+
+def update_same_source(vault: Path, content: str, *, title: str, source_id=None, source_url=None,
+                       why=None, tags=None, now: "datetime | None" = None,
+                       lock_timeout: float = 10.0) -> "Path | None":
+    """Update the card this capture is again, in place, and return its path;
+    None when there is none. The body is replaced and its fingerprint follows;
+    `updated`, the source fields, and a `why` or tags the capture carries are
+    set; every other field — the operator's `importance`, `created`, the
+    enrichment stamps — stays as it was. The card is a candidate again, since
+    nothing has judged the new body: `status: unfiled`, `filing_confidence: low`."""
+    field, value = source_key(source_id, source_url)
+    if field is None:
+        return None
+    import card_shape  # same skill dir
+    from fingerprint import compute_fingerprint  # same skill dir
+    from vault_lock import atomic_write, vault_mutex
+    now = now or datetime.now(timezone.utc)
+    with vault_mutex(vault, timeout=lock_timeout):
+        target = _same_source_card(vault, field, value, title)
+        if target is None:
+            return None
+        entries, rest = card_shape.split_note(target.read_text(encoding="utf-8"))
+        body = content.strip() + "\n"
+        if compute_fingerprint(rest.split("\n", 1)[1] if "\n" in rest else "") == compute_fingerprint(body):
+            # An exact resend is a reinforcement, not an update: the write-time
+            # dedup guard bumps the note already home (auto-org part 3 task 2).
+            return None
+        sets = {"status": "unfiled", "filing_confidence": "low", "updated": now.date().isoformat(),
+                field: card_shape.quote(value) if ": " in value or value[:1] in "\"'[{&*!|>%@`#" else value,
+                "fingerprint": compute_fingerprint(body)}
+        if field == "source_id" and (source_url or "").strip():
+            sets["source_url"] = source_url.strip()
+        if why and why.strip():
+            sets["why"] = card_shape.quote(why.strip())
+        if tags:
+            sets["tags"] = "[" + ", ".join(card_shape.quote(t) for t in tags) + "]"
+        for key, rendered in sets.items():
+            if card_shape.raw_value(entries, key) is not None or key != "fingerprint":
+                entries = card_shape.set_value(entries, key, rendered)
+        text = card_shape.reorder(card_shape.join_note(entries, "---\n\n" + body))
+        atomic_write(target, text)
+    return target
 
 
 def _kebab(slug: str) -> str:
