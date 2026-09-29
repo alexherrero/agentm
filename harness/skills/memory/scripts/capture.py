@@ -70,6 +70,10 @@ class CaptureResult:
     # True when the capture found its source's card already home — the same
     # source and the same title — and updated it in place (`path` names it).
     updated: bool = False
+    # True when the capture was an idea that already has a card in
+    # `personal/ideas/`, and was added to it under `## Added by capture`
+    # instead of being filed (`path` names the card).
+    appended: bool = False
 
 
 def _iso(now: datetime) -> str:
@@ -184,6 +188,17 @@ def capture(
         import filing_engine  # same skill dir
 
         title = content.strip().splitlines()[0].strip()[:120]
+        if (type_hint or ("idea" if kind == "idea" else None)) == "idea":
+            # An idea that already has a card adds to it (agentm-vault § Capture,
+            # amended 2026-09-28); a new idea is filed as before.
+            import idea_cards  # same skill dir
+            how = transport or ("external-fetch" if source_url else "operator-direct")
+            label = " · ".join(x for x in (how, f"via {source}" if source else "", source_url or "") if x)
+            card = idea_cards.add_to_matching_card(vault, content, slug=_kebab(slug) if slug else "",
+                                                   title=title, source=label, day=now.date().isoformat(),
+                                                   lock_timeout=lock_timeout)
+            if card is not None:
+                return CaptureResult(success=True, path=card, slug=card.stem, appended=True)
         updated = update_same_source(vault, content, title=title, source_id=source_id,
                                      source_url=source_url, why=why, tags=tags, now=now,
                                      lock_timeout=lock_timeout)
