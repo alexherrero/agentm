@@ -23,6 +23,10 @@
 # state to leave it in until the first judged list has been read.
 schedule: daily
 
+# The same lookback as the enrichment batch: a night the machine slept through
+# is picked up on the next one rather than waiting a day.
+lookback: 36h
+
 # The night's window. `order: 2`, shared with the dreaming binary: the loader
 # breaks the tie by name and `dreaming` precedes `restated-nightly`, so the
 # binary's lifecycle and copies jobs run first, and this pass runs before the
