@@ -17,13 +17,20 @@ survivor, `status` untouched — the shape the copies job writes.
              candidates, and the newest closing recap; the others are
              superseded by it.
 
-    python3 scripts/migrate/plan_c_manifests.py traces [--memory-root DIR] [--out FILE]
+    chunks   an article is one note: an active `<doc>-chunk-N` note whose
+             `<doc>.md` is active beside it is superseded by the document, and
+             so is an older full-length note carrying the document's
+             `source_url` (an earlier ingest of the same page). The facts
+             drawn from the article are short and stay.
+
+    python3 scripts/migrate/plan_c_manifests.py {traces,chunks} [--memory-root DIR] [--out FILE]
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import re
 import sys
 from collections import defaultdict
 from datetime import date
@@ -121,9 +128,71 @@ def plan_traces(memory_root: Path) -> dict:
             "sessions": sessions, "acts": acts}
 
 
+# ── chunks ────────────────────────────────────────────────────────────────────
+
+_CHUNK = re.compile(r"^(?P<doc>.+)-chunk-\d+$")
+_CLASSES = ("semantic", "procedural")
+#: A note this long carrying the document's page address is an earlier ingest
+#: of the same article, not one of the facts drawn from it.
+_EARLIER_INGEST_WORDS = 1000
+
+
+def _fields(text: str) -> dict:
+    parsed = card_shape.split_note(text)
+    if parsed is None:
+        return {}
+    entries, rest = parsed
+    out = {k: (card_shape.scalar(card_shape.raw_value(entries, k)) or "") for k, _ in entries if k}
+    out["_body"] = rest.split("\n", 1)[1] if "\n" in rest else ""
+    return out
+
+
+def _active(f: dict) -> bool:
+    return (f.get("lifecycle", "").lower() not in ("superseded", "archived") and not f.get("superseded_by")
+            and f.get("status", "").lower() != "superseded")
+
+
+def plan_chunks(memory_root: Path) -> dict:
+    """The manifest folding every article's chunk notes into its document: an
+    active `<doc>-chunk-N` note whose `<doc>.md` is an active note beside it is
+    superseded by the document, and so is an older full-length note carrying
+    the document's `source_url` — an earlier ingest of the same page. The facts
+    drawn from the article are short and stay."""
+    acts, families = [], []
+    for cls in _CLASSES:
+        folder = memory_root / "memory" / cls
+        notes = {p: _text(p.read_bytes()) for p in sorted(folder.glob("*.md"))}
+        fields = {p: _fields(t) for p, t in notes.items()}
+        docs: dict = {}
+        for p in notes:
+            m = _CHUNK.match(p.stem)
+            doc = folder / f"{m.group('doc')}.md" if m else None
+            if doc is not None and doc in notes and _active(fields[doc]) and _active(fields[p]):
+                docs.setdefault(doc, []).append(p)
+        for doc, chunks in sorted(docs.items()):
+            d = fields[doc]
+            doc_rel = doc.relative_to(memory_root).as_posix()
+            earlier = [p for p, f in fields.items()
+                       if p != doc and p not in chunks and _active(f) and f.get("source_url")
+                       and f.get("source_url") == d.get("source_url")
+                       and len(f["_body"].split()) >= _EARLIER_INGEST_WORDS
+                       and f.get("created", "")[:10] < d.get("created", "")[:10]]
+            folded = []
+            for p in sorted(chunks, key=lambda q: int(q.stem.rsplit("-", 1)[1])) + sorted(earlier):
+                rel = p.relative_to(memory_root).as_posix()
+                why = ("a chunk note of " if p in chunks else "an earlier ingest of the page ") + doc_rel
+                acts.append(act(rel, p.read_bytes(), supersede(notes[p], doc_rel), why,
+                                frm=lifecycle_of(notes[p]), to="superseded"))
+                folded.append(rel)
+            families.append({"document": doc_rel, "folded": folded})
+    return {"job": "manifest-plan-c-chunks",
+            "reason": "one article is one note (agentm-vault § Capture, amended 2026-09-28; task 178 step 5)",
+            "families": families, "acts": acts}
+
+
 # ── the command ───────────────────────────────────────────────────────────────
 
-PASSES = {"traces": plan_traces}
+PASSES = {"traces": plan_traces, "chunks": plan_chunks}
 
 
 def _memory_root(arg: "str | None") -> Path:
@@ -152,6 +221,8 @@ def main(argv: "list | None" = None) -> int:
     print(f"{manifest['job']}: {len(manifest['acts'])} act(s) -> {out}")
     for s in manifest.get("sessions", []):
         print(f"  {s['session']}: keep {s['survivor']}; fold {', '.join(s['folded'])}")
+    for f in manifest.get("families", []):
+        print(f"  {f['document']}: fold {len(f['folded'])} note(s)")
     print(f"check it: agentmdream apply -manifest {out}")
     return 0
 

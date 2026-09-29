@@ -95,5 +95,54 @@ class TraceFoldTests(unittest.TestCase):
         self.assertEqual(len(json.loads(out.read_text(encoding="utf-8"))["acts"]), 2)
 
 
+
+class ChunkFoldTests(unittest.TestCase):
+    """One article is one note (task 178 step 5): an article's chunk notes and an
+    earlier full-length ingest of the same page fold into its document; the
+    facts drawn from it stay."""
+
+    URL = "https://example.com/always-on-agent"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name) / "agent"
+        self.sem = self.root / "memory" / "semantic"
+        self.sem.mkdir(parents=True)
+
+    def _note(self, name, *, created, words, url=None, lifecycle="active"):
+        fm = [f"type: reference", "status: active", f"lifecycle: {lifecycle}", f"created: {created}"]
+        if url:
+            fm.append(f"source_url: {url}")
+        (self.sem / name).write_text("---\n" + "\n".join(fm) + "\n---\n\n" + " ".join(["word"] * words) + "\n",
+                                     encoding="utf-8")
+
+    def test_the_chunks_and_an_earlier_ingest_fold_into_the_document(self):
+        self._note("article.md", created="2026-09-11", words=1100, url=self.URL)
+        for i in (0, 1, 2, 10):
+            self._note(f"article-chunk-{i}.md", created="2026-09-11", words=80, url=self.URL)
+        self._note("article-stack.md", created="2026-08-11", words=4600, url=self.URL)
+        self._note("a-fact-from-it.md", created="2026-08-11", words=120, url=self.URL)
+        self._note("other-chunk-0.md", created="2026-09-11", words=80)  # no document beside it
+        self._note("article-chunk-3.md", created="2026-09-11", words=80, lifecycle="superseded")
+        m = pcm.plan_chunks(self.root)
+        self.assertEqual(m["families"], [{"document": "memory/semantic/article.md", "folded": [
+            "memory/semantic/article-chunk-0.md", "memory/semantic/article-chunk-1.md",
+            "memory/semantic/article-chunk-2.md", "memory/semantic/article-chunk-10.md",
+            "memory/semantic/article-stack.md"]}])
+        _apply(self.root, m)
+        for name in ("article-chunk-0.md", "article-stack.md"):
+            text = (self.sem / name).read_text(encoding="utf-8")
+            self.assertIn("lifecycle: superseded\n", text)
+            self.assertIn("superseded_by: memory/semantic/article.md\n", text)
+        self.assertIn("lifecycle: active", (self.sem / "a-fact-from-it.md").read_text(encoding="utf-8"))
+        self.assertEqual(pcm.plan_chunks(self.root)["acts"], [], "a re-plan after the fold finds nothing")
+
+    def test_a_chunk_whose_document_is_superseded_stays(self):
+        self._note("article.md", created="2026-09-11", words=1100, url=self.URL, lifecycle="superseded")
+        self._note("article-chunk-0.md", created="2026-09-11", words=80, url=self.URL)
+        self.assertEqual(pcm.plan_chunks(self.root)["acts"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
