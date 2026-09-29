@@ -336,12 +336,66 @@ def _is_live(fm: dict) -> bool:
     return status not in ("superseded", "expired", "deleted") and lifecycle not in ("superseded", "archived")
 
 
+# The twin detector's population (agentm-vault § Dreaming, amended 2026-09-28):
+# memories only — cards in the three observational classes, and the idea cards
+# in `personal/ideas/`. A diagnostics report, a generated `_index.md` or
+# `summary.md` page, a `latest_*` copy and every record (a `kind:` note: a
+# session trace, a tracker, a map) are never twins, however alike two of them
+# read. The 2026-09-24 survey found that all 61 pairs the walk over the whole
+# memory root listed were exactly those.
+_TWIN_CLASSES = ("semantic", "procedural", "episodic")
+_TWIN_SKIP_NAMES = frozenset({"_index.md", "summary.md"})
+
+
+def _is_memory_card(fm: dict) -> bool:
+    try:
+        return storage_rules.is_memory(fm)
+    except storage_rules.ContractViolation:
+        # Both `type` and `kind`: the linter's finding, not a twin.
+        return False
+
+
+def _twin_population(entries: list, loaded: dict, vault_path: Path) -> list:
+    """The memories the twin detector compares, in a stable order: the class
+    cards among `entries`, then the idea cards. Idea cards live at the vault
+    root, outside the memory root the cycle walks, so they are loaded here and
+    added to `loaded`."""
+    population = []
+    for p in entries:
+        try:
+            parts = p.relative_to(vault_path).parts
+        except ValueError:
+            continue
+        if len(parts) != 3 or parts[0] != "memory" or parts[1] not in _TWIN_CLASSES:
+            continue
+        if p.name in _TWIN_SKIP_NAMES or p.name.startswith("latest_"):
+            continue
+        if _is_memory_card(loaded[p][0]):
+            population.append(p)
+    import idea_cards  # function-local: keeps dream's import graph flat
+    for p in idea_cards.card_paths(vault_path):
+        if p not in loaded:
+            loaded.update(_load([p]))
+        population.append(p)
+    return population
+
+
+def _twin_rel(p: Path, vault_path: Path) -> str:
+    """A class card by its memory-root path, an idea card by its vault-root one."""
+    try:
+        return p.relative_to(vault_path).as_posix()
+    except ValueError:
+        import idea_cards
+        return _rel(p, idea_cards.vault_root(vault_path))
+
+
 def _stage_dedup(entries: list, loaded: dict, vault_path: Path) -> list:
-    """Pairs whose bodies are at least 0.92 alike. Each note joins at most one
-    pair, so a family of copies reads as a chain of pairs rather than every
-    combination of them."""
+    """Pairs of memories whose bodies are at least 0.92 alike. Each note joins
+    at most one pair, so a family of copies reads as a chain of pairs rather
+    than every combination of them."""
     proposals = []
     matched = set()
+    entries = _twin_population(entries, loaded, vault_path)
     for i, a in enumerate(entries):
         if a in matched or not _is_live(loaded[a][0]):
             continue
@@ -353,7 +407,7 @@ def _stage_dedup(entries: list, loaded: dict, vault_path: Path) -> list:
             ratio = difflib.SequenceMatcher(None, body_a, body_b).ratio()
             if ratio < DEDUP_SIMILARITY_THRESHOLD:
                 continue
-            ra, rb = _rel(a, vault_path), _rel(b, vault_path)
+            ra, rb = _twin_rel(a, vault_path), _twin_rel(b, vault_path)
             proposals.append(Proposal(
                 stage="dedup", kind="possible-twin", paths=[ra, rb],
                 summary=f"{a.name} and {b.name} are {ratio:.0%} alike — merge by hand, or "

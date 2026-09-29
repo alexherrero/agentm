@@ -72,10 +72,14 @@ cleanup() { rm -rf "$SCRATCH"; }
 trap cleanup EXIT
 echo "verify-dreaming: scratch vault=$SV"
 
-printf -- '---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n' > "$SV/a.md"
-printf -- '---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n' > "$SV/b.md"
-PRE_A="$(cat "$SV/a.md")"
-PRE_B="$(cat "$SV/b.md")"
+# Twins are memories only (agentm-vault § Dreaming, amended 2026-09-28), so
+# the pair is two class cards.
+CARDS="$SV/memory/procedural"
+mkdir -p "$CARDS"
+printf -- '---\ntype: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n' > "$CARDS/a.md"
+printf -- '---\ntype: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n' > "$CARDS/b.md"
+PRE_A="$(cat "$CARDS/a.md")"
+PRE_B="$(cat "$CARDS/b.md")"
 
 # ── A/B/C. a manual /dream run finds the twin, mutates nothing, and puts
 #          the pair on the needs-review map ────────────────────────────────
@@ -86,8 +90,8 @@ assert_contains "A. dream run reports the twin" "$DREAM_OUT" "1 possible-twin"
 assert_contains "A. digest lists it for you to judge" "$(cat "$DIGEST" 2>/dev/null)" \
   "dedup · possible-twin: a.md and b.md"
 
-POST_A="$(cat "$SV/a.md")"
-POST_B="$(cat "$SV/b.md")"
+POST_A="$(cat "$CARDS/a.md")"
+POST_B="$(cat "$CARDS/b.md")"
 assert_eq "B. source entry a.md untouched by the run itself" "$POST_A" "$PRE_A"
 assert_eq "B. source entry b.md untouched by the run itself" "$POST_B" "$PRE_B"
 
