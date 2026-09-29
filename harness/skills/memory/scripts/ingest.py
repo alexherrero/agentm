@@ -2,18 +2,18 @@
 """ingest.py — `/memory ingest <url|file>`, capture part 2
 (`designs/friday/agentm-capture.md`, capture-article-ingestion plan).
 
-Stores the fetched/read content as ONE full-document note, and ALWAYS also
-splits it into small, source-stamped, reading-order-linked chunk notes for
-retrieval via `chunking.py`'s existing `chunk_text()`. Neither form replaces
-the other -- this is the only capture path that produces more than one note
-per item.
+Stores the fetched/read content as ONE full-document note. One outside
+source is one note (agentm-vault § Capture, amended 2026-09-28): the chunk
+notes this command once wrote beside the document retired, because the index
+cuts a long note into several chunk vectors that all point back to it and
+scores it by its best one. The same page ingested again updates its note in
+place.
 
-Write path: both the document note and every chunk note go through
-`save.py`'s `save_entry()` -- these are permanent-memory writes at full
-confidence from the start (unlike the capture front door, which files an
-unfiled candidate at low filing confidence), each individually validated,
-indexed, and one-per-file atomic via `save_entry`'s own
-`vault_lock.vault_mutex`.
+Write path: the document note goes through `save.py`'s `save_entry()` -- a
+permanent-memory write at full confidence from the start (unlike the capture
+front door, which files an unfiled candidate at low filing confidence),
+validated, indexed, and atomic via `save_entry`'s own
+`vault_lock.vault_mutex`; an update in place takes the same mutex.
 
 Group: every note this command writes carries `group: memory` (the
 design's own "a few older notes use a different group: name... we treat
@@ -44,7 +44,6 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from chunking import chunk_text  # noqa: E402
 from save import entry_target_path, save_entry  # noqa: E402
 
 _USER_AGENT = "agentm-ingest/1.0"
@@ -71,16 +70,19 @@ class IngestResult:
     suggested_topic: "str | None" = None
     title: "str | None" = None
     document: "Path | None" = None
+    # Always empty: ingest writes no chunk notes (agentm-vault § Capture,
+    # amended 2026-09-28). Kept so a caller reading it keeps working.
     chunks: "list[Path]" = field(default_factory=list)
     topic: "str | None" = None
     error: "str | None" = None
     # True when the write-time dedup guard matched the document note's
     # content to an existing entry and reinforced it instead of writing
-    # (auto-org part 3 task 2): `document` then names the EXISTING note,
-    # and no chunk notes were written -- writing a chunk family whose
-    # reading-order backlinks point at a document slug that never
-    # materialized would leave dangling [[wikilinks]] (review-caught).
+    # (auto-org part 3 task 2), or the same page re-ingested with the same
+    # text: `document` then names the EXISTING note, and nothing was written.
     deduplicated: bool = False
+    # True when the same page was ingested again and its note was updated in
+    # place (`document` names it).
+    updated: bool = False
 
 
 def _iso_now() -> str:
@@ -243,10 +245,10 @@ def ingest(
 ) -> IngestResult:
     """Ingest one URL or file: one full-document note (body = the extracted
     text, verbatim -- byte-for-byte reproducible modulo save_entry's own
-    trailing-newline normalization) + N chunk notes (chunk body + a
-    reading-order nav footer + a backlink to the document), `type:
-    reference`, `group: memory` — which the filing contract routes to
-    `memory/semantic/`.
+    trailing-newline normalization), `type: reference` — which the filing
+    contract routes to `memory/semantic/`. The same page (same slug, same
+    `source_url`) ingested again replaces that note's body in place; anything
+    else already at the slug is refused, nothing written.
 
     When `topic` is omitted, returns a suggestion WITHOUT writing anything
     (`needs_confirmation=True`) -- the design's "the agent suggests a
@@ -287,38 +289,32 @@ def ingest(
     group = "memory"
     tags = [topic]
 
-    chunks = chunk_text(text)
-    chunk_slugs = [f"{doc_slug}-chunk-{i}" for i in range(len(chunks))]
-
-    # Pre-flight: refuse to write anything if any target slug already
-    # exists, rather than discovering the collision partway through the
-    # N+1-file write sequence. A retroactive /review found the prior
-    # version had no pre-check and no rollback: a mid-sequence
-    # FileExistsError left the document note and every chunk written
-    # before it permanently orphaned on disk while reporting
-    # success=False -- the caller had no way to know memory was actually
-    # written. The destination comes from `save_entry`'s own formula rather
-    # than a copy of it: this check used to re-derive `vault/group/kind/slug.md`
-    # and went dead the moment filing v2 started routing a memory type to its
-    # class (`reference` -> `memory/semantic/`, not `memory/reference/`), so it
-    # spent that whole time probing a directory nothing writes to.
+    # One outside source is one note (agentm-vault § Capture, amended
+    # 2026-09-28). The chunk notes this command used to write beside the
+    # document existed so the vector arm could reach deep text past the
+    # embedder's window; the index now cuts a long note into several chunk
+    # vectors that all point back to it and scores it by its best one, so the
+    # document is the whole of what is written.
+    #
+    # The destination comes from `save_entry`'s own formula rather than a copy
+    # of it: a hand-rolled path went dead once filing v2 started routing a
+    # memory type to its class.
     vault = Path(vault_path)
-    all_slugs = [doc_slug, *chunk_slugs]
-    existing = [s for s in all_slugs
-                if entry_target_path(vault, _INGEST_KIND, s, group=group).exists()]
-    if existing:
-        return IngestResult(
-            success=False,
-            error=f"slug(s) already exist, nothing written: {', '.join(existing)}",
-        )
+    target = entry_target_path(vault, _INGEST_KIND, doc_slug, group=group)
+    if target.exists():
+        # The same page ingested again updates its note in place (the ruling
+        # 6b): the path, the links and the slug stay, git keeps the old text.
+        # Anything else at the name — another page, a local file, a note
+        # nobody ingested — is left alone.
+        if not source_url or _note_source_url(target) != source_url:
+            return IngestResult(
+                success=False,
+                error=f"slug already exists with a different source, nothing written: {doc_slug}",
+            )
+        changed = _update_document(vault, target, text, source_fetched=source_fetched)
+        return IngestResult(success=True, document=target, topic=topic, title=title,
+                            updated=changed, deduplicated=not changed)
 
-    # `written` tracks only files THIS call actually created — the rollback
-    # below unlinks them on a mid-sequence failure. A save the write-time
-    # dedup guard (auto-org part 3 task 2) turned into a reinforce returns
-    # a PRE-EXISTING note's path; consulting `dedup_info` keeps that path
-    # out of the rollback list, so a failed ingest can never delete a note
-    # it didn't create.
-    written: list[Path] = []
     try:
         dedup_info: dict = {}
         doc_path = save_entry(
@@ -326,52 +322,41 @@ def ingest(
             group=group, tags=tags, source_url=source_url, source_fetched=source_fetched,
             dedup_info=dedup_info, source="external-fetch",
         )
-        if dedup_info.get("deduplicated"):
-            # The document's content already exists in the vault -- the
-            # guard reinforced that note (occurrences + updated bump).
-            # Stop here: no chunk family is written. Chunks embed this
-            # run's topic-specific slugs in their reading-order nav, so
-            # they can never exact-match an earlier family; writing them
-            # would create the exact suffix-style duplicate pile this
-            # guard exists to prevent, with backlinks to a document note
-            # that was never created (review-caught).
-            return IngestResult(
-                success=True, document=doc_path, chunks=[], topic=topic,
-                title=title, deduplicated=True,
-            )
-        written.append(doc_path)
-
-        chunk_paths: list[Path] = []
-        for i, chunk_body in enumerate(chunks):
-            nav = []
-            if i > 0:
-                nav.append(f"[[{chunk_slugs[i - 1]}]] (previous)")
-            if i < len(chunks) - 1:
-                nav.append(f"[[{chunk_slugs[i + 1]}]] (next)")
-            nav_line = f" · {' · '.join(nav)}" if nav else ""
-            body = f"{chunk_body}\n\n---\n\nFrom [[{doc_slug}]]{nav_line}"
-            dedup_info = {}
-            chunk_path = save_entry(
-                vault_path, _INGEST_KIND, chunk_slugs[i], body,
-                group=group, tags=tags, source_url=source_url, source_fetched=source_fetched,
-                dedup_info=dedup_info, source="external-fetch",
-            )
-            if not dedup_info.get("deduplicated"):
-                written.append(chunk_path)
-            chunk_paths.append(chunk_path)
     except (FileNotFoundError, FileExistsError, ValueError) as e:
-        # The pre-flight check above closes the common case (a stale
-        # collision), but a write can still fail after it (a concurrent
-        # writer, a disk error) -- roll back whatever this call itself
-        # wrote rather than leave a partial ingest permanently on disk.
-        for p in written:
-            try:
-                p.unlink()
-            except OSError:
-                pass
         return IngestResult(success=False, error=str(e))
+    # A document whose content already exists in the vault is reinforced by
+    # the write-time dedup guard (auto-org part 3 task 2); `document` then
+    # names the existing note.
+    return IngestResult(success=True, document=doc_path, topic=topic, title=title,
+                        deduplicated=bool(dedup_info.get("deduplicated")))
 
-    return IngestResult(success=True, document=doc_path, chunks=chunk_paths, topic=topic, title=title)
+
+def _note_source_url(path: Path) -> "str | None":
+    import card_shape  # same skill dir
+    parsed = card_shape.split_note(path.read_text(encoding="utf-8"))
+    return card_shape.scalar(card_shape.raw_value(parsed[0], "source_url")) if parsed else None
+
+
+def _update_document(vault: Path, path: Path, text: str, *, source_fetched: "str | None") -> bool:
+    """Replace a document note's body in place, under the vault mutex; False
+    when the body already says exactly this. `updated`, `source_fetched` and
+    the stored fingerprint follow the new text, and every other field stays."""
+    import card_shape  # same skill dir
+    from fingerprint import compute_fingerprint  # same skill dir
+    from vault_lock import atomic_write, vault_mutex
+    with vault_mutex(vault):
+        entries, rest = card_shape.split_note(path.read_text(encoding="utf-8"))
+        body = text.rstrip("\n") + "\n"
+        if rest.split("\n", 1)[1].lstrip("\n") == body:
+            return False
+        today = datetime.now(timezone.utc).date().isoformat()
+        entries = card_shape.set_value(entries, "updated", today)
+        if source_fetched:
+            entries = card_shape.set_value(entries, "source_fetched", source_fetched)
+        if card_shape.raw_value(entries, "fingerprint") is not None:
+            entries = card_shape.set_value(entries, "fingerprint", compute_fingerprint(body))
+        atomic_write(path, card_shape.reorder(card_shape.join_note(entries, "---\n\n" + body)))
+    return True
 
 
 def _parse_args(argv: "list[str]") -> argparse.Namespace:
@@ -379,7 +364,7 @@ def _parse_args(argv: "list[str]") -> argparse.Namespace:
         prog="memory-ingest",
         description=(
             "Ingest a web page or file into MemoryVault: one intact full-document "
-            "note plus reading-order-linked chunk notes for retrieval. Canonical "
+            "note, updated in place when the same page is ingested again. Canonical "
             "Python implementation behind /memory ingest (see SKILL.md)."
         ),
     )
@@ -420,9 +405,8 @@ def main(argv: "list[str] | None" = None) -> int:
         print(f"[ingest] failed: {result.error}", file=sys.stderr)
         return 1
 
-    print(f"ingested: {result.document}")
-    for c in result.chunks:
-        print(f"  chunk: {c}")
+    verb = "updated" if result.updated else "unchanged" if result.deduplicated else "ingested"
+    print(f"{verb}: {result.document}")
     return 0
 
 
