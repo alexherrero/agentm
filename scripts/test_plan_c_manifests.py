@@ -202,5 +202,79 @@ class IdeaFoldTests(unittest.TestCase):
         self.assertIn("Dolby Vision", card)
 
 
+
+class LabelBackfillTests(unittest.TestCase):
+    """Label existing memories where the source makes it clear (task 178 step
+    10): a trace through its session's transcript, a card through links that
+    reach one project; conventions and preferences stay global."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        self.vault = base / "vault"
+        self.root = self.vault / "agent"
+        (self.vault / ".obsidian").mkdir(parents=True)
+        self.code = base / "code"
+        for slug in ("agentm", "crickets"):
+            (self.code / slug).mkdir(parents=True)
+            (self.vault / "projects" / slug / "research").mkdir(parents=True)
+            (self.vault / "projects" / slug / "project.yaml").write_text(
+                f"slug: {slug}\ncode_paths:\n  - {self.code / slug}\n", encoding="utf-8")
+        (self.vault / "projects" / "agentm" / "research" / "retrieval-notes.md").write_text("# notes\n",
+                                                                                           encoding="utf-8")
+        self.claude = base / "claude-projects"
+        self.ep = self.root / "memory" / "episodic"
+        self.ep.mkdir(parents=True)
+        self.sem = self.root / "memory" / "semantic"
+        self.sem.mkdir(parents=True)
+
+    def _session(self, sid, cwd):
+        d = self.claude / "-encoded-cwd"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"{sid}.jsonl").write_text(json.dumps({"type": "user", "cwd": str(cwd)}) + "\n", encoding="utf-8")
+
+    def _trace(self, name, sid, project=None):
+        t = et.Trace(when=date(2026, 9, 20), session_id=sid, title=name, asked=name,
+                     recalled=["memory/semantic/x.md"], touched=["memory/semantic/x.md"], project=project or "")
+        (self.ep / f"{name}.md").write_text(t.render().replace(f"slug: {t.slug}", f"slug: {name}"), encoding="utf-8")
+
+    def _card(self, name, type_, **fields):
+        extra = "".join(f"{k}: {v}\n" for k, v in fields.items())
+        (self.sem / f"{name}.md").write_text(f"---\ntype: {type_}\nstatus: active\nlifecycle: active\n{extra}---\n\n"
+                                             f"{name}\n", encoding="utf-8")
+
+    def test_traces_take_their_session_s_project_and_cards_their_links_project(self):
+        self._session("s-agentm", self.code / "agentm" / ".claude" / "worktrees" / "slot")
+        self._session("s-crickets", self.code / "crickets")
+        self._session("s-stray", self.root.parent.parent / "downloads")
+        self._trace("t-agentm", "s-agentm")
+        self._trace("t-crickets", "s-crickets")
+        self._trace("t-stray", "s-stray")
+        self._trace("t-gone", "s-no-transcript")
+        self._trace("t-labelled", "s-agentm", project="agentm")
+        self._card("a-fix", "fix", related='["[[t-agentm]]"]')
+        self._card("a-reference", "reference", related='["[[projects/agentm/research/retrieval-notes]]"]')
+        self._card("a-bare-name", "reference", related='["[[retrieval-notes]]"]')
+        self._card("split", "reference", related='["[[t-agentm]]", "[[t-crickets]]"]')
+        self._card("a-convention", "convention", related='["[[t-agentm]]"]')
+        self._card("unlinked", "reference")
+        m = pcm.plan_labels(self.root, claude_projects=self.claude)
+        got = {(l["note"].rsplit("/", 1)[-1], l["project"], l["by"]) for l in m["labels"]}
+        self.assertEqual(got, {("t-agentm.md", "agentm", "transcript"), ("t-crickets.md", "crickets", "transcript"),
+                               ("a-fix.md", "agentm", "links"), ("a-reference.md", "agentm", "links"),
+                               ("a-bare-name.md", "agentm", "links")})
+        self.assertEqual(sorted(u["note"].rsplit("/", 1)[-1] for u in m["unresolved"]), ["t-gone.md", "t-stray.md"])
+        _apply(self.root, m)
+        self.assertIn("\nproject: agentm\n", (self.ep / "t-agentm.md").read_text(encoding="utf-8"))
+        text = (self.sem / "a-fix.md").read_text(encoding="utf-8")
+        self.assertIn("\nproject: agentm\n", text)
+        import card_shape
+        self.assertEqual(card_shape.reorder(text), text)
+        self.assertNotIn("project:", (self.sem / "a-convention.md").read_text(encoding="utf-8"))
+        self.assertEqual(pcm.plan_labels(self.root, claude_projects=self.claude)["acts"], [],
+                         "a re-plan after the backfill labels nothing twice")
+
+
 if __name__ == "__main__":
     unittest.main()
