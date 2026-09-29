@@ -64,11 +64,24 @@ def slugify(text: str, *, fallback: str = "session") -> str:
     return s or fallback
 
 
+def _head(session_id: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (session_id or "").lower())[:8] or "session"
+
+
+def fallback_title(session_id: str) -> str:
+    """The title of a session whose first request could not be read."""
+    return f"session {(session_id or '')[:8]}"
+
+
 def trace_rel(when: date, session_id: str, title: str) -> str:
     """`memory/episodic/YYYY-MM-DD-<slug>-<session8>.md` — the session id's
-    head keeps two sessions on one day from writing the same file."""
-    head = re.sub(r"[^a-z0-9]", "", (session_id or "").lower())[:8] or "session"
-    return f"{EPISODIC_DIR}/{when:%Y-%m-%d}-{slugify(title)}-{head}.md"
+    head keeps two sessions on one day from writing the same file. A title that
+    already ends in the head (the fallback, `session <id8>`) does not repeat it."""
+    head = _head(session_id)
+    slug = slugify(title)
+    if slug != head and slug.endswith("-" + head):
+        slug = slug[: -len(head) - 1]
+    return f"{EPISODIC_DIR}/{when:%Y-%m-%d}-{slug}-{head}.md"
 
 
 def _yaml_scalar(value: str) -> str:
@@ -378,7 +391,7 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
     if when is None:
         when = (start or datetime.now(timezone.utc)).date()
     asked = _first_request(messages)
-    title = asked[:TITLE_CHARS] if asked else f"session {session_id[:8]}"
+    title = asked[:TITLE_CHARS] if asked else fallback_title(session_id)
     touched = (captured + recalled)[:MAX_TOUCHED]
     return Trace(when=when, session_id=session_id, title=title, touched=touched,
                  captured=[t for t in captured if t in touched], recalled=[t for t in recalled if t in touched],
@@ -387,10 +400,161 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
                  project=project, task=task, surface=surface)
 
 
+# ── one trace per session ────────────────────────────────────────────────────
+#
+# A session keeps one trace (agentm-vault § Capture, amended 2026-09-28). Its
+# path used to be a pure function of the day, the first request and the id, so
+# a session resumed after a compaction — whose transcript now opens on a
+# summary, or on a bare "yes" — wrote a second file under the same id: eleven
+# sessions had two by 2026-09-24. The trace is found by its `session:` id
+# first, and a later write merges into it: the first request and the file name
+# stay, what was captured, recalled and said in passing accumulates, and the
+# newest closing recap is the Outcome.
+
+_SECTIONS = ("Asked", "Outcome", "Captured", "Recalled", "Candidates")
+_LIST_SECTIONS = ("Captured", "Recalled", "Candidates")
+
+
+def _split_trace(text: str) -> "tuple[list, dict]":
+    """A trace's frontmatter lines, and its sections by heading, in order."""
+    fm_lines: list = []
+    body = text
+    if text.startswith("---\n"):
+        end = text.find("\n---\n", 4)
+        if end >= 0:
+            fm_lines = text[4:end].split("\n")
+            body = text[end + 5:]
+    sections: dict = {}
+    current = None
+    for line in body.split("\n"):
+        if line.startswith("## "):
+            current = line[3:].strip()
+            sections.setdefault(current, [])
+        elif current is not None:
+            sections[current].append(line)
+    return fm_lines, {k: "\n".join(v).strip("\n") for k, v in sections.items()}
+
+
+def _fm_value(fm_lines: list, key: str) -> "str | None":
+    for line in fm_lines:
+        if line.startswith(key + ":"):
+            raw = line[len(key) + 1:].strip()
+            try:
+                value = json.loads(raw)
+                return value if isinstance(value, str) else raw
+            except (json.JSONDecodeError, ValueError):
+                return raw.strip("'\"")
+    return None
+
+
+def _fm_list(fm_lines: list, key: str) -> list:
+    raw = next((line[len(key) + 1:].strip() for line in fm_lines if line.startswith(key + ":")), "")
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return []
+    return [str(v) for v in value] if isinstance(value, list) else []
+
+
+def _set_fm(fm_lines: list, key: str, rendered: "str | None", after: str) -> list:
+    """Set `key` to its rendered line, keeping its place; a new key goes after
+    `after`, and None removes the key."""
+    out = [line for line in fm_lines if not line.startswith(key + ":")]
+    if rendered is None:
+        return out
+    for i, line in enumerate(fm_lines):
+        if line.startswith(key + ":"):
+            return fm_lines[:i] + [rendered] + fm_lines[i + 1:]
+    for i, line in enumerate(out):
+        if line.startswith(after + ":"):
+            return out[:i + 1] + [rendered] + out[i + 1:]
+    return out + [rendered]
+
+
+def _link_target(line: str) -> str:
+    m = re.match(r"^- \[\[([^\]|]+)", line.strip())
+    return Path(m.group(1)).name if m else line.strip()
+
+
+def _union_lines(base: str, incoming: str, key) -> str:
+    lines = [ln for ln in base.split("\n") if ln.strip()]
+    seen = {key(ln) for ln in lines}
+    for ln in incoming.split("\n"):
+        if ln.strip() and key(ln) not in seen:
+            lines.append(ln)
+            seen.add(key(ln))
+    return "\n".join(lines)
+
+
+def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcome: bool = True) -> str:
+    """One session's trace, from the file it already has (`base`) and a later
+    write of it (`incoming`). The base keeps its name, its `created` day and its
+    first request; a base written before any request could be read takes the
+    incoming title and request. `touched` and the three lists take the union,
+    in first-seen order. The Outcome is the incoming one when it has one: the
+    newest closing recap is where the session stands. A fold that merges an
+    older file into a newer one passes `newest_outcome=False` to keep the
+    base's."""
+    b_fm, b_sec = _split_trace(base)
+    i_fm, i_sec = _split_trace(incoming)
+    fm = list(b_fm)
+    fallback = _fm_value(b_fm, "title") == fallback_title(session_id)
+    if fallback and _fm_value(i_fm, "title") not in (None, fallback_title(session_id)):
+        fm = _set_fm(fm, "title", next(line for line in i_fm if line.startswith("title:")), "title")
+        b_sec["Asked"] = i_sec.get("Asked", b_sec.get("Asked", ""))
+    for key, after in (("project", "created"), ("task", "project"), ("surface", "slug")):
+        line = next((ln for ln in i_fm if ln.startswith(key + ":")), None)
+        if line is not None:
+            fm = _set_fm(fm, key, line, after)
+    touched = _fm_list(b_fm, "touched")
+    touched += [t for t in _fm_list(i_fm, "touched") if t not in touched]
+    if touched:
+        fm = _set_fm(fm, "touched", "touched: [" + ", ".join(_yaml_scalar(t) for t in sorted(set(touched))) + "]",
+                     "session")
+    sections = dict(b_sec)
+    if i_sec.get("Outcome", "").strip() and (newest_outcome or not b_sec.get("Outcome", "").strip()):
+        sections["Outcome"] = i_sec["Outcome"]
+    for name in _LIST_SECTIONS:
+        key = _link_target if name != "Candidates" else (lambda ln: ln.strip())
+        merged = _union_lines(b_sec.get(name, ""), i_sec.get(name, ""), key)
+        if merged:
+            sections[name] = merged
+    out = ["---", *fm, "---", ""]
+    for name in list(_SECTIONS) + [k for k in sections if k not in _SECTIONS]:
+        text = (sections.get(name) or "").strip("\n")
+        if text.strip():
+            out += [f"## {name}", "", text, ""]
+    return "\n".join(out)
+
+
+def find_session_trace(vault_path, session_id: str) -> "Path | None":
+    """The trace this session already has, by its `session:` id. When a past
+    write left two, the one titled from a request wins over a fallback title,
+    then the older day, then the name. A superseded trace is never found."""
+    folder = Path(vault_path) / EPISODIC_DIR
+    if not session_id or not folder.is_dir():
+        return None
+    found = []
+    for p in folder.glob("*.md"):
+        try:
+            with p.open(encoding="utf-8") as fh:
+                head = fh.read(16384)
+        except (OSError, UnicodeDecodeError):
+            continue
+        fm_lines, _ = _split_trace(head if "\n---\n" in head[4:] else head + "\n---\n")
+        if _fm_value(fm_lines, "session") != session_id:
+            continue
+        if (_fm_value(fm_lines, "lifecycle") or "").lower() == "superseded" or _fm_value(fm_lines, "superseded_by"):
+            continue
+        titled = _fm_value(fm_lines, "title") != fallback_title(session_id)
+        found.append((not titled, _fm_value(fm_lines, "created") or "", p.name, p))
+    return sorted(found)[0][3] if found else None
+
+
 def write_trace(vault_path, trace: Trace) -> str | None:
     """Write the trace under the memory root; None when the session left
-    nothing to record. Never overwrites: a second write of the same session in
-    the same day is the same file, rewritten whole.
+    nothing to record. A session that already has a trace is written into it,
+    whatever its title says now; only a session with none gets a new name.
 
     Candidates count as something to record. The miner files no note below
     HIGH any more, so a session whose only durable output was things said in
@@ -398,12 +562,20 @@ def write_trace(vault_path, trace: Trace) -> str | None:
     if not trace.touched and not trace.candidates:
         return None
     root = Path(vault_path)
-    path = root / trace.rel
+    existing = find_session_trace(root, trace.session_id)
+    if existing is not None:
+        rel = existing.relative_to(root).as_posix()
+        incoming = trace.render().replace(f"slug: {trace.slug}\n", f"slug: {existing.stem}\n", 1)
+        text = merge_trace_text(existing.read_text(encoding="utf-8"), incoming, trace.session_id)
+    else:
+        rel = trace.rel
+        text = trace.render()
+    path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".md.tmp")
-    tmp.write_text(trace.render(), encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
-    return trace.rel
+    return rel
 
 
 def _stamps_for(transcript: Path, project: str, task: str) -> tuple:

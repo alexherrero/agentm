@@ -240,5 +240,84 @@ class TheHandoffRecord(unittest.TestCase):
         self.assertIn("## Asked", body)
 
 
+
+class OneTracePerSessionTests(unittest.TestCase):
+    """A session keeps one trace, found by its `session:` id (agentm-vault §
+    Capture, amended 2026-09-28). A session resumed after a compaction reads a
+    different first request, and used to write a second file."""
+
+    SID = "9b9d740e-0d29-4ae9-a7a9-23793b27de80"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name) / "vault"
+        (self.vault / "memory" / "episodic").mkdir(parents=True)
+
+    def _trace(self, title, *, outcome="", recalled=(), candidates=(), sid=None):
+        return et.Trace(when=date(2026, 9, 13), session_id=sid or self.SID, title=title, asked=title,
+                        touched=list(recalled), recalled=list(recalled), outcome=outcome,
+                        candidates=[{"rule": "explicit always/never directive", "excerpt": c, "count": 1}
+                                    for c in candidates])
+
+    def _files(self):
+        return sorted(p.name for p in (self.vault / "memory" / "episodic").glob("*.md"))
+
+    def test_the_same_session_written_twice_under_different_titles_is_one_file(self):
+        first = et.write_trace(self.vault, self._trace("let's do follow-up b", outcome="Started.",
+                                                       recalled=["memory/semantic/a.md"], candidates=["Never X."]))
+        second = et.write_trace(self.vault, self._trace("yes", outcome="Finished: PR merged.",
+                                                        recalled=["memory/semantic/b.md"], candidates=["Always Y."]))
+        self.assertEqual(first, second)
+        self.assertEqual(self._files(), ["2026-09-13-let-s-do-follow-up-b-9b9d740e.md"])
+        text = (self.vault / first).read_text(encoding="utf-8")
+        self.assertIn('title: "let\'s do follow-up b"', text, "the first request names the session")
+        self.assertIn("## Asked\n\nlet's do follow-up b\n", text)
+        self.assertIn("## Outcome\n\nFinished: PR merged.\n", text, "the newest recap is where it stands")
+        self.assertIn("[[memory/semantic/a]]", text)
+        self.assertIn("[[memory/semantic/b]]", text)
+        self.assertIn("Never X.", text)
+        self.assertIn("Always Y.", text)
+        import yaml
+        fm = yaml.safe_load(text.split("---")[1])
+        self.assertEqual(fm["slug"], "2026-09-13-let-s-do-follow-up-b-9b9d740e")
+        self.assertEqual(fm["touched"], ["a", "b"])
+        self.assertEqual(fm["session"], self.SID)
+
+    def test_a_write_repeated_unchanged_changes_nothing(self):
+        trace = self._trace("ship it", outcome="Done.", recalled=["memory/semantic/a.md"], candidates=["Never X."])
+        rel = et.write_trace(self.vault, trace)
+        once = (self.vault / rel).read_text(encoding="utf-8")
+        et.write_trace(self.vault, trace)
+        self.assertEqual((self.vault / rel).read_text(encoding="utf-8"), once)
+
+    def test_the_fallback_title_does_not_repeat_the_id_and_yields_to_a_request(self):
+        rel = et.write_trace(self.vault, self._trace(et.fallback_title(self.SID), recalled=["memory/semantic/a.md"]))
+        self.assertEqual(Path(rel).name, "2026-09-13-session-9b9d740e.md")
+        et.write_trace(self.vault, self._trace("back to the release", recalled=["memory/semantic/b.md"]))
+        self.assertEqual(self._files(), ["2026-09-13-session-9b9d740e.md"],
+                         "the file keeps its name; only a session with no trace gets a new one")
+        text = (self.vault / rel).read_text(encoding="utf-8")
+        self.assertIn('title: "back to the release"', text)
+        self.assertIn("## Asked\n\nback to the release\n", text)
+
+    def test_a_titled_trace_is_found_before_a_fallback_one_and_a_superseded_one_never(self):
+        folder = self.vault / "memory" / "episodic"
+        (folder / "2026-09-12-session-9b9d740e.md").write_text(self._trace(et.fallback_title(self.SID)).render(),
+                                                                encoding="utf-8")
+        titled = self._trace("run the audit")
+        titled_text = titled.render()
+        (folder / "2026-09-13-run-the-audit-9b9d740e.md").write_text(titled_text, encoding="utf-8")
+        self.assertEqual(et.find_session_trace(self.vault, self.SID).name, "2026-09-13-run-the-audit-9b9d740e.md")
+        (folder / "2026-09-13-run-the-audit-9b9d740e.md").write_text(
+            titled_text.replace("lifecycle: active\n", "lifecycle: superseded\nsuperseded_by: x\n"), encoding="utf-8")
+        self.assertEqual(et.find_session_trace(self.vault, self.SID).name, "2026-09-12-session-9b9d740e.md")
+        self.assertIsNone(et.find_session_trace(self.vault, "another-session"))
+
+    def test_two_sessions_still_write_two_files(self):
+        et.write_trace(self.vault, self._trace("ship it", recalled=["memory/semantic/a.md"]))
+        et.write_trace(self.vault, self._trace("ship it", recalled=["memory/semantic/a.md"], sid="ffff1111-2222"))
+        self.assertEqual(len(self._files()), 2)
+
 if __name__ == "__main__":
     unittest.main()
