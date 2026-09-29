@@ -30,6 +30,7 @@ const usage = `agentmdream — the agentm dreaming binary (one pass, then exit)
   agentmdream journal   the mutation journal, newest last
   agentmdream ideas     print Ideas.md as the night would rebuild it; -write to make the one deliberate write
   agentmdream move-tasks  plan the closed-task moves; -apply to make them now, whatever the switch says
+  agentmdream apply     check a one-time pass's manifest of rewrites; -apply to make them through the journal
   agentmdream version
 
 Run any subcommand with -h for its flags.
@@ -60,6 +61,8 @@ func main() {
 		err = cmdIdeas(os.Args[2:])
 	case "move-tasks":
 		err = cmdMoveTasks(os.Args[2:])
+	case "apply":
+		err = cmdApply(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmdream", version)
 	case "-h", "--help", "help":
@@ -128,6 +131,65 @@ func cmdRun(args []string) error {
 	}
 	if errors.Is(err, dreaming.ErrRefused) {
 		return &exitError{code: 3, quiet: *asJSON, err: fmt.Errorf("refused: %s", rep.Refused)}
+	}
+	return err
+}
+
+// cmdApply makes a one-time pass's manifest (task 178): the rewrites a Python
+// pass planned — a trace folded, a chunk note or an idea copy superseded —
+// journaled like the night's own acts. It checks and prints by default and
+// writes nothing; `-apply` makes every act or, when any note changed since the
+// plan, none of them.
+func cmdApply(args []string) error {
+	fs := newFlagSet("apply")
+	opts := bindCommon(fs)
+	manifest := fs.String("manifest", "", "the manifest file a pass wrote (required)")
+	apply := fs.Bool("apply", false, "make the rewrites (default: check and print, touch nothing)")
+	asJSON := fs.Bool("json", false, "emit the result as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if extra := fs.Args(); len(extra) > 0 || *manifest == "" {
+		return fmt.Errorf("usage: agentmdream apply -manifest FILE [-apply] [-json]")
+	}
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	if err := refuseAStrangeVaultOnLiveState(*opts, cfg); err != nil {
+		return err
+	}
+	m, err := dreaming.LoadManifest(*manifest)
+	if err != nil {
+		return err
+	}
+	res, err := dreaming.ApplyManifest(cfg, m, dreaming.ApplyManifestOptions{Apply: *apply})
+	if *asJSON {
+		blob, _ := json.MarshalIndent(res, "", "  ")
+		fmt.Println(string(blob))
+	} else {
+		fmt.Printf("%s (%s): %d act(s), %d ready\n", res.Job, res.Mode, res.Acts, res.Ready)
+		for _, r := range res.Changed {
+			fmt.Println("  changed since the plan:", r)
+		}
+		for _, r := range res.Missing {
+			fmt.Println("  gone:", r)
+		}
+		for _, r := range res.Refused {
+			fmt.Println("  refused:", r)
+		}
+		if res.Pending > 0 {
+			fmt.Printf("  %d intent(s) a crashed pass left are pending; an applying run settles them first\n", res.Pending)
+		}
+		if res.Mode == "apply" && res.RunID != "" {
+			fmt.Printf("  run %s: %d applied, %d skipped\n", res.RunID, res.Applied, res.Skipped)
+		}
+	}
+	if errors.Is(err, dreaming.ErrRefused) {
+		return &exitError{code: 3, err: fmt.Errorf("another pass holds the dreaming lock; nothing was written")}
+	}
+	if errors.Is(err, dreaming.ErrManifestNotReady) {
+		return &exitError{code: 4, err: err}
 	}
 	return err
 }
