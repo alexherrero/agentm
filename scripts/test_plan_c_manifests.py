@@ -144,5 +144,63 @@ class ChunkFoldTests(unittest.TestCase):
         self.assertEqual(pcm.plan_chunks(self.root)["acts"], [])
 
 
+
+class IdeaFoldTests(unittest.TestCase):
+    """An idea adds to its card (task 178 step 6): a semantic copy of a card is
+    superseded by it, and words only the copy held reach the card first."""
+
+    CARD = ("---\ntitle: \"Streaming, but not 4K Blu-ray yet\"\ntype: idea\narea: home-tech\nstatus: active\n"
+            "---\n\nStream the everyday catalogue, keep buying 4K discs for the films worth the bitrate.\n")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name) / "vault"
+        self.root = self.vault / "agent"
+        (self.vault / ".obsidian").mkdir(parents=True)
+        self.sem = self.root / "memory" / "semantic"
+        self.sem.mkdir(parents=True)
+        (self.vault / "personal" / "ideas").mkdir(parents=True)
+        self.card = self.vault / "personal" / "ideas" / "streaming-but-not-4k-bluray-yet.md"
+        self.card.write_text(self.CARD, encoding="utf-8")
+
+    def _copy(self, name, body):
+        (self.sem / name).write_text("---\ntype: idea\nstatus: unfiled\nlifecycle: active\n---\n\n" + body + "\n",
+                                     encoding="utf-8")
+
+    def _apply_rel(self, manifest):
+        import os
+        for a in manifest["acts"]:
+            path = Path(os.path.normpath(self.root / a["rel"]))
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == a["before_sha256"], a["rel"]
+            path.write_text(a["after"], encoding="utf-8")
+
+    def test_a_word_for_word_copy_is_superseded_by_its_card(self):
+        self._copy("streaming-but-not-4k-bluray-yet.md",
+                   "Stream the everyday catalogue, keep buying 4K discs for the films worth the bitrate.")
+        self._copy("drip-irrigation.md", "Drip lines on a timer for the tomato beds this spring.")
+        m = pcm.plan_ideas(self.root, today="2026-09-29")
+        self.assertEqual(m["folded"], [{"copy": "memory/semantic/streaming-but-not-4k-bluray-yet.md",
+                                        "card": "personal/ideas/streaming-but-not-4k-bluray-yet.md",
+                                        "added_to_card": False}])
+        self._apply_rel(m)
+        copy = (self.sem / "streaming-but-not-4k-bluray-yet.md").read_text(encoding="utf-8")
+        self.assertIn("lifecycle: superseded\n", copy)
+        self.assertIn("lifecycle_since: 2026-09-29\n", copy)
+        self.assertIn("superseded_by: personal/ideas/streaming-but-not-4k-bluray-yet.md\n", copy)
+        self.assertEqual(self.card.read_text(encoding="utf-8"), self.CARD)
+        self.assertIn("lifecycle: active", (self.sem / "drip-irrigation.md").read_text(encoding="utf-8"))
+
+    def test_words_only_the_copy_held_reach_the_card(self):
+        self._copy("streaming-but-not-4k-bluray-yet.md", "Also: the Apple TV handles Dolby Vision now.")
+        m = pcm.plan_ideas(self.root, today="2026-09-29")
+        self.assertEqual(m["acts"][0]["rel"], "../personal/ideas/streaming-but-not-4k-bluray-yet.md")
+        self._apply_rel(m)
+        card = self.card.read_text(encoding="utf-8")
+        self.assertIn("## Added by capture", card)
+        self.assertIn("folded from memory/semantic/streaming-but-not-4k-bluray-yet.md", card)
+        self.assertIn("Dolby Vision", card)
+
+
 if __name__ == "__main__":
     unittest.main()

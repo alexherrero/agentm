@@ -23,7 +23,11 @@ survivor, `status` untouched — the shape the copies job writes.
              `source_url` (an earlier ingest of the same page). The facts
              drawn from the article are short and stay.
 
-    python3 scripts/migrate/plan_c_manifests.py {traces,chunks} [--memory-root DIR] [--out FILE]
+    ideas    an active semantic idea that matches a card in personal/ideas/ is
+             superseded by the card, and any words it held that the card lacks
+             are added to the card under .
+
+    python3 scripts/migrate/plan_c_manifests.py {traces,chunks,ideas} [--memory-root DIR] [--out FILE]
 """
 from __future__ import annotations
 
@@ -190,9 +194,49 @@ def plan_chunks(memory_root: Path) -> dict:
             "families": families, "acts": acts}
 
 
+# ── ideas ─────────────────────────────────────────────────────────────────────
+
+def plan_ideas(memory_root: Path, today: "str | None" = None) -> dict:
+    """The manifest folding every active semantic idea that matches a card into
+    it: words the copy holds that the card lacks are added under
+    `## Added by capture`, and the copy takes the ideas migration's supersede
+    shape (`lifecycle: superseded`, `lifecycle_since`, and `superseded_by`
+    naming the card by its vault-root path, `personal/ideas/<card>.md`)."""
+    import os
+    import idea_cards  # same skill dir
+    today = today or date.today().isoformat()
+    vault_root = idea_cards.vault_root(memory_root)
+    acts, folded = [], []
+    for p in sorted((memory_root / "memory" / "semantic").glob("*.md")):
+        text = _text(p.read_bytes())
+        f = _fields(text)
+        if f.get("type") != "idea" or not _active(f):
+            continue
+        card = idea_cards.matching_card(memory_root, slug=p.stem, title=f.get("title", ""), body=f["_body"])
+        if card is None:
+            continue
+        rel = p.relative_to(memory_root).as_posix()
+        card_rel = card.relative_to(vault_root).as_posix()
+        added = idea_cards.with_capture(_text(card.read_bytes()), f["_body"].strip(),
+                                        source=f"folded from {rel}", day=today)
+        if added is not None:
+            acts.append(act(Path(os.path.relpath(card, memory_root)).as_posix(), card.read_bytes(), added,
+                            f"the words of {p.name} the card did not hold"))
+        entries, rest = card_shape.split_note(text)
+        entries = card_shape.set_value(entries, "lifecycle", "superseded")
+        entries = card_shape.set_value(entries, "lifecycle_since", today)
+        entries = card_shape.set_value(entries, "superseded_by", card_rel)
+        acts.append(act(rel, p.read_bytes(), card_shape.reorder(card_shape.join_note(entries, rest)),
+                        f"a semantic copy of the idea card {card_rel}", frm=lifecycle_of(text), to="superseded"))
+        folded.append({"copy": rel, "card": card_rel, "added_to_card": added is not None})
+    return {"job": "manifest-plan-c-ideas",
+            "reason": "an idea adds to its card (agentm-vault § Capture, amended 2026-09-28; task 178 step 6)",
+            "folded": folded, "acts": acts}
+
+
 # ── the command ───────────────────────────────────────────────────────────────
 
-PASSES = {"traces": plan_traces, "chunks": plan_chunks}
+PASSES = {"traces": plan_traces, "chunks": plan_chunks, "ideas": plan_ideas}
 
 
 def _memory_root(arg: "str | None") -> Path:
@@ -223,6 +267,8 @@ def main(argv: "list | None" = None) -> int:
         print(f"  {s['session']}: keep {s['survivor']}; fold {', '.join(s['folded'])}")
     for f in manifest.get("families", []):
         print(f"  {f['document']}: fold {len(f['folded'])} note(s)")
+    for f in manifest.get("folded", []):
+        print(f"  {f['copy']} -> {f['card']}{' (words added to the card)' if f['added_to_card'] else ''}")
     print(f"check it: agentmdream apply -manifest {out}")
     return 0
 

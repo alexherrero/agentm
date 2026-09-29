@@ -208,24 +208,29 @@ def matching_card(memory_root, *, slug: str = "", title: str = "", body: str = "
     return best if best is not None and best_score >= IDEA_MATCH_LINE else None
 
 
-def append_capture(card_path: Path, text: str, *, source: str, day: str) -> bool:
-    """Add `text` to the card under `## Added by capture`, dated and sourced;
-    False, writing nothing, when the card already holds those words. Nothing
-    above the section changes, and a section the night added after it stays
-    where it is."""
-    current = card_path.read_text(encoding="utf-8")
+def with_capture(current: str, text: str, *, source: str, day: str) -> "str | None":
+    """The card's text with `text` added under `## Added by capture`, dated and
+    sourced; None when the card already holds those words. Nothing above the
+    section changes, and a section the night added after it stays where it is."""
     words = " ".join((text or "").split())
     if not words or words in " ".join(current.split()):
-        return False
+        return None
     entry = f"**{day} · {source}**\n\n{text.strip()}\n"
     at = current.find("\n" + ADDED_BY_CAPTURE + "\n")
     if at < 0:
-        updated = current.rstrip("\n") + f"\n\n{ADDED_BY_CAPTURE}\n\n{entry}"
-    else:
-        end = current.find("\n## ", at + len(ADDED_BY_CAPTURE) + 2)
-        section_end = len(current) if end < 0 else end
-        head, tail = current[:section_end].rstrip("\n"), current[section_end:]
-        updated = head + f"\n\n{entry}" + (("\n" + tail.lstrip("\n")) if tail else "")
+        return current.rstrip("\n") + f"\n\n{ADDED_BY_CAPTURE}\n\n{entry}"
+    end = current.find("\n## ", at + len(ADDED_BY_CAPTURE) + 2)
+    section_end = len(current) if end < 0 else end
+    head, tail = current[:section_end].rstrip("\n"), current[section_end:]
+    return head + f"\n\n{entry}" + (("\n" + tail.lstrip("\n")) if tail else "")
+
+
+def append_capture(card_path: Path, text: str, *, source: str, day: str) -> bool:
+    """`with_capture`, written to the card; False, writing nothing, when the
+    card already holds those words."""
+    updated = with_capture(card_path.read_text(encoding="utf-8"), text, source=source, day=day)
+    if updated is None:
+        return False
     from vault_lock import atomic_write  # same skill dir
     atomic_write(card_path, updated)
     return True
