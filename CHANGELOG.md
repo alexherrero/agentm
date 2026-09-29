@@ -30,6 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Closed tasks have moved to `completed/tasks/`, and crystallize is on
+  (task 177, steps 7 to 10).** Before anything moved, the retrieval gate was
+  measured against an APFS clone of the vault with the moves applied: it
+  passed, R@5 unchanged at 0.619, and bait questions that used to surface an
+  old task plan stopped doing so (hard-negative false positives 8 of 10 to 4
+  of 10). The first move ran supervised on 2026-09-28 under quiesce: 278
+  closed task folders (675 files) moved to `<slug>/completed/tasks/`, links
+  repaired in 72 notes, sidecars re-keyed, the index rebuilt and fully
+  embedded; the link audit found no new unresolved link, and the gate passes
+  on the moved vault. `daemon.task_mover_enabled` is on, so the night now
+  moves each task two weeks after it closes, 25 folders at most. The
+  crystallize phase ran once, funded to finish: 115 calls, 42 lessons, 2.9M
+  tokens ($32.31). Its weekly job is registered with a provisional budget of
+  1.5 times that run until the lasting line is set from the first weekly runs
+  (backlog #714). The wiki follows: the vault tour shows `completed/tasks/`,
+  the daemon reference documents the `tasks` job, `agentmdream move-tasks`,
+  `-task-cap`, the crystallize record and the morning note's task lines, and
+  `check-tracker-schema`'s row names the third tracker place.
+
 - **The agentm-vault design: a closed task moves to `completed/tasks/`, and
   crystallize is switched on (task 177, step 2).** One amendment, body and
   log together, on the operator's rulings of 2026-09-24 on the AgentKV layout
