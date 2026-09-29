@@ -95,6 +95,10 @@ ENRICH_RUNS = "enrich-runs.jsonl"
 # saw. The two are read together only in the spend section, where the design
 # asks for a line per job (agentm-vault, "loose ends from session 4").
 CRYSTALLIZE_RUNS = "crystallize-runs.jsonl"
+# The restated-rules pass (task 178, step 8) keeps its own record beside them:
+# what it shortlisted, judged and merged. What it merged is the night's act, so
+# it is listed under what ran; what it spent joins the per-job lines.
+RESTATED_RUNS = "restated-runs.jsonl"
 
 # The tier table's job names, in the order the spend section lists them, with
 # the words a reader wants rather than the table's slugs.
@@ -102,6 +106,7 @@ JOB_NAMES = {
     "classify-unfiled": "enrichment deep",
     "summarize": "enrichment light",
     "crystallize": "crystallize",
+    "fuzzy-merge": "restated rules",
 }
 LAST_REPORT = Path("dreaming") / "last-report.json"
 # `dream.CYCLE_REPORT_NAME`; a test holds the two equal.
@@ -206,6 +211,11 @@ def crystallize_runs(engine_dir: Path) -> list:
     return _runs_file(Path(engine_dir) / CRYSTALLIZE_RUNS)
 
 
+def restated_runs(engine_dir: Path) -> list:
+    """Every run the restated-rules pass recorded, oldest first, each with `_at`."""
+    return _runs_file(Path(engine_dir) / RESTATED_RUNS)
+
+
 def binary_report(engine_dir: Path) -> Optional[dict]:
     """The dreaming binary's last completed pass, with the file's `_mtime`."""
     p = Path(engine_dir) / LAST_REPORT
@@ -283,6 +293,7 @@ class Night:
     week_runs: list = field(default_factory=list)
     crystallize_tonight: list = field(default_factory=list)
     crystallize_week: list = field(default_factory=list)
+    restated_tonight: list = field(default_factory=list)
     binary: Optional[dict] = None
     binary_tonight: bool = False
     python: Optional[dict] = None
@@ -368,6 +379,7 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
     # weekly, and a note that only listed what last night wrote would name the
     # week's lessons on one morning in seven and say nothing on the other six.
     night.crystallize_week = [r for r in cryst if r["_at"] >= now - 7 * 86400]
+    night.restated_tonight = [r for r in restated_runs(engine_dir) if r["_at"] >= start]
     night.binary = binary_report(engine_dir)
     night.binary_tonight = bool(night.binary and night.binary["_mtime"] >= start)
     cycle = python_cycle(engine_dir)
@@ -546,6 +558,18 @@ def _python_line(cycle: dict) -> str:
             f"{lint.get('repairable_count', 0)} mis-cased link(s) it would repair.")
 
 
+def _restated_line(runs: list) -> str:
+    """What the restated-rules pass did: the pairs it weighed, and every merge by
+    name, since a merge is the one act of the night that rewrites a rule."""
+    merged = [p for r in runs for p in (r.get("pairs") or []) if p.get("merged")]
+    line = (f"**Restated rules** — {_sum(runs, 'shortlisted')} pair(s) at or above the line · "
+            f"{_sum(runs, 'judged')} judged · {_sum(runs, 'same')} the same rule · {len(merged)} merged")
+    if merged:
+        line += ": " + "; ".join(f"{_link(p.get('folded', ''))} into {_link(p.get('survivor', ''))}"
+                                 for p in merged[:5])
+    return line + "."
+
+
 def what_ran(night: Night) -> list:
     lines = []
     if night.tonight_runs:
@@ -566,6 +590,8 @@ def what_ran(night: Night) -> list:
                      f"{_age(night.now - night.binary['_mtime'])} ({night.binary.get('outcome', '?')}).")
     if night.python is not None:
         lines.append(f"- {_python_line(night.python)}")
+    if night.restated_tonight:
+        lines.append(f"- {_restated_line(night.restated_tonight)}")
     skipped = [f"{label} ({night.reasons[job]})" for job, label in NIGHT_JOBS
                if not night.ran.get(job)]
     if skipped:
@@ -719,7 +745,7 @@ def per_job(night: Night) -> list:
     while the batch is spending on the same nights.
     """
     by = _by_job(night.tonight_runs)
-    for job, u in _by_job(night.crystallize_tonight).items():
+    for job, u in _by_job(night.crystallize_tonight + night.restated_tonight).items():
         cur = by.setdefault(job, {"tokens": 0, "calls": 0, "cost": 0.0})
         cur["tokens"] += u["tokens"]
         cur["calls"] += u["calls"]

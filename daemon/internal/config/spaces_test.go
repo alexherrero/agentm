@@ -268,3 +268,24 @@ func TestTheTaskMoverIsOffUntilItsSwitchIsSet(t *testing.T) {
 		t.Error("daemon.task_mover_enabled: true did not turn the mover on")
 	}
 }
+
+// The restated-rules merge ships reporting (task 178, step 8): off unless the
+// operator sets the switch, and on when they do.
+func TestTheRestatedMergeIsOffUntilItsSwitchIsSet(t *testing.T) {
+	vault := vaultWithContract(t, "personal")
+	cfg, err := loadWith(t, vault, map[string]any{"plugins.obsidian-vault.memory_root": "agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RestatedMergeEnabled {
+		t.Error("the restated-rules merge is on with no switch set")
+	}
+	cfg, err = loadWith(t, vault, map[string]any{"plugins.obsidian-vault.memory_root": "agent",
+		"daemon.restated_merge_enabled": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.RestatedMergeEnabled {
+		t.Error("daemon.restated_merge_enabled: true did not turn the merge on")
+	}
+}

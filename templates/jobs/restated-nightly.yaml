@@ -1,0 +1,56 @@
+# restated-nightly.yaml — restated rules merge on their own (task 178, step 8).
+#
+# The operator's ruling 6c merges a convention, preference or workflow stated
+# twice, keeping the newer wording. Embedding similarity alone cannot tell a
+# rule restated from two neighbouring rules — the live corpus's known pair
+# ranked ninth, below eight pairs of distinct rules — so on the operator's
+# ruling of 2026-09-28 the similarity shortlists and the strong tier judges:
+# each pair at or above the review line is asked "the same rule restated?",
+# a yes merges by supersede through the dreaming journal (the older note keeps
+# its path and takes the newer wording), and everything else is listed in the
+# needs-review map with the judge's reason. A verdict is remembered against both
+# bodies, so a pair is judged once until one of them changes; a quiet night
+# spends nothing.
+#
+# .harness/jobs/ is gitignored (per-project runtime state), so this templates/
+# copy is the tracked, shipped source. Register it by copying to
+# .harness/jobs/restated-nightly.yaml in a repo that runs the agentm runner.
+#
+# **Merging is two edits, and they belong together**: `enabled: true` here, and
+# `daemon.restated_merge_enabled true` in the kernel config
+# (`agentm_config.py --restated-merge-enabled true`). With the job on and the
+# switch off, the pass judges and reports every night and merges nothing — the
+# state to leave it in until the first judged list has been read.
+schedule: daily
+
+# The same lookback as the enrichment batch: a night the machine slept through
+# is picked up on the next one rather than waiting a day.
+lookback: 36h
+
+# The night's window. `order: 2`, shared with the dreaming binary: the loader
+# breaks the tie by name and `dreaming` precedes `restated-nightly`, so the
+# binary's lifecycle and copies jobs run first, and this pass runs before the
+# Python cycle (order 3) regenerates the needs-review map, so tonight's pairs
+# are on tonight's map.
+window: "02:00-06:00"
+order: 2
+
+enabled: false
+
+# Runs from `scripts/` as cwd. `-apply` merges only while the switch is on; with
+# it off the command judges and reports. The last line the command prints is a
+# JSON object carrying `total_cost_usd`, which is what the runner's spend line
+# reads. To see the shortlist without spending anything:
+#
+#     agentmd restated -dry-run
+command: $HOME/.local/bin/agentmd restated -apply
+
+tier: T3
+
+# One strong-tier call per new shortlisted pair, capped at 30 a run. The first
+# night judges the whole shortlist (about 25 pairs on the live corpus); after
+# that only pairs whose bodies changed are judged again.
+budget:
+  tokens: 400000
+
+dry_run: false

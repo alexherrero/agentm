@@ -254,6 +254,26 @@ class TheSpendLine(_Night):
         self.assertIn("580,000 tokens · 190 call(s) · $3.60", text)
         self.assertIn("48,000 tokens · 2 call(s) · $1.40", text)
 
+    def test_the_restated_rules_pass_names_its_merge_and_its_spend(self):
+        # Task 178 step 8: a merge rewrites a rule, so the note names it; the
+        # judge's spend joins the per-job lines as "restated rules".
+        self.full_night()
+        (self.engine / mn.RESTATED_RUNS).write_text(json.dumps({
+            "at": datetime.fromtimestamp(TONIGHT, tz=timezone.utc).isoformat(), "job": "fuzzy-merge",
+            "shortlisted": 25, "judged": 2, "same": 1, "merged": 1, "model_calls": 2, "tokens": 46000,
+            "total_cost_usd": 0.5,
+            "by_job": {"fuzzy-merge": {"input_tokens": 40000, "cache_creation_input_tokens": 0,
+                                       "cache_read_input_tokens": 70000, "output_tokens": 6000,
+                                       "cost_usd": 0.5, "calls": 2}},
+            "pairs": [{"a": "memory/semantic/never-edit-a-failing-test.md", "b": "memory/semantic/tests-are-sacred.md",
+                       "verdict": "same", "merged": True, "survivor": "memory/semantic/tests-are-sacred.md",
+                       "folded": "memory/semantic/never-edit-a-failing-test.md"}]}) + "\n", encoding="utf-8")
+        text, *_ = self.build()
+        self.assertIn("**Restated rules** — 25 pair(s) at or above the line · 2 judged · 1 the same rule · "
+                      "1 merged: [[never-edit-a-failing-test]] into [[tests-are-sacred]].", text)
+        self.assertIn("restated rules", text.split("## Spend", 1)[1])
+        self.assertIn("46,000 tokens · 2 call(s) · $0.50", text)
+
     def test_the_weekly_phase_gets_its_own_line(self):
         self.full_night()
         self.crystallize(_crystallize_run(TONIGHT))

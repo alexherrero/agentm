@@ -551,3 +551,39 @@ func TruncateQuery(text string, ctxTokens int) string {
 	}
 	return cutOnRune(text, budget)
 }
+
+// VectorsFor returns every chunk vector the index holds for each of paths under
+// one model: a note longer than the embedder's window has several. A path with
+// no vectors is absent from the map. Used by the restated-rules pass, which
+// compares notes by their best chunk pair, as dense search scores a note by its
+// best chunk.
+func (x *Index) VectorsFor(model string, paths []string) (map[string][][]float32, error) {
+	out := make(map[string][][]float32, len(paths))
+	if len(paths) == 0 {
+		return out, nil
+	}
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	for _, p := range paths {
+		rows, err := x.db.Query(`
+			SELECT e.vec FROM embeddings e JOIN docmeta m ON m.id = e.doc_id
+			WHERE m.path = ? AND e.model = ? ORDER BY e.chunk_idx`, p, model)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var blob []byte
+			if err := rows.Scan(&blob); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[p] = append(out[p], decodeVec(blob, nil))
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}

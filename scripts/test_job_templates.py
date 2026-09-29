@@ -106,8 +106,13 @@ class JobTemplatesLoad(unittest.TestCase):
         ambiguous sort. The two ends are what matter: it runs after the binary,
         whose promote and projects passes write what it reads, and before the
         morning note, which lists the lessons it wrote.
+
+        `restated-nightly` (task 178, step 8) shares `order: 2` with the binary
+        and sorts after it by name: it merges restated rules after the binary's
+        lifecycle and copies jobs, and before the Python cycle regenerates the
+        needs-review map that lists the pairs it did not merge.
         """
-        night = ["enrich-nightly", "dreaming", "crystallize-weekly", "dream",
+        night = ["enrich-nightly", "dreaming", "restated-nightly", "crystallize-weekly", "dream",
                  "corpus-scorecard", "morning-note", "observability-email-daily"]
         with tempfile.TemporaryDirectory() as td:
             jobs = Path(td) / "jobs"

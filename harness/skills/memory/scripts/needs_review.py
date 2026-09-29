@@ -61,6 +61,9 @@ _SETTLED_LIFECYCLES = ("superseded", "archived")
 # Where the dream cycle leaves its twins, shared keys and facets. The name is
 # dream.REVIEW_PROPOSALS_NAME; a test holds the two equal.
 REVIEW_PROPOSALS_NAME = "review-proposals.json"
+# What `agentmd restated` leaves beside it: the rule pairs it shortlisted and
+# did not merge (task 178 step 8).
+RESTATED_REVIEW_NAME = "restated-review.json"
 
 
 @dataclass
@@ -157,7 +160,7 @@ def read_proposals(state_dir: "Path | str | None" = None) -> dict:
     """The dream cycle's last twins, shared keys and facets. Missing or
     unreadable reads as none: the page still renders the notes' own marks."""
     base = Path(state_dir) if state_dir is not None else engine_state.engine_state_dir()
-    empty = {"at": None, "twins": [], "same_key": [], "facets": []}
+    empty = {"at": None, "twins": [], "same_key": [], "facets": [], "restated": read_restated(base)}
     try:
         data = json.loads((base / "dreaming" / REVIEW_PROPOSALS_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -168,7 +171,20 @@ def read_proposals(state_dir: "Path | str | None" = None) -> dict:
     for key in ("twins", "same_key", "facets"):
         items = data.get(key)
         out[key] = [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []
+    out["restated"] = read_restated(base)
     return out
+
+
+def read_restated(base: Path) -> list:
+    """The restated-rules pass's pairs that did not merge (`agentmd restated`,
+    task 178 step 8): each shortlisted convention, preference or workflow pair
+    with the judge's verdict and reason. Missing or unreadable reads as none."""
+    try:
+        data = json.loads((base / "dreaming" / RESTATED_REVIEW_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    pairs = data.get("pairs") if isinstance(data, dict) else None
+    return [p for p in pairs if isinstance(p, dict)] if isinstance(pairs, list) else []
 
 
 def summary(vault: "Path | str", *, proposals: "dict | None" = None) -> dict:
@@ -217,6 +233,17 @@ def _proposal_lines(proposals: dict) -> list:
             links = ", ".join(_link(p) for p in c.get("paths") or [])
             lines.append(f"- key `{c.get('slug', '?')}`: {links} — two notes claiming to be one "
                          "memory and saying different things")
+        lines.append("")
+    restated_pairs = proposals.get("restated") or []
+    if restated_pairs:
+        lines += [f"## Restated rules? ({len(restated_pairs)})", ""]
+        for r in restated_pairs:
+            sim = r.get("similarity")
+            alike = f"{sim:.0%} alike" if isinstance(sim, (int, float)) else "alike"
+            verdict = r.get("verdict") or "unjudged"
+            why = f": {r['reason']}" if r.get("reason") else ""
+            lines.append(f"- {_link(r.get('a', ''))} and {_link(r.get('b', ''))} — {alike} · the judge: "
+                         f"{verdict}{why} · merge by hand, or write `superseded_by`, if they are one rule")
         lines.append("")
     facets = proposals.get("facets") or []
     if facets:
