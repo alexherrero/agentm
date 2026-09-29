@@ -578,12 +578,12 @@ def write_trace(vault_path, trace: Trace) -> str | None:
     return rel
 
 
-def _stamps_for(transcript: Path, project: str, task: str) -> tuple:
+def _stamps_for(transcript: Path, project: str, task: str, memory_root=None) -> tuple:
     """The trace's `project` and `task`: a flag when one is given, else the binding
     of the directory the session ran in (agentm-vault plan 09). A task comes from
     the binding only beside the binding's own project."""
     import session_binding  # same skill dir
-    binding = session_binding.for_transcript(transcript)
+    binding = session_binding.for_transcript(transcript, memory_root=memory_root)
     if project:
         default_task = binding.task if project == binding.project else None
     else:
@@ -607,7 +607,7 @@ def main(argv: list | None = None) -> int:
     if not vault:
         print("episodic_trace: no memory root (--vault-path or MEMORY_ROOT)", file=sys.stderr)
         return 0
-    project, task = _stamps_for(Path(a.transcript), a.project, a.task)
+    project, task = _stamps_for(Path(a.transcript), a.project, a.task, memory_root=vault)
     try:
         trace = from_transcript(Path(a.transcript), session_id=a.session,
                                 when=date.fromisoformat(a.day) if a.day else None,

@@ -547,6 +547,11 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 						"type":        "string",
 						"description": "The task this session is bound to, when it has one. The opening brief names it beside the project.",
 					},
+					"cwd": map[string]any{
+						"type": "string",
+						"description": "The folder this session runs in. Used only to find its project when `project` is not given: " +
+							"the project whose project.yaml lists that folder. A convention or preference stays unlabeled.",
+					},
 					"tags": map[string]any{
 						"type": "array", "items": map[string]any{"type": "string"},
 					},

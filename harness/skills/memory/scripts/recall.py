@@ -1295,7 +1295,7 @@ def _read_prompt_payload(stdin=sys.stdin) -> tuple[str | None, str | None]:
             cwd if isinstance(cwd, str) and cwd.strip() else None)
 
 
-def _session_project(cwd: str | None) -> str | None:
+def _session_project(cwd: str | None, memory_root=None) -> str | None:
     """The vault project the session in `cwd` is bound to, or None."""
     if not cwd:
         return None
@@ -1303,7 +1303,7 @@ def _session_project(cwd: str | None) -> str | None:
         import session_binding  # same skill dir
     except ImportError:
         return None
-    return session_binding.read_binding(cwd).project
+    return session_binding.read_binding(cwd, memory_root).project
 
 
 def _machine_prompt_marker(prompt: str) -> str | None:
@@ -3513,7 +3513,7 @@ def main(argv: list[str] | None = None) -> int:
         return prompt_submit(
             vault=vault,
             prompt=prompt,
-            project=_session_project(cwd),
+            project=_session_project(cwd, vault),
             budget_ms=_resolve_budget_ms(args.budget_ms, PROMPT_SUBMIT_BUDGET_MS),
             token_budget=_resolve_token_budget(args.token_budget),
         )

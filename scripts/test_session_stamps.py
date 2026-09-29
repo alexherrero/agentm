@@ -125,6 +125,20 @@ class TheMiner(unittest.TestCase):
         self.assertIn("\ntask: build-the-brief\n", text)
         self.assertEqual(cs.order_findings(cs.keys(text)), [])
 
+    def test_a_preference_card_stays_global(self) -> None:
+        cand = reflect.Candidate(category="preferences", confidence="HIGH", slug="tabs",
+                                 title="I prefer tabs", body="User stated: from now on I prefer tabs.",
+                                 rationale="test", excerpts=[])
+        reflect.route_candidates([cand], [], vault=self.root, mode=reflect.ROUTE_MODE_AUTO,
+                                 binding=sb.Binding("agentm", "build-the-brief"), stdin=io.StringIO(),
+                                 stdout=io.StringIO(), stderr=io.StringIO())
+        cards = list((self.root / "memory").rglob("*.md"))
+        self.assertEqual(len(cards), 1)
+        text = cards[0].read_text(encoding="utf-8")
+        self.assertIn("\ntype: preference\n", text)
+        self.assertNotIn("\nproject:", text)
+        self.assertNotIn("\ntask:", text)
+
     def test_an_unbound_route_stamps_neither(self) -> None:
         for binding in (None, sb.UNBOUND):
             with self.subTest(binding=binding):

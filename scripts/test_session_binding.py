@@ -124,5 +124,73 @@ class AgreesWithTheResolver(unittest.TestCase):
                 self.assertEqual(sb.task_slug(raw), resolver)
 
 
+
+class ProjectYamlBindingTests(unittest.TestCase):
+    """The project comes from the working folder matched against every
+    `projects/*/project.yaml`'s `code_paths` (agentm-vault § Projects and tasks,
+    amended 2026-09-28): the longest prefix wins, and `.harness/project.json`
+    is the fallback."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="agentm-yaml-binding-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.vault = self.root / "vault"
+        self.memory_root = self.vault / "agent"
+        (self.vault / ".obsidian").mkdir(parents=True)
+        self.memory_root.mkdir()
+        self.code = self.root / "code"
+        for slug in ("agentm", "crickets"):
+            (self.code / slug).mkdir(parents=True)
+            proj = self.vault / "projects" / slug
+            proj.mkdir(parents=True)
+            (proj / "project.yaml").write_text(
+                f"slug: {slug}\ntitle: {slug}\nstatus: active\ncode_paths:\n  - {self.code / slug}\n",
+                encoding="utf-8")
+        # A project whose code lives inside another's clone: the longer path wins.
+        (self.code / "agentm" / "vendor" / "tool").mkdir(parents=True)
+        (self.vault / "projects" / "tool").mkdir()
+        (self.vault / "projects" / "tool" / "project.yaml").write_text(
+            f"slug: tool\ncode_paths: [{self.code / 'agentm' / 'vendor' / 'tool'}]\n", encoding="utf-8")
+        (self.vault / "projects" / "none").mkdir()
+        (self.vault / "projects" / "none" / "project.yaml").write_text("slug: none\ncode_paths: []\n",
+                                                                       encoding="utf-8")
+
+    def test_a_checkout_binds_to_its_project(self) -> None:
+        self.assertEqual(sb.read_binding(self.code / "agentm", self.memory_root).project, "agentm")
+        self.assertEqual(sb.read_binding(self.code / "crickets", self.memory_root).project, "crickets")
+
+    def test_a_worktree_inside_a_clone_binds_to_the_clone_s_project(self) -> None:
+        wt = self.code / "agentm" / ".claude" / "worktrees" / "slot"
+        wt.mkdir(parents=True)
+        self.assertEqual(sb.read_binding(wt, self.memory_root).project, "agentm")
+
+    def test_the_longest_prefix_wins(self) -> None:
+        self.assertEqual(sb.read_binding(self.code / "agentm" / "vendor" / "tool", self.memory_root).project, "tool")
+
+    def test_an_unregistered_folder_binds_to_nothing(self) -> None:
+        stray = self.root / "downloads"
+        stray.mkdir()
+        self.assertEqual(sb.read_binding(stray, self.memory_root), sb.UNBOUND)
+        self.assertIsNone(sb.project_for_directory(self.root / "code-agentm-sibling", self.vault))
+
+    def test_the_repo_s_project_json_is_the_fallback_and_the_yaml_wins(self) -> None:
+        stray = self.root / "other"
+        (stray / ".harness").mkdir(parents=True)
+        (stray / ".harness" / "project.json").write_text(json.dumps({"vault_project": "blog"}), encoding="utf-8")
+        self.assertEqual(sb.read_binding(stray, self.memory_root).project, "blog")
+        (self.code / "crickets" / ".harness").mkdir()
+        (self.code / "crickets" / ".harness" / "project.json").write_text(
+            json.dumps({"vault_project": "somewhere-else"}), encoding="utf-8")
+        (self.code / "crickets" / ".harness" / "active-plan").write_text("012-ship-it\n", encoding="utf-8")
+        self.assertEqual(sb.read_binding(self.code / "crickets", self.memory_root),
+                         sb.Binding("crickets", "012-ship-it"))
+
+    def test_conventions_and_preferences_stay_global(self) -> None:
+        b = sb.Binding("agentm", "178-dedupe")
+        self.assertEqual(sb.stamps_for_type(b, "convention"), {})
+        self.assertEqual(sb.stamps_for_type(b, "Preference"), {})
+        self.assertEqual(sb.stamps_for_type(b, "fix"), {"project": "agentm", "task": "178-dedupe"})
+
+
 if __name__ == "__main__":
     unittest.main()

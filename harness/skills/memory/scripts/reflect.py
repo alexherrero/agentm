@@ -870,13 +870,13 @@ def _file_candidate(
 DEFAULT_MACHINE_SESSION_MAX_INBOX = 10
 
 
-def _session_binding(transcript: Path):
+def _session_binding(transcript: Path, memory_root=None):
     """The binding of the session a transcript records (agentm-vault plan 09): the
     directory the transcript names, else this process's own, which is the
     session's when the Stop hook runs. The corpus batch passes none — a marker
     read today may name a different task than the one an old session worked."""
     import session_binding  # same skill dir
-    return session_binding.for_transcript(transcript, fallback=Path.cwd())
+    return session_binding.for_transcript(transcript, fallback=Path.cwd(), memory_root=memory_root)
 
 
 def route_candidates(
@@ -952,9 +952,12 @@ def route_candidates(
         corpus, search = None, None
     low_filings_so_far = 0
     import session_binding  # same skill dir
-    stamps = session_binding.stamps(binding) if binding else {}
 
     def _file(c: Candidate, *, type_hint: "str | None" = None) -> "Path | object | None":
+        # A convention or preference is a rule for every project, and carries
+        # no project of its own (agentm-vault § Projects and tasks, amended
+        # 2026-09-28).
+        stamps = session_binding.stamps_for_type(binding, type_hint or _candidate_type(c)) if binding else {}
         return _file_candidate(c, vault, source=source, corpus=corpus, search=search, stderr=stderr,
                                type_hint=type_hint, extra=dict(stamps) or None)
 
@@ -1598,7 +1601,7 @@ def main(argv: list[str] | None = None) -> int:
             memory_to_route, idea_to_route, vault=vault, mode=route_mode,
             source=source, session_id=_session_id_from_path(Path(args.transcript_path).expanduser()),
             max_inbox=max_inbox,
-            binding=_session_binding(Path(args.transcript_path).expanduser()),
+            binding=_session_binding(Path(args.transcript_path).expanduser(), memory_root=vault),
         )
         # Routing stats as a final JSON-Lines record on stdout (after the
         # candidate records). Operator scripts + hooks can parse this to

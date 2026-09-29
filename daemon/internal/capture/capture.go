@@ -33,6 +33,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/extract"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/projectbind"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -109,6 +110,11 @@ type Request struct {
 	SourceHash    string `json:"source_hash,omitempty"`
 	SourceVersion string `json:"source_version,omitempty"`
 	Space         string `json:"space,omitempty"`
+	// Cwd is the folder the capturing session runs in. It is used only to find
+	// the session's project when the caller names none: the project whose
+	// project.yaml lists that folder under code_paths (projectbind). The CLI
+	// passes its own; an MCP caller passes it when it knows it.
+	Cwd string `json:"cwd,omitempty"`
 
 	// Probe marks the note as the daemon's synthetic self-probe.
 	//
@@ -351,6 +357,15 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		title = firstSentence(text)
 	}
 
+	// The project a caller names wins. Otherwise the session's folder names it
+	// (agentm-vault § Projects and tasks, amended 2026-09-28) — except for a
+	// convention or preference, which is a rule for every project and carries
+	// none unless its writer sets one.
+	project := strings.TrimSpace(req.Project)
+	if project == "" && !projectbind.GlobalTypes[noteType] {
+		project = projectbind.Resolve(c.cfg.VaultPath, req.Cwd)
+	}
+
 	spaceDir, err := c.cfg.SpaceDir(req.Space)
 	if err != nil {
 		return Result{}, err
@@ -451,7 +466,7 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		Why:              why,
 		Importance:       importance,
 		Related:          req.Related,
-		Project:          strings.TrimSpace(req.Project),
+		Project:          project,
 		Task:             strings.TrimSpace(req.Task),
 		Instructions:     strings.TrimSpace(req.Instructions),
 		Tags:             req.Tags,
