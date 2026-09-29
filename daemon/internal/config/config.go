@@ -185,6 +185,12 @@ type Config struct {
 	// would mean arming the second by turning on the first.
 	CrystallizeEnabled bool
 
+	// RestatedMergeEnabled lets the nightly restated-rules pass merge the pairs
+	// its judge calls the same rule restated (task 178, step 8). Off, the pass
+	// shortlists, judges and reports without merging; the operator turns it on
+	// once the first judged list has been read, as with the task mover.
+	RestatedMergeEnabled bool
+
 	// EnrichModel is the model name enrichment passes to `claude -p`. A name,
 	// not a tier — tier qualification is earned by sampled audit against the
 	// strong tier, which is its own mechanism and not this pass's job.
@@ -688,6 +694,9 @@ func Load(opts Options) (*Config, error) {
 	}
 	if b, ok := raw["daemon.task_mover_enabled"].(bool); ok {
 		c.TaskMoverEnabled = b
+	}
+	if b, ok := raw["daemon.restated_merge_enabled"].(bool); ok {
+		c.RestatedMergeEnabled = b
 	}
 	if s := strVal(raw, "daemon.enrich_model"); s != "" {
 		c.EnrichModel = s

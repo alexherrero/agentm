@@ -580,3 +580,33 @@ func TestEmbedTextJoinsTitleAndBody(t *testing.T) {
 		}
 	}
 }
+
+func TestVectorsForReturnsEveryChunkOfEachNote(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "memory/multi.md", "multi", "body")
+	addNote(t, x, "memory/one.md", "one", "body")
+	addNote(t, x, "memory/none.md", "none", "body")
+	if _, err := x.PutVectors("m", []VectorRow{
+		{DocID: docID(t, x, "memory/multi.md"), ChunkIdx: 0, MtimeNS: 1, Vec: unit(0, 1, 0)},
+		{DocID: docID(t, x, "memory/multi.md"), ChunkIdx: 1, MtimeNS: 1, Vec: unit(1, 0, 0)},
+		{DocID: docID(t, x, "memory/one.md"), ChunkIdx: 0, MtimeNS: 1, Vec: unit(0, 0, 1)},
+	}); err != nil {
+		t.Fatalf("PutVectors: %v", err)
+	}
+	got, err := x.VectorsFor("m", []string{"memory/multi.md", "memory/one.md", "memory/none.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got["memory/multi.md"]) != 2 || len(got["memory/one.md"]) != 1 {
+		t.Errorf("chunks per note: %d, %d", len(got["memory/multi.md"]), len(got["memory/one.md"]))
+	}
+	if _, has := got["memory/none.md"]; has {
+		t.Error("a note with no vectors is in the map")
+	}
+	if v := got["memory/multi.md"][1]; v[0] < 0.999 {
+		t.Errorf("chunk order not kept: %v", v)
+	}
+	if other, _ := x.VectorsFor("other-model", []string{"memory/one.md"}); len(other) != 0 {
+		t.Error("another model's vectors were returned")
+	}
+}

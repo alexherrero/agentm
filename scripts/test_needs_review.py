@@ -235,6 +235,22 @@ class TheDreamSections(_Vault):
         self.assertIn("- `garden` on 3 days (2026-09-01 … 2026-09-08)", text)
         self.assertIn("from the dream cycle of 2026-09-10", text)
 
+    def test_the_restated_pairs_that_did_not_merge_get_a_section(self):
+        # `agentmd restated` (task 178 step 8) leaves the rule pairs it
+        # shortlisted and did not merge beside the cycle's proposals.
+        (self.state / "dreaming").mkdir(parents=True, exist_ok=True)
+        (self.state / "dreaming" / needs_review.RESTATED_REVIEW_NAME).write_text(json.dumps({
+            "written": "2026-09-29T02:00:00Z", "line": 0.74, "pairs": [
+                {"a": "memory/semantic/plan-md-shape.md", "b": "memory/semantic/status-report-shape.md",
+                 "similarity": 0.889, "verdict": "different", "reason": "one shapes a plan, the other a report"},
+                {"a": "memory/semantic/x.md", "b": "memory/semantic/y.md", "similarity": 0.75,
+                 "verdict": "unjudged"}]}), encoding="utf-8")
+        text = needs_review.write(self.root, today="2026-09-29").read_text(encoding="utf-8")
+        self.assertIn("## Restated rules? (2)", text)
+        self.assertIn("- [[plan-md-shape]] and [[status-report-shape]] — 89% alike · the judge: different: "
+                      "one shapes a plan, the other a report", text)
+        self.assertIn("- [[x]] and [[y]] — 75% alike · the judge: unjudged · merge by hand", text)
+
     def test_the_summary_counts_the_findings_apart_from_the_notes(self):
         self._cycle_writes(self._proposals())
         s = needs_review.summary(self.root)
