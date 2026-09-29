@@ -23,7 +23,7 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | Capture a specific preference / workflow / fix manually right now | `/memory save` |
 | Stage a casual thought, link, or idea for later triage — not yet reviewed | `/memory capture` |
 | Look at what a chat surface dropped into `agent/inbox/` and decide, card by card, where it goes | `/memory inbox` |
-| Read a web page or file into memory as a full document plus retrieval chunks | `/memory ingest` |
+| Read a web page or file into memory as one full-document note | `/memory ingest` |
 | Replace an existing entry with a corrected version (preserving audit trail) | `/memory evolve` |
 | Run reflection over the current session transcript on demand (or a specified transcript path) | `/memory reflect` |
 | Mine the full historical transcript backlog (`~/.claude/projects/*/`) with dry-run preview + resume-safe batching | `/memory reflect corpus` |
@@ -317,9 +317,9 @@ python3 harness/skills/memory/scripts/inbox_review.py --file <name> --type idea 
 
 ### `/memory ingest`
 
-Capture part 2 — `designs/friday/agentm-capture.md`'s article-ingestion door, sibling to `/memory capture`. Where `capture` stages a candidate for later triage, `ingest` reads a web page or file right now and writes it straight into permanent memory as two forms that always ship together: one intact full-document note (the complete original text, unmodified) and a set of small, reading-order-linked chunk notes for retrieval. Neither form replaces the other — this is the only capture-family door that produces more than one note per item.
+Capture part 2 — `designs/friday/agentm-capture.md`'s article-ingestion door, sibling to `/memory capture`. `ingest` reads a web page or file right now and writes it straight into permanent memory as one intact full-document note (the complete original text, unmodified). One outside source is one note: the index cuts a long note into several chunk vectors that all point back to it and scores the note by its best one, so a question answered deep in an article still finds it. The reading-order chunk notes this door once wrote beside the document retired on 2026-09-28 (agentm-vault § Capture).
 
-Canonical implementation: `scripts/ingest.py`'s `ingest()` function. Both the document note and every chunk go through `save_entry()` (unlike `/memory capture`'s direct `_inbox/`-only write) — these are permanent-memory writes from the start, each individually validated and queued for search indexing.
+Canonical implementation: `scripts/ingest.py`'s `ingest()` function. The document note goes through `save_entry()` — a permanent-memory write from the start, validated and queued for search indexing. The same page ingested again (the same slug and `source_url`) replaces that note's body in place: its path, links and slug stay, and git keeps the old text.
 
 #### Invocation
 
@@ -337,19 +337,19 @@ python3 skills/memory/scripts/ingest.py <url-or-file> \
 #### What gets written
 
 - **The full-document note** (`kind: domain-reference`, `group: personal`) — the complete extracted text, verbatim. HTML content is tag-stripped (a lightweight `<title>`/paragraph extractor, not a readability algorithm — scripts and styles are dropped, everything else becomes plain text); a local plain-text or markdown file passes through unmodified.
-- **The chunk notes** (same `kind`/`group`) — one per `chunking.py`'s `chunk_text()` output, each carrying a footer that links back to the full document and to its immediate reading-order neighbors (previous/next only — the first chunk has no "previous," the last has no "next," so the chain never cycles).
-- **Every note** carries `source_url`/`source_fetched` when the source was a URL (omitted for local files), and a `tags: [<topic>]` entry. Slugs are `<topic>-<title-slug>` for the document and `<topic>-<title-slug>-chunk-N` for each chunk, so same-topic ingests sort together even though they share the flat `group: personal` every other kind in this vault uses (the design's own "filed under `memory/domains/<topic>/`" phrasing describes the *intent* — discoverable by topic — which this achieves through slug-prefixing and tagging rather than a new per-topic directory layer `save_entry`'s `group`/`kind`/`slug` path formula has no clean way to produce without breaking the flat-`group`-per-kind convention every other entry follows).
+- **The note** carries `source_url`/`source_fetched` when the source was a URL (omitted for local files), and a `tags: [<topic>]` entry. Its slug is `<topic>-<title-slug>`, so same-topic ingests sort together even though they share the flat `group: personal` every other kind in this vault uses (the design's own "filed under `memory/domains/<topic>/`" phrasing describes the *intent* — discoverable by topic — which this achieves through slug-prefixing and tagging rather than a new per-topic directory layer `save_entry`'s `group`/`kind`/`slug` path formula has no clean way to produce without breaking the flat-`group`-per-kind convention every other entry follows).
 
 #### Failure modes (graceful)
 
 - **Fetch/read failure** (bad URL, network error, missing file) → returns `success: false` with the underlying error; nothing written. No retry, no paywall handling — that resilience is the ingest sweep's job (capture part 3), not this command's.
 - **Empty content** → returns `success: false`; nothing written.
+- **The slug is taken by something else** (another page, a local file, a note nobody ingested) → returns `success: false`; nothing written. Only the same page, by `source_url`, is updated in place.
 - **Vault not resolved** → the CLI exits 2 with a clear remedy.
 
 #### Anti-patterns
 
 - **Don't skip the topic-confirmation step in scripted/agent use.** A caller that always guesses `--topic` up front without surfacing the suggestion defeats the design's "the agent suggests a title-based slug for you to confirm" intent — treat the no-`--topic` suggestion as a real prompt, not dead code.
-- **Don't retune `chunk_text()`'s parameters here.** This command calls the existing chunking function unmodified; chunk-size tuning is out of this door's scope.
+- **Don't reintroduce chunk notes to reach deep text.** The index's chunk vectors already do; a chunk note competes with its own document in recall.
 
 ### `/memory evolve`
 

@@ -42,13 +42,15 @@ class IngestBasicsTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def test_local_file_ingest_produces_expected_note_count(self) -> None:
+    def test_local_file_ingest_writes_one_note_and_no_chunk_notes(self) -> None:
+        # One outside source is one note (agentm-vault § Capture, amended
+        # 2026-09-28): the index chunks a long note, and ingest writes none.
         result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
         self.assertTrue(result.success)
-        expected_chunks = len(ingest.chunk_text(_MD_FIXTURE.read_text(encoding="utf-8")))
-        self.assertEqual(len(result.chunks), expected_chunks)
         self.assertTrue(result.document.is_file())
-        self.assertTrue(all(c.is_file() for c in result.chunks))
+        self.assertEqual(result.chunks, [])
+        self.assertEqual(list(self.vault.rglob("*.md")), [result.document])
+        self.assertEqual(list(self.vault.rglob("*-chunk-*")), [])
 
     def test_nonexistent_source_fails_explicitly(self) -> None:
         result = ingest.ingest(self.vault, "/no/such/file-or-url.md", topic="x")
@@ -73,45 +75,71 @@ class IngestBasicsTests(unittest.TestCase):
         self.assertIn("source_url: https://example.com/article", content)
         self.assertIn("source_fetched: 2026-07-18T04:00:00+00:00", content)
 
-    def test_mid_sequence_collision_leaves_no_orphaned_notes(self) -> None:
-        # Pre-create a target slug this ingest would try to write (as if a
-        # prior, unrelated write already landed there) -- a retroactive
-        # /review found a version with no pre-flight check and no rollback
-        # would still write the document note and any earlier chunks before
-        # discovering the collision, orphaning them while reporting failure.
-        #
-        # The destination is taken from a real write rather than rebuilt here.
-        # This test used to assemble it as `memory/<_INGEST_KIND>/…`, which is
-        # the same formula the pre-flight had hardcoded: when filing v2 moved
-        # a memory type to its class, test and code went stale together, so
-        # the collision was staged somewhere nothing writes and every orphan
-        # assertion below passed vacuously.
-        original = _MD_FIXTURE.read_text(encoding="utf-8")
-        expected_chunks = len(ingest.chunk_text(original))
-        self.assertGreater(expected_chunks, 1, "fixture must produce >1 chunk to exercise mid-sequence failure")
-
+    def test_a_slug_taken_by_something_else_is_refused_untouched(self) -> None:
+        # The destination is taken from a real write rather than rebuilt here:
+        # a hand-rolled path went stale once filing v2 routed a memory type to
+        # its class, and a collision staged there passed vacuously.
         probe_vault = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, probe_vault, True)
         probe = ingest.ingest(probe_vault, str(_MD_FIXTURE), topic="typography")
         self.assertTrue(probe.success, probe.error)
-        dest = self.vault / probe.document.parent.relative_to(probe_vault)
-        doc_name, chunk0_name = probe.document.name, probe.chunks[0].name
-
-        colliding = dest / probe.chunks[1].name
+        colliding = self.vault / probe.document.relative_to(probe_vault)
         colliding.parent.mkdir(parents=True, exist_ok=True)
         colliding.write_text("pre-existing unrelated content\n", encoding="utf-8")
 
         result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
 
         self.assertFalse(result.success)
-        # Refused by the pre-flight, before any write -- not by save_entry
-        # mid-sequence with the rollback cleaning up after it. Both leave no
-        # orphans, so the wording is what separates them.
         self.assertIn("nothing written", result.error)
-        self.assertFalse((dest / doc_name).exists(), "document note must not be orphaned on a chunk collision")
-        self.assertFalse((dest / chunk0_name).exists(), "earlier chunk notes must not be orphaned on a later collision")
-        # The pre-existing unrelated file must survive untouched.
         self.assertEqual(colliding.read_text(encoding="utf-8"), "pre-existing unrelated content\n")
+        self.assertEqual(list(self.vault.rglob("*.md")), [colliding])
+
+
+class ReingestUpdatesInPlaceTests(unittest.TestCase):
+    """The same page ingested again updates its note in place (the operator's
+    ruling 6b): the path and links stay, the body is the new text."""
+
+    URL = "https://example.com/article"
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name)
+
+    def _ingest(self, text, url=None):
+        return ingest.ingest(self.vault, "candidate", topic="agents", raw_content=f"# The Article\n\n{text}",
+                             source_url=url or self.URL, source_fetched="2026-09-28T00:00:00+00:00")
+
+    def test_the_same_page_again_replaces_the_body_in_place(self) -> None:
+        first = self._ingest("The first version.")
+        path = first.document
+        path.write_text(path.read_text(encoding="utf-8").replace("slug: ", "importance: 8\nslug: ", 1),
+                        encoding="utf-8")
+        again = self._ingest("The page as it reads now.")
+        self.assertTrue(again.success, again.error)
+        self.assertTrue(again.updated)
+        self.assertEqual(again.document, path)
+        self.assertEqual(list(self.vault.rglob("*.md")), [path])
+        fm, body = _frontmatter_and_body(path)
+        self.assertIn("The page as it reads now.", body)
+        self.assertNotIn("The first version.", body)
+        self.assertEqual(fm["importance"], "8", "a field the operator set stays")
+
+    def test_the_same_page_unchanged_writes_nothing(self) -> None:
+        first = self._ingest("Same text.")
+        before = first.document.read_bytes()
+        again = self._ingest("Same text.")
+        self.assertTrue(again.success)
+        self.assertFalse(again.updated)
+        self.assertTrue(again.deduplicated)
+        self.assertEqual(first.document.read_bytes(), before)
+
+    def test_another_page_under_the_same_title_is_refused(self) -> None:
+        first = self._ingest("One page.")
+        other = self._ingest("Another page.", url="https://example.com/elsewhere")
+        self.assertFalse(other.success)
+        self.assertIn("nothing written", other.error)
+        self.assertIn("One page.", first.document.read_text(encoding="utf-8"))
 
 
 class FullDocumentNoteTests(unittest.TestCase):
@@ -138,46 +166,6 @@ class FullDocumentNoteTests(unittest.TestCase):
         fm, _ = _frontmatter_and_body(result.document)
         self.assertEqual(fm["type"], "reference")
         self.assertNotIn("kind", fm)
-
-
-class ChunkNoteTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.vault = Path(self._tmp.name)
-
-    def tearDown(self) -> None:
-        self._tmp.cleanup()
-
-    def test_chunk_count_matches_chunk_text(self) -> None:
-        result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
-        original = _MD_FIXTURE.read_text(encoding="utf-8")
-        self.assertEqual(len(result.chunks), len(ingest.chunk_text(original)))
-        self.assertGreater(len(result.chunks), 1, "fixture must be long enough to force multiple chunks")
-
-    def test_every_chunk_links_back_to_document(self) -> None:
-        result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
-        doc_slug = result.document.stem
-        for c in result.chunks:
-            _, body = _frontmatter_and_body(c)
-            self.assertIn(f"[[{doc_slug}]]", body)
-
-    def test_reading_order_chain_no_cycle(self) -> None:
-        result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
-        slugs = [c.stem for c in result.chunks]
-        bodies = {c.stem: _frontmatter_and_body(c)[1] for c in result.chunks}
-
-        # First chunk: no "(previous)" link.
-        self.assertNotIn("(previous)", bodies[slugs[0]])
-        # Last chunk: no "(next)" link -- otherwise it'd point back toward
-        # the start and the chain would be a cycle, not a path.
-        self.assertNotIn("(next)", bodies[slugs[-1]])
-        # Every middle chunk links to both its immediate neighbors.
-        for i in range(1, len(slugs) - 1):
-            self.assertIn(f"[[{slugs[i - 1]}]]", bodies[slugs[i]])
-            self.assertIn(f"[[{slugs[i + 1]}]]", bodies[slugs[i]])
-        # Unbroken chain: chunk i always links forward to chunk i+1.
-        for i in range(len(slugs) - 1):
-            self.assertIn(f"[[{slugs[i + 1]}]]", bodies[slugs[i]])
 
 
 class TopicSuggestionTests(unittest.TestCase):
@@ -216,9 +204,6 @@ class GroupCorrectnessTests(unittest.TestCase):
         result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
         fm_doc, _ = _frontmatter_and_body(result.document)
         self.assertNotIn("group", fm_doc)
-        for c in result.chunks:
-            fm_chunk, _ = _frontmatter_and_body(c)
-            self.assertNotIn("group", fm_chunk)
 
 
 class HtmlExtractionTests(unittest.TestCase):
@@ -242,7 +227,8 @@ class HtmlExtractionTests(unittest.TestCase):
         result = ingest.ingest(self.vault, str(_HTML_FIXTURE), topic="chunking")
         self.assertTrue(result.success)
         self.assertEqual(result.title, "Overlap-Aware Chunking, Briefly")
-        self.assertGreaterEqual(len(result.chunks), 1)
+        self.assertTrue(result.document.is_file())
+        self.assertEqual(result.chunks, [])
 
     def test_html_fragment_without_document_wrapper_is_stripped(self) -> None:
         # A retroactive /review found the sniff only recognized full-document
