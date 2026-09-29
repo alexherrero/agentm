@@ -110,11 +110,14 @@ class SameShapeAsManualRunTests(unittest.TestCase):
     produces the same digest as the manual `run_dream()`."""
 
     def _seed_fixture_corpus(self, vault: Path) -> None:
-        (vault / "a.md").write_text(
-            "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n", encoding="utf-8"
+        # Twins are memories only, so the pair is two class cards.
+        cards = vault / "memory" / "procedural"
+        cards.mkdir(parents=True, exist_ok=True)
+        (cards / "a.md").write_text(
+            "---\ntype: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n", encoding="utf-8"
         )
-        (vault / "b.md").write_text(
-            "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n", encoding="utf-8"
+        (cards / "b.md").write_text(
+            "---\ntype: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n", encoding="utf-8"
         )
 
     def test_job_invoked_command_matches_manual_run_shape(self) -> None:

@@ -56,6 +56,7 @@ class _DreamTestBase(unittest.TestCase):
                 os.environ[k] = v
     def _write(self, name: str, content: str) -> Path:
         path = self.vault / name
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         return path
 
@@ -69,11 +70,13 @@ class FullPassFixtureTests(_DreamTestBase):
 
     def setUp(self) -> None:
         super().setUp()
+        # The twin detector compares memories only (agentm-vault § Dreaming,
+        # amended 2026-09-28), so the twins and the control are class cards.
         self.dup_a = self._write(
-            "dup-a.md", "---\nslug: dup\nkind: fix\n---\nThe server retries three times on timeout.\n"
+            "memory/procedural/dup-a.md", "---\nslug: dup\ntype: fix\n---\nThe server retries three times on timeout.\n"
         )
         self.dup_b = self._write(
-            "dup-b.md", "---\nslug: dup-b\nkind: fix\n---\nThe server retries three times on timeout!\n"
+            "memory/procedural/dup-b.md", "---\nslug: dup-b\ntype: fix\n---\nThe server retries three times on timeout!\n"
         )
         self.con_a = self._write(
             "con-a.md", "---\nslug: contradiction\nkind: preference\n---\nUse tabs for indentation.\n"
@@ -86,7 +89,7 @@ class FullPassFixtureTests(_DreamTestBase):
         self.chain_1 = self._write("chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md"))
         self.chain_2 = self._write("chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md"))
         self.chain_3 = self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
-        self.control = self._write("control.md", "---\nkind: workflow\n---\nCompletely unrelated content about cats.\n")
+        self.control = self._write("memory/procedural/control.md", "---\ntype: workflow\n---\nCompletely unrelated content about cats.\n")
         self.all_paths = [
             self.dup_a, self.dup_b, self.con_a, self.con_b,
             self.chain_1, self.chain_2, self.chain_3, self.control,
@@ -98,7 +101,7 @@ class FullPassFixtureTests(_DreamTestBase):
         kinds = sorted(p.kind for p in digest.proposals)
         self.assertEqual(kinds, ["possible-twin", "same-key"])
         twin = next(p for p in digest.proposals if p.kind == "possible-twin")
-        self.assertEqual(twin.paths, ["dup-a.md", "dup-b.md"])
+        self.assertEqual(twin.paths, ["memory/procedural/dup-a.md", "memory/procedural/dup-b.md"])
         self.assertGreaterEqual(twin.detail["similarity"], dream.DEDUP_SIMILARITY_THRESHOLD)
         self.assertEqual((twin.detail["a_title"], twin.detail["b_title"]), ("dup a", "dup b"))
         same = next(p for p in digest.proposals if p.kind == "same-key")
@@ -112,7 +115,7 @@ class FullPassFixtureTests(_DreamTestBase):
     def test_the_control_and_the_chain_appear_in_no_finding(self) -> None:
         digest = dream.run_dream(self.vault, run_id="run-fixture-3")
         touched = {path for prop in digest.proposals for path in prop.paths}
-        for untouched in ("control.md", "chain-1.md", "chain-2.md", "chain-3.md"):
+        for untouched in ("memory/procedural/control.md", "chain-1.md", "chain-2.md", "chain-3.md"):
             self.assertNotIn(untouched, touched)
 
     def test_the_digest_lists_every_finding_for_you_to_judge(self) -> None:
@@ -151,14 +154,14 @@ class FullPassFixtureTests(_DreamTestBase):
 
 class DedupThresholdTests(_DreamTestBase):
     def test_below_threshold_is_not_proposed(self) -> None:
-        self._write("a.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog.\n")
-        self._write("b.md", "---\nkind: fix\n---\nCompletely different subject matter about spreadsheets.\n")
+        self._write("memory/procedural/a.md", "---\ntype: fix\n---\nThe quick brown fox jumps over the lazy dog.\n")
+        self._write("memory/procedural/b.md", "---\ntype: fix\n---\nCompletely different subject matter about spreadsheets.\n")
         digest = dream.run_dream(self.vault, run_id="run-below")
         self.assertEqual([p for p in digest.proposals if p.stage == "dedup"], [])
 
     def test_above_threshold_is_a_possible_twin_with_nothing_to_apply(self) -> None:
-        self._write("a.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n")
-        self._write("b.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n")
+        self._write("memory/procedural/a.md", "---\ntype: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n")
+        self._write("memory/procedural/b.md", "---\ntype: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n")
         digest = dream.run_dream(self.vault, run_id="run-above")
         twins = [p for p in digest.proposals if p.stage == "dedup"]
         self.assertEqual(len(twins), 1)
@@ -174,10 +177,57 @@ class DedupThresholdTests(_DreamTestBase):
         # Each note joins at most one pair as the second half, so a family of
         # copies reads as the first copy paired with each of the others.
         for name in ("a", "b", "c"):
-            self._write(f"{name}.md", "---\nkind: fix\n---\nThe same sentence, copied three times over.\n")
+            self._write(f"memory/semantic/{name}.md", "---\ntype: fix\n---\nThe same sentence, copied three times over.\n")
         digest = dream.run_dream(self.vault, run_id="run-family")
         pairs = sorted(tuple(p.paths) for p in digest.proposals if p.kind == "possible-twin")
-        self.assertEqual(pairs, [("a.md", "b.md"), ("a.md", "c.md")])
+        self.assertEqual(pairs, [("memory/semantic/a.md", "memory/semantic/b.md"),
+                                 ("memory/semantic/a.md", "memory/semantic/c.md")])
+
+
+class TwinsAreMemoriesOnlyTests(_DreamTestBase):
+    """The twin detector compares memories only (agentm-vault § Dreaming,
+    amended 2026-09-28). On 2026-09-24 every one of the 61 pairs it listed was
+    a diagnostics report, a `latest_*` copy or an index page; none was a pair
+    of memories."""
+
+    DIGEST = ("---\nkind: report\n---\n# Daily digest\n\nCaptures 3 · recalls 12 · "
+              "enrichment 0 calls · the queue is 4 items, the oldest 7 days.\n")
+    CARD = ("---\ntype: convention\n---\nNever edit a failing test to make it pass; "
+            "read what it asserts and fix the code.\n")
+
+    def test_near_identical_digests_are_no_twins_and_the_memory_pair_is(self) -> None:
+        self._write("diagnostics/digests/2026-09-23.md", self.DIGEST)
+        self._write("diagnostics/digests/2026-09-24.md", self.DIGEST.replace("12", "13"))
+        self._write("memory/semantic/never-edit-a-failing-test.md", self.CARD)
+        self._write("memory/semantic/never-edit-a-failing-test-to-pass.md", self.CARD.replace("pass;", "pass —"))
+        digest = dream.run_dream(self.vault, run_id="run-memories-only")
+        pairs = [tuple(p.paths) for p in digest.proposals if p.kind == "possible-twin"]
+        self.assertEqual(pairs, [("memory/semantic/never-edit-a-failing-test-to-pass.md",
+                                  "memory/semantic/never-edit-a-failing-test.md")])
+
+    def test_index_pages_latest_copies_and_records_are_never_twins(self) -> None:
+        # Each pair below is alike past the line; none of them is a memory.
+        self._write("memory/semantic/_index.md", self.CARD)
+        self._write("memory/procedural/_index.md", self.CARD)
+        self._write("memory/semantic/summary.md", self.CARD)
+        self._write("memory/semantic/latest_digest.md", self.CARD)
+        trace = "---\nkind: session-trace\nsession: \"{}\"\n---\n## Asked\n\nShip the release.\n"
+        self._write("memory/episodic/2026-09-12-ship-a.md", trace.format("a"))
+        self._write("memory/episodic/2026-09-12-ship-b.md", trace.format("b"))
+        self._write("memory/semantic/latest_morning_note.md", self.DIGEST)
+        self._write("diagnostics/latest_morning_note.md", self.DIGEST)
+        digest = dream.run_dream(self.vault, run_id="run-not-memories")
+        self.assertEqual([p for p in digest.proposals if p.kind == "possible-twin"], [])
+
+    def test_two_idea_cards_alike_are_twins(self) -> None:
+        idea = ("---\ntype: idea\narea: coding\n---\nA blog post per shipped plan: "
+                "just enough to say what changed and why.\n")
+        self._write("personal/ideas/blog-per-plan.md", idea)
+        self._write("personal/ideas/blog-post-per-plan.md", idea.replace("why.", "why!"))
+        digest = dream.run_dream(self.vault, run_id="run-idea-twins")
+        pairs = [tuple(p.paths) for p in digest.proposals if p.kind == "possible-twin"]
+        self.assertEqual(pairs, [("personal/ideas/blog-per-plan.md",
+                                  "personal/ideas/blog-post-per-plan.md")])
 
 
 class ContradictionTriageTests(_DreamTestBase):
@@ -442,8 +492,8 @@ class SupersededNotesStayOutOfTheStages(_DreamTestBase):
 
     def test_a_superseded_note_is_never_matched_against_its_successor(self) -> None:
         body = "The server retries three times on timeout.\n"
-        self._write("winner.md", "---\nslug: retries\nkind: fix\nstatus: active\n---\n" + body)
-        self._write("loser.md", "---\nslug: retries-old\nkind: fix\nstatus: active\nlifecycle: superseded\nsuperseded_by: winner.md\n---\n" + body)
+        self._write("memory/procedural/winner.md", "---\nslug: retries\ntype: fix\nstatus: active\n---\n" + body)
+        self._write("memory/procedural/loser.md", "---\nslug: retries-old\ntype: fix\nstatus: active\nlifecycle: superseded\nsuperseded_by: winner.md\n---\n" + body)
         digest = dream.run_dream(self.vault, run_id="run-superseded-skip")
         self.assertEqual([p for p in digest.proposals if p.stage == "dedup"], [])
 

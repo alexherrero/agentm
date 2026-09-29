@@ -99,13 +99,14 @@ class _Base(unittest.TestCase):
         return path
 
     def _seed_a_mergeable_pair(self) -> list:
-        """Two near-identical entries — a run with working rules proposes a
-        merge over these, so their survival is what proves the halt held."""
+        """Two near-identical memories — a run with working rules proposes a
+        merge over these, so their survival is what proves the halt held. They
+        are class cards because the twin detector compares memories only."""
         body = ("The daemon commits whatever git reports dirty, so a vault file "
                 "does not need hand-committing before a gate will pass.\n")
         return [
-            self._write("dup-a.md", f"---\nkind: workflow\nstatus: active\n---\n{body}"),
-            self._write("dup-b.md", f"---\nkind: workflow\nstatus: active\n---\n{body}"),
+            self._write("memory/procedural/dup-a.md", f"---\ntype: workflow\nstatus: active\n---\n{body}"),
+            self._write("memory/procedural/dup-b.md", f"---\ntype: workflow\nstatus: active\n---\n{body}"),
         ]
 
 
