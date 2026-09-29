@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v10.1.0](https://github.com/alexherrero/agentm/releases/tag/v10.1.0).** The vault takes the AgentKV layout. A reference library, `resources/`, and a systems space, `systems/`, join the shared spaces, and every project opens on the same five root files, with its tracker written each night from its tasks.
+> **Latest release: [v10.2.0](https://github.com/alexherrero/agentm/releases/tag/v10.2.0).** Closed tasks move out of the way: two weeks after a task closes, its folder moves to its project's `completed/tasks/`, links and all, and ranks with the project's finished work. Crystallize writes its first lessons, and runs weekly.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.2.0] - 2026-09-28
+
+Plan B of the AgentKV layout convergence: the lifecycle half of the operator's 2026-09-24 rulings. Finished work stops ranking like live work. Two weeks after a task's tracker reads `done` or `dropped`, the night moves its whole folder to its project's `completed/tasks/`, journaled, tracker last, its links repaired and every task reader following it; the first supervised move put 278 closed task folders there on 2026-09-28 with no new broken link and the retrieval gate green. Crystallize was fixed, ran once funded to finish (42 lessons, 2.9M tokens), and runs weekly on a provisional budget. Also in this release: retention's first deletion waits for the operator and its deletions reach a manifest, enrichment serves never-judged notes first, and `check-wiki` checks that every embedded image resolves.
+
 ### Added
 
 - **`check-wiki` rule (r): every image a page embeds resolves to a file,**
