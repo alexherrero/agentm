@@ -94,6 +94,48 @@ _DURABILITY_CUE = re.compile(
     r"\b(?:always|never|from now on|going forward|in general|every time|whenever|by default|as a rule|"
     r"in (?:the )?future|for all (?:future )?(?:sessions|commits|work))\b", re.IGNORECASE)
 
+# ── A reply to the agent is not a memory ─────────────────────────────────────
+#
+# agentm-vault § Capture, amended 2026-09-28. The operator's side of a session
+# is mostly direction: "yes, and then please file a follow-up", "let's do
+# follow-up b", "back to this in a few days". The idea lane files every idea
+# candidate, and its follow-up marker fired on exactly these, so replies were
+# filed as memories. A user message that reads as a reply to the agent — an
+# acknowledgement opening it, or an instruction about the session's own work —
+# and carries no durability cue is dropped before any lane scans it, and listed
+# in the trace instead. A reply that states a rule ("yes, and from now on always
+# run the gates") has the cue and is mined as before.
+_REPLY_RULES: list[tuple[str, re.Pattern]] = [
+    ("a reply that opens with an acknowledgement",
+     re.compile(r"^\W*(?:yes|yeah|yep|yup|ok(?:ay)?|sure|sounds good|great|perfect|go ahead|do it|lgtm|"
+                r"thanks|thank you|no|nope)\b", re.IGNORECASE)),
+    ("a reply that starts the next piece of work",
+     re.compile(r"^\W*let'?s\s+(?:do|go|start|continue|proceed|move|get|wrap|pick|take|keep|try|run|ship|"
+                r"merge|land|call|finish|circle)\b", re.IGNORECASE)),
+    ("an instruction to come back to this later",
+     re.compile(r"\b(?:back to|come back to|revisit|return to|circle back (?:to|on))\s+(?:this|it|that)\b",
+                re.IGNORECASE)),
+    ("an instruction to file or prepare something for the session",
+     re.compile(r"\b(?:file|capture|log|open|prepare|draft|write up)\s+(?:a|an|the|this|that|it|me a)\s+"
+                r"(?:follow.?up|note|issue|ticket|task|plan|prompt|pr|backlog item)\b", re.IGNORECASE)),
+    ("an instruction to hold off",
+     re.compile(r"\b(?:change|touch|do)\s+nothing\b|\bleave\s+(?:it|this|that|the\s+[\w-]+(?:\s+[\w-]+)?)"
+                r"\s+for\s+(?:now|later|a later)\b", re.IGNORECASE)),
+]
+
+
+def conversational_reply(text: str) -> "str | None":
+    """The rule a user message breaks as a reply to the agent, or None when it
+    may hold a memory. A durability cue keeps it: a rule stated in a reply is
+    still a rule."""
+    if not text or _DURABILITY_CUE.search(text):
+        return None
+    for name, pattern in _REPLY_RULES:
+        if pattern.search(text):
+            return name
+    return None
+
+
 _PREFERENCE_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:always|never)\s+\w+(?:\s+\w+){0,5}", re.IGNORECASE),
      _BARE_ALWAYS_NEVER_RATIONALE),
@@ -540,6 +582,9 @@ def mine_transcript_messages(messages: list) -> dict:
 
     # Tool-use frequency tally for workflow mining
     tool_counts: dict[str, int] = {}
+    # What the operator said to the agent rather than about the work: dropped
+    # before the lanes, and listed here for the trace (`conversational_reply`).
+    dropped_replies: list[dict] = []
 
     for msg in messages:
         role = msg.get("type")
@@ -551,6 +596,11 @@ def mine_transcript_messages(messages: list) -> dict:
             # tool tallies and workflow candidates — is untouched by this.
             text = _operator_text(msg)
             if not text:
+                continue
+            reply = conversational_reply(text)
+            if reply:
+                dropped_replies.append({"rule": f"not filed: {reply}",
+                                        "excerpt": " ".join(text.split())[:200], "count": 1})
                 continue
 
         # ── Preferences + corrections + ideas only apply to user messages.
@@ -683,6 +733,7 @@ def mine_transcript_messages(messages: list) -> dict:
         "tool_counts": dict(sorted(tool_counts.items())),
         "memory_candidates": memory_candidates,
         "idea_candidates": idea_candidates,
+        "dropped_replies": dropped_replies,
     }
 
 
@@ -1556,6 +1607,9 @@ def main(argv: list[str] | None = None) -> int:
             "pass": "route",
             "route_mode": route_mode,
             **stats,
+            # Replies to the agent the miner dropped before any lane; each is a
+            # line in the session's trace (`conversational_reply`).
+            "dropped_replies": len(result.get("dropped_replies") or []),
         }))
     return 0
 
