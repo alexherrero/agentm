@@ -329,8 +329,12 @@ def update_same_source(vault: Path, content: str, *, title: str, source_id=None,
         target = _same_source_card(vault, field, value, title)
         if target is None:
             return None
-        entries, _rest = card_shape.split_note(target.read_text(encoding="utf-8"))
+        entries, rest = card_shape.split_note(target.read_text(encoding="utf-8"))
         body = content.strip() + "\n"
+        if compute_fingerprint(rest.split("\n", 1)[1] if "\n" in rest else "") == compute_fingerprint(body):
+            # An exact resend is a reinforcement, not an update: the write-time
+            # dedup guard bumps the note already home (auto-org part 3 task 2).
+            return None
         sets = {"status": "unfiled", "filing_confidence": "low", "updated": now.date().isoformat(),
                 field: card_shape.quote(value) if ": " in value or value[:1] in "\"'[{&*!|>%@`#" else value,
                 "fingerprint": compute_fingerprint(body)}

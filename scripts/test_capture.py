@@ -246,6 +246,13 @@ class SameSourceUpdatesItsNoteTests(unittest.TestCase):
         self.assertEqual(again.path, first.path)
         self.assertEqual(len(self._files()), 1)
 
+    def test_an_exact_resend_is_still_a_reinforcement(self) -> None:
+        first = cap.capture(self.vault, "Always-on memory agent\nv1", source_url=self.URL, now=_NOW)
+        again = cap.capture(self.vault, "Always-on memory agent\nv1", source_url=self.URL, now=_NOW)
+        self.assertTrue(again.deduplicated)
+        self.assertFalse(again.updated)
+        self.assertEqual(again.path, first.path)
+
     def test_a_different_source_or_title_files_a_new_note(self) -> None:
         a = cap.capture(self.vault, "The retention thread\nOne.", source_id="gmail:thread-1", now=_NOW)
         b = cap.capture(self.vault, "The retention thread\nTwo.", source_id="gmail:thread-2", now=_NOW)
