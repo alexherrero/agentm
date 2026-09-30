@@ -28,6 +28,8 @@ Needs Go on the machine (`brew install go`). There is no vendored binary — the
 cd daemon && CGO_ENABLED=0 go build -o ~/.local/bin/agentmd ./cmd/agentmd
 ```
 
+To redeploy after a change under `daemon/`, run `scripts/deploy-daemon.sh` from the checkout you want to deploy. It builds both binaries beside the live ones and swaps them in. It then restarts the launchd job and waits for `/health`. Don't swap the binary with a hand-typed `mv`: `mv` is on the global ask list, so a hand swap stops for a permission prompt.
+
 `CGO_ENABLED=0` is the point rather than a precaution: it produces a static binary with no system SQLite dependency, which is what lets the same source serve any machine on the home network. Cross-compile by setting `GOOS` and `GOARCH` — `GOOS=linux GOARCH=arm64` builds for a NAS from the laptop.
 
 ## Installing it for good
