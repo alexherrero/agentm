@@ -227,3 +227,13 @@ func TestOnlyRepositoriesQualifiedIssuesAndReleasesArePaged(t *testing.T) {
 		}
 	}
 }
+
+// GitHub's own pages are not repositories: a subdomain's page, a gist, a
+// project board, an organisation's forum. A real repository beside them is.
+func TestGitHubsOwnPagesAreNotRepositories(t *testing.T) {
+	got := Entities("Docs at https://docs.github.com/en/rest and https://gist.github.com/karpathy/442a6bf5.\n" +
+		"Board: https://github.com/users/alexherrero/projects/2, forum https://github.com/orgs/community/discussions/1.\n" +
+		"Code: https://github.com/alexherrero/crickets/issues/12.\n")
+	// The gist's hex id still reads as a commit, which is indexed and never paged.
+	eq(t, got, []string{"commit:442a6bf5", "issue:alexherrero/crickets#12", "repo:alexherrero/crickets"})
+}

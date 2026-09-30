@@ -136,18 +136,34 @@ func (t Table) Spellings(canonical string) []string {
 }
 
 // Mentions reports whether text names the person under any of their spellings,
-// as a whole word or phrase, ignoring case.
+// as a whole word or phrase. A spelling of two words or more matches in any
+// case; a one-word spelling matches only as written, so a person called Will
+// or Mark is not found in every "will" and "mark" the vault holds.
 func Mentions(text string, spellings []string) bool {
-	lower := strings.ToLower(text)
+	lower := ""
 	for _, s := range spellings {
-		if s = strings.ToLower(Clean(s)); s != "" && containsWord(lower, s) {
+		s = Clean(s)
+		if s == "" {
+			continue
+		}
+		if !strings.Contains(s, " ") {
+			if containsWord(text, s) {
+				return true
+			}
+			continue
+		}
+		if lower == "" {
+			lower = strings.ToLower(text)
+		}
+		if containsWord(lower, strings.ToLower(s)) {
 			return true
 		}
 	}
 	return false
 }
 
-// containsWord finds needle in hay with a non-letter, non-digit on either side.
+// containsWord finds needle in hay with no letter, digit or underscore on
+// either side.
 func containsWord(hay, needle string) bool {
 	for from := 0; ; {
 		i := strings.Index(hay[from:], needle)
@@ -163,7 +179,7 @@ func containsWord(hay, needle string) bool {
 }
 
 func isWordByte(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80
+	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80
 }
 
 // Ground keeps the names a pass returned that stand for a person the note's own

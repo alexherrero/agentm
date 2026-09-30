@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -88,5 +89,27 @@ func TestGroundKeepsOnlyThePeopleTheNoteNames(t *testing.T) {
 	}
 	if got := (Table{}).Ground("Nobody here.", []string{"Jane Doe"}); len(got) != 0 {
 		t.Errorf("an ungrounded name survived an empty table: %v", got)
+	}
+}
+
+// A one-word name matches only as written: "Ben" is a person, "ben" in a
+// sentence is not, and a two-word name matches in any case.
+func TestAOneWordNameMatchesOnlyAsWritten(t *testing.T) {
+	for text, want := range map[string]bool{
+		"Ben reviewed it.":           true,
+		"the ben of the argument":    false,
+		"Will you ship it? Will did": true,
+		"we will ship it":            false,
+	} {
+		spellings := []string{"Ben Okafor", "Ben"}
+		if strings.Contains(text, "ill") {
+			spellings = []string{"Will Tran", "Will"}
+		}
+		if got := Mentions(text, spellings); got != want {
+			t.Errorf("Mentions(%q, %v) = %v, want %v", text, spellings, got, want)
+		}
+	}
+	if !Mentions("BEN OKAFOR signed.", []string{"Ben Okafor"}) {
+		t.Error("a two-word name did not match in another case")
 	}
 }
