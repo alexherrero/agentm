@@ -308,3 +308,43 @@ func TestTheEntityFileMatchIgnoresTheNamespace(t *testing.T) {
 		}
 	}
 }
+
+// Task 179: a note's place, then its label, says which repository a bare
+// number means — and a project listing two repositories, or none, says
+// nothing, so its bare numbers stay bare.
+func TestABareIssueIsQualifiedByTheNotesProject(t *testing.T) {
+	ctx := context.Background()
+	x, vault := newVaultIndex(t)
+	writeVaultNote(t, vault, "projects/agentm/project.yaml", "slug: agentm\nrepositories:\n  - alexherrero/agentm\n")
+	writeVaultNote(t, vault, "projects/pair/project.yaml", "slug: pair\nrepositories: [a/one, a/two]\n")
+	writeVaultNote(t, vault, "projects/agentm/tasks/001-x/progress.md", "Closed #466 in v10.3.0.\n")
+	writeVaultNote(t, vault, "projects/agentm/completed/tasks/000-y/plan.md", "Reopened #466.\n")
+	writeVaultNote(t, vault, "agent/memory/semantic/labelled.md", "---\ntitle: l\nproject: agentm\n---\n\nSee #512.\n")
+	writeVaultNote(t, vault, "projects/pair/tasks/001-z/plan.md", "See #77.\n")
+	writeVaultNote(t, vault, "agent/memory/semantic/loose.md", "---\ntitle: n\n---\n\nSee #78.\n")
+	if _, err := x.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := x.EntityMentions(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mentions := map[string]int{}
+	for _, e := range got {
+		mentions[e.URI] = e.Mentions
+	}
+	for uri, want := range map[string]int{
+		"issue:alexherrero/agentm#466":       2,
+		"issue:alexherrero/agentm#512":       1,
+		"release:alexherrero/agentm@v10.3.0": 1,
+		"issue:#77":                          1,
+		"issue:#78":                          1,
+	} {
+		if mentions[uri] != want {
+			t.Errorf("%s: %d mention(s), want %d (all: %v)", uri, mentions[uri], want, mentions)
+		}
+	}
+	if mentions["issue:#466"] != 0 || mentions["issue:#512"] != 0 {
+		t.Errorf("a bare number in a single-repository project stayed bare: %v", mentions)
+	}
+}

@@ -81,6 +81,10 @@ type Index struct {
 	// invariant is otherwise invisible — it shows up as a slow search months
 	// later, which is exactly how it was found the first time. Guarded by mu.
 	snippetedDocs int64
+
+	// repos is the projects' repositories the extractor qualifies a bare
+	// reference with (entitycontext.go). Guarded by mu.
+	repos *repoContext
 }
 
 // snippetedDocs reports the counter above. Unexported: the number is a claim
@@ -445,7 +449,7 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	if err := replaceLinksTx(tx, id, BuildLinks(n.Rel, n.Body, known)); err != nil {
 		return err
 	}
-	if err := replaceEntitiesTx(tx, id, extract.Entities(n.Body)); err != nil {
+	if err := replaceEntitiesTx(tx, id, extract.EntitiesIn(n.Body, x.entityContextLocked(n.Rel, n.Project))); err != nil {
 		return err
 	}
 	return tx.Commit()
