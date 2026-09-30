@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/people"
 )
 
 // agentm-vault § Projects and tasks: inside the projects space a pass writes a
@@ -152,5 +154,29 @@ func TestABlockListAndUnknownFieldsStayExactlyAsTheyAre(t *testing.T) {
 func TestARecordWithNoFrontmatterIsRefused(t *testing.T) {
 	if _, err := ComposeRecord("# A bare note\n", deepResponse(), recordStamp(), DepthDeep, nil); err == nil {
 		t.Error("a record with no frontmatter block was composed")
+	}
+}
+
+// Task 179: a decision names the people it was made with, and a decision is
+// shared work. The record gets `people:` the way a card does — held to its own
+// words and the table — written over what an earlier pass said.
+func TestARecordGetsThePeopleItsOwnWordsName(t *testing.T) {
+	record := strings.Replace(decisionRecord, "Archived notes stay walled.\n",
+		"Archived notes stay walled, as Ravi Shah and Pat agreed.\n", 1)
+	record = strings.Replace(record, "importance: 8\n", "importance: 8\npeople: [Old Name]\n", 1)
+	r := deepResponse()
+	r.People = []string{"Ravi Shah", "Pat Owner", "Old Name"}
+	s := recordStamp()
+	tb, err := people.Parse("```people\nyou: [Pat Owner, Pat]\n```\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.People = tb
+	next, err := ComposeRecord(record, r, s, DepthDeep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := frontmatterValue(next, "people"); got != "[Ravi Shah]" {
+		t.Errorf("people: %q, want [Ravi Shah]\n%s", got, next)
 	}
 }

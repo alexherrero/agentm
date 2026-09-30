@@ -145,6 +145,16 @@ func ComposeRecord(previous string, r Response, s Stamp, depth Depth, offered []
 	if depth == DepthDeep && r.ImportanceProposed > 0 {
 		set("importance_proposed", fmt.Sprintf("%d", r.ImportanceProposed))
 	}
+	// The people a record names are the pass's to say (task 179), grounded in
+	// the record's own words like a card's, and written over what an earlier
+	// pass said rather than merged into it.
+	if names := groundPeople(previous, captured, after, r.People, s.People); len(names) > 0 && !blocks["people"] {
+		quoted := make([]string, 0, len(names))
+		for _, n := range names {
+			quoted = append(quoted, yamlScalar(n))
+		}
+		set("people", "["+strings.Join(quoted, ", ")+"]")
+	}
 	set("updated", when.UTC().Format("2006-01-02"))
 	version := s.Version
 	if version == "" {

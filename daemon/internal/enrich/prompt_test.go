@@ -278,8 +278,13 @@ func TestTheCardTagIsDeterministicAndContentDerived(t *testing.T) {
 // it. Update this constant in the same commit that moves it, and say in the
 // message what judgment the edit changes — that sentence is the whole audit
 // trail for a re-enrichment the operator pays for in nights.
+//
+// Moved `5d3a4cca1b02` -> `d83411616cd8` by task 179 (2026-09-30): the deep pass
+// now returns `people`, the people a card names, and a light pass may move it.
+// That is a new judgment, so every stamped card is owed the deep pass once —
+// which is also how the corpus gains the field, at the night's token line.
 func TestThePassVersionIsPinnedSoARe_enrichmentIsDeliberate(t *testing.T) {
-	const want = "5d3a4cca1b02"
+	const want = "d83411616cd8"
 	if got := PromptHash(); got != want {
 		t.Errorf("PromptHash() = %q, want %q.\n\n"+
 			"If you changed the RUBRIC — the fields, the type enum, the alias "+

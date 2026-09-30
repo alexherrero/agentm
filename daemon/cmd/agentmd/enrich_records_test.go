@@ -14,6 +14,7 @@ import (
 
 	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/note"
 )
 
 // agentm-vault plan 09, task 7: the night walks project records after the cards,
@@ -457,5 +458,43 @@ func TestAFixtureNightMergesIntoARecordAfterTheCardsAndLeavesSessionFilesAlone(t
 		if now, err := read(rel); err != nil || now != notes[rel] {
 			t.Errorf("%s changed (%v):\n%s", rel, err, now)
 		}
+	}
+}
+
+// Task 179: the pass that now names people never reads a walled area. The
+// queue is built from the index, and a walled note never enters the index, so
+// neither a record nor an idea card behind the wall is ever offered.
+func TestAWalledNoteIsNeverOfferedToThePassThatNamesPeople(t *testing.T) {
+	note.SetRecallExemptAreas([]string{"projects/agentm/decisions/private", "personal/ideas"})
+	t.Cleanup(func() { note.SetRecallExemptAreas(nil) })
+	vault := t.TempDir()
+	x := openRecordIndex(t, vault)
+	for _, rel := range []string{
+		"projects/agentm/decisions/private/salary.md",
+		"projects/agentm/decisions/open.md",
+		"personal/ideas/a-private-idea.md",
+	} {
+		abs := filepath.Join(vault, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "---\ntitle: t\ntype: idea\n---\n\nJane Doe and Ravi Shah met.\n"
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := x.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	records, err := enrichRecordQueue(x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ideas, err := enrichIdeasQueue(x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(records, []string{"projects/agentm/decisions/open.md"}) || len(ideas) != 0 {
+		t.Errorf("records %v, ideas %v: a walled note was offered", records, ideas)
 	}
 }

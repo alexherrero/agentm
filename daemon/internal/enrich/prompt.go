@@ -94,6 +94,12 @@ commentary. These fields exactly, no others:
   summary              one sentence saying what the card is for.
   tags                 OPTIONAL, at most 8.
   aliases              OPTIONAL, at most 6. See the alias rule below.
+  people               OPTIONAL, at most 12: the people the card names, each
+                       written as the card writes them, as a full name where the
+                       card gives one. Leave out the person the card is written
+                       by or for, the authors of any cited work, and public
+                       figures mentioned only in passing. Only names that appear
+                       in the card itself; empty is the usual answer.
   related              OPTIONAL, at most 5: the ids of the neighbours below that
                        bear on this card. Only ids from that list.
   importance_proposed  a whole number from 1 to 10, against the rubric below.
@@ -114,7 +120,7 @@ which:
 
   deep    the card has not been judged under this prompt. Return every field.
   light   the card was judged before and its text has changed since. Only
-          summary, tags, related and confidence may move: keep the title and type
+          summary, tags, related, people and confidence may move: keep the title and type
           unless you are sure they are now wrong, return importance_proposed as
           the card states it, and leave body empty.
 

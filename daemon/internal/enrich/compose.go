@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/cardshape"
+	"github.com/alexherrero/agentm/daemon/internal/people"
 )
 
 // Composing the note a judgment writes.
@@ -137,6 +138,7 @@ func Compose(previous string, r Response, s Stamp, depth Depth, offered []Neighb
 	_, prevBody := splitNote(previous)
 	captured, oldSection, after := splitDreaming(prevBody)
 	r.Related = relatedIDs(r.Related, offered)
+	r.People = groundPeople(previous, captured, after, r.People, s.People)
 
 	when := s.At
 	if when.IsZero() {
@@ -227,4 +229,17 @@ func separator(body string) string {
 		return ""
 	}
 	return "\n"
+}
+
+// groundPeople keeps the names a pass returned that the note's own words
+// contain — its title, the text the session wrote and anything below the
+// dreaming section — filed under the operator's alias table (task 179). A
+// previous pass's `people:` and its own added prose are not evidence for a
+// name: a name only a pass ever wrote is a name a pass inferred.
+func groundPeople(previous, captured, after string, names []string, table people.Table) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	text := frontmatterValue(previous, "title") + "\n" + captured + "\n" + after
+	return table.Ground(text, names)
 }
