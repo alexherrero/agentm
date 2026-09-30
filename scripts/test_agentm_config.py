@@ -126,6 +126,18 @@ class TestAgentmConfig(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("restated_merge_enabled", err)
 
+    def test_the_people_email_evidence_switch_is_written_refused_and_idempotent(self) -> None:
+        # Task 179 step 7: a mail thread counts as shared work only once this is on.
+        rc, out, err = self._run("--people-email-evidence-enabled", "true")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertIs(config["daemon.people_email_evidence_enabled"], True)
+        rc, out, _err = self._run("--people-email-evidence-enabled", "true")
+        self.assertEqual((rc, out), (0, ""), "an unchanged switch writes nothing")
+        rc, _out, err = self._run("--people-email-evidence-enabled", "maybe")
+        self.assertEqual(rc, 2)
+        self.assertIn("people_email_evidence_enabled", err)
+
     def test_the_task_mover_switch_is_written_refused_and_idempotent(self) -> None:
         # Task 177: the night moves closed tasks only once this is on.
         rc, out, err = self._run("--task-mover-enabled", "true")

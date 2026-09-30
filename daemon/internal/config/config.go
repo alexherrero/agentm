@@ -191,6 +191,13 @@ type Config struct {
 	// once the first judged list has been read, as with the task mover.
 	RestatedMergeEnabled bool
 
+	// PeopleEmailEvidenceEnabled lets a mail thread with the operator count as
+	// shared work for each person on it, toward the two a person needs for an
+	// entity page (task 179). Off in the shipped configuration, and nothing
+	// reads mail: the switch waits for an email source, and turning it on is
+	// the operator's decision about their inbox, not a binary update's.
+	PeopleEmailEvidenceEnabled bool
+
 	// EnrichModel is the model name enrichment passes to `claude -p`. A name,
 	// not a tier — tier qualification is earned by sampled audit against the
 	// strong tier, which is its own mechanism and not this pass's job.
@@ -698,6 +705,9 @@ func Load(opts Options) (*Config, error) {
 	if b, ok := raw["daemon.restated_merge_enabled"].(bool); ok {
 		c.RestatedMergeEnabled = b
 	}
+	if b, ok := raw["daemon.people_email_evidence_enabled"].(bool); ok {
+		c.PeopleEmailEvidenceEnabled = b
+	}
 	if s := strVal(raw, "daemon.enrich_model"); s != "" {
 		c.EnrichModel = s
 	}
@@ -1002,4 +1012,18 @@ func intVal(raw map[string]any, key string) (int, bool) {
 		return v, true
 	}
 	return 0, false
+}
+
+// Switches are the daemon's on and off switches, under the names the kernel
+// config gives them, for the status surface: what the machine is allowed to do
+// tonight is one read away rather than a grep through the config file.
+func (c *Config) Switches() map[string]bool {
+	return map[string]bool{
+		"daemon.decay_enabled":                 c.DecayEnabled,
+		"daemon.enrich_enabled":                c.EnrichEnabled,
+		"daemon.crystallize_enabled":           c.CrystallizeEnabled,
+		"daemon.task_mover_enabled":            c.TaskMoverEnabled,
+		"daemon.restated_merge_enabled":        c.RestatedMergeEnabled,
+		"daemon.people_email_evidence_enabled": c.PeopleEmailEvidenceEnabled,
+	}
 }

@@ -27,6 +27,8 @@ Operations:
                                             #   completed/tasks/ (daemon.task_mover_enabled)
     agentm_config.py --restated-merge-enabled true  # let the night merge restated rules
                                             #   its judge calls the same (daemon.restated_merge_enabled)
+    agentm_config.py --people-email-evidence-enabled true  # let a mail thread count as
+                                            #   shared work for a people page (daemon.people_email_evidence_enabled)
     agentm_config.py --notify-enabled true # opt in to the daily on-device notification
                                             #   (plugins.autonomy.notify_enabled; FRIDAY feature 1)
     agentm_config.py --email-to <address>  # opt in to the daily digest email
@@ -96,6 +98,7 @@ _DAEMON_DECAY_ENABLED_KEY = "daemon.decay_enabled"
 _DAEMON_CRYSTALLIZE_ENABLED_KEY = "daemon.crystallize_enabled"
 _DAEMON_TASK_MOVER_ENABLED_KEY = "daemon.task_mover_enabled"
 _DAEMON_RESTATED_MERGE_ENABLED_KEY = "daemon.restated_merge_enabled"
+_DAEMON_PEOPLE_EMAIL_EVIDENCE_KEY = "daemon.people_email_evidence_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
 # The mail door's four keys — the mailbox URL, the sender allow-list, the
@@ -411,6 +414,34 @@ def cmd_set_crystallize_enabled(prefix: Path, value: str) -> int:
     config[_DAEMON_CRYSTALLIZE_ENABLED_KEY] = enabled
     written = _write_config(prefix, config)
     print(f"{_DAEMON_CRYSTALLIZE_ENABLED_KEY} = {enabled}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
+def cmd_set_people_email_evidence_enabled(prefix: Path, value: str) -> int:
+    """Let a mail thread with you count as shared work for a people page
+    (`daemon.people_email_evidence_enabled`, task 179 step 7).
+
+    A person gets an entity page once named in two pieces of shared work. On,
+    a thread with you from an email source counts as one for each person on
+    it. It ships off, and nothing reads mail yet: the switch waits for an
+    email ingest. Idempotent: silent no-op when unchanged.
+    """
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        print(
+            f"[agentm_config] refusing to set people_email_evidence_enabled: {value!r} is "
+            "not 'true' or 'false'",
+            file=sys.stderr,
+        )
+        return 2
+    enabled = normalized == "true"
+    config = _read_config(prefix) or {}
+    if config.get(_DAEMON_PEOPLE_EMAIL_EVIDENCE_KEY) == enabled:
+        return 0
+    config[_DAEMON_PEOPLE_EMAIL_EVIDENCE_KEY] = enabled
+    written = _write_config(prefix, config)
+    print(f"{_DAEMON_PEOPLE_EMAIL_EVIDENCE_KEY} = {enabled}")
     print(f"(written to {written})", file=sys.stderr)
     return 0
 
@@ -757,6 +788,9 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--restated-merge-enabled", metavar="{true,false}",
                     help="set daemon.restated_merge_enabled — let the night merge convention, "
                          "preference and workflow pairs its judge calls the same rule restated")
+    op.add_argument("--people-email-evidence-enabled", metavar="{true,false}",
+                    help="set daemon.people_email_evidence_enabled — let a mail thread with you "
+                         "count as shared work for a people page (ships off; nothing reads mail yet)")
     op.add_argument("--email-to", metavar="ADDRESS",
                     help="set plugins.autonomy.email_to — opt in to the daily digest email")
     op.add_argument("--email-smtp-url", metavar="URL",
@@ -796,6 +830,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_task_mover_enabled(prefix, args.task_mover_enabled)
     if args.restated_merge_enabled is not None:
         return cmd_set_restated_merge_enabled(prefix, args.restated_merge_enabled)
+    if args.people_email_evidence_enabled is not None:
+        return cmd_set_people_email_evidence_enabled(prefix, args.people_email_evidence_enabled)
     if args.email_to is not None:
         return cmd_set_email_to(prefix, args.email_to)
     if args.email_smtp_url is not None:

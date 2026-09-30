@@ -26,9 +26,32 @@ import (
 // `person_min_shared_work` distinct pieces of shared work; mentions anywhere
 // else are listed on the page but never qualify a person on their own.
 
+// EmailThread is one mail thread with the operator, from an email source.
+type EmailThread struct {
+	// ID names the thread; a thread counts once per person however many
+	// messages it holds.
+	ID string
+	// Participants are the people on the thread, as the source names them.
+	// The operator's own names are filed out by the table like any other.
+	Participants []string
+}
+
+// EmailEvidence is where shared-work evidence from mail comes from (task 179
+// step 7). No source ships and nothing reads mail: a future ingest implements
+// this, and a thread with the operator then counts as one piece of shared
+// work for each person on it — only while the operator's switch,
+// `daemon.people_email_evidence_enabled`, is on.
+type EmailEvidence interface {
+	Threads(ctx context.Context) ([]EmailThread, error)
+}
+
 // PeopleOptions is what the people half of the builder reads besides the index.
 type PeopleOptions struct {
 	Table people.Table
+	// Email is the email source, and EmailEnabled the operator's switch. Off,
+	// a source is never asked.
+	Email        EmailEvidence
+	EmailEnabled bool
 }
 
 // sharedWorkRe are the paths that are shared work.
@@ -93,6 +116,25 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 		texts = append(texts, noteText{row: n, text: displayTitle(n.Path, n.Title) + "\n" + body, named: named})
 	}
 
+	threads := map[string]map[string]bool{}
+	if opts.EmailEnabled && opts.Email != nil {
+		ts, err := opts.Email.Threads(context.Background())
+		if err != nil {
+			return wanted, err
+		}
+		for _, t := range ts {
+			for _, p := range t.Participants {
+				if name, ok := opts.Table.Canonical(p); ok {
+					registry[name] = true
+					if threads[name] == nil {
+						threads[name] = map[string]bool{}
+					}
+					threads[name][t.ID] = true
+				}
+			}
+		}
+	}
+
 	var names []string
 	for name := range registry {
 		names = append(names, name)
@@ -114,6 +156,7 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 			}
 			set[t.row.Path] = m
 		}
+		shared += len(threads[name])
 		if shared < minSharedWork {
 			continue
 		}

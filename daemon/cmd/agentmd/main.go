@@ -335,6 +335,7 @@ func cmdServe(args []string) error {
 			"config":       cfg.ConfigPath,
 			"spaces":       cfg.Spaces,
 			"shard":        cfg.Shard,
+			"switches":     cfg.Switches(),
 			"uptime":       time.Since(bootedAt).Round(time.Second).String(),
 			"health":       report(),
 			"watcher":      w.Status(),

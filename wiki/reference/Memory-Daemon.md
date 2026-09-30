@@ -237,6 +237,7 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 | `daemon.health_every` | `15m` | How often thresholds are evaluated and the probe runs if due. |
 | `daemon.probe_every` | `24h` | How often the self-probe runs. |
 | `daemon.probe_budget` | `10s` | How long one round trip may take before it counts as failed. |
+| `daemon.people_email_evidence_enabled` | `false` | Lets a mail thread with you count as shared work for each person on it, toward the two a person needs for an entity page (task 179). Nothing reads mail yet: the builder asks an email source only while this is on, and none ships. Set it with `agentm_config.py --people-email-evidence-enabled true`. `agentmd status --json` lists it under `switches` with the other daemon switches. |
 | `plugins.autonomy.email_to` | — | Where alerts go. Shared with the daily email that carries the morning note. |
 | `plugins.autonomy.email_smtp_url` | — | `smtp://[user[:password]@]host[:port]`. Both keys required, or the channel skips. |
 | `plugins.autonomy.email_from` | `email_to` | For relays that need a domain-verified sender. |
