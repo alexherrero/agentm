@@ -289,3 +289,25 @@ func TestTheRestatedMergeIsOffUntilItsSwitchIsSet(t *testing.T) {
 		t.Error("daemon.restated_merge_enabled: true did not turn the merge on")
 	}
 }
+
+// The people email-evidence switch ships off (task 179 step 7): off unless the
+// operator sets it, on when they do, and shown with the other switches on the
+// status surface.
+func TestThePeopleEmailEvidenceSwitchShipsOffAndIsShown(t *testing.T) {
+	vault := vaultWithContract(t, "personal")
+	cfg, err := loadWith(t, vault, map[string]any{"plugins.obsidian-vault.memory_root": "agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if on, shown := cfg.Switches()["daemon.people_email_evidence_enabled"]; on || !shown || cfg.PeopleEmailEvidenceEnabled {
+		t.Errorf("the switch is on (%v) or not shown (%v) with nothing set", on, !shown)
+	}
+	cfg, err = loadWith(t, vault, map[string]any{"plugins.obsidian-vault.memory_root": "agent",
+		"daemon.people_email_evidence_enabled": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.PeopleEmailEvidenceEnabled || !cfg.Switches()["daemon.people_email_evidence_enabled"] {
+		t.Error("daemon.people_email_evidence_enabled: true did not turn the switch on")
+	}
+}

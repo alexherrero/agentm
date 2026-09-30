@@ -593,5 +593,9 @@ func planEntitiesFor(cfg *config.Config, root string, contract *rules.Rules, now
 	if err != nil {
 		return EntitiesPlan{}, err
 	}
-	return PlanEntities(root, idx, PeopleOptions{Table: table}, contract, now)
+	// No email source ships (task 179 step 7): the switch is read so that
+	// turning it on is the operator's act, and nothing reads mail until an
+	// ingest supplies a source.
+	return PlanEntities(root, idx, PeopleOptions{Table: table, EmailEnabled: cfg.PeopleEmailEvidenceEnabled},
+		contract, now)
 }

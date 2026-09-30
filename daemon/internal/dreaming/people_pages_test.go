@@ -1,6 +1,7 @@
 package dreaming
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,5 +138,42 @@ func TestSharedWorkIsKnownByItsPath(t *testing.T) {
 		if got := IsSharedWork(rel); got != want {
 			t.Errorf("IsSharedWork(%q) = %v, want %v", rel, got, want)
 		}
+	}
+}
+
+// The email switch (step 7): off, a thread is ignored and the source is never
+// asked; on, a thread with the operator is shared work for each person on it.
+type fixtureMail struct {
+	threads []EmailThread
+	asked   *int
+}
+
+func (f fixtureMail) Threads(context.Context) ([]EmailThread, error) {
+	*f.asked++
+	return f.threads, nil
+}
+
+func TestAnEmailThreadCountsOnlyWhileTheSwitchIsOn(t *testing.T) {
+	root, x := entityVault(t, peopleFixture())
+	opts := peopleOpts(t)
+	asked := 0
+	opts.Email = fixtureMail{threads: []EmailThread{{ID: "t1", Participants: []string{"Ana Ruiz", "Pat Owner"}}}, asked: &asked}
+	off, err := PlanEntities(root, x, opts, nil, entityNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := personPages(off)["person:ana-ruiz"]; ok || asked != 0 {
+		t.Errorf("with the switch off, Ana's page %v and the source was asked %d time(s)", ok, asked)
+	}
+	opts.EmailEnabled = true
+	on, err := PlanEntities(root, x, opts, nil, entityNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := personPages(on)["person:ana-ruiz"]; !ok || p.SharedWork != 2 {
+		t.Errorf("with the switch on, Ana's page %+v; want one task and one thread", p)
+	}
+	if _, ok := personPages(on)["person:pat-owner"]; ok {
+		t.Error("the operator got a page from their own thread")
 	}
 }
