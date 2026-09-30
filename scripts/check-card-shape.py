@@ -24,6 +24,13 @@ the live vault, resolved at runtime, over the class directories other than
                       no retired field, never carries `importance`, `why`,
                       `filing_confidence` or `trust`, and names what a trace
                       touched as `touched:`.
+  an entity page      is the record `kind: entity-profile` the nightly builder
+                      writes under `memory/entities/<folder>/` (task 179). It
+                      carries `entity_type` (repo, issue, release or person)
+                      and `entity_id`, sits in its type's folder, and carries
+                      `shared_work` only on a person.
+  `people:`           on any note, is a list of names: a flow list or a block
+                      of `- name` lines, never a bare scalar.
 
 The idea cards are a second walk with a shape of their own (agentm-vault plan
 13, the operator's rulings of 2026-09-20). Every markdown file directly in the
@@ -156,9 +163,47 @@ def note_findings(rel: str, text: str, contract: Contract | None) -> list[str]:
         renamed = [k for k in keys if k in cs.RENAMED_RECORD_FIELDS]
         if renamed:
             out.append(f"{rel}: {renamed} is named {[cs.RENAMED_RECORD_FIELDS[k] for k in renamed]} now")
+        if get("kind") == cs.ENTITY_PROFILE_KIND:
+            out += [f"{rel}: {f}" for f in entity_findings(rel, keys, get)]
     else:
         out.append(f"{rel}: carries neither `type` nor `kind`")
+    if "people" in keys and not people_is_a_list(entries):
+        out.append(f"{rel}: `people` is not a list of names")
     return out
+
+
+def entity_findings(rel: str, keys: list[str], get) -> list[str]:
+    """What keeps one `kind: entity-profile` record from being an entity page."""
+    out = [f"missing `{name}`" for name in cs.ENTITY_REQUIRED_FIELDS if get(name) is None]
+    entity_type = get("entity_type")
+    if entity_type is not None and entity_type not in cs.ENTITY_FOLDERS:
+        out.append(f"`entity_type: {entity_type}` is not one of {sorted(cs.ENTITY_FOLDERS)}")
+    parts = rel.split("/")
+    if entity_type in cs.ENTITY_FOLDERS and "entities" in parts:
+        folder = parts[parts.index("entities") + 1] if parts.index("entities") + 2 < len(parts) else ""
+        if folder != cs.ENTITY_FOLDERS[entity_type]:
+            out.append(f"an entity page of `entity_type: {entity_type}` belongs in "
+                       f"entities/{cs.ENTITY_FOLDERS[entity_type]}/")
+    if entity_type is not None and entity_type != "person":
+        out += [f"carries `{name}`, which only a person's page carries"
+                for name in cs.ENTITY_PERSON_ONLY if name in keys]
+    return out
+
+
+def people_is_a_list(entries) -> bool:
+    """`people:` holds a flow list, or an empty value followed by `- name` lines."""
+    raw = cs.raw_value(entries, "people")
+    if raw is None:
+        return True
+    if raw.startswith("["):
+        return raw.endswith("]")
+    if raw:
+        return False
+    for key, group in entries:
+        if key == "people":
+            items = [line.strip() for line in group[1:] if line.strip()]
+            return all(line.startswith("- ") or line.startswith("#") for line in items)
+    return True
 
 
 def notes(memory_root: Path):
@@ -166,10 +211,17 @@ def notes(memory_root: Path):
         d = memory_root / "memory" / cls
         if not d.is_dir():
             continue
-        for p in sorted(d.iterdir()):
-            if p.name in IGNORABLE or p.is_dir() or p.suffix != ".md":
+        dirs = [d]
+        if cls == "entities":
+            # The builder's pages sit one folder down, one folder per type.
+            dirs += [d / folder for folder in sorted(cs.ENTITY_FOLDERS.values())]
+        for base in dirs:
+            if not base.is_dir():
                 continue
-            yield p
+            for p in sorted(base.iterdir()):
+                if p.name in IGNORABLE or p.is_dir() or p.suffix != ".md":
+                    continue
+                yield p
 
 
 def idea_findings(rel: str, text: str) -> list[str]:

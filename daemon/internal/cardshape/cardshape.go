@@ -20,7 +20,8 @@ import (
 // relation and a reader looking for one looks for the other. An idea card's two
 // fields (agentm-vault part 13) sit where they are read: `area`, the operator's
 // group, beside what the card is; `dismissed`, the day the idea was retired,
-// beside its standing.
+// beside its standing. `people`, the people a note names (task 179), closes the
+// block after `project` and `task`: the three say whose work a note belongs to.
 var ReadOrder = []string{
 	"title", "type", "kind", "area", "summary", "why", "importance", "dismissed",
 	"status", "lifecycle", "lifecycle_since", "filing_confidence",
@@ -28,7 +29,7 @@ var ReadOrder = []string{
 	"created", "updated", "tags",
 	"related", "supersedes", "superseded_by",
 	"consolidated_from", "consolidated_into",
-	"project", "task",
+	"project", "task", "people",
 }
 
 // MachineOrder is what the machinery reads, last. The design names the first
@@ -39,6 +40,20 @@ var MachineOrder = []string{
 	"aliases", "occurrences", "derived_from", "source_hash", "source_version",
 	"via", "surface", "instructions", "review_flags",
 	"promoted_at", "promoted_to", "probe", "backfilled",
+}
+
+// EntityProfileKind is the record the nightly entity builder writes under
+// `memory/entities/<folder>/` (agentm-vault § Dreaming, amended 2026-09-29).
+const EntityProfileKind = "entity-profile"
+
+// EntityFolders maps an entity page's `entity_type` to the folder it lives in.
+// One folder per type, so a person and a repo that share a name never share a
+// slug. The Python half keeps the same map as ENTITY_FOLDERS.
+var EntityFolders = map[string]string{
+	"repo":    "repos",
+	"issue":   "issues",
+	"release": "releases",
+	"person":  "people",
 }
 
 var (

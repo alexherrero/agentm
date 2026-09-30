@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -76,6 +77,46 @@ slug: 2026-09-05-a-session-65016765
 ---
 
 ## Asked
+"""
+
+
+# An entity page (task 179): the record the nightly builder writes under
+# `memory/entities/<folder>/`. Its own fields sit after the read block and
+# before the machine block.
+PERSON_PAGE = """---
+title: Jane Doe
+kind: entity-profile
+created: 2026-09-29
+updated: 2026-09-29
+entity_type: person
+entity_id: person:jane-doe
+projects: [agentm]
+first_seen: 2026-08-01
+last_seen: 2026-09-20
+mentions: 4
+shared_work: 2
+slug: jane-doe
+aliases: [Jane]
+---
+
+## Shared work
+"""
+
+REPO_PAGE = """---
+title: alexherrero/crickets
+kind: entity-profile
+created: 2026-09-29
+updated: 2026-09-29
+entity_type: repo
+entity_id: repo:alexherrero/crickets
+projects: [agentm, crickets]
+first_seen: 2026-06-01
+last_seen: 2026-09-28
+mentions: 12
+slug: alexherrero-crickets
+---
+
+## agentm
 """
 
 
@@ -169,6 +210,81 @@ class CardShape(_Root):
                 self.write("episodic/2026-09-05-a-session-65016765.md", text)
                 self.mark()
                 code, out = self.gate(shape.check, CONTRACT)
+                self.assertEqual(code, 1, f"{label} passed:\n{out}")
+
+
+class EntityPages(_Root):
+    """Task 179: the builder's pages, and the `people:` a note carries."""
+
+    def entity_dirs(self):
+        for folder in cs.ENTITY_FOLDERS.values():
+            (self.root / "memory" / "entities" / folder).mkdir(exist_ok=True)
+
+    def clear(self, cls: str = "semantic"):
+        shutil.rmtree(self.root / "memory" / cls)
+        (self.root / "memory" / cls).mkdir()
+
+    def test_an_entity_page_of_each_kind_and_a_card_naming_people_pass(self):
+        self.entity_dirs()
+        self.write("entities/people/jane-doe.md", PERSON_PAGE)
+        self.write("entities/repos/alexherrero-crickets.md", REPO_PAGE)
+        self.write("semantic/a-good-card.md", GOOD.replace("tags: [a]\n", "tags: [a]\npeople: [Jane Doe, Ravi Shah]\n"))
+        self.write("semantic/another-card.md", GOOD.replace("slug: a-good-card", "slug: another-card")
+                   .replace("tags: [a]\n", "tags: [a]\npeople:\n  - Jane Doe\n"))
+        self.mark()
+        code, out = self.gate(shape.check, CONTRACT)
+        self.assertEqual(code, 0, out)
+        self.assertIn("clean — 4 notes", out)
+
+    def test_each_entity_page_breach_fails_and_names_what_is_wrong(self):
+        breaches = {
+            "no entity_type": ("people/jane-doe", PERSON_PAGE.replace("entity_type: person\n", ""),
+                               "missing `entity_type`"),
+            "no entity_id": ("people/jane-doe", PERSON_PAGE.replace("entity_id: person:jane-doe\n", ""),
+                             "missing `entity_id`"),
+            "a type the builder does not write": ("people/jane-doe", PERSON_PAGE.replace(
+                "entity_type: person", "entity_type: commit"), "is not one of"),
+            "a page in another type's folder": ("repos/jane-doe", PERSON_PAGE, "belongs in entities/people/"),
+            "shared work on a repo's page": ("repos/alexherrero-crickets", REPO_PAGE.replace(
+                "mentions: 12\n", "mentions: 12\nshared_work: 3\n"), "only a person's page carries"),
+        }
+        for label, (rel, text, words) in breaches.items():
+            with self.subTest(label):
+                self.clear("entities")
+                self.entity_dirs()
+                self.write(f"entities/{rel}.md", text)
+                self.mark()
+                code, out = self.gate(shape.check, CONTRACT)
+                self.assertEqual(code, 1, f"{label} passed:\n{out}")
+                self.assertIn(words, out)
+
+    def test_people_that_is_not_a_list_fails(self):
+        self.write("semantic/a-good-card.md", GOOD.replace("tags: [a]\n", "tags: [a]\npeople: Jane Doe\n"))
+        self.mark()
+        code, out = self.gate(shape.check, CONTRACT)
+        self.assertEqual(code, 1, out)
+        self.assertIn("`people` is not a list of names", out)
+
+    def test_the_type_folders_are_the_one_directory_a_class_may_hold(self):
+        registers = ({"convention"}, {"entity-profile", "dir-index"})
+        self.entity_dirs()
+        self.write("entities/people/jane-doe.md", PERSON_PAGE)
+        self.write("entities/repos/alexherrero-crickets.md", REPO_PAGE)
+        self.mark()
+        code, out = self.gate(classes.check, registers)
+        self.assertEqual(code, 0, out)
+        self.assertIn("clean — 2 entries", out)
+        for label, make in {
+            "a folder no type names": lambda: (self.root / "memory" / "entities" / "systems").mkdir(),
+            "a folder inside a type folder": lambda: (self.root / "memory" / "entities" / "people" / "x").mkdir(),
+            "an unregistered kind in a type folder": lambda: self.write(
+                "entities/issues/odd.md", "---\nkind: tally\n---\n"),
+        }.items():
+            with self.subTest(label):
+                self.clear("entities")
+                self.entity_dirs()
+                make()
+                code, out = self.gate(classes.check, registers)
                 self.assertEqual(code, 1, f"{label} passed:\n{out}")
 
 
