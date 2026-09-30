@@ -75,6 +75,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `embed` | Compute the vector arm's embeddings for in-scope notes. |
 | `enrich` | Run the enrichment pass over the notes owed one. `--sample N --seed S` draws a reproducible random batch, `--dump` writes before/after pairs, `--yes` runs one batch without needing `daemon.enrich_enabled` set. |
 | `crystallize` | Write the lesson a recurrence taught. `--dry-run` finds the recurrences and makes no call, `--topic` narrows the run, `--cap` lowers the five-lesson limit, `--yes` runs one pass without needing `daemon.crystallize_enabled` set. |
+| `restated` | Judge the convention, preference and workflow pairs that may state one rule twice, and merge the ones that do. `-dry-run` shortlists and makes no call, `-line` sets the shortlist's similarity (0.74), `-cap` bounds the pairs judged a run (30), `-apply` merges while `daemon.restated_merge_enabled` is on, `-yes` merges once without it. |
 | `ledger` | Ask what dreaming has already done, and what is pending. |
 | `queue` | Show the pending-work queues, or record work owed. |
 | `sources` | Ask whether a source has been mined, and watermark it. |
@@ -1206,6 +1207,29 @@ enrichment's deep and light passes, and names every lesson written in the past
 seven days under *what needs you* — the re-audit trigger for this phase is "any
 crystallized note you would not keep", and that cannot be read from a count.
 
+## Restated rules, the nightly merge
+
+A convention, preference or workflow stated twice merges into one note, keeping
+the newer wording (task 178, step 8; the operator's ruling 6c). Embedding
+similarity alone cannot tell a rule restated from two neighbouring rules: on the
+live corpus the known restated pair scored 0.794 and ranked ninth, below eight
+pairs of distinct rules. So the similarity only shortlists, and the strong tier
+judges each shortlisted pair.
+
+| | |
+|---|---|
+| Command | `agentmd restated` |
+| Scheduled by | `templates/jobs/restated-nightly.yaml` — daily, `window: "02:00-06:00"`, `order: 2` (after the dreaming binary, before the Python cycle), `budget: tokens: 400000`, registered and off |
+| Switch | `daemon.restated_merge_enabled` (`agentm_config.py --restated-merge-enabled true`); off, `-apply` judges and reports; `-yes` merges once; `-dry-run` needs neither and spends nothing |
+| Shortlist | every pair of active rule cards whose best chunk vectors reach 0.74 (`index.VectorsFor`) |
+| Judge | the tier table's `fuzzy-merge` job — strong until an audit qualifies a cheap tier; a verdict is kept against both bodies in `<engine state dir>/dreaming/restated-verdicts.json`, so a pair is judged once until one of them changes |
+| Merge | through the dreaming journal (`dreaming.ApplyManifest`): the older note keeps its path, links and slug, takes the newer summary and body, keeps its importance and names the newer in `supersedes`; the newer takes `lifecycle: superseded`, `lifecycle_since` and `superseded_by`. A note is in one merge a run. |
+| Review | every shortlisted pair that did not merge, with the judge's reason, in `<engine state dir>/dreaming/restated-review.json`; the needs-review map lists them under *Restated rules?* |
+| Record | `<engine state dir>/restated-runs.jsonl`, beside the crystallize record; the morning note names each merge and gives the judge's spend its own line |
+
+The first judged run (2026-09-29, 25 calls, $6.33) called the known pair the same
+and the other 24 different, each with a reason.
+
 ## The dreaming binary, `agentmdream`
 
 The second Go binary the design names, built beside `agentmd` by `install.sh`. Where `agentmd` stays resident, `agentmdream` runs one pass and exits — under a dual gate: enough time has to have passed since the last *applying* pass (`-every`; the flag itself still defaults to 168h if left unset, but the scheduled job now passes `-every 12h` explicitly — see below) **and** something has to have happened since (captures in the index, genuine recalls in the recall history). Only an applying pass (`-apply`) moves that clock — plus the class populations the trend compares against and the pass version the re-classification diff keys on; a report-only pass records its own stamp instead and leaves all three where the last applying pass put them, so running one by hand never pushes the next real pass back (agentm-vault plan 04, task 4 — three hand-run report passes on 2026-09-05/06 had each reset the clock, and the maps and the copy collapse sat frozen for a week behind them). Twelve hours is the number the scheduled job actually passes; the design's own text still says twenty-four. The runner's own `02:00–06:00` window is what actually makes the pass run once a night, so `-every` only has to clear the two gaps a bare day could be confused by. The binary starts after the enrichment batch, which takes anywhere from minutes to its three-and-a-half-hour limit, so two nights' passes can start as little as about nineteen hours apart — a literal `-every 24h` would skip whichever night started earlier than the one before. Twelve hours is shorter than that gap and longer than any one night, so no night is skipped and a hand-run `-apply` in the afternoon is still refused. A second start while one is already running is refused (exit 3) by a lock compatible with `vault_lock.py` (mkdir + heartbeat + a stale window, pid takeover of a dead holder). Every mutation is journaled — intent, then applied, then skipped — fsynced before it happens, so a crash resumes from that journal by hash instead of losing or repeating work. Report-only by default; `-apply` makes the writes.
@@ -1213,7 +1237,7 @@ The second Go binary the design names, built beside `agentmd` by `install.sh`. W
 | | |
 |---|---|
 | Binary | `agentmdream` — built beside `agentmd` by `install.sh` |
-| Subcommands | `run`, `status`, `journal`, `ideas`, `move-tasks`, `version` |
+| Subcommands | `run`, `status`, `journal`, `ideas`, `move-tasks`, `apply`, `version` |
 | Gate | elapsed ≥ `-every` since the last *applying* pass (flag default 168h; the scheduled job passes 12h) **and** activity since then |
 | Lock | mkdir + heartbeat, stale-window pid takeover; a second start exits 3 |
 | Journal | fsynced intent → applied → skipped, hash-checked resume after a crash |
@@ -1227,9 +1251,12 @@ agentmdream status                                       # the last pass, the ga
 agentmdream journal -tail 20                              # the mutation journal, newest last
 agentmdream ideas                                         # print Ideas.md as the night would rebuild it (dry run)
 agentmdream move-tasks                                    # plan the closed-task moves and print them; -apply moves
+agentmdream apply -manifest FILE                          # check a one-time pass's manifest; -apply makes it
 ```
 
 `run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-task-cap <n>` (the most closed task folders this pass moves; 0 is the contract's `demotion_cap`, counted in folders), `-json` (emit the report as JSON). The morning note shows a pass written since the night window opened as a table, one row per job; see [the morning note](#the-morning-note).
+
+`apply` makes a one-time pass's manifest (task 178; `cmdApply`, `daemon/internal/dreaming/manifest.go`). A pass planned in Python — `scripts/migrate/plan_c_manifests.py traces|chunks|ideas|labels` — writes a manifest of in-place rewrites under `agent/diagnostics/migrations/plan-c/`: each act names a note (relative to the memory root; `../` reaches the rest of the vault), the sha256 it was read at, and the bytes to write. With no flags `apply` checks every act and writes nothing; `-apply` settles any intents a crashed pass left, then journals and makes every act under the dreaming lock, with a lifecycle-journal line for each supersede. A manifest any of whose notes changed or went since it was planned is refused whole (exit 4), and an act that reaches past the vault, into `.git/` or `.obsidian/`, is refused.
 
 `move-tasks` runs the closed-task mover on its own (task 177; `cmdMoveTasks`, `daemon/cmd/agentmdream/main.go`): the supervised first move of the backlog, and a rehearsal against a copy of the vault. With no flags it plans and prints what it would move, holds and repair, and writes nothing — not even the intents a crashed pass left pending, which it only counts. `-apply` settles those intents, then moves, journaled and under the dreaming lock, whether or not `daemon.task_mover_enabled` is on; `-cap <n>` bounds the folders (0 is the contract's `demotion_cap`); `-json` emits the plan. Pointed at any vault other than the configured one it refuses unless `AGENTM_STATE_DIR` names a state directory of its own, because `-vault` and `$MEMORY_ROOT` move the vault and not the journal and sidecars, and a copy's moves journaled in the live state would be replayed by the next live night.
 
