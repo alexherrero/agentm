@@ -56,6 +56,28 @@ var EntityFolders = map[string]string{
 	"person":  "people",
 }
 
+// EntitySlug is an entity page's file name: its id in lower case, with every
+// run of anything but a letter or a digit made one hyphen.
+// `alexherrero/agentm#466` is `alexherrero-agentm-466`,
+// `alexherrero/agentm@v10.0.0` is `alexherrero-agentm-v10-0-0`, and `Jane Doe`
+// is `jane-doe`.
+func EntitySlug(id string) string {
+	var b strings.Builder
+	dash := false
+	for _, c := range strings.ToLower(id) {
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+			b.WriteRune(c)
+			dash = false
+			continue
+		}
+		if !dash && b.Len() > 0 {
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	return strings.TrimSuffix(b.String(), "-")
+}
+
 var (
 	readIndex    = indexOf(ReadOrder)
 	machineIndex = indexOf(MachineOrder)

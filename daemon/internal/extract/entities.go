@@ -258,7 +258,13 @@ func releaseRepo(line string, start, end int, lineRepos map[string]bool, ctx Con
 	word := strings.ToLower(wordBefore(line, start))
 	switch {
 	case ownerRepoRe.MatchString(word):
-		return word
+		// A path reads the same as `owner/repo` — `wiki/docs v2.0.0`,
+		// `tool/CHANGELOG.md v1.4.0` — so only a repository a project lists, or
+		// one this line points at, is taken for the version's.
+		if lineRepos[word] || knownRepo(ctx, word) {
+			return word
+		}
+		return ""
 	case ctx.Known[word] != "":
 		return ctx.Known[word]
 	case word != "" && !releaseWords[word]:
@@ -276,6 +282,16 @@ func releaseRepo(line string, start, end int, lineRepos map[string]bool, ctx Con
 		return ctx.Repo
 	}
 	return ""
+}
+
+// knownRepo reports whether repo is one a project lists.
+func knownRepo(ctx Context, repo string) bool {
+	for _, r := range ctx.Known {
+		if r == repo {
+			return true
+		}
+	}
+	return false
 }
 
 // wordBefore is the word right before position i, past spaces and the
