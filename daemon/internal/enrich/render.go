@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/people"
 )
 
 // Turning a response back into a note on disk.
@@ -84,6 +86,10 @@ type Stamp struct {
 	// Zero value is "may file", so every caller that predates the drop folder
 	// keeps exactly the behaviour it had.
 	NeverFiles bool
+	// People is the operator's alias and deny table (task 179). The names a
+	// pass returns are filed under it and kept only where the note's own text
+	// names them; the zero table merges and denies nothing.
+	People people.Table
 	// OperatorFiled keeps the operator's filing on the card exactly as they
 	// left it. It is set for an idea card (IsIdeaCard), which the operator filed
 	// themselves and which the night may think about but never re-grade
@@ -154,6 +160,7 @@ func RenderFrontmatter(r Response, s Stamp, v FilingVerdict) string {
 	}
 	writeList(&b, "tags", r.Tags)
 	writeList(&b, "aliases", r.Aliases)
+	writeList(&b, "people", r.People)
 	// Wikilinks in a quoted flow list, the shape the capture door writes: a
 	// bare `[[a]]` is a nested YAML sequence rather than a link.
 	if len(r.Related) > 0 {
@@ -202,7 +209,7 @@ var passWrittenFields = map[string]bool{
 	"lifecycle": true, "lifecycle_since": true,
 	"confidence": true, "filing_confidence": true,
 	"importance": true, "importance_proposed": true,
-	"tags": true, "aliases": true, "related": true, "summary": true,
+	"tags": true, "aliases": true, "people": true, "related": true, "summary": true,
 	"updated": true, "enriched_by": true, "rules_hash": true, "enriched_at": true,
 }
 

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/people"
 )
 
 // agentm-vault plan 04, task 3: the prompt's guards, each tested on the bytes
@@ -489,5 +491,97 @@ func TestTheDefaultPostureIsUnchanged(t *testing.T) {
 	}
 	if got := VerdictForNote(card, r, 0.6, false); got != v {
 		t.Errorf("VerdictForNote(neverFiles=false) = %+v, want VerdictFor's %+v", got, v)
+	}
+}
+
+// --- task 179: the people a card names -------------------------------------
+
+// peopleCard names a colleague, cites a paper by its authors' surname only,
+// and is written by the vault's owner.
+const peopleCard = "---\n" +
+	"title: Review the retrieval plan with Jane\n" +
+	"type: reference\n" +
+	"status: unfiled\n" +
+	"source: conversation\n" +
+	"created: 2026-09-28\n" +
+	"---\n" +
+	"\n" +
+	"Pat walked Jane Doe through the retrieval plan. The ranker follows\n" +
+	"Vaswani et al. (2017); Jane asked for the ablation first.\n"
+
+func peopleTable(t *testing.T) people.Table {
+	t.Helper()
+	tb, err := people.Parse("```people\nyou: [Pat Owner, Pat]\ndeny: [Claude]\n```\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tb
+}
+
+// The model is asked to leave the owner and cited authors out; what it returns
+// anyway is held to the card's own words and the operator's table before a
+// byte lands. The colleague stays; the owner, a cited author the card names
+// only by surname, and a name the card never states are dropped.
+func TestOnlyTheColleagueTheCardNamesIsWrittenAsAPerson(t *testing.T) {
+	r := fullResponse()
+	r.People = []string{"Jane Doe", "Ashish Vaswani", "Pat Owner", "Pat", "Geoffrey Hinton", "jane doe"}
+	s := stampAt()
+	s.People = peopleTable(t)
+	next, _, err := Compose(peopleCard, r, s, DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := frontmatterValue(next, "people"); got != "[Jane Doe]" {
+		t.Errorf("people: %q, want [Jane Doe]\n%s", got, next)
+	}
+	// And a pass that names nobody writes no field at all.
+	r.People = nil
+	next, _, err = Compose(peopleCard, r, s, DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(next, "\npeople:") {
+		t.Errorf("a pass that named nobody wrote a people field:\n%s", next)
+	}
+}
+
+// A name only an earlier pass ever wrote is not evidence for itself: the
+// grounding reads the card's title and the session's text, never its old
+// `people:` or the dreaming section.
+func TestAPreviousPassesPeopleAreNotEvidenceForAName(t *testing.T) {
+	previous := strings.Replace(peopleCard, "created: 2026-09-28\n",
+		"created: 2026-09-28\npeople: [Mara Lin]\n", 1) +
+		"\n" + DreamingHeading + " (2026-09-20)\n\nMara Lin reviewed it too.\n"
+	r := fullResponse()
+	r.People = []string{"Mara Lin", "Jane Doe"}
+	next, _, err := Compose(previous, r, stampAt(), DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := frontmatterValue(next, "people"); got != "[Jane Doe]" {
+		t.Errorf("people: %q, want [Jane Doe]", got)
+	}
+}
+
+// The prompt asks for the field, and says whom to leave out.
+func TestThePromptAsksForThePeopleAndWhomToLeaveOut(t *testing.T) {
+	got := BuildPrompt(Request{Rel: "agent/memory/semantic/a.md", Raw: peopleCard, Depth: DepthDeep},
+		[]string{"reference"}, "the rubric")
+	for _, want := range []string{
+		"people               OPTIONAL, at most 12",
+		"Leave out the person the card is written\n                       by or for, the authors of any cited work",
+		"public\n                       figures mentioned only in passing",
+		"summary, tags, related, people and confidence may move",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt lacks %q", want)
+		}
+	}
+	if _, err := ParseResponse(`{"title":"t","type":"reference","body":"","confidence":0.9,"people":["Jane Doe"]}`); err != nil {
+		t.Errorf("a response carrying people was refused: %v", err)
+	}
+	g := DefaultSchema(nil, nil)
+	if err := g.Validate(Response{Title: "t", People: make([]string, MaxPeople+1), Confidence: 0.5}); err == nil {
+		t.Error("a response naming more people than the cap passed")
 	}
 }

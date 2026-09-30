@@ -42,6 +42,10 @@ type Response struct {
 	// Tags and Aliases are retrieval surface.
 	Tags    []string `json:"tags,omitempty"`
 	Aliases []string `json:"aliases,omitempty"`
+	// People are the people the card names (task 179). Compose keeps only the
+	// names the card's own text contains, filed under the operator's alias
+	// table, so a name the model inferred never lands.
+	People []string `json:"people,omitempty"`
 	// Summary is one sentence saying what the card is for.
 	Summary string `json:"summary,omitempty"`
 	// Related are neighbours the model judged to bear on the card, by id —
@@ -192,10 +196,14 @@ func (g *Schema) Validate(r Response) error {
 		return fmt.Errorf("%w: %d aliases, over the cap of %d", ErrNotEligible,
 			len(r.Aliases), g.MaxAliases)
 	}
-	for _, list := range [][]string{r.Tags, r.Aliases} {
+	if len(r.People) > MaxPeople {
+		return fmt.Errorf("%w: %d people, over the cap of %d", ErrNotEligible,
+			len(r.People), MaxPeople)
+	}
+	for _, list := range [][]string{r.Tags, r.Aliases, r.People} {
 		for _, v := range list {
 			if strings.TrimSpace(v) == "" {
-				return fmt.Errorf("%w: an empty tag or alias", ErrNotEligible)
+				return fmt.Errorf("%w: an empty tag, alias or name", ErrNotEligible)
 			}
 		}
 	}
@@ -212,3 +220,8 @@ func ParseResponse(raw string) (Response, error) {
 // MaxRelated is how many neighbours the deep pass is offered, and so the most
 // `related` it may return.
 const MaxRelated = 5
+
+// MaxPeople caps `people`. A card naming more is a list of attendees or a
+// bibliography, and a page per name on it is the flood the shared-work bar
+// exists to stop.
+const MaxPeople = 12

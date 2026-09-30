@@ -8,12 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/ledger"
+	"github.com/alexherrero/agentm/daemon/internal/people"
 )
 
 // cmdLedger is how everything that is not this binary asks what dreaming has
@@ -227,8 +229,25 @@ func enrichStamp(cfg *config.Config, at time.Time) enrich.Stamp {
 		RulesHash:       currentRulesHash(cfg),
 		ConfidenceFloor: floor,
 		At:              at.UTC(),
+		People:          peopleTable(cfg),
 	}
 }
+
+// peopleTable is the operator's alias and deny table (task 179), read fresh
+// for each write: it is one small file the operator edits in Obsidian, and a
+// deny line added mid-night should hold from the next note on. A table that
+// does not parse is reported once and read as empty — the names a pass
+// returns are still held to the note's own text, so an empty table grounds
+// every name and merges none.
+func peopleTable(cfg *config.Config) people.Table {
+	t, err := people.Load(cfg.VaultPath)
+	if err != nil {
+		peopleTableWarn.Do(func() { fmt.Fprintln(os.Stderr, "agentmd:", err) })
+	}
+	return t
+}
+
+var peopleTableWarn sync.Once
 
 // rebuilderFor returns the scan that recovers one stage's rows from the corpus.
 //
