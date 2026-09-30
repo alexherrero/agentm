@@ -101,14 +101,14 @@ type EntitySources interface {
 	NoteRows(ctx context.Context) ([]index.NoteRow, error)
 }
 
-// PlanEntities decides the repository, issue and release pages. It writes
-// nothing. root is the memory root; the vault root is its parent.
-func PlanEntities(root string, src EntitySources, r *rules.Rules, now time.Time) (EntitiesPlan, error) {
+// PlanEntities decides the repository, issue, release and people pages. It
+// writes nothing. root is the memory root; the vault root is its parent.
+func PlanEntities(root string, src EntitySources, opts PeopleOptions, r *rules.Rules, now time.Time) (EntitiesPlan, error) {
 	plan := EntitiesPlan{Counts: map[string]int{}}
 	vault := vaultRootOf(root)
 	memRel := memoryRootRel(root, vault)
 	projects := projectbind.Repositories(vault)
-	minMentions, _ := EntityThresholds(r)
+	minMentions, minSharedWork := EntityThresholds(r)
 
 	rows, err := src.EntityRows(context.Background())
 	if err != nil {
@@ -149,7 +149,14 @@ func PlanEntities(root string, src EntitySources, r *rules.Rules, now time.Time)
 			before, text, relUnderRoot(rel, memRel))
 		plan.Counts[kind]++
 	}
-	plan.removeUnwanted(root, memRel, wanted, []string{"repo", "issue", "release"})
+	people, err := planPeople(&plan, root, vault, memRel, src, opts, projects, minSharedWork, now)
+	if err != nil {
+		return plan, err
+	}
+	for rel := range people {
+		wanted[rel] = true
+	}
+	plan.removeUnwanted(root, memRel, wanted, []string{"repo", "issue", "release", "person"})
 	return plan, nil
 }
 

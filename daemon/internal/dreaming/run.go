@@ -12,6 +12,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/people"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -585,5 +586,12 @@ func planEntitiesFor(cfg *config.Config, root string, contract *rules.Rules, now
 		return EntitiesPlan{}, err
 	}
 	defer idx.Close()
-	return PlanEntities(root, idx, contract, now)
+	// The operator's people table. One that does not parse is a stop, not an
+	// empty table: its deny lines are what keep a wrong name off a page, and
+	// building without them would put back every page they took down.
+	table, err := people.Load(cfg.VaultPath)
+	if err != nil {
+		return EntitiesPlan{}, err
+	}
+	return PlanEntities(root, idx, PeopleOptions{Table: table}, contract, now)
 }

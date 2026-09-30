@@ -168,6 +168,9 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 		linked := map[string]string{}
 		for _, m := range issueURLRe.FindAllStringSubmatch(line, -1) {
 			repo := strings.ToLower(m[1])
+			if reservedOwner(repo) {
+				continue
+			}
 			add("issue:" + repo + "#" + m[2])
 			linked[m[2]] = repo
 		}
@@ -187,10 +190,13 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 			}
 		}
 
-		for _, m := range repoURLRe.FindAllStringSubmatch(line, -1) {
-			repo := strings.TrimSuffix(m[1], ".git")
+		for _, m := range repoURLRe.FindAllStringSubmatchIndex(line, -1) {
+			if !onGitHubItself(line, m[0]) {
+				continue
+			}
+			repo := strings.TrimSuffix(line[m[2]:m[3]], ".git")
 			repo = strings.TrimRight(repo, "./-")
-			if strings.Count(repo, "/") != 1 || strings.HasSuffix(repo, "/") {
+			if strings.Count(repo, "/") != 1 || strings.HasSuffix(repo, "/") || reservedOwner(repo) {
 				continue
 			}
 			add("repo:" + strings.ToLower(repo))
@@ -282,6 +288,32 @@ func releaseRepo(line string, start, end int, lineRepos map[string]bool, ctx Con
 		return ctx.Repo
 	}
 	return ""
+}
+
+// onGitHubItself reports whether the `github.com` at line[i:] is the host
+// itself and not a subdomain of it: `docs.github.com/en/rest` is a manual page
+// and `gist.github.com/karpathy/<id>` a gist, and neither names a repository.
+func onGitHubItself(line string, i int) bool {
+	return i == 0 || line[i-1] != '.'
+}
+
+// reservedFirstSegments are GitHub's own pages at the place a repository's
+// owner would be: `github.com/users/alexherrero/projects/2` is a project board,
+// `github.com/orgs/community/discussions` a forum.
+var reservedFirstSegments = map[string]bool{
+	"users": true, "orgs": true, "organizations": true, "settings": true,
+	"sponsors": true, "marketplace": true, "apps": true, "topics": true,
+	"features": true, "enterprise": true, "login": true, "about": true,
+	"pricing": true, "collections": true, "trending": true, "notifications": true,
+	"codespaces": true, "search": true, "explore": true, "site": true,
+	"security": true, "customer-stories": true, "readme": true, "events": true,
+	"new": true, "account": true, "pulls": true, "issues": true,
+}
+
+// reservedOwner reports whether an `owner/repo` is one of GitHub's own pages.
+func reservedOwner(repo string) bool {
+	owner, _, _ := strings.Cut(strings.ToLower(repo), "/")
+	return reservedFirstSegments[owner]
 }
 
 // knownRepo reports whether repo is one a project lists.
