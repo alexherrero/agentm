@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Plan C of the AgentKV layout convergence: the memory-quality half of the operator's 2026-09-24 rulings, sections 6 and 7 (task 178). A memory is saved once, and each new memory knows which project it belongs to. The 2026-09-24 survey found six kinds of duplication, and each now has its own cure. The twin list carries memories, not daily reports. A session keeps one trace. The same outside source updates its note. An article is one note. An idea adds to its card. A reply typed to the agent is not filed. A rule stated twice merges on the strong tier's word. Captures take their project from `projects/*/project.yaml`, and conventions and preferences stay global. Nothing was deleted by policy: every merge is a supersede through the dreaming journal, and the three replies filed as memories were deleted only on the operator's approval.
+
+### Added
+
+- **`agentmd restated` merges a rule stated twice (task 178 step 8).** It
+  shortlists convention, preference and workflow pairs whose best chunk
+  vectors reach 0.74 and asks the strong tier (`fuzzy-merge`) whether each is
+  one rule restated. A yes merges by supersede, through the journal: the older
+  note keeps its path and takes the newer wording. A no is listed in the
+  needs-review map with the judge's reason. Verdicts are cached against both
+  bodies. The judge exists because calibration found no line: the known pair
+  ranked ninth by similarity, below eight distinct rules. The first judged run
+  (25 calls, $6.33) called only the known pair the same. It is switched by
+  `daemon.restated_merge_enabled` (`agentm_config.py
+  --restated-merge-enabled`), scheduled by
+  `templates/jobs/restated-nightly.yaml`, and reported in the morning note.
+- **`agentmdream apply` makes a one-time pass's manifest through the
+  journal (step 3).** A pass planned in Python (`scripts/migrate/
+  plan_c_manifests.py traces|chunks|ideas|labels`) writes rewrites with the
+  hash each note was read at. `apply` checks them, and with `-apply` journals
+  and makes them under the dreaming lock. The whole manifest is refused if any
+  note changed, and a path outside the vault is always refused.
+- **Project labels come from `project.yaml` (step 9).** A new `projectbind`
+  package and `session_binding.project_for_directory` match the session's
+  folder against every project's `code_paths`, longest path first, so a
+  worktree binds to its clone's project. `memory_capture` takes an optional
+  `cwd`, and the CLI passes its own. A convention or preference stays
+  unlabeled unless its writer names a project.
+
+### Changed
+
+- **The twin detector compares memories only (step 2).** `dream.py`'s dedup
+  had walked the whole memory root, and all 62 pairs it listed were
+  diagnostics reports, `latest_*` copies and index pages. It now compares the
+  cards of the three observational classes and the idea cards, and runs in
+  33 s instead of 362 s.
+- **A session keeps one trace (step 3).** A session resumed after a compaction
+  used to write a second trace under a new title. The trace is now found by
+  its `session:` id and merged into: the first request stays, the lists take
+  the union, and the newest recap is the Outcome. The fallback name no longer
+  repeats the id. The 11 sessions that had two traces were folded.
+- **The same outside source updates its note (step 4).** A capture whose
+  `source_id` (a `<namespace>:<ref>` identity, never a session id) or
+  `source_url` and title match an active card updates that card in place, in
+  both the Go door and `capture.py`. An exact resend still reinforces.
+- **One article is one note (step 5).** `ingest.py` writes the document only,
+  and the index's chunk vectors reach its deep text. Re-ingesting the same
+  page updates the note. The Google "always-on memory agent" article's 19
+  chunk notes and an earlier 4,631-word ingest were folded into its document.
+- **An idea adds to its card (step 6).** A captured idea that matches a card
+  in `personal/ideas/` is appended under a dated `## Added by capture` with
+  its source, and nothing is filed. The last semantic copy was folded into its
+  card.
+- **A reply to the agent is not filed (step 7).** The miner drops a user
+  message that opens as a reply or instructs the session ("yes, and then
+  please file a…", "let's do follow-up b") and carries no durability cue, and
+  logs it in the trace. The three replies already filed were deleted on the
+  operator's approval, through a purge manifest.
+- **Existing memories carry their project where the source makes it clear
+  (step 10).** A session trace follows its `session:` id to its Claude Code
+  transcript and takes the project its folder names. A card, never a
+  convention or preference, takes a project only where its links reach one.
+  70 notes were labelled: labelled traces went from 16 of 91 to 74 of 93, and
+  14 cards were labelled. 19 traces are left unlabelled, all sessions run in
+  folders no project lists except one with no transcript.
+- **The vault and capture designs** carry the five reversals, with their
+  amendment rows and an as-built row (step 1, step 11).
+
+
 ## [10.2.0] - 2026-09-28
 
 Plan B of the AgentKV layout convergence: the lifecycle half of the operator's 2026-09-24 rulings. Finished work stops ranking like live work. Two weeks after a task's tracker reads `done` or `dropped`, the night moves its whole folder to its project's `completed/tasks/`, journaled, tracker last, its links repaired and every task reader following it; the first supervised move put 278 closed task folders there on 2026-09-28 with no new broken link and the retrieval gate green. Crystallize was fixed, ran once funded to finish (42 lessons, 2.9M tokens), and runs weekly on a provisional budget. Also in this release: retention's first deletion waits for the operator and its deletions reach a manifest, enrichment serves never-judged notes first, and `check-wiki` checks that every embedded image resolves.
