@@ -121,3 +121,104 @@ func TestTheExtractorMatchesSomething(t *testing.T) {
 		t.Fatalf("only %d entities from input carrying one of each form: %v", len(got), got)
 	}
 }
+
+// --- task 179: a note's context qualifies what it leaves bare ---------------
+
+var known = map[string]string{"agentm": "alexherrero/agentm", "crickets": "alexherrero/crickets"}
+
+// A note in a project that lists one repository means that repository.
+func TestABareIssueTakesTheNotesRepository(t *testing.T) {
+	got := EntitiesIn("Closes #466 and reopens #12.\n", Context{Repo: "alexherrero/agentm"})
+	eq(t, got, []string{"issue:alexherrero/agentm#12", "issue:alexherrero/agentm#466"})
+}
+
+// A note of no project, or of a project listing two repositories, gets no
+// Repo from the index, and its bare number stays bare.
+func TestAnAmbiguousBareIssueStaysBare(t *testing.T) {
+	got := EntitiesIn("Closes #466.\n", Context{Known: known})
+	eq(t, got, []string{"issue:#466"})
+}
+
+// An issue's address names its repository, and the bare number written beside
+// the link is that issue, whatever repository the note belongs to.
+func TestAnIssueLinkIsQualifiedAndTakesItsBareNumber(t *testing.T) {
+	got := EntitiesIn("Fixed in [#690](https://github.com/alexherrero/agentm/pull/690).\n",
+		Context{Repo: "alexherrero/crickets", Known: known})
+	eq(t, got, []string{"issue:alexherrero/agentm#690", "repo:alexherrero/agentm"})
+	got = EntitiesIn("See https://github.com/alexherrero/crickets/issues/12 too.\n", Context{})
+	eq(t, got, []string{"issue:alexherrero/crickets#12", "repo:alexherrero/crickets"})
+}
+
+// A version tag beside a repository's name, or its `owner/repo`, is that
+// repository's release, whichever project the note is in.
+func TestAReleaseBesideARepository(t *testing.T) {
+	ctx := Context{Repo: "alexherrero/agentm", Known: known}
+	eq(t, EntitiesIn("Paired with crickets v4.0.0 today.\n", ctx),
+		[]string{"release:alexherrero/crickets@v4.0.0"})
+	eq(t, EntitiesIn("Cut alexherrero/sherwood v2.1.0.\n", ctx),
+		[]string{"release:alexherrero/sherwood@v2.1.0"})
+	eq(t, EntitiesIn("Shipped **crickets [v5.0.0](https://example.com)**.\n", ctx),
+		[]string{"release:alexherrero/crickets@v5.0.0"})
+}
+
+func TestAReleaseByItsAddress(t *testing.T) {
+	got := EntitiesIn("Launched with [agentm v10.0.0](https://github.com/alexherrero/agentm/releases/tag/v10.0.0).\n",
+		Context{Known: known})
+	eq(t, got, []string{"release:alexherrero/agentm@v10.0.0", "repo:alexherrero/agentm"})
+}
+
+// With no word naming another thing, a version in a single-repo project's note
+// is that project's release; a line naming one repository gives it that one.
+func TestAReleaseFromTheNotesOrTheLinesRepository(t *testing.T) {
+	ctx := Context{Repo: "alexherrero/agentm", Known: known}
+	eq(t, EntitiesIn("Plan C shipped in v10.3.0.\n", ctx), []string{"release:alexherrero/agentm@v10.3.0"})
+	eq(t, EntitiesIn("## v10.2.0\n", ctx), []string{"release:alexherrero/agentm@v10.2.0"})
+	eq(t, EntitiesIn("Tagged v0.9.1 on https://github.com/alexherrero/nottingham\n", Context{}),
+		[]string{"release:alexherrero/nottingham@v0.9.1", "repo:alexherrero/nottingham"})
+}
+
+// A stray version with no repository anywhere near it is no release.
+func TestAStrayVersionIsNoRelease(t *testing.T) {
+	if got := EntitiesIn("Upgraded to v1.2.3 yesterday.\n", Context{Known: known}); len(got) != 0 {
+		t.Errorf("a stray version became %v", got)
+	}
+}
+
+// A version after another thing's name belongs to that thing: a plugin, a tool.
+// A pre-release, a four-part version, a two-part one and a version inside a
+// path are not a release either.
+func TestAVersionThatIsNotTheRepositorysIsNoRelease(t *testing.T) {
+	ctx := Context{Repo: "alexherrero/agentm", Known: known}
+	for _, line := range []string{
+		"Installed development-lifecycle v0.44.1 from the cache.\n",
+		"Ran it under agy v1.2.3 on the Mac.\n",
+		"The candidate v10.4.0-rc1 is out.\n",
+		"A four-part v1.2.3.4 build.\n",
+		"Only v1.2 so far.\n",
+		"Read plugins/cache/v0.49.0/scripts.\n",
+		"Two repos: https://github.com/a/b and https://github.com/c/d at v1.0.0\n",
+	} {
+		for _, g := range EntitiesIn(line, ctx) {
+			if strings.HasPrefix(g, "release:") {
+				t.Errorf("%q gave %s", line, g)
+			}
+		}
+	}
+}
+
+// Commits, changelists and bare numbers are indexed and never paged.
+func TestOnlyRepositoriesQualifiedIssuesAndReleasesArePaged(t *testing.T) {
+	for uri, want := range map[string]bool{
+		"repo:alexherrero/agentm":            true,
+		"issue:alexherrero/agentm#466":       true,
+		"release:alexherrero/agentm@v10.0.0": true,
+		"issue:#466":                         false,
+		"commit:8296fc5":                     false,
+		"cl:99":                              false,
+		"nonsense":                           false,
+	} {
+		if got := Paged(uri); got != want {
+			t.Errorf("Paged(%q) = %v, want %v", uri, got, want)
+		}
+	}
+}
