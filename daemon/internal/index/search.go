@@ -252,6 +252,9 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 	if err != nil {
 		return out, err
 	}
+	// The exact-name rule (task 179): a query naming an entity gets its page
+	// first. Here, at the one funnel every mode returns through.
+	out.Results = x.PutNamedEntityFirst(text, out.Results, k)
 	// Serving a hit is what moves its clock, so it is stamped here — at the one
 	// funnel every mode returns through — rather than in each mode's own tail,
 	// where the third one added would be the one that forgot.

@@ -499,6 +499,9 @@ func cmdSearch(args []string) error {
 		if err != nil {
 			return err
 		}
+		// The cross-encoder reorders what Search returned; the exact-name rule
+		// (task 179) holds over it too.
+		out.Results = idx.PutNamedEntityFirst(query, out.Results, *k)
 	}
 	if *asJSON {
 		return json.NewEncoder(os.Stdout).Encode(out)
