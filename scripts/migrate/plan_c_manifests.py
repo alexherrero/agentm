@@ -27,7 +27,13 @@ survivor, `status` untouched — the shape the copies job writes.
              superseded by the card, and any words it held that the card lacks
              are added to the card under .
 
-    python3 scripts/migrate/plan_c_manifests.py {traces,chunks,ideas} [--memory-root DIR] [--out FILE]
+    labels   an existing memory is labelled with its project where its source
+             makes it clear: a trace through its session's transcript (the
+             folder it recorded, matched against project.yaml), a card (never a
+             convention or preference) whose derived_from or related links reach
+             labelled traces or project records that all name one project.
+
+    python3 scripts/migrate/plan_c_manifests.py {traces,chunks,ideas,labels} [--memory-root DIR] [--out FILE]
 """
 from __future__ import annotations
 
@@ -234,9 +240,94 @@ def plan_ideas(memory_root: Path, today: "str | None" = None) -> dict:
             "folded": folded, "acts": acts}
 
 
+# ── labels ────────────────────────────────────────────────────────────────────
+
+def _transcripts(claude_projects: Path) -> dict:
+    """session id -> its transcript, across every project folder Claude Code keeps."""
+    out = {}
+    for p in sorted(claude_projects.glob("*/*.jsonl")):
+        out.setdefault(p.stem, p)
+    return out
+
+
+def _with_project(text: str, project: str) -> str:
+    entries, rest = card_shape.split_note(text)
+    entries = card_shape.set_value(entries, "project", project)
+    return card_shape.reorder(card_shape.join_note(entries, rest))
+
+
+def plan_labels(memory_root: Path, claude_projects: "Path | None" = None) -> dict:
+    """The manifest labelling existing memories where the source makes it clear
+    (the operator's section 7 ruling): a trace through its session's transcript
+    — the folder it records, matched against the project.yaml files — and a
+    card (not a convention or preference) whose `derived_from` or `related`
+    links reach labelled traces or project records that all name one project."""
+    import session_binding  # same skill dir
+    import vault_layout  # same skill dir
+    vault_root = vault_layout.vault_root_candidates(memory_root)[0]
+    transcripts = _transcripts(claude_projects or Path.home() / ".claude" / "projects")
+    acts, labels, unresolved = [], [], []
+    trace_project = {}
+    for p in sorted((memory_root / et.EPISODIC_DIR).glob("*.md")):
+        text = _text(p.read_bytes())
+        f = _fields(text)
+        if not _active(f):
+            continue
+        if f.get("project"):
+            trace_project[p.stem] = f["project"]
+            continue
+        tr = transcripts.get(f.get("session", ""))
+        cwd = session_binding.transcript_cwd(tr) if tr else None
+        project = session_binding.project_for_directory(cwd, vault_root) if cwd else None
+        rel = p.relative_to(memory_root).as_posix()
+        if not project:
+            unresolved.append({"note": rel, "why": "no transcript" if not tr else
+                               "no folder recorded" if not cwd else f"an unregistered folder: {cwd}"})
+            continue
+        trace_project[p.stem] = project
+        acts.append(act(rel, p.read_bytes(), _with_project(text, project),
+                        f"its session ran in {cwd}, which {project}'s project.yaml lists"))
+        labels.append({"note": rel, "project": project, "by": "transcript"})
+    record_project = {}
+    for p in (vault_root / "projects").glob("*/**/*.md"):
+        record_project.setdefault(p.stem, p.relative_to(vault_root).parts[1])
+    link = re.compile(r"\[\[([^\]|#]+)")
+    for cls in _CLASSES:
+        for p in sorted((memory_root / "memory" / cls).glob("*.md")):
+            text = _text(p.read_bytes())
+            f = _fields(text)
+            kind_less = f.get("type") and not f.get("kind")
+            if not kind_less or f.get("project") or not _active(f):
+                continue
+            if f["type"].lower() in session_binding.GLOBAL_TYPES:
+                continue
+            targets = link.findall(f.get("derived_from", "") + " " + f.get("related", ""))
+            targets += re.findall(r"[\w./-]+\.md", f.get("derived_from", ""))
+            found = set()
+            for t in targets:
+                stem = Path(t.strip()).name.removesuffix(".md")
+                parts = Path(t.strip()).parts
+                if stem in trace_project:
+                    found.add(trace_project[stem])
+                elif len(parts) > 1 and parts[0] == "projects":
+                    found.add(parts[1])
+                elif stem in record_project:
+                    found.add(record_project[stem])
+            if len(found) != 1:
+                continue
+            project = found.pop()
+            rel = p.relative_to(memory_root).as_posix()
+            acts.append(act(rel, p.read_bytes(), _with_project(text, project),
+                            f"its derived_from/related links reach {project}'s traces or records"))
+            labels.append({"note": rel, "project": project, "by": "links"})
+    return {"job": "manifest-plan-c-labels",
+            "reason": "label existing memories where the source makes it clear (task 178 step 10)",
+            "labels": labels, "unresolved": unresolved, "acts": acts}
+
+
 # ── the command ───────────────────────────────────────────────────────────────
 
-PASSES = {"traces": plan_traces, "chunks": plan_chunks, "ideas": plan_ideas}
+PASSES = {"traces": plan_traces, "chunks": plan_chunks, "ideas": plan_ideas, "labels": plan_labels}
 
 
 def _memory_root(arg: "str | None") -> Path:
@@ -269,6 +360,13 @@ def main(argv: "list | None" = None) -> int:
         print(f"  {f['document']}: fold {len(f['folded'])} note(s)")
     for f in manifest.get("folded", []):
         print(f"  {f['copy']} -> {f['card']}{' (words added to the card)' if f['added_to_card'] else ''}")
+    if "labels" in manifest:
+        by = {}
+        for label in manifest["labels"]:
+            by[(label["by"], label["project"])] = by.get((label["by"], label["project"]), 0) + 1
+        for (how, project), n in sorted(by.items()):
+            print(f"  {n} labelled {project} by {how}")
+        print(f"  {len(manifest.get('unresolved', []))} left unlabelled")
     print(f"check it: agentmdream apply -manifest {out}")
     return 0
 
