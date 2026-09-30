@@ -228,10 +228,12 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 
 // releaseRepo decides which repository the version tag at line[start:end]
 // belongs to, or "" when it cannot tell. In order: the word right before it,
-// when that word is a repository's own name or `owner/repo`; the one
-// repository the line names, when the word before is a release word or
-// nothing; the note's own repository, likewise. Any other word before the tag
-// names what the version belongs to, and it is not a release of a repository.
+// when that word is a repository's own name or `owner/repo`; then, when the
+// word before is a release word or nothing, the one repository the line names
+// or the note's own. A line naming one repository in a note of another is
+// ambiguous — "paired with crickets; shipped v10.0.0" in an agentm note — and
+// gives none. Any other word before the tag names what the version belongs
+// to, and it is not a release of a repository.
 func releaseRepo(line string, start, end int, lineRepos map[string]bool, ctx Context) string {
 	// The tag must stand alone: not inside a word, a path or a URL (a release
 	// URL is read by its own pattern), and not the head of a longer version or
@@ -264,8 +266,11 @@ func releaseRepo(line string, start, end int, lineRepos map[string]bool, ctx Con
 	}
 	if len(lineRepos) == 1 {
 		for r := range lineRepos {
-			return r
+			if ctx.Repo == "" || ctx.Repo == r {
+				return r
+			}
 		}
+		return ""
 	}
 	if len(lineRepos) == 0 {
 		return ctx.Repo

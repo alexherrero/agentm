@@ -197,6 +197,7 @@ func TestAVersionThatIsNotTheRepositorysIsNoRelease(t *testing.T) {
 		"Only v1.2 so far.\n",
 		"Read plugins/cache/v0.49.0/scripts.\n",
 		"Two repos: https://github.com/a/b and https://github.com/c/d at v1.0.0\n",
+		"Paired with https://github.com/alexherrero/crickets today and shipped v10.0.0.\n",
 	} {
 		for _, g := range EntitiesIn(line, ctx) {
 			if strings.HasPrefix(g, "release:") {
