@@ -82,6 +82,11 @@ type Index struct {
 	// later, which is exactly how it was found the first time. Guarded by mu.
 	snippetedDocs int64
 
+	// entityNames maps the names entity pages answer to onto the pages, for the
+	// exact-name rule (entityname.go). Built on first use and dropped whenever
+	// an entity page is written or removed. Guarded by mu.
+	entityNames map[string]string
+
 	// repos is the projects' repositories the extractor qualifies a bare
 	// reference with (entitycontext.go). Guarded by mu.
 	repos *repoContext
@@ -356,6 +361,9 @@ func (x *Index) Upsert(n note.Note, mtimeNS int64, size int64) error {
 }
 
 func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
+	if isEntityPagePath(n.Rel) {
+		x.entityNames = nil
+	}
 	tx, err := x.db.Begin()
 	if err != nil {
 		return err
@@ -466,6 +474,9 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 func (x *Index) Delete(rel string) error {
 	x.mu.Lock()
 	defer x.mu.Unlock()
+	if isEntityPagePath(rel) {
+		x.entityNames = nil
+	}
 	tx, err := x.db.Begin()
 	if err != nil {
 		return err
