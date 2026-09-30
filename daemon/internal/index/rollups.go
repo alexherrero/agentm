@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 )
 
 // What the entity-rollup stage needs to know, and what it must not be told.
@@ -92,6 +94,16 @@ func (x *Index) EntityMentions(ctx context.Context, min int) ([]EntityMention, e
 // at `.../entities/ada-lovelace.md`, and nothing writes the namespace into the
 // filename.
 func (x *Index) entityFileLocked(ctx context.Context, uri string) (string, error) {
+	// The nightly builder's own page first (task 179): `entities/<folder>/`
+	// and the id's slug, exactly.
+	if kind, id, ok := strings.Cut(uri, ":"); ok && cardshape.EntityFolders[kind] != "" {
+		var path string
+		err := x.db.QueryRowContext(ctx, `SELECT path FROM docmeta WHERE path LIKE ? ORDER BY path LIMIT 1`,
+			"%/entities/"+cardshape.EntityFolders[kind]+"/"+cardshape.EntitySlug(id)+".md").Scan(&path)
+		if err == nil {
+			return path, nil
+		}
+	}
 	stem := uri
 	if i := strings.LastIndexAny(stem, ":/"); i >= 0 {
 		stem = stem[i+1:]

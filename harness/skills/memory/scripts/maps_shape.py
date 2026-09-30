@@ -29,6 +29,9 @@ import drive_artifacts  # noqa: E402
 
 MARKER_NAME = ".maps-and-root-notes-complete"
 MAP_NAMES = ("moc-root", "moc-memory", "needs-review")
+# Maps the directory may hold that exist only while they have something to
+# list: `moc-entities`, the entity builder's pages (task 179).
+OPTIONAL_MAP_NAMES = ("moc-entities",)
 CLASS_INDEX = "_index.md"
 MEMBER_CLASSES = ("semantic", "procedural", "episodic", "entities", "crystallized")
 DEFAULT_MIN_MEMBERS = 5
@@ -105,7 +108,7 @@ def mocs_findings(memory_root, rules=None) -> list:
         if not p.is_file() or p.suffix != ".md" or p.name == CLASS_INDEX or drive_artifacts.is_artifact(p):
             continue
         stem, rel = p.stem, f"memory/mocs/{p.name}"
-        if stem in MAP_NAMES:
+        if stem in MAP_NAMES or stem in OPTIONAL_MAP_NAMES:
             continue
         numbered = _NUMBERED.match(stem)
         if numbered and numbered.group("base") in types:
@@ -115,5 +118,5 @@ def mocs_findings(memory_root, rules=None) -> list:
             if n < floor:
                 out.append(f"{rel}: `{stem}` has {n} live note(s), under the page threshold of {floor}")
         else:
-            out.append(f"{rel}: not a map this directory holds (moc-root, moc-memory, needs-review, or a type's page)")
+            out.append(f"{rel}: not a map this directory holds (moc-root, moc-memory, needs-review, moc-entities, or a type's page)")
     return out

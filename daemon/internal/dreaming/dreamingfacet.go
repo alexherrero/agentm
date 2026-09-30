@@ -155,6 +155,12 @@ func renderDreamingFacet(rep *Report, now time.Time) (string, int) {
 	}
 	section("Removed by retention", removed)
 
+	var entityPages []string
+	for _, rel := range rep.Entities.Removed {
+		entityPages = append(entityPages, "`"+rel+"` — under its bar; the journal keeps its text")
+	}
+	section("Entity pages removed", entityPages)
+
 	var held []string
 	for _, row := range rep.Retain.Held {
 		held = append(held, fmt.Sprintf("`%s` — %s, %.0f days old, kept %.0f", row.Rel, row.What, row.Days, row.Keep))

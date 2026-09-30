@@ -17,8 +17,9 @@ it reports its findings and exits 0 (the purge left six empty opinion-lane
 directories inside `crystallized/`, which the backfill removes); once the marker
 exists it enforces.
 
-`mocs/` also holds the maps' shape (agentm-vault plan 07): the three named maps
-(`moc-root`, `moc-memory`, `needs-review`), the class index, and a page per
+`mocs/` also holds the maps' shape (agentm-vault plan 07): the named maps
+(`moc-root`, `moc-memory`, `needs-review`, and `moc-entities` since task 179),
+the class index, and a page per
 memory type with at least `moc_min_members` live notes, never a numbered page.
 Those findings have two states of their own: reported until the maps data run
 writes `memory/.maps-and-root-notes-complete`, enforced once it has.

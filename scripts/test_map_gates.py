@@ -112,6 +112,15 @@ class MocsShape(_Memory):
         self.assertEqual(code, 0, out)
         self.assertEqual(ms.mocs_findings(self.root, RULES), [])
 
+    def test_the_entity_map_is_a_map_this_directory_holds(self):
+        # Task 179: the mocs job lists the entity builder's four folders.
+        self.shaped()
+        self.write("mocs/moc-entities.md", MAP)
+        self.data_run_done()
+        code, out = self.gate()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(ms.mocs_findings(self.root, RULES), [])
+
     def test_a_numbered_page_fails_once_the_data_run_is_done(self):
         self.shaped()
         self.write("mocs/convention-2.md", MAP)

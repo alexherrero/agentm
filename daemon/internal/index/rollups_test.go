@@ -348,3 +348,25 @@ func TestABareIssueIsQualifiedByTheNotesProject(t *testing.T) {
 		t.Errorf("a bare number in a single-repository project stayed bare: %v", mentions)
 	}
 }
+
+// The builder's page is found by its folder and slug (task 179), so
+// `agentmd graph -entities` names it beside the entity it answers.
+func TestAnEntityPageIsFoundByItsFolderAndSlug(t *testing.T) {
+	ctx := context.Background()
+	x, vault := newVaultIndex(t)
+	writeVaultNote(t, vault, "memory/a.md", "---\ntitle: a\n---\n\ngithub.com/alexherrero/crickets\n")
+	writeVaultNote(t, vault, "agent/memory/entities/repos/alexherrero-crickets.md",
+		"---\ntitle: alexherrero/crickets\nkind: entity-profile\n---\n\n# crickets\n")
+	if _, err := x.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := x.EntityMentions(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range got {
+		if e.URI == "repo:alexherrero/crickets" && e.File != "agent/memory/entities/repos/alexherrero-crickets.md" {
+			t.Errorf("the page was not found: %+v", e)
+		}
+	}
+}

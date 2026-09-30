@@ -68,6 +68,9 @@ type Report struct {
 	// repairs them, and a repair nobody can see is indistinguishable from a loss.
 	SkippedByHandMove []string `json:"skipped_by_hand_move,omitempty"`
 	Mocs              MocsPlan `json:"mocs"`
+	// Entities is the entity builder (task 179): the repository, issue,
+	// release and people pages it wrote, and those it removed.
+	Entities EntitiesPlan `json:"entities"`
 	// Ideas is `Ideas.md`, rebuilt with the maps (agentm-vault part 13).
 	Ideas IdeasPlan `json:"ideas"`
 	Dates DatesPlan `json:"dates"`
@@ -258,6 +261,21 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		}
 		intents = nil
 	}
+	// The entity pages (task 179): built from the index at no model cost, and
+	// derived — nothing else writes them. A builder that cannot plan says so in
+	// its own row and the night goes on.
+	entities, err := planEntitiesFor(cfg, root, contract, now)
+	if err != nil {
+		entities = EntitiesPlan{Counts: map[string]int{}, Skipped: "the builder could not plan: " + err.Error()}
+	}
+	rep.Entities = entities
+	intents = append(intents, entities.Intents...)
+	if opt.Apply {
+		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+		intents = nil
+	}
 	// Batch 2 (task 5): the maintenance jobs — the register's reviews, the
 	// maps of content, the date glosses — then the report-only checks.
 	calendar, err := PlanCalendar(root, contract, now, DefaultRollupWeeks)
@@ -286,6 +304,11 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	}
 	mocs.Pages = append(mocs.Pages, projectTrackers.Pages...)
 	mocs.Intents = append(mocs.Intents, projectTrackers.Intents...)
+	// The entity map lists the builder's four folders (task 179).
+	entityMap := PlanEntityMap(root, rep.Entities.Pages, now)
+	mocs.Pages = append(mocs.Pages, entityMap.Pages...)
+	mocs.Removed = append(mocs.Removed, entityMap.Removed...)
+	mocs.Intents = append(mocs.Intents, entityMap.Intents...)
 	// The two shared spaces of 2026-09-24 ride in it too, once they hold a note.
 	spaceMaps, err := PlanSpaceMaps(root, now)
 	if err != nil {
@@ -546,4 +569,21 @@ func newRunID(now time.Time) string {
 	var b [4]byte
 	_, _ = rand.Read(b[:])
 	return now.UTC().Format("20060102-150405") + "-" + hex.EncodeToString(b[:])
+}
+
+// planEntitiesFor opens the index and the operator's people table and plans
+// the entity pages. No index is no plan, said rather than guessed around.
+func planEntitiesFor(cfg *config.Config, root string, contract *rules.Rules, now time.Time) (EntitiesPlan, error) {
+	if cfg.IndexPath == "" {
+		return EntitiesPlan{Counts: map[string]int{}, Skipped: "no index is configured"}, nil
+	}
+	if _, err := os.Stat(cfg.IndexPath); err != nil {
+		return EntitiesPlan{Counts: map[string]int{}, Skipped: "the index is missing: " + err.Error()}, nil
+	}
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, false)
+	if err != nil {
+		return EntitiesPlan{}, err
+	}
+	defer idx.Close()
+	return PlanEntities(root, idx, contract, now)
 }

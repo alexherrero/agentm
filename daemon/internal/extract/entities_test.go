@@ -155,8 +155,10 @@ func TestAReleaseBesideARepository(t *testing.T) {
 	ctx := Context{Repo: "alexherrero/agentm", Known: known}
 	eq(t, EntitiesIn("Paired with crickets v4.0.0 today.\n", ctx),
 		[]string{"release:alexherrero/crickets@v4.0.0"})
-	eq(t, EntitiesIn("Cut alexherrero/sherwood v2.1.0.\n", ctx),
-		[]string{"release:alexherrero/sherwood@v2.1.0"})
+	eq(t, EntitiesIn("Cut alexherrero/crickets v2.1.0.\n", ctx),
+		[]string{"release:alexherrero/crickets@v2.1.0"})
+	eq(t, EntitiesIn("Cut alexherrero/sherwood v2.1.0 from https://github.com/alexherrero/sherwood\n", ctx),
+		[]string{"release:alexherrero/sherwood@v2.1.0", "repo:alexherrero/sherwood"})
 	eq(t, EntitiesIn("Shipped **crickets [v5.0.0](https://example.com)**.\n", ctx),
 		[]string{"release:alexherrero/crickets@v5.0.0"})
 }
@@ -196,6 +198,8 @@ func TestAVersionThatIsNotTheRepositorysIsNoRelease(t *testing.T) {
 		"A four-part v1.2.3.4 build.\n",
 		"Only v1.2 so far.\n",
 		"Read plugins/cache/v0.49.0/scripts.\n",
+		"See agentic-harness/CHANGELOG.md v1.4.0 and wiki/docs v2.0.0.\n",
+		"Cut alexherrero/unlisted v2.1.0.\n",
 		"Two repos: https://github.com/a/b and https://github.com/c/d at v1.0.0\n",
 		"Paired with https://github.com/alexherrero/crickets today and shipped v10.0.0.\n",
 	} {

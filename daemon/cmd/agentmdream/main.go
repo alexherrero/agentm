@@ -31,6 +31,7 @@ const usage = `agentmdream — the agentm dreaming binary (one pass, then exit)
   agentmdream ideas     print Ideas.md as the night would rebuild it; -write to make the one deliberate write
   agentmdream move-tasks  plan the closed-task moves; -apply to make them now, whatever the switch says
   agentmdream apply     check a one-time pass's manifest of rewrites; -apply to make them through the journal
+  agentmdream entities  plan the entity pages and their map; -apply to write them now, through the journal
   agentmdream version
 
 Run any subcommand with -h for its flags.
@@ -63,6 +64,8 @@ func main() {
 		err = cmdMoveTasks(os.Args[2:])
 	case "apply":
 		err = cmdApply(os.Args[2:])
+	case "entities":
+		err = cmdEntities(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmdream", version)
 	case "-h", "--help", "help":
@@ -450,6 +453,19 @@ func printReport(rep dreaming.Report) {
 	}
 	fmt.Printf("mocs: %d page(s), %s%d regenerated, %d type(s) below the floor, %s%d page(s) removed · dates: %s%d gloss(es) across %d aging note(s)\n",
 		len(rep.Mocs.Pages), would, changed, len(rep.Mocs.BelowFloor), would, len(rep.Mocs.Removed), would, len(rep.Dates.Glossed), rep.Dates.Aging)
+	if rep.Entities.Skipped != "" {
+		fmt.Printf("entities: skipped — %s\n", rep.Entities.Skipped)
+	} else {
+		written := 0
+		for _, pg := range rep.Entities.Pages {
+			if pg.Changed {
+				written++
+			}
+		}
+		fmt.Printf("entities: %d page(s) (%d repo, %d issue, %d release, %d person), %s%d written, %s%d removed\n",
+			len(rep.Entities.Pages), rep.Entities.Counts["repo"], rep.Entities.Counts["issue"],
+			rep.Entities.Counts["release"], rep.Entities.Counts["person"], would, written, would, len(rep.Entities.Removed))
+	}
 	switch {
 	case rep.Ideas.NotWritten != "":
 		fmt.Printf("ideas: %d card(s), not written — %s\n", rep.Ideas.Cards, rep.Ideas.NotWritten)
@@ -565,4 +581,66 @@ func cmdJournal(args []string) error {
 		fmt.Println(strings.TrimSpace(string(blob)))
 	}
 	return nil
+}
+
+// cmdEntities runs the entity builder on its own (task 179): the supervised
+// first build, and a rebuild after the extractor changes. It plans and prints
+// by default; -apply writes the pages and the map through the journal, under
+// the dreaming lock.
+func cmdEntities(args []string) error {
+	fs := newFlagSet("entities")
+	opts := bindCommon(fs)
+	apply := fs.Bool("apply", false, "write the pages (default: plan and print, touch nothing)")
+	asJSON := fs.Bool("json", false, "emit the plan as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if extra := fs.Args(); len(extra) > 0 {
+		return fmt.Errorf("unexpected argument %q; usage: agentmdream entities [-apply] [-json]", extra[0])
+	}
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	if err := refuseAStrangeVaultOnLiveState(*opts, cfg); err != nil {
+		return err
+	}
+	plan, entityMap, rep, err := dreaming.BuildEntities(cfg, dreaming.BuildEntitiesOptions{Apply: *apply})
+	if *asJSON {
+		blob, _ := json.MarshalIndent(struct {
+			Entities dreaming.EntitiesPlan `json:"entities"`
+			Map      dreaming.MocsPlan     `json:"map"`
+			RunID    string                `json:"run_id,omitempty"`
+			Applied  int                   `json:"applied"`
+			Skipped  int                   `json:"skipped"`
+		}{plan, entityMap, rep.RunID, rep.Applied, rep.Skipped}, "", "  ")
+		fmt.Println(string(blob))
+	} else {
+		verb := "would write"
+		if rep.Mode == "apply" {
+			verb = "wrote"
+		}
+		written := 0
+		for _, p := range plan.Pages {
+			if p.Changed {
+				written++
+			}
+		}
+		if plan.Skipped != "" {
+			fmt.Println("entities: skipped —", plan.Skipped)
+		}
+		fmt.Printf("entities: %d page(s) — %d repo, %d issue, %d release, %d person; %s %d, removed %d\n",
+			len(plan.Pages), plan.Counts["repo"], plan.Counts["issue"], plan.Counts["release"],
+			plan.Counts["person"], verb, written, len(plan.Removed))
+		for _, r := range plan.Removed {
+			fmt.Println("  removed", r)
+		}
+		if rep.Mode == "apply" {
+			fmt.Printf("  run %s: %d applied, %d skipped\n", rep.RunID, rep.Applied, rep.Skipped)
+		}
+	}
+	if errors.Is(err, dreaming.ErrRefused) {
+		return &exitError{code: 3, err: fmt.Errorf("another pass holds the dreaming lock; nothing was written")}
+	}
+	return err
 }
