@@ -3,8 +3,10 @@
 
 The six class directories under `memory/` hold memories (`type:`) and the
 records the machinery files beside them (`kind:`), and nothing else
-(agentm-vault plan 06). The gate fails on a directory inside a class directory,
-a file that is not a note, a note without a frontmatter block, a note carrying
+(agentm-vault plan 06). The gate fails on a directory inside a class directory
+(except the entity builder's four type folders in `entities/` — `repos/`,
+`issues/`, `releases/`, `people/`, task 179 — whose notes it checks the same
+way, and which hold no directory of their own), a file that is not a note, a note without a frontmatter block, a note carrying
 both `type` and `kind` or neither, and a value the filing contract does not
 register. Drive's `Icon` files, `.DS_Store` and the card backfill's marker are
 ignored.
@@ -66,14 +68,23 @@ def load_registers(rules=None):
 def findings_for(memory_root: Path, registers=None) -> tuple[list[str], int]:
     out: list[str] = []
     count = 0
+    entity_folders = set(cs.ENTITY_FOLDERS.values())
     for cls in CLASSES:
         d = memory_root / "memory" / cls
         if not d.is_dir():
             continue
-        for p in sorted(d.iterdir()):
+        entries = sorted(d.iterdir())
+        if cls == "entities":
+            # The builder writes one folder per type; each holds pages, no folder.
+            for folder in sorted(entity_folders):
+                if (d / folder).is_dir():
+                    entries += sorted((d / folder).iterdir())
+        for p in entries:
             if p.name in IGNORABLE:
                 continue
             rel = p.relative_to(memory_root).as_posix()
+            if p.is_dir() and p.parent == d and cls == "entities" and p.name in entity_folders:
+                continue
             count += 1
             if p.is_dir():
                 out.append(f"{rel}/: a directory inside a class directory")

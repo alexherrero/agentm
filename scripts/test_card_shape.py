@@ -155,6 +155,21 @@ class TheGoTwin(unittest.TestCase):
         self.assertNotEqual(moved, src)
         self.assertNotEqual(self._go_list(moved, "ReadOrder"), cs.READ_ORDER)
 
+    @staticmethod
+    def _go_map(src: str, name: str) -> dict:
+        m = re.search(r"var " + name + r" = map\[string\]string\{(.*?)\n\}", src, re.S)
+        return dict(re.findall(r'"([^"]+)":\s*"([^"]+)"', m.group(1))) if m else {}
+
+    def test_the_entity_folders_and_kind_are_the_same_on_both_sides(self):
+        # Task 179: the builder writes in Go and the gates read in Python; a type
+        # filed in a folder the gate does not know would fail every night.
+        src = (_REPO / "daemon" / "internal" / "cardshape" / "cardshape.go").read_text(encoding="utf-8")
+        self.assertEqual(self._go_map(src, "EntityFolders"), cs.ENTITY_FOLDERS)
+        self.assertIn(f'EntityProfileKind = "{cs.ENTITY_PROFILE_KIND}"', src)
+        moved = src.replace('"person":  "people"', '"person":  "persons"', 1)
+        self.assertNotEqual(moved, src)
+        self.assertNotEqual(self._go_map(moved, "EntityFolders"), cs.ENTITY_FOLDERS)
+
 
 if __name__ == "__main__":
     unittest.main()

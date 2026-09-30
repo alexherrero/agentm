@@ -43,8 +43,9 @@ principles and learned tool behaviour. `procedural/` holds recipes and protocols
 — how to do a thing. `episodic/` holds session traces.
 
 The other three are derived, and rebuildable from the first three. `entities/`
-holds one living file per person, system, repository or organization, each a
-materialized view over the atomic facts that mention it. `crystallized/` holds
+holds one page per repo, repo-qualified issue, release and person the vault
+keeps mentioning, in a folder per type (`repos/`, `issues/`, `releases/`,
+`people/`), each a list of the notes that mention it. `crystallized/` holds
 the lessons repetition produced, each carrying `consolidated_from` back to the
 traces it came from. `mocs/` holds maps of content over the corpus, generated
 rather than authored. Deleting anything in these three loses nothing that cannot
@@ -183,7 +184,7 @@ classes:
   semantic: Facts, principles and learned tool behaviour.
   procedural: Recipes and protocols — how to do a thing.
   episodic: Session traces — what happened, and when.
-  entities: One living file per person, system, repository or organization.
+  entities: One page per repo, qualified issue, release or person, built nightly from the notes that mention it.
   crystallized: Lessons distilled from repetition, with provenance to their traces.
   mocs: Maps of content over the corpus — navigation, generated not authored.
 
@@ -264,6 +265,10 @@ record_kinds:
   - system
   - component
   - blueprint
+  # 2026-09-29, on the operator's AgentKV rulings (section 5): the page the
+  # nightly entity builder writes under `memory/entities/<type>/`, one per repo,
+  # repo-qualified issue, release or person. Written only by that builder.
+  - entity-profile
 
 deprecations:
   preferences: preference
@@ -528,6 +533,12 @@ thresholds:
   # moves to the project's `completed/tasks/`. The night moves at most
   # `demotion_cap` folders, counted in folders, so a task is never split.
   task_completed_after_days: 14
+  # The entity builder's bars (2026-09-29). A repo, a repo-qualified issue or a
+  # release gets a page once this many distinct notes mention it; a person, once
+  # named in this many distinct pieces of shared work. A page below its bar is
+  # removed through the journal.
+  entity_min_mentions: 2
+  person_min_shared_work: 2
   # A note at or below this ranks quietly on an ordinary question. The rubric
   # above calls 1 residue and 2-3 the record of a moment that decides nothing,
   # and this is where that reading reaches the ranker. A note with no
@@ -592,6 +603,15 @@ under `personal/` or `standards/` links into stays where it is and is listed in
 the morning note, because those notes are yours. The move runs only once
 `daemon.task_mover_enabled` is on; until then the night lists what it would
 move.
+
+`entity_min_mentions` and `person_min_shared_work` are the entity builder's
+bars. A repo, a repo-qualified issue or a release gets a page under
+`memory/entities/` once that many distinct notes mention it. A person gets one
+once named in that many distinct pieces of shared work: a task's plan,
+progress or tracker, a `decisions/` note, a project tracker, a calendar note or
+a meeting note. A page that falls below its bar is removed through the
+journal, which keeps its bytes. No page is written for a commit or for an
+issue number whose repo is not known.
 
 ## Importance
 

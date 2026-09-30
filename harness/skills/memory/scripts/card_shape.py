@@ -41,7 +41,8 @@ import re
 # the other; `project` and `task` after them. An idea card's two fields
 # (agentm-vault part 13) sit where they are read: `area`, the operator's group,
 # beside what the card is; `dismissed`, the day the idea was retired, beside its
-# standing.
+# standing. `people`, the people a note names (task 179), closes the block after
+# `project` and `task`: the three say whose work a note belongs to.
 READ_ORDER: tuple[str, ...] = (
     "title", "type", "kind", "area", "summary", "why", "importance", "dismissed",
     "status", "lifecycle", "lifecycle_since", "filing_confidence",
@@ -49,7 +50,7 @@ READ_ORDER: tuple[str, ...] = (
     "created", "updated", "tags",
     "related", "supersedes", "superseded_by",
     "consolidated_from", "consolidated_into",
-    "project", "task",
+    "project", "task", "people",
 )
 
 # What the machinery reads, last. The design names the first seven; the rest are
@@ -90,6 +91,22 @@ RECORD_NEVER: tuple[str, ...] = ("importance", "why", "filing_confidence", "trus
 
 # A record field renamed by the design: a trace names what it touched.
 RENAMED_RECORD_FIELDS: dict[str, str] = {"entities": "touched"}
+
+# The page the nightly entity builder writes under `memory/entities/<folder>/`
+# (agentm-vault § Dreaming, amended 2026-09-29): a record, one per repo,
+# repo-qualified issue, release or person. `ENTITY_FOLDERS` maps its
+# `entity_type` to its folder; the Go half keeps the same map as
+# `cardshape.EntityFolders`.
+ENTITY_PROFILE_KIND = "entity-profile"
+ENTITY_FOLDERS: dict[str, str] = {
+    "repo": "repos",
+    "issue": "issues",
+    "release": "releases",
+    "person": "people",
+}
+# What every entity page carries, and what only a person's page may.
+ENTITY_REQUIRED_FIELDS: tuple[str, ...] = ("entity_type", "entity_id")
+ENTITY_PERSON_ONLY: tuple[str, ...] = ("shared_work",)
 
 # The daemon's synthetic self-probe card carries this key. It is excluded from
 # every measurement, and it names no transport.
