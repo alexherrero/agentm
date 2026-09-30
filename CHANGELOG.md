@@ -35,6 +35,7 @@ Plan C of the AgentKV layout convergence: the memory-quality half of the operato
   worktree binds to its clone's project. `memory_capture` takes an optional
   `cwd`, and the CLI passes its own. A convention or preference stays
   unlabeled unless its writer names a project.
+- **`scripts/deploy-daemon.sh`**: rebuilds `agentmd` and `agentmdream` from the current checkout, swaps each one in over the live binary, restarts the launchd job and waits for `/health`. It does the same build-then-swap as `install.sh`'s refresh mode, without the rest of the install. Agents used to type the swap by hand as `go build -o …new && mv -f …`. `mv` is on the global ask list, so every redeploy stopped for a permission prompt: 58 of the 100 `mv` prompts in the 36 days of desktop-app logs. Use `--no-restart` to skip the restart; name one binary to rebuild only that one.
 
 ### Changed
 
