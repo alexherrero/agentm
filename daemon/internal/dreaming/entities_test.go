@@ -97,7 +97,7 @@ func fixtureEntityNotes() map[string]string {
 
 func TestTheBuilderWritesRepoIssueAndReleasePagesAndNothingElse(t *testing.T) {
 	root, x := entityVault(t, fixtureEntityNotes())
-	plan, err := PlanEntities(root, x, PeopleOptions{}, nil, entityNow)
+	plan, err := PlanEntities(root, filepath.Dir(root), x, PeopleOptions{}, nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,12 +142,12 @@ func TestTheBuilderWritesRepoIssueAndReleasePagesAndNothingElse(t *testing.T) {
 func TestARebuildWritesNothingAndAPageUnderItsBarIsRemovedWithItsBytesJournaled(t *testing.T) {
 	notes := fixtureEntityNotes()
 	root, x := entityVault(t, notes)
-	first, err := PlanEntities(root, x, PeopleOptions{}, nil, entityNow)
+	first, err := PlanEntities(root, filepath.Dir(root), x, PeopleOptions{}, nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	applyEntityIntents(t, root, first.Intents)
-	second, err := PlanEntities(root, x, PeopleOptions{}, nil, entityNow.Add(24*time.Hour))
+	second, err := PlanEntities(root, filepath.Dir(root), x, PeopleOptions{}, nil, entityNow.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestARebuildWritesNothingAndAPageUnderItsBarIsRemovedWithItsBytesJournaled(
 	if _, err := x.Reconcile(); err != nil {
 		t.Fatal(err)
 	}
-	third, err := PlanEntities(root, x, PeopleOptions{}, nil, entityNow.Add(48*time.Hour))
+	third, err := PlanEntities(root, filepath.Dir(root), x, PeopleOptions{}, nil, entityNow.Add(48*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

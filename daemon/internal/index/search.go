@@ -253,8 +253,17 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 		return out, err
 	}
 	// The exact-name rule (task 179): a query naming an entity gets its page
-	// first. Here, at the one funnel every mode returns through.
-	out.Results = x.PutNamedEntityFirst(text, out.Results, k)
+	// first. Here, at the one funnel every mode returns through, and only for a
+	// query with no date bound: a bounded search is a question about a time,
+	// and a page outside the bound must not be served into it. A page added to
+	// an empty answer replaces the advice that the answer was empty.
+	if after == "" && before == "" {
+		was := len(out.Results)
+		out.Results = x.PutNamedEntityFirst(text, out.Results, k)
+		if was == 0 && len(out.Results) > 0 {
+			out.Note = ""
+		}
+	}
 	// Serving a hit is what moves its clock, so it is stamped here — at the one
 	// funnel every mode returns through — rather than in each mode's own tail,
 	// where the third one added would be the one that forgot.

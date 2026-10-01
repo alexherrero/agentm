@@ -305,11 +305,14 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	}
 	mocs.Pages = append(mocs.Pages, projectTrackers.Pages...)
 	mocs.Intents = append(mocs.Intents, projectTrackers.Intents...)
-	// The entity map lists the builder's four folders (task 179).
-	entityMap := PlanEntityMap(root, rep.Entities.Pages, now)
-	mocs.Pages = append(mocs.Pages, entityMap.Pages...)
-	mocs.Removed = append(mocs.Removed, entityMap.Removed...)
-	mocs.Intents = append(mocs.Intents, entityMap.Intents...)
+	// The entity map lists the builder's four folders (task 179). A builder
+	// that could not plan tonight leaves the map as it was, with its pages.
+	if rep.Entities.Skipped == "" {
+		entityMap := PlanEntityMap(root, rep.Entities.Pages, now)
+		mocs.Pages = append(mocs.Pages, entityMap.Pages...)
+		mocs.Removed = append(mocs.Removed, entityMap.Removed...)
+		mocs.Intents = append(mocs.Intents, entityMap.Intents...)
+	}
 	// The two shared spaces of 2026-09-24 ride in it too, once they hold a note.
 	spaceMaps, err := PlanSpaceMaps(root, now)
 	if err != nil {
@@ -596,6 +599,6 @@ func planEntitiesFor(cfg *config.Config, root string, contract *rules.Rules, now
 	// No email source ships (task 179 step 7): the switch is read so that
 	// turning it on is the operator's act, and nothing reads mail until an
 	// ingest supplies a source.
-	return PlanEntities(root, idx, PeopleOptions{Table: table, EmailEnabled: cfg.PeopleEmailEvidenceEnabled},
+	return PlanEntities(root, cfg.VaultPath, idx, PeopleOptions{Table: table, EmailEnabled: cfg.PeopleEmailEvidenceEnabled},
 		contract, now)
 }

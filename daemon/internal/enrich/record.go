@@ -147,13 +147,19 @@ func ComposeRecord(previous string, r Response, s Stamp, depth Depth, offered []
 	}
 	// The people a record names are the pass's to say (task 179), grounded in
 	// the record's own words like a card's, and written over what an earlier
-	// pass said rather than merged into it.
-	if names := groundPeople(previous, captured, after, r.People, s.People); len(names) > 0 && !blocks["people"] {
-		quoted := make([]string, 0, len(names))
-		for _, n := range names {
-			quoted = append(quoted, yamlScalar(n))
+	// pass said rather than merged into it. A pass that grounds nobody takes an
+	// earlier pass's list away: the entity builder counts a record as shared
+	// work for everyone its `people:` names.
+	if !blocks["people"] {
+		if names := groundPeople(previous, captured, after, r.People, s.People); len(names) > 0 {
+			quoted := make([]string, 0, len(names))
+			for _, n := range names {
+				quoted = append(quoted, yamlScalar(n))
+			}
+			set("people", "["+strings.Join(quoted, ", ")+"]")
+		} else if rawFrontmatterValue(previous, "people") != "" {
+			front = dropTopKey(front, "people")
 		}
-		set("people", "["+strings.Join(quoted, ", ")+"]")
 	}
 	set("updated", when.UTC().Format("2006-01-02"))
 	version := s.Version
@@ -277,6 +283,28 @@ func mergeFrontmatter(front string, fields map[string]string, order []string) st
 		if !done[key] {
 			out = append(out, key+": "+fields[key])
 		}
+	}
+	return "---\n" + strings.Join(out, "\n") + tail
+}
+
+// dropTopKey removes one top-level key, and any lines that continue it, from a
+// frontmatter block.
+func dropTopKey(front, key string) string {
+	end := strings.Index(front[4:], "\n---")
+	if end < 0 {
+		return front
+	}
+	block, tail := front[4:4+end], front[4+end:]
+	lines := strings.Split(block, "\n")
+	out := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); i++ {
+		if topKey(lines[i]) == key {
+			for i+1 < len(lines) && isContinuation(lines[i+1]) {
+				i++
+			}
+			continue
+		}
+		out = append(out, lines[i])
 	}
 	return "---\n" + strings.Join(out, "\n") + tail
 }

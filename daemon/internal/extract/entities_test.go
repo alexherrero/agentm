@@ -237,3 +237,37 @@ func TestGitHubsOwnPagesAreNotRepositories(t *testing.T) {
 	// The gist's hex id still reads as a commit, which is indexed and never paged.
 	eq(t, got, []string{"commit:442a6bf5", "issue:alexherrero/crickets#12", "repo:alexherrero/crickets"})
 }
+
+// From the release review (2026-09-30): versions that belong to something
+// else, and the forms a release is written in that the first rule missed.
+func TestTheReviewsReleaseAndIssueCases(t *testing.T) {
+	ctx := Context{Repo: "alexherrero/agentm", Known: map[string]string{
+		"agentm": "alexherrero/agentm", "crickets": "alexherrero/crickets"}}
+	for line, want := range map[string][]string{
+		// A dependency bump names someone else's repository.
+		"Bump actions/checkout from v3.5.2 to v4.0.0.\n": nil,
+		// A word two back names the thing the version belongs to.
+		"Upgraded node to v20.11.1 on the runner.\n": nil,
+		// A pre-release by its address is not the final release.
+		"See https://github.com/alexherrero/agentm/releases/tag/v10.0.0-rc.1 for it.\n": {"repo:alexherrero/agentm"},
+		// A bullet's dash is no word, and a possessive is its owner's.
+		"- v10.0.0 shipped the vault series.\n": {"release:alexherrero/agentm@v10.0.0"},
+		"agentm's v10.0.0 closed it.\n":         {"release:alexherrero/agentm@v10.0.0"},
+		"crickets’s v5.0.0 paired with it.\n":   {"release:alexherrero/crickets@v5.0.0"},
+		// A repository's name right before a bare number is its repository.
+		"Fixed in crickets #235.\n": {"issue:alexherrero/crickets#235"},
+		// And the legitimate forms still read.
+		"Plan C shipped in v10.3.0.\n": {"release:alexherrero/agentm@v10.3.0"},
+	} {
+		got := EntitiesIn(line, ctx)
+		if len(want) == 0 {
+			for _, g := range got {
+				if strings.HasPrefix(g, "release:") {
+					t.Errorf("%q gave %s", line, g)
+				}
+			}
+			continue
+		}
+		eq(t, got, want)
+	}
+}

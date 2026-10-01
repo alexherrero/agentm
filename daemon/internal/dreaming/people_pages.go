@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 	"github.com/alexherrero/agentm/daemon/internal/index"
@@ -63,7 +64,8 @@ var (
 
 // IsSharedWork reports whether a note is a piece of the operator's shared
 // work: a task's plan, progress or tracker (open or completed), a `decisions/`
-// note, a project tracker, a `calendar/` note or a meeting note.
+// note, a project tracker, a `calendar/` note, or a note under `personal/` or
+// `projects/` whose name says it is a meeting's.
 func IsSharedWork(rel string) bool {
 	low := strings.ToLower(rel)
 	switch {
@@ -71,13 +73,92 @@ func IsSharedWork(rel string) bool {
 		return true
 	case strings.HasPrefix(low, "calendar/") && !strings.HasPrefix(path.Base(low), "_"):
 		return true
-	case strings.Contains(path.Base(low), "meeting"):
+	case strings.Contains(path.Base(low), "meeting") &&
+		(strings.HasPrefix(low, "personal/") || strings.HasPrefix(low, "projects/")):
+		// A meeting's own notes, kept with your life or your work; a memory card
+		// about meetings in general is not one.
 		return true
 	}
 	return false
 }
 
+// personGroup is every spelling the vault gives one person: the names whose
+// page would sit at one slug, "Jean-Luc Picard" and "Jean Luc Picard" alike,
+// with how often each was written. One page is built per group.
+type personGroup struct {
+	counts map[string]int
+}
+
+func (g *personGroup) add(name string, weight int) {
+	if g.counts == nil {
+		g.counts = map[string]int{}
+	}
+	g.counts[name] += weight
+}
+
+// ordered is the group's names, best first: the one written most often, then
+// the one with more capitals ("Jane Doe" over "jane doe"), then in order, so
+// two builds over one corpus agree on everything derived from the names.
+func (g *personGroup) ordered() []string {
+	names := make([]string, 0, len(g.counts))
+	for n := range g.counts {
+		names = append(names, n)
+	}
+	upper := func(s string) int {
+		n := 0
+		for _, r := range s {
+			if unicode.IsUpper(r) {
+				n++
+			}
+		}
+		return n
+	}
+	sort.Slice(names, func(i, j int) bool {
+		a, b := names[i], names[j]
+		if g.counts[a] != g.counts[b] {
+			return g.counts[a] > g.counts[b]
+		}
+		if upper(a) != upper(b) {
+			return upper(a) > upper(b)
+		}
+		return a < b
+	})
+	return names
+}
+
+// title is the spelling the page is titled with: the best of ordered.
+func (g *personGroup) title() string { return g.ordered()[0] }
+
+// spellings are every spelling the group's names answer to, the table's
+// aliases included; of two that differ only in case, the better name's wins.
+func (g *personGroup) spellings(t people.Table) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, n := range g.ordered() {
+		for _, s := range t.Spellings(n) {
+			if k := strings.ToLower(s); !seen[k] {
+				seen[k] = true
+				out = append(out, s)
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if len(out[i]) != len(out[j]) {
+			return len(out[i]) > len(out[j])
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
 // planPeople adds the people pages to a plan.
+//
+// A note the index holds and the builder cannot read tonight — a Drive
+// placeholder, a permission blip — would make the people it names look short
+// of shared work. So when any note cannot be read, the people half stands
+// still for the night: every person page on disk is kept as it is, none is
+// written, and the plan says which notes could not be read. A note that has
+// gone since the index last saw it is simply gone.
 func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySources, opts PeopleOptions,
 	projects map[string][]string, minSharedWork int, now time.Time) (map[string]bool, error) {
 	wanted := map[string]bool{}
@@ -87,33 +168,46 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 	}
 	type noteText struct {
 		row   index.NoteRow
-		text  string
-		named []string
+		text  people.Text
+		named map[string]bool // the slugs of the people its `people:` names
 	}
 	var texts []noteText
-	registry := map[string]bool{}
+	groups := map[string]*personGroup{}
+	register := func(name string, weight int) string {
+		slug := cardshape.EntitySlug(name)
+		if groups[slug] == nil {
+			groups[slug] = &personGroup{}
+		}
+		groups[slug].add(name, weight)
+		return slug
+	}
 	for full := range opts.Table.Aliases {
 		if name, ok := opts.Table.Canonical(full); ok {
-			registry[name] = true
+			// The table's own full name titles its person's page.
+			register(name, 1000)
 		}
 	}
+	var unreadable []string
 	for _, n := range notes {
 		if entitySourceExcluded(n.Path, n.Flags, memRel) {
 			continue
 		}
 		raw, err := os.ReadFile(filepath.Join(vault, filepath.FromSlash(n.Path)))
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
+			unreadable = append(unreadable, n.Path)
 			continue
 		}
 		_, body := ParseFrontmatter(string(raw))
-		var named []string
+		named := map[string]bool{}
 		for _, v := range peopleField(string(raw)) {
 			if name, ok := opts.Table.Canonical(v); ok {
-				named = append(named, name)
-				registry[name] = true
+				named[register(name, 1)] = true
 			}
 		}
-		texts = append(texts, noteText{row: n, text: displayTitle(n.Path, n.Title) + "\n" + body, named: named})
+		texts = append(texts, noteText{row: n, text: people.NewText(displayTitle(n.Path, n.Title) + "\n" + body), named: named})
 	}
 
 	threads := map[string]map[string]bool{}
@@ -125,28 +219,39 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 		for _, t := range ts {
 			for _, p := range t.Participants {
 				if name, ok := opts.Table.Canonical(p); ok {
-					registry[name] = true
-					if threads[name] == nil {
-						threads[name] = map[string]bool{}
+					slug := register(name, 1)
+					if threads[slug] == nil {
+						threads[slug] = map[string]bool{}
 					}
-					threads[name][t.ID] = true
+					threads[slug][t.ID] = true
 				}
 			}
 		}
 	}
 
-	var names []string
-	for name := range registry {
-		names = append(names, name)
+	if len(unreadable) > 0 {
+		sort.Strings(unreadable)
+		plan.PeopleHeld = unreadable
+		for _, rel := range existingPages(root, memRel, "person") {
+			wanted[rel] = true
+		}
+		return wanted, nil
 	}
-	sort.Strings(names)
+
+	slugs := make([]string, 0, len(groups))
+	for slug := range groups {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs)
 	today := now.UTC().Format("2006-01-02")
-	for _, name := range names {
-		spellings := opts.Table.Spellings(name)
+	for _, slug := range slugs {
+		g := groups[slug]
+		name := g.title()
+		spellings := g.spellings(opts.Table)
 		set := map[string]mention{}
 		shared := 0
 		for _, t := range texts {
-			if !contains(t.named, name) && !people.Mentions(t.text, spellings) {
+			if !t.named[slug] && !t.text.Mentions(spellings) {
 				continue
 			}
 			m := mentionOf(t.row, projects)
@@ -156,12 +261,12 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 			}
 			set[t.row.Path] = m
 		}
-		shared += len(threads[name])
+		shared += len(threads[slug])
 		if shared < minSharedWork {
 			continue
 		}
 		ms := sortedMentions(set)
-		p := entityPage{kind: "person", title: name, slug: cardshape.EntitySlug(name), sharedWork: shared}
+		p := entityPage{kind: "person", title: name, slug: slug, sharedWork: shared}
 		p.id = p.slug
 		p.uri = "person:" + p.slug
 		for _, s := range spellings {
@@ -172,8 +277,12 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 		sort.Strings(p.aliases)
 		p.projects, p.first, p.last = mentionSpan(ms)
 		rel := entityRel(memRel, "person", p.slug)
-		wanted[rel] = true
 		before, created := mocCurrentPage(root, relUnderRoot(rel, memRel))
+		if handWritten(before) {
+			plan.Held = append(plan.Held, rel)
+			continue
+		}
+		wanted[rel] = true
 		if created == "" {
 			created = today
 		}

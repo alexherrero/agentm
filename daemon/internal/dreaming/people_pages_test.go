@@ -54,7 +54,7 @@ func personPages(plan EntitiesPlan) map[string]EntityPage {
 
 func TestAPersonNeedsTwoPiecesOfSharedWork(t *testing.T) {
 	root, x := entityVault(t, peopleFixture())
-	plan, err := PlanEntities(root, x, peopleOpts(t), nil, entityNow)
+	plan, err := PlanEntities(root, filepath.Dir(root), x, peopleOpts(t), nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestAPersonUnderTheBarLosesTheirPageAndTheWallHolds(t *testing.T) {
 	note.SetRecallExemptAreas([]string{"personal/Home/Important Docs"})
 	t.Cleanup(func() { note.SetRecallExemptAreas(nil) })
 	root, x := entityVault(t, notes)
-	first, err := PlanEntities(root, x, peopleOpts(t), nil, entityNow)
+	first, err := PlanEntities(root, filepath.Dir(root), x, peopleOpts(t), nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestAPersonUnderTheBarLosesTheirPageAndTheWallHolds(t *testing.T) {
 	if _, err := x.Reconcile(); err != nil {
 		t.Fatal(err)
 	}
-	second, err := PlanEntities(root, x, peopleOpts(t), nil, entityNow)
+	second, err := PlanEntities(root, filepath.Dir(root), x, peopleOpts(t), nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestAnEmailThreadCountsOnlyWhileTheSwitchIsOn(t *testing.T) {
 	opts := peopleOpts(t)
 	asked := 0
 	opts.Email = fixtureMail{threads: []EmailThread{{ID: "t1", Participants: []string{"Ana Ruiz", "Pat Owner"}}}, asked: &asked}
-	off, err := PlanEntities(root, x, opts, nil, entityNow)
+	off, err := PlanEntities(root, filepath.Dir(root), x, opts, nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestAnEmailThreadCountsOnlyWhileTheSwitchIsOn(t *testing.T) {
 		t.Errorf("with the switch off, Ana's page %v and the source was asked %d time(s)", ok, asked)
 	}
 	opts.EmailEnabled = true
-	on, err := PlanEntities(root, x, opts, nil, entityNow)
+	on, err := PlanEntities(root, filepath.Dir(root), x, opts, nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}

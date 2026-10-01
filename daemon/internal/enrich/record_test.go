@@ -180,3 +180,21 @@ func TestARecordGetsThePeopleItsOwnWordsName(t *testing.T) {
 		t.Errorf("people: %q, want [Ravi Shah]\n%s", got, next)
 	}
 }
+
+// A pass that grounds nobody takes an earlier pass's people away (the release
+// review): the entity builder counts a record for everyone it names.
+func TestARecordsPeopleGoWhenItsWordsNoLongerNameThem(t *testing.T) {
+	record := strings.Replace(decisionRecord, "importance: 8\n", "importance: 8\npeople: [Old Name]\n", 1)
+	r := deepResponse()
+	r.People = []string{"Old Name"} // the text names no one
+	next, err := ComposeRecord(record, r, recordStamp(), DepthDeep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := frontmatterValue(next, "people"); got != "" {
+		t.Errorf("people: %q survives a pass that grounded nobody", got)
+	}
+	if !strings.Contains(next, "importance: 8\n") || !strings.Contains(next, "tags: [") {
+		t.Errorf("dropping people took more with it:\n%s", next)
+	}
+}

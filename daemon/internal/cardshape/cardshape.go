@@ -9,8 +9,11 @@
 package cardshape
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // ReadOrder is what you read, in panel order. `type` and `kind` share a slot;
@@ -60,12 +63,14 @@ var EntityFolders = map[string]string{
 // run of anything but a letter or a digit made one hyphen.
 // `alexherrero/agentm#466` is `alexherrero-agentm-466`,
 // `alexherrero/agentm@v10.0.0` is `alexherrero-agentm-v10-0-0`, and `Jane Doe`
-// is `jane-doe`.
+// is `jane-doe`. Letters of any script stay, so `Дмитрий Иванов` keeps its
+// name; an id with no letter or digit at all is named by a short hash of it,
+// never the empty name every such id would share.
 func EntitySlug(id string) string {
 	var b strings.Builder
 	dash := false
 	for _, c := range strings.ToLower(id) {
-		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+		if unicode.IsLetter(c) || unicode.IsDigit(c) {
 			b.WriteRune(c)
 			dash = false
 			continue
@@ -75,7 +80,12 @@ func EntitySlug(id string) string {
 			dash = true
 		}
 	}
-	return strings.TrimSuffix(b.String(), "-")
+	slug := strings.TrimSuffix(b.String(), "-")
+	if slug == "" {
+		sum := sha256.Sum256([]byte(id))
+		return "entity-" + hex.EncodeToString(sum[:4])
+	}
+	return slug
 }
 
 var (
