@@ -41,8 +41,12 @@ func (f *fixture) call(prompt string) (string, error) {
 	if f.answer != nil {
 		return f.answer(prompt)
 	}
+	// Every source the cluster showed: the lesson is true of all of them. A
+	// number past the cluster's size is ignored, so the one answer serves
+	// every fixture.
 	return `{"subject":"worktree-guard","title":"A worktree guard refuses what it cannot verify",
-	          "lesson":"The guard reads the command, not the intent.","why":"Three tasks hit it."}`, nil
+	          "lesson":"The guard reads the command, not the intent.","why":"Three tasks hit it.",
+	          "sources":[1,2,3,4,5,6,7,8,9,10]}`, nil
 }
 
 func (f *fixture) run(t *testing.T, opt Options) Report {
@@ -579,5 +583,67 @@ func TestAWrittenLessonPassesTheVaultsGates(t *testing.T) {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Errorf("%s refuses the lesson: %v\n%s", filepath.Base(gate[0]), err, out)
 		}
+	}
+}
+
+// #749: a cluster gathers notes that share a word, and the lesson written from
+// it is often true of only some of them. Only the sources the lesson names are
+// recorded as what taught it and stamped consolidated_into; a source it does
+// not name keeps its rank.
+func TestCoveredKeepsOnlyTheSourcesTheLessonNames(t *testing.T) {
+	c := Cluster{Subject: "inbox", Sources: []Source{{Rel: "a.md"}, {Rel: "b.md"}, {Rel: "c.md"}}}
+	got, err := Covered(Lesson{Sources: []int{3, 1, 3, 0, 9}}, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Sources) != 2 || got.Sources[0].Rel != "c.md" || got.Sources[1].Rel != "a.md" {
+		t.Errorf("covered %+v, want c.md then a.md once each", got.Sources)
+	}
+	if _, err := Covered(Lesson{}, c); err == nil {
+		t.Error("a lesson that named no source was accepted")
+	}
+	if _, err := Covered(Lesson{Sources: []int{4, 0}}, c); err == nil {
+		t.Error("a lesson that named only sources it was never shown was accepted")
+	}
+	arc := Cluster{Subject: "arc", Arc: "vault-perfection", Sources: c.Sources}
+	if got, err := Covered(Lesson{}, arc); err != nil || len(got.Sources) != 3 {
+		t.Errorf("an arc's synthesis rests on all its sources: %+v, %v", got.Sources, err)
+	}
+}
+
+func TestOnlyTheCoveredCardsAreStampedAndNamed(t *testing.T) {
+	f := newFixture(t)
+	f.answer = func(prompt string) (string, error) {
+		return `{"subject":"worktree-guard","title":"A worktree guard refuses what it cannot verify",
+		          "lesson":"The guard reads the command, not the intent.","why":"Two tasks hit it.",
+		          "sources":[1,2]}`, nil
+	}
+	cards := []string{
+		f.card(t, "semantic", "a", "2026-08-01", "sess-1", "worktree-guard"),
+		f.card(t, "semantic", "b", "2026-08-20", "sess-2", "worktree-guard"),
+		f.card(t, "semantic", "c", "2026-09-10", "sess-3", "worktree-guard"),
+	}
+	rep := f.run(t, Options{})
+	if len(rep.Lessons) != 1 {
+		t.Fatalf("lessons %+v, errors %v", rep.Lessons, rep.Errors)
+	}
+	if w := rep.Lessons[0]; len(w.Sources) != 2 || len(w.Stamped) != 2 {
+		t.Errorf("the lesson names %v and stamped %v, want the 2 it rests on", w.Sources, w.Stamped)
+	}
+	raw, err := os.ReadFile(filepath.Join(f.vault, filepath.FromSlash(rep.Lessons[0].Rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(raw), "\n  - \"[["); n != 2 {
+		t.Errorf("consolidated_from lists %d sources, want 2:\n%s", n, raw)
+	}
+	stamped := 0
+	for _, p := range cards {
+		if b, _ := os.ReadFile(p); strings.Contains(string(b), "consolidated_into:") {
+			stamped++
+		}
+	}
+	if stamped != 2 {
+		t.Errorf("%d cards stamped, want the 2 the lesson rests on", stamped)
 	}
 }

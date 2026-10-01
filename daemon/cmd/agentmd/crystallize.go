@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
@@ -44,6 +45,9 @@ type crystallizeRun struct {
 	Errors       []string                `json:"errors,omitempty"`
 	ElapsedSec   float64                 `json:"elapsed_seconds"`
 	DryRun       bool                    `json:"dry_run,omitempty"`
+	// Recheck is a `-recheck` run's findings: per lesson, the stamped cards it
+	// is true of and the ones it releases (#749).
+	Recheck []crystallize.RecheckLesson `json:"recheck,omitempty"`
 }
 
 // CrystallizeRunsFile is where the record lives, beside `enrich-runs.jsonl`.
@@ -95,6 +99,9 @@ func cmdCrystallize(args []string) error {
 	model := fs.String("model", "", "override the strong-tier model")
 	yes := fs.Bool("yes", false,
 		"run this one pass even though the weekly phase is off")
+	recheck := fs.Bool("recheck", false,
+		"ask which stamped cards each lesson is true of, and write a manifest releasing the rest (#749); "+
+			"apply it with agentmdream apply -manifest")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -141,6 +148,9 @@ func cmdCrystallize(args []string) error {
 
 	started := time.Now()
 	now := started
+	if *recheck {
+		return runRecheck(cfg, caller, meter, route, *dryRun, *cap, *asJSON, now)
+	}
 	rep, err := crystallize.Run(crystallize.Options{
 		Root: crystallizeMemoryRoot(cfg), Vault: cfg.VaultPath, Now: now,
 		Topic: *topic, Cap: *cap, DryRun: *dryRun,
@@ -203,6 +213,86 @@ func cmdCrystallize(args []string) error {
 		"model_calls":    rec.ModelCalls,
 		"lessons":        len(rep.Lessons),
 	})
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(blob))
+	return nil
+}
+
+// runRecheck asks, for every lesson with stamped cards, which of them the
+// lesson is true of, and writes the release of the rest as a manifest the
+// dreaming binary makes through its journal (#749). It writes no note itself.
+func runRecheck(cfg *config.Config, caller *enrich.Caller, meter *enrich.Meter, route tiers.Routing,
+	dryRun bool, cap int, asJSON bool, now time.Time) error {
+	root := crystallizeMemoryRoot(cfg)
+	call := func(prompt string) (string, error) {
+		if dryRun {
+			return "", fmt.Errorf("dry run: no call made")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), caller.Timeout)
+		defer cancel()
+		return caller.Call(ctx, prompt)
+	}
+	caller.SystemPrompt = "You check which notes a written lesson is actually true of. Answer with one JSON object and nothing else."
+	found, acts, err := crystallize.PlanRecheck(root, call, cap)
+	if err != nil {
+		return err
+	}
+	total := meter.Total()
+	rec := crystallizeRun{At: now.UTC(), Job: string(tiers.Crystallize), Model: route.Model,
+		Tier: string(route.Tier), Why: route.Why, ModelCalls: total.Calls, Tokens: total.Added(),
+		TotalCostUSD: total.CostUSD, Usage: meter.ByTier(), ByJob: meter.ByJob(), Recheck: found, DryRun: dryRun}
+	manifest := ""
+	if !dryRun {
+		if err := appendCrystallizeRun(cfg, rec); err != nil {
+			fmt.Fprintf(os.Stderr, "crystallize: writing the run record: %v\n", err)
+		}
+		if len(acts) > 0 {
+			manifest = filepath.Join(root, "diagnostics", "migrations", "crystallize-recheck",
+				now.Format("2006-01-02")+"-recheck.json")
+			if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
+				return err
+			}
+			blob, err := json.MarshalIndent(map[string]any{
+				"job":    "manifest-crystallize-recheck",
+				"reason": "release the stamped cards a lesson is not true of (#749)",
+				"acts":   acts}, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(manifest, append(blob, '\n'), 0o644); err != nil {
+				return err
+			}
+		}
+	}
+	if asJSON {
+		blob, err := json.MarshalIndent(map[string]any{"run": rec, "manifest": manifest, "acts": len(acts)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(blob))
+		return nil
+	}
+	released := 0
+	for _, f := range found {
+		released += len(f.Released)
+		switch {
+		case f.Error != "":
+			fmt.Printf("  %s: %s\n", f.Lesson, f.Error)
+		case len(f.Released) > 0:
+			fmt.Printf("  %s keeps %d, releases %d: %s — %s\n", f.Lesson, len(f.Kept), len(f.Released),
+				strings.Join(f.Released, ", "), f.Reason)
+		default:
+			fmt.Printf("  %s keeps all %d\n", f.Lesson, len(f.Kept))
+		}
+	}
+	fmt.Printf("crystallize -recheck: %d lesson(s) asked, %d card(s) to release, %d act(s)\n", len(found), released, len(acts))
+	if manifest != "" {
+		fmt.Printf("  manifest %s\n  check it: agentmdream apply -manifest %s\n", manifest, manifest)
+	}
+	blob, err := json.Marshal(map[string]any{"total_cost_usd": rec.TotalCostUSD, "tokens": rec.Tokens,
+		"model_calls": rec.ModelCalls})
 	if err != nil {
 		return err
 	}

@@ -374,6 +374,14 @@ type Lesson struct {
 	// Skip, when set, is the model declining: the recurrence is real and the
 	// lesson is not. Nothing is written and the reason is reported.
 	Skip string `json:"skip,omitempty"`
+	// Sources are the numbers, from 1, of the sources the lesson rests on. A
+	// cluster gathers notes that share a word, and a lesson written from it is
+	// often true of only some of them; only those are named as what taught it
+	// and stamped `consolidated_into`, because the stamp drops a source to
+	// x0.30 and a source the lesson does not cover would then lose recall for
+	// nothing (#749: "three specialist sub-agents" was demoted under "inbox is
+	// a landing strip"). An arc's synthesis names none and rests on them all.
+	Sources []int `json:"sources,omitempty"`
 }
 
 // Written is one lesson as the run record and the morning note read it.
@@ -435,7 +443,13 @@ method, not merely the same word — answer:
 
 {"subject": "<kebab-case filename stem>", "title": "<one line, sentence case>",
  "lesson": "<two to five sentences: what is true, and what to do about it>",
- "why": "<one sentence: why this is a lesson and not a coincidence>"}
+ "why": "<one sentence: why this is a lesson and not a coincidence>",
+ "sources": [<the numbers of the sources this lesson is true of>]}
+
+List only the sources the lesson rests on. A source that shares the word and
+not the lesson is left out: every source you list is marked as taught by this
+lesson and ranks below it from then on, so listing one the lesson does not
+cover hides it for nothing.
 
 If they share a word and not a lesson, or if what they share is too thin to be
 worth keeping forever, answer:
@@ -491,6 +505,32 @@ func ParseLesson(out string) (Lesson, error) {
 			"lesson nor a skip")
 	}
 	return l, nil
+}
+
+// Covered is the cluster narrowed to the sources the lesson names. An arc's
+// synthesis rests on all of its sources. A recurrence's lesson must name at
+// least one of them, by a number the prompt showed: an answer that names
+// none, or only numbers that were never shown, is a call that did something
+// other than what was asked, and writing it would stamp sources at random.
+func Covered(l Lesson, c Cluster) (Cluster, error) {
+	if c.Arc != "" && len(l.Sources) == 0 {
+		return c, nil
+	}
+	out := c
+	out.Sources = nil
+	seen := map[int]bool{}
+	for _, n := range l.Sources {
+		if n < 1 || n > len(c.Sources) || seen[n] {
+			continue
+		}
+		seen[n] = true
+		out.Sources = append(out.Sources, c.Sources[n-1])
+	}
+	if len(out.Sources) == 0 {
+		return Cluster{}, fmt.Errorf("crystallize: the lesson named none of the "+
+			"%d sources it was shown as what it rests on", len(c.Sources))
+	}
+	return out, nil
 }
 
 func truncate(s string, n int) string {
@@ -712,7 +752,12 @@ func Run(opt Options, call Caller) (Report, error) {
 				Sources: len(c.Sources), Reason: l.Skip})
 			continue
 		}
-		w, err := write(opt, l, c)
+		covered, err := Covered(l, c)
+		if err != nil {
+			rep.Errors = append(rep.Errors, fmt.Sprintf("%s: %v", c.Subject, err))
+			continue
+		}
+		w, err := write(opt, l, covered)
 		if err != nil {
 			rep.Errors = append(rep.Errors, fmt.Sprintf("%s: %v", c.Subject, err))
 			continue
