@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
 	"time"
 )
 
@@ -72,6 +74,8 @@ type Journal struct {
 	// the governance line and the applied line: Commit returns its error
 	// instead of writing the applied line.
 	crashBeforeApplied func() error
+	// rename, when set, is a test's stand-in for os.Rename in a move.
+	rename func(oldpath, newpath string) error
 	// EngineStateDir is where the governance journal lives, for the lines a
 	// resume owes.
 	EngineStateDir string
@@ -256,18 +260,36 @@ func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) 
 		switch {
 		case srcErr != nil && dstErr == nil && Hash(got) == e.AfterHash:
 			return settle(KindApplied, "found applied on resume")
-		case srcErr == nil && dstErr != nil && Hash(cur) == e.BeforeHash:
+		case srcErr != nil && dstErr == nil && Hash(got) == e.BeforeHash:
+			// The crash fell between the rename and the rewrite: the note is
+			// at its new path with its old bytes. The rewrite is what is left.
 			if err := writeAtomic(dst, after); err != nil {
 				return "", err
 			}
-			if err := os.Remove(src); err != nil {
+			return settle(KindApplied, "finished on resume: the note was renamed, not yet rewritten")
+		case srcErr == nil && dstErr != nil && Hash(cur) == e.BeforeHash:
+			note, err := j.moveNote(src, dst, cur, after)
+			var refused *renameRefused
+			if errors.As(err, &refused) {
+				return settle(KindSkipped, refused.Error())
+			}
+			if errors.Is(err, ErrConflict) {
+				return settle(KindSkipped, ErrConflict.Error())
+			}
+			if err != nil {
 				return "", err
 			}
-			return settle(KindApplied, "applied on resume")
+			if note == "" {
+				note = "applied on resume"
+			} else {
+				note = "applied on resume, " + note
+			}
+			return settle(KindApplied, note)
 		case srcErr == nil && dstErr == nil && Hash(cur) == e.BeforeHash && Hash(got) == e.AfterHash:
-			// The crash fell between the two halves of the move: the new copy
-			// is written and the old one not yet removed. Removing it is the
-			// half that is left; reading this as a conflict would leave both.
+			// A move journaled before moves were renames, crashed between its
+			// two halves: the new copy is written and the old one not yet
+			// removed. Removing it is the half that is left; reading this as
+			// a conflict would leave both.
 			if err := os.Remove(src); err != nil {
 				return "", err
 			}
@@ -344,14 +366,14 @@ func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Tim
 	skipped := func(note string) (string, error) {
 		return KindSkipped, j.Append(Entry{Kind: KindSkipped, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To, Note: note})
 	}
-	applied := func() (string, error) {
+	applied := func(note string) (string, error) {
 		if err := j.governance(intent, now); err != nil {
 			return "", err
 		}
 		if j.crashBeforeApplied != nil {
 			return "", j.crashBeforeApplied()
 		}
-		return KindApplied, j.Append(Entry{Kind: KindApplied, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To})
+		return KindApplied, j.Append(Entry{Kind: KindApplied, RunID: runID, TS: now, ID: id, Job: in.Job, Rel: in.Rel, To: in.To, Note: note})
 	}
 	src := filepath.Join(vault, filepath.FromSlash(in.Rel))
 	if in.Delete {
@@ -368,7 +390,7 @@ func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Tim
 		if err := os.Remove(src); err != nil {
 			return "", err
 		}
-		return applied()
+		return applied("")
 	}
 	if create {
 		if _, err := os.Stat(src); err == nil {
@@ -377,7 +399,7 @@ func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Tim
 		if err := writeAtomic(src, in.After); err != nil {
 			return "", err
 		}
-		return applied()
+		return applied("")
 	}
 	cur, err := os.ReadFile(src)
 	if os.IsNotExist(err) {
@@ -399,18 +421,93 @@ func (j *Journal) Commit(vault, runID string, id string, in Intent, now time.Tim
 		if _, err := os.Stat(dst); err == nil {
 			return skipped("the destination is taken")
 		}
-		if err := writeAtomic(dst, in.After); err != nil {
+		note, err := j.moveNote(src, dst, in.Before, in.After)
+		var refused *renameRefused
+		if errors.As(err, &refused) {
+			return skipped(refused.Error())
+		}
+		if errors.Is(err, ErrConflict) {
+			return skipped(ErrConflict.Error())
+		}
+		if err != nil {
+			return "", err
+		}
+		return applied(note)
+	}
+	if err := writeAtomic(src, in.After); err != nil {
+		return "", err
+	}
+	return applied("")
+}
+
+// renameFile is the rename a move makes; a Journal's own `rename` field
+// stands in for it in tests.
+func (j *Journal) renameFile(oldpath, newpath string) error {
+	if j.rename != nil {
+		return j.rename(oldpath, newpath)
+	}
+	return os.Rename(oldpath, newpath)
+}
+
+// renameRefused is a rename the filesystem would not make, other than one
+// across devices: on Windows, a note another process holds open. The move is
+// skipped with the source where it was, and a later night plans it again.
+type renameRefused struct{ err error }
+
+func (r *renameRefused) Error() string { return "the note could not be renamed: " + r.err.Error() }
+
+// moveNote moves a note from src to dst by renaming it, so the file keeps its
+// identity: its inode on disk, and through a sync client such as Google
+// Drive, its id in the cloud. Writing a copy at dst and deleting src is the
+// same move to the vault but a new file to everything that syncs it. When the
+// move also changes the note (its links repaired), the renamed file is
+// rewritten in place, which keeps the identity too.
+//
+// before is the source's bytes as hash-checked by the caller. If they change
+// between that check and the rename, the rename is undone and ErrConflict
+// returned, so the move is skipped with the edit where it was made. A rename
+// across devices falls back to the copy and says so in the returned note; any
+// other refused rename is a *renameRefused, the source untouched.
+func (j *Journal) moveNote(src, dst string, before, after []byte) (string, error) {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", err
+	}
+	if err := j.renameFile(src, dst); err != nil {
+		if !crossDevice(err) {
+			return "", &renameRefused{err: err}
+		}
+		if err := writeAtomic(dst, after); err != nil {
 			return "", err
 		}
 		if err := os.Remove(src); err != nil {
 			return "", err
 		}
-		return applied()
+		return "moved by copy: the destination is on another device", nil
 	}
-	if err := writeAtomic(src, in.After); err != nil {
+	if Hash(after) == Hash(before) {
+		return "", nil
+	}
+	cur, err := os.ReadFile(dst)
+	if err != nil {
 		return "", err
 	}
-	return applied()
+	if Hash(cur) != Hash(before) {
+		if err := j.renameFile(dst, src); err != nil {
+			return "", err
+		}
+		return "", ErrConflict
+	}
+	return "", writeAtomic(dst, after)
+}
+
+// crossDevice reports a rename that failed only because src and dst are on
+// different filesystems: EXDEV on Unix, ERROR_NOT_SAME_DEVICE (17) on Windows.
+func crossDevice(err error) bool {
+	if errors.Is(err, syscall.EXDEV) {
+		return true
+	}
+	var errno syscall.Errno
+	return runtime.GOOS == "windows" && errors.As(err, &errno) && errno == 17
 }
 
 func writeAtomic(p string, content []byte) error {
