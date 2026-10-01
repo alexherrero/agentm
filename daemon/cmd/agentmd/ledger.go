@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -60,11 +62,12 @@ func cmdLedger(args []string) error {
 	}
 	defer idx.Close()
 
-	led, err := ledger.Open(idx.DB())
+	ctx := context.Background()
+	led, err := openLedger(ctx, cfg, idx, os.Stderr)
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
+	defer led.Close()
 
 	switch {
 	case *forget != "":
@@ -328,6 +331,144 @@ func enrichRebuilder(vault string) ledger.Scanner {
 	}
 }
 
+// ledgerPath is the enrichment ledger's file: in the engine state directory,
+// with the night's other records, where an index schema bump cannot reach it.
+func ledgerPath(cfg *config.Config) string {
+	return filepath.Join(enrichStateDir(cfg), ledger.FileName)
+}
+
+// openLedger opens the ledger's file, making it the first time.
+//
+// The first time is the move out of the index (#783): every row the index still
+// holds is carried across as it stands, and the index's table is then dropped,
+// so no second copy goes stale beside the first. A file that is missing with
+// nothing to carry — a new machine, or a ledger file that was lost — is rebuilt
+// from the stamps the notes carry, and says so, because a rebuilt ledger has
+// lost every input key and the night after it re-judges more than it would
+// have.
+//
+// Made under a name of its own and linked into place, so a run killed half way
+// leaves no file a later run would trust as complete, and two runs making it
+// at once cannot replace one another's work: the second finds the first's file
+// and opens that.
+func openLedger(ctx context.Context, cfg *config.Config, idx *index.Index,
+	log io.Writer) (*ledger.Ledger, error) {
+	path := ledgerPath(cfg)
+	if _, err := os.Stat(path); err == nil {
+		return ledger.OpenFile(path)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("ledger: %w", err)
+	}
+
+	tmp := fmt.Sprintf("%s.new-%d", path, os.Getpid())
+	led, err := ledger.OpenFile(tmp)
+	if err != nil {
+		return nil, err
+	}
+	discard := func() {
+		led.Close()
+		os.Remove(tmp)
+		os.Remove(tmp + "-journal")
+	}
+	carried, err := led.CarryFrom(ctx, idx.DB())
+	if err != nil {
+		discard()
+		return nil, err
+	}
+	recovered := 0
+	if carried == 0 {
+		rep, err := led.Rebuild(ctx, ledger.StageEnrich, enrichRebuilder(cfg.VaultPath))
+		if err != nil {
+			discard()
+			return nil, err
+		}
+		recovered = rep.Recovered
+	}
+	if err := led.Close(); err != nil {
+		discard()
+		return nil, err
+	}
+	if err := os.Link(tmp, path); err != nil {
+		os.Remove(tmp)
+		if errors.Is(err, fs.ErrExist) {
+			return ledger.OpenFile(path)
+		}
+		return nil, fmt.Errorf("ledger: putting %s in place: %w", path, err)
+	}
+	os.Remove(tmp)
+	if carried > 0 {
+		fmt.Fprintf(log, "ledger: moved %d row(s) out of the index into %s\n", carried, path)
+		if err := ledger.DropFrom(ctx, idx.DB()); err != nil {
+			// Reported, not fatal: the file is in place and complete. The stale
+			// table only matters if the file is lost, and then it is carried
+			// back rather than rebuilt from the notes — still keyed by content,
+			// so never wrong about what it claims, only behind.
+			fmt.Fprintf(log, "ledger: the index still holds its old table: %v\n", err)
+		}
+	} else {
+		fmt.Fprintf(log, "ledger: %s was missing, so it was rebuilt from the notes' "+
+			"stamps: %d row(s), none with an input key\n", path, recovered)
+	}
+	return ledger.OpenFile(path)
+}
+
+// followMoves moves the ledger's rows after the notes the night moved, over
+// one population of vault-relative paths, and says how many it moved.
+//
+// A note's existence is checked with its exact spelling. The vault sits on a
+// case-insensitive disk, where the old path of a case-only rename (`Agent/` to
+// `agent/`) still answers a plain stat, and the row would never move.
+func followMoves(ctx context.Context, cfg *config.Config, led *ledger.Ledger,
+	population []string, log io.Writer) {
+	if led == nil || len(population) == 0 {
+		return
+	}
+	n, err := led.Follow(ctx, ledger.StageEnrich, population,
+		func(rel string) bool { return existsExactly(cfg.VaultPath, rel) },
+		func(rel, version, rules string) (string, bool) {
+			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
+			if err != nil {
+				return "", false
+			}
+			fp := &enrich.Fingerprint{Version: version, RulesHash: rules}
+			return fp.Key(string(raw)), true
+		})
+	if err != nil {
+		// Reported, not fatal: an unfollowed row costs the moved note one
+		// judgment, which is what it cost before rows followed at all.
+		fmt.Fprintf(log, "ledger: following moved notes: %v\n", err)
+		return
+	}
+	if n > 0 {
+		fmt.Fprintf(log, "ledger: followed %d moved note(s) to their new path\n", n)
+	}
+}
+
+// existsExactly reports whether a vault-relative path names a file, every
+// segment spelled exactly as the directory lists it.
+func existsExactly(vault, rel string) bool {
+	dir := vault
+	parts := strings.Split(rel, "/")
+	for i, part := range parts {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return false
+		}
+		found := false
+		for _, e := range entries {
+			if e.Name() == part {
+				found = i == len(parts)-1 || e.IsDir()
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+		dir = filepath.Join(dir, part)
+	}
+	return true
+}
+
 // recordEnrich writes one ledger row, reporting a failure rather than raising it.
 //
 // A ledger write that fails must not fail an enrichment that already landed. The
@@ -368,6 +509,7 @@ func pendingFor(ctx context.Context, stage string, cfg *config.Config,
 	if err != nil {
 		return ledger.Report{}, err
 	}
+	followMoves(ctx, cfg, led, queue, os.Stderr)
 	var targets []ledger.Target
 	for _, rel := range queue {
 		raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))

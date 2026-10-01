@@ -1330,10 +1330,11 @@ func cmdEnrich(args []string) error {
 	// run already wrote — which on the live corpus means the notes that landed
 	// below the confidence floor, because those keep `status: unfiled` and are
 	// therefore offered by the queue again on every cycle.
-	led, err := ledger.Open(idx.DB())
+	led, err := openLedger(context.Background(), cfg, idx, os.Stderr)
 	if err != nil {
 		return err
 	}
+	defer led.Close()
 
 	// The operator's budget, which a flag may lower and never raise: a by-hand
 	// run measuring the first few notes wants a smaller slice, and nothing run
@@ -1372,6 +1373,9 @@ func cmdEnrich(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Before anything reads the ledger: a note the night moved since its last
+	// judgment takes its row with it, rather than reading as never judged.
+	followMoves(context.Background(), cfg, led, queue, os.Stderr)
 
 	// A random sample is drawn once, up front, and then served page by page.
 	//
