@@ -363,9 +363,12 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	// The project a caller names wins. Otherwise the session's folder names it
 	// (agentm-vault § Projects and tasks, amended 2026-09-28) — except for a
 	// convention or preference, which is a rule for every project and carries
-	// none unless its writer sets one.
+	// none unless its writer sets one. Only a type the caller named exempts a
+	// note: the contract's default type is itself `preference`, and an untyped
+	// capture defaulted to it is not a rule anyone wrote (task 178 review).
 	project := strings.TrimSpace(req.Project)
-	if project == "" && !projectbind.GlobalTypes[noteType] {
+	namedGlobal := strings.TrimSpace(req.Type) != "" && projectbind.GlobalTypes[noteType]
+	if project == "" && !namedGlobal {
 		project = projectbind.Resolve(c.cfg.VaultPath, req.Cwd)
 	}
 

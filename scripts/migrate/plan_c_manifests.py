@@ -278,7 +278,9 @@ def plan_labels(memory_root: Path, claude_projects: "Path | None" = None) -> dic
             continue
         tr = transcripts.get(f.get("session", ""))
         cwd = session_binding.transcript_cwd(tr) if tr else None
-        project = session_binding.project_for_directory(cwd, vault_root) if cwd else None
+        # The binding the trace writer itself uses: the first directory in the
+        # head that binds, else the folder the host filed the transcript under.
+        project = session_binding.for_transcript(tr, memory_root=memory_root).project if tr else None
         rel = p.relative_to(memory_root).as_posix()
         if not project:
             unresolved.append({"note": rel, "why": "no transcript" if not tr else
@@ -286,11 +288,14 @@ def plan_labels(memory_root: Path, claude_projects: "Path | None" = None) -> dic
             continue
         trace_project[p.stem] = project
         acts.append(act(rel, p.read_bytes(), _with_project(text, project),
-                        f"its session ran in {cwd}, which {project}'s project.yaml lists"))
+                        f"its session's transcript ({tr.parent.name}) binds to {project}'s project.yaml"))
         labels.append({"note": rel, "project": project, "by": "transcript"})
-    record_project = {}
-    for p in (vault_root / "projects").glob("*/**/*.md"):
-        record_project.setdefault(p.stem, p.relative_to(vault_root).parts[1])
+    # A record's file name names its project only when one project holds it:
+    # `tracker`, `plan` and `conventions` sit in many, and a bare link to one of
+    # them says nothing about which (task 178 review, 2026-09-30).
+    record_projects = defaultdict(set)
+    for p in sorted((vault_root / "projects").glob("*/**/*.md")):
+        record_projects[p.stem].add(p.relative_to(vault_root).parts[1])
     link = re.compile(r"\[\[([^\]|#]+)")
     for cls in _CLASSES:
         for p in sorted((memory_root / "memory" / cls).glob("*.md")):
@@ -303,7 +308,7 @@ def plan_labels(memory_root: Path, claude_projects: "Path | None" = None) -> dic
                 continue
             targets = link.findall(f.get("derived_from", "") + " " + f.get("related", ""))
             targets += re.findall(r"[\w./-]+\.md", f.get("derived_from", ""))
-            found = set()
+            found, unclear = set(), False
             for t in targets:
                 stem = Path(t.strip()).name.removesuffix(".md")
                 parts = Path(t.strip()).parts
@@ -311,9 +316,11 @@ def plan_labels(memory_root: Path, claude_projects: "Path | None" = None) -> dic
                     found.add(trace_project[stem])
                 elif len(parts) > 1 and parts[0] == "projects":
                     found.add(parts[1])
-                elif stem in record_project:
-                    found.add(record_project[stem])
-            if len(found) != 1:
+                elif len(record_projects.get(stem, ())) == 1:
+                    found |= record_projects[stem]
+                elif record_projects.get(stem):
+                    unclear = True
+            if unclear or len(found) != 1:
                 continue
             project = found.pop()
             rel = p.relative_to(memory_root).as_posix()
@@ -333,6 +340,8 @@ PASSES = {"traces": plan_traces, "chunks": plan_chunks, "ideas": plan_ideas, "la
 def _memory_root(arg: "str | None") -> Path:
     if arg:
         return Path(arg)
+    if str(_REPO / "scripts") not in sys.path:
+        sys.path.insert(0, str(_REPO / "scripts"))
     import harness_memory  # noqa: E402 — resolved at run time, never cached
     root = harness_memory.memory_root()
     if root is None:

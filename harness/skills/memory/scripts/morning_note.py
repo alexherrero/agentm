@@ -731,7 +731,9 @@ def _by_job(runs: list) -> dict:
             cur = out.setdefault(job, {"tokens": 0, "calls": 0, "cost": 0.0})
             cur["tokens"] += added
             cur["calls"] += int(u.get("calls") or 0)
-            cur["cost"] += float(u.get("cost_usd") or 0)
+            # `total_cost_usd`, the key `enrich.Usage` writes; this read
+            # `cost_usd` until 2026-09-30 and printed $0.00 on every line.
+            cur["cost"] += float(u.get("total_cost_usd") or 0)
     return out
 
 

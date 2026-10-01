@@ -275,6 +275,31 @@ class LabelBackfillTests(unittest.TestCase):
         self.assertEqual(pcm.plan_labels(self.root, claude_projects=self.claude)["acts"], [],
                          "a re-plan after the backfill labels nothing twice")
 
+    def test_a_record_name_two_projects_share_labels_nothing(self):
+        """`[[tracker]]` sits in many projects; the first one read used to win
+        (stack-sherwood and stack-dev-setup were labelled `home`)."""
+        for slug in ("agentm", "crickets"):
+            (self.vault / "projects" / slug / "tracker.md").write_text("# tracker\n", encoding="utf-8")
+        self._session("s-agentm", self.code / "agentm")
+        self._trace("t-agentm", "s-agentm")
+        self._card("stack-crickets", "reference", related='["[[tracker]]"]')
+        self._card("mixed", "reference", related='["[[tracker]]", "[[t-agentm]]"]')
+        m = pcm.plan_labels(self.root, claude_projects=self.claude)
+        self.assertEqual({l["note"].rsplit("/", 1)[-1] for l in m["labels"]}, {"t-agentm.md"})
+
+    def test_a_trace_whose_session_moved_into_its_repo_is_labelled(self):
+        """The head records only a scratch workspace; the host filed the
+        transcript under the repo's folder."""
+        import session_binding
+        d = self.claude / session_binding.host_folder_name(str(self.code / "crickets"))
+        d.mkdir(parents=True)
+        (d / "s-moved.jsonl").write_text(json.dumps({"type": "user", "cwd": "/tmp/scratch-workspace"}) + "\n",
+                                         encoding="utf-8")
+        self._trace("t-moved", "s-moved")
+        m = pcm.plan_labels(self.root, claude_projects=self.claude)
+        self.assertEqual([(l["note"].rsplit("/", 1)[-1], l["project"]) for l in m["labels"]],
+                         [("t-moved.md", "crickets")])
+
 
 if __name__ == "__main__":
     unittest.main()

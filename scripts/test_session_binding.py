@@ -185,6 +185,40 @@ class ProjectYamlBindingTests(unittest.TestCase):
         self.assertEqual(sb.read_binding(self.code / "crickets", self.memory_root),
                          sb.Binding("crickets", "012-ship-it"))
 
+    def _filed(self, folder_path, *cwds) -> Path:
+        """A transcript filed the way the host files one: under the folder name
+        it spells from `folder_path`, its head recording `cwds`."""
+        d = self.root / "claude-projects" / sb.host_folder_name(str(folder_path))
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / "session.jsonl"
+        path.write_text("\n".join(json.dumps({"type": "user", "cwd": str(c)}) for c in cwds) + "\n",
+                        encoding="utf-8")
+        return path
+
+    def test_a_session_that_moves_into_its_repo_binds_to_the_repo(self) -> None:
+        """A desktop session that opens in a scratch workspace and moves into a
+        repo past the head: the first cwd that binds wins, else the folder the
+        host filed the transcript under (the four pixelcity traces of 2026-09-29)."""
+        scratch = self.root / "scratch-workspace"
+        scratch.mkdir()
+        moved = self._filed(self.code / "crickets", scratch, self.code / "crickets")
+        self.assertEqual(sb.for_transcript(moved, memory_root=self.memory_root).project, "crickets")
+        past_the_head = self._filed(self.code / "crickets", scratch)
+        self.assertEqual(sb.for_transcript(past_the_head, memory_root=self.memory_root),
+                         sb.Binding("crickets", None))
+        worktree = self.code / "agentm" / ".claude" / "worktrees" / "slot"
+        self.assertEqual(sb.for_transcript(self._filed(worktree, scratch), memory_root=self.memory_root).project,
+                         "agentm")
+
+    def test_a_folder_no_project_names_stays_unbound(self) -> None:
+        scratch = self.root / "scratch-workspace"
+        scratch.mkdir()
+        self.assertEqual(sb.for_transcript(self._filed(scratch, scratch), memory_root=self.memory_root),
+                         sb.UNBOUND)
+        # The folder name spells `/` and `-` alike; a sibling is not a child.
+        sibling = self._filed(str(self.code / "crickets") + "-poc", scratch)
+        self.assertEqual(sb.for_transcript(sibling, memory_root=self.memory_root), sb.UNBOUND)
+
     def test_conventions_and_preferences_stay_global(self) -> None:
         b = sb.Binding("agentm", "178-dedupe")
         self.assertEqual(sb.stamps_for_type(b, "convention"), {})

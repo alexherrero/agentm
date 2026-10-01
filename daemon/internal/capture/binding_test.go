@@ -50,6 +50,9 @@ func TestACaptureIsLabelledWithItsSessionsProject(t *testing.T) {
 		"a preference":           {Request{Text: "Tabs, please.", Type: "preference", Cwd: filepath.Join(code, "agentm")}, ""},
 		"the caller's word wins": {Request{Text: "A crickets fix, named.", Type: "fix", Project: "crickets", Cwd: filepath.Join(code, "agentm")}, "crickets"},
 		"a named convention":     {Request{Text: "An agentm-only rule.", Type: "convention", Project: "agentm"}, "agentm"},
+		// The contract's default type is `preference`; a capture defaulted to it
+		// was not written as a rule, so its folder still labels it.
+		"an untyped capture": {Request{Text: "Something worth keeping from agentm.", Cwd: filepath.Join(code, "agentm")}, "agentm"},
 	} {
 		if got := label(c.req); got != c.want {
 			t.Errorf("%s: project %q, want %q", name, got, c.want)
