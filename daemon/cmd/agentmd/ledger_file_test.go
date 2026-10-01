@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -276,5 +277,118 @@ func TestAMovedNoteIsCurrentAtItsNewPath(t *testing.T) {
 	if rep.Eligible != 1 || rep.Current != 1 {
 		t.Errorf("after the move: eligible %d · current %d · pending %+v; want "+
 			"the moved note current", rep.Eligible, rep.Current, rep.Pending)
+	}
+}
+
+// The night's order (task 181 step 4): the notes owed by cause, never judged in
+// the tiers' own order, the rest least recently judged first, and the notes the
+// night is current on after all of them.
+func TestTheNightTakesNotesByCause(t *testing.T) {
+	day := func(d int) time.Time { return time.Date(2026, 9, d, 9, 0, 0, 0, time.UTC) }
+	// The tiers' order, as enrichServeOrder gives it: inbox, cards, records.
+	queue := []string{"inbox/new.md", "cards/current.md", "cards/never.md",
+		"cards/judgment-new.md", "cards/judgment-old.md", "cards/changed.md",
+		"records/deep.md", "records/never.md"}
+	causes := map[string]ledger.Cause{
+		"inbox/new.md":          ledger.CauseNever,
+		"cards/never.md":        ledger.CauseNever,
+		"records/never.md":      ledger.CauseNever,
+		"cards/changed.md":      ledger.CauseChanged,
+		"records/deep.md":       ledger.CausePass,
+		"cards/judgment-new.md": ledger.CauseJudgment,
+		"cards/judgment-old.md": ledger.CauseJudgment,
+	}
+	since := map[string]time.Time{
+		"cards/changed.md": day(20), "records/deep.md": day(25),
+		"cards/judgment-new.md": day(29), "cards/judgment-old.md": day(2),
+	}
+	got := orderByCause(queue, causes, since)
+	want := []string{"inbox/new.md", "cards/never.md", "records/never.md",
+		"cards/changed.md", "records/deep.md", "cards/judgment-old.md",
+		"cards/judgment-new.md", "cards/current.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("order = %v\nwant    %v", got, want)
+	}
+	if len(got) != len(queue) {
+		t.Errorf("the order dropped or doubled a note: %d of %d", len(got), len(queue))
+	}
+}
+
+// Two contract edits in a row, each to a field a judgment reads, through the
+// batch's own serve order: the second night does not re-pick the notes the
+// first night just judged. The queue used to serve by the note's age alone, so
+// after every edit the same oldest notes headed it again (#784).
+func TestTwoContractEditsDoNotRepickTheSameHeadNotes(t *testing.T) {
+	ctx := context.Background()
+	vault := t.TempDir()
+	cfg := configOverRules(t, vault, "fact")
+	cfg.IndexPath = filepath.Join(t.TempDir(), "index.db")
+	cfg.EngineStateDir = t.TempDir()
+	idx, err := index.Open(cfg.IndexPath, vault, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+	led, err := openLedger(ctx, cfg, idx, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer led.Close()
+
+	// Six judged cards, oldest first by age and by judgment alike.
+	names := []string{"a", "b", "c", "d", "e", "f"}
+	bodies := map[string]string{}
+	for i, n := range names {
+		rel := "memory/semantic/" + n + ".md"
+		body := writeNote(t, vault, rel, response(n, 0.9), enrich.Stamp{
+			Version: enrich.PassVersion, RulesHash: currentJudgmentHash(cfg)})
+		bodies[rel] = body
+		if err := idx.Upsert(note.Note{Rel: rel, Title: n, Body: body, Status: "active",
+			Captured: time.Date(2026, 8, 1+i, 9, 0, 0, 0, time.UTC), CapturedSource: "mtime",
+		}, 1, int64(len(body))); err != nil {
+			t.Fatal(err)
+		}
+		if err := led.Record(ctx, ledger.Entry{Stage: ledger.StageEnrich, Target: rel,
+			Version: enrich.PassVersion, RulesHash: currentJudgmentHash(cfg),
+			OutputKey: enrichFingerprint(cfg, nil).Key(body), Outcome: ledger.Done,
+			At: time.Date(2026, 9, 1+i, 9, 0, 0, 0, time.UTC)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	types := []string{"fact"}
+	night := func(day int) []string {
+		t.Helper()
+		// An edit a judgment reads: one more memory type.
+		types = append(types, fmt.Sprintf("kind%d", day))
+		writeRules(t, vault, types...)
+		if _, err := cfg.Rules.Refresh(time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		queue, err := enrichServeOrder(cfg, idx, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		causes, since, err := enrichCauses(ctx, cfg, led, queue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queue = orderByCause(queue, causes, since)
+		took := queue[:2]
+		for _, rel := range took {
+			if err := led.Record(ctx, ledger.Entry{Stage: ledger.StageEnrich, Target: rel,
+				Version: enrich.PassVersion, RulesHash: currentJudgmentHash(cfg),
+				OutputKey: enrichFingerprint(cfg, nil).Key(bodies[rel]), Outcome: ledger.Done,
+				At: time.Date(2026, 10, day, 9, 0, 0, 0, time.UTC)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return took
+	}
+	first, second := night(1), night(2)
+	if !reflect.DeepEqual(first, []string{"memory/semantic/a.md", "memory/semantic/b.md"}) {
+		t.Errorf("the first night took %v, want the two least recently judged", first)
+	}
+	if !reflect.DeepEqual(second, []string{"memory/semantic/c.md", "memory/semantic/d.md"}) {
+		t.Errorf("the second night took %v; it re-picked the first night's notes", second)
 	}
 }

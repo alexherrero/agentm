@@ -513,6 +513,22 @@ class TheNote(_Night):
         self.assertIn("19 card(s) stand refused at this pass.", text)
         self.assertNotIn("skipped free", text)
 
+    def test_the_enrichment_line_says_what_it_judged_by_cause(self):
+        """Task 181 step 4: the night takes what it owes by cause, and the line
+        says where it went — here the deep-pass backlog, with nothing never
+        judged waiting."""
+        self.full_night()
+        self.runs(_run(TONIGHT, judged_by={"deep pass": 40, "changed": 2},
+                       owed={"changed": 2, "deep pass": 456, "judgment": 3}))
+        text, *_ = self.build()
+        self.assertIn("By cause, judged 2 changed · 40 deep pass; owed at the start "
+                      "2 changed · 456 deep pass · 3 older contract.", text)
+
+    def test_a_run_record_without_causes_reads_as_it_did(self):
+        self.full_night()
+        text, *_ = self.build()
+        self.assertNotIn("By cause", text)
+
     def test_nothing_standing_says_nothing(self):
         """The silence has to mean 'none', not 'nobody counted' — a run record
         written before the refusal record existed carries neither number."""

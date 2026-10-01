@@ -478,7 +478,38 @@ def _enrichment_line(runs: list) -> str:
     stopped = [r["stopped_by"] for r in runs if r.get("stopped_by")]
     if stopped:
         line += f". Stopped by {stopped[-1]}"
-    return line + "." + _refusal_sentence(runs)
+    return line + "." + _cause_sentence(runs) + _refusal_sentence(runs)
+
+
+# The causes a note can be owed for, in the order the night takes them (the
+# daemon's ledger, task 181 step 4).
+CAUSE_ORDER = ("never", "changed", "retry", "deep pass", "judgment", "skipped")
+CAUSE_WORDS = {"never": "never judged", "changed": "changed", "retry": "retried",
+               "deep pass": "deep pass", "judgment": "older contract",
+               "skipped": "skipped before"}
+
+
+def _cause_sentence(runs: list) -> str:
+    """What the night judged and what it owed when it started, by cause.
+
+    The night takes the notes it owes by cause — never judged first, then
+    changed, then owed the deep pass, and a contract edit's re-judgments last —
+    so the counts say where the line went: a night that judged only the deep
+    pass while nothing stood never judged spent it on the backlog, as it should.
+    A run record written before the causes were counted carries neither, and
+    the sentence is left out rather than printed as zeros."""
+    judged: dict = {}
+    for r in runs:
+        for k, v in (r.get("judged_by") or {}).items():
+            judged[k] = judged.get(k, 0) + int(v or 0)
+    owed = (runs[-1].get("owed") or {}) if runs else {}
+    if not judged and not owed:
+        return ""
+
+    def counts(c: dict) -> str:
+        parts = [f"{int(c[k])} {CAUSE_WORDS[k]}" for k in CAUSE_ORDER if c.get(k)]
+        return " · ".join(parts) or "nothing"
+    return f" By cause, judged {counts(judged)}; owed at the start {counts(owed)}."
 
 
 def _refusal_sentence(runs: list) -> str:
