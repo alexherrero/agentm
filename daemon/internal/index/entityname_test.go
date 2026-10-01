@@ -128,3 +128,16 @@ func TestAQueryThatNamesNoEntityPageIsUntouched(t *testing.T) {
 		t.Errorf("a page written after the first lookup is not found by name: %v", out)
 	}
 }
+
+// A date-bounded search is a question about a time: the exact-name rule does
+// not serve a page outside the bound into it (the release review).
+func TestABoundedSearchIsNotGivenANamedPage(t *testing.T) {
+	x := namedVault(t)
+	out, err := x.Search(Query{Text: "alexherrero/crickets", K: 5, After: "2099-01-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Results) != 0 {
+		t.Errorf("After=2099-01-01 returned %s", out.Results[0].Path)
+	}
+}

@@ -66,6 +66,12 @@ type EntitiesPlan struct {
 	Counts map[string]int `json:"counts"`
 	// Skipped says why the builder did nothing, when it did nothing.
 	Skipped string `json:"skipped,omitempty"`
+	// Held is every page not written because a hand-written note sits at its
+	// path: the builder never overwrites a note it did not write.
+	Held []string `json:"held,omitempty"`
+	// PeopleHeld is every note the people half could not read tonight; while
+	// any is listed, the people pages stand as they were.
+	PeopleHeld []string `json:"people_held,omitempty"`
 }
 
 // EntityThresholds are the contract's bars, or the defaults.
@@ -102,10 +108,13 @@ type EntitySources interface {
 }
 
 // PlanEntities decides the repository, issue, release and people pages. It
-// writes nothing. root is the memory root; the vault root is its parent.
-func PlanEntities(root string, src EntitySources, opts PeopleOptions, r *rules.Rules, now time.Time) (EntitiesPlan, error) {
+// writes nothing. root is the memory root and vault the configured vault root;
+// an empty vault falls back to the one the layout implies.
+func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *rules.Rules, now time.Time) (EntitiesPlan, error) {
 	plan := EntitiesPlan{Counts: map[string]int{}}
-	vault := vaultRootOf(root)
+	if vault == "" {
+		vault = vaultRootOf(root)
+	}
 	memRel := memoryRootRel(root, vault)
 	projects := projectbind.Repositories(vault)
 	minMentions, minSharedWork := EntityThresholds(r)
@@ -139,8 +148,12 @@ func PlanEntities(root string, src EntitySources, opts PeopleOptions, r *rules.R
 		ms := sortedMentions(byURI[uri])
 		page := entityPageFor(kind, id, ms)
 		rel := entityRel(memRel, kind, page.slug)
-		wanted[rel] = true
 		before, created := mocCurrentPage(root, relUnderRoot(rel, memRel))
+		if handWritten(before) {
+			plan.Held = append(plan.Held, rel)
+			continue
+		}
+		wanted[rel] = true
 		if created == "" {
 			created = today
 		}
@@ -469,6 +482,35 @@ func (plan *EntitiesPlan) add(item EntityPage, before []byte, text, rel string) 
 		Summary: fmt.Sprintf("the entity page for %s written (%d mentions)", item.ID, item.Mentions)})
 }
 
+// handWritten reports whether the bytes at a page's path are a note the builder
+// did not write: anything but its own `entity-profile` record.
+func handWritten(before []byte) bool {
+	if before == nil {
+		return false
+	}
+	fm, _ := ParseFrontmatter(string(before))
+	return strings.TrimSpace(fm["kind"]) != cardshape.EntityProfileKind
+}
+
+// existingPages is every builder page of one type on disk, vault-relative.
+func existingPages(root, memRel, kind string) []string {
+	dir := filepath.Join(root, "memory", "entities", cardshape.EntityFolders[kind])
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		if cur, err := os.ReadFile(filepath.Join(dir, e.Name())); err == nil && !handWritten(cur) {
+			out = append(out, path.Join(memRel, "memory", "entities", cardshape.EntityFolders[kind], e.Name()))
+		}
+	}
+	return out
+}
+
 // removeUnwanted removes every page of the given types that this build did not
 // plan: the builder's own `entity-profile` pages only, through the journal.
 func (plan *EntitiesPlan) removeUnwanted(root, memRel string, wanted map[string]bool, kinds []string) {
@@ -566,6 +608,10 @@ func BuildEntities(cfg *config.Config, opt BuildEntitiesOptions) (EntitiesPlan, 
 	plan, err := planEntitiesFor(cfg, root, contract, now)
 	if err != nil {
 		return plan, MocsPlan{}, rep, err
+	}
+	if plan.Skipped != "" {
+		// A builder that could not plan leaves the pages and their map alone.
+		return plan, MocsPlan{}, rep, nil
 	}
 	entityMap := PlanEntityMap(root, plan.Pages, now)
 	if !opt.Apply {

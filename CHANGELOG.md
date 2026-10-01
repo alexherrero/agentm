@@ -31,7 +31,13 @@ Plan C of the AgentKV layout convergence: the memory-quality half of the operato
   through the journal, which keeps its bytes. `mocs/moc-entities.md` lists
   them. The first build: 632 pages (56 repositories, 405 issues, 171
   releases), then 6 junk repository pages removed once the extractor
-  stopped reading GitHub's own pages as repositories.
+  stopped reading GitHub's own pages as repositories. An adversarial review
+  before the cut found thirteen defects, all fixed with a test each: the
+  builder never writes over a note you wrote at a page's path, two
+  spellings of a person share one page, an unreadable note holds the
+  people pages for the night instead of removing them, a builder that
+  cannot plan keeps the entity map, a month or a common word is no
+  person's name, and a dependency bump or a pre-release is no release.
 - **A query that names an entity puts its page first (task 179, the
   operator's ruling of 2026-09-30).** A query that is an entity page's
   title, alias or id, or follows "what do I know about", "who is" or "what

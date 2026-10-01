@@ -1,11 +1,13 @@
 package people
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 const tableFile = "---\ntitle: People\nkind: standard\n---\n\n# People\n\n```people\n" +
@@ -93,12 +95,15 @@ func TestGroundKeepsOnlyThePeopleTheNoteNames(t *testing.T) {
 }
 
 // A one-word name matches only as written: "Ben" is a person, "ben" in a
-// sentence is not, and a two-word name matches in any case.
+// sentence is not, and a two-word name matches in any case. A one-word name
+// that is also a common word ("Will") names no one on its own, since a sentence
+// capitalizes it as readily as a person's name (the release review).
 func TestAOneWordNameMatchesOnlyAsWritten(t *testing.T) {
 	for text, want := range map[string]bool{
 		"Ben reviewed it.":           true,
 		"the ben of the argument":    false,
-		"Will you ship it? Will did": true,
+		"Will you ship it? Will did": false,
+		"Will Tran shipped it":       true,
 		"we will ship it":            false,
 	} {
 		spellings := []string{"Ben Okafor", "Ben"}
@@ -111,5 +116,54 @@ func TestAOneWordNameMatchesOnlyAsWritten(t *testing.T) {
 	}
 	if !Mentions("BEN OKAFOR signed.", []string{"Ben Okafor"}) {
 		t.Error("a two-word name did not match in another case")
+	}
+}
+
+// From the release review (2026-09-30): a name before typographic punctuation
+// is a whole word, and a one-word spelling that is a month or a common word
+// names no one on its own.
+func TestTypographicPunctuationEndsAWordAndAMonthIsNoName(t *testing.T) {
+	for _, text := range []string{
+		"Ben Okafor’s review style is bottom up.",
+		"Decided with Ben Okafor—he agreed.",
+		"Ask Ben Okafor…",
+	} {
+		if !Mentions(text, []string{"Ben Okafor"}) {
+			t.Errorf("Mentions(%q, Ben Okafor) = false", text)
+		}
+	}
+	if got := (Table{}).Ground("Ben Okafor’s review style.", []string{"Ben Okafor"}); len(got) != 1 {
+		t.Errorf("Ground dropped a name the note states: %v", got)
+	}
+	for _, text := range []string{"Planning for May: ship the ranker.", "Will you ship it?", "Monday retro."} {
+		if Mentions(text, []string{"May", "Will", "Monday"}) {
+			t.Errorf("a common word named someone in %q", text)
+		}
+	}
+	if !Mentions("May Chen signed off.", []string{"May Chen", "May"}) {
+		t.Error("a full name carrying a common word was not found")
+	}
+}
+
+// Matching a vault's worth of notes is bounded: 300 names over 4,000 notes of
+// about 6 KB, each note prepared once, well inside a night's budget.
+func TestMatchingManyNamesOverManyNotesStaysCheap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing")
+	}
+	para := strings.Repeat("The ranker shipped after the review with the team and the plan moved on. ", 80)
+	texts := make([]Text, 4000)
+	for i := range texts {
+		texts[i] = NewText(fmt.Sprintf("note %d\n%s", i, para))
+	}
+	start := time.Now()
+	for i := 0; i < 300; i++ {
+		spellings := []string{fmt.Sprintf("Person%03d Surname", i)}
+		for _, tx := range texts {
+			tx.Mentions(spellings)
+		}
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("300 names x 4,000 notes took %v", d)
 	}
 }

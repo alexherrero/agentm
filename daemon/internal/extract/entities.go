@@ -94,6 +94,9 @@ var releaseWords = map[string]bool{
 	"create": true, "view": true, "version": true, "changelog": true,
 	"changelog.md": true, "pair": true, "paired": true, "bump": true,
 	"bumped": true, "landed": true, "lands": true, "launched": true,
+	"deployed": true, "merged": true, "published": true, "promoted": true,
+	"reopened": true, "closed": true, "fixed": true, "shipping": true,
+	"via": true, "per": true,
 }
 
 // Paged reports whether an entity may have a page of its own (task 179): a
@@ -180,9 +183,13 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 				continue
 			}
 			num := line[m[4]:m[5]]
+			named := ctx.Known[possessive(strings.ToLower(wordBefore(line, m[3])))]
 			switch {
 			case linked[num] != "":
 				add("issue:" + linked[num] + "#" + num)
+			case named != "":
+				// "Fixed in crickets #235": the word before names the repository.
+				add("issue:" + named + "#" + num)
 			case ctx.Repo != "":
 				add("issue:" + ctx.Repo + "#" + num)
 			default:
@@ -204,11 +211,15 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 		}
 
 		// Releases: by their address, then by a version tag in the prose.
-		for _, m := range releaseURLRe.FindAllStringSubmatch(line, -1) {
-			add("release:" + strings.ToLower(m[1]) + "@" + m[2])
+		for _, m := range releaseURLRe.FindAllStringSubmatchIndex(line, -1) {
+			if !versionEndsHere(line, m[1]) {
+				continue // `…/tag/v10.0.0-rc.1` is a pre-release, not v10.0.0
+			}
+			add("release:" + strings.ToLower(line[m[2]:m[3]]) + "@" + line[m[4]:m[5]])
 		}
+		foreign := foreignRepoOnLine(line, lineRepos, ctx)
 		for _, m := range versionRe.FindAllStringIndex(line, -1) {
-			if repo := releaseRepo(line, m[0], m[1], lineRepos, ctx); repo != "" {
+			if repo := releaseRepo(line, m[0], m[1], lineRepos, foreign, ctx); repo != "" {
 				add("release:" + repo + "@" + line[m[0]:m[1]])
 			}
 		}
@@ -233,14 +244,15 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 }
 
 // releaseRepo decides which repository the version tag at line[start:end]
-// belongs to, or "" when it cannot tell. In order: the word right before it,
-// when that word is a repository's own name or `owner/repo`; then, when the
-// word before is a release word or nothing, the one repository the line names
-// or the note's own. A line naming one repository in a note of another is
-// ambiguous — "paired with crickets; shipped v10.0.0" in an agentm note — and
-// gives none. Any other word before the tag names what the version belongs
-// to, and it is not a release of a repository.
-func releaseRepo(line string, start, end int, lineRepos map[string]bool, ctx Context) string {
+// belongs to, or "" when it cannot tell. The two words before it are read in
+// turn, past release words and other versions: a repository's own name or a
+// known `owner/repo` names it; any other word names what the version belongs
+// to — a tool, a plugin, `node` — and it is no release of a repository. With
+// neither word deciding, the one repository the line names, or the note's own,
+// takes it; a line naming one repository in a note of another, or naming a
+// repository no project lists (`Bump actions/checkout from v3.5.2 to v4.0.0`),
+// is ambiguous and gives none.
+func releaseRepo(line string, start, end int, lineRepos map[string]bool, foreign bool, ctx Context) string {
 	// The tag must stand alone: not inside a word, a path or a URL (a release
 	// URL is read by its own pattern), and not the head of a longer version or
 	// a pre-release.
@@ -251,29 +263,32 @@ func releaseRepo(line string, start, end int, lineRepos map[string]bool, ctx Con
 			return ""
 		}
 	}
-	if end < len(line) {
-		c := line[end]
-		if c == '-' || c == '_' || c == '+' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') {
+	if !versionEndsHere(line, end) {
+		return ""
+	}
+	at := start
+	for i := 0; i < 2; i++ {
+		raw, from := wordBeforeAt(line, at)
+		at = from
+		word := possessive(strings.ToLower(strings.Trim(raw, "-_")))
+		switch {
+		case word == "" || releaseWords[word] || allDigits(word) ||
+			versionRe.MatchString(word) && len(versionRe.FindString(word)) == len(word):
+			// A release word, another version, or a number (`#466 after v10.0.0`)
+			// says nothing about whose version this is; read the word before.
+			continue
+		case ownerRepoRe.MatchString(word):
+			if lineRepos[word] || knownRepo(ctx, word) {
+				return word
+			}
 			return ""
-		}
-		if c == '.' && end+1 < len(line) && line[end+1] >= '0' && line[end+1] <= '9' {
+		case ctx.Known[word] != "":
+			return ctx.Known[word]
+		default:
 			return ""
 		}
 	}
-	word := strings.ToLower(wordBefore(line, start))
-	switch {
-	case ownerRepoRe.MatchString(word):
-		// A path reads the same as `owner/repo` — `wiki/docs v2.0.0`,
-		// `tool/CHANGELOG.md v1.4.0` — so only a repository a project lists, or
-		// one this line points at, is taken for the version's.
-		if lineRepos[word] || knownRepo(ctx, word) {
-			return word
-		}
-		return ""
-	case ctx.Known[word] != "":
-		return ctx.Known[word]
-	case word != "" && !releaseWords[word]:
+	if foreign {
 		return ""
 	}
 	if len(lineRepos) == 1 {
@@ -288,6 +303,64 @@ func releaseRepo(line string, start, end int, lineRepos map[string]bool, ctx Con
 		return ctx.Repo
 	}
 	return ""
+}
+
+// versionEndsHere reports whether a version ending at line[end] stops there: it
+// is not followed by a letter, a digit, `-`, `_` or `+` (a pre-release or a
+// build), or by `.` and a digit (a longer version).
+func versionEndsHere(line string, end int) bool {
+	if end >= len(line) {
+		return true
+	}
+	c := line[end]
+	if c == '-' || c == '_' || c == '+' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') {
+		return false
+	}
+	return !(c == '.' && end+1 < len(line) && line[end+1] >= '0' && line[end+1] <= '9')
+}
+
+// foreignRepoOnLine reports whether the line names an `owner/repo` no project
+// lists and no link on the line points at — a dependency, most often — which
+// makes a version on it nobody's release unless a word right before it says
+// whose.
+func foreignRepoOnLine(line string, lineRepos map[string]bool, ctx Context) bool {
+	for _, w := range strings.FieldsFunc(line, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
+			r == '-' || r == '_' || r == '.' || r == '/')
+	}) {
+		w = strings.ToLower(strings.Trim(w, "./-_"))
+		if strings.Count(w, "/") != 1 || !ownerRepoRe.MatchString(w) || strings.Contains(w, ".md") {
+			continue
+		}
+		if !lineRepos[w] && !knownRepo(ctx, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// allDigits reports whether w is a number, an issue's or a count.
+func allDigits(w string) bool {
+	if w == "" {
+		return false
+	}
+	for _, c := range w {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// possessive drops a trailing "'s" or "’s": "agentm's v10.0.0" is agentm's.
+func possessive(w string) string {
+	for _, suffix := range []string{"'s", "’s"} {
+		if strings.HasSuffix(w, suffix) {
+			return strings.TrimSuffix(w, suffix)
+		}
+	}
+	return w
 }
 
 // onGitHubItself reports whether the `github.com` at line[i:] is the host
@@ -330,19 +403,32 @@ func knownRepo(ctx Context, repo string) bool {
 // markdown around a link or an emphasis: `[`, `(`, `*`, `_`, a backtick and a
 // quote. Empty when the line starts there or punctuation stands between.
 func wordBefore(line string, i int) string {
+	w, _ := wordBeforeAt(line, i)
+	return w
+}
+
+// wordBeforeAt is wordBefore and the index the word starts at, so a caller can
+// read the word before that one. An apostrophe inside the word is kept, so a
+// possessive arrives whole.
+func wordBeforeAt(line string, i int) (string, int) {
 	j := i
-	for j > 0 && strings.ContainsRune(" \t[(*`\"'", rune(line[j-1])) {
+	for j > 0 && strings.ContainsRune(" \t[(*`\"", rune(line[j-1])) {
 		j--
 	}
 	k := j
 	for k > 0 {
 		c := line[k-1]
 		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
-			c == '-' || c == '_' || c == '.' || c == '/' {
+			c == '-' || c == '_' || c == '.' || c == '/' || c == '\'' {
 			k--
+			continue
+		}
+		// The typographic apostrophe, three bytes in UTF-8.
+		if k >= 3 && line[k-3:k] == "’" {
+			k -= 3
 			continue
 		}
 		break
 	}
-	return strings.Trim(line[k:j], "./")
+	return strings.Trim(line[k:j], "./'"), k
 }

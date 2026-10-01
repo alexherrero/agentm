@@ -24,6 +24,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -75,7 +77,7 @@ func Parse(text string) (Table, error) {
 func Clean(name string) string {
 	name = strings.Join(strings.Fields(name), " ")
 	name = strings.Trim(name, "\"'`.,;:()[]{}*_")
-	if name == "" || !strings.ContainsAny(strings.ToLower(name), "abcdefghijklmnopqrstuvwxyz") {
+	if name == "" || strings.IndexFunc(name, unicode.IsLetter) < 0 {
 		return ""
 	}
 	return name
@@ -135,35 +137,89 @@ func (t Table) Spellings(canonical string) []string {
 	return out
 }
 
+// Text is a note's text prepared once for many lookups: its lower-case form
+// and the set of words in it. Matching a vault's worth of notes against every
+// person goes through it, so a note is lower-cased and split once rather than
+// once per name.
+type Text struct {
+	raw, lower string
+	words      map[string]bool
+}
+
+// NewText prepares text for Mentions.
+func NewText(text string) Text {
+	t := Text{raw: text, lower: strings.ToLower(text), words: map[string]bool{}}
+	for _, w := range strings.FieldsFunc(t.lower, func(r rune) bool { return !isWordRune(r) }) {
+		t.words[w] = true
+	}
+	return t
+}
+
 // Mentions reports whether text names the person under any of their spellings,
-// as a whole word or phrase. A spelling of two words or more matches in any
-// case; a one-word spelling matches only as written, so a person called Will
-// or Mark is not found in every "will" and "mark" the vault holds.
+// as a whole word or phrase.
 func Mentions(text string, spellings []string) bool {
-	lower := ""
+	return NewText(text).Mentions(spellings)
+}
+
+// Mentions reports whether the text names the person under any of their
+// spellings. A spelling of two words or more matches in any case. A one-word
+// spelling matches only as written, so a person called Will or Mark is not
+// found in every "will" and "mark" — and never when it is a month, a weekday
+// or one of the common words that are also names, which a sentence capitalizes
+// as often as a person's name ("May retro", "Will you ship it?").
+func (t Text) Mentions(spellings []string) bool {
 	for _, s := range spellings {
 		s = Clean(s)
 		if s == "" {
 			continue
 		}
+		lower := strings.ToLower(s)
+		// Every word of the spelling must be in the text before a search for
+		// the phrase is worth making; most notes fail here for free.
+		present := true
+		for _, w := range strings.FieldsFunc(lower, func(r rune) bool { return !isWordRune(r) }) {
+			if !t.words[w] {
+				present = false
+				break
+			}
+		}
+		if !present {
+			continue
+		}
 		if !strings.Contains(s, " ") {
-			if containsWord(text, s) {
+			if commonWords[lower] {
+				continue
+			}
+			if containsWord(t.raw, s) {
 				return true
 			}
 			continue
 		}
-		if lower == "" {
-			lower = strings.ToLower(text)
-		}
-		if containsWord(lower, strings.ToLower(s)) {
+		if containsWord(t.lower, lower) {
 			return true
 		}
 	}
 	return false
 }
 
+// commonWords are the one-word spellings that never name a person on their
+// own: the months, the weekdays, and the common words that are also given
+// names. A full name carrying them still matches ("May Chen").
+var commonWords = map[string]bool{
+	"january": true, "february": true, "march": true, "april": true, "may": true,
+	"june": true, "july": true, "august": true, "september": true, "october": true,
+	"november": true, "december": true, "monday": true, "tuesday": true,
+	"wednesday": true, "thursday": true, "friday": true, "saturday": true,
+	"sunday": true, "will": true, "mark": true, "grace": true, "hope": true,
+	"faith": true, "joy": true, "rose": true, "bill": true, "art": true,
+	"jack": true, "frank": true, "summer": true, "dawn": true, "rob": true,
+	"sue": true, "chase": true, "drew": true, "max": true, "page": true,
+	"ray": true, "victor": true, "sky": true, "lane": true,
+}
+
 // containsWord finds needle in hay with no letter, digit or underscore on
-// either side.
+// either side, reading the characters around it as Unicode: a typographic
+// apostrophe, an em dash or an ellipsis ends a word.
 func containsWord(hay, needle string) bool {
 	for from := 0; ; {
 		i := strings.Index(hay[from:], needle)
@@ -171,15 +227,17 @@ func containsWord(hay, needle string) bool {
 			return false
 		}
 		start, end := from+i, from+i+len(needle)
-		if (start == 0 || !isWordByte(hay[start-1])) && (end == len(hay) || !isWordByte(hay[end])) {
+		before, _ := utf8.DecodeLastRuneInString(hay[:start])
+		after, _ := utf8.DecodeRuneInString(hay[end:])
+		if (start == 0 || !isWordRune(before)) && (end == len(hay) || !isWordRune(after)) {
 			return true
 		}
 		from = start + 1
 	}
 }
 
-func isWordByte(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80
+func isWordRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 // Ground keeps the names a pass returned that stand for a person the note's own
@@ -192,6 +250,7 @@ func isWordByte(c byte) bool {
 // deterministic and free: a name the note does not contain was inferred, and an
 // inferred person is exactly what must not earn a page.
 func (t Table) Ground(text string, names []string) []string {
+	prepared := NewText(text)
 	seen := map[string]bool{}
 	var out []string
 	for _, n := range names {
@@ -200,7 +259,7 @@ func (t Table) Ground(text string, names []string) []string {
 		if !ok {
 			continue
 		}
-		if !Mentions(text, []string{clean}) && !Mentions(text, t.Spellings(canonical)) {
+		if !prepared.Mentions([]string{clean}) && !prepared.Mentions(t.Spellings(canonical)) {
 			continue
 		}
 		if key := fold(canonical); !seen[key] {

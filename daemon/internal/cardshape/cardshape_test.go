@@ -114,3 +114,22 @@ func TestTheTwoBlocksNameEachKeyOnce(t *testing.T) {
 		seen[k] = true
 	}
 }
+
+// An entity page's name keeps letters of any script, and an id with none gets
+// a name of its own rather than the empty one (the release review).
+func TestAnEntitySlugKeepsItsLettersAndIsNeverEmpty(t *testing.T) {
+	for id, want := range map[string]string{
+		"alexherrero/agentm#466":     "alexherrero-agentm-466",
+		"alexherrero/agentm@v10.0.0": "alexherrero-agentm-v10-0-0",
+		"Jean-Luc Picard":            "jean-luc-picard",
+		"Дмитрий Иванов":             "дмитрий-иванов",
+	} {
+		if got := EntitySlug(id); got != want {
+			t.Errorf("EntitySlug(%q) = %q, want %q", id, got, want)
+		}
+	}
+	a, b := EntitySlug("—"), EntitySlug("…")
+	if a == "" || b == "" || a == b {
+		t.Errorf("ids with no letters named %q and %q", a, b)
+	}
+}

@@ -462,9 +462,13 @@ func printReport(rep dreaming.Report) {
 				written++
 			}
 		}
-		fmt.Printf("entities: %d page(s) (%d repo, %d issue, %d release, %d person), %s%d written, %s%d removed\n",
+		fmt.Printf("entities: %d page(s) (%d repo, %d issue, %d release, %d person), %s%d written, %s%d removed, %d held\n",
 			len(rep.Entities.Pages), rep.Entities.Counts["repo"], rep.Entities.Counts["issue"],
-			rep.Entities.Counts["release"], rep.Entities.Counts["person"], would, written, would, len(rep.Entities.Removed))
+			rep.Entities.Counts["release"], rep.Entities.Counts["person"], would, written, would, len(rep.Entities.Removed),
+			len(rep.Entities.Held))
+		if len(rep.Entities.PeopleHeld) > 0 {
+			fmt.Printf("  people pages held as they were: %d note(s) could not be read\n", len(rep.Entities.PeopleHeld))
+		}
 	}
 	switch {
 	case rep.Ideas.NotWritten != "":
@@ -634,6 +638,13 @@ func cmdEntities(args []string) error {
 			plan.Counts["person"], verb, written, len(plan.Removed))
 		for _, r := range plan.Removed {
 			fmt.Println("  removed", r)
+		}
+		for _, r := range plan.Held {
+			fmt.Println("  held (a hand-written note is at its path)", r)
+		}
+		if len(plan.PeopleHeld) > 0 {
+			fmt.Printf("  people pages held as they were: %d note(s) could not be read, e.g. %s\n",
+				len(plan.PeopleHeld), plan.PeopleHeld[0])
 		}
 		if rep.Mode == "apply" {
 			fmt.Printf("  run %s: %d applied, %d skipped\n", rep.RunID, rep.Applied, rep.Skipped)

@@ -161,6 +161,16 @@ func renderDreamingFacet(rep *Report, now time.Time) (string, int) {
 	}
 	section("Entity pages removed", entityPages)
 
+	var entityHeld []string
+	for _, rel := range rep.Entities.Held {
+		entityHeld = append(entityHeld, "`"+rel+"` — a note you wrote is at its path; move it to let the page be built")
+	}
+	if n := len(rep.Entities.PeopleHeld); n > 0 {
+		entityHeld = append(entityHeld, fmt.Sprintf("people pages kept as they were: %d note(s) could not be read, e.g. `%s`",
+			n, rep.Entities.PeopleHeld[0]))
+	}
+	section("Entity pages held", entityHeld)
+
 	var held []string
 	for _, row := range rep.Retain.Held {
 		held = append(held, fmt.Sprintf("`%s` — %s, %.0f days old, kept %.0f", row.Rel, row.What, row.Days, row.Keep))
