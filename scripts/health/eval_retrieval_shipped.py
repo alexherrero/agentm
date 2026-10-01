@@ -355,6 +355,63 @@ _RETIRED = {
 }
 
 
+# Crystallize's successors (#749, 2026-09-30). A lesson that folds a card in
+# stamps the card `consolidated_into` and ranks it ×0.30 from then on, so for a
+# question the card answered, search puts the lesson first. Where the lesson is
+# true of the card it is the card's successor, and returning it answers the
+# question. Where it is not, the stamp is the defect #749 names, and
+# `agentmd crystallize -recheck` releases it — so a row is never inferred from
+# the stamp alone, or the system under test would be writing the answer key.
+#
+# Each row is a lesson the recheck of 2026-09-30 kept as true of the gold card,
+# read against the lesson's text. It is taken only while the card on disk still
+# names the lesson, so a later release revokes it with no edit here. Keyed on
+# the paths as the casing fold leaves them; the lesson is spelled the same way.
+_SUCCESSORS = {
+    "agent/memory/semantic/its-query-agent-cites-the-memory-ids-it-used-as-sources.md": (
+        "agent/memory/crystallized/answers-that-cite-the-memories-they-came-from.md",
+        "rc07: the lesson is the card's point made general, that an answer names "
+        "the memories it rests on; kept by the recheck of 2026-09-30"),
+    "agent/memory/semantic/aliases-carry-concept-recall-unanticipated-vocabulary-still-misses-entir.md": (
+        "agent/memory/crystallized/bm25-length-bias-favors-desk-over-memory.md",
+        "rc11: the lesson states the card's finding, that capture-time aliases fix "
+        "only the questions their writer foresaw; kept by the recheck of 2026-09-30"),
+    "agent/memory/semantic/desk-documents-outrank-memory-notes-for-memory-questions.md": (
+        "agent/memory/crystallized/bm25-length-bias-favors-desk-over-memory.md",
+        "rc12: the lesson's title is the card's measurement, long desk documents "
+        "outranking short memory notes; kept by the recheck of 2026-09-30"),
+    "agent/memory/semantic/vault-as-canonical-context.md": (
+        "agent/memory/crystallized/context-is-ephemeral-files-are-durable.md",
+        "pp10: the lesson generalises the card's claim that the vault is the "
+        "canonical home of context; kept by the recheck of 2026-09-30, which "
+        "released the lesson's two other cards"),
+}
+
+
+def successors(live: list, vault_root: "Path | None | bool" = False) -> list:
+    """The lessons that stand in for `live`'s cards, each only while its card on
+    disk still names it in `consolidated_into` and the lesson is a file."""
+    root = _vault_root() if vault_root is False else vault_root
+    if root is None:
+        return []
+    out = []
+    for p in live:
+        row = _SUCCESSORS.get(p)
+        if row is None:
+            continue
+        lesson = row[0]
+        stem = lesson.rsplit("/", 1)[-1][:-len(".md")]
+        try:
+            card = (Path(root) / p).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        named = re.search(r"(?m)^consolidated_into:[ \t]*[\"']?\[\[" + re.escape(stem)
+                          + r"(\|[^\]]*)?\]\]", card)
+        if named and (Path(root) / lesson).is_file() and lesson not in out:
+            out.append(lesson)
+    return out
+
+
 # The root casing (agentm-vault plan 08, 2026-09-14): the four root spaces are
 # lowercase. The gold set is frozen and keeps the old spelling; the daemon
 # returns what is on disk. The first segment is folded here, at score time,
@@ -866,9 +923,15 @@ def score(binary: str, entries: list, k: int) -> dict:
 
         scored += 1
         rank = None
+        # A lesson stands in for a card it was confirmed true of; named on the
+        # row when it is what answered, so a successor hit never reads as the
+        # card's own.
+        stand_ins = successors(expected)
+        via = None
         for i, path in enumerate(got, start=1):
-            if path in expected:
+            if path in expected or path in stand_ins:
                 rank = i
+                via = path if path in stand_ins else None
                 break
         if rank is not None:
             hits += 1
@@ -877,6 +940,8 @@ def score(binary: str, entries: list, k: int) -> dict:
             if rank == 1:
                 hits_at_1 += 1
         per_question[e["id"]] = {"hit": rank is not None, "negative": False, "rank": rank}
+        if via:
+            per_question[e["id"]]["successor"] = via
 
     # Rounded at the source, not for taste: a full-precision float carries a
     # ten-digit decimal run, and the PII gate reads that as a US phone number.
@@ -1057,6 +1122,10 @@ def render(result: dict, provenance: str, census: dict = None) -> str:
                      f"({(hi - lo) * 100:.1f}pp wide)")
         lines.append(f"  smallest clean gain: {flips} flips one way "
                      f"(+{flips / n:.1%}) — smaller true effects are invisible here")
+    via = sorted((q, r["successor"]) for q, r in (result.get("per_question") or {}).items()
+                 if r.get("successor"))
+    for q, lesson in via:
+        lines.append(f"  answered by a lesson: {q} via {lesson}")
     if result["avg_rank_to_first_hit"] is not None:
         lines.append(f"  rank to first hit  : {result['avg_rank_to_first_hit']:.2f}")
     if result.get("negatives_hard"):

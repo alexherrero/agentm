@@ -138,6 +138,24 @@ Plan C of the AgentKV layout convergence: the memory-quality half of the operato
 - **The vault and capture designs** carry the five reversals, with their
   amendment rows and an as-built row (step 1, step 11).
 
+### Fixed
+
+- **A lesson stamps only the sources it rests on, and the stamps it was not
+  true of are released (#749).** The first crystallize run stamped every card in
+  a cluster `consolidated_into`, ranking each x0.30 below a lesson that often
+  did not answer it; nine frozen gold-set questions lost their note and the
+  retrieval gate failed (R@5 0.667 to 0.540). The model now names the sources a
+  lesson rests on, and only those are stamped and listed. `agentmd crystallize
+  -recheck` asks the same of each lesson already written and writes a manifest
+  for `agentmdream apply`; on the live vault it asked 18 lessons for $4.81 and
+  released 25 stamps across 13 of them, nothing deleted. The retrieval eval now
+  accepts a lesson as a gold card's successor where a hand-verified table says
+  the lesson is true of the card, and only while the card still names it; it
+  never infers one from the stamp. R@5 is 0.635 and the gate is clean. Two
+  correctly folded cards (pp10, rc11) still drop out of the top five, because
+  x0.30 sinks them while their lesson does not answer the question; whether the
+  demotion should spare such a card is left to the operator, since it changes
+  the design's rule.
 
 ## [10.2.0] - 2026-09-28
 

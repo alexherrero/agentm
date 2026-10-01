@@ -938,5 +938,84 @@ class TheGoldSetIsNeverEdited(unittest.TestCase):
             self.assertGreater(len(why), 40, f"{path}'s reason names no evidence")
 
 
+class ALessonStandsInForItsCard(unittest.TestCase):
+    """#749: a lesson confirmed true of a gold card answers that card's
+    question, and only while the card on disk still names it. The stamp alone
+    never makes a successor, or the system under test writes the answer key."""
+
+    CARD = "agent/memory/semantic/cites-its-sources.md"
+    LESSON = "agent/memory/crystallized/answers-cite.md"
+
+    def setUp(self):
+        self._root, self._rows = ev._VAULT_ROOT, dict(ev._SUCCESSORS)
+        self._dir = tempfile.TemporaryDirectory()
+        ev._VAULT_ROOT = Path(self._dir.name)
+        ev._SUCCESSORS.clear()
+        ev._SUCCESSORS[self.CARD] = (self.LESSON, "a test row; the lesson is the card's point made general")
+        self._write(self.LESSON, "---\nkind: crystallized\n---\n\nAnswers cite.\n")
+
+    def tearDown(self):
+        ev._VAULT_ROOT = self._root
+        ev._SUCCESSORS.clear()
+        ev._SUCCESSORS.update(self._rows)
+        self._dir.cleanup()
+
+    def _write(self, rel, text):
+        p = Path(self._dir.name) / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+
+    def _card(self, stamp):
+        self._write(self.CARD, "---\ntitle: cites\n" + stamp + "slug: x\n---\n\nIt cites.\n")
+
+    def _score(self, returned):
+        import unittest.mock as mock
+        rows = [{"path": p, "score": 9.0 - i} for i, p in enumerate(returned)]
+
+        def fake_run(argv, *a, **kw):
+            return subprocess.CompletedProcess(
+                argv, 0, stdout=json.dumps({"results": rows}), stderr="")
+        entries = [{"id": "rc07", "question": "can an answer point back at its notes",
+                    "stratum": "pure-paraphrase", ev.EXPECTED_FIELD: [self.CARD]}]
+        with mock.patch.object(subprocess, "run", side_effect=fake_run):
+            return ev.score("agentmd", entries, 5)
+
+    def test_the_lesson_answers_while_the_card_names_it(self):
+        self._card('consolidated_into: "[[answers-cite]]"\n')
+        got = self._score(["agent/memory/semantic/decoy.md", self.LESSON])
+        self.assertEqual((got["hits"], got["per_question"]["rc07"]["rank"]), (1, 2))
+        self.assertEqual(got["per_question"]["rc07"]["successor"], self.LESSON)
+        self.assertIn("answered by a lesson: rc07 via " + self.LESSON,
+                      ev.render(got, "test corpus"))
+
+    def test_the_card_itself_is_still_a_hit_and_names_no_successor(self):
+        self._card('consolidated_into: "[[answers-cite]]"\n')
+        got = self._score([self.CARD, self.LESSON])
+        self.assertEqual(got["hits"], 1)
+        self.assertNotIn("successor", got["per_question"]["rc07"])
+
+    def test_a_released_card_takes_its_successor_with_it(self):
+        self._card("")
+        self.assertEqual(self._score([self.LESSON])["hits"], 0)
+
+    def test_a_stamp_with_no_row_makes_no_successor(self):
+        ev._SUCCESSORS.clear()
+        self._card('consolidated_into: "[[answers-cite]]"\n')
+        self.assertEqual(self._score([self.LESSON])["hits"], 0)
+
+    def test_a_card_stamped_into_another_lesson_makes_no_successor(self):
+        self._card('consolidated_into: "[[answers-cite-more]]"\n')
+        self.assertEqual(ev.successors([self.CARD]), [])
+
+    def test_with_no_vault_there_are_no_successors(self):
+        ev._VAULT_ROOT = None
+        self.assertEqual(ev.successors([self.CARD]), [])
+
+    def test_every_live_row_carries_its_evidence(self):
+        for card, (lesson, why) in self._rows.items():
+            self.assertTrue(lesson.startswith("agent/memory/crystallized/"), lesson)
+            self.assertGreater(len(why), 40, f"{card}'s row names no evidence")
+
+
 if __name__ == "__main__":
     unittest.main()
