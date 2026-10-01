@@ -104,10 +104,18 @@ func TestAMoveKeepsTheNotesIdentity(t *testing.T) {
 func TestAMoveThatRepairsLinksLandsTheNewBytes(t *testing.T) {
 	vault, j, src, dst, before := moveFixture(t)
 	after := []byte("---\ntitle: x\n---\nSee [[completed/tasks/042-x/progress]].\n")
+	var renamed []string
+	j.rename = func(o, n string) error {
+		renamed = append(renamed, o+" -> "+n)
+		return os.Rename(o, n)
+	}
 	in := Intent{Job: JobTasks, Rel: rel(t, vault, src), To: rel(t, vault, dst), Before: before, After: after}
 	kind, err := j.Commit(vault, "r", "r-1", in, time.Now().UTC())
 	if err != nil || kind != KindApplied {
 		t.Fatalf("commit: kind=%s err=%v", kind, err)
+	}
+	if len(renamed) != 1 || renamed[0] != src+" -> "+dst {
+		t.Errorf("a move that rewrites the note renames it first, then rewrites it in place: %v", renamed)
 	}
 	if got := readOr(dst); got != string(after) {
 		t.Errorf("the moved note carries its repaired links: %q", got)
