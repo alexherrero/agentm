@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1673,11 +1674,25 @@ func cmdEnrich(args []string) error {
 		if stamp.NeverFiles || stamp.OperatorFiled {
 			newSlug = ""
 		}
-		dest, err := applier.Apply(ctx, enrich.WriteRequest{
-			Rel: rel, Previous: string(previous), Next: next,
-			NewSlug: newSlug, Trigger: enrich.TriggerBatch,
-			Version: stamp.Version,
-		})
+		// An unchanged judgment writes nothing (task 181 step 5). When the
+		// rendering differs from the note on disk only in the stamps a
+		// re-judgment may leave as they are, and the pass is not renaming it,
+		// the file stays exactly as it is: Drive and every synced device see no
+		// change. The judgment is still recorded below, against the bytes that
+		// stay on disk, so the note is not owed again.
+		dest, written := rel, next
+		unchanged := (newSlug == "" || path.Base(rel) == newSlug+".md") &&
+			enrich.SameButStamps(string(previous), next)
+		if unchanged {
+			written = string(previous)
+			verdicts.Unchanged++
+		} else {
+			dest, err = applier.Apply(ctx, enrich.WriteRequest{
+				Rel: rel, Previous: string(previous), Next: next,
+				NewSlug: newSlug, Trigger: enrich.TriggerBatch,
+				Version: stamp.Version,
+			})
+		}
 		if err != nil {
 			// Recorded as a failure rather than left silent. A note that was
 			// enriched and then failed to land is a different state from one
@@ -1698,7 +1713,7 @@ func cmdEnrich(args []string) error {
 		default:
 			verdicts.count(dest, verdict)
 		}
-		landed[rel] = next
+		landed[rel] = written
 		if c, ok := causes[rel]; ok {
 			judgedBy[c.String()]++
 		}
@@ -1714,10 +1729,11 @@ func cmdEnrich(args []string) error {
 			Stage: ledger.StageEnrich, Target: dest, Version: stamp.Version,
 			RulesHash: stamp.RulesHash,
 			InputKey:  keyer.Key(string(previous)),
-			// The bytes that actually landed. This is the half that stops a
+			// The bytes that actually landed — or, for an unchanged judgment,
+			// the bytes that stayed. This is the half that stops a
 			// below-the-floor enrichment — which keeps `status: unfiled` and so
 			// stays in the queue — from being paid for again on every cycle.
-			OutputKey: keyer.Key(next),
+			OutputKey: keyer.Key(written),
 			Outcome:   ledger.Done, At: stamp.At,
 		})
 		return nil
@@ -1805,6 +1821,10 @@ func cmdEnrich(args []string) error {
 		"skipped %d · failed %d · %d note(s) sent in %s\n",
 		rep.Considered, rep.Enriched, verdicts.Active, verdicts.BelowFloor,
 		rep.Skipped, rep.Failed, rep.Calls, rep.Elapsed.Round(time.Millisecond))
+	if verdicts.Unchanged > 0 {
+		fmt.Printf("unchanged: %d judgment(s) matched what the note already said, "+
+			"so the file was left as it was\n", verdicts.Unchanged)
+	}
 	fmt.Printf("by cause: judged %s\n          owed at the start %s\n",
 		formatCauses(judgedBy), formatCauses(owed))
 	if run.RefusalsOpen > 0 {

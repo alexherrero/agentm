@@ -472,6 +472,12 @@ def _enrichment_line(runs: list) -> str:
             f"{_verdicts(runs, 'sank')} sank · {merged}{_sum(runs, 'model_calls')} calls · "
             f"{sum(_tier_added(runs).values()):,} tokens against the line · "
             f"{', '.join(models) or 'no model recorded'}")
+    # A judgment that matched what the note already said writes nothing (task
+    # 181): counted in the verdicts above, and named here so a night of them
+    # does not read as a night of rewrites.
+    unchanged = _verdicts(runs, "unchanged")
+    if unchanged:
+        line += f" · {unchanged} unchanged, not rewritten"
     failed = _sum(runs, "failed")
     if failed:
         line += f" · {failed} failed"
