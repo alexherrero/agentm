@@ -1703,39 +1703,7 @@ func cmdEnrich(args []string) error {
 		return nil
 	}
 
-	// Skips and failures reach the ledger through the pass's observer, because
-	// they never get as far as a write. Successes deliberately do not: only the
-	// write knows the bytes that landed and the path they landed at.
-	pass.SetObserver(func(req enrich.Request, out enrich.Outcome, err error) {
-		if out.Enriched && err == nil {
-			return
-		}
-		outcome := ledger.Failed
-		if out.Skipped {
-			outcome = ledger.Skipped
-		}
-		reason := out.Reason
-		if reason == "" && err != nil {
-			reason = err.Error()
-		}
-		// A post-gate rejection is the one failure that leaves no trace on the
-		// card, so it is written down here instead. Only an ineligible
-		// rejection reaches this: a judge that could not answer, or one that
-		// rejected without naming a claim, leaves RefusedBy empty, because
-		// neither is a finding about the card and blacklisting a card over a
-		// bad hour is worse than paying for it again.
-		if row, ok := refusalFor(cfg, keyer, req, out, reason); ok {
-			if rerr := refusals.Record(row); rerr != nil {
-				fmt.Fprintf(os.Stderr, "enrich: recording the refusal of %s: %v — "+
-					"it will be offered and refused again\n", req.Rel, rerr)
-			}
-		}
-		recordEnrich(context.Background(), led, ledger.Entry{
-			Stage: ledger.StageEnrich, Target: req.Rel,
-			Version: enrich.PassVersion, RulesHash: currentRulesHash(cfg),
-			InputKey: keyer.Key(req.Raw), Outcome: outcome, Reason: reason,
-		})
-	})
+	pass.SetObserver(enrichObserver(cfg, led, keyer, refusals))
 
 	rep, err := pass.RunBatch(context.Background(), list, write, *after, budget)
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/ledger"
 	"github.com/alexherrero/agentm/daemon/internal/note"
 )
 
@@ -121,6 +122,49 @@ func (r enrichRun) summary() map[string]any {
 		out["stopped_by"] = r.StoppedBy
 	}
 	return out
+}
+
+// enrichObserver is the pass's observer: it writes skips and failures to the
+// ledger, because they never get as far as a write. Successes deliberately do
+// not reach it: only the write knows the bytes that landed and the path they
+// landed at.
+//
+// A skip over a note the ledger already has as done leaves that row standing —
+// Record refuses the replacement (#785). That matters most for the fingerprint
+// gate's own skip, which says the done row is right; recording it over that
+// row used to make the note owed again the next night.
+func enrichObserver(cfg *config.Config, led *ledger.Ledger, keyer *enrich.Fingerprint,
+	refusals *enrich.Refusals) func(enrich.Request, enrich.Outcome, error) {
+	return func(req enrich.Request, out enrich.Outcome, err error) {
+		if out.Enriched && err == nil {
+			return
+		}
+		outcome := ledger.Failed
+		if out.Skipped {
+			outcome = ledger.Skipped
+		}
+		reason := out.Reason
+		if reason == "" && err != nil {
+			reason = err.Error()
+		}
+		// A post-gate rejection is the one failure that leaves no trace on the
+		// card, so it is written down here instead. Only an ineligible
+		// rejection reaches this: a judge that could not answer, or one that
+		// rejected without naming a claim, leaves RefusedBy empty, because
+		// neither is a finding about the card and blacklisting a card over a
+		// bad hour is worse than paying for it again.
+		if row, ok := refusalFor(cfg, keyer, req, out, reason); ok && refusals != nil {
+			if rerr := refusals.Record(row); rerr != nil {
+				fmt.Fprintf(os.Stderr, "enrich: recording the refusal of %s: %v — "+
+					"it will be offered and refused again\n", req.Rel, rerr)
+			}
+		}
+		recordEnrich(context.Background(), led, ledger.Entry{
+			Stage: ledger.StageEnrich, Target: req.Rel,
+			Version: enrich.PassVersion, RulesHash: currentRulesHash(cfg),
+			InputKey: keyer.Key(req.Raw), Outcome: outcome, Reason: reason,
+		})
+	}
 }
 
 // refusalFor is the row a post-gate rejection leaves behind, or nothing when
