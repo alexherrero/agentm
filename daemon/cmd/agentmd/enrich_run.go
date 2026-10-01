@@ -41,6 +41,10 @@ type enrichVerdicts struct {
 	Ideas int `json:"ideas"`
 	// SankNotes names the notes that sank, for the morning note's list.
 	SankNotes []string `json:"sank_notes,omitempty"`
+	// Unchanged is how many of the night's judgments reached the answer the
+	// note already carried and so wrote nothing (task 181 step 5). They are
+	// counted in the verdicts above as well: each is still a judgment.
+	Unchanged int `json:"unchanged"`
 }
 
 // count adds one written note's verdict. A card that sank is also below the

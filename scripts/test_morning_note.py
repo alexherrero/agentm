@@ -524,6 +524,13 @@ class TheNote(_Night):
         self.assertIn("By cause, judged 2 changed · 40 deep pass; owed at the start "
                       "2 changed · 456 deep pass · 3 older contract.", text)
 
+    def test_an_unchanged_judgment_is_named_as_not_rewritten(self):
+        self.full_night()
+        verdicts = dict(_run(TONIGHT)["verdicts"], unchanged=31)
+        self.runs(_run(TONIGHT, verdicts=verdicts))
+        text, *_ = self.build()
+        self.assertIn("· 31 unchanged, not rewritten", text)
+
     def test_a_run_record_without_causes_reads_as_it_did(self):
         self.full_night()
         text, *_ = self.build()
