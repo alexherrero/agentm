@@ -7,9 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The AgentKV layout convergence closes with its last two plans. Plan C makes each memory saved once and labelled with its project; Plan D builds the vault's first entity pages. Both carry out the operator's 2026-09-24 rulings on the work agent's layout spec, and with them all four plans (A to D) have shipped.
+
+Plan D of the AgentKV layout convergence: entity pages, section 5 of the rulings and the choices of 2026-09-28 (task 179). "What do I know about X?" has a first answer. Each repository, repo-qualified issue and release the vault keeps mentioning, and each person the operator works with, gets one page listing every note that mentions them. The pages are rebuilt each night at no model cost under `agent/memory/entities/{repos,issues,releases,people}/`, and a query that names one puts its page first. The first build wrote 632 pages, with no page for a commit or a bare issue number. People pages arrive as the nightly enrichment, which now records the people a note names, reaches the project records where decisions live. A mail thread can count as shared work behind a switch that ships off; nothing reads mail.
+
 Plan C of the AgentKV layout convergence: the memory-quality half of the operator's 2026-09-24 rulings, sections 6 and 7 (task 178). A memory is saved once, and each new memory knows which project it belongs to. The 2026-09-24 survey found six kinds of duplication, and each now has its own cure. The twin list carries memories, not daily reports. A session keeps one trace. The same outside source updates its note. An article is one note. An idea adds to its card. A reply typed to the agent is not filed. A rule stated twice merges on the strong tier's word. Captures take their project from `projects/*/project.yaml`, and conventions and preferences stay global. Nothing was deleted by policy: every merge is a supersede through the dreaming journal, and the three replies filed as memories were deleted only on the operator's approval.
 
 ### Added
+
+- **Entity pages, built each night (task 179 steps 5 and 6).** A free phase
+  in `agentmdream` writes `agent/memory/entities/{repos,issues,releases}/`
+  for every repository, qualified issue and release two distinct notes
+  mention, and `entities/people/` for every person named in two pieces of
+  shared work (a task's plan, progress or tracker, a `decisions/` note, a
+  project tracker, a calendar note, a meeting note). Each page is a
+  `kind: entity-profile` record listing its notes by project, then by
+  space, newest first; a person's lists shared work first. The people are
+  the names enrichment records, filed under the operator's table; where
+  they appear is found by matching names across the vault, since
+  enrichment never reads a tracker, plan or progress log. Superseded
+  notes, derived classes and generated maps never count. A rebuild over an
+  unchanged corpus writes nothing, and a page under its bar is removed
+  through the journal, which keeps its bytes. `mocs/moc-entities.md` lists
+  them. The first build: 632 pages (56 repositories, 405 issues, 171
+  releases), then 6 junk repository pages removed once the extractor
+  stopped reading GitHub's own pages as repositories.
+- **A query that names an entity puts its page first (task 179, the
+  operator's ruling of 2026-09-30).** A query that is an entity page's
+  title, alias or id, or follows "what do I know about", "who is" or "what
+  shipped in", gets that page first in every mode and after the CLI's
+  rerank; every other query ranks as before. Without it
+  "alexherrero/crickets" put the repository's page 107th, behind its own
+  issue pages.
+- **Enrichment records `people:` (task 179 step 4).** The deep pass returns
+  the people a note names, leaving out the person it is written by or for,
+  cited authors and public figures in passing. Each name is kept only where
+  the note's own words contain it, and filed under
+  `standards/people/aliases.md` (`you:`, `aliases:`, `deny:`; read by the
+  new `daemon/internal/people`). The pass version moved to `d83411616cd8`,
+  so every stamped card is owed the deep pass once; the first night under
+  it cost $22.38 against $21.74, at the same token line.
+- **`agentmdream entities [-apply]`** runs the entity builder on its own,
+  like `move-tasks`.
+- **`daemon.people_email_evidence_enabled`, off (task 179 step 7).** With it
+  on and an email source given, a thread with the operator counts as
+  shared work for each person on it. No source ships. Set it with
+  `agentm_config.py --people-email-evidence-enabled`; `agentmd status
+  --json` now lists every daemon switch under `switches`.
 
 - **`agentmd restated` merges a rule stated twice (task 178 step 8).** It
   shortlists convention, preference and workflow pairs whose best chunk
@@ -38,6 +82,24 @@ Plan C of the AgentKV layout convergence: the memory-quality half of the operato
 - **`scripts/deploy-daemon.sh`**: rebuilds `agentmd` and `agentmdream` from the current checkout, swaps each one in over the live binary, restarts the launchd job and waits for `/health`. It does the same build-then-swap as `install.sh`'s refresh mode, without the rest of the install. Agents used to type the swap by hand as `go build -o …new && mv -f …`. `mv` is on the global ask list, so every redeploy stopped for a permission prompt: 58 of the 100 `mv` prompts in the 36 days of desktop-app logs. Use `--no-restart` to skip the restart; name one binary to rebuild only that one.
 
 ### Changed
+
+- **The entity extractor reads a note's project (task 179 step 3).** A bare
+  `#NN` becomes `issue:owner/repo#NN` when the note's project lists one
+  repository in `project.yaml`; the note's place under `projects/<slug>/`
+  counts first, then its `project:` label. Of the 2,422 bare mentions in
+  the index, the 2,340 in single-repository projects' notes are now
+  qualified. An issue link is a qualified issue, and releases are
+  recognized as `release:owner/repo@vX.Y.Z` (324 distinct at first).
+  GitHub's own pages (`docs.`, `gist.`, `users/`, `orgs/`) are no longer
+  read as repositories (step 6).
+- **The contract registers `entity-profile` and the entity bars (task 179
+  step 2).** `entity_min_mentions` and `person_min_shared_work`, both 2;
+  `people` joins the card order after `project` and `task`, in both arms.
+  `check-card-shape` holds an entity page to its type, id and folder, and
+  `check-class-directories` lets `entities/` hold its four type folders.
+- **The vault design** takes Plan D's reversals (`entities/` in folders by
+  type, people from the whole vault, one writer) and the exact-name
+  ruling, with amendment rows (task 179 steps 1 and 5).
 
 - **The twin detector compares memories only (step 2).** `dream.py`'s dedup
   had walked the whole memory root, and all 62 pairs it listed were

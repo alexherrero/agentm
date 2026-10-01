@@ -192,6 +192,8 @@ Returns `{results, note, matched, archived_hidden, superseded_hidden, staged_hid
 
 `note` is set whenever the driver should know something — a rewritten query, or an empty result set.
 
+**A query that names an entity puts its page first** (task 179, your ruling of 2026-09-30; `daemon/internal/index/entityname.go`). When the query is an entity page's title, one of its aliases or its id — or asks about one in so many words: "what do I know about crickets", "who is Jane Doe", "what shipped in agentm v10.0.0" — that page comes first, moved up or added with its head filled, in every mode and after the CLI's rerank. A name two pages share names neither, a hand-written note in `entities/` is not an entity page, and every other query ranks exactly as before. It exists because a page listing every note that mentions its entity is long, and the 576 issue and release pages each carry their repository's name: without it "alexherrero/crickets" put the repository's page 107th.
+
 ## `memory_capture`
 
 | Param | Type | Default | Notes |
@@ -573,6 +575,10 @@ the lighter pass a note that has moved since (`DepthLight`). A note
 genuinely unchanged since its last pass is caught for free by the separate
 fingerprint gate, keyed on the pass version, the rules hash, and the body
 together (`Fingerprint.Check`, `pregates.go:365-374`).
+
+### The people a note names
+
+The deep pass returns `people`: at most twelve names the card itself contains, written as the card writes them, as a full name where it gives one (task 179). The prompt leaves out the person the card is written by or for, the authors of cited work and public figures mentioned in passing, and a light pass may move the field. Before anything lands, `groundPeople` (`daemon/internal/enrich/compose.go`) keeps only the names the note's own words contain: its title, the session's text and anything below the dreaming section, never an earlier pass's `people:` or its added prose. It then files each name under your table, `standards/people/aliases.md` (`daemon/internal/people`): a `you:` or `deny:` name is dropped, and an alias is filed under its person's full name. A card writes `people: [...]` in the card order; a project record gets it set over an earlier pass's. Adding the field moved the pass version to `d83411616cd8`, so every stamped card is owed the deep pass once, which is also how the corpus gains it. The first night under it cost $22.38 against $21.74 the night before, at the same token line.
 
 ### The refusal record
 
@@ -1240,7 +1246,7 @@ The second Go binary the design names, built beside `agentmd` by `install.sh`. W
 | | |
 |---|---|
 | Binary | `agentmdream` — built beside `agentmd` by `install.sh` |
-| Subcommands | `run`, `status`, `journal`, `ideas`, `move-tasks`, `apply`, `version` |
+| Subcommands | `run`, `status`, `journal`, `ideas`, `move-tasks`, `apply`, `entities`, `version` |
 | Gate | elapsed ≥ `-every` since the last *applying* pass (flag default 168h; the scheduled job passes 12h) **and** activity since then |
 | Lock | mkdir + heartbeat, stale-window pid takeover; a second start exits 3 |
 | Journal | fsynced intent → applied → skipped, hash-checked resume after a crash |
@@ -1255,7 +1261,10 @@ agentmdream journal -tail 20                              # the mutation journal
 agentmdream ideas                                         # print Ideas.md as the night would rebuild it (dry run)
 agentmdream move-tasks                                    # plan the closed-task moves and print them; -apply moves
 agentmdream apply -manifest FILE                          # check a one-time pass's manifest; -apply makes it
+agentmdream entities                                      # plan the entity pages and their map; -apply writes them
 ```
+
+`entities` runs the entity builder on its own (task 179; `BuildEntities`, `daemon/internal/dreaming/entities.go`): the supervised first build, and a rebuild after the extractor changes. It plans and prints the page counts by type and every page it would remove; `-apply` writes the pages and the entity map through the journal under the dreaming lock, as the night would; `-json` emits the plan.
 
 `run`'s other flags: `-force` (skip the gate and run now), `-pace <duration>` (sleep between mutations, for tests), `-cap <n>` (the automatic-demotion cap for this pass), `-reclassify` (run the sampled re-classification diff this pass even if the filing-pass version hasn't changed), `-task-cap <n>` (the most closed task folders this pass moves; 0 is the contract's `demotion_cap`, counted in folders), `-json` (emit the report as JSON). The morning note shows a pass written since the night window opened as a table, one row per job; see [the morning note](#the-morning-note).
 
@@ -1273,6 +1282,7 @@ agentmdream apply -manifest FILE                          # check a one-time pas
 | `copies` | Content-identical families collapse into the earliest note; every other copy is marked `lifecycle: superseded` + `superseded_by: <canonical>`, never deleted; `status` is untouched. |
 | `refile` | A memory whose `type:` the contract routes elsewhere moves under the same basename; a stale `near-duplicate` flag whose twin is gone gets cleared. |
 | `promote` | Reads every session trace's `## Captured` and `## Candidates` sections (agentm-vault plan 04, task 4); the recall hook's own `## Recalled` list is basenames, not judgments, and promote no longer reads it. A `## Candidates` line three or more distinct traces carry becomes a semantic candidate at `memory/semantic/candidate-<first-words>.md` — `status: unfiled`, no `why`, `derived_from` naming the traces — for the next enrichment batch to judge; capped at 10 new candidates a pass. A `## Captured` link three traces carry already has a card and is only reported. Nothing is ever written to `crystallized/`, which holds model syntheses made at a task's close or on request. |
+| `entities` | The entity builder (task 179; `PlanEntities`, `daemon/internal/dreaming/entities.go`, and `people_pages.go`), free. Writes `memory/entities/{repos,issues,releases}/<slug>.md` for every repository, qualified issue and release that `entity_min_mentions` (2) distinct notes mention, and `memory/entities/people/<slug>.md` for every person named in `person_min_shared_work` (2) distinct pieces of shared work — a task's plan, progress or tracker, a `decisions/` note, a project tracker, a calendar note or a meeting note. The people are the names enrichment wrote into `people:`, filed under `standards/people/aliases.md`, plus the table's own; where each appears is found by matching their names (a one-word name only as written) across every indexed note. Each page is a `kind: entity-profile` record listing its notes by project, then by space, newest first; a person's lists shared work first. Superseded notes, the derived classes, `diagnostics/`, generated maps, the night's own calendar records and `standards/people/` never count. A page keeps its `created`, so an unchanged corpus writes nothing; a builder page under its bar is removed through the journal, which keeps its bytes; a hand-written note in `entities/` is never touched. `daemon.people_email_evidence_enabled` (off) is where a future mail source counts a thread with you as shared work. The mocs job lists the pages in `mocs/moc-entities.md`. |
 | `calendar` | Writes the daily register's weekly and monthly reviews, and, beside each year that has a facet note, that year's generated map (`moc-calendar-YYYY.md`, agentm-vault plan 07). A period gets a review only when one of its facet notes holds a timed entry or prose beyond the daily template. A day of prose alone is listed without an entry count. |
 | `mocs` | A page per memory type, `<type>.md`, once it holds `moc_min_members` (5) live notes — past `moc_split_at` (40) it paginates inside itself, a section per 40 members, never into a second file (agentm-vault plan 07 retired the old numbered pages). When the type falls below `moc_min_members`, the job removes its page through the journal. `moc-memory.md` lists every type — a type at or past the floor by its page's link, a smaller one with its notes in full — and `moc-root.md` lists every area's map, both regenerated alongside it. A type's page is flagged `stale: true` past `moc_stale_after_days` (90). Over the projects space (agentm-vault plan 09) the job also writes a map at each project's root, `moc-<slug>.md`: the project's tasks, in flight first by importance and the rest folded under the day they closed, then its decisions and designs, newest `created` first, and its research as a count per bundle. `Projects/moc-tasks.md` lists every project's tasks once any tracker exists, and `Projects/moc-projects.md` lists every project folder, leaving out `_archive/` and `completed/`, with its charter's What line (task 176 step 6 dropped the earlier fallback to the tracker's first State line — the map's own task count already says where the project stands, so nothing here reads the tracker any more). A task is a tracker in either layout: `tasks/<task>/tracker.md`, or `tracker-<task>.md` beside a flat plan pair. The same job (`PlanProjectTrackers`, `daemon/internal/dreaming/projecttrackers.go:199`, wired in right after the project maps at `daemon/internal/dreaming/run.go:275-282`) also (re)generates each project's own `tracker.md` from its task trackers, in the tracker's one schema (`scripts/tracker.py`): frontmatter `title`/`status` from `project.yaml` (falling back to the charter's title and `active`); an Objective of the charter's What line plus a line saying the file is generated; a State of `N open · M done` then the open tasks grouped by the design that governs them, and the done ones collapsed to one line naming the latest to close; a Next naming the first open task; and an Outcome only when `project.yaml` marks the project finished. No session writes a project's tracker any more, and a night over an unchanged one writes nothing. The root map lists a `Projects/moc-*.md` map on the night it is first written. |
 | `ideas` | Rebuilds `Ideas.md` over the idea cards in `personal/ideas/` (agentm-vault part 13; `PlanIdeas`, `daemon/internal/dreaming/ideas.go:254`): one `## <area>` heading per group name the cards actually carry, alphabetical, cards with no `area:` last under "no group yet"; one `- [[slug\|title]] — summary` line per idea, title order within its heading; the dismissed ideas (a `dismissed:` date on the card) in one collapsed `> [!note]- Dismissed (N)` callout at the end instead of a heading of their own. Everything from the top of the file through the operator's own end marker is copied into the rewrite byte for byte. A file carrying no marker pair is never touched — the first write is the deliberate adoption `agentmdream ideas -intro <file> -write` makes, above — so a vault that has not adopted the file yet is untouched by the nightly run too. A rebuild over a folder that has not changed writes nothing. |
@@ -1482,21 +1492,13 @@ the record stays, and `work_ledger.dangling_targets()` still reads it.
 Links inside fenced code are skipped. A link in a code block is a sample, and
 indexing it would connect a page to whatever its examples happen to mention.
 
-### Entities, before any `person` type exists
+### Entities, and the pages built from them
 
-Issue, qualified issue, repository, commit and changelist references are pulled
-out by regex and keyed by a namespaced URI, so `issue:owner/repo#123` can never
-collide with `repo:owner/repo`. This is what makes an entity timeline addressable
-today: every note mentioning something is one lookup away. The entity-rollup stage
-that summarized from that set retired in agentm-vault plan 04, and the lookup
-stands on its own. No type is registered, so the taxonomy's growth rule is
-untouched.
+Issue, qualified issue, repository, release, commit and changelist references are pulled out by regex and keyed by a namespaced URI, so `issue:owner/repo#123` can never collide with `repo:owner/repo` (`daemon/internal/extract/entities.go`). Every note mentioning something is one lookup away, and the nightly entity builder reads the same rows (see [the dreaming binary's jobs](#its-jobs-in-order)).
 
-Most of the work here is refusing false positives. `#1` is as often a list marker
-as a reference, so a bare issue needs two digits; `#todo` is a tag. `a/b` is a
-path far more often than a repository, so the host is required. An all-digit run
-is a date or a count rather than a commit, so a hash needs a hex letter, and
-seven characters is where git abbreviates.
+The extractor reads each note with its context (task 179; `EntitiesIn`, and `entitycontext.go` in the index). A bare `#12` becomes `issue:owner/repo#12` when the note's project lists exactly one repository in its `project.yaml`: the project is the note's place under `projects/<slug>/` first (`completed/` included), then its `project:` label (`projectbind.NoteProject`), because task files carry no label. A `github.com/<o>/<r>/issues/N` or `…/pull/N` link is a qualified issue, and lends its repository to the bare number beside it. A release, `release:owner/repo@vX.Y.Z`, comes from a `…/releases/tag/vX.Y.Z` link, from a version right after a repository's short name or its `owner/repo` (a known or line-referenced one; a path reads the same), or from a version after a release word or nothing, given to the one repository the line names, else to the note's own; a line naming another repository than the note's gives none. A version after any other word — a plugin, a tool, `agy` — is not a release. GitHub's own pages are not repositories: `docs.` and `gist.` subdomains, and `users/`, `orgs/`, `settings/` and the like in the owner's place. `extract.Paged` says which references get a page: repositories, qualified issues and releases; commits, changelists and bare numbers never do.
+
+Most of the rest is refusing false positives. `#1` is as often a list marker as a reference, so a bare issue needs two digits; `#todo` is a tag. `a/b` is a path far more often than a repository, so the host is required. An all-digit run is a date or a count rather than a commit, so a hash needs a hex letter, and seven characters is where git abbreviates. A change to the extractor re-extracts existing notes only on a reindex; the deploy runs `agentmd reindex -from-scratch` with `index.db` backed up first, then `agentmd ledger -rebuild` and `agentmd embed`.
 
 ### Aliases
 
