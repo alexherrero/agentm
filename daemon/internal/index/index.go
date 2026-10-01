@@ -330,12 +330,15 @@ func (x *Index) Path() string { return x.path }
 
 // DB hands out the open handle, for the tables this package does not own.
 //
-// The coverage ledger and the source registry are tables in this database
-// without being part of this package: they answer questions about dreaming's
-// work rather than about the corpus, and folding them in here would make one
-// package own two unrelated jobs. They still belong in this file, because they
-// are caches with the same disposability the index has — a schema bump discards
-// all of it together, and that is correct for all of it.
+// The work queue and the source registry are tables in this database without
+// being part of this package: they answer questions about dreaming's work
+// rather than about the corpus, and folding them in here would make one package
+// own two unrelated jobs. They still belong in this file, because they are
+// caches with the same disposability the index has — a schema bump discards all
+// of it together, and that is correct for both. The enrichment ledger was here
+// too, and left for a file of its own (task 181): a discarded ledger is rebuilt
+// from the notes' stamps without its input keys, and the nights after paid to
+// re-judge notes whose answer had not changed.
 //
 // Sharing the handle rather than opening a second one is deliberate. Open sets
 // MaxOpenConns(1) so a single resident process never contends with itself over a

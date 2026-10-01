@@ -8,15 +8,19 @@
 // under, and when — and "has this been done?" becomes a lookup instead of a
 // judgment.
 //
-// # Why it lives in the index database
+// # Why it lives in a file of its own
 //
-// Because it is honestly a cache. Every row it holds is either re-derivable from
-// the corpus or describes work that can simply be done again; nothing here is
-// the only copy of anything. That is what makes the index the right home despite
-// the index discarding itself on a schema bump — losing the ledger costs a
-// re-scan, and re-doing work is an acceptable loss where losing data is not.
+// It began as a table in the index database, on the reasoning that it is a
+// cache: every row is either re-derivable from the corpus or describes work that
+// can be done again, so losing it on the index's schema bump would cost a
+// re-scan and nothing more. The re-scan was not the price. A row rebuilt from
+// the notes' stamps has no input key and names the contract the note was last
+// written under, so after every bump the night paid again for judgments whose
+// answer had not changed (#783). So the ledger lives in its own file in the
+// engine state directory (OpenFile), which a schema bump never reaches, and the
+// rebuild from the stamps is the fallback for a lost file.
 //
-// The one durable record lives in the note itself: `enriched_by`, `rules_hash`
+// The stamps stay the record in the note itself: `enriched_by`, `rules_hash`
 // and `enriched_at`, written into the file the judgment was about. Rebuild reads
 // those back.
 //
@@ -118,15 +122,15 @@ type Entry struct {
 // Ledger is the table.
 type Ledger struct {
 	db *sql.DB
+	// owned is true when OpenFile opened the handle, so Close closes it.
+	owned bool
 }
 
-// Open prepares the ledger's table on an already-open index database.
+// Open prepares the ledger's table on an already-open database handle.
 //
-// It takes the handle rather than a path on purpose. The index sets
-// MaxOpenConns(1) precisely so a single resident process never contends with
-// itself over a SQLite lock, and a second handle on the same file would give
-// back the whole "database is locked" flake class that decision bought off. One
-// connection, shared, serialized by database/sql.
+// Production opens the ledger's own file with OpenFile, which comes here. A
+// handle someone else owns is for tests, and for reading the table the index
+// used to hold (CarryFrom).
 func Open(db *sql.DB) (*Ledger, error) {
 	if db == nil {
 		return nil, errors.New("ledger: no database handle")

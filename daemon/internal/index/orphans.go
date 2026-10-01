@@ -33,11 +33,11 @@ import (
 // for: it reads the schema rather than this list, so a table added to `migrate`
 // and not here fails it.
 //
-// The other tables in this file are not on it and must not be. `ledger`,
-// `queue` and `sources` belong to dreaming rather than to the corpus: they are
-// keyed by path and by source identity, not by a document id, and they record
-// what a pass did rather than what a note contains. A deleted note's ledger row
-// is a fact about a night's work, which `agentmd ledger --rebuild` owns.
+// The other tables in this file are not on it and must not be. `queue` and
+// `sources` belong to dreaming rather than to the corpus: they are keyed by path
+// and by source identity, not by a document id, and they record what a pass did
+// rather than what a note contains. The enrichment ledger, which is the same
+// kind of record, lives in a file of its own since task 181.
 // `meta` holds the schema version.
 // Ordered cheapest-probe-first, because the sweep asks each in turn whether it
 // holds an orphan and stops at the first yes. `docs` is last: it is the FTS5
@@ -128,10 +128,11 @@ func (r SweepReport) String() string {
 // unreachable from the moment the docmeta row goes, and if the sweep never runs
 // they are unreachable forever, which is the state this found the index in.
 //
-// In place, by design. The enrichment ledger and the work queue are tables in
-// this same file, so "delete the index and rebuild" is not the cheap answer it
-// is for a schema bump — it costs a ledger rebuild and a full re-embed to remove
-// rows that five statements remove.
+// In place, by design. The work queue is a table in this same file, and the
+// vectors are too, so "delete the index and rebuild" is not the cheap answer it
+// is for a schema bump — it costs a full re-embed to remove rows that five
+// statements remove. (The enrichment ledger was a table here until task 181
+// moved it to a file of its own.)
 //
 // A clean index costs one existence check per table and no write lock. The
 // looking is done outside any transaction; only when it finds something does a
