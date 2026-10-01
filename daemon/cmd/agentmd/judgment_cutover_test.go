@@ -225,6 +225,9 @@ func TestTheCutoverChangesNoDecisionTheOldHashGotRight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Closed before the test's temporary directory is removed: Windows will
+	// not delete a file another handle holds open.
+	defer led.Close()
 	if log.Len() != 0 {
 		t.Errorf("a second open said %q; the cutover runs once", log)
 	}
