@@ -161,7 +161,7 @@ func enrichObserver(cfg *config.Config, led *ledger.Ledger, keyer *enrich.Finger
 		}
 		recordEnrich(context.Background(), led, ledger.Entry{
 			Stage: ledger.StageEnrich, Target: req.Rel,
-			Version: enrich.PassVersion, RulesHash: currentRulesHash(cfg),
+			Version: enrich.PassVersion, RulesHash: currentJudgmentHash(cfg),
 			InputKey: keyer.Key(req.Raw), Outcome: outcome, Reason: reason,
 		})
 	}
@@ -182,7 +182,7 @@ func refusalFor(cfg *config.Config, keyer *enrich.Fingerprint, req enrich.Reques
 	}
 	return enrich.Refusal{
 		Rel: req.Rel, Gate: out.RefusedBy, Key: keyer.Key(req.Raw),
-		Version: enrich.PassVersion, RulesHash: currentRulesHash(cfg),
+		Version: enrich.PassVersion, RulesHash: currentJudgmentHash(cfg),
 		Gates: enrich.GatesVersion, Reason: reason,
 	}, true
 }

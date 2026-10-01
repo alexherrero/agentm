@@ -38,7 +38,7 @@ func newLedgerFixture(t *testing.T) ledgerFixture {
 	cfg.EngineStateDir = t.TempDir()
 	rel := "memory/semantic/judged.md"
 	body := writeNote(t, vault, rel, response("judged", 0.9), enrich.Stamp{
-		Version: enrich.PassVersion, RulesHash: currentRulesHash(cfg),
+		Version: enrich.PassVersion, RulesHash: currentJudgmentHash(cfg),
 		At: time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC),
 	})
 	return ledgerFixture{cfg: cfg, vault: vault, rel: rel, body: body}
@@ -106,7 +106,7 @@ func TestASchemaBumpLeavesTheLedgerUntouched(t *testing.T) {
 	// rebuild loses.
 	if err := led.Record(ctx, ledger.Entry{
 		Stage: ledger.StageEnrich, Target: f.rel, Version: enrich.PassVersion,
-		RulesHash: currentRulesHash(f.cfg), InputKey: keyer.Key("the raw capture"),
+		RulesHash: currentJudgmentHash(f.cfg), InputKey: keyer.Key("the raw capture"),
 		OutputKey: keyer.Key(f.body), Outcome: ledger.Done,
 		At: time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC),
 	}); err != nil {

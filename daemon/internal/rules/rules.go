@@ -176,9 +176,13 @@ type Rules struct {
 	// IsPackagedDefault says the embedded copy won — which means an edit to the
 	// operator's own rules file is not taking effect, because there isn't one.
 	IsPackagedDefault bool `json:"is_packaged_default"`
-	// Hash identifies the contract a filing judgment was made under. It is the
-	// `rules_hash` a memory carries in its frontmatter.
+	// Hash identifies the whole contract: which contract a filing ran under.
 	Hash string `json:"hash"`
+	// JudgmentHash identifies the part of the contract an enrichment judgment
+	// reads (judgment.go). It is the `rules_hash` an enriched memory carries in
+	// its frontmatter and the contract half of the ledger's version, so an edit
+	// to anything else re-judges nothing.
+	JudgmentHash string `json:"judgment_hash"`
 	// ImportanceRubric is the paragraph under `## Importance`: what the deep
 	// pass proposes `importance_proposed` against. Prose rather than a key in
 	// the block, on the operator's ruling (agentm-vault § Dreaming, Q8) — a
@@ -290,6 +294,7 @@ func parse(text, source string, embedded bool) (*Rules, error) {
 
 	r := &Rules{block: b, Source: source, IsPackagedDefault: embedded}
 	r.Hash = b.contentHash()
+	r.JudgmentHash = b.judgmentHash()
 	r.ImportanceRubric = proseSection(text, ImportanceHeading)
 	return r, nil
 }

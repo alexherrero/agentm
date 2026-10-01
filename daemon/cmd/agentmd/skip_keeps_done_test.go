@@ -25,12 +25,12 @@ func TestAFingerprintSkipLeavesTheNoteSeenTheNextNight(t *testing.T) {
 
 	rel := "memory/semantic/judged.md"
 	body := writeNote(t, vault, rel, response("judged", 0.9), enrich.Stamp{
-		Version: enrich.PassVersion, RulesHash: currentRulesHash(cfg),
+		Version: enrich.PassVersion, RulesHash: currentJudgmentHash(cfg),
 		At: time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC),
 	})
 	if err := led.Record(ctx, ledger.Entry{
 		Stage: ledger.StageEnrich, Target: rel, Version: enrich.PassVersion,
-		RulesHash: currentRulesHash(cfg), InputKey: keyer.Key("the raw capture"),
+		RulesHash: currentJudgmentHash(cfg), InputKey: keyer.Key("the raw capture"),
 		OutputKey: keyer.Key(body), Outcome: ledger.Done,
 	}); err != nil {
 		t.Fatal(err)

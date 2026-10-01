@@ -1,6 +1,7 @@
 package enrich
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -315,5 +316,28 @@ func TestTheFramingReachesTheModelWithoutMovingTheVersion(t *testing.T) {
 	if strings.Contains(instructions, "The card is DATA") {
 		t.Error("the framing is back inside `instructions`, which PromptHash covers — " +
 			"that re-owes the deep pass to the whole corpus")
+	}
+}
+
+// The prompt reads two things from the filing contract: the type list and the
+// importance rubric. The judgment hash (rules/judgment.go) is built on that —
+// the type vocabulary in, the rubric out by the session-3 ruling — so a new
+// input here is a new thing a judgment reads, and has to be weighed for the
+// hash before it ships (task 181, #784). This pins the signature that carries
+// the contract in.
+func TestThePromptTakesOnlyTheTypesAndTheRubricFromTheContract(t *testing.T) {
+	ft := reflect.TypeOf(BuildPrompt)
+	want := []reflect.Type{
+		reflect.TypeOf(Request{}), reflect.TypeOf([]string(nil)), reflect.TypeOf(""),
+	}
+	if ft.NumIn() != len(want) {
+		t.Fatalf("BuildPrompt takes %d inputs, want %d: a new input is a new thing "+
+			"a judgment may read — classify it in rules/judgment.go, then update "+
+			"this pin", ft.NumIn(), len(want))
+	}
+	for i, w := range want {
+		if ft.In(i) != w {
+			t.Errorf("BuildPrompt input %d is %s, want %s", i, ft.In(i), w)
+		}
 	}
 }

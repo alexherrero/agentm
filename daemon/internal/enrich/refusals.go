@@ -236,6 +236,25 @@ func (r *Refusals) Standings() []Refusal {
 	return out
 }
 
+// Retag rewrites standing rows in memory through fn and reports how many it
+// changed; Compact then writes them down. For a cutover that changes what a
+// key is made of (the judgment hash, task 181): a refusal keyed the old way
+// would match nothing, and the card would be bought another answer to the
+// question it was already refused on.
+func (r *Refusals) Retag(fn func(Refusal) (Refusal, bool)) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for rel, row := range r.rows {
+		if next, ok := fn(row); ok {
+			next.Rel = rel
+			r.rows[rel] = next
+			n++
+		}
+	}
+	return n
+}
+
 // Compact rewrites the file as the one standing row per card.
 //
 // Appending is what makes a refusal survive a crash; compacting is what stops

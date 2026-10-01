@@ -18,6 +18,8 @@ This file is the *digest* reader of the halt. The other two are
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -198,6 +200,36 @@ class HashWatchTests(_Base):
         digest = dream.run_dream(self.vault, run_id="counts")
         self.assertEqual(digest.corpus_stats["storage_rules_stale_count"], 1)
         self.assertEqual(digest.corpus_stats["storage_rules_unjudged_count"], 1)
+
+    def test_a_stamp_from_before_an_edit_no_judgment_reads_is_not_stale(self) -> None:
+        """Task 181: a memory's stamp names a judgment, and an edit to a field
+        no judgment reads (a threshold here) leaves it current. A memory stamped
+        before the edit carries the old contract's hash for good, because a
+        re-judgment that reaches the same answer no longer rewrites it; the
+        contract's history is what says that hash is still current."""
+        if shutil.which("git") is None:
+            self.skipTest("git is not installed")
+        tmp = Path(self._tmp.name)
+        self._rules(VALID_RULES)
+        if not storage_rules.load().judgment_hash():
+            self.skipTest("the daemon on PATH predates the judgment hash")
+        before = storage_rules.load().content_hash()
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
+        for args in (["init", "-q"], ["add", "storage-rules.md"],
+                     ["commit", "-q", "-m", "the contract as judged"]):
+            subprocess.run(["git", "-C", str(tmp)] + args, check=True, env=env,
+                           capture_output=True)
+        self._rules(VALID_RULES.replace("low_confidence: 0.65", "low_confidence: 0.8"))
+        subprocess.run(["git", "-C", str(tmp), "commit", "-q", "-am", "a threshold"],
+                       check=True, env=env, capture_output=True)
+        self.assertNotEqual(storage_rules.load().content_hash(), before)
+
+        self._write("judged-before.md",
+                    f"---\nkind: workflow\nrules_hash: {before}\n---\nJudged before the edit.\n")
+        self._write("stale.md", "---\nkind: workflow\nrules_hash: 0000000000000000\n---\nOld.\n")
+        digest = dream.run_dream(self.vault, run_id="judgment")
+        self.assertEqual(digest.corpus_stats["storage_rules_stale_count"], 1)
 
     def test_the_digest_announces_a_changed_hash(self) -> None:
         self._rules(VALID_RULES)
