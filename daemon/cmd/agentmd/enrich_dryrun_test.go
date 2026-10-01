@@ -159,6 +159,11 @@ func TestTheDryRunCountsCardsAndRecordsApartAndSizesWhatTheCursorWouldServe(t *t
 		return captureStdout(t, func() error { return cmdEnrich(args) })
 	}
 
+	// The order is by cause since task 181 step 4, then the tiers. The decision
+	// is stamped by this pass with no `rules_hash`, so the ledger rebuilt from
+	// the stamps holds it under an unknown contract: owed under an older
+	// judgment hash, which the night takes after every never-judged note. The
+	// research record, never judged, moves ahead of it.
 	cases := []struct {
 		name    string
 		after   string
@@ -166,16 +171,16 @@ func TestTheDryRunCountsCardsAndRecordsApartAndSizesWhatTheCursorWouldServe(t *t
 		offered []string
 	}{
 		{"the whole queue", "", [4]int{4, 1, 0, 0},
-			[]string{firstCard, lastCard, charter, decision, research}},
+			[]string{firstCard, lastCard, charter, research, decision}},
 		// The cursor plan 09 made possible: the cards are done and the records
 		// are what is left. Comparing paths counted none of them, because every
 		// `projects/…` path sorts before every `agent/…` one.
 		{"a cursor on the last card", lastCard, [4]int{2, 1, 0, 0},
-			[]string{charter, decision, research}},
+			[]string{charter, research, decision}},
 		// And inside the records, where comparing paths counted the two cards
 		// again — a night already past them.
 		{"a cursor on the charter", charter, [4]int{1, 1, 0, 0},
-			[]string{decision, research}},
+			[]string{research, decision}},
 	}
 	for _, c := range cases {
 		out := dryRun(c.after)

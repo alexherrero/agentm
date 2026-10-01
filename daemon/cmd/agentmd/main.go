@@ -1376,6 +1376,15 @@ func cmdEnrich(args []string) error {
 	// Before anything reads the ledger: a note the night moved since its last
 	// judgment takes its row with it, rather than reading as never judged.
 	followMoves(context.Background(), cfg, led, queue, os.Stderr)
+	// Then by cause (task 181 step 4): what the night owes, never judged first
+	// and an older judgment hash last, least recently judged first inside a
+	// cause, and the notes it is current on after all of it.
+	causes, since, err := enrichCauses(context.Background(), cfg, led, queue)
+	if err != nil {
+		return err
+	}
+	queue = orderByCause(queue, causes, since)
+	owed := countCauses(causes)
 
 	// A random sample is drawn once, up front, and then served page by page.
 	//
@@ -1489,6 +1498,8 @@ func cmdEnrich(args []string) error {
 		}
 		fmt.Printf("  owed the deep pass %d · the light pass %d · unchanged at this "+
 			"pass %d · unreadable %d\n", deep, light, unchanged, unreadable)
+		fmt.Printf("  by cause, the order the night takes them: %s · current %d\n",
+			formatCauses(owed), len(queue)-len(causes))
 		fmt.Printf("  budget: the %d-call guard · strong %s tokens · cheap %s tokens · %s\n",
 			budget.MaxCalls, commasInt(budget.TokenLines[enrich.TierStrong]),
 			commasInt(budget.TokenLines[enrich.TierCheap]), budget.MaxDuration)
@@ -1606,6 +1617,8 @@ func cmdEnrich(args []string) error {
 	// landed, so --dump shows the note on disk rather than a re-rendering.
 	var verdicts enrichVerdicts
 	landed := map[string]string{}
+	// What the night judged, by the cause it was owed for (task 181 step 4).
+	judgedBy := map[string]int{}
 
 	write := func(ctx context.Context, rel string, out enrich.Outcome) error {
 		r, err := enrich.ParseResponse(out.Body)
@@ -1686,6 +1699,9 @@ func cmdEnrich(args []string) error {
 			verdicts.count(dest, verdict)
 		}
 		landed[rel] = next
+		if c, ok := causes[rel]; ok {
+			judgedBy[c.String()]++
+		}
 		// Whatever the post-gates once said about this card, they have now said
 		// otherwise. The row would stop matching on its own, because the write
 		// moved the body and so the key; dropping it here is what keeps the
@@ -1775,6 +1791,7 @@ func cmdEnrich(args []string) error {
 		fmt.Fprintf(os.Stderr, "enrich: compacting %s: %v\n", refusals.Path(), cerr)
 	}
 	run := newEnrichRun(rep, verdicts, name, budget)
+	run.Owed, run.JudgedBy = owed, judgedBy
 	run.RefusalsOpen = refusals.Open(enrich.PassVersion, currentJudgmentHash(cfg),
 		enrich.GatesVersion)
 	if err := appendEnrichRun(cfg, run); err != nil {
@@ -1788,6 +1805,8 @@ func cmdEnrich(args []string) error {
 		"skipped %d · failed %d · %d note(s) sent in %s\n",
 		rep.Considered, rep.Enriched, verdicts.Active, verdicts.BelowFloor,
 		rep.Skipped, rep.Failed, rep.Calls, rep.Elapsed.Round(time.Millisecond))
+	fmt.Printf("by cause: judged %s\n          owed at the start %s\n",
+		formatCauses(judgedBy), formatCauses(owed))
 	if run.RefusalsOpen > 0 {
 		fmt.Printf("refused: %d card(s) stand refused at this pass · %d skipped "+
 			"free this run rather than re-judged · %s\n",

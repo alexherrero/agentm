@@ -92,6 +92,12 @@ type enrichRun struct {
 	ElapsedSec float64                 `json:"elapsed_seconds"`
 	Verdicts   enrichVerdicts          `json:"verdicts"`
 	Errors     []string                `json:"errors,omitempty"`
+	// Owed is what the night owed when it started, by cause (task 181 step 4),
+	// and JudgedBy what it judged, by the cause each note was owed for. The
+	// morning note reads both: a night that judged only "deep pass" while
+	// "never" stood at zero spent its line on the backlog, as it should.
+	Owed     map[string]int `json:"owed,omitempty"`
+	JudgedBy map[string]int `json:"judged_by,omitempty"`
 }
 
 func newEnrichRun(rep enrich.BatchReport, v enrichVerdicts, model string,
@@ -516,6 +522,98 @@ func enrichServeOrder(cfg *config.Config, idx *index.Index, records bool) ([]str
 	out = append(out, orderByAge(first, ages)...)
 	out = append(out, orderByAge(cards, ages)...)
 	return append(out, orderByAge(recs, ages)...), nil
+}
+
+// enrichCauses asks the ledger why each note in the night's population is
+// owed, keyed by path. A note missing from the answer is current: the
+// fingerprint gate will skip it free.
+func enrichCauses(ctx context.Context, cfg *config.Config, led *ledger.Ledger,
+	population []string) (map[string]ledger.Cause, map[string]time.Time, error) {
+	causes := map[string]ledger.Cause{}
+	since := map[string]time.Time{}
+	if led == nil {
+		return causes, since, nil
+	}
+	keyer := enrichFingerprint(cfg, nil)
+	targets := make([]ledger.Target, 0, len(population))
+	for _, rel := range population {
+		raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		targets = append(targets, ledger.Target{Rel: rel, Key: keyer.Key(string(raw))})
+	}
+	rep, err := led.Pending(ctx, ledger.StageEnrich, ledger.Version{
+		Stage: enrich.PassVersion, Rules: currentJudgmentHash(cfg),
+	}, targets)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, it := range rep.Pending {
+		causes[it.Target] = rep.CauseOf(it)
+		since[it.Target] = it.Since
+	}
+	return causes, since, nil
+}
+
+// orderByCause is the night's order (task 181 step 4, #784 option 2): the
+// notes it owes by cause — never judged, changed, retry, owed the deep pass,
+// owed under an older judgment hash, skipped — and then the notes it is current
+// on, which the fingerprint gate skips free.
+//
+// Within never judged, the tiers keep their order: the inbox first, as the
+// operator ruled for the drop folder (agentm-vault plan 16), then each tier
+// oldest first, as it was served before. Within every other cause, the note
+// whose row is oldest goes first: the least recently judged, so a second
+// contract edit does not re-pick the notes the first one just paid for. The
+// path breaks the last tie, so the order is total and the cursor stays sound.
+func orderByCause(queue []string, causes map[string]ledger.Cause,
+	since map[string]time.Time) []string {
+	pos := make(map[string]int, len(queue))
+	for i, rel := range queue {
+		pos[rel] = i
+	}
+	rank := func(rel string) int {
+		if c, ok := causes[rel]; ok {
+			return int(c)
+		}
+		return int(ledger.CauseSkipped) + 1
+	}
+	out := append([]string(nil), queue...)
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if ra, rb := rank(a), rank(b); ra != rb {
+			return ra < rb
+		}
+		// Never judged, and current: the tier order the queue came in.
+		if c, ok := causes[a]; !ok || c == ledger.CauseNever {
+			return pos[a] < pos[b]
+		}
+		if sa, sb := since[a], since[b]; !sa.Equal(sb) {
+			return sa.Before(sb)
+		}
+		return a < b
+	})
+	return out
+}
+
+// countCauses counts the night's owed notes by cause, by the cause's name.
+func countCauses(causes map[string]ledger.Cause) map[string]int {
+	out := map[string]int{}
+	for _, c := range causes {
+		out[c.String()]++
+	}
+	return out
+}
+
+// formatCauses prints cause counts in the night's order, every cause shown, so
+// a zero reads as a zero rather than as a cause nobody counted.
+func formatCauses(counts map[string]int) string {
+	parts := make([]string, 0, len(ledger.Causes()))
+	for _, c := range ledger.Causes() {
+		parts = append(parts, fmt.Sprintf("%s %d", c, counts[c.String()]))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // splitAwaiting takes the notes awaiting their first judgment out of one tier,

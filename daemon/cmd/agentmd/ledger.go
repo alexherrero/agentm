@@ -152,6 +152,8 @@ func printPending(rep ledger.Report, limit int) {
 			fmt.Printf("    %-8s %d\n", r, n)
 		}
 	}
+	// The same set by cause, in the order the night drains it (task 181 step 4).
+	fmt.Printf("  by cause: %s\n", formatCauses(rep.Causes))
 	shown := rep.Pending
 	if limit > 0 && len(shown) > limit {
 		shown = shown[:limit]

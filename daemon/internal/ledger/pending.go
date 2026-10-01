@@ -92,6 +92,10 @@ type Report struct {
 	// Counts breaks the pending set down by reason, so a run can report "forty
 	// went stale because the rules changed" rather than "forty pending".
 	Counts map[Reason]int `json:"counts"`
+	// Causes breaks it down by cause (cause.go), the order the night takes
+	// the pending set in: a stale row is either owed the deep pass or owed
+	// under an older judgment hash, and the two drain differently.
+	Causes map[string]int `json:"causes"`
 }
 
 // Coverage is the share of the eligible population the stage is current on.
@@ -187,7 +191,7 @@ func (l *Ledger) Pending(ctx context.Context, stage Stage, version Version,
 
 	rep := Report{
 		Stage: stage, Version: version.Stage, RulesHash: version.Rules,
-		Eligible: len(targets), Counts: map[Reason]int{},
+		Eligible: len(targets), Counts: map[Reason]int{}, Causes: map[string]int{},
 	}
 	for _, t := range targets {
 		e, ok := known[t.Rel]
@@ -223,7 +227,10 @@ func (l *Ledger) Pending(ctx context.Context, stage Stage, version Version,
 			Since: e.At, Version: e.Version})
 	}
 
-	sortPending(rep.Pending)
+	for _, it := range rep.Pending {
+		rep.Causes[rep.CauseOf(it).String()]++
+	}
+	rep.sortPending()
 	return rep, nil
 }
 
@@ -254,22 +261,28 @@ func (r *Report) append(it Item) {
 	r.Counts[it.Reason]++
 }
 
-// sortPending puts the queue in drain order: oldest first, then by target.
+// sortPending puts the queue in drain order: by cause (cause.go), then the
+// row's time, oldest first, then the target.
 //
-// Never-attempted items lead, and they do so without a rule of their own. An
-// item with no row has no stamp, a zero time sorts before every real one, and
-// that is exactly the ordering wanted — a target nothing has ever touched has
-// been waiting since the corpus existed. An explicit never-first clause stood
-// here for a while and was removed: no input could reach it, because no
-// never-attempted item can carry a timestamp, so nothing could tell whether it
-// was doing anything.
+// By cause first, so the budget goes to the notes that most need a judgment:
+// never judged, then changed, then retried, then owed the deep pass, then owed
+// under an older judgment hash. It used to be the row's time alone, and a
+// contract edit made every judged note stale at once with the same time order
+// every night, so the night restarted at the same head notes (#784). Within a
+// cause, the oldest row goes first: the least recently judged, so a second
+// edit reaches the notes the first one did not. A never-attempted item has no
+// row and no time, and keeps the target order inside its cause.
 //
 // The final tiebreak on target name is not cosmetic. A drain reads this order
 // behind a cursor, and an order that is not total would let two runs disagree
 // about where the cursor pointed.
-func sortPending(items []Item) {
+func (r *Report) sortPending() {
+	items := r.Pending
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i], items[j]
+		if ca, cb := r.CauseOf(a), r.CauseOf(b); ca != cb {
+			return ca < cb
+		}
 		if !a.Since.Equal(b.Since) {
 			return a.Since.Before(b.Since)
 		}
