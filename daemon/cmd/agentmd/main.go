@@ -1775,7 +1775,7 @@ func cmdEnrich(args []string) error {
 		fmt.Fprintf(os.Stderr, "enrich: compacting %s: %v\n", refusals.Path(), cerr)
 	}
 	run := newEnrichRun(rep, verdicts, name, budget)
-	run.RefusalsOpen = refusals.Open(enrich.PassVersion, currentRulesHash(cfg),
+	run.RefusalsOpen = refusals.Open(enrich.PassVersion, currentJudgmentHash(cfg),
 		enrich.GatesVersion)
 	if err := appendEnrichRun(cfg, run); err != nil {
 		fmt.Fprintf(os.Stderr, "enrich: recording the run: %v\n", err)

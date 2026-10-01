@@ -162,6 +162,11 @@ func (l *Ledger) migrate() error {
 		// The coverage query counts rows at a version within a stage, which is
 		// the one query that runs over the whole table rather than one row.
 		`CREATE INDEX IF NOT EXISTS ledger_stage_version ON ledger(stage, version)`,
+		// One-time cutovers the table has been through, by name, so each runs
+		// once per file (Marked, Mark).
+		`CREATE TABLE IF NOT EXISTS ledger_meta (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL DEFAULT '')`,
 		// A one-time repair, idempotent, of rows written before Record refused to
 		// let a skip replace a finished row (#785). The enrichment pass's
 		// observer recorded every fingerprint skip as a skipped row over the
@@ -384,4 +389,99 @@ func (l *Ledger) Count(ctx context.Context, stage Stage, version string) (int, e
 	var n int
 	err := l.db.QueryRowContext(ctx, q, args...).Scan(&n)
 	return n, err
+}
+
+// Marked reports whether a one-time cutover has run on this ledger, and the
+// value it left.
+func (l *Ledger) Marked(ctx context.Context, key string) (string, bool, error) {
+	var v string
+	err := l.db.QueryRowContext(ctx, `SELECT value FROM ledger_meta WHERE key = ?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("ledger: reading mark %s: %w", key, err)
+	}
+	return v, true, nil
+}
+
+// Mark records that a one-time cutover has run.
+func (l *Ledger) Mark(ctx context.Context, key, value string) error {
+	if _, err := l.db.ExecContext(ctx, `INSERT INTO ledger_meta(key, value) VALUES(?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value); err != nil {
+		return fmt.Errorf("ledger: marking %s: %w", key, err)
+	}
+	return nil
+}
+
+// Unmark forgets that a one-time cutover ran, so it runs again on the next
+// open: for a rebuild, which brings back rows in the form the cutover changes.
+func (l *Ledger) Unmark(ctx context.Context, key string) error {
+	if _, err := l.db.ExecContext(ctx, `DELETE FROM ledger_meta WHERE key = ?`, key); err != nil {
+		return fmt.Errorf("ledger: unmarking %s: %w", key, err)
+	}
+	return nil
+}
+
+// Retag rewrites a stage's rows in place through fn, in one transaction, and
+// reports how many it changed. fn returns the row as it should now read and
+// whether it changed; the stage and the target are not its to change.
+//
+// The door for a cutover that changes what a key is made of — the judgment
+// hash (task 181) — where every row has to be carried across to the new form
+// rather than dropped and earned again at a model call each.
+func (l *Ledger) Retag(ctx context.Context, stage Stage,
+	fn func(Entry) (Entry, bool)) (int, error) {
+	rows, err := l.db.QueryContext(ctx, `
+		SELECT stage, target, version, rules_hash, input_key, output_key,
+		       outcome, reason, at
+		FROM ledger WHERE stage = ?`, stage)
+	if err != nil {
+		return 0, fmt.Errorf("ledger: reading %s: %w", stage, err)
+	}
+	var all []Entry
+	var stamps []string
+	for rows.Next() {
+		var e Entry
+		var outcome, at string
+		if err := rows.Scan(&e.Stage, &e.Target, &e.Version, &e.RulesHash,
+			&e.InputKey, &e.OutputKey, &outcome, &e.Reason, &at); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		e.Outcome = Outcome(outcome)
+		all = append(all, e)
+		stamps = append(stamps, at)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	changed := 0
+	for i, e := range all {
+		next, ok := fn(e)
+		if !ok {
+			continue
+		}
+		// The time is written back as it was stored, not re-formatted, so a
+		// retag never moves the age the pending order reads.
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE ledger SET version = ?, rules_hash = ?, input_key = ?,
+			       output_key = ?, outcome = ?, reason = ?, at = ?
+			WHERE stage = ? AND target = ?`,
+			next.Version, next.RulesHash, next.InputKey, next.OutputKey,
+			string(next.Outcome), next.Reason, stamps[i], e.Stage, e.Target); err != nil {
+			return 0, fmt.Errorf("ledger: retagging %s/%s: %w", e.Stage, e.Target, err)
+		}
+		changed++
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return changed, nil
 }

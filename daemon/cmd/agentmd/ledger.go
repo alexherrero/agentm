@@ -86,6 +86,15 @@ func cmdLedger(args []string) error {
 		if err != nil {
 			return err
 		}
+		// The stamps a rebuild reads carry the hash they were written with,
+		// and older notes carry the whole contract's: translate them as the
+		// first open of a ledger file does (task 181 step 3).
+		if err := led.Unmark(ctx, judgmentCutover); err != nil {
+			return err
+		}
+		if err := cutoverJudgmentHash(ctx, cfg, led, os.Stderr); err != nil {
+			return err
+		}
 		if *asJSON {
 			return json.NewEncoder(os.Stdout).Encode(rep)
 		}
@@ -182,7 +191,7 @@ func printPending(rep ledger.Report, limit int) {
 func enrichFingerprint(cfg *config.Config, led *ledger.Ledger) *enrich.Fingerprint {
 	fp := &enrich.Fingerprint{
 		Version:   enrich.PassVersion,
-		RulesHash: currentRulesHash(cfg),
+		RulesHash: currentJudgmentHash(cfg),
 	}
 	if led == nil {
 		return fp
@@ -202,15 +211,22 @@ func enrichFingerprint(cfg *config.Config, led *ledger.Ledger) *enrich.Fingerpri
 	return fp
 }
 
-// currentRulesHash reads the filing contract's hash, or says it could not.
+// currentJudgmentHash reads the part of the filing contract an enrichment
+// judgment reads (rules.Rules.JudgmentHash), or says it could not.
+//
+// The judgment hash, not the whole contract's: it is the contract half of the
+// fingerprint key, the ledger's version and the stamp, so an edit to anything a
+// judgment does not read — the dampened spaces, the wall, a threshold — leaves
+// every judgment standing (task 181, #784). A contract that will not parse
+// still halts filing; that is the whole contract's business.
 //
 // "unresolved" rather than an empty string, and it is a real value that goes
 // into keys: a run that could not read the contract must not produce the same
 // key as one that read it and found nothing, because those are different states
 // and only one of them means the work is comparable.
-func currentRulesHash(cfg *config.Config) string {
+func currentJudgmentHash(cfg *config.Config) string {
 	if loaded, err := cfg.Rules.Get(); err == nil {
-		return loaded.Hash
+		return loaded.JudgmentHash
 	}
 	return "unresolved"
 }
@@ -229,7 +245,7 @@ func enrichStamp(cfg *config.Config, at time.Time) enrich.Stamp {
 	}
 	return enrich.Stamp{
 		Version:         enrich.PassVersion,
-		RulesHash:       currentRulesHash(cfg),
+		RulesHash:       currentJudgmentHash(cfg),
 		ConfidenceFloor: floor,
 		At:              at.UTC(),
 		People:          peopleTable(cfg),
@@ -352,6 +368,22 @@ func ledgerPath(cfg *config.Config) string {
 // at once cannot replace one another's work: the second finds the first's file
 // and opens that.
 func openLedger(ctx context.Context, cfg *config.Config, idx *index.Index,
+	log io.Writer) (*ledger.Ledger, error) {
+	led, err := openLedgerFile(ctx, cfg, idx, log)
+	if err != nil {
+		return nil, err
+	}
+	// Once per file: a ledger carried out of the index, or rebuilt from the
+	// stamps, holds rows keyed to the whole contract's hash (task 181 step 3).
+	if err := cutoverJudgmentHash(ctx, cfg, led, log); err != nil {
+		led.Close()
+		return nil, err
+	}
+	return led, nil
+}
+
+// openLedgerFile is openLedger's first half: the file, made if it is missing.
+func openLedgerFile(ctx context.Context, cfg *config.Config, idx *index.Index,
 	log io.Writer) (*ledger.Ledger, error) {
 	path := ledgerPath(cfg)
 	if _, err := os.Stat(path); err == nil {
@@ -525,6 +557,6 @@ func pendingFor(ctx context.Context, stage string, cfg *config.Config,
 	// edit makes every enriched note re-enrichment eligible, and it should read
 	// as one contract edit rather than as a corpus that changed under you.
 	return led.Pending(ctx, stage, ledger.Version{
-		Stage: enrich.PassVersion, Rules: currentRulesHash(cfg),
+		Stage: enrich.PassVersion, Rules: currentJudgmentHash(cfg),
 	}, targets)
 }

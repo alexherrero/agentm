@@ -229,12 +229,22 @@ class StorageRules:
         return self.deprecations().get(value)
 
     def content_hash(self) -> str:
-        """The contract's content hash — `rules_hash` in a memory's frontmatter.
+        """The whole contract's content hash.
 
         Computed by the daemon over the block's parsed content, so rewording the
-        prose or reflowing the YAML does not invalidate every judgment in the
-        corpus, and changing what the block says does."""
+        prose or reflowing the YAML does not change it, and changing what the
+        block says does. A memory's `rules_hash` carried this until task 181;
+        it carries `judgment_hash` since."""
         return self._data.get("hash") or ""
+
+    def judgment_hash(self) -> str:
+        """The part of the contract an enrichment judgment reads (task 181).
+
+        What an enriched memory's `rules_hash` names, and what the daemon's
+        ledger keys a judgment to: an edit to anything else in the block — the
+        dampened spaces, the wall, a threshold — leaves every judgment standing.
+        Empty from a daemon that predates it."""
+        return self._data.get("judgment_hash") or ""
 
     def as_dict(self) -> dict:
         """The contract, for display and for tests."""
@@ -305,6 +315,34 @@ def load(*, vault_path=None) -> StorageRules:
     if vault_path:
         args += ["--vault", str(vault_path)]
     return StorageRules(_ask(args))
+
+
+def current_stamps(contract: StorageRules) -> set:
+    """Every `rules_hash` stamp value that still names a current judgment.
+
+    The judgment hash itself, and every whole-contract hash the vault's history
+    shows had the same judgment hash: a memory stamped before task 181 carries
+    the whole contract's hash, and a re-judgment that reaches the same answer no
+    longer rewrites the stamp, so that old value can stand for good. The history
+    is asked of the daemon (`agentmd rules --history --json`); when it cannot
+    answer, the current contract's own two hashes are what counts as current.
+    """
+    current = contract.judgment_hash()
+    out = {h for h in (current, contract.content_hash()) if h}
+    if not current:
+        return out
+    binary = shutil.which(DAEMON_BIN) or DAEMON_BIN
+    try:
+        proc = subprocess.run([binary, "rules", "--history", "--json"],
+                              capture_output=True, text=True, timeout=_TIMEOUT_SECONDS)
+        versions = json.loads(proc.stdout) if proc.returncode == 0 else []
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        versions = []
+    if isinstance(versions, list):
+        for v in versions:
+            if isinstance(v, dict) and v.get("judgment_hash") == current and v.get("rules_hash"):
+                out.add(v["rules_hash"])
+    return out
 
 
 def load_file(path) -> StorageRules:

@@ -243,7 +243,7 @@ func TestARefusedCardIsDeclinedByTheGateThatReadsTheRowBack(t *testing.T) {
 	if !errors.Is(err, enrich.ErrNotEligible) {
 		t.Fatalf("the card was offered again after being refused: %v", err)
 	}
-	if n := next.Open(enrich.PassVersion, currentRulesHash(cfg), enrich.GatesVersion); n != 1 {
+	if n := next.Open(enrich.PassVersion, currentJudgmentHash(cfg), enrich.GatesVersion); n != 1 {
 		t.Errorf("open = %d, want 1 — the standing count is what the morning note reads", n)
 	}
 

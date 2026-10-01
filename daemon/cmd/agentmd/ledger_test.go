@@ -413,7 +413,7 @@ func TestEditingTheFilingContractRequeuesWhatItJudged(t *testing.T) {
 	led := newTestLedger(t)
 
 	cfg := configOverRules(t, vault, "preference", "convention")
-	first := currentRulesHash(cfg)
+	first := currentJudgmentHash(cfg)
 
 	// A note, enriched and recorded under that contract — in the class
 	// directory the contract routes its type to, which is where the batch's
@@ -452,7 +452,7 @@ func TestEditingTheFilingContractRequeuesWhatItJudged(t *testing.T) {
 	if _, err := cfg.Rules.Refresh(time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	second := currentRulesHash(cfg)
+	second := currentJudgmentHash(cfg)
 	if second == first {
 		t.Fatal("editing the contract did not change its hash, so this test " +
 			"cannot tell whether the queue noticed")

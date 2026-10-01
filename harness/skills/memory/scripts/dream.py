@@ -225,16 +225,20 @@ def _stage_storage_rules(vault_path: Path, loaded: dict) -> dict:
     watch = storage_rules.hash_watch(vault_path, current=rules.content_hash())
 
     # Two different populations, and conflating them would misreport both. A
-    # memory whose `rules_hash` differs was judged under rules that have since
-    # changed and is re-filing work. A memory with no `rules_hash` at all has
-    # never been through a filing judgment — that is backlog, not staleness.
+    # memory whose `rules_hash` names a judgment no longer current was judged
+    # under rules that have since changed and is re-filing work. A memory with
+    # no `rules_hash` at all has never been through a filing judgment — that is
+    # backlog, not staleness. "Current" is the judgment hash or any contract
+    # text that had it (task 181): an edit to what no judgment reads makes
+    # nothing stale.
+    current = storage_rules.current_stamps(rules)
     stale = 0
     unjudged = 0
     for fm, _body, _raw in loaded.values():
         stamped = str(fm.get("rules_hash") or "").strip()
         if not stamped:
             unjudged += 1
-        elif stamped != rules.content_hash():
+        elif stamped not in current:
             stale += 1
 
     return {

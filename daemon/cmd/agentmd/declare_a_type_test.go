@@ -67,14 +67,14 @@ func newArc(t *testing.T, notes []string, types ...string) *arc {
 	for i, rel := range notes {
 		body := writeNote(t, vault, rel, response(fmt.Sprintf("note %d", i), 0.8),
 			enrich.Stamp{Version: enrich.PassVersion,
-				RulesHash: currentRulesHash(cfg), At: at})
+				RulesHash: currentJudgmentHash(cfg), At: at})
 		a.bodies[rel] = body
 		if err := x.Upsert(noteFor(rel, body), 1, int64(len(body))); err != nil {
 			t.Fatal(err)
 		}
 		if err := a.led.Record(context.Background(), ledger.Entry{
 			Stage: ledger.StageEnrich, Target: rel, Version: enrich.PassVersion,
-			RulesHash: currentRulesHash(cfg),
+			RulesHash: currentJudgmentHash(cfg),
 			OutputKey: enrichFingerprint(cfg, nil).Key(body),
 			Outcome:   ledger.Done, At: at.Add(time.Duration(i) * time.Minute),
 		}); err != nil {
@@ -206,7 +206,7 @@ func TestDeclaringATypeFallsThroughTheWholeArc(t *testing.T) {
 func (a *arc) reenrich(t *testing.T, rel string) {
 	t.Helper()
 	stamp := enrich.Stamp{Version: enrich.PassVersion,
-		RulesHash: currentRulesHash(a.cfg), At: time.Now().UTC()}
+		RulesHash: currentJudgmentHash(a.cfg), At: time.Now().UTC()}
 	body := writeNote(t, a.vault, rel, response(rel, 0.8), stamp)
 	a.bodies[rel] = body
 	if err := a.idx.Upsert(noteFor(rel, body), 1, int64(len(body))); err != nil {

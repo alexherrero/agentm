@@ -125,7 +125,10 @@ def agentmd(*args):
 
 
 def contract_hash():
-    return json.loads(agentmd("rules", "--json"))["hash"]
+    # The judgment hash: the part of the contract a judgment reads, which is
+    # what a note's stamp and the ledger carry since task 181. Declaring a type
+    # is an edit to that part, which is why it re-owes the corpus.
+    return json.loads(agentmd("rules", "--json"))["judgment_hash"]
 
 
 def write_note(rel, rules_hash, marker):
