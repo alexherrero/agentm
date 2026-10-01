@@ -74,6 +74,11 @@ const (
 // Both are still recorded, because the digest has to be able to say why a target
 // is not current — "we tried and it failed" and "we never tried" are different
 // reports and the difference is the whole value of writing them down.
+//
+// Except that a skip never replaces a Done row (see Record). A target the stage
+// has finished needs no explanation of why it is not current, and the skip that
+// would have replaced the row is usually the fingerprint gate saying exactly
+// that the row is right.
 type Outcome string
 
 const (
@@ -153,6 +158,17 @@ func (l *Ledger) migrate() error {
 		// The coverage query counts rows at a version within a stage, which is
 		// the one query that runs over the whole table rather than one row.
 		`CREATE INDEX IF NOT EXISTS ledger_stage_version ON ledger(stage, version)`,
+		// A one-time repair, idempotent, of rows written before Record refused to
+		// let a skip replace a finished row (#785). The enrichment pass's
+		// observer recorded every fingerprint skip as a skipped row over the
+		// Done row the gate had just matched, so the next night owed the note
+		// again and bought it a second judgment. The fingerprint skips only when
+		// a Done row's key matches the note as it stands, and the skipped row
+		// carries that key at the same version and contract, so turning it back
+		// into a Done row restores exactly what the gate saw. Nothing writes
+		// such a row any more, so after one open this matches nothing.
+		`UPDATE ledger SET outcome = 'done', reason = 'restored: a fingerprint skip had replaced this row'
+		 WHERE outcome = 'skipped' AND reason LIKE 'fingerprint: already enriched%'`,
 	}
 	for _, s := range stmts {
 		if _, err := l.db.Exec(s); err != nil {
@@ -173,6 +189,16 @@ const stampFormat = "2006-01-02T15:04:05Z"
 // it. The attempt count that dead-lettering needs lives on the work queue, which
 // is a different table for exactly this reason — the ledger records what
 // finished, the queue records what is owed.
+//
+// One exception: a skip never replaces a Done row. A skip spent nothing and
+// says only that a gate declined the target this time, while the Done row is
+// the record of a judgment that was paid for. Replacing it threw that record
+// away: the fingerprint gate's own skip — "already enriched" — overwrote the
+// very row it had matched, the target stopped answering Seen, and the next run
+// bought the same judgment again (#785). A stale Done row the budget deferred
+// keeps its version and its time too, which is what lets the pending order
+// say how long it has been waiting. The skip is not lost: the run's report
+// counts it.
 func (l *Ledger) Record(ctx context.Context, e Entry) error {
 	if e.Stage == "" || e.Target == "" {
 		return fmt.Errorf("ledger: a row needs both a stage and a target, got %q/%q",
@@ -193,7 +219,8 @@ func (l *Ledger) Record(ctx context.Context, e Entry) error {
 		ON CONFLICT(stage, target) DO UPDATE SET
 			version=excluded.version, rules_hash=excluded.rules_hash,
 			input_key=excluded.input_key, output_key=excluded.output_key,
-			outcome=excluded.outcome, reason=excluded.reason, at=excluded.at`,
+			outcome=excluded.outcome, reason=excluded.reason, at=excluded.at
+		WHERE NOT (ledger.outcome = 'done' AND excluded.outcome = 'skipped')`,
 		e.Stage, e.Target, e.Version, e.RulesHash, e.InputKey, e.OutputKey,
 		string(e.Outcome), e.Reason, at.UTC().Format(stampFormat))
 	if err != nil {

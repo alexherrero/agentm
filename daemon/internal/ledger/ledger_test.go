@@ -298,3 +298,134 @@ func TestOpenRefusesANilHandle(t *testing.T) {
 		t.Error("Open(nil) returned a ledger")
 	}
 }
+
+// A skip never replaces a finished row (#785). The fingerprint gate's own skip
+// — "already enriched" — used to overwrite the very row it had matched, so the
+// target stopped answering Seen and the next run bought the judgment again.
+func TestASkipNeverReplacesADoneRow(t *testing.T) {
+	l := newLedger(t)
+	judged := time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "a.md", Version: "v1", RulesHash: "r1",
+		InputKey: "in", OutputKey: "out", Outcome: Done, At: judged,
+	})
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "a.md", Version: "v1", RulesHash: "r1",
+		InputKey: "out", Outcome: Skipped,
+		Reason: "fingerprint: already enriched at 0123456789ab",
+		At:     judged.Add(24 * time.Hour),
+	})
+
+	if !seen(t, l, StageEnrich, "a.md", "out") {
+		t.Fatal("a fingerprint skip un-saw the note it had just matched; the next " +
+			"night pays for the same judgment again")
+	}
+	got, ok, err := l.Lookup(context.Background(), StageEnrich, "a.md")
+	if err != nil || !ok {
+		t.Fatalf("Lookup = %v, %v", ok, err)
+	}
+	if got.Outcome != Done || got.InputKey != "in" || got.OutputKey != "out" ||
+		!got.At.Equal(judged) {
+		t.Errorf("the done row changed under a skip: %+v", got)
+	}
+}
+
+// The same rule keeps a stale judgment's age. A budget deferral of a note the
+// contract has moved past must leave the row at the version and the time it was
+// judged, so the pending report still calls it stale and still knows how long
+// it has waited.
+func TestABudgetDeferralKeepsAStaleRowsVersionAndTime(t *testing.T) {
+	l := newLedger(t)
+	judged := time.Date(2026, 9, 20, 9, 0, 0, 0, time.UTC)
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "a.md", Version: "v1", RulesHash: "r1",
+		OutputKey: "out", Outcome: Done, At: judged,
+	})
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "a.md", Version: "v1", RulesHash: "r2",
+		InputKey: "k2", Outcome: Skipped,
+		Reason: "budget: the cycle's 60-call budget is spent; deferred to the next run",
+	})
+
+	rep, err := l.Pending(context.Background(), StageEnrich,
+		Version{Stage: "v1", Rules: "r2"}, []Target{{Rel: "a.md", Key: "k2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Pending) != 1 || rep.Pending[0].Reason != ReasonStale ||
+		!rep.Pending[0].Since.Equal(judged) {
+		t.Errorf("a deferred stale note reads as %+v, want stale since %s",
+			rep.Pending, judged)
+	}
+}
+
+// A skip is still recorded where nothing was finished: a target never reached,
+// and one that failed last time. Those are the rows that explain why a target
+// is not current, which is why skips are written down at all.
+func TestASkipIsRecordedWhereNothingWasFinished(t *testing.T) {
+	l := newLedger(t)
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "failed.md", Version: "v1",
+		InputKey: "k", Outcome: Failed, Reason: "the call timed out",
+	})
+	for _, target := range []string{"new.md", "failed.md"} {
+		mustRecord(t, l, Entry{
+			Stage: StageEnrich, Target: target, Version: "v1",
+			InputKey: "k", Outcome: Skipped, Reason: "privacy: walled",
+		})
+		got, ok, err := l.Lookup(context.Background(), StageEnrich, target)
+		if err != nil || !ok {
+			t.Fatalf("Lookup(%s) = %v, %v", target, ok, err)
+		}
+		if got.Outcome != Skipped || got.Reason != "privacy: walled" {
+			t.Errorf("%s: a skip was not recorded: %+v", target, got)
+		}
+	}
+}
+
+// The rows written before the fix are put back when the ledger opens. Every
+// fingerprint skip replaced a done row whose key it had matched, and it carries
+// that key at the same version and contract, so it is restored as done. Any
+// other skip is left alone.
+func TestOpenRestoresTheRowsAFingerprintSkipReplaced(t *testing.T) {
+	dsn := "file:" + filepath.Join(t.TempDir(), "index.db") + "?_pragma=busy_timeout(10000)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+	if _, err := Open(db); err != nil {
+		t.Fatal(err)
+	}
+	// The rows as the old code left them, written straight into the table.
+	for _, row := range [][]string{
+		{"lost.md", "fingerprint: already enriched at 0123456789ab"},
+		{"deferred.md", "budget: the cycle's 60-call budget is spent; deferred to the next run"},
+	} {
+		if _, err := db.Exec(`INSERT INTO ledger(stage, target, version, rules_hash,
+			input_key, outcome, reason, at) VALUES('enrich', ?, 'v1', 'r1', 'key',
+			'skipped', ?, '2026-10-01T09:05:00Z')`, row[0], row[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	l, err := Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seen(t, l, StageEnrich, "lost.md", "key") {
+		t.Error("the open did not restore a done row a fingerprint skip had replaced")
+	}
+	if seen(t, l, StageEnrich, "deferred.md", "key") {
+		t.Error("the open turned a budget deferral into a finished judgment")
+	}
+	// Idempotent: opening again changes nothing.
+	if _, err := Open(db); err != nil {
+		t.Fatal(err)
+	}
+	n, err := l.Count(context.Background(), StageEnrich, "")
+	if err != nil || n != 1 {
+		t.Errorf("done rows after a second open = %d, %v; want 1", n, err)
+	}
+}
