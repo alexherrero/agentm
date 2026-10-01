@@ -1274,6 +1274,22 @@ agentmdream entities                                      # plan the entity page
 
 `ideas`'s own flags (agentm-vault part 13; `cmdIdeas`, `daemon/cmd/agentmdream/main.go:139`): with none, it prints `Ideas.md` exactly as a rebuild would write it, under the file's own existing head, and touches nothing. `-intro <file>` builds the head from that file's text instead — the one-time adoption of an operator's existing, hand-kept `Ideas.md`, read only once and copied byte for byte into every later rebuild. `-write` makes the write for real, journaled and under this binary's own lock, so `-intro <file> -write` is the whole adoption in one command; without `-write` the command only ever prints. `-json` emits the plan as JSON instead of the rendering. A file with no `<!-- ideas:intro:start -->` / `:end` marker pair and no `-intro` given prints nothing to write and exits 4 — there is no operator text yet to keep, so there is no rewrite to make.
 
+**How the journal lands a move** (task 180; `moveNote`, `daemon/internal/dreaming/journal.go:471`). A move renames the file with `os.Rename`, once the source hashes as `Before` and the destination is free. The note keeps its inode and, through Google Drive for Desktop, which mirrors the vault, its Drive file ID. Before task 180 a move wrote the note at its new path and removed the old one, which Drive read as a new file plus a trashed one.
+
+When `After` differs from `Before` (a link repair, a lifecycle restamp), the renamed file is checked against `Before` again and rewritten in place with `writeAtomic`. If an edit landed between the hash check and the rename, the journal puts the note back where it was and skips the move as a conflict. `writeAtomic` writes a temp file and renames it over the note, so a rewritten note gets a new inode; Drive has been seen to treat that as an update to the same file.
+
+A rename that fails across devices (`EXDEV`, or `ERROR_NOT_SAME_DEVICE` on Windows) falls back to write-then-remove and says so in the applied line's note. Any other failed rename, such as a file another process holds open on Windows, skips the move, names the error and leaves the source untouched; a later night plans it again.
+
+The intent line is still fsynced before anything on disk changes, and a deletion still keeps its bytes. A note renamed without a rewrite keeps its old modification time; nothing that reads a moved note needs a fresh one. After a crash, `Resolve` (`journal.go:225`) reads a move like this:
+
+| Source | Destination | Resume does |
+|---|---|---|
+| gone | at `After` | records it applied, found on resume |
+| at `Before` | absent | renames it, then rewrites in place if `After` differs |
+| gone | at `Before`, `After` differs | rewrites the destination at `After`: the rename landed and the rewrite did not |
+| at `Before` | at `After` | removes the source: a move journaled before task 180 crashed between its copy and its delete |
+| anything else | | skips it as a conflict |
+
 ### Its jobs, in order
 
 | Job | What it does |

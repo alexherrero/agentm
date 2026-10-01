@@ -217,11 +217,14 @@ var ErrConflict = errors.New("target changed since the intent was journaled")
 // Resolve applies one journaled intent against the vault, idempotently:
 // the target that already hashes as `after` is recorded applied (found on
 // resume), the target that hashes as `before` is written now, anything else
-// is a conflict. A move resolves on both paths (the source gone and the
+// is a conflict. A move resolves on both paths: the source gone and the
 // destination at `after` is applied; the source at `before` and no
-// destination is applied now; anything else is left alone), a creation on
-// the one path it makes, and a deletion on the one path it removes. Returns the
-// outcome kind written to the journal.
+// destination is applied now, by a rename; the source gone and the
+// destination at `before` is a rename whose rewrite is still owed; the source
+// at `before` and the destination at `after` is a copy-style move from before
+// moves were renames, finished by removing the source; anything else is left
+// alone. A creation resolves on the one path it makes, and a deletion on the
+// one path it removes. Returns the outcome kind written to the journal.
 func (j *Journal) Resolve(vault string, e Entry, now time.Time) (string, error) {
 	settle := func(kind, note string) (string, error) {
 		if kind == KindApplied {

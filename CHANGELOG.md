@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+A note the night moves stays the same file (task 180). Google Drive for Desktop mirrors the vault, and the dreaming journal used to move a note by writing a copy at its new path and deleting the original. Drive read every move as a new file plus a trashed one, so every device syncing from Drive downloaded the note again. Plan B's 675 moved task files all reached the operator's phone that way. A move is now a rename. Its code went out in 10.3.0 without an entry; this is the entry. Based on the 2026-09-29 phone-sync diagnosis, `agent/diagnostics/2026-09-29-phone-sync-count.md` in the vault.
+
+### Fixed
+
+- **A dreaming move renames the note instead of copying it (task 180 steps 1 and 2; #780, #786).** `Journal.Commit` and `Resolve` move a note with `os.Rename` once the source hashes as `Before` and the destination is free, so the note keeps its inode and its Drive file ID.
+  - **A move that also repairs links** (or a lifecycle archive's restamp) renames first and then rewrites the note in place.
+  - **When a rename fails.** A rename across devices falls back to the old write-then-remove and says so in the applied line. Any other refused rename, such as a file held open on Windows, skips the move with the source untouched.
+  - **An edit made mid-move** puts the note back and skips the move.
+  - **The new crash state.** `Resolve` finishes a move that crashed after the rename and before the rewrite, and still finishes the copy-style moves older journals left behind.
+  - **The callers.** All three move-makers get the fix: the closed-task mover, the projects axis and the lifecycle archive.
+  - **Checked on a real night:** the 2026-10-01 run's three task-file moves kept their Drive IDs, and Drive's trash grew only by that night's two deletions.
+
+### Internal
+
+- **Tests.** `journal_move_test.go` (9 tests) and `move_identity_test.go` (3) assert identity with `os.SameFile` where a move leaves the bytes alone, and record the rename where it rewrites them. Each fails if a move is turned back into a copy.
+- **Modification times.** A renamed note keeps its old mtime. An audit found no reader that needs a fresh one, and the index now keeps an undated note's true date across a move.
+- **Measured, not shipped.** 159 of 413 enrichment rewrites over ten nights changed only their stamps, at about $75 in model calls. Skipping them needs a ledger that survives a schema bump, filed as #783. The spend itself is filed as #784 and #785.
+
 ## [10.3.0] - 2026-09-30
 
 The AgentKV layout convergence closes with its last two plans. Plan C makes each memory saved once and labelled with its project; Plan D builds the vault's first entity pages. Both carry out the operator's 2026-09-24 rulings on the work agent's layout spec, and with them all four plans (A to D) have shipped.
