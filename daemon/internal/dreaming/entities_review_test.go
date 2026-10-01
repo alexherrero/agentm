@@ -3,6 +3,7 @@ package dreaming
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,9 @@ func TestANonLatinNameGetsAPageOfItsOwn(t *testing.T) {
 func TestAnUnreadableNoteHoldsThePeoplePagesForTheNight(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root reads a file whatever its mode")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0 leaves a file readable on Windows; the read failure cannot be made this way")
 	}
 	root, x := entityVault(t, peopleFixture())
 	first, err := PlanEntities(root, filepath.Dir(root), x, peopleOpts(t), nil, entityNow)
