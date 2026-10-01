@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v10.2.0](https://github.com/alexherrero/agentm/releases/tag/v10.2.0).** Closed tasks move out of the way: two weeks after a task closes, its folder moves to its project's `completed/tasks/`, links and all, and ranks with the project's finished work. Crystallize writes its first lessons, and runs weekly.
+> **Latest release: [v10.3.0](https://github.com/alexherrero/agentm/releases/tag/v10.3.0).** The AgentKV convergence closes. A memory is saved once and knows its project, and the vault gains its first entity pages: ask about a repository, an issue or a release by name and its page, listing every note that mentions it, comes first.
 
 ---
 
