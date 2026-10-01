@@ -80,7 +80,7 @@ def _crystallize_run(at: float, **over) -> dict:
         "by_job": {"crystallize": {"input_tokens": 40000,
                                    "cache_creation_input_tokens": 0,
                                    "cache_read_input_tokens": 9000,
-                                   "output_tokens": 8000, "cost_usd": 1.40, "calls": 2}},
+                                   "output_tokens": 8000, "total_cost_usd": 1.40, "calls": 2}},
         "lessons": [{"rel": "memory/crystallized/worktree-guard.md",
                      "subject": "worktree-guard",
                      "title": "A worktree guard refuses what it cannot verify",
@@ -235,12 +235,12 @@ class TheSpendLine(_Night):
                                      "cache_creation_input_tokens": 0,
                                      "cache_read_input_tokens": 10000,
                                      "output_tokens": 80000,
-                                     "cost_usd": 3.60, "calls": 190},
+                                     "total_cost_usd": 3.60, "calls": 190},
                 "summarize": {"input_tokens": 200000,
                               "cache_creation_input_tokens": 0,
                               "cache_read_input_tokens": 2334,
                               "output_tokens": 20000,
-                              "cost_usd": 0.61, "calls": 46}}
+                              "total_cost_usd": 0.61, "calls": 46}}
 
     def test_the_spend_line_names_each_job(self):
         self.full_night()
@@ -264,7 +264,7 @@ class TheSpendLine(_Night):
             "total_cost_usd": 0.5,
             "by_job": {"fuzzy-merge": {"input_tokens": 40000, "cache_creation_input_tokens": 0,
                                        "cache_read_input_tokens": 70000, "output_tokens": 6000,
-                                       "cost_usd": 0.5, "calls": 2}},
+                                       "total_cost_usd": 0.5, "calls": 2}},
             "pairs": [{"a": "memory/semantic/never-edit-a-failing-test.md", "b": "memory/semantic/tests-are-sacred.md",
                        "verdict": "same", "merged": True, "survivor": "memory/semantic/tests-are-sacred.md",
                        "folded": "memory/semantic/never-edit-a-failing-test.md"}]}) + "\n", encoding="utf-8")
@@ -306,6 +306,16 @@ class TheSpendLine(_Night):
         text, *_ = self.build()
         self.assertIn("Lessons this week", text)
         self.assertIn("[[worktree-guard]]", text)
+
+    def test_the_per_job_cost_reads_the_key_the_go_writer_writes(self):
+        """The fixtures above once spelled the cost `cost_usd`, the key the
+        reader read, so every per-job line printed $0.00 on the live note while
+        the tests passed. The key is taken from the writer's own struct tag."""
+        import re
+        usage = (_HERE.parent / "daemon" / "internal" / "enrich" / "usage.go").read_text(encoding="utf-8")
+        key = re.search(r'CostUSD\s+float64\s+`json:"([^"]+)"`', usage).group(1)
+        got = mn._by_job([{"by_job": {"fuzzy-merge": {"output_tokens": 10, key: 3.59, "calls": 17}}}])
+        self.assertEqual(got["fuzzy-merge"]["cost"], 3.59)
 
 
 class TheNote(_Night):

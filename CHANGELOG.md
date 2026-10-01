@@ -162,6 +162,20 @@ Plan C of the AgentKV layout convergence: the memory-quality half of the operato
   x0.30 sinks them while their lesson does not answer the question; whether the
   demotion should spare such a card is left to the operator, since it changes
   the design's rule.
+- **Notes learn their project where Plan C missed it (task 178 review).** The
+  review of Plan C found new notes left without a project they should carry.
+  A trace now takes the first folder in its transcript's head that binds to a
+  project, then the folder the host filed the transcript under. A desktop
+  session that opened in a scratch workspace and moved into its repo had been
+  left unlabelled: four of the nine traces written since the writers shipped.
+  An untyped capture is labelled too, since the contract's default type is
+  itself `preference` and only a type the caller named keeps a note global.
+  The step-10 backfill leaves a card unlabelled when a link names a file
+  several projects hold, such as `[[tracker]]`; three cards had been labelled
+  `home` that way. One manifest labelled eight traces and took those three
+  labels off. The morning note's per-job spend lines read `total_cost_usd`,
+  the key the daemon writes, and no longer print $0.00. The review's other
+  fourteen findings are filed as #777.
 
 ## [10.2.0] - 2026-09-28
 
