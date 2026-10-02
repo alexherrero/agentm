@@ -132,6 +132,17 @@ func TestTheLessonRuleOnTheRankingFunction(t *testing.T) {
 	if r, _ := rowFor(got, "card.md"); r.Score != 10 {
 		t.Errorf("a same-named note outside crystallized/ is not the lesson; got %.2f", r.Score)
 	}
+	// A lesson below the arm's own top k is not beside the card: the fusion arm
+	// gathers hundreds of rows, and a lesson matching at rank 265 crowds nothing.
+	deep := append(rows(), Result{Path: "agent/memory/crystallized/the-lesson.md", Score: 1})
+	got = penalizeRankAndDecay(deep, 2, nil, time.Time{}, false, "", lessons)
+	if r, _ := rowFor(got, "card.md"); r.Score != 10 {
+		t.Errorf("a lesson outside the top k leaves the card unpenalized; got %.2f", r.Score)
+	}
+	got = penalizeRankAndDecay(deep, 3, nil, time.Time{}, false, "", lessons)
+	if r, _ := rowFor(got, "card.md"); r.Score != 10*note.Weights[note.ClassConsolidated] {
+		t.Errorf("inside the top k the card takes the x0.30; got %.2f", r.Score)
+	}
 	got = penalizeRankAndDecay(rows(), 5, nil, time.Time{}, false, "", nil)
 	if r, _ := rowFor(got, "card.md"); r.Score != 10*note.Weights[note.ClassConsolidated] {
 		t.Errorf("no reader: the old unconditional demotion, got %.2f", r.Score)
