@@ -284,6 +284,9 @@ func (x *Index) migrate() error {
 		// The writer's project stamp, which a query naming the session's project
 		// ranks against (agentm-vault § Projects and tasks).
 		`ALTER TABLE docmeta ADD COLUMN project TEXT NOT NULL DEFAULT ''`,
+		// When enrichment last rewrote the note: an entity page skips an
+		// `updated` that falls on it (task 182 step 6).
+		`ALTER TABLE docmeta ADD COLUMN enriched TEXT NOT NULL DEFAULT ''`,
 		// Indexed here rather than with the other CREATE INDEX statements, which
 		// run before the ALTERs — on a fresh database that ordering would have
 		// pointed an index at a column that did not exist yet, and that loop
@@ -380,13 +383,13 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 		res, err := tx.Exec(
 			`INSERT INTO docmeta(path, flags, status, captured, captured_src, updated,
 			         created, confidence, confidence_set, source, source_hash,
-			         source_version, project, mtime_ns, size)
-			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			         source_version, project, enriched, mtime_ns, size)
+			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			n.Rel, strings.Join(n.Flags, ","), n.Status,
 			n.Captured.UTC().Format(capturedFormat),
 			n.CapturedSource, n.Updated, n.Created, n.Confidence,
 			boolToInt(n.ConfidenceSet), n.Source, n.SourceHash, n.SourceVersion, n.Project,
-			mtimeNS, size)
+			n.Enriched, mtimeNS, size)
 		if err != nil {
 			return err
 		}
@@ -419,10 +422,10 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 		if _, err := tx.Exec(
 			`UPDATE docmeta SET flags=?, status=?, captured=?, captured_src=?, updated=?,
 			 created=?, confidence=?, confidence_set=?, source=?, source_hash=?,
-			 source_version=?, project=?, mtime_ns=?, size=? WHERE id=?`,
+			 source_version=?, project=?, enriched=?, mtime_ns=?, size=? WHERE id=?`,
 			strings.Join(n.Flags, ","), n.Status, captured, capturedSrc, n.Updated,
 			n.Created, n.Confidence, boolToInt(n.ConfidenceSet), n.Source,
-			n.SourceHash, n.SourceVersion, n.Project, mtimeNS, size, id); err != nil {
+			n.SourceHash, n.SourceVersion, n.Project, n.Enriched, mtimeNS, size, id); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`DELETE FROM docs WHERE rowid = ?`, id); err != nil {
