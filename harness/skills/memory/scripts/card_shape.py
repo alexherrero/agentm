@@ -38,7 +38,8 @@ import re
 # `supersedes` and `superseded_by` beside `related`; `consolidated_from` and
 # `consolidated_into` after those, because a lesson's sources and a source's
 # lesson are the same kind of relation and a reader looking for one looks for
-# the other; `project` and `task` after them. An idea card's two fields
+# the other, and `released` (a lesson's sources it is not true of, task 182)
+# closes that group; `project` and `task` after them. An idea card's two fields
 # (agentm-vault part 13) sit where they are read: `area`, the operator's group,
 # beside what the card is; `dismissed`, the day the idea was retired, beside its
 # standing. `people`, the people a note names (task 179), closes the block after
@@ -49,7 +50,7 @@ READ_ORDER: tuple[str, ...] = (
     "source", "source_url", "source_id", "source_fetched", "trust",
     "created", "updated", "tags",
     "related", "supersedes", "superseded_by",
-    "consolidated_from", "consolidated_into",
+    "consolidated_from", "consolidated_into", "released",
     "project", "task", "people",
 )
 

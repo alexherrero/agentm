@@ -9,8 +9,8 @@ package crystallize
 // strip", and nine gold questions lost their answer. For each lesson with
 // stamped cards this asks the same strong tier which of those cards the lesson
 // is true of, and plans the release of the rest: the stamp comes off the card,
-// and the card's entries come off the lesson's `consolidated_from` and its
-// "What taught it" list. It plans and writes nothing; the plan is a manifest
+// and the lesson names the card in its `released:` list, keeping it in
+// `consolidated_from` and "What taught it" as provenance (task 182). It plans and writes nothing; the plan is a manifest
 // the dreaming binary makes through its journal.
 
 import (
@@ -24,6 +24,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 )
 
 // RecheckAct is one in-place rewrite the recheck plans, in the dreaming
@@ -163,29 +165,56 @@ func unstampFrom(raw []byte, released []string) string {
 	return consolidatedIntoRe.ReplaceAllLiteralString(string(raw), stampLine(keep))
 }
 
-// withoutSources is the lesson's text without the list entries that link to
-// any of the released stems, in `consolidated_from` and "What taught it".
-func withoutSources(lesson string, released []string) string {
-	drop := func(line string) bool {
-		t := strings.TrimSpace(line)
-		if !strings.HasPrefix(t, "- ") {
-			return false
-		}
-		for _, stem := range released {
-			if strings.Contains(t, "[["+stem+"]]") || strings.Contains(t, "[["+stem+"|") ||
-				strings.Contains(t, "/"+stem+"]]") || strings.Contains(t, "/"+stem+"|") {
-				return true
-			}
-		}
-		return false
+var releasedLine = regexp.MustCompile(`(?m)^released:[ \t]*.*$`)
+
+// ReleasedStems is the stems a lesson's `released:` list names: the cards
+// that taught it, are still listed in `consolidated_from` as its provenance,
+// and carry no stamp because a recheck found the lesson is not true of them
+// (the operator's ruling of 2026-10-01, task 182).
+func ReleasedStems(lesson string) []string {
+	m := releasedLine.FindString(lesson)
+	if m == "" {
+		return nil
 	}
 	var out []string
-	for _, l := range strings.Split(lesson, "\n") {
-		if !drop(l) {
-			out = append(out, l)
+	for _, s := range stampLink.FindAllStringSubmatch(m, -1) {
+		stem := path.Base(strings.TrimSuffix(strings.TrimSpace(s[1]), ".md"))
+		if !containsString(out, stem) {
+			out = append(out, stem)
 		}
 	}
-	return strings.Join(out, "\n")
+	return out
+}
+
+// withReleased is the lesson with these stems added to its `released:` list.
+// Its `consolidated_from` and "What taught it" stay as they are: a card the
+// lesson is not true of still taught it, and a lesson whose list emptied would
+// be a lesson with no provenance at all (ci-green-closes-work, released by every
+// one of its five cards on 2026-10-01).
+func withReleased(lesson string, stems []string) string {
+	all := ReleasedStems(lesson)
+	for _, s := range stems {
+		if !containsString(all, s) {
+			all = append(all, s)
+		}
+	}
+	links := make([]string, len(all))
+	for i, s := range all {
+		links[i] = fmt.Sprintf("\"[[%s]]\"", s)
+	}
+	line := "released: [" + strings.Join(links, ", ") + "]"
+	if releasedLine.MatchString(lesson) {
+		return releasedLine.ReplaceAllLiteralString(lesson, line)
+	}
+	if !strings.HasPrefix(lesson, "---\n") {
+		return lesson
+	}
+	end := strings.Index(lesson[4:], "\n---")
+	if end < 0 {
+		return lesson
+	}
+	end += 4
+	return cardshape.Reorder(lesson[:end] + "\n" + line + lesson[end:])
 }
 
 // PlanRecheck asks about every lesson with stamped cards, at most cap of them
@@ -289,8 +318,8 @@ func PlanRecheckOnly(root string, call Caller, cap int, only []string) ([]Rechec
 		}
 		if len(releasedStems) > 0 {
 			lessonActs = append(lessonActs, RecheckAct{Rel: lessonRel, Before: sha(raw),
-				After:   withoutSources(lesson, releasedStems),
-				Summary: fmt.Sprintf("%d source(s) it is not true of taken off what taught it", len(releasedStems))})
+				After:   withReleased(lesson, releasedStems),
+				Summary: fmt.Sprintf("%d source(s) it is not true of named in released", len(releasedStems))})
 		}
 		found = append(found, r)
 	}
