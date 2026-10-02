@@ -2,6 +2,7 @@ package enrich
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -27,11 +28,17 @@ import (
 // its lineage, which `check-vault-frontmatter` fails on.
 //
 // Some dropped keys stay dropped, deliberately. `altitude` is retired by the
-// design (the deep pass drops it), and `aliases` is the pass's own answer
-// under the alias-vocabulary gate — carrying it would make an alias permanent
-// the first time any pass proposed one. The card backfill (agentm-vault plan
-// 06) retired `group`, `always_load`, the `mining_*` trio and
+// design (the deep pass drops it). The card backfill (agentm-vault plan 06)
+// retired `group`, `always_load`, the `mining_*` trio and
 // `excerpt_edges_unverified` from the card, so a rewrite lets them go as well.
+//
+// `aliases` is merged, not carried and not replaced (task 182 step 5, the
+// operator's ruling of 2026-10-01): a pass never removes an alias already on
+// the card. One written at capture is the asker's own phrasing, the channel the
+// filing design adopted at 12/12 at rank 1; one the note contains is
+// derivation's. The pass's own new aliases still pass the alias-vocabulary gate
+// and are added after. Before this a rewrite replaced the list with the pass's
+// answer, which took every alias off a dozen memory notes.
 // `captured` folds into `created` instead of travelling beside it: the note
 // keeps the earlier of the two days in the one field.
 //
@@ -46,10 +53,11 @@ import (
 // identity rather than a value: a `summary` the pass got wrong is a bad
 // sentence, and a dropped `probe:` is a note that has stopped being the thing
 // it is — the next probe run cannot retire it, so the vault gains one
-// unretirable card a night until somebody notices. Note that this puts `probe`
-// and `aliases` on opposite sides of the same paragraph deliberately. A probe's
-// aliases are the round trip's own nonce and are spent the moment it finishes,
-// while its marker is what every later run reads it by.
+// unretirable card a night until somebody notices. A probe's aliases are the
+// round trip's own nonce and are spent the moment it finishes, while its marker
+// is what every later run reads it by; the alias merge below would keep the
+// nonce on a probe that reached a rewrite, which is one more reason the
+// pre-gate keeps every probe out of the pass.
 //
 // `area` and `dismissed` are an idea card's (agentm-vault part 13): the
 // operator's group name and the day they retired the idea. The generated
@@ -150,6 +158,7 @@ func carryProvenance(previous, next string, defaultLifecycle bool) string {
 		}
 		fmt.Fprintf(&add, "\n%s: %s", key, value)
 	}
+	head = mergeAliases(previous, head)
 	if kept := backfilledKept(previous, next, head+add.String()+tail); kept != "" {
 		fmt.Fprintf(&add, "\nbackfilled: %s", kept)
 	}
@@ -303,4 +312,86 @@ func rawFrontmatterValue(raw, key string) string {
 		}
 	}
 	return ""
+}
+
+var aliasesLine = regexp.MustCompile(`(?m)^aliases:[ \t]*.*$`)
+
+// mergeAliases is the rendered frontmatter head with the previous note's
+// aliases kept: the previous list first, as written, then any alias the pass
+// added that it did not already hold. A head the pass gave no aliases gains
+// the previous list; a previous note with none leaves the head as it is.
+func mergeAliases(previous, head string) string {
+	prev := frontmatterList(previous, "aliases")
+	if len(prev) == 0 {
+		return head
+	}
+	values := make([]string, 0, len(prev))
+	seen := map[string]bool{}
+	for _, v := range prev {
+		if k := strings.ToLower(v); !seen[k] {
+			seen[k] = true
+			values = append(values, yamlScalar(v))
+		}
+	}
+	for _, v := range frontmatterList(head+"\n---", "aliases") {
+		if k := strings.ToLower(v); !seen[k] {
+			seen[k] = true
+			values = append(values, yamlScalar(v))
+		}
+	}
+	line := "aliases: [" + strings.Join(values, ", ") + "]"
+	if aliasesLine.MatchString(head) {
+		return aliasesLine.ReplaceAllLiteralString(head, line)
+	}
+	return head + "\n" + line
+}
+
+// frontmatterList is a top-level list's items, unquoted, whether written as a
+// flow list (`[a, "b c"]`), as a block list (`key:` then `  - a` lines) or as a
+// single scalar. Absent is nil.
+func frontmatterList(raw, key string) []string {
+	if !strings.HasPrefix(raw, "---") {
+		return nil
+	}
+	rest := raw[3:]
+	if i := strings.Index(rest, "\n---"); i >= 0 {
+		rest = rest[:i]
+	}
+	lines := strings.Split(rest, "\n")
+	for i, line := range lines {
+		k, v, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(k) != key || strings.HasPrefix(line, " ") {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		var out []string
+		switch {
+		case v == "":
+			for _, item := range lines[i+1:] {
+				t := strings.TrimSpace(item)
+				if !strings.HasPrefix(t, "- ") {
+					break
+				}
+				if u := unquoteItem(t[2:]); u != "" {
+					out = append(out, u)
+				}
+			}
+		case strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]"):
+			for _, item := range strings.Split(v[1:len(v)-1], ",") {
+				if u := unquoteItem(item); u != "" {
+					out = append(out, u)
+				}
+			}
+		default:
+			if u := unquoteItem(v); u != "" {
+				out = append(out, u)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func unquoteItem(s string) string {
+	return strings.Trim(strings.TrimSpace(s), `"'`)
 }
