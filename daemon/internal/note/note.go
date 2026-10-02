@@ -28,6 +28,7 @@ var (
 	probeRe        = regexp.MustCompile(`(?m)^probe:[ \t]*(\S+)`)
 	capturedRe     = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
 	updatedRe      = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
+	enrichedRe     = regexp.MustCompile(`(?m)^enriched_at:[ \t]*(.+?)[ \t\r]*$`)
 	altitudeRe     = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
 	confidenceRe   = regexp.MustCompile(`(?m)^confidence:[ \t]*([0-9.]+)[ \t\r]*$`)
 	// `importance:` is the operator's number from the contract's rubric, quoted
@@ -185,6 +186,12 @@ type Note struct {
 	// updated to a curve reading the filesystem.
 	Updated string
 
+	// Enriched is the note's `enriched_at:` as written: when enrichment last
+	// rewrote it. A rewrite sets `updated` to the same day, so a reader that
+	// wants the day someone worked on the note skips an `updated` that falls on
+	// it (task 182: entity pages, like project activity, date work, not passes).
+	Enriched string
+
 	// Project is the note's `project:` — the vault project the session that wrote
 	// it was bound to (agentm-vault § Projects and tasks), "" when it names none.
 	// A query that names the session's project ranks every other note a little
@@ -246,6 +253,9 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	}
 	if m := updatedRe.FindStringSubmatch(head); m != nil {
 		n.Updated = strings.TrimSpace(m[1])
+	}
+	if m := enrichedRe.FindStringSubmatch(head); m != nil {
+		n.Enriched = strings.Trim(strings.TrimSpace(m[1]), `'"`)
 	}
 	if m := createdRe.FindStringSubmatch(head); m != nil {
 		n.Created = strings.TrimSpace(m[1])
