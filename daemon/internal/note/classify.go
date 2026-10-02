@@ -390,15 +390,11 @@ func classify(rel, head, body, status, lifecycle string, importance int, importa
 		flags = append(flags, ClassLowImportance)
 	}
 
-	// How much the project this record belongs to is being worked.
-	switch ProjectActivityOf(rel) {
-	case 0.7:
-		flags = append(flags, ClassProjectQuiet)
-	case 0.5:
-		flags = append(flags, ClassProjectQuieter)
-	case 0.3:
-		flags = append(flags, ClassProjectCold)
-	}
+	// How much the project a record belongs to is being worked is not a class
+	// any more (task 182 step 4). Stamped here, it froze the band the night read
+	// when the note was last indexed: a project that came back to life kept its
+	// records at ×0.5 until each one happened to be indexed again. The ranker
+	// applies ProjectActivityOf at query time instead, from the current reading.
 
 	if isDurable(rel, head) {
 		flags = append(flags, ClassDurable)

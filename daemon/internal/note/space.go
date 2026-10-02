@@ -4,7 +4,9 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Which spaces are dampened is the operator's call, and it is recorded in
@@ -141,7 +143,7 @@ func InAlwaysLoadArea(rel string) bool {
 }
 
 // Each project's activity, slug to multiplier, written by the night and read
-// here at boot and on every contract re-read.
+// here at boot, on every contract re-read, and when the night rewrites it.
 //
 // `projects/` runs on no decay curve — a decision from June is not less true in
 // December — so what ranks a record there is how much its project is being
@@ -164,6 +166,53 @@ func SetProjectActivity(readings map[string]float64) {
 		copied[strings.ToLower(strings.TrimSpace(k))] = v
 	}
 	projectActivity.Store(&copied)
+}
+
+// The readings are applied when a query ranks (task 182 step 4), so a band
+// change has to reach a running daemon without a restart or a status read. The
+// source reloads them when the night has rewritten its file, looking at most
+// every activityRecheck.
+type activitySource struct {
+	load    func() map[string]float64
+	stamp   func() time.Time
+	mu      sync.Mutex
+	checked time.Time
+	last    time.Time
+}
+
+var activitySrc atomic.Pointer[activitySource]
+
+const activityRecheck = 30 * time.Second
+
+// SetProjectActivitySource names where the readings come from: a loader, and a
+// stamp (the file's modification time) that says when they last changed. Nil
+// for either drops the source, and the readings stay as last set.
+func SetProjectActivitySource(load func() map[string]float64, stamp func() time.Time) {
+	if load == nil || stamp == nil {
+		activitySrc.Store(nil)
+		return
+	}
+	activitySrc.Store(&activitySource{load: load, stamp: stamp, last: stamp()})
+}
+
+// RefreshProjectActivity reloads the readings when the night has rewritten them
+// since the last load. Called once per ranking pass; the stamp is read at most
+// every activityRecheck, so a busy daemon costs one stat every half minute.
+func RefreshProjectActivity(now time.Time) {
+	s := activitySrc.Load()
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.checked.IsZero() && now.Sub(s.checked) < activityRecheck {
+		return
+	}
+	s.checked = now
+	if st := s.stamp(); !st.Equal(s.last) {
+		s.last = st
+		SetProjectActivity(s.load())
+	}
 }
 
 // ProjectActivityOf is the multiplier a vault-relative path earns from the

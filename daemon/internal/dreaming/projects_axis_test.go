@@ -264,3 +264,50 @@ func TestARecordNamingAMovedTaskStillMoves(t *testing.T) {
 		t.Errorf("moved %+v, want the bundle whose task has moved", plan.Moved)
 	}
 }
+
+// Only work moves last_worked (the operator's ruling of 2026-10-01, task 182
+// step 4). A regenerated map, enrichment's own `updated`, and a blueprint the
+// layout migration wrote are not work; an edited blueprint and a hand-edited
+// decision are. Before this, eight of thirteen projects read 2026-09-25, the
+// generated blueprint's date.
+func TestGeneratorWritesAreNotWork(t *testing.T) {
+	root, space := projectVault(t)
+	now := time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC)
+	write := func(rel, front string) {
+		t.Helper()
+		p := filepath.Join(space, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("---\n"+front+"---\n\nbody\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// "quiet": its last real work is the tracker in June; everything later is
+	// a generator's.
+	write("quiet/tracker.md", "kind: tracker\nopened: 2026-06-01\nupdated: 2026-06-09\n")
+	write("quiet/moc-quiet.md", "kind: moc\ncreated: 2026-06-09\nupdated: 2026-10-01\n")
+	write("quiet/blueprint.md", "kind: blueprint\ncreated: 2026-09-25\nupdated: 2026-09-25\n")
+	write("quiet/charter.md", "kind: project-index\ncreated: 2026-06-02\nupdated: \"2026-09-30\"\n"+
+		"enriched_at: \"2026-09-30T09:12:42Z\"\n")
+	// "edited": the same, but someone edited the blueprint after the migration.
+	write("edited/tracker.md", "kind: tracker\nopened: 2026-06-01\nupdated: 2026-06-09\n")
+	write("edited/blueprint.md", "kind: blueprint\ncreated: 2026-09-25\nupdated: 2026-09-28\n")
+
+	plan, err := PlanProjects(root, nil, now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]ActivityReading{}
+	for _, r := range plan.Activity {
+		got[r.Slug] = r
+	}
+	if r := got["quiet"]; r.LastWorked != "2026-06-09" || r.Activity != 0.5 {
+		t.Errorf("quiet: last worked %q at %v, want 2026-06-09 at 0.5 — a map, an enrichment "+
+			"stamp and a migrated blueprint are not work", r.LastWorked, r.Activity)
+	}
+	if r := got["edited"]; r.LastWorked != "2026-09-28" || r.Activity != 1.0 {
+		t.Errorf("edited: last worked %q at %v, want 2026-09-28 at 1.0 — an edited blueprint is work",
+			r.LastWorked, r.Activity)
+	}
+}

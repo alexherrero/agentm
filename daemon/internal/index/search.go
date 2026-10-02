@@ -444,8 +444,13 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 	if lessons != nil {
 		present = lessonStemsIn(rows)
 	}
+	note.RefreshProjectActivity(time.Now())
 	for i := range rows {
 		flags := splitFlags(rows[i].Penalty)
+		// A project's activity is read now, from the current reading, never
+		// from a band an older index row was stamped with (task 182 step 4).
+		flags = withoutFlag(withoutFlag(withoutFlag(flags,
+			note.ClassProjectQuiet), note.ClassProjectQuieter), note.ClassProjectCold)
 		if lessons != nil && hasFlag(flags, note.ClassConsolidated) &&
 			!anyPresent(lessons(rows[i].Path), present) {
 			flags = withoutFlag(flags, note.ClassConsolidated)
@@ -457,7 +462,7 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 		if wantArtifact {
 			flags = withoutFlag(flags, note.ClassArtifact)
 		}
-		mult := note.Multiplier(flags)
+		mult := note.Multiplier(flags) * note.ProjectActivityOf(rows[i].Path)
 		// The session's project: a note it does not match is dampened, mildly, which
 		// is the session's own cards' lift (note.ProjectMismatch). Below 1.0, so the
 		// clamp that follows keeps it a demotion on a negative score too.
