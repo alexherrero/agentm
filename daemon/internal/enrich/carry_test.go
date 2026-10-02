@@ -344,3 +344,39 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
+
+// A pass never removes an alias already on the card (task 182 step 5, the
+// operator's ruling of 2026-10-01). Capture-time aliases are the asker's own
+// phrasing, the channel the filing design adopted; the 2026-09-23 rewrite of
+// the gold set's rc02 card replaced four of them with the pass's two and the
+// card fell out of the top 300. The pass's own new aliases are added after.
+func TestCarryProvenanceKeepsEveryAliasAndAddsThePasssOwn(t *testing.T) {
+	previous := "---\ntype: reference\nstatus: active\n" +
+		`aliases: ["who else synthesizes memories on a timer", "agents that think while idle", ConsolidateAgent]` +
+		"\n---\n\nA ConsolidateAgent runs on a timer.\n"
+	next := RenderNote(Response{
+		Title: "The Always-On agent's loop is dreaming", Type: "reference", Confidence: 0.9,
+		Aliases: []string{"consolidateagent", "sleep cycles"}, Body: "A ConsolidateAgent runs on a timer.",
+	}, Stamp{})
+	out := CarryProvenance(previous, next)
+	// Plain scalars where YAML allows them: the writer's yamlScalar convention.
+	want := `aliases: [who else synthesizes memories on a timer, agents that think while idle, ConsolidateAgent, sleep cycles]`
+	if !strings.Contains(out, "\n"+want+"\n") {
+		t.Fatalf("want the previous aliases kept first and the pass's new one added, case-folded:\n%s", out)
+	}
+	if strings.Count(out, "\naliases:") != 1 {
+		t.Fatalf("one aliases line:\n%s", out)
+	}
+}
+
+// A block list is read too, and a pass that wrote no aliases keeps the card's.
+func TestCarryProvenanceKeepsABlockListOfAliases(t *testing.T) {
+	previous := "---\ntype: reference\nstatus: active\naliases:\n  - EnterWorktree\n  - \"isolation.mode: worktree-per-plan\"\n---\n\nbody\n"
+	out := CarryProvenance(previous, rendered(t))
+	if !strings.Contains(out, "\naliases: [EnterWorktree, \"isolation.mode: worktree-per-plan\"]\n") {
+		t.Fatalf("want the block list carried as a flow list:\n%s", out)
+	}
+	if got := CarryProvenance("---\ntype: reference\n---\n\nbody\n", rendered(t)); strings.Contains(got, "aliases:") {
+		t.Fatalf("no previous aliases, none invented:\n%s", got)
+	}
+}
