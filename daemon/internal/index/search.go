@@ -386,6 +386,26 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 	return out, wonBy, nil
 }
 
+// topByScore is the k rows this arm would return on its own scores, before any
+// penalty: the list a lesson has to be in for its card to be demoted beside it.
+// The fusion arm gathers up to Overfetch rows from every two-term subset, so
+// "anywhere among the candidates" reached hundreds of rows deep: on the live
+// index a lesson matching at rank 265 still demoted its card, beside nothing
+// (task 182, the gold set's rc11).
+func topByScore(rows []Result, k int) []Result {
+	if k <= 0 || len(rows) <= k {
+		return rows
+	}
+	top := append([]Result(nil), rows...)
+	sort.SliceStable(top, func(i, j int) bool {
+		if top[i].Score != top[j].Score {
+			return top[i].Score > top[j].Score
+		}
+		return top[i].Path < top[j].Path
+	})
+	return top[:k]
+}
+
 // lessonStemsIn is the stems of the crystallized lessons among rows.
 func lessonStemsIn(rows []Result) map[string]bool {
 	out := map[string]bool{}
@@ -433,8 +453,8 @@ func penalizeAndRank(rows []Result, k int) []Result {
 // vault to read an access record from passes.
 //
 // `lessons` reads the lessons a stamped card names. With it, the consolidated
-// ×0.30 applies only when one of those lessons is in the same candidate list —
-// the list this arm is ranking — so a card cannot crowd out a lesson that
+// ×0.30 applies only when one of those lessons is in this arm's own top k (see
+// topByScore) — the list it hands on — so a card cannot crowd out a lesson that
 // answers, and keeps its rank when no lesson does (task 182 step 3, the
 // operator's ruling of 2026-10-01). Nil keeps the old unconditional demotion,
 // which only callers with no vault to read pass.
@@ -442,7 +462,7 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 	wantArtifact bool, project string, lessons func(rel string) []string) []Result {
 	var present map[string]bool
 	if lessons != nil {
-		present = lessonStemsIn(rows)
+		present = lessonStemsIn(topByScore(rows, k))
 	}
 	note.RefreshProjectActivity(time.Now())
 	for i := range rows {
