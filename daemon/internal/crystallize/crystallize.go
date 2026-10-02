@@ -612,18 +612,68 @@ func yamlQuote(s string) string {
 
 var consolidatedIntoRe = regexp.MustCompile(`(?m)^consolidated_into:[ \t]*.*$`)
 
-// Stamp adds `consolidated_into` to a source note, or replaces the one it
-// carries. The stamp is what drops the source to ×0.30 in both ranking arms:
-// once a lesson lands, the things that taught it must not crowd it out.
+var stampLink = regexp.MustCompile(`\[\[([^\]|]+)`)
+
+// StampedLessons is every lesson a card's `consolidated_into` names, by stem,
+// in the order written. The field is one quoted link when one lesson rests on
+// the card and a flow list of them when several do (task 182, the operator's
+// ruling of 2026-10-01): a weekly run's clusters overlap, so one card can teach
+// several lessons, and a single value kept only whichever was written last.
+func StampedLessons(text string) []string {
+	m := consolidatedIntoRe.FindString(text)
+	if m == "" {
+		return nil
+	}
+	var out []string
+	for _, s := range stampLink.FindAllStringSubmatch(m, -1) {
+		stem := path.Base(strings.TrimSuffix(strings.TrimSpace(s[1]), ".md"))
+		if !containsString(out, stem) {
+			out = append(out, stem)
+		}
+	}
+	return out
+}
+
+// stampLine is the `consolidated_into` line naming these lessons: one quoted
+// link for one lesson, the shape every stamp had before task 182, and a flow
+// list for several.
+func stampLine(lessons []string) string {
+	if len(lessons) == 1 {
+		return fmt.Sprintf("consolidated_into: \"[[%s]]\"", lessons[0])
+	}
+	links := make([]string, len(lessons))
+	for i, l := range lessons {
+		links[i] = fmt.Sprintf("\"[[%s]]\"", l)
+	}
+	return "consolidated_into: [" + strings.Join(links, ", ") + "]"
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// Stamp adds a lesson to a source note's `consolidated_into`, keeping every
+// lesson it already names. The stamp is what drops the source to ×0.30 beside
+// its lesson: once a lesson lands, the things that taught it must not crowd it
+// out. Stamping a lesson the note already names changes nothing.
 //
 // Placed after `superseded_by` when the note has one and before `project`
 // otherwise, and then the whole frontmatter is put in the card's order, so a
 // note with neither ends with the stamp in its read block too.
 func Stamp(text, lessonStem string) string {
-	line := fmt.Sprintf("consolidated_into: \"[[%s]]\"", lessonStem)
 	if consolidatedIntoRe.MatchString(text) {
-		return consolidatedIntoRe.ReplaceAllString(text, line)
+		lessons := StampedLessons(text)
+		if containsString(lessons, lessonStem) {
+			return text
+		}
+		return consolidatedIntoRe.ReplaceAllLiteralString(text, stampLine(append(lessons, lessonStem)))
 	}
+	line := stampLine([]string{lessonStem})
 	if !strings.HasPrefix(text, "---\n") {
 		return text
 	}

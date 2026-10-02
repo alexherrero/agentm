@@ -57,9 +57,23 @@ import (
 // would move an idea to the wrong heading, or back onto the live list, with
 // nothing on the card saying why. No pass writes either one; the carry is the
 // only thing that touches them.
+//
+// `consolidated_into`, `source_hash` and `source_version` were the second
+// audit's finds (task 182, 2026-10-01), and each is another writer's stamp
+// that a rewrite was silently undoing. Crystallize stamps `consolidated_into`
+// on the cards a lesson rests on; without it the card drops out of the
+// lesson's demotion, and by 2026-10-01 re-enrichment had unstamped 111
+// lesson-to-card links across 37 cards. Capture writes `source_hash` and
+// `source_version` so that a second fetch of the same outside source can tell
+// whether the source changed; without them the update decides blind. The
+// census test holds every field of the card shape against this list, the
+// pass's own fields and notCarried, so the next writer's field fails a test
+// instead of a night.
 var carriedFields = []string{
 	"source", "source_id", "source_url", "source_fetched",
+	"source_hash", "source_version",
 	"lifecycle", "lifecycle_since", "superseded_by", "supersedes",
+	"consolidated_into",
 	"promoted_at", "promoted_to", "derived_from",
 	"created", "via", "surface", "instructions", "review_flags",
 	"related", "trust", "why", "project", "task",
@@ -67,6 +81,18 @@ var carriedFields = []string{
 	"slug", "fingerprint", "occurrences",
 	"probe",
 	"area", "dismissed",
+}
+
+// notCarried is every field of the card shape (cardshape.ReadOrder and
+// MachineOrder) that a rewrite neither writes itself nor carries, with the
+// reason it may go. A field belongs here only on purpose.
+var notCarried = map[string]string{
+	"kind": "a record's field; a card carries `type`, and a project record's " +
+		"rewrite keeps its own frontmatter (record.go)",
+	"consolidated_from": "a lesson's list of sources; lessons live in " +
+		"crystallized/, a derived class enrichment refuses to write",
+	"backfilled": "rebuilt from the previous list by backfilledKept, less the " +
+		"fields the pass wrote itself",
 }
 
 // EvidenceHeading opens the block quoting the excerpt a note came from. It is

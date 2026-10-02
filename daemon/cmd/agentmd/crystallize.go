@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -102,6 +103,11 @@ func cmdCrystallize(args []string) error {
 	recheck := fs.Bool("recheck", false,
 		"ask which stamped cards each lesson is true of, and write a manifest releasing the rest (#749); "+
 			"apply it with agentmdream apply -manifest")
+	restamp := fs.Bool("restamp", false,
+		"write a manifest stamping again every card a lesson lists that has lost its consolidated_into "+
+			"(task 182); no model call. Apply it with agentmdream apply -manifest, then -recheck -lessons")
+	lessons := fs.String("lessons", "",
+		"with -recheck: ask only these lessons (comma-separated stems), such as the ones -restamp names")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -109,6 +115,12 @@ func cmdCrystallize(args []string) error {
 	cfg, err := config.Load(*opts)
 	if err != nil {
 		return err
+	}
+
+	// Restamp reads and plans; it spends nothing, so the phase switch does not
+	// gate it, the same way it does not gate a dry run.
+	if *restamp {
+		return runRestamp(cfg, *dryRun, *asJSON, time.Now())
 	}
 
 	// The same refusal enrichment makes, for the same reason: a command that
@@ -149,7 +161,7 @@ func cmdCrystallize(args []string) error {
 	started := time.Now()
 	now := started
 	if *recheck {
-		return runRecheck(cfg, caller, meter, route, *dryRun, *cap, *asJSON, now)
+		return runRecheck(cfg, caller, meter, route, *dryRun, *cap, splitStems(*lessons), *asJSON, now)
 	}
 	rep, err := crystallize.Run(crystallize.Options{
 		Root: crystallizeMemoryRoot(cfg), Vault: cfg.VaultPath, Now: now,
@@ -224,7 +236,7 @@ func cmdCrystallize(args []string) error {
 // lesson is true of, and writes the release of the rest as a manifest the
 // dreaming binary makes through its journal (#749). It writes no note itself.
 func runRecheck(cfg *config.Config, caller *enrich.Caller, meter *enrich.Meter, route tiers.Routing,
-	dryRun bool, cap int, asJSON bool, now time.Time) error {
+	dryRun bool, cap int, only []string, asJSON bool, now time.Time) error {
 	root := crystallizeMemoryRoot(cfg)
 	call := func(prompt string) (string, error) {
 		if dryRun {
@@ -235,7 +247,7 @@ func runRecheck(cfg *config.Config, caller *enrich.Caller, meter *enrich.Meter, 
 		return caller.Call(ctx, prompt)
 	}
 	caller.SystemPrompt = "You check which notes a written lesson is actually true of. Answer with one JSON object and nothing else."
-	found, acts, err := crystallize.PlanRecheck(root, call, cap)
+	found, acts, err := crystallize.PlanRecheckOnly(root, call, cap, only)
 	if err != nil {
 		return err
 	}
@@ -297,5 +309,86 @@ func runRecheck(cfg *config.Config, caller *enrich.Caller, meter *enrich.Meter, 
 		return err
 	}
 	fmt.Println(string(blob))
+	return nil
+}
+
+// splitStems is a comma-separated list of lesson stems, blanks dropped.
+func splitStems(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSuffix(strings.TrimSpace(p), ".md"); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// runRestamp plans the stamps a rewrite dropped — every card a lesson lists
+// that no longer names it — and writes them as a manifest the dreaming binary
+// makes through its journal (task 182). It makes no model call and writes no
+// note itself. The lessons it names are the ones to ask -recheck about next:
+// their re-stamped cards were never asked.
+func runRestamp(cfg *config.Config, dryRun, asJSON bool, now time.Time) error {
+	root := crystallizeMemoryRoot(cfg)
+	found, acts, lessons, err := crystallize.PlanRestamp(root)
+	if err != nil {
+		return err
+	}
+	manifest := ""
+	if !dryRun && len(acts) > 0 {
+		manifest = filepath.Join(root, "diagnostics", "migrations", "crystallize-restamp",
+			now.Format("2006-01-02")+"-restamp.json")
+		if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
+			return err
+		}
+		blob, err := json.MarshalIndent(map[string]any{
+			"job":    "manifest-crystallize-restamp",
+			"reason": "stamp again the cards a lesson lists whose consolidated_into a rewrite dropped (task 182)",
+			"acts":   acts}, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(manifest, append(blob, '\n'), 0o644); err != nil {
+			return err
+		}
+	}
+	states := map[string]int{}
+	for _, f := range found {
+		states[f.State]++
+	}
+	if asJSON {
+		blob, err := json.MarshalIndent(map[string]any{"findings": found, "states": states,
+			"lessons": lessons, "manifest": manifest, "acts": len(acts), "dry_run": dryRun}, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(blob))
+		return nil
+	}
+	for _, f := range found {
+		if f.State == "stamped" {
+			continue
+		}
+		line := fmt.Sprintf("  %-12s %s <- %s", f.State, f.Lesson, f.Card)
+		if f.Note != "" {
+			line += " (" + f.Note + ")"
+		}
+		fmt.Println(line)
+	}
+	keys := make([]string, 0, len(states))
+	for k := range states {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s %d", k, states[k]))
+	}
+	fmt.Printf("crystallize -restamp: %d listed source(s): %s; %d act(s) across %d lesson(s)\n",
+		len(found), strings.Join(parts, ", "), len(acts), len(lessons))
+	if manifest != "" {
+		fmt.Printf("  manifest %s\n  check it: agentmdream apply -manifest %s\n", manifest, manifest)
+		fmt.Printf("  then ask: agentmd crystallize -recheck --yes -lessons %s\n", strings.Join(lessons, ","))
+	}
 	return nil
 }
