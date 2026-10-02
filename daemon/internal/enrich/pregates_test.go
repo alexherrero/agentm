@@ -537,3 +537,25 @@ func TestARefusedProbeCostsNothingAndIsCountedAsASkip(t *testing.T) {
 		t.Errorf("a skip must not hand back a body:\n%s", out.Body)
 	}
 }
+
+// An instrument is refused before any model call (task 182 step 7): the eval's
+// canary is a note a measurement reads, and a rewrite once dropped the alias
+// that carried its token.
+func TestAnInstrumentIsRefusedBeforeAnyModelCall(t *testing.T) {
+	g := &Instrument{}
+	canary := "---\ntitle: Eval canary\ntype: reference\nstatus: active\nlifecycle: pinned\n" +
+		"aliases: [canary-eval-liveness-q7g3xz]\ninstrument: eval-canary\n---\n\nThe token.\n"
+	err := g.Check(context.Background(), Request{Rel: "memory/semantic/eval-canary.md"}, canary)
+	if !errors.Is(err, ErrNotEligible) || !strings.Contains(err.Error(), "eval-canary") {
+		t.Fatalf("the canary must be refused, naming what it is for: %v", err)
+	}
+	for _, body := range []string{
+		note("unfiled", "a card about the canary that says `instrument: eval-canary` in its body"),
+		strings.Replace(canary, "instrument: eval-canary\n", "", 1),
+		"just prose\n",
+	} {
+		if err := g.Check(context.Background(), Request{Rel: "memory/semantic/x.md"}, body); err != nil {
+			t.Errorf("only the frontmatter marker refuses: %v\n%s", err, body)
+		}
+	}
+}

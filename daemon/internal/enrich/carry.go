@@ -87,7 +87,7 @@ var carriedFields = []string{
 	"related", "trust", "why", "project", "task",
 	"importance", "importance_proposed",
 	"slug", "fingerprint", "occurrences",
-	"probe",
+	"probe", "instrument",
 	"area", "dismissed",
 }
 

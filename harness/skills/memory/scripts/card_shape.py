@@ -64,7 +64,7 @@ MACHINE_ORDER: tuple[str, ...] = (
     # A capture's own record before the engine's review marks, as the locked
     # order always had them.
     "via", "surface", "instructions", "review_flags",
-    "promoted_at", "promoted_to", "probe", "backfilled",
+    "promoted_at", "promoted_to", "probe", "instrument", "backfilled",
 )
 
 _READ_INDEX = {k: i for i, k in enumerate(READ_ORDER)}

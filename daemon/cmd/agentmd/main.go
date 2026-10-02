@@ -1937,7 +1937,7 @@ func freeGates(cfg *config.Config) []enrich.Gate {
 		return err != nil || loaded.IsRecordKind(kind)
 	}
 	return []enrich.Gate{
-		&enrich.SelfProbe{}, eligibility, enrich.DefaultPrivacy(), enrich.DefaultSize(),
+		&enrich.SelfProbe{}, &enrich.Instrument{}, eligibility, enrich.DefaultPrivacy(), enrich.DefaultSize(),
 	}
 }
 
