@@ -26,8 +26,6 @@ import (
 	"strings"
 )
 
-var consolidatedIntoLink = regexp.MustCompile(`(?m)^consolidated_into:[ \t]*"?\[\[([^\]|]+)`)
-
 // RecheckAct is one in-place rewrite the recheck plans, in the dreaming
 // binary's manifest shape.
 type RecheckAct struct {
@@ -78,19 +76,22 @@ func stampedCards(root string) map[string][]stamped {
 			if err != nil {
 				continue
 			}
-			m := consolidatedIntoLink.FindSubmatch(raw)
-			if m == nil {
+			text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+			lessons := StampedLessons(text)
+			if len(lessons) == 0 {
 				continue
 			}
-			text := strings.ReplaceAll(string(raw), "\r\n", "\n")
 			fm := frontmatter(text)
 			body := text
 			if i := strings.Index(text[min(4, len(text)):], "\n---\n"); strings.HasPrefix(text, "---\n") && i >= 0 {
 				body = text[4+i+5:]
 			}
-			out[string(m[1])] = append(out[string(m[1])], stamped{
-				rel: path.Join("memory", cl.Name(), f.Name()), stem: strings.TrimSuffix(f.Name(), ".md"),
-				title: fm["title"], text: strings.TrimSpace(body), raw: raw})
+			// A card several lessons rest on is asked about under each of them.
+			for _, lesson := range lessons {
+				out[lesson] = append(out[lesson], stamped{
+					rel: path.Join("memory", cl.Name(), f.Name()), stem: strings.TrimSuffix(f.Name(), ".md"),
+					title: fm["title"], text: strings.TrimSpace(body), raw: raw})
+			}
 		}
 	}
 	for k := range out {
@@ -146,10 +147,20 @@ func ParseRecheck(out string) (RecheckAnswer, error) {
 
 var consolidatedIntoLine = regexp.MustCompile(`(?m)^consolidated_into:[ \t]*.*\r?\n`)
 
-// unstamp is the card without its `consolidated_into` line; every other byte
-// stays where it was.
-func unstamp(raw []byte) string {
-	return consolidatedIntoLine.ReplaceAllString(string(raw), "")
+// unstampFrom is the card with these lessons taken out of its
+// `consolidated_into`, and the line gone when none is left; every other byte
+// stays where it was. A card several lessons rest on keeps the rest.
+func unstampFrom(raw []byte, released []string) string {
+	var keep []string
+	for _, l := range StampedLessons(string(raw)) {
+		if !containsString(released, l) {
+			keep = append(keep, l)
+		}
+	}
+	if len(keep) == 0 {
+		return consolidatedIntoLine.ReplaceAllString(string(raw), "")
+	}
+	return consolidatedIntoRe.ReplaceAllLiteralString(string(raw), stampLine(keep))
 }
 
 // withoutSources is the lesson's text without the list entries that link to
@@ -181,14 +192,47 @@ func withoutSources(lesson string, released []string) string {
 // (0: all), and returns what it found and the rewrites that release the cards
 // a lesson is not true of. It writes nothing.
 func PlanRecheck(root string, call Caller, cap int) ([]RecheckLesson, []RecheckAct, error) {
+	return PlanRecheckOnly(root, call, cap, nil)
+}
+
+// PlanRecheckOnly is PlanRecheck over the named lessons alone (by stem), or
+// over every lesson when `only` is empty. Restamp names the lessons whose cards
+// it stamped again; those cards were never asked about, and asking every other
+// lesson a second time would spend a call each for answers already on file.
+func PlanRecheckOnly(root string, call Caller, cap int, only []string) ([]RecheckLesson, []RecheckAct, error) {
 	byLesson := stampedCards(root)
+	want := map[string]bool{}
+	for _, s := range only {
+		want[s] = true
+	}
 	stems := make([]string, 0, len(byLesson))
 	for s := range byLesson {
+		if len(want) > 0 && !want[s] {
+			continue
+		}
 		stems = append(stems, s)
 	}
 	sort.Strings(stems)
 	var found []RecheckLesson
-	var acts []RecheckAct
+	var lessonActs []RecheckAct
+	// A card several lessons rest on can be released by more than one of them
+	// in a run. Its releases are gathered and made as one act, because a
+	// manifest refuses a second act on a note whose bytes the first changed.
+	type release struct {
+		raw     []byte
+		lessons []string
+		why     []string
+	}
+	releases := map[string]*release{}
+	releaseCard := func(c stamped, lesson, why string) {
+		r := releases[c.rel]
+		if r == nil {
+			r = &release{raw: c.raw}
+			releases[c.rel] = r
+		}
+		r.lessons = append(r.lessons, lesson)
+		r.why = append(r.why, why)
+	}
 	for _, stem := range stems {
 		if cap > 0 && len(found) >= cap {
 			break
@@ -202,8 +246,7 @@ func PlanRecheck(root string, call Caller, cap int) ([]RecheckLesson, []RecheckA
 			r.Reason = "the lesson it names does not exist"
 			for _, c := range cards {
 				r.Released = append(r.Released, c.rel)
-				acts = append(acts, RecheckAct{Rel: c.rel, Before: sha(c.raw), After: unstamp(c.raw),
-					Summary: "released: its lesson " + stem + " does not exist"})
+				releaseCard(c, stem, "released: its lesson "+stem+" does not exist")
 			}
 			found = append(found, r)
 			continue
@@ -242,15 +285,25 @@ func PlanRecheck(root string, call Caller, cap int) ([]RecheckLesson, []RecheckA
 			}
 			r.Released = append(r.Released, c.rel)
 			releasedStems = append(releasedStems, c.stem)
-			acts = append(acts, RecheckAct{Rel: c.rel, Before: sha(c.raw), After: unstamp(c.raw),
-				Summary: "released from " + stem + ": the lesson is not true of it"})
+			releaseCard(c, stem, "released from "+stem+": the lesson is not true of it")
 		}
 		if len(releasedStems) > 0 {
-			acts = append(acts, RecheckAct{Rel: lessonRel, Before: sha(raw),
+			lessonActs = append(lessonActs, RecheckAct{Rel: lessonRel, Before: sha(raw),
 				After:   withoutSources(lesson, releasedStems),
 				Summary: fmt.Sprintf("%d source(s) it is not true of taken off what taught it", len(releasedStems))})
 		}
 		found = append(found, r)
 	}
-	return found, acts, nil
+	rels := make([]string, 0, len(releases))
+	for rel := range releases {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels)
+	acts := make([]RecheckAct, 0, len(rels)+len(lessonActs))
+	for _, rel := range rels {
+		r := releases[rel]
+		acts = append(acts, RecheckAct{Rel: rel, Before: sha(r.raw), After: unstampFrom(r.raw, r.lessons),
+			Summary: strings.Join(r.why, "; ")})
+	}
+	return found, append(acts, lessonActs...), nil
 }

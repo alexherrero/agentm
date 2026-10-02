@@ -405,8 +405,12 @@ def successors(live: list, vault_root: "Path | None | bool" = False) -> list:
             card = (Path(root) / p).read_text(encoding="utf-8")
         except OSError:
             continue
-        named = re.search(r"(?m)^consolidated_into:[ \t]*[\"']?\[\[" + re.escape(stem)
-                          + r"(\|[^\]]*)?\]\]", card)
+        # One quoted link, or a flow list of them when several lessons rest on
+        # the card (task 182): the card names the lesson if any link does.
+        line = re.search(r"(?m)^consolidated_into:[ \t]*(.*)$", card)
+        named = line is not None and any(
+            t.strip().rsplit("/", 1)[-1] == stem
+            for t in re.findall(r"\[\[([^\]|]+)", line.group(1)))
         if named and (Path(root) / lesson).is_file() and lesson not in out:
             out.append(lesson)
     return out

@@ -1003,6 +1003,13 @@ class ALessonStandsInForItsCard(unittest.TestCase):
         self._card('consolidated_into: "[[answers-cite]]"\n')
         self.assertEqual(self._score([self.LESSON])["hits"], 0)
 
+    def test_a_card_several_lessons_rest_on_names_each_of_them(self):
+        # Task 182: a card a weekly run put in several lessons carries a list.
+        self._card('consolidated_into: ["[[answers-cite-more]]", "[[answers-cite]]"]\n')
+        self.assertEqual(ev.successors([self.CARD]), [self.LESSON])
+        self._card('consolidated_into: ["[[answers-cite-more]]", "[[other]]"]\n')
+        self.assertEqual(ev.successors([self.CARD]), [])
+
     def test_a_card_stamped_into_another_lesson_makes_no_successor(self):
         self._card('consolidated_into: "[[answers-cite-more]]"\n')
         self.assertEqual(ev.successors([self.CARD]), [])

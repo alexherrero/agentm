@@ -271,3 +271,76 @@ func TestComposeKeepsTheProbeMarkerInTheCardOrder(t *testing.T) {
 		t.Fatalf("composed out of the card's order:\n%s", out)
 	}
 }
+
+// Another writer's stamps survive the rewrite that judges the card: the lesson
+// a card taught (crystallize) and the source fingerprint a second fetch
+// compares against (capture). Losing the first drops the card out of its
+// lesson's demotion; losing the second makes the same-source update decide
+// blind. Both were being dropped until task 182.
+func TestCarryProvenanceKeepsAnotherWritersStamps(t *testing.T) {
+	previous := `---
+type: reference
+status: active
+source: external-fetch
+source_url: https://example.com/article
+source_hash: sha256:abc123
+source_version: "2026-09-28"
+consolidated_into: "[[answers-that-cite-the-memories-they-came-from]]"
+---
+
+The query agent cites the memory ids it used.
+`
+	out := CarryProvenance(previous, rendered(t))
+	for _, want := range []string{
+		`consolidated_into: "[[answers-that-cite-the-memories-they-came-from]]"`,
+		"source_hash: sha256:abc123",
+		`source_version: "2026-09-28"`,
+	} {
+		if !strings.Contains(out, "\n"+want+"\n") {
+			t.Fatalf("stamp %q lost in the rewrite:\n%s", want, out)
+		}
+	}
+}
+
+// The census. Every field the card shape names is either written by the pass,
+// carried across it, or let go on purpose with a reason. A writer that adds a
+// field to the card shape fails here until someone decides which, instead of
+// finding out from the vault weeks later that every re-enrichment erased it.
+func TestEveryCardFieldIsWrittenCarriedOrLetGoOnPurpose(t *testing.T) {
+	carried := map[string]bool{}
+	for _, k := range carriedFields {
+		carried[k] = true
+	}
+	for _, field := range append(append([]string{}, cardshape.ReadOrder...), cardshape.MachineOrder...) {
+		n := 0
+		if passWrittenFields[field] {
+			n++
+		}
+		if carried[field] {
+			n++
+		}
+		if notCarried[field] != "" {
+			n++
+		}
+		switch {
+		case n == 0:
+			t.Errorf("card field %q is neither written by the pass, carried, nor in notCarried with a reason", field)
+		case notCarried[field] != "" && n > 1:
+			t.Errorf("card field %q is in notCarried and also written or carried; pick one", field)
+		}
+	}
+	for field := range notCarried {
+		if !contains(cardshape.ReadOrder, field) && !contains(cardshape.MachineOrder, field) {
+			t.Errorf("notCarried names %q, which is not a card field", field)
+		}
+	}
+}
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
