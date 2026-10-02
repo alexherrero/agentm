@@ -116,14 +116,15 @@ const (
 	ClassProjectQuiet   = "project-quiet"
 	ClassProjectQuieter = "project-quieter"
 	ClassProjectCold    = "project-cold"
-	// ClassConsolidated is a note whose `consolidated_into` names the lesson
+	// ClassConsolidated is a note whose `consolidated_into` names the lessons
 	// the weekly crystallize phase wrote from it. The sources that taught a
 	// lesson must not crowd the lesson out of recall (agentm-vault § Lifecycle
 	// per space, "a lesson outranks what taught it"), so the stamp drops them
-	// to the same 0.30 a demotion to `dormant` gives — immediately, rather
-	// than waiting for the curve. They stay where they are and stay findable:
-	// a query naming the specific case still reaches the card, below the
-	// lesson, and the lesson's own links resolve.
+	// to the same 0.30 a demotion to `dormant` gives — but only in a candidate
+	// list that also holds one of those lessons (task 182 step 3; the ranker
+	// reads the lessons at query time, see index.penalizeRankAndDecay). Where
+	// no lesson answers the query the card keeps its rank, so a query naming
+	// the specific case still reaches it.
 	ClassConsolidated = "consolidated"
 	// ClassCompleted is the name this class went by before it covered the
 	// archive family, when it meant a project's `completed/` folder alone. No
@@ -204,9 +205,9 @@ var Weights = map[string]float64{
 	ClassProjectQuiet:   0.70,
 	ClassProjectQuieter: 0.50,
 	ClassProjectCold:    0.30,
-	// A source whose lesson has been written. The sweep's 0.30, and the design
-	// asks for exactly that number: "ranks at x0.30 immediately — matching the
-	// demotion `dormant` gives".
+	// A source whose lesson has been written, beside that lesson. The sweep's
+	// 0.30, and the design asks for exactly that number: "the source ranks at
+	// x0.30, the same demotion `dormant` gives".
 	ClassConsolidated: 0.30,
 }
 

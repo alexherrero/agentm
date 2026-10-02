@@ -334,14 +334,27 @@ ARCHIVE_SEGMENTS = ("archive", "_archive", "completed")
 # A source whose lesson has been written: `consolidated_into` names the
 # crystallized note the weekly phase built from it. The sources that taught a
 # lesson must not crowd the lesson out of recall, so they drop to the same 0.30
-# a demotion to `dormant` gives — immediately, rather than waiting for the
-# curve, because the lesson exists now. They stay where they are and stay
-# findable: a query naming the specific case still reaches the card, below the
-# lesson, and the lesson's `consolidated_from` links resolve.
+# a demotion to `dormant` gives, among candidates that also hold one of their
+# lessons (task 182 step 3). Where no lesson answers, the card keeps its rank:
+# a query naming the specific case still reaches it, and the lesson's
+# `consolidated_from` links resolve.
 _CONSOLIDATED_DEMOTION = 0.30
 
 
-def _stamp_demotion(fm: dict) -> float:
+_STAMP_LINK = re.compile(r"\[\[([^\]|]+)")
+
+
+def _stamp_lessons(fm: dict) -> list:
+    """The lesson stems a card's `consolidated_into` names: one link, or a list
+    of them when several lessons rest on the card (task 182)."""
+    value = fm.get("consolidated_into")
+    if isinstance(value, (list, tuple)):
+        value = ", ".join(str(v) for v in value)
+    return [m.strip().removesuffix(".md").rsplit("/", 1)[-1]
+            for m in _STAMP_LINK.findall(str(value or ""))]
+
+
+def _stamp_demotion(fm: dict, present_lessons=None) -> float:
     """What a note's `consolidated_into` stamp costs it: 0.30, or 1.0 when it
     carries none.
 
@@ -349,11 +362,24 @@ def _stamp_demotion(fm: dict) -> float:
     this number has to equal the daemon's `ClassConsolidated` and a number that
     can only be read by running a query is one nothing can hold to that.
 
+    `present_lessons` is the stems of the lessons among the candidates being
+    ranked. Given it, the 0.30 applies only when one of the card's lessons is
+    there (task 182 step 3, the operator's ruling of 2026-10-01): the card must
+    not crowd its lesson out, and where no lesson answers, the demotion only
+    buries the note that does. None keeps the unconditional demotion.
+
     An empty value is not a stamp. A writer mid-edit leaves the key with
     nothing after it, and sinking a card because something started to write and
     stopped is the wrong direction to fail in.
     """
-    return _CONSOLIDATED_DEMOTION if str(fm.get("consolidated_into") or "").strip() else 1.0
+    value = fm.get("consolidated_into")
+    if isinstance(value, (list, tuple)):
+        value = ", ".join(str(v) for v in value)
+    if not str(value or "").strip():
+        return 1.0
+    if present_lessons is not None and not (set(_stamp_lessons(fm)) & set(present_lessons)):
+        return 1.0
+    return _CONSOLIDATED_DEMOTION
 
 
 def in_archive_class(rel: str) -> bool:
@@ -1946,6 +1972,8 @@ def query(
         lifecycle = None  # type: ignore
 
     all_paths = set(fused.keys())
+    # The lessons among the candidates: a stamped card is demoted only beside one.
+    present_lessons = {Path(p).stem for p in all_paths if "/crystallized/" in "/" + p}
     # One contract read for the whole ranking pass, not one per candidate.
     _, dampened_areas = _contract_areas()
     always_load = _always_load_areas()
@@ -1996,7 +2024,7 @@ def query(
         if demoted:
             decay_score *= _LIFECYCLE_DEMOTION
         # The lesson this card taught, once one has been written.
-        decay_score *= _stamp_demotion(fm)
+        decay_score *= _stamp_demotion(fm, present_lessons)
         # The filing axis, multiplicatively and independently: a dormant
         # unfiled capture takes both, which is what the daemon does too.
         status_value = _status_of(fm)

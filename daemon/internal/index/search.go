@@ -368,7 +368,7 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
-		note.QueryWantsArtifact(text), project)
+		note.QueryWantsArtifact(text), project, x.lessonsOf)
 
 	// One expression won every row here, unlike fusion's per-subset map, but the
 	// shape is shared so both paths snippet through one function.
@@ -386,13 +386,38 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 	return out, wonBy, nil
 }
 
+// lessonStemsIn is the stems of the crystallized lessons among rows.
+func lessonStemsIn(rows []Result) map[string]bool {
+	out := map[string]bool{}
+	for _, r := range rows {
+		p := r.Path
+		if !strings.Contains("/"+p, "/crystallized/") {
+			continue
+		}
+		if i := strings.LastIndexByte(p, '/'); i >= 0 {
+			p = p[i+1:]
+		}
+		out[strings.TrimSuffix(p, ".md")] = true
+	}
+	return out
+}
+
+func anyPresent(stems []string, present map[string]bool) bool {
+	for _, s := range stems {
+		if present[s] {
+			return true
+		}
+	}
+	return false
+}
+
 // penalizeAndRank applies the measured class penalty, orders by the adjusted
 // score, and truncates to k. Both modes share it, so a note is demoted the same
 // way whichever path surfaced it.
 //
 // Roughly twenty lines, worth +3.75 points of R@5 at p = 0.0195.
 func penalizeAndRank(rows []Result, k int) []Result {
-	return penalizeRankAndDecay(rows, k, nil, time.Time{}, false, "")
+	return penalizeRankAndDecay(rows, k, nil, time.Time{}, false, "", nil)
 }
 
 // penalizeRankAndDecay is penalizeAndRank plus age.
@@ -406,10 +431,25 @@ func penalizeAndRank(rows []Result, k int) []Result {
 //
 // A nil log or a zero `now` disables it, which is what every caller that has no
 // vault to read an access record from passes.
+//
+// `lessons` reads the lessons a stamped card names. With it, the consolidated
+// ×0.30 applies only when one of those lessons is in the same candidate list —
+// the list this arm is ranking — so a card cannot crowd out a lesson that
+// answers, and keeps its rank when no lesson does (task 182 step 3, the
+// operator's ruling of 2026-10-01). Nil keeps the old unconditional demotion,
+// which only callers with no vault to read pass.
 func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Time,
-	wantArtifact bool, project string) []Result {
+	wantArtifact bool, project string, lessons func(rel string) []string) []Result {
+	var present map[string]bool
+	if lessons != nil {
+		present = lessonStemsIn(rows)
+	}
 	for i := range rows {
 		flags := splitFlags(rows[i].Penalty)
+		if lessons != nil && hasFlag(flags, note.ClassConsolidated) &&
+			!anyPresent(lessons(rows[i].Path), present) {
+			flags = withoutFlag(flags, note.ClassConsolidated)
+		}
 		// A question that asks for the artifact shape gets the artifact dampening
 		// lifted, which is the design's "boosted on a question that asks for it by
 		// name" expressed as the removal of a penalty. See note.QueryWantsArtifact
@@ -591,7 +631,7 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3, inc
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
-		note.QueryWantsArtifact(text), project)
+		note.QueryWantsArtifact(text), project, x.lessonsOf)
 
 	if len(out.Results) == 0 {
 		out.Note = "0 results. No two terms of this query appear together in any one note."
@@ -659,7 +699,7 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	dense, denseWalls = wallUnserved(dense, q.IncludeArchived)
 	decayLog, decayNow := x.decayClock()
 	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
-		note.QueryWantsArtifact(text), project)
+		note.QueryWantsArtifact(text), project, x.lessonsOf)
 
 	fused := fuseRRF(lexical.Results, dense)
 	out := SearchOutcome{Results: fused, Matched: len(fused),

@@ -129,3 +129,45 @@ func (x *Index) fillHeads(rows []Result) {
 		// prompt hook has, and five heads are a screen.
 	}
 }
+
+// The lessons a stamped card names, read at serve time like the rest of the
+// head (task 182, step 3): a card's ×0.30 applies only in a candidate list that
+// also holds one of its lessons. Read for the few candidates that carry the
+// consolidated class, never stored, so an edited stamp is true on the next
+// query with no reindex.
+var (
+	headConsolidatedRe = regexp.MustCompile(`(?mi)^consolidated_into:[ \t]*(.+)$`)
+	headLinkRe         = regexp.MustCompile(`\[\[([^\]|]+)`)
+)
+
+// lessonsOf is the stems a note's `consolidated_into` names — one link, or a
+// flow list of them — or nil when the file cannot be read or names none.
+func (x *Index) lessonsOf(rel string) []string {
+	f, err := os.Open(filepath.Join(x.vault, filepath.FromSlash(rel)))
+	if err != nil {
+		return nil
+	}
+	buf := make([]byte, headProbeBytes)
+	n, _ := f.Read(buf)
+	f.Close()
+	text := string(buf[:max(n, 0)])
+	if !strings.HasPrefix(text, "---") {
+		return nil
+	}
+	if end := strings.Index(text[3:], "\n---"); end >= 0 {
+		text = text[:3+end]
+	}
+	m := headConsolidatedRe.FindStringSubmatch(text)
+	if m == nil {
+		return nil
+	}
+	var out []string
+	for _, l := range headLinkRe.FindAllStringSubmatch(m[1], -1) {
+		stem := strings.TrimSuffix(strings.TrimSpace(l[1]), ".md")
+		if i := strings.LastIndexByte(stem, '/'); i >= 0 {
+			stem = stem[i+1:]
+		}
+		out = append(out, stem)
+	}
+	return out
+}
