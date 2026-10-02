@@ -43,7 +43,7 @@ var MachineOrder = []string{
 	"fingerprint", "importance_proposed",
 	"aliases", "occurrences", "derived_from", "source_hash", "source_version",
 	"via", "surface", "instructions", "review_flags",
-	"promoted_at", "promoted_to", "probe", "backfilled",
+	"promoted_at", "promoted_to", "probe", "instrument", "backfilled",
 }
 
 // EntityProfileKind is the record the nightly entity builder writes under

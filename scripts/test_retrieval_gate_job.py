@@ -90,6 +90,46 @@ class TheWrapperVerdicts(unittest.TestCase):
         self.assertIn("could not run", got["verdict"])
 
 
+class TheEmbedComesFirst(unittest.TestCase):
+    """Task 182 step 7: the night embeds before the gate grades the corpus.
+    Nothing scheduled `agentmd embed`, and the gate skipped on stale vectors on
+    four of thirteen nights. The embed is recorded and never decides the
+    verdict."""
+
+    def _main(self, side_effect) -> tuple[list, dict]:
+        calls: list = []
+
+        def run(argv, *a, **kw):
+            calls.append(argv)
+            return side_effect(argv)
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "latest_retrieval_gate.json"
+            with mock.patch.object(job.subprocess, "run", side_effect=run), \
+                    mock.patch.object(job, "artifact_path", return_value=out):
+                job.main()
+            return calls, json.loads(out.read_text(encoding="utf-8"))
+
+    def test_the_embed_runs_before_the_gate_and_is_recorded(self):
+        def ok(argv):
+            text = "embedded 12 notes\n" if argv[-1] == "embed" else "check-retrieval-regression: clean\n"
+            return subprocess.CompletedProcess(argv, 0, stdout=text, stderr="")
+        calls, artifact = self._main(ok)
+        self.assertEqual(calls[0][-1], "embed", calls)
+        self.assertIn(str(job.GATE), calls[1])
+        self.assertEqual(artifact["embed"], {"exit": 0, "tail": "embedded 12 notes"})
+        self.assertEqual(artifact["verdict"], "PASS")
+
+    def test_an_embed_that_cannot_run_still_lets_the_gate_run(self):
+        def embed_fails(argv):
+            if argv[-1] == "embed":
+                raise OSError("no agentmd")
+            return subprocess.CompletedProcess(argv, 2, stdout="SKIP\n", stderr="")
+        calls, artifact = self._main(embed_fails)
+        self.assertEqual(len(calls), 2)
+        self.assertIsNone(artifact["embed"]["exit"])
+        self.assertEqual(artifact["verdict"], "SKIP")
+
+
 class TheScorecardReading(unittest.TestCase):
     def _artifact(self, tmp: Path, *, verdict: str, hours_ago: float) -> None:
         at = datetime.now(timezone.utc) - timedelta(hours=hours_ago)

@@ -78,6 +78,29 @@ func (g *SelfProbe) Check(_ context.Context, req Request, body string) error {
 		"later run could recognize as a probe", ErrNotEligible, notes.ProbeMarker)
 }
 
+// Instrument refuses a note a measurement depends on (task 182 step 7).
+//
+// The retrieval eval's canary is the first: a note holding a unique token the
+// eval queries before anything else, to prove the index is alive. On
+// 2026-09-17 a rewrite dropped the alias that carried the token; the check
+// still passed only because the body held it too. An instrument is not a
+// memory to judge, and a rewrite that reworded it, or a dreaming append that
+// grew it, would move the thing every gate reads. `instrument:` names what it
+// is for; the probe marker is not reused, because the probe job retires the
+// notes that carry it.
+type Instrument struct{}
+
+func (g *Instrument) Name() string { return "instrument" }
+
+func (g *Instrument) Check(_ context.Context, req Request, body string) error {
+	what := strings.Trim(strings.TrimSpace(frontmatterValue(body, "instrument")), `"'`)
+	if what == "" {
+		return nil
+	}
+	return fmt.Errorf("%w: it carries `instrument: %s` — a note a measurement reads, "+
+		"left byte for byte; enriching it would move what every gate run compares", ErrNotEligible, what)
+}
+
 // --- 1b. settle -------------------------------------------------------------
 
 // DefaultSettleWindow is how recently a drop-folder card may have changed and

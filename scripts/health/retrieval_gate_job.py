@@ -15,6 +15,7 @@ reading, not an absence.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -36,6 +37,24 @@ ARTIFACT_NAME = "latest_retrieval_gate.json"
 # reworded log line away from being recorded as PASS — which is how a decay
 # flip nearly went in behind a gate that had printed `no reachable vault`.
 VERDICTS = {0: "PASS", 1: "FAIL", 2: "SKIP"}
+
+
+def embed_first() -> dict:
+    """Bring the vector arm current before the gate grades it (task 182 step 7).
+
+    Nothing scheduled `agentmd embed`, so a day of moves and rewrites left the
+    corpus with stale vectors and the gate skipped: four of thirteen nights from
+    2026-09-19 to 2026-10-01 measured nothing. The embed is recorded beside the
+    verdict and never decides it — a failed embed still lets the gate run, and
+    the gate says SKIP on its own if the corpus is still stale.
+    """
+    binary = os.environ.get("AGENTMD", "").strip() or "agentmd"
+    try:
+        proc = subprocess.run([binary, "embed"], capture_output=True, text=True, timeout=1200)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"exit": None, "tail": f"embed could not run: {exc}"}
+    tail = [l for l in (proc.stdout + proc.stderr).strip().splitlines() if l.strip()][-2:]
+    return {"exit": proc.returncode, "tail": "\n".join(tail)}
 
 
 def run_gate() -> dict:
@@ -79,7 +98,9 @@ def artifact_path() -> Path:
 
 
 def main() -> int:
+    embed = embed_first()
     result = run_gate()
+    result["embed"] = embed
     result["at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     path = artifact_path()
     path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n",
