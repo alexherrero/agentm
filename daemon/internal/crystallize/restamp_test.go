@@ -175,3 +175,58 @@ func TestRecheckOnlyAsksTheNamedLessons(t *testing.T) {
 		t.Fatalf("no filter asks every lesson with stamped cards; found %d, asked %d, err %v", len(found), len(asked), err)
 	}
 }
+
+// A card the recheck released stays in the lesson's consolidated_from as
+// provenance and is named in its released list; restamp leaves it unstamped.
+// Without that the two tools would cycle: restamp gives the stamp back, the next
+// recheck takes it off.
+func TestRestampLeavesAReleasedCardUnstamped(t *testing.T) {
+	root := t.TempDir()
+	writeRecheckNote(t, root, "memory/crystallized/ci-green.md", "---\ntitle: CI green closes work\n"+
+		"kind: crystallized\nconsolidated_from:\n  - \"[[taught-only]]\"\n  - \"[[rests-on]]\"\n"+
+		"released: [\"[[taught-only]]\"]\n---\n\nLesson.\n")
+	writeRecheckNote(t, root, "memory/semantic/taught-only.md", "---\ntitle: T\ntype: reference\n---\n\nT.\n")
+	writeRecheckNote(t, root, "memory/semantic/rests-on.md", "---\ntitle: R\ntype: reference\n---\n\nR.\n")
+	found, acts, _, err := PlanRestamp(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := map[string]string{}
+	for _, f := range found {
+		state[f.Card] = f.State
+	}
+	if state["taught-only"] != "released" || state["memory/semantic/rests-on.md"] != "restamp" {
+		t.Fatalf("states %v", state)
+	}
+	if len(acts) != 1 || acts[0].Rel != "memory/semantic/rests-on.md" {
+		t.Fatalf("only the card the lesson rests on is stamped: %+v", acts)
+	}
+}
+
+// Releasing every source no longer empties the lesson: its provenance stays.
+func TestRecheckReleasingEverySourceKeepsTheLessonsProvenance(t *testing.T) {
+	root := t.TempDir()
+	writeRecheckNote(t, root, "memory/crystallized/answers-cite.md", recheckLesson)
+	for _, c := range []string{"a-cites-its-sources", "b-three-sub-agents", "c-answers-name-ids"} {
+		writeRecheckNote(t, root, "memory/semantic/"+c+".md", recheckCard(c, "answers-cite"))
+	}
+	_, acts, err := PlanRecheck(root, func(string) (string, error) {
+		return `{"sources": [], "reason": "true of none"}`, nil
+	}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range acts {
+		if a.Rel != "memory/crystallized/answers-cite.md" {
+			continue
+		}
+		if !strings.Contains(a.After, "consolidated_from:\n  - \"[[a-cites-its-sources]]\"") {
+			t.Fatalf("the lesson's provenance must stay:\n%s", a.After)
+		}
+		if got := len(ReleasedStems(a.After)); got != 3 {
+			t.Fatalf("all three released, got %d:\n%s", got, a.After)
+		}
+		return
+	}
+	t.Fatal("no act on the lesson")
+}

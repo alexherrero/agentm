@@ -93,6 +93,8 @@ var notCarried = map[string]string{
 		"crystallized/, a derived class enrichment refuses to write",
 	"backfilled": "rebuilt from the previous list by backfilledKept, less the " +
 		"fields the pass wrote itself",
+	"released": "a lesson's list of sources it is not true of; lessons live in " +
+		"crystallized/, a derived class enrichment refuses to write",
 }
 
 // EvidenceHeading opens the block quoting the excerpt a note came from. It is

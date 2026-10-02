@@ -35,8 +35,10 @@ type RestampFinding struct {
 	Lesson string `json:"lesson"`
 	Card   string `json:"card"`
 	// State is `restamp` (the card's act adds this lesson), `stamped` (the
-	// card already names it), or `not-a-card` (a trace, a tracker, a record or
-	// a note that is gone: crystallize never stamps those).
+	// card already names it), `released` (the lesson names it in `released:`:
+	// a recheck found the lesson is not true of it), or `not-a-card` (a trace,
+	// a tracker, a record or a note that is gone: crystallize never stamps
+	// those).
 	State string `json:"state"`
 	Note  string `json:"note,omitempty"`
 }
@@ -76,7 +78,10 @@ func PlanRestamp(root string) ([]RestampFinding, []RecheckAct, []string, error) 
 		}
 		return nil, nil, nil, err
 	}
-	type listing struct{ lesson, stem string }
+	type listing struct {
+		lesson, stem string
+		released     bool
+	}
 	var listings []listing
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
@@ -87,8 +92,10 @@ func PlanRestamp(root string) ([]RestampFinding, []RecheckAct, []string, error) 
 			continue
 		}
 		lesson := strings.TrimSuffix(e.Name(), ".md")
-		for _, stem := range listedStems(strings.ReplaceAll(string(raw), "\r\n", "\n")) {
-			listings = append(listings, listing{lesson, stem})
+		text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+		released := ReleasedStems(text)
+		for _, stem := range listedStems(text) {
+			listings = append(listings, listing{lesson, stem, containsString(released, stem)})
 		}
 	}
 	sort.Slice(listings, func(i, j int) bool {
@@ -108,6 +115,13 @@ func PlanRestamp(root string) ([]RestampFinding, []RecheckAct, []string, error) 
 	touched := map[string]bool{}
 	for _, l := range listings {
 		f := RestampFinding{Lesson: path.Join(Dir, l.lesson+".md"), Card: l.stem}
+		if l.released {
+			// It taught the lesson and stays listed as provenance, but a recheck
+			// found the lesson is not true of it: it carries no stamp.
+			f.State, f.Note = "released", "named in the lesson's released list"
+			found = append(found, f)
+			continue
+		}
 		rel := cardPath(root, l.stem)
 		if rel == "" {
 			f.State, f.Note = "not-a-card", "no memory card by that name"

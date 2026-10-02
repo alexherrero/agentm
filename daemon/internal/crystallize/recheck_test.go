@@ -74,12 +74,19 @@ func TestRecheckReleasesTheCardsALessonIsNotTrueOf(t *testing.T) {
 			"consolidated_into: \"[[answers-cite]]\"\n", "", 1) {
 		t.Errorf("the released card changes only by its stamp:\n%s", card)
 	}
+	// The lesson names the released card in `released:` and keeps it as
+	// provenance: it still taught the lesson (the operator's ruling of
+	// 2026-10-01, task 182; a lesson that lost every source had no provenance).
 	lesson := after["memory/crystallized/answers-cite.md"]
-	if strings.Contains(lesson, "b-three-sub-agents") {
-		t.Errorf("the lesson still names the released card:\n%s", lesson)
+	if !strings.Contains(lesson, "\nreleased: [\"[[b-three-sub-agents]]\"]\n") {
+		t.Errorf("the lesson does not name the released card in released:\n%s", lesson)
 	}
-	for _, keep := range []string{"[[a-cites-its-sources]]\"", "[[c-answers-name-ids]]\"", "[[some-trace]]\"",
-		"- [[a-cites-its-sources]] — card", "- [[some-trace]] — trace", "An answer should name the notes it rests on."} {
+	if got := strings.Join(ReleasedStems(lesson), ","); got != "b-three-sub-agents" {
+		t.Errorf("ReleasedStems read %q", got)
+	}
+	for _, keep := range []string{"[[a-cites-its-sources]]\"", "[[b-three-sub-agents]]\"", "[[c-answers-name-ids]]\"",
+		"[[some-trace]]\"", "- [[a-cites-its-sources]] — card", "- [[b-three-sub-agents]] — card",
+		"- [[some-trace]] — trace", "An answer should name the notes it rests on."} {
 		if !strings.Contains(lesson, keep) {
 			t.Errorf("the lesson lost %q:\n%s", keep, lesson)
 		}
