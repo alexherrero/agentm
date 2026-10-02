@@ -387,6 +387,19 @@ func (c *Config) ApplyContractToRanking() {
 	// contract — read here because this is the one place the ranking's inputs
 	// are pushed, and a second push point is a second thing to forget.
 	note.SetProjectActivity(projectActivityReadings(c.EngineStateDir))
+	// And the source a query refreshes from when the night rewrites them, since
+	// the ranker now reads the band at query time (task 182 step 4).
+	if dir := c.EngineStateDir; dir != "" {
+		file := filepath.Join(dir, "project-activity.json")
+		note.SetProjectActivitySource(
+			func() map[string]float64 { return projectActivityReadings(dir) },
+			func() time.Time {
+				if fi, err := os.Stat(file); err == nil {
+					return fi.ModTime()
+				}
+				return time.Time{}
+			})
+	}
 
 	if v, ok := loaded.Threshold("importance_dampen_at_or_below"); ok {
 		note.SetImportanceDampenMax(int(v))

@@ -1,6 +1,9 @@
 package note
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func withDampened(t *testing.T, spaces []string) {
 	t.Helper()
@@ -100,7 +103,9 @@ func TestSetIsNormalised(t *testing.T) {
 }
 
 // A record ranks with its project's activity, and a project the night has not
-// read yet ranks at full weight: absent is not quiet.
+// read yet ranks at full weight: absent is not quiet. Since task 182 step 4 the
+// ranker asks ProjectActivityOf when a query runs, and the index stamps no band:
+// a band frozen at index time outlived the reading it came from.
 func TestAProjectsRecordsRankWithItsActivity(t *testing.T) {
 	t.Cleanup(func() { SetProjectActivity(nil) })
 	SetProjectActivity(map[string]float64{"quiet": 0.7, "quieter": 0.5, "cold": 0.3})
@@ -114,12 +119,43 @@ func TestAProjectsRecordsRankWithItsActivity(t *testing.T) {
 		"agent/memory/semantic/a-fact.md":  1.00,
 	}
 	for rel, want := range cases {
-		flags := classify(rel, "", "a body", "", "", 0, false)
-		// `decisions/` is decay-exempt, which carries no weight, so the only
-		// multiplier here is the project's own.
-		if got := Multiplier(flags); got != want {
-			t.Errorf("%s ranks %v, want %v (flags %v)", rel, got, want, flags)
+		if got := ProjectActivityOf(rel); got != want {
+			t.Errorf("%s ranks %v, want %v", rel, got, want)
 		}
+		for _, f := range classify(rel, "", "a body", "", "", 0, false) {
+			if f == ClassProjectQuiet || f == ClassProjectQuieter || f == ClassProjectCold {
+				t.Errorf("%s: the index stamped band %q; the band is read at query time", rel, f)
+			}
+		}
+	}
+}
+
+// The night rewrites the readings; a running daemon picks them up on the next
+// ranking pass after the file changes, without a restart or a reindex, and
+// looks at the file at most every activityRecheck.
+func TestTheReadingsReloadWhenTheNightRewritesThem(t *testing.T) {
+	t.Cleanup(func() { SetProjectActivity(nil); SetProjectActivitySource(nil, nil) })
+	stamp := time.Date(2026, 10, 1, 2, 0, 0, 0, time.UTC)
+	reading := map[string]float64{"primos": 1.0}
+	loads := 0
+	SetProjectActivity(reading)
+	SetProjectActivitySource(func() map[string]float64 { loads++; return reading },
+		func() time.Time { return stamp })
+
+	now := time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC)
+	RefreshProjectActivity(now)
+	if loads != 0 {
+		t.Fatalf("an unchanged file is not read again; loads = %d", loads)
+	}
+	reading = map[string]float64{"primos": 0.5}
+	stamp = stamp.Add(24 * time.Hour)
+	RefreshProjectActivity(now.Add(time.Second))
+	if got := ProjectActivityOf("projects/primos/charter.md"); got != 1.0 || loads != 0 {
+		t.Fatalf("inside the recheck window nothing is read: got %v, loads %d", got, loads)
+	}
+	RefreshProjectActivity(now.Add(activityRecheck + time.Second))
+	if got := ProjectActivityOf("projects/primos/charter.md"); got != 0.5 || loads != 1 {
+		t.Fatalf("after the window a rewritten file is read once: got %v, loads %d", got, loads)
 	}
 }
 
