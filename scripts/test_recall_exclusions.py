@@ -187,6 +187,35 @@ class TestALessonOutranksWhatTaughtIt(unittest.TestCase):
         self.assertEqual(paths[0], "memory/crystallized/widget-retries.md",
                          "the card that taught the lesson outranked the lesson")
 
+    def test_the_stamp_is_demoted_only_beside_its_lesson(self):
+        """Task 182 step 3: with the candidates' lessons in hand, the 0.30
+        applies only when one of the card's lessons is among them."""
+        one = {"consolidated_into": "[[widget-retries]]"}
+        listed = {"consolidated_into": '["[[other]]", "[[widget-retries]]"]'}
+        parsed = {"consolidated_into": ["[[other]]", "[[widget-retries]]"]}
+        for fm in (one, listed, parsed):
+            self.assertEqual(recall._stamp_demotion(fm, {"widget-retries"}), 0.30, fm)
+            self.assertEqual(recall._stamp_demotion(fm, {"something-else"}), 1.0, fm)
+            self.assertEqual(recall._stamp_demotion(fm, set()), 1.0, fm)
+        self.assertEqual(recall._stamp_demotion({}, {"widget-retries"}), 1.0)
+
+    def test_a_source_whose_lesson_does_not_match_keeps_its_rank(self):
+        # The stamped card says the query's words twice, the unstamped note
+        # once; the lesson says none of them. With no lesson among the
+        # candidates the card takes no demotion and stays first. Under the old
+        # unconditional 0.30 the unstamped note would win.
+        self._write("memory/crystallized/widget-retries.md",
+                    "widget subsystem retry logic notes")
+        self._write("memory/semantic/the-case.md",
+                    "gadget sprocket timing notes, gadget sprocket again",
+                    extra='consolidated_into: "[[widget-retries]]"\n')
+        self._write("memory/semantic/plain.md", "gadget sprocket timing notes")
+        results = recall.query(vault=self.vault, query_text="gadget sprocket", k=5)
+        paths = [r["path"] for r in results]
+        self.assertNotIn("memory/crystallized/widget-retries.md", paths)
+        self.assertEqual(paths[0], "memory/semantic/the-case.md",
+                         "a card was demoted though its lesson was not a candidate")
+
     def test_the_number_is_the_daemons_number(self):
         """0.30 on both sides, read from the two tables rather than asserted
         twice by hand: the same question answered differently depending on
