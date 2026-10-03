@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/note"
@@ -49,6 +50,12 @@ type recallRow struct {
 func recallHistoryPath() string {
 	if v := strings.TrimSpace(os.Getenv("AGENTM_RECALL_HISTORY")); v != "" {
 		return v
+	}
+	// A test binary never touches the machine's ledger unless it names one.
+	// A fixture index's searches appended their fixture names to it on every
+	// `go test ./...`, and the next session's trace linked them (task 186).
+	if testing.Testing() {
+		return ""
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

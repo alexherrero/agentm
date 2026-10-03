@@ -301,3 +301,25 @@ func keysOf(m map[string]any) []string {
 }
 
 var _ = time.Now
+
+// Task 186: with no ledger named, a test's search writes nothing. Before, a
+// fixture index's searches appended their fixture names — "exhaust",
+// "a-stamped-card" — to the machine's recall history on every `go test ./...`,
+// and the next session's episodic trace linked them. HOME points at a scratch
+// folder here, so the old behaviour shows as a file there and never touches
+// the real one.
+func TestATestsSearchWritesNoLedgerUnlessOneIsNamed(t *testing.T) {
+	x := newTestIndex(t)
+	seedOne(t, x)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("AGENTM_RECALL_HISTORY", "")
+
+	if _, err := x.Search(Query{Text: "zorbulax", K: 5, Surface: note.SurfaceCLI}); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".cache", "agentm", "telemetry", "recall-history.jsonl")); err == nil {
+		t.Error("a test binary's search wrote the machine's default recall ledger")
+	}
+}
