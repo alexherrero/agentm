@@ -21,8 +21,8 @@ import (
 
 // The queue is the directories the contract routes a memory type into, less
 // the derived classes — read from the contract, so a type routed somewhere new
-// is walked without a code change, and episodic (traces) and _watchlist
-// (forward-learning records) are walked by nothing.
+// is walked without a code change, and episodic (traces) and _skill-watchlist
+// (skill-discovery records) are walked by nothing.
 func TestTheQueueWalksTheContractsClassDirectories(t *testing.T) {
 	vault := t.TempDir()
 	cfg := configOverRules(t, vault, "preference", "workflow")

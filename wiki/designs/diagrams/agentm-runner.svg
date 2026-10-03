@@ -29,7 +29,7 @@
   <!-- the jobs (agentm) -->
   <rect x="90" y="232" width="540" height="66" rx="12" fill="#F2EEFB" stroke="#7E57C2" stroke-width="1.4"/>
   <text x="360" y="254" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4A2E80">Jobs — <tspan font-weight="400" font-style="italic">.harness/jobs/&lt;name&gt;.yaml</tspan></text>
-  <text x="360" y="273" text-anchor="middle" font-size="9.5" fill="#4A2E80">forward-learning · dreaming · health check · research learn-forward · persona loop/goal</text>
+  <text x="360" y="273" text-anchor="middle" font-size="9.5" fill="#4A2E80">weekly field brief · dreaming · health check · research learn-forward · persona loop/goal</text>
   <text x="360" y="289" text-anchor="middle" font-size="8.5" font-style="italic" fill="#8A78AE">hard fleet budget checked before each run · writes routed by ownership tier</text>
 
   <path d="M300,298 L214,332" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#sa)"/>

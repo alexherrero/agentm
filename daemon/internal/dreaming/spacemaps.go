@@ -42,7 +42,7 @@ var sharedSpaces = []struct {
 	Name string
 	Text string
 }{
-	{ResourcesSpaceName, "The reference library: topic cards, the watchlist and study guides. " +
+	{ResourcesSpaceName, "The reference library: topic cards and study guides. " +
 		"It ranks low in recall unless the question is about its topic. [[../index|index]] says who writes where."},
 	{SystemsSpaceName, "The systems you run: each has an overview and its components, " +
 		"or a front door to its repo's wiki. [[../index|index]] says who writes where."},

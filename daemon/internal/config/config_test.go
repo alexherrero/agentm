@@ -45,7 +45,7 @@ func TestDefaultEmbedScopeCoversTheDropFolder(t *testing.T) {
 // The two shared spaces of 2026-09-24 are IN the default scope, named at the
 // vault root like `projects` and `calendar` rather than under the memory root.
 // Their notes arrive by a move from spaces already in scope — the reference
-// cards and the watchlist from `projects`, the homelab notes from
+// cards from `projects`, the homelab notes from
 // `memory/semantic` — so leaving either out would drop vectors the dense arm
 // already had.
 func TestDefaultEmbedScopeCoversTheResourcesAndSystemsSpaces(t *testing.T) {

@@ -12,8 +12,8 @@ surface that already exists and is independently invocable on its own --
                        (never report_drift.py, which posts a GitHub comment)
     Spend           -> scripts/health/observability_console.py's rollup,
                        refreshed on demand by scripts/runner/aggregator.py
-    Memory activity -> harness/skills/memory/scripts/{recall.py heat-policy,
-                       watchlist_review.py} + direct vault directory counts
+    Memory activity -> harness/skills/memory/scripts/recall.py heat-policy
+                       + direct vault directory counts
     Machinery       -> scripts/machinery_doctor.py (Consolidation follow-ups
                        batch, machinery-integrity lane, piece 3)
     Vault doctor    -> crickets' src/obsidian-vault/scripts/doctor_vault.py
@@ -401,8 +401,8 @@ def count_inbox(vault: Path) -> "int | None":
     returned zero from the day the directory went until 2026-09-06.
 
     The query is the memory skill's `needs_review.py`, so the import puts
-    `_memory_scripts_dir()` on `sys.path` first, as `watchlist_summary()` and
-    `heat_policy_report()` do. Until 2026-09-13 it imported the module bare.
+    `_memory_scripts_dir()` on `sys.path` first, as `heat_policy_report()`
+    does. Until 2026-09-13 it imported the module bare.
     That worked only when an earlier call had already added the directory,
     and the import error it hit otherwise was counted as an empty queue. A
     queue this cannot read is None now, and `section_memory()` says n/a.
@@ -439,33 +439,6 @@ def count_incubator(vault: Path) -> int:
         return sum(1 for p in d.iterdir() if p.is_dir() and not p.name.startswith("_"))
     except OSError:
         return 0
-
-
-def watchlist_summary(vault: "Path | None") -> str:
-    if vault is None:
-        return "Watchlist: n/a (no vault resolved)"
-    mem_dir = _memory_scripts_dir()
-    if mem_dir is None:
-        return "Watchlist: n/a (memory skill not installed alongside console)"
-    if str(mem_dir) not in sys.path:
-        sys.path.insert(0, str(mem_dir))
-    try:
-        import watchlist_review as wr  # type: ignore
-    except ImportError as e:
-        return f"Watchlist: n/a ({e})"
-    try:
-        entries = wr.list_watchlist_entries(vault)
-    except OSError as e:
-        return f"Watchlist: n/a ({e})"
-    pending = [
-        e for e in entries
-        if e["frontmatter"].get("status", "").strip().lower() in ("", "pending-review")
-    ]
-    high_pending = sum(
-        1 for e in pending
-        if e["frontmatter"].get("evaluator_classification", "").strip().upper() == "HIGH"
-    )
-    return f"Watchlist: {len(entries)} entries ({len(pending)} pending, {high_pending} HIGH)"
 
 
 def _is_supplement_home(p: Path, rel: Path) -> bool:
@@ -556,7 +529,6 @@ def section_memory(vault: "Path | None") -> str:
         lines.append("Inbox: n/a (the memory skill's review queue could not be read)")
     else:
         lines.append(f"Inbox: {inbox_n} unreviewed entr{'y' if inbox_n == 1 else 'ies'}")
-    lines.append(watchlist_summary(vault))
     incubator_n = count_incubator(vault)
     lines.append(f"Incubator: {incubator_n} idea{'' if incubator_n == 1 else 's'} in research")
     newest = newest_curated_entries(vault)

@@ -3,7 +3,7 @@
 experience plan, task 2).
 
 `crystallize.py` lives in `harness/skills/memory/scripts/` (same cross-dir
-import pattern as `test_dream.py` / `test_forward_learning.py`), and
+import pattern as `test_dream.py`), and
 reuses `save.py`'s `save_entry` as its write primitive.
 
 Covers (plan task 2 verification):

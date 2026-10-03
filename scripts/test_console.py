@@ -6,8 +6,8 @@ the Consolidation follow-ups batch's machinery-integrity lane, pieces 3-5).
 Covers: repo/vault resolution, each section's graceful-degradation path
 (injected fake subprocess runner -- never a real network/subprocess call),
 the memory-activity helpers against a hermetic tmp-vault fixture (exercised
-against the REAL heat_policy.py / watchlist_review.py sibling modules --
-no fakes needed there, since those are pure-stdlib and already hermetic),
+against the REAL heat_policy.py sibling module --
+no fakes needed there, since it is pure-stdlib and already hermetic),
 the machinery/vault-doctor/vault-lint/dreaming freshness sections (each
 exercised live/dark/last-fired), the rich-view-link footer, and the
 terminal/HTML renderers.
@@ -374,11 +374,6 @@ class MemoryActivityTests(unittest.TestCase):
     def test_heat_policy_report_never_raises_on_empty_vault(self):
         out = c.heat_policy_report(self.vault)
         self.assertTrue(out.startswith("Heat-policy"))
-
-    def test_watchlist_summary_empty_vault(self):
-        out = c.watchlist_summary(self.vault)
-        self.assertTrue(out.startswith("Watchlist"))
-        self.assertIn("0 entries", out)
 
 
 class MachinerySectionTests(unittest.TestCase):

@@ -70,11 +70,11 @@ class TheEnumeration(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             park(root, "health-pass")
-            park(root, "forward-learning")
+            park(root, "dream")
             watchdog_mod.record_outcome("dreaming", succeeded=True, now=time.time(),
                                         state_root=root)
             self.assertEqual([n for n, _ in watchdog_mod.stopped_jobs(state_root=root)],
-                             ["forward-learning", "health-pass"])
+                             ["dream", "health-pass"])
 
     def test_a_healthy_machine_names_nothing(self):
         with tempfile.TemporaryDirectory() as td:
@@ -215,12 +215,12 @@ class TheSessionBrief(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             park(root, "health-pass")
-            park(root, "forward-learning")
+            park(root, "dream")
             self.assertEqual(brief_mod.parked_jobs(root),
-                             ["forward-learning", "health-pass"])
+                             ["dream", "health-pass"])
 
     def test_the_clause_names_them_and_the_way_out(self):
-        clause = brief_mod._parked_clause(["health-pass", "forward-learning"])
+        clause = brief_mod._parked_clause(["health-pass", "dream"])
         self.assertIn("health-pass", clause)
         self.assertIn("2 jobs parked", clause)
         self.assertIn("resume", clause)

@@ -494,8 +494,8 @@ func defaultEmbedScope(memoryRoot string) []string {
 	out = append(out, "personal/ideas")
 	// The two shared spaces the operator added on 2026-09-24 (agentm-vault §
 	// The layout). `resources/` receives the reference cards from
-	// `projects/agentm/research/<topic>/reference/` and the watchlist, both in
-	// scope under `projects` today; `systems/` receives the homelab notes from
+	// `projects/agentm/research/<topic>/reference/`, in scope under `projects`
+	// today; `systems/` receives the homelab notes from
 	// `memory/semantic/`, in scope under `memory`. Leaving either space out
 	// would drop the moved notes' vectors on the night they move — the
 	// absent-vector failure again. `resources/` is dampened by the contract, not
