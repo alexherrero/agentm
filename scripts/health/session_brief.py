@@ -175,7 +175,7 @@ def parked_jobs(state_root: "Path | None" = None) -> list:
     and it is the same class of silence with a longer fuse. `health-pass` sat
     at `stop` from 2026-07-25 to 2026-09-07 — the local health scorecard simply
     was not produced for six weeks — and the only record of it anywhere was a
-    JSON file no surface read. `forward-learning` had been parked since
+    JSON file no surface read. Another job had been parked since
     2026-07-19 and nobody knew at all.
     """
     try:

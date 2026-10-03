@@ -157,12 +157,10 @@ def projects_dir_candidates(root) -> list[Path]:
 # The config and source lists machinery reads, which leave the project root
 # for `projects/agentm/desk/` (the AgentKV layout rulings of 2026-09-24: the
 # root holds five files and no others, and `desk/` holds what nobody opens).
-# The watchlists are directories and keep their own paths.
-RESOURCES_DIRNAME = "resources"
-WATCHLIST_FEATURE = "_watchlist"
+# The skill watchlist is a directory and keeps its own path.
 DESK_FEATURE_FILES = frozenset({
     "auto-orchestration-config.md", "skill-discovery-sources.md",
-    "trusted-sources.md", "forward-learning-sources.json",
+    "trusted-sources.md",
 })
 
 
@@ -175,20 +173,14 @@ def feature_state_candidates(root, name: str) -> list[Path]:
     projects = projects_dir_candidates(root)
     if name in DESK_FEATURE_FILES:
         return [p / FEATURE_PROJECT / "desk" / name for p in projects]
-    if name == WATCHLIST_FEATURE:
-        # The watchlist lives in the shared reference library,
-        # `resources/watchlist/` at the vault root (task 176); the move ran
-        # on 2026-09-25 and the project-space home is no longer read.
-        return [v / RESOURCES_DIRNAME / "watchlist" for v in vault_root_candidates(root)]
     return [p / FEATURE_PROJECT / name for p in projects]
 
 
 def feature_state_path(root, name: str) -> Path:
-    """Where a feature's state file or directory lives — `_watchlist`,
-    `_skill-watchlist`, `auto-orchestration-config.md`,
-    `skill-discovery-sources.md`, `trusted-sources.md`,
-    `forward-learning-sources.json`. The first that exists, else the newest
-    home, so a list seeded fresh lands in `desk/`."""
+    """Where a feature's state file or directory lives — `_skill-watchlist`,
+    `auto-orchestration-config.md`, `skill-discovery-sources.md`,
+    `trusted-sources.md`. The first that exists, else the newest home, so a
+    list seeded fresh lands in `desk/`."""
     return _resolve(feature_state_candidates(root, name))
 
 

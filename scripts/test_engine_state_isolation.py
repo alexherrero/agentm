@@ -180,7 +180,7 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
     # incubator lint left with its subject in agentm-vault plan 13, when
     # `Ideas.md` became a generated file.
     NAMED = (
-        "test_backfill_reference_bodies", "test_calendar_promotion", "test_console",
+        "test_calendar_promotion", "test_console",
         "test_correction", "test_dream_storage_rules",
         "test_lint", "test_notes_link_discovery",
         "test_orchestration_briefing", "test_orchestration_idle",
@@ -207,12 +207,12 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         # `test_project_config` added five throwaway entries, and the two
         # conformance suites rewrote it around a register-and-unregister. The
         # rest wrote the heat and lifecycle sidecars, the auto-orchestration
-        # cooldown or the forward-learning watermarks, and four of those failed
+        # cooldown or a job's watermarks, and four of those failed
         # on a hand run because each test started from the last one's writes.
         # test_engine_state_not_leaked runs every one of them by hand.
         "test_project_config", "test_storage_conformance",
         "test_storage_conformance_negative", "test_auto_orchestration",
-        "test_orchestration_phase", "test_forward_learning",
+        "test_orchestration_phase",
         "test_memory_heat_policy", "test_memory_lifecycle",
         "test_recall_daemon_fast_path", "test_recall_machine_prompt_skip",
         "test_recall_stream_admission", "test_recall_token_budget",

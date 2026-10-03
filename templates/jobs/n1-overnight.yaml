@@ -19,10 +19,9 @@ lookback: 24h
 # `--work-items` resolves a per-project, operator-authored manifest of the
 # night's dispatched work (`.harness/n1-work-items.json`, shaped
 # `{"work_items": [{"plan": ..., "task": ..., "prompt": ...}, ...]}`) —
-# n1_run.py dispatches arbitrary fleet work, so (unlike dream.yaml /
-# forward-learning.yaml, which self-determine their own scope from vault
-# state alone) it cannot self-determine *what* to run without one. A
-# missing or malformed work-items file is a clean, named CLI error (exit 2),
+# n1_run.py dispatches arbitrary fleet work, so (unlike dream.yaml, which
+# self-determines its own scope from vault state alone) it cannot
+# self-determine *what* to run without one. A missing or malformed work-items file is a clean, named CLI error (exit 2),
 # not a raw traceback — see n1_run.py's own `_load_work_items()`.
 # `--cwd ..` is required, not cosmetic: a work item with no `cwd` of its own
 # dispatches under this flag's value (n1_run.py's own fallback since V8

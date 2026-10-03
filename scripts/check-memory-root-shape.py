@@ -89,9 +89,6 @@ def _legacy_items(root: Path) -> list[str]:
     for cand in vault_layout.voice_dir_candidates(root)[len(vault_layout.standards_dir_candidates(root)):]:
         if cand.is_dir():
             out.append(str(cand))
-    for s in vault_layout.standards_dir_candidates(root):
-        if (s / "forward-learning-sources.json").is_file():
-            out.append(str(s / "forward-learning-sources.json"))
     return out
 
 
@@ -102,7 +99,7 @@ def _new_items(root: Path) -> list[str]:
         if (s / name).exists():
             out.append(str(s / name))
     feature = vault_layout.feature_state_dir(root)
-    for name in FEATURE_ITEMS + ("forward-learning-sources.json",):
+    for name in FEATURE_ITEMS:
         if (feature / name).exists():
             out.append(str(feature / name))
     return out

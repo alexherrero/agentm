@@ -3,8 +3,7 @@
 directory onto sys.path before it does.
 
 Two foreign loaders file-path-load these modules from another process with
-a pristine sys.path — crickets' research bridge (forward_learning.py,
-adapt_skills.py) and its resolve_project (recall.py, harness_memory.py) —
+a pristine sys.path — crickets' research bridge (adapt_skills.py) and its resolve_project (recall.py, harness_memory.py) —
 and inside agentm the hooks run them as scripts. A bare ``import
 engine_state`` (filing-v2 2a's vendored resolver) works in the second case
 by accident of the script's own directory being sys.path[0] and fails in

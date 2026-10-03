@@ -102,13 +102,13 @@ class FeatureStateTests(unittest.TestCase):
     def test_feature_state_is_the_project_even_where_the_retired_memory_spelling_exists(self):
         with tempfile.TemporaryDirectory() as td:
             root = _nested(Path(td))
-            old = root / "memory" / "_watchlist"
-            new = root.parent / "resources" / "watchlist"  # the home since task 176
-            self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)  # nothing exists: the home
+            old = root / "memory" / "_skill-watchlist"
+            new = root.parent / "projects" / "agentm" / "_skill-watchlist"
+            self.assertEqual(vl.feature_state_path(root, "_skill-watchlist"), new)  # nothing exists: the home
             old.mkdir(parents=True)
-            self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
+            self.assertEqual(vl.feature_state_path(root, "_skill-watchlist"), new)
             new.mkdir(parents=True)
-            self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
+            self.assertEqual(vl.feature_state_path(root, "_skill-watchlist"), new)
 
     def test_a_retired_settings_file_is_not_read(self):
         with tempfile.TemporaryDirectory() as td:
@@ -140,20 +140,6 @@ class FeatureStateTests(unittest.TestCase):
             root = _nested(Path(td))
             self.assertEqual(vl.feature_state_path(root, "_skill-watchlist"),
                              root.parent / "projects" / "agentm" / "_skill-watchlist")
-
-    def test_the_watchlist_is_the_reference_librarys_only(self):
-        """Task 176 step 8: `resources/watchlist/` at the vault root is the
-        watchlist's home, and a leftover project-space copy is never read or
-        written, so it cannot fork the watchlist."""
-        with tempfile.TemporaryDirectory() as td:
-            root = _nested(Path(td))
-            new = root.parent / "resources" / "watchlist"
-            old = root.parent / "projects" / "agentm" / "_watchlist"
-            self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
-            old.mkdir(parents=True)
-            self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
-            new.mkdir(parents=True)
-            self.assertEqual(vl.feature_state_path(root, "_watchlist"), new)
 
     def test_flat_vault_keeps_the_project_inside_the_root(self):
         with tempfile.TemporaryDirectory() as td:

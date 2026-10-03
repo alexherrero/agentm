@@ -12,7 +12,7 @@ Signals (each defensive — absent/empty/malformed source → 0, never raises):
   - inbox          : count of <vault>/personal/_inbox/*.md (operator-curatable
                      staging)
   - watchlist_high : _skill-watchlist entries with evaluator_classification HIGH
-                     + status pending-review (awaiting `/memory watchlist`)
+                     + status pending-review (reviewed by hand under `_skill-watchlist/`)
   - incubator      : count of _idea-incubator/<slug>/ dirs (ideas in research)
 
 The idea-ledger signal and the promote-suggest nudge read the hand-kept
@@ -264,7 +264,7 @@ def build_briefing(signals: dict, config: dict) -> str:
         parts.append(f"{active['inbox']} inbox entr{'y' if active['inbox'] == 1 else 'ies'} to sort")
     if "watchlist_high" in active:
         n = active["watchlist_high"]
-        parts.append(f"{n} HIGH skill-watchlist {'pattern' if n == 1 else 'patterns'} to review (`/memory watchlist`)")
+        parts.append(f"{n} HIGH skill-watchlist {'pattern' if n == 1 else 'patterns'} to review (`projects/agentm/_skill-watchlist/`)")
     if "staged_adapt" in active:
         n = active["staged_adapt"]
         parts.append(f"{n} skill candidate{'' if n == 1 else 's'} staged for adapt-evaluation (`/memory adapt-skills`)")
@@ -274,7 +274,7 @@ def build_briefing(signals: dict, config: dict) -> str:
     if "stale_promoted" in active:
         n = active["stale_promoted"]
         d = config.get("stale_promotion_days", 30)
-        parts.append(f"{n} skill-watchlist {'pattern' if n == 1 else 'patterns'} promoted >{d}d ago without action — author or dismiss (`/memory watchlist`)")
+        parts.append(f"{n} skill-watchlist {'pattern' if n == 1 else 'patterns'} promoted >{d}d ago without action — author or dismiss (`projects/agentm/_skill-watchlist/`)")
     lines = ["# MemoryVault — pending"]
     for p in parts:
         lines.append(f"- {p}")

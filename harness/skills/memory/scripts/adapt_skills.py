@@ -16,8 +16,8 @@
 #
 # Adapt-don't-import contract (locked from plan #7b PLAN.md):
 #   - Never writes to `crickets/skills/<x>/SKILL.md`.
-#   - Only writes to `_skill-watchlist/` (review surface) — task 5's
-#     /memory watchlist command lets the operator promote / dismiss / defer.
+#   - Only writes to `_skill-watchlist/` (review surface) — the operator
+#     promotes / dismisses / defers an entry by editing its `status:` line.
 #   - Sub-agent is read-only with a tightly-scoped write allowlist.
 #
 # Locked design calls:

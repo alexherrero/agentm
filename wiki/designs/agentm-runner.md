@@ -18,11 +18,11 @@ approved: 2026-06-26
 
 ## Objective
 
-The runner runs agentm's background jobs — forward-learning, dreaming, health checks, the persona loop/goal modes — without anyone at the keyboard. The host's scheduler fires the runner on a simple heartbeat; the runner decides which jobs are actually due, runs the ones that are (including any the device missed while it was off), keeps them within budget, and writes their results through the vault.
+The runner runs agentm's background jobs — the weekly field brief, dreaming, health checks, the persona loop/goal modes — without anyone at the keyboard. The host's scheduler fires the runner on a simple heartbeat; the runner decides which jobs are actually due, runs the ones that are (including any the device missed while it was off), keeps them within budget, and writes their results through the vault.
 
 ## Overview
 
-The runner runs **jobs**: jobs are registered by capabilities (crickets plugins), each declared by a manifest. A job names what to run, on what schedule, what it may spend, and where its output lands. Each capability owns its job's logic — forward-learning, dreaming, a health check; the runner owns the running: deciding which jobs are due, the budget gate, the write path, the audit record.
+The runner runs **jobs**: jobs are registered by capabilities (crickets plugins), each declared by a manifest. A job names what to run, on what schedule, what it may spend, and where its output lands. Each capability owns its job's logic — the field brief, dreaming, a health check; the runner owns the running: deciding which jobs are due, the budget gate, the write path, the audit record.
 
 **The schedule is the host's; the runner is standalone.** Both supported hosts ship a built-in scheduled-task feature that runs a command on the user's machine on a cadence, with local file access — Claude Code's **Desktop Scheduled Tasks** and Antigravity's **Scheduled Tasks**. agentm registers one that fires the runner on a frequent heartbeat, and the runner does one cycle and exits. The same runner also runs **on demand** or from **OS cron / launchd** — the host scheduler is one caller of three.
 
@@ -30,7 +30,7 @@ The runner runs **jobs**: jobs are registered by capabilities (crickets plugins)
 
 ![How a job runs: a host scheduled task (Claude Desktop Scheduled Tasks or Antigravity Scheduled Tasks), OS cron, or an on-demand call invokes the agentm runner, which runs one idempotent cycle — reading the job manifests in .harness/jobs/, deciding which jobs are due (including past-due ones missed while the device was off), checking the fleet budget, running them, then writing through vault_lock as the third writer (routed by ownership tier) and reporting each change to the digest](diagrams/agentm-runner.svg)
 
-Nothing of the runner is built today. Each consumer's on-demand half exists — the manually-invocable seed (the import watchlist for forward-learning, the thin `/dream`, `/diagnose`) — so every consumer degrades to "run it by hand" until the runner lands. This is the spec for the substrate; the individual jobs are designed by their own capabilities.
+Nothing of the runner is built today. Each consumer's on-demand half exists — the manually-invocable seed (the import watchlist for the forward pass, the thin `/dream`, `/diagnose`) — so every consumer degrades to "run it by hand" until the runner lands. This is the spec for the substrate; the individual jobs are designed by their own capabilities.
 
 ### The job (the unit)
 A job is a manifest at `.harness/jobs/<name>.yaml`. The schema:
@@ -52,7 +52,7 @@ The runner reads every manifest each cycle, decides which jobs are due (`schedul
 
 | Consumer (capability) | What runs | Expected schedule *(default, operator-tunable)* |
 |---|---|---|
-| **Forward learning** (experience) | scan operator-approved sources since a watermark, mine ideas, surface to the watchlist | daily |
+| **Weekly field brief** (experience) | search the sources the operator favours, rank what is new against the work in flight, write one note and email it | weekly |
 | **Dreaming** (experience) | whole-corpus consolidation → a derived layer, staged for operator apply (the heaviest job) | activity-gated (~weekly) |
 | **Health check** (diagnostics) | an idempotent health snapshot; doubles as the fleet watchdog | daily / idle |
 | **Research learn-forward** (research) | `learn-forward` + `codebase-improvement` — the crickets caller of the experience pipeline | weekly |
@@ -138,12 +138,14 @@ Background jobs spend tokens unattended, so two rules govern the spend:
 - Locked decision #4 (ship-less-where-native) — satisfied by riding the hosts' built-in scheduled tasks.
 - Claude Code Desktop Scheduled Tasks · Antigravity Scheduled Tasks — the host scheduling features the runner is invoked by.
 - [model + effort routing](agentm-model-effort-routing) — sibling cross-cutting agentm design.
-- [Experience & dreaming](agentm-experience-and-dreaming) — the primary consumer (forward-learning, dreaming).
+- [Experience & dreaming](agentm-experience-and-dreaming) — the primary consumer (the weekly field brief, dreaming).
 - [AgentM HLD](agentm-hld) — parent.
 - `vault_lock.py` (V5-0) — the write floor the runner composes as the third writer.
 - the wiki-watch cycle (crickets) — the single-cycle idiom the runner generalizes.
 
 ## Amendment log
+
+**2026-10-03 — forward learning's retirement is reconciled into this body (task 185, step 1).** Wording only; the decision and its reasons are in the [Experience design](agentm-experience-and-dreaming.md)'s amendment log. *Re-audit trigger:* none of its own.
 
 **2026-09-18 — the ceiling is $30, and the repeated-run guard is its own rule (agentm-vault plan 11, task 7).** The re-audit trigger the 2026-09-13 amendment set — "a second spending job is added" — fired: the weekly crystallize phase registered with `budget: tokens: 200000`, and the night now has two jobs that spend. At $5 the fleet gate stopped being a cap and became a race decided by `order`. The batch reports about $22, the pre-flight is a pre-flight so that run goes through untouched, and from the moment it lands the fleet is over — so whichever paid job carried the higher `order` was refused that night, and refused again on every cycle for the next twenty hours. A weekly phase behind a nightly batch would never have run at all, and the only trace would have been one `budget-ceiling` line on a night it was not due anyway. The ceiling is now the sum of what the night's registered paid jobs legitimately spend, with headroom: $30 (`_DEFAULT_DAILY_USD_CEILING`). *Why not leave the number and carve the second job out of the sum:* a ceiling of `0.0` has to keep meaning "nothing paid runs", and a carve-out that let an unspent job through would have taken that away. *Why this does not re-open what the 2026-09-13 amendment rejected:* it rejected $30 because "with a $30 ceiling, a mistyped hourly schedule got four paid runs a night in the replay" — which was true while the repeated-run guard was a side effect of the ceiling being smaller than one night. It is now a rule of its own: `_own_spend` holds a paid job that has already spent inside the twenty-hour window, reported as `budget-repeat`, whatever the fleet total says. The replay's four runs are held by that gate at any ceiling. Three fixtures pin it: neither paid job holds the other in either declared order, a fleet genuinely over its ceiling still stops a job that has spent nothing, and the mistyped-schedule case is still held. *Re-audit trigger:* a third paid job registers, or the batch's measured night moves — the ceiling is a sum of what is registered, and a sum has to be re-added when the set changes.
 

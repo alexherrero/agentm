@@ -94,9 +94,8 @@ def _looks_like_url(source: str) -> bool:
 
 
 def fetch_url(url: str) -> str:
-    """Best-effort single GET (stdlib urllib, mirrors forward_learning.py's
-    default_fetcher pattern) -- raises FetchError on any network failure
-    rather than degrading to an empty result, since an operator running
+    """Best-effort single GET (stdlib urllib, a timeout and a User-Agent) --
+    raises FetchError on any network failure rather than degrading to an empty result, since an operator running
     `/memory ingest` needs an explicit failure, not a silent no-op."""
     req = Request(url, headers={"User-Agent": _USER_AGENT})
     try:

@@ -169,7 +169,7 @@ class TestCounters(unittest.TestCase):
         self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 1)
 
     def test_stale_promoted_offset_timestamp_as_produced(self) -> None:
-        # The exact format watchlist_review._utcnow_iso() writes: +00:00 offset.
+        # The exact format the watchlist's promote action wrote: +00:00 offset.
         _promoted_entry(self.vault, "src", "p1", "2026-01-01T00:00:00+00:00")  # ~5mo before _NOW
         self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 1)
 
@@ -213,7 +213,7 @@ class TestRender(unittest.TestCase):
         self.assertIn("MemoryVault — pending", out)
         self.assertIn("12 inbox entries", out)
         self.assertIn("3 HIGH skill-watchlist patterns", out)
-        self.assertIn("/memory watchlist", out)
+        self.assertIn("projects/agentm/_skill-watchlist/", out)
         self.assertNotIn("incubator", out)  # below threshold (0)
 
     def test_renders_nudges(self) -> None:

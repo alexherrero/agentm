@@ -1,6 +1,6 @@
 ---
 name: console
-description: Terminal-first (with an --html mode) report that composes agentm's existing observability surfaces — the health index + family table, queue-status-lite, the board-drift one-liner, spend from the observability rollup, and a memory-activity section (inbox, watchlist, incubator, newest curated entries, heat-policy decay report) — behind one entry point. Builds nothing new underneath; every section reads or shells out to a surface that already exists and is independently invocable on its own.
+description: Terminal-first (with an --html mode) report that composes agentm's existing observability surfaces — the health index + family table, queue-status-lite, the board-drift one-liner, spend from the observability rollup, and a memory-activity section (inbox, incubator, newest curated entries, heat-policy decay report) — behind one entry point. Builds nothing new underneath; every section reads or shells out to a surface that already exists and is independently invocable on its own.
 kind: skill
 supported_hosts: [claude-code, antigravity]
 version: 0.1.0
@@ -27,7 +27,7 @@ Both modes are read-only: nothing here mutates the repo, the vault, or the GitHu
 - **Plans** — `scripts/queue_status_lite.py`, the coordinator's read-only glance over every active plan: a project's open tasks, or a repo-local `.harness/` pair for a project with no vault.
 - **Board drift** — crickets' `src/github-projects/scripts/check_project_sync.py` (a sibling crickets checkout is required; the plugin's own `.harness/project.json` must resolve a `github.repo`). Says "n/a" if no crickets sibling is found, or reports the detector's own graceful-skip line if this repo isn't board-synced.
 - **Spend** — `scripts/runner/aggregator.py` refreshes the SQLite rollup (best-effort; a missing crickets sibling means no refresh, not a failure) and `scripts/health/observability_console.py` reads it.
-- **Memory activity** — inbox count (`<vault>/personal/_inbox/*.md`), a watchlist summary (`harness/skills/memory/scripts/watchlist_review.py`'s own entry-listing function), incubator count (`<vault>/_idea-incubator/*/`), the five most-recently-modified curated entries under `<vault>/personal/` (excluding the inbox/watchlist/archive staging areas), and the heat-based always-load decay report (`recall.py heat-policy`, dry-run). Says "n/a" if no vault resolves (`$MEMORY_ROOT` or `plugins.obsidian-vault.vault_path`).
+- **Memory activity** — inbox count (`<vault>/personal/_inbox/*.md`), incubator count (`<vault>/_idea-incubator/*/`), the five most-recently-modified curated entries under `<vault>/personal/` (excluding the inbox/skill-watchlist/archive staging areas), and the heat-based always-load decay report (`recall.py heat-policy`, dry-run). Says "n/a" if no vault resolves (`$MEMORY_ROOT` or `plugins.obsidian-vault.vault_path`).
 
 ## Known scope limits (v1)
 
