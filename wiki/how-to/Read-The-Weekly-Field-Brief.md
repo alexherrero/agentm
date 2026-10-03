@@ -1,7 +1,7 @@
 # How to read the weekly field brief
 
 > [!NOTE]
-> **Status: pending** — planned by `tasks/185-keep-up-with-the-field` (steps 3 and 4). This page describes the brief as planned. Nothing below runs yet. Every command, path and number comes from the plan, and the page is rewritten from the diff when the steps ship.
+> **Status: implemented** — shipped by `tasks/185-keep-up-with-the-field` (steps 3 and 4): the engine, `scripts/health/session_email.py`'s `send()`, and the weekly job template. The first weekly run is supervised by hand on a Sunday evening.
 > **Goal:** Read the week's field brief, steer what it looks for, ask it a question of your own, and keep the items worth keeping.
 > **Prereqs:** The agentm runner on the machine that holds your vault, with the weekly job registered (step 7). For the emailed copy, the mail path from [Enable the daily email](Enable-Email-Digest-Delivery).
 
@@ -11,7 +11,7 @@ Once a week, one note lands in your vault, and in your inbox if you set up a mai
 
 1. **Open the week's note.** It is `<vault>/resources/briefs/<YYYY-MM-DD>-field-brief.md`, with `kind: brief`. A short header names the week, the question asked, the sources consulted and the cost. Each item below it is a heading with the link, what it is, why it matters here, and a line naming the source that surfaced it. Every item ends with a `- [ ] keep` box.
 
-2. **Or read it in your inbox.** The same text goes out through the daily email's mail path, under the subject `Field brief — week of <date>`. With no mail path configured, the send is skipped and the skip is logged. [Enable the daily email](Enable-Email-Digest-Delivery) sets the path up.
+2. **Or read it in your inbox.** The same text goes out through the daily email's mail path, under the subject `Field brief — week of <date>`. The email has no frontmatter and no keep boxes, since the boxes only work in the note, and ends with a line saying how to keep an item. With no mail path configured, the send is skipped and the skip is logged; the note is written either way. If a configured send fails, the note is kept, the run exits non-zero, and running the brief again sends it without another model run. [Enable the daily email](Enable-Email-Digest-Delivery) sets the path up.
 
 3. **Tell it what you care about.** Edit `<vault>/projects/agentm/desk/field-brief.md`. The file lists topics, favoured sources and ignored sources in plain markdown, and every run reads it.
 
@@ -33,7 +33,7 @@ Once a week, one note lands in your vault, and in your inbox if you set up a mai
 
    The item becomes a reference card through the capture door, with your reason attached, and its `- [ ] keep` box is ticked. Running `keep` on the same item again does not capture it a second time.
 
-   _Filled by /work once the task ships: how `<note>` and `<item>` are named on the command line._
+   `<note>` is the note's date (`2026-10-04`), its filename, or its full path. `<item>` is the number in the item's heading (`### 3. …` is item 3). `--why` is required: the card carries your reason, and a card the brief offered without one would be the watchlist again.
 
 7. **Register the weekly job.** Copy the template into your local jobs directory once:
 
@@ -41,14 +41,15 @@ Once a week, one note lands in your vault, and in your inbox if you set up a mai
    cp templates/jobs/field-brief-weekly.yaml .harness/jobs/field-brief-weekly.yaml
    ```
 
-   The job runs weekly in an `18:00-23:00` window, under a token budget, with a two-day lookback. The runner has no weekday key: the first run sets the day, and the plan makes it a Sunday; a week the machine sleeps through catches up within two days. `.harness/jobs/` is local to your machine. After this copy, edit the live file in place, because a second copy overwrites it.
+   The job runs weekly in an `18:00-23:00` window, under a token budget, with a two-day lookback. The runner has no weekday key: the first run sets the day, so register the job on the day you want it to run, because one registered on a Tuesday afternoon runs that evening. The first run is a Sunday. A week the machine sleeps through catches up within two days. `.harness/jobs/` is local to your machine. After this copy, edit the live file in place, because a second copy overwrites it.
 
 ## Verify
 
 Check the setup:
 
 - `python3 scripts/machinery_doctor.py` reports whether the weekly job is registered.
-- After the first Sunday evening, the note exists under `<vault>/resources/briefs/` and the email has arrived.
+- After the first Sunday evening, the note exists under `<vault>/resources/briefs/`, its frontmatter carries `cost_usd`, and the email has arrived.
+- `python3 harness/skills/memory/scripts/field_brief.py --no-mail` writes the week's note without the email, for a dry run.
 
 ## See also
 

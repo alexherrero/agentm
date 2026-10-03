@@ -985,13 +985,14 @@ The weekly field brief (task 185): one note a week of at most ten items, each a 
 
 ```
 python3 ~/Antigravity/agentm/harness/skills/memory/scripts/field_brief.py \
-  [--ask "<question>"] [--deep] [--vault-path <memory root>]
+  [--ask "<question>"] [--deep] [--no-mail] [--vault-path <memory root>]
 python3 .../field_brief.py keep <note> <item> --why "<why>" [--vault-path <memory root>]
 ```
 
 | Form | Use case |
 |---|---|
-| (no flags) | The weekly run. Writes `resources/briefs/<YYYY-MM-DD>-field-brief.md` (`kind: brief`, with `question:` and `cost_usd:` in its frontmatter), records the shown addresses in the seen-list, and prints a one-line JSON run record whose `total_cost_usd` the runner reads. A second run the same day writes nothing and spends nothing. |
+| (no flags) | The weekly run. Writes `resources/briefs/<YYYY-MM-DD>-field-brief.md` (`kind: brief`, with `question:` and `cost_usd:` in its frontmatter), records the shown addresses in the seen-list, emails the note, and prints a one-line JSON run record whose `total_cost_usd` the runner reads. A second run the same day writes nothing and spends nothing; if its email failed the first time, it sends it now, still without another model run. |
+| `--no-mail` | The weekly run without the email, for a supervised dry run. |
 | `--ask "<question>"` | The same engine for one question, such as "what's new in agent memory this month?". It prints the brief and writes neither the note nor the seen-list, but it reads the seen-list, so it repeats nothing a weekly note already showed. |
 | `--deep` | Routes to the strong tier (about twice the cost of the weekly Sonnet run) for an occasional pass. |
 | `keep <note> <item> --why` | Turns one item into a reference card through the capture door, with your why, and ticks the item's `- [ ] keep` box. The note is a path, a filename or a date. An item already ticked is not captured again. |
@@ -1000,6 +1001,7 @@ python3 .../field_brief.py keep <note> <item> --why "<why>" [--vault-path <memor
 
 - **Your file**, `projects/agentm/desk/field-brief.md`: topics, favoured sources and ignored sources, in plain markdown. Edit it in Obsidian; the next run uses it.
 - **The roadmap's What remains** and each open design's title, status and Objective paragraph (a design carries no summary field).
+- **The mail path**: `scripts/health/session_email.py`'s config and sender, the same as the daily email (`plugins.autonomy.email_to`, `email_smtp_url`, `email_from`). The subject is `Field brief — week of <date>`; the body is the note without its frontmatter and keep boxes, with a footer saying how to keep an item. Which notes have been mailed is recorded in `~/.local/state/agentm/field-brief/mailed.jsonl`, so a note is mailed once.
 - **The seen-list**, `~/.local/state/agentm/field-brief/seen.jsonl` in the engine state directory, never the vault. An item shown once is withheld for 90 days, keyed on its canonical URL; a release or a follow-up paper has its own address and passes.
 
 #### How a run works
@@ -1009,6 +1011,7 @@ The script, not the model, drives the `last30days` engine (the skill itself cann
 #### Failure modes (graceful)
 
 - **The `claude` login has lapsed** → exit 3, "run `claude`, then /login". That fix is yours.
+- **No mail path is configured** (or this checkout has no `scripts/health/`) → the note is written, the skip is logged on stderr and in the run record, and the exit is 0. **A configured path that fails** → the note is kept and the exit is 8, which the runner's watchdog counts; a re-run sends it.
 - **The audit refuses the run** → exit 4, nothing written, the cost still reported.
 - **The run hits its budget cap** → exit 5. **The reply holds no JSON** → exit 7, and nothing is marked seen.
 - **The engine is missing or fails** → the brief goes ahead without a social layer, and its header says so.

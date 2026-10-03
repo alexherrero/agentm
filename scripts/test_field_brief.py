@@ -19,6 +19,16 @@ The bar, written before the code:
   5. `keep` captures once and never twice.
   6. A run that called a tool outside its set, or started a hook, writes
      nothing.
+  7. The note is mailed once, a failed send is retried without another model
+     run, an absent mail path is logged and not an error, and --ask and a
+     refused run never mail.
+
+No test reaches the real mail path. The first version of the mail step was
+written with the old tests unchanged, passed no mailer, and the run sent two
+real emails through the operator's relay with test content. `Base.setUp` now
+gives every test a recording fake mailer, a temp mailed-state file, a temp
+engine-state directory and install prefix, and makes `smtplib` itself raise, so
+a test that wanders onto a socket fails where it stands.
 """
 from __future__ import annotations
 
@@ -131,6 +141,19 @@ def stream(items=None, *, reply=None, cost=1.08, tools=(("WebSearch", 5), ("WebF
     return "\n".join(lines)
 
 
+class FakeMailer:
+    """Stands in for `session_email.send`. Records every message; never sends."""
+
+    def __init__(self, result=None):
+        self.result = result or {"sent": True, "configured": True, "relay_reply": "fake-relay-id",
+                                 "skipped": None}
+        self.sent = []
+
+    def __call__(self, subject, body):
+        self.sent.append({"subject": subject, "body": body})
+        return dict(self.result)
+
+
 class FakeRunner:
     """Answers `claude` with a canned stream and the engine with canned text."""
 
@@ -177,8 +200,25 @@ class Base(unittest.TestCase):
         self.state = root / "state" / "seen.jsonl"
         engine = root / "last30days.py"
         engine.write_text("# stand-in for the engine script\n", encoding="utf-8")
-        patches = [mock.patch.dict("os.environ", {"LAST30DAYS_SCRIPT": str(engine)}),
-                   mock.patch.object(fb, "find_python", return_value="/usr/bin/python3.12")]
+        self.mailer = FakeMailer()
+        self.mailed = root / "state" / "mailed.jsonl"
+
+        def _no_socket(*a, **k):
+            raise AssertionError("a test reached a real SMTP connection")
+
+        patches = [
+            mock.patch.dict("os.environ", {
+                "LAST30DAYS_SCRIPT": str(engine),
+                # Anything that resolves state or the mail config lands in this
+                # test's own directory, and finds no mail path.
+                "AGENTM_STATE_DIR": str(root / "engine-state"),
+                "AGENTM_INSTALL_PREFIX": str(root / "install-prefix")}),
+            mock.patch.object(fb, "find_python", return_value="/usr/bin/python3.12"),
+            mock.patch.object(fb, "load_mailer", return_value=self.mailer),
+            mock.patch.object(fb, "mailed_path", return_value=self.mailed),
+            mock.patch("smtplib.SMTP", side_effect=_no_socket),
+            mock.patch("smtplib.SMTP_SSL", side_effect=_no_socket),
+        ]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
@@ -188,6 +228,8 @@ class Base(unittest.TestCase):
         kw.setdefault("today", _TODAY)
         kw.setdefault("designs_dir", self.designs)
         kw.setdefault("state_path", self.state)
+        kw.setdefault("mailer", self.mailer)
+        kw.setdefault("mailed_state", self.mailed)
         return fb.run_brief(self.vault, runner=runner, **kw)
 
     def note(self):
@@ -334,7 +376,7 @@ class WeeklyNoteTests(Base):
         self.assertNotIn("type:", fm)            # a record carries kind, never type
         self.assertIn("cost_usd: 1.08", fm)
         self.assertIn("question: ", fm)
-        self.assertEqual(text.count(fb._BOX_OPEN), 9)   # one keep box per item
+        self.assertEqual(text.count("- [ ] keep"), 9)   # one keep box per item
         self.assertIn("last30days engine (Hacker News, Reddit)", text)
         self.assertIn("5 queries", text)
         # the kind is one the contract registers, read from the shipped contract
@@ -356,7 +398,7 @@ class WeeklyNoteTests(Base):
         r = FakeRunner(stream([_item(n) for n in range(1, 15)]))
         out = self.run_brief(r)
         self.assertEqual(out.record["items"], 10)
-        self.assertEqual(self.note().read_text(encoding="utf-8").count(fb._BOX_OPEN), 10)
+        self.assertEqual(self.note().read_text(encoding="utf-8").count("- [ ] keep"), 10)
 
     def test_a_seen_address_is_dropped_and_the_shown_ones_are_recorded(self):
         fb.record_seen(self.state, ["https://example.com/post-2"], today=date(2026, 10, 1))
@@ -401,6 +443,97 @@ class WeeklyNoteTests(Base):
         self.run_brief(r)
         self.assertIn("no social layer (the last30days engine exited 1)",
                       self.note().read_text(encoding="utf-8"))
+
+
+class MailTests(Base):
+    def test_the_note_is_mailed_once_with_its_own_text(self):
+        out = self.run_brief(FakeRunner(stream([_item(1), _item(2)])))
+        self.assertEqual(out.code, fb.EXIT_OK)
+        self.assertEqual(len(self.mailer.sent), 1)
+        msg = self.mailer.sent[0]
+        self.assertEqual(msg["subject"], "Field brief — week of 2026-10-04")
+        self.assertIn("post-1", msg["body"])
+        self.assertIn("post-2", msg["body"])
+        self.assertNotIn("kind: brief", msg["body"])        # no frontmatter in an email
+        self.assertNotIn("- [ ] keep", msg["body"])          # the boxes only work in the note
+        self.assertNotIn("- [x] keep", msg["body"])
+        self.assertIn("keep 2026-10-04 <item number>", msg["body"])
+        self.assertTrue(out.record["mail"]["sent"])
+        self.assertEqual(out.record["mail"]["relay_reply"], "fake-relay-id")
+        self.assertTrue(fb.already_mailed(self.mailed, "2026-10-04-field-brief.md"))
+
+    def test_a_second_run_the_same_day_mails_nothing_and_runs_no_model(self):
+        self.run_brief(FakeRunner(stream([_item(1)])))
+        r = FakeRunner(stream([_item(2)]))
+        out = self.run_brief(r)
+        self.assertEqual(r.calls, [])
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertEqual(out.record["mail"]["skipped"], "already mailed")
+
+    def test_a_failed_send_keeps_the_note_exits_nonzero_and_is_retried_without_the_model(self):
+        self.mailer.result = {"sent": False, "configured": True, "relay_reply": None,
+                              "skipped": "the relay refused the message or did not answer"}
+        first = self.run_brief(FakeRunner(stream([_item(1)])))
+        self.assertEqual(first.code, 8)      # literal: a non-zero exit is what the runner's watchdog counts
+        self.assertNotEqual(first.code, fb.EXIT_OK)
+        self.assertTrue(self.note().is_file(), "the week's note is kept")
+        self.assertFalse(fb.already_mailed(self.mailed, self.note().name))
+        # the relay comes back: the same day's run sends the note and buys no second brief
+        self.mailer.result = {"sent": True, "configured": True, "relay_reply": "id-2", "skipped": None}
+        r = FakeRunner(stream([_item(9)]))
+        second = self.run_brief(r)
+        self.assertEqual(second.code, fb.EXIT_OK)
+        self.assertEqual(r.calls, [], "no model run was bought for the retry")
+        self.assertEqual(second.record["mail"]["relay_reply"], "id-2")
+        self.assertEqual(len(self.mailer.sent), 2)
+
+    def test_an_absent_mail_path_is_a_logged_skip_not_an_error(self):
+        self.mailer.result = {"sent": False, "configured": False, "relay_reply": None,
+                              "skipped": "no mail path configured (plugins.autonomy.email_to and email_smtp_url)"}
+        err = io.StringIO()
+        with redirect_stderr(err), redirect_stdout(io.StringIO()):
+            code = fb.main(["--vault-path", str(self.vault)], runner=FakeRunner(stream([_item(1)])),
+                           mailer=self.mailer)
+        self.assertEqual(code, fb.EXIT_OK)
+        written = fb.note_path(self.vault, date.today())   # main() runs on the real day
+        self.assertTrue(written.is_file())
+        self.assertIn("mail not sent: no mail path configured", err.getvalue())   # logged, not silent
+        self.assertFalse(fb.already_mailed(self.mailed, written.name))
+
+    def test_no_mail_writes_the_note_and_never_calls_the_mailer(self):
+        out = self.run_brief(FakeRunner(stream([_item(1)])), mail=False)
+        self.assertEqual(out.code, fb.EXIT_OK)
+        self.assertEqual(self.mailer.sent, [])
+        self.assertEqual(out.record["mail"]["skipped"], "--no-mail")
+        self.assertTrue(self.note().is_file())
+
+    def test_ask_and_refused_runs_never_mail(self):
+        self.run_brief(FakeRunner(stream([_item(1)])), ask="q")
+        self.run_brief(FakeRunner(stream([_item(1)], tools=(("Bash", 1),))))                      # audit
+        self.run_brief(FakeRunner(stream(reply="no json here")), today=date(2026, 10, 5))          # parse
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_a_missing_mail_module_is_a_logged_skip(self):
+        with mock.patch.object(fb, "load_mailer", return_value=None):
+            out = fb.run_brief(self.vault, runner=FakeRunner(stream([_item(1)])), today=_TODAY,
+                               designs_dir=self.designs, state_path=self.state,
+                               mailed_state=self.mailed)
+        self.assertEqual(out.code, fb.EXIT_OK)
+        self.assertIn("not in this checkout", out.record["mail"]["skipped"])
+
+    def test_the_guard_holds_a_test_cannot_open_a_real_connection(self):
+        import smtplib
+        with self.assertRaises(AssertionError):
+            smtplib.SMTP("localhost", 25)
+        with self.assertRaises(AssertionError):
+            smtplib.SMTP_SSL("localhost", 465)
+
+
+class LoadMailerTests(unittest.TestCase):
+    def test_the_real_module_is_found_and_exposes_send_without_sending_anything(self):
+        send = fb.load_mailer()
+        self.assertTrue(callable(send))
+        self.assertEqual(send.__module__, "field_brief_session_email")
 
 
 class AskTests(Base):
@@ -570,7 +703,7 @@ class CommandLineTests(Base):
         with mock.patch.dict("os.environ", {"AGENTM_STATE_DIR": str(root)}), \
                 mock.patch.object(fb, "_REPO", root), \
                 redirect_stdout(out), redirect_stderr(err):
-            code = fb.main(["--vault-path", str(self.vault)] + argv, runner=runner)
+            code = fb.main(["--vault-path", str(self.vault)] + argv, runner=runner, mailer=self.mailer)
         return code, out.getvalue(), err.getvalue()
 
     def test_the_last_stdout_line_is_the_cost_report_the_runner_reads(self):

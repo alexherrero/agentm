@@ -257,6 +257,108 @@ class EmailBodyTests(unittest.TestCase):
         self.assertIn("$12.50", subject)
 
 
+class _FakeSmtp:
+    """A relay that answers DATA with an id, as Resend does. `send_message`
+    reaches `data()` the way the real class does, so the wrap on this one
+    connection is what is under test."""
+
+    refuse = False
+
+    def __init__(self, host, port, timeout=None):
+        self.host, self.port = host, port
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def starttls(self):
+        return (220, b"ready")
+
+    def login(self, user, password):
+        return (235, b"ok")
+
+    def data(self, msg):
+        return (250, b"relay-id-0042")
+
+    def send_message(self, msg):
+        import smtplib
+        if self.refuse:
+            raise smtplib.SMTPRecipientsRefused({})
+        self.data(msg.as_bytes())
+        return {}
+
+
+class SendTests(unittest.TestCase):
+    """`send(subject, body)`: the entry point a caller with a message of its own
+    rides (the weekly field brief). It carries none of the daily send's rules."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.prefix = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _configure(self, url="smtp://relay:s3cr3t-pass@localhost:587"):
+        (self.prefix / ".agentm-config.json").write_text(json.dumps({
+            "plugins.autonomy.email_to": "me@example.com",
+            "plugins.autonomy.email_smtp_url": url,
+        }), encoding="utf-8")
+
+    def test_unconfigured_is_a_skip_that_says_why_and_sends_nothing(self):
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            out = se.send("subj", "body", install_prefix=self.prefix)
+        smtp_cls.assert_not_called()
+        self.assertFalse(out["sent"])
+        self.assertFalse(out["configured"])
+        self.assertIn("no mail path configured", out["skipped"])
+
+    def test_a_send_returns_the_relays_id_for_the_message(self):
+        self._configure()
+        with mock.patch("smtplib.SMTP", _FakeSmtp):
+            out = se.send("subj", "body", install_prefix=self.prefix)
+        self.assertTrue(out["sent"])
+        self.assertIsNone(out["skipped"])
+        self.assertEqual(out["relay_reply"], "relay-id-0042")
+
+    def test_the_credential_never_appears_in_what_it_returns(self):
+        self._configure()
+        for refuse in (False, True):
+            _FakeSmtp.refuse = refuse
+            self.addCleanup(setattr, _FakeSmtp, "refuse", False)
+            with mock.patch("smtplib.SMTP", _FakeSmtp):
+                out = se.send("subj", "body", install_prefix=self.prefix)
+            self.assertNotIn("s3cr3t-pass", repr(out))
+            self.assertNotIn("smtp://", repr(out))
+
+    def test_a_refusal_is_a_failed_send_with_a_reason_not_a_raise(self):
+        self._configure()
+        _FakeSmtp.refuse = True
+        self.addCleanup(setattr, _FakeSmtp, "refuse", False)
+        with mock.patch("smtplib.SMTP", _FakeSmtp):
+            out = se.send("subj", "body", install_prefix=self.prefix)
+        self.assertFalse(out["sent"])
+        self.assertTrue(out["configured"])    # configured and failed: not the same as absent
+        self.assertIsNone(out["relay_reply"])
+        self.assertIn("relay", out["skipped"])
+
+    def test_it_does_not_apply_the_daily_once_only_rule(self):
+        self._configure()
+        with mock.patch("smtplib.SMTP", _FakeSmtp):
+            first = se.send("one", "body", install_prefix=self.prefix)
+            second = se.send("two", "body", install_prefix=self.prefix)
+        self.assertTrue(first["sent"] and second["sent"])
+
+    def test_the_daily_senders_contract_is_unchanged(self):
+        # `_send_smtp` still answers a bool, and still raises nothing.
+        with mock.patch("smtplib.SMTP", _FakeSmtp):
+            self.assertIs(se._send_smtp("smtp://relay@localhost:587", "me@example.com", "s", "b"), True)
+        with mock.patch("smtplib.SMTP", side_effect=OSError("down")):
+            self.assertIs(se._send_smtp("smtp://relay@localhost:587", "me@example.com", "s", "b"), False)
+
+
 class RunEndToEndTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

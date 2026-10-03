@@ -143,6 +143,20 @@ def email_body(vault: Path, *, now: "datetime | None" = None) -> "tuple[str, str
     return subject, "\n".join(body_lines)
 
 
+def _capture_data_reply(server, box: list) -> None:
+    """`send_message()` throws away the relay's reply to DATA, which is where a
+    relay such as Resend reports the id of the message it accepted. Wrap this
+    one connection's `data()` so the id survives; the class is untouched."""
+    original = server.data
+
+    def data(msg, *args, **kwargs):
+        code, text = original(msg, *args, **kwargs)
+        box.append(text.decode("utf-8", "replace") if isinstance(text, bytes) else str(text))
+        return code, text
+
+    server.data = data
+
+
 def _send_smtp(
     smtp_url: str, to_addr: str, subject: str, body: str, *, from_addr: "str | None" = None,
 ) -> bool:
@@ -168,11 +182,20 @@ def _send_smtp(
 
     Returns True iff the send completed without raising; False on any
     failure, including the refuse-to-downgrade case above."""
+    return _deliver(smtp_url, to_addr, subject, body, from_addr=from_addr)[0]
+
+
+def _deliver(
+    smtp_url: str, to_addr: str, subject: str, body: str, *, from_addr: "str | None" = None,
+) -> "tuple[bool, str | None]":
+    """`_send_smtp`'s whole behaviour, plus the relay's reply to DATA (its id for
+    the accepted message) when it gave one. `(False, None)` on any failure."""
+    replies: list = []
     try:
         parsed = urlparse(smtp_url)
         host = parsed.hostname
         if not host:
-            return False
+            return False, None
         port = parsed.port or 25
         username = parsed.username
         password = parsed.password
@@ -187,6 +210,7 @@ def _send_smtp(
             with smtplib.SMTP_SSL(host, port, timeout=10) as server:
                 if password:
                     server.login(username or sender, password)
+                _capture_data_reply(server, replies)
                 server.send_message(msg)
         else:
             with smtplib.SMTP(host, port, timeout=10) as server:
@@ -200,12 +224,39 @@ def _send_smtp(
                     if not tls_established:
                         # Refuse to send credentials over an unencrypted
                         # channel — never silently downgrade auth to plaintext.
-                        return False
+                        return False, None
                     server.login(username or sender, password)
+                _capture_data_reply(server, replies)
                 server.send_message(msg)
-        return True
+        return True, (replies[-1] if replies else None)
     except (smtplib.SMTPException, OSError, ValueError):
-        return False
+        return False, None
+
+
+def send(subject: str, body: str, *, install_prefix: "Path | None" = None) -> dict:
+    """The entry point for a caller with a message of its own (the weekly field
+    brief is the first). It reads the same config and rides the same sender as
+    the daily email, and it carries none of the daily send's rules: no
+    once-a-day state, no body of its own. Whether to send twice is the caller's
+    to decide.
+
+    Never raises. Returns `{"sent", "configured", "skipped", "relay_reply"}`:
+    `skipped` says why nothing went out, in words that name no credential, so a
+    caller can log it; `configured` tells an absent mail path (a skip, never an
+    error) from a configured one that failed (a failure worth a non-zero exit);
+    `relay_reply` is the relay's id for the accepted message, when it gave one."""
+    try:
+        cfg = email_config(install_prefix)
+        if cfg is None:
+            return {"sent": False, "configured": False, "relay_reply": None,
+                    "skipped": "no mail path configured (plugins.autonomy.email_to and email_smtp_url)"}
+        to_addr, smtp_url, from_addr = cfg
+        ok, reply = _deliver(smtp_url, to_addr, subject, body, from_addr=from_addr)
+        return {"sent": ok, "configured": True, "relay_reply": reply,
+                "skipped": None if ok else "the relay refused the message or did not answer"}
+    except Exception as e:
+        return {"sent": False, "configured": True, "relay_reply": None,
+                "skipped": f"the send failed ({type(e).__name__})"}
 
 
 def run(
