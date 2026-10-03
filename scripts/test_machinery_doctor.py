@@ -21,6 +21,23 @@ from unittest import mock
 import machinery_doctor as md
 
 
+# Every git call these tests make runs with no global or system config. A global
+# `core.hooksPath` (crickets' coauthor guard sets one) makes `git rev-parse
+# --git-path hooks` in a scratch repo answer the operator's real hooks
+# directory, and the hook tests below then wrote into it: on 2026-10-02 a battery
+# run replaced the live `commit-msg` dispatcher with a non-executable stub, which
+# git skips silently.
+_GIT_ISOLATION = mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"})
+
+
+def setUpModule() -> None:
+    _GIT_ISOLATION.start()
+
+
+def tearDownModule() -> None:
+    _GIT_ISOLATION.stop()
+
+
 def _init_repo(path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
 
@@ -119,6 +136,17 @@ class LastEventEpochTests(unittest.TestCase):
 
 
 class GitHookInstalledTests(unittest.TestCase):
+    def test_a_scratch_repos_hooks_stay_inside_it(self):
+        # The guard for the leak above: a hook test that would write outside
+        # its scratch repo fails here instead of writing.
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            _init_repo(repo)
+            hooks = md.git_hooks_dir(repo)
+            self.assertIsNotNone(hooks)
+            self.assertTrue(str(hooks.resolve()).startswith(str(repo.resolve())),
+                            f"hooks resolve outside the scratch repo: {hooks}")
+
     def test_warn_when_not_installed(self):
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
