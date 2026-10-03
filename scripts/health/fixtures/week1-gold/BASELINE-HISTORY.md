@@ -3,6 +3,8 @@
 One paragraph per pin, newest first, because a baseline that vanishes when its
 successor lands is a number nobody can audit.
 
+**Not a pin: the re-pin queue (2026-10-02, task 182).** No re-pin until the vault series closes and several perfection passes run (the operator's standing rule). Every question the gate misses against the 2026-09-19 baseline is named with its cause and evidence in [REPIN-QUEUE.md](REPIN-QUEUE.md), so the next re-pin starts from evidence rather than a fresh investigation.
+
 **2026-08-28 — hook-parity re-pin.** `shipped-baseline.json` re-pinned at
 47/64 (73.4%) after the eval learned the three things the recall hook does that
 it didn't: ×2 over-fetch before filtering, the `_daemon_admissible` post-filter,

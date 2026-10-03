@@ -7,10 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Recall stops losing good answers to bookkeeping (task 182, #797). The retrieval gate's gap after #749 and Plan D traced to defects that nightly passes were writing into the vault: enrichment dropped the stamps other writers leave and every alias, a lesson's demotion applied whether or not the lesson answered, project activity counted machine writes and froze into the index, entity pages dated notes by file, and nothing embedded before the nightly gate. Each is fixed with a test that fails without it, and every question the gate still misses against the 2026-09-19 baseline has a named cause in `scripts/health/fixtures/week1-gold/REPIN-QUEUE.md`. No re-pin and no gold-set edit. Operator rulings of 2026-10-01 in `agentm-vault` and `agentm-rescope-filing`.
+
 A note the night moves stays the same file (task 180). Google Drive for Desktop mirrors the vault, and the dreaming journal used to move a note by writing a copy at its new path and deleting the original. Drive read every move as a new file plus a trashed one, so every device syncing from Drive downloaded the note again. Plan B's 675 moved task files all reached the operator's phone that way. A move is now a rename. Its code went out in 10.3.0 without an entry; this is the entry. Based on the 2026-09-29 phone-sync diagnosis, `agent/diagnostics/2026-09-29-phone-sync-count.md` in the vault.
 
 ### Fixed
 
+- **Enrichment keeps the stamps other writers leave (task 182 step 2; #798).** `consolidated_into`, `source_hash` and `source_version` are carried through a rewrite; by 2026-10-01, 111 lesson-to-card links across 37 cards had lost their stamp. A census test holds every card-shape field against the pass's own fields, the carry list and a reasoned not-carried list.
+- **A card names every lesson it rests on (step 2; #798, #802).** `consolidated_into` is one link or a list. `agentmd crystallize -restamp` gives each card back the lessons that list it; `-recheck -lessons` asks only the named lessons and releases one lesson at a time. A released card stays in the lesson's `consolidated_from` as provenance, named in a new `released:` list; `scripts/migrate/restore_lesson_provenance.py` gave 31 lessons back what two rechecks had removed, including `ci-green-closes-work`, which had been emptied.
+- **A consolidated card is demoted only beside its lesson (step 3; #799, #801).** The x0.30 applies only when one of the card's lessons is in the same arm's own top k, in the daemon and the Python recall arm. Closes #778.
+- **Project activity counts work and is read at query time (step 4; #800).** Maps, enrichment's own `updated` and an unedited migrated blueprint no longer count; eight of thirteen projects had read 2026-09-25. The band is applied when a query runs and reloads when the night rewrites the reading — no reindex.
+- **Enrichment never removes an alias (step 5; #803).** The previous list is kept and the pass's derived aliases appended. `scripts/migrate/restore_aliases.py` restored 31 aliases on 11 notes, leaving out anything the 2026-08-08 cold backfill wrote.
+- **Entity pages date a mention by the note (step 6; #805).** Never the file's modification day, never a `captured` taken from it, and never an `updated` on the day enrichment last rewrote the note; an undated note is listed undated.
+- **The night embeds before the retrieval gate, and the eval canary is an instrument (step 7; #823).** `retrieval_gate_job` runs `agentmd embed` first; an `instrument:` marker keeps enrichment off the canary, which is also pinned against decay.
 - **A dreaming move renames the note instead of copying it (task 180 steps 1 and 2; #780, #786).** `Journal.Commit` and `Resolve` move a note with `os.Rename` once the source hashes as `Before` and the destination is free, so the note keeps its inode and its Drive file ID.
   - **A move that also repairs links** (or a lifecycle archive's restamp) renames first and then rewrites the note in place.
   - **When a rename fails.** A rename across devices falls back to the old write-then-remove and says so in the applied line. Any other refused rename, such as a file held open on Windows, skips the move with the source untouched.
@@ -21,6 +30,7 @@ A note the night moves stays the same file (task 180). Google Drive for Desktop 
 
 ### Internal
 
+- **Task 182 measurements.** Retrieval gate on the live vault: R@5 0.635 (2026-10-01, before) to 0.651 after steps 1–5 (p 1.0 against the 0.667 baseline). `rc02`, `rc06`, `rc11` recovered; the remaining misses are attributed in `REPIN-QUEUE.md`. Recheck of 31 lessons: $8.13 over 31 calls.
 - **Tests.** `journal_move_test.go` (9 tests) and `move_identity_test.go` (3) assert identity with `os.SameFile` where a move leaves the bytes alone, and record the rename where it rewrites them. Each fails if a move is turned back into a copy.
 - **Modification times.** A renamed note keeps its old mtime. An audit found no reader that needs a fresh one, and the index now keeps an undated note's true date across a move.
 - **Measured, not shipped.** 159 of 413 enrichment rewrites over ten nights changed only their stamps, at about $75 in model calls. Skipping them needs a ledger that survives a schema bump, filed as #783. The spend itself is filed as #784 and #785.
