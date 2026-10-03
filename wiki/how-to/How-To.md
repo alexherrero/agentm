@@ -43,6 +43,7 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | [Tune auto-orchestration](Tune-Auto-Orchestration) | Toggles and thresholds behind the briefing and idle chain. |
 | [Audit the vault](Audit-The-Vault) | Run the read-only vault lint, apply fixes. |
 | [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards) | Read what last night did in the morning note, then the corpus scorecard in the order that makes it mean something. |
+| [Read the weekly field brief](Read-The-Weekly-Field-Brief) | Read the week's note on what is new in agent harnesses, memory, automation and skills, steer what it looks for, ask it a question, and keep the items worth keeping (pending). |
 | [Capture from your phone](Capture-From-Your-Phone) | Forward a link or a thought from the Claude app on your phone; it becomes a processed, recallable memory within about two sweep cycles. |
 | [Ingest an article](Ingest-An-Article) | Turn a web page or a local file into a searchable memory — one intact full-document note plus reading-order-linked chunks. |
 | [Enable the daily email](Enable-Email-Digest-Delivery) | Opt in to a daily email carrying the morning note, whose headline the SessionStart brief shows. |
