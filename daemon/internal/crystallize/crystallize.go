@@ -38,6 +38,7 @@ import (
 	"unicode"
 
 	"github.com/alexherrero/agentm/daemon/internal/cardshape"
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 // The operator's recurrence bar, written here rather than configured.
@@ -610,28 +611,32 @@ func yamlQuote(s string) string {
 	return s
 }
 
-var consolidatedIntoRe = regexp.MustCompile(`(?m)^consolidated_into:[ \t]*.*$`)
-
 var stampLink = regexp.MustCompile(`\[\[([^\]|]+)`)
+
+// linkStems is the wikilink stems in some list items, in order, each once.
+func linkStems(items []string) []string {
+	var out []string
+	for _, item := range items {
+		for _, s := range stampLink.FindAllStringSubmatch(item, -1) {
+			stem := path.Base(strings.TrimSuffix(strings.TrimSpace(s[1]), ".md"))
+			if !containsString(out, stem) {
+				out = append(out, stem)
+			}
+		}
+	}
+	return out
+}
 
 // StampedLessons is every lesson a card's `consolidated_into` names, by stem,
 // in the order written. The field is one quoted link when one lesson rests on
 // the card and a flow list of them when several do (task 182, the operator's
 // ruling of 2026-10-01): a weekly run's clusters overlap, so one card can teach
 // several lessons, and a single value kept only whichever was written last.
+// Read from the frontmatter alone, in any shape a YAML writer leaves — a block
+// list included — and never from a stamp line quoted in the body (task 182
+// release review).
 func StampedLessons(text string) []string {
-	m := consolidatedIntoRe.FindString(text)
-	if m == "" {
-		return nil
-	}
-	var out []string
-	for _, s := range stampLink.FindAllStringSubmatch(m, -1) {
-		stem := path.Base(strings.TrimSuffix(strings.TrimSpace(s[1]), ".md"))
-		if !containsString(out, stem) {
-			out = append(out, stem)
-		}
-	}
-	return out
+	return linkStems(fmlist.Items(text, "consolidated_into"))
 }
 
 // stampLine is the `consolidated_into` line naming these lessons: one quoted
@@ -666,13 +671,17 @@ func containsString(list []string, s string) bool {
 // otherwise, and then the whole frontmatter is put in the card's order, so a
 // note with neither ends with the stamp in its read block too.
 func Stamp(text, lessonStem string) string {
-	if consolidatedIntoRe.MatchString(text) {
-		lessons := StampedLessons(text)
+	if lessons := StampedLessons(text); len(lessons) > 0 {
 		if containsString(lessons, lessonStem) {
 			return text
 		}
-		return consolidatedIntoRe.ReplaceAllLiteralString(text, stampLine(append(lessons, lessonStem)))
+		// The whole key, a block list's item lines included, becomes one flow
+		// list: leaving old items under a new value is YAML nothing can read.
+		out, _ := fmlist.Replace(text, "consolidated_into", stampLine(append(lessons, lessonStem)))
+		return out
 	}
+	// An empty or valueless key is dropped before the stamp goes in its place.
+	text, _ = fmlist.Remove(text, "consolidated_into")
 	line := stampLine([]string{lessonStem})
 	if !strings.HasPrefix(text, "---\n") {
 		return text

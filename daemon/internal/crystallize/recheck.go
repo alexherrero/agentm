@@ -21,11 +21,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/alexherrero/agentm/daemon/internal/cardshape"
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 // RecheckAct is one in-place rewrite the recheck plans, in the dreaming
@@ -147,10 +147,8 @@ func ParseRecheck(out string) (RecheckAnswer, error) {
 	return a, nil
 }
 
-var consolidatedIntoLine = regexp.MustCompile(`(?m)^consolidated_into:[ \t]*.*\r?\n`)
-
 // unstampFrom is the card with these lessons taken out of its
-// `consolidated_into`, and the line gone when none is left; every other byte
+// `consolidated_into`, and the key gone when none is left; every other byte
 // stays where it was. A card several lessons rest on keeps the rest.
 func unstampFrom(raw []byte, released []string) string {
 	var keep []string
@@ -160,30 +158,19 @@ func unstampFrom(raw []byte, released []string) string {
 		}
 	}
 	if len(keep) == 0 {
-		return consolidatedIntoLine.ReplaceAllString(string(raw), "")
+		out, _ := fmlist.Remove(string(raw), "consolidated_into")
+		return out
 	}
-	return consolidatedIntoRe.ReplaceAllLiteralString(string(raw), stampLine(keep))
+	out, _ := fmlist.Replace(string(raw), "consolidated_into", stampLine(keep))
+	return out
 }
-
-var releasedLine = regexp.MustCompile(`(?m)^released:[ \t]*.*$`)
 
 // ReleasedStems is the stems a lesson's `released:` list names: the cards
 // that taught it, are still listed in `consolidated_from` as its provenance,
 // and carry no stamp because a recheck found the lesson is not true of them
-// (the operator's ruling of 2026-10-01, task 182).
+// (the operator's ruling of 2026-10-01, task 182). Frontmatter only.
 func ReleasedStems(lesson string) []string {
-	m := releasedLine.FindString(lesson)
-	if m == "" {
-		return nil
-	}
-	var out []string
-	for _, s := range stampLink.FindAllStringSubmatch(m, -1) {
-		stem := path.Base(strings.TrimSuffix(strings.TrimSpace(s[1]), ".md"))
-		if !containsString(out, stem) {
-			out = append(out, stem)
-		}
-	}
-	return out
+	return linkStems(fmlist.Items(lesson, "released"))
 }
 
 // withReleased is the lesson with these stems added to its `released:` list.
@@ -203,8 +190,8 @@ func withReleased(lesson string, stems []string) string {
 		links[i] = fmt.Sprintf("\"[[%s]]\"", s)
 	}
 	line := "released: [" + strings.Join(links, ", ") + "]"
-	if releasedLine.MatchString(lesson) {
-		return releasedLine.ReplaceAllLiteralString(lesson, line)
+	if out, ok := fmlist.Replace(lesson, "released", line); ok {
+		return out
 	}
 	if !strings.HasPrefix(lesson, "---\n") {
 		return lesson

@@ -187,12 +187,17 @@ const activityRecheck = 30 * time.Second
 // SetProjectActivitySource names where the readings come from: a loader, and a
 // stamp (the file's modification time) that says when they last changed. Nil
 // for either drops the source, and the readings stay as last set.
+//
+// The source starts with no stamp recorded, so the first refresh loads once.
+// Taking the stamp here instead let a reading the night wrote between the
+// caller's own load and this call go unseen until the next rewrite (task 182
+// release review): the stamp was new and the readings were old.
 func SetProjectActivitySource(load func() map[string]float64, stamp func() time.Time) {
 	if load == nil || stamp == nil {
 		activitySrc.Store(nil)
 		return
 	}
-	activitySrc.Store(&activitySource{load: load, stamp: stamp, last: stamp()})
+	activitySrc.Store(&activitySource{load: load, stamp: stamp})
 }
 
 // RefreshProjectActivity reloads the readings when the night has rewritten them

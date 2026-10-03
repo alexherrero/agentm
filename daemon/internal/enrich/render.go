@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 	"github.com/alexherrero/agentm/daemon/internal/people"
 )
 
@@ -350,7 +351,7 @@ func writeList(b *strings.Builder, key string, values []string) {
 	quoted := make([]string, 0, len(values))
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
-			quoted = append(quoted, yamlScalar(v))
+			quoted = append(quoted, flowItem(v))
 		}
 	}
 	if len(quoted) == 0 {
@@ -375,6 +376,16 @@ func yamlScalar(s string) string {
 		return s
 	}
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", " ").Replace(s) + `"`
+}
+
+// flowItem is a list item as written inside `[...]`: yamlScalar's quoting, and
+// quoted as well when it holds a comma, which a flow list would otherwise split
+// into two items (task 182 release review).
+func flowItem(s string) string {
+	if strings.Contains(s, ",") {
+		return fmlist.Quote(s)
+	}
+	return yamlScalar(s)
 }
 
 func looksScalar(s string) bool {

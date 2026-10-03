@@ -1972,8 +1972,13 @@ def query(
         lifecycle = None  # type: ignore
 
     all_paths = set(fused.keys())
-    # The lessons among the candidates: a stamped card is demoted only beside one.
-    present_lessons = {Path(p).stem for p in all_paths if "/crystallized/" in "/" + p}
+    # The lessons among the top k candidates: a stamped card is demoted only
+    # beside one, and only a lesson this arm would hand on counts as beside it
+    # (the daemon's top-k window, task 182 #801). The keyword arm returns every
+    # note sharing any query term, so "anywhere among the candidates" let a
+    # lesson matching one weak word demote its card.
+    top_k = sorted(all_paths, key=lambda p: (-fused[p], p))[:max(k, 1)]
+    present_lessons = {Path(p).stem for p in top_k if "/crystallized/" in "/" + p}
     # One contract read for the whole ranking pass, not one per candidate.
     _, dampened_areas = _contract_areas()
     always_load = _always_load_areas()

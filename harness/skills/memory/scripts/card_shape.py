@@ -207,7 +207,40 @@ def flow_list(raw: str | None) -> list[str]:
     inner = v[1:-1].strip()
     if not inner:
         return []
-    return [scalar(part.strip()) for part in inner.split(",") if part.strip()]
+    return [scalar(part) for part in _split_flow(inner)]
+
+
+def _split_flow(inner: str) -> list[str]:
+    """A flow list's inside, split on the commas outside quoted items (task 182
+    release review: a quoted alias holding a comma came back as two)."""
+    out, cur, quote, i = [], [], "", 0
+    while i < len(inner):
+        c = inner[i]
+        if quote == '"' and c == "\\" and i + 1 < len(inner):
+            cur.append(inner[i:i + 2])
+            i += 2
+            continue
+        if quote and c == quote:
+            if quote == "'" and inner[i + 1:i + 2] == "'":
+                cur.append("''")
+                i += 2
+                continue
+            quote = ""
+        elif not quote and c in "\"'":
+            quote = c
+        elif not quote and c == ",":
+            part = "".join(cur).strip()
+            if part:
+                out.append(part)
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
+        i += 1
+    part = "".join(cur).strip()
+    if part:
+        out.append(part)
+    return out
 
 
 def quote(value: str) -> str:

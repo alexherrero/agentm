@@ -216,6 +216,19 @@ class TestALessonOutranksWhatTaughtIt(unittest.TestCase):
         self.assertEqual(paths[0], "memory/semantic/the-case.md",
                          "a card was demoted though its lesson was not a candidate")
 
+    def test_a_lesson_outside_the_top_k_does_not_demote_its_card(self):
+        # Task 182 release review: the daemon counts a lesson only within the
+        # arm's top k (#801); this arm counted any candidate, and the keyword
+        # search returns every note sharing one query term.
+        self._write("memory/crystallized/widget-retries.md", "widget retry logic notes")
+        self._write("memory/semantic/the-case.md",
+                    "gadget sprocket timing, gadget sprocket again",
+                    extra='consolidated_into: "[[widget-retries]]"\n')
+        self._write("memory/semantic/plain.md", "gadget sprocket timing")
+        results = recall.query(vault=self.vault, query_text="gadget sprocket notes", k=1)
+        self.assertEqual([r["path"] for r in results][0], "memory/semantic/the-case.md",
+                         "a card was demoted beside a lesson outside the top k")
+
     def test_the_number_is_the_daemons_number(self):
         """0.30 on both sides, read from the two tables rather than asserted
         twice by hand: the same question answered differently depending on
