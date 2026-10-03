@@ -23,6 +23,10 @@ Forward learning is retired, and a weekly field brief is replacing it (task 185)
 - **`backfill_reference_bodies.py` and its test.** It repaired thin reference notes that forward learning's capture path had written, and its census found none left (632 reference notes, none at or under twelve words).
 - **The console's `Watchlist:` line**, the `resources/watchlist` line of the contract's `dampened_spaces` (the packaged default and the live `standards/storage-rules.md`, mirrored), and the retired names in `vault_layout.py`, `check-memory-root-shape.py` and the daemon's comments and map text.
 
+### Fixed
+
+- **The idea lane stops filing replies, and a removed card stays removed (task 186; the narrow half of #676).** The reply filter now drops a message that opens with `ack`, `agree`, `approved`, `confirmed` or `noted`, and a numbered answer list ("1. agree, 2. …"); the bare "follow-up" pattern no longer marks an idea. The route pass records what it files in `reflect-filed.jsonl` in the engine's state directory, keyed by slug and the body's first line, and does not file the same candidate again after its card is removed: a mined reply the night deleted on 2026-09-16 had come back on 09-28 from a second pass over its transcript.
+
 ### Changed
 
 - **The Experience design's Forward experience section** now records the retirement and the brief that replaces it, with the amendment-log row in the same change; the Memory System, Vault, HLD, Runner and Opinions designs and the Memory Daemon reference page are reconciled to match.
