@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -108,7 +109,12 @@ _DURABILITY_CUE = re.compile(
 _REPLY_RULES: list[tuple[str, re.Pattern]] = [
     ("a reply that opens with an acknowledgement",
      re.compile(r"^\W*(?:yes|yeah|yep|yup|ok(?:ay)?|sure|sounds good|great|perfect|go ahead|do it|lgtm|"
-                r"thanks|thank you|no|nope)\b", re.IGNORECASE)),
+                r"thanks|thank you|no|nope|ack(?:ed)?|agreed?|approved?|confirmed|noted)\b", re.IGNORECASE)),
+    # "1. agree, 2. private on github ok, …": the agent asked numbered
+    # questions and this is the answer list (task 186; the vault growth audit
+    # of 2026-10-03 found two such replies filed as idea cards).
+    ("a reply that answers numbered questions",
+     re.compile(r"^\s*1[.)]\s+\S[\s\S]*?(?:^|[\s,;])2[.)]\s+\S", re.MULTILINE)),
     ("a reply that starts the next piece of work",
      re.compile(r"^\W*let'?s\s+(?:do|go|start|continue|proceed|move|get|wrap|pick|take|keep|try|run|ship|"
                 r"merge|land|call|finish|circle)\b", re.IGNORECASE)),
@@ -187,12 +193,11 @@ _IDEA_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:later|future)\b[\s,]+[^.!?\n]{0,30}\b(?:could|should|might|may|would)\b[^.!?\n]{0,80}",
                 re.IGNORECASE),
      "future-possibility statement"),
-    (re.compile(r"\bfollow.?ups?\b[^.!?\n]{0,120}", re.IGNORECASE),
-     "follow-up marker"),
+    # The bare "follow-up" marker is retired (task 186). Plan 13's census of
+    # 2026-09-21 found it fired on 62 of the miner's 69 idea cards, almost
+    # always the operator steering the session, and 7 of the 69 were kept.
     (re.compile(r"\bcould be (?:its|their) own\b[^.!?\n]{0,80}", re.IGNORECASE),
      "potential project split"),
-    (re.compile(r"\bas a follow.?up\b[^.!?\n]{0,120}", re.IGNORECASE),
-     "follow-up marker"),
     (re.compile(r"\bidea[s]?\s*[:—-]\s+\w+[^.!?\n]{0,120}", re.IGNORECASE),
      "idea declaration"),
 ]
@@ -803,6 +808,60 @@ def _utcnow_iso() -> str:
 from volume_gate import VolumeCapRefused  # noqa: E402  (same skill dir)
 
 ALREADY_CAPTURED = object()
+
+# What this lane has filed, in the engine's state directory (task 186). A card
+# the night or the operator removes is not filed again when a later pass reads
+# the same conversation: the vault growth audit of 2026-10-03 found a mined
+# reply the night had deleted on 09-16 filed again on 09-28 by a second pass
+# over its transcript, because "already captured" only ever looked at what was
+# still on disk. The key is the slug and the body's first line: a re-mine
+# regenerates both, and two different captures that happen to slug alike are
+# still two notes.
+FILED_LEDGER = "reflect-filed.jsonl"
+
+
+def filed_ledger_path() -> Path:
+    return engine_state.engine_state_dir() / FILED_LEDGER
+
+
+def filed_key(slug: str, body: str) -> str:
+    """The ledger's key for a candidate, or for a card already on disk: its slug
+    and a hash of its body's first non-empty line, whitespace collapsed."""
+    first = next((l for l in (body or "").splitlines() if l.strip()), "")
+    line = " ".join(first.split())
+    return f"{slug}|{hashlib.sha256(line.encode('utf-8')).hexdigest()[:16]}"
+
+
+def filed_keys(path: "Path | None" = None) -> set:
+    """Every key the ledger records. A missing or unreadable ledger is empty."""
+    out: set = set()
+    try:
+        with open(path or filed_ledger_path(), encoding="utf-8") as f:
+            for line in f:
+                try:
+                    key = json.loads(line).get("key")
+                except (json.JSONDecodeError, AttributeError):
+                    continue
+                if isinstance(key, str) and key:
+                    out.add(key)
+    except OSError:
+        pass
+    return out
+
+
+def record_filed(key: str, session_id: "str | None", path: "Path | None" = None) -> None:
+    """Append one key to the ledger. Best-effort: a ledger that cannot be
+    written never stops a filing."""
+    if not key:
+        return
+    p = path or filed_ledger_path()
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"key": key, "session": session_id or "",
+                                "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")}) + "\n")
+    except OSError:
+        pass
 # The volume gate shut the door (task 4): not a write, not a failure of this
 # candidate — the day's cap is spent. Counted as `refused` so the transparency
 # line says a flood was stopped rather than that filing broke.
@@ -952,14 +1011,24 @@ def route_candidates(
         corpus, search = None, None
     low_filings_so_far = 0
     import session_binding  # same skill dir
+    filed_before = filed_keys()
 
     def _file(c: Candidate, *, type_hint: "str | None" = None) -> "Path | object | None":
+        # A candidate this lane filed before is not filed again, even when its
+        # card has since been removed (task 186).
+        key = filed_key(c.slug, c.body or c.title)
+        if c.slug and key in filed_before:
+            return ALREADY_CAPTURED
         # A convention or preference is a rule for every project, and carries
         # no project of its own (agentm-vault § Projects and tasks, amended
         # 2026-09-28).
         stamps = session_binding.stamps_for_type(binding, type_hint or _candidate_type(c)) if binding else {}
-        return _file_candidate(c, vault, source=source, corpus=corpus, search=search, stderr=stderr,
-                               type_hint=type_hint, extra=dict(stamps) or None)
+        saved = _file_candidate(c, vault, source=source, corpus=corpus, search=search, stderr=stderr,
+                                type_hint=type_hint, extra=dict(stamps) or None)
+        if c.slug and (saved is ALREADY_CAPTURED or (saved and saved is not VOLUME_REFUSED)):
+            record_filed(key, session_id)
+            filed_before.add(key)
+        return saved
 
     def _file_capped(c: Candidate, *, type_hint: "str | None" = None) -> bool:
         """File a low-confidence candidate unless max_inbox (the per-session

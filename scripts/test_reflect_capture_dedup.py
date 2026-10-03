@@ -24,11 +24,13 @@ Run: python3 scripts/test_reflect_capture_dedup.py
 from __future__ import annotations
 
 import io
+import os
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _SCRIPTS = _HERE.parent / "harness" / "skills" / "memory" / "scripts"
@@ -58,6 +60,12 @@ class _Base(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp(prefix="reflect-dedup-"))
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         (self.root / "memory").mkdir(parents=True)
+        # Reflection's filed-ledger lives in the engine state directory (task
+        # 186); each test gets its own, so a hand run never shares one between
+        # tests or touches the machine's.
+        env = mock.patch.dict(os.environ, {"AGENTM_STATE_DIR": str(self.root / "state")})
+        env.start()
+        self.addCleanup(env.stop)
 
     def _route(self, cands, *, session_id=None):
         return reflect.route_candidates(
@@ -127,6 +135,31 @@ class TestInboxDedup(_Base):
         c.occurrences = 3
         self._route([c])
         self.assertEqual(self._inbox_files(), ["dupe.md"])
+
+
+class TestARemovedCardStaysRemoved(_Base):
+    # Task 186: a card the night or the operator removes is not filed again
+    # when a later pass reads the same conversation. The vault growth audit of
+    # 2026-10-03 found a mined reply deleted on 09-16 back on 09-28.
+    def test_a_card_removed_after_filing_is_not_filed_again(self):
+        self._route([_cand(_ORDINARY_BODY, slug="dupe")], session_id="s-1")
+        self.assertEqual(self._inbox_files(), ["dupe.md"])
+        (self.root / "memory" / "semantic" / "dupe.md").unlink()
+        stats = self._route([_cand(_ORDINARY_BODY, slug="dupe")], session_id="s-1")
+        self.assertEqual(self._inbox_files(), [])
+        self.assertEqual(stats["deduped"], 1)
+
+    def test_a_different_capture_under_the_same_slug_is_still_filed(self):
+        self._route([_cand(_ORDINARY_BODY, slug="dupe")])
+        (self.root / "memory" / "semantic" / "dupe.md").unlink()
+        self._route([_cand("User stated: a different thing entirely.", slug="dupe")])
+        self.assertEqual(self._inbox_files(), ["dupe.md"])
+
+    def test_the_key_reads_a_card_on_disk_as_it_reads_its_candidate(self):
+        # A purge seeds the ledger from the cards it removes.
+        card = "---\ntitle: x\n---\n\n" + _ORDINARY_BODY + "\n\n## Mining metadata\n- x\n"
+        body = card.split("---\n", 2)[2]
+        self.assertEqual(reflect.filed_key("dupe", body), reflect.filed_key("dupe", _ORDINARY_BODY))
 
 
 if __name__ == "__main__":
