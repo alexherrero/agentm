@@ -132,7 +132,7 @@ The recall-loop section of the memory-system design describes how these memories
 - **Make every write a candidate.** We reject this because you still need a way to save a card you have already judged. A capture that names its type and says why lands `active`; anything else lands `unfiled`. The field, not a second tool, carries the difference.
 - **Use the old Telegram and ntfy.sh notification tools.** We reject this because it violates our privacy rule against third-party push services. Our local tools provide the same convenience safely.
 - **Run a continuous launchd background watcher to monitor the unfiled captures.** We reject this because we already have a reliable scheduling system. A continuous background daemon wastes resources to save a few minutes. The capture process works well as a delayed background task.
-- **Expand the `forward_learning` tool to handle article ingestion.** We reject this because that tool works best for single feeds without breaking them into chunks. Modifying it for ingestion requires too much work and confuses its purpose.
+- **Expand the approved-source feed tool (retired 2026-10) to handle article ingestion.** We reject this because that tool worked best for single feeds without breaking them into chunks. Modifying it for ingestion requires too much work and confuses its purpose.
 - **Do nothing and keep capture restricted to the terminal.** We reject this because capture-from-anywhere is the first goal of this arc.
 
 ## Dependencies

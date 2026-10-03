@@ -465,7 +465,7 @@ class TheStateWritingSuitesRunByHand(unittest.TestCase):
     the repo registry: `test_project_config` added five throwaway entries, and
     the two conformance suites rewrote the file around a register-and-unregister.
     The rest wrote the `.heat.json` and `.lifecycle.json` sidecars, the
-    auto-orchestration cooldown or the forward-learning watermarks, and four of
+    auto-orchestration cooldown or a job's watermarks, and four of
     them also failed on a hand run, because in one shared directory each test
     started from the last one's writes. The battery saw none of it: its runner
     gives every test a state directory of its own.
@@ -495,10 +495,6 @@ class TheStateWritingSuitesRunByHand(unittest.TestCase):
         "test_orchestration_phase.py": (
             "TestPostWork.test_reflects_marks_and_records_fire",
             "TestPostRelease.test_runs_index_then_discover_and_records",
-        ),
-        "test_forward_learning.py": (
-            "DryRunFixtureSourceSetTests.test_watermark_advances_after_scan",
-            "CrossScanDedupTests.test_rescan_does_not_rewrite_already_seen_candidate",
         ),
         "test_memory_heat_policy.py": (
             "TestRecordHit.test_first_hit_creates_sidecar",

@@ -31,7 +31,6 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | Refresh the auto-indexed `personal-skills/` pointers (after a SKILL.md change, or on a fresh install) | `/memory index-skills` |
 | Manually trigger the internet skill-discovery scan (cadence-checked by default via the idle hook) | `/memory discover-skills` |
 | Run the adapt-don't-import workflow over discovered patterns (Python rubric → enriched JSONs → LLM sub-agent judgment → watchlist entries) | `/memory adapt-skills` |
-| Review pending entries in `_skill-watchlist/` — promote / dismiss / defer | `/memory watchlist` |
 | See what the heat-based always-load policy would demote or promote (never applies without `--apply`) | `/memory heat-policy` |
 | Print the context payload to paste into claude.ai or the Gem, or regenerate the copies derived from it | `/memory payload` |
 | Check the vault for orphans, broken links, contradictions, and a per-note quality score — on demand (the nightly dream cycle also reports it) | `/memory lint` |
@@ -890,11 +889,11 @@ Per-source cache lives under `<vault>/_meta/skill-discovery-cache/`:
 - **Don't shipping-pipe `discover-skills` output to `/memory save`.** The cache + diff are intermediate artifacts — task 4 (adapt-don't-import) is the authorized consumer; auto-saving the raw diffs would defeat the whole adapt-don't-import design.
 
 > [!NOTE]
-> **Adapt-don't-import workflow status**: plan #7b task 4 (this sibling sub-command `/memory adapt-skills`) wires the actual evaluation of these cached diffs into `_skill-watchlist/` entries; task 5 ships the `/memory watchlist` review command.
+> **Adapt-don't-import workflow status**: plan #7b task 4 (this sibling sub-command `/memory adapt-skills`) wires the actual evaluation of these cached diffs into `_skill-watchlist/` entries; the review command that task 5 shipped, `/memory watchlist`, retired in 2026-10 with the reference-library watchlist its CLI also served, so a pending entry is reviewed by hand: it is a plain note under `_skill-watchlist/`, and promoting or dismissing one is an edit to its `status:` line.
 
 ### `/memory adapt-skills`
 
-Adapt-don't-import workflow (plan #7b task 4). **Two-pass architecture**: Pass 1 (deterministic Python) walks the diff files from `/memory discover-skills`, parses candidate patterns, applies a 6-rule rubric, enriches with GitHub metadata + trustworthiness signals; Pass 2 (LLM sub-agent — `adapt-evaluator`) reads each enriched candidate + cross-references the operator's vault + renders the final HIGH/MEDIUM/LOW judgment + writes the watchlist entry. **Never forks** into `crickets/skills/`. Operator reviews via `/memory watchlist` (task 5).
+Adapt-don't-import workflow (plan #7b task 4). **Two-pass architecture**: Pass 1 (deterministic Python) walks the diff files from `/memory discover-skills`, parses candidate patterns, applies a 6-rule rubric, enriches with GitHub metadata + trustworthiness signals; Pass 2 (LLM sub-agent — `adapt-evaluator`) reads each enriched candidate + cross-references the operator's vault + renders the final HIGH/MEDIUM/LOW judgment + writes the watchlist entry. **Never forks** into `crickets/skills/`. The operator reviews the entries by hand.
 
 #### Two-pass invocation shape
 
@@ -971,73 +970,11 @@ Watchlist entry shape locked in [`agents/adapt-evaluator.md`](../../agents/adapt
 #### Anti-patterns
 
 - **Don't run Pass 2 (sub-agent) without first inspecting Pass 1's JSON output** in unfamiliar territory. The JSON is the operator's verification surface for "is the rubric scoring sensibly?" — if R1/R5/R6 are firing on the wrong candidates, tune the rule constants in `adapt_skills.py` before paying the LLM cost.
-- **Don't promote a watchlist entry directly to `crickets/skills/`.** Use `/memory watchlist promote` (task 5) → operator decides; the workflow's whole point is that adoption is operator-explicit, not agent-driven.
+- **Don't promote a watchlist entry directly to `crickets/skills/`.** Mark it `status: promoted` by hand and let the operator decide; the workflow's whole point is that adoption is operator-explicit, not agent-driven.
 - **Don't bypass the rubric** by setting `--include-low` or hand-editing the evaluated.json state — the rubric is the deterministic gate that bounds the surface the sub-agent has to judge. Bypassing it makes Pass 2 expensive without value.
 
 > [!NOTE]
 > **Sub-agent budget**: Pass 2 has no hard token cap (operator dispatch is one-shot, bounded by operator attention). For batch dispatch (idle-hook in a future task), a `--limit N` flag caps how many candidates each idle pass evaluates — default 5.
-
-### `/memory watchlist`
-
-Review pending entries in `projects/agentm/_skill-watchlist/` — the output of `/memory adapt-skills`. Three actions per entry: **promote** (mark ready for operator's manual fork to `crickets/skills/<x>/`), **dismiss** (archive to `_skill-watchlist/_archive/`), **defer** (snooze with a `deferred_until` date). Plan #7b task 5 ships the body + the canonical Python implementation at `skills/memory/scripts/watchlist_review.py`.
-
-**Adapt-don't-import contract enforcement**: this sub-command **never writes** to `crickets/skills/<x>/`. Promote is annotation-only — it marks the entry `status: promoted` + adds a `promoted_at` timestamp; the operator then manually authors the actual skill in a separate session. Adoption-by-agent is architecturally prevented.
-
-#### Invocation shape
-
-```
-python3 ~/Antigravity/crickets/skills/memory/scripts/watchlist_review.py \
-  [list | review | promote <source-slug> <pattern-slug> | \
-   dismiss <source-slug> <pattern-slug> | \
-   defer <source-slug> <pattern-slug> --until YYYY-MM-DD [--reason "<text>"]] \
-  [--vault-path <path>]
-```
-
-| Sub-command | Use case |
-|---|---|
-| `list` | JSON list of pending entries (source-slug + pattern-slug + status + classification). Useful for piping into other tools or just eyeballing the backlog. |
-| `review` (default) | Interactive walk-through — prompts per entry with `[p]romote / [d]ismiss / [f]efer / (default skip)`. Non-TTY stdin defaults all prompts to skip (never silent action — same contract as `ideas_promote.py gc`). |
-| `promote <source> <pattern>` | Mark a specific entry promoted. Operator-typed slugs (autocomplete via `list` first). |
-| `dismiss <source> <pattern>` | Archive a specific entry to `_archive/`. |
-| `defer <source> <pattern>` | Snooze with `--until YYYY-MM-DD` + optional `--reason`. |
-
-#### Action semantics (locked)
-
-- **promote** → frontmatter `status: promoted` + `promoted_at: <iso ts>` + `updated: <today>`; removes `deferred_until` / `defer_reason` / `dismissed_at` if present. Entry stays in place — the operator's manual fork happens outside this script.
-- **dismiss** → frontmatter annotated with `status: dismissed` + `dismissed_at: <iso ts>`; then **moved** to `projects/agentm/_skill-watchlist/_archive/<source-slug>/<pattern-slug>.md` (collision-safe `-N` suffix if needed). Preserves the audit trail; future passes can re-surface via direct file access.
-- **defer** → frontmatter `status: deferred` + `deferred_until: <iso date>` + optional `defer_reason`; removes `dismissed_at` / `promoted_at`. Entry stays in place; future list operations can filter `deferred_until` to surface only re-eligible entries.
-- **skip** (default for non-TTY + unrecognized input) → no change; entry stays in pending-review state for next pass.
-
-#### Interactive flow
-
-```
-────────────────────────────────────────────────────────────────────────
-Watchlist entry: anthropics-anthropic-cookbook/some-pattern
-  status:        pending-review
-  classification: HIGH
-  source_url:    https://github.com/anthropics/some-pattern
-  github_stars:  1247
-  trusted_org:   true
-  rubric_score:  4
-────────────────────────────────────────────────────────────────────────
-Action: [p]romote / [d]ismiss / [f] defer (default: skip)
-```
-
-On `f` (defer): a secondary prompt asks for `defer until (YYYY-MM-DD; blank = default <today+30d>)`. Blank input or invalid date falls back to the 30-day default.
-
-#### Failure modes (graceful)
-
-- **No entries in `_skill-watchlist/`** → `[watchlist] no pending entries` to stderr; exit 0.
-- **Non-TTY stdin** → defaults every prompt to skip; emits `interactive mode requested but stdin is not a TTY; defaulting all prompts to skip (never silent action)`; exit 0.
-- **Entry not found** for promote/dismiss/defer specific-slug commands → exit 1 with the actual path that was checked.
-- **Invalid `--until` date** for defer → exit 1 with `--until must be ISO date YYYY-MM-DD`.
-- **Archive collision** on dismiss → file goes to `<pattern-slug>-1.md`, `-2.md`, etc.
-
-#### Anti-patterns
-
-- **Don't run `review` in batch / non-interactive contexts.** Default-to-skip is the safety net; if you actually want batch action, use the specific-slug subcommands (`promote` / `dismiss` / `defer`) which are deterministic + scriptable.
-- **Don't auto-promote based on rubric_score alone.** The whole point of the watchlist is the operator's judgment on top of the rubric — auto-promotion bypasses the adapt-don't-import architectural guarantee.
-- **Don't `rm -rf` the `_archive/` directory.** It's the audit trail for "we considered this and dismissed it" — useful when the same pattern resurfaces from a different source later (cross-citation count goes up).
 
 ### `/memory diary`
 

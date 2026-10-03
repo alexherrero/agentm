@@ -3,9 +3,9 @@
 #
 # Per agentm-runner.md's job-manifest contract — the as-built schema is
 # scripts/runner/manifest.py, which this file follows (mirrors
-# templates/jobs/forward-learning.yaml's own precedent — the closest
-# existing sibling: both autonomously fetch external content and write to
-# the vault, unattended).
+# the precedent of the daily fetch job it followed, since retired — the
+# closest sibling it had: both autonomously fetch external content and
+# write to the vault, unattended).
 #
 # .harness/jobs/ is gitignored (per-project runtime state, same as every
 # other .harness/* file), so this templates/ copy is the tracked, shipped
@@ -27,14 +27,14 @@ command: python3 ../harness/skills/memory/scripts/ingest_sweep.py
 # Fetches attacker-influenceable external content and writes it toward
 # permanent memory (staged first, promoted after a review window — see
 # the plan's own asymmetric-trust design call). Matches
-# forward-learning.yaml's own tier for the identical reason: this writes
+# that retired job's own tier for the identical reason: this writes
 # the agent's own surfaced findings, not operator-curated content, and
 # nothing is ever auto-promoted without surviving the staging window.
 tier: T3
 
 # No `budget:` — every duty here is a deterministic rubric (fetch, regex-
 # match the act-step grammar, chunk, re-stamp), zero LLM calls. Same
-# reasoning as forward-learning.yaml's own note.
+# reasoning as that retired job's own note.
 
 # New job, first ship, autonomously fetches external content — the
 # strongest fit in this repo for the "ship dry_run: true until an operator

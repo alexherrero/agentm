@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Forward learning is retired, and a weekly field brief is on its way to replace it (task 185). The first pipeline collected 113 rubric-scored entries that nobody read, and the operator scrapped it on 2026-10-02; this change takes it out. The brief itself lands in the steps that follow.
+
+### Removed
+
+- **Forward learning (task 185 step 1).** `forward_learning.py`, its tests, its daily job template `templates/jobs/forward-learning.yaml` and the reference-library watchlist it wrote to are gone from the repo. The 113 entries and `forward-learning-sources.json` moved under the project's `completed/` folder in the vault; nothing was deleted.
+- **The review CLI `watchlist_review.py`** and the `/memory watchlist` section of the memory skill, which served the skill watchlist as well as the one above. A pending entry in `_skill-watchlist/` is now reviewed by hand. The skill-discovery pipeline itself stays, because its scan last ran on 2026-09-30; its retirement is a separate backlog item.
+- **`backfill_reference_bodies.py` and its test.** It repaired thin reference notes that forward learning's capture path had written, and its census found none left (632 reference notes, none at or under twelve words).
+- **The console's `Watchlist:` line**, the `resources/watchlist` line of the contract's `dampened_spaces` (the packaged default and the live `standards/storage-rules.md`, mirrored), and the retired names in `vault_layout.py`, `check-memory-root-shape.py` and the daemon's comments and map text.
+
+### Changed
+
+- **The Experience design's Forward experience section** now records the retirement and the brief that replaces it, with the amendment-log row in the same change; the Memory System, Vault, HLD, Runner and Opinions designs and the Memory Daemon reference page are reconciled to match.
+- **`TestThePackagedContractDampensTheWatchlistAndWallsTheTemplates` is now `TestThePackagedContractLeavesTheReferenceLibraryUndampenedAndWallsTheTemplates`.** It reads the contract's inbox as its dampened example and asserts that a topic card under `resources/` is not dampened, since the watchlist was that space's one dampened corner.
+
 ## [10.4.0] - 2026-10-02
 
 Recall stops losing good answers to bookkeeping, and a note the night moves stays the same file. This release ships task 182 (#797), which closes the retrieval gate's gap after #749 and Plan D, and task 180's move-by-rename. It also carries the merged steps of task 181 (#790–#795: a judgment keyed to what enrichment reads, a ledger that survives a schema change, a batch taken by cause, an unchanged judgment that writes nothing); that task's own entry lands with its close-out.

@@ -1,6 +1,6 @@
 ---
 name: adapt-evaluator
-description: Read-only adapt-don't-import judge for skill-discovery candidates. Takes the enriched candidate JSON produced by `adapt_skills.py` Pass 1 (6-rule rubric + GitHub metadata + trustworthiness signals) and renders a final HIGH / MEDIUM / LOW classification + adaptation_notes + recommendation_summary. Writes the final watchlist entry to `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` for operator review via `/memory watchlist` (plan #7b task 5). Never forks into `crickets/skills/` — adapt-don't-import is the architectural rule. Plan #7b task 4.
+description: Read-only adapt-don't-import judge for skill-discovery candidates. Takes the enriched candidate JSON produced by `adapt_skills.py` Pass 1 (6-rule rubric + GitHub metadata + trustworthiness signals) and renders a final HIGH / MEDIUM / LOW classification + adaptation_notes + recommendation_summary. Writes the final watchlist entry to `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` for operator review by hand. Never forks into `crickets/skills/` — adapt-don't-import is the architectural rule. Plan #7b task 4.
 kind: agent
 supported_hosts: [claude-code, antigravity]
 version: 0.1.0
@@ -69,8 +69,8 @@ For each JSON:
    — the SOLE exception is deleting the consumed
    Pass-1 scratch JSON in step 7. NEVER write to crickets/skills/. The
    adapt-don't-import contract is architectural: only the operator
-   authors real skills, after reviewing watchlist entries via
-   `/memory watchlist` (plan #7b task 5).
+   authors real skills, after reviewing the watchlist entries by hand
+   (the `/memory watchlist` command retired in 2026-10).
 
 7. DELETE the staged candidate JSON once judged — whether you wrote a
    HIGH/MEDIUM watchlist entry OR dropped a LOW:
@@ -153,7 +153,7 @@ Writes outside this allowlist are bugs in the sub-agent's dispatch + should be c
 - **Never writes to `crickets/skills/<x>/SKILL.md`.** Adapt-don't-import is architectural — only the operator authors real skills.
 - **Never writes to `personal-projects/`, `personal-skills/`, `_idea-incubator/`, `_always-load/`.** Watchlist is the only sink.
 - **Never modifies the enriched candidate JSONs.** Those are Pass 1 artifacts; this sub-agent reads them, never writes them.
-- **Never invokes `/memory save` or `/memory evolve`.** The operator graduates a watchlist entry to a real skill via `/memory watchlist promote` (plan #7b task 5).
+- **Never invokes `/memory save` or `/memory evolve`.** The operator graduates a watchlist entry to a real skill by hand (the `/memory watchlist` command retired in 2026-10).
 - **Never enriches further via WebFetch.** Pass 1 owns GitHub API; Pass 2 owns judgment. Keeps the latency budget bounded + the verification surface narrow.
 - **Never re-evaluates a candidate JSON whose corresponding watchlist entry already exists.** Idempotency: existing entry → skip.
 

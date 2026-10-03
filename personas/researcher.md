@@ -5,9 +5,9 @@ requires: []
 enhances: [research]
 description: >
   The standing concern that goes and learns what we don't know — composes
-  research, leans on worth-knowing. Forward-learning (the experience
-  pillar's designed-not-built consumer) is a future extension, not a
-  soft-composed capability today.
+  research, leans on worth-knowing. The experience pillar's forward pass
+  (the weekly field brief) is a future extension, not a soft-composed
+  capability today.
 tier: T4
 opinions: [worth-knowing]
 modes: [goal, loop]
@@ -24,7 +24,7 @@ The researcher's stance is turning an open question into grounded, cited knowled
 
 ## A named, deliberate omission
 
-`agentm-personas.md`'s roster lists this persona's second composed surface as `forward-experience` (`agentm-experience-and-dreaming.md`) — but that design's forward-learning pieces carry `[PENDING-IMPL]`: there is no installable crickets capability or agentm-native script by that name today, only a designed-not-built pillar. `enhances:` names capabilities the `capability_resolver.py` can resolve to a real provider; naming a `[PENDING-IMPL]` design there would be a fabricated soft-dependency, not a graceful-degrade one (`capability_resolve` returns `no-provider` for an unregistered name regardless, but the manifest should not assert a relationship to something that isn't a capability at all). This manifest names the relationship in prose instead, and the omission is deliberate: when the experience pillar's forward-learning ships as a real, resolvable capability, add it to `enhances:` then.
+`agentm-personas.md`'s roster lists this persona's second composed surface as `forward-experience` (`agentm-experience-and-dreaming.md`) — but that design's forward pass is the weekly field brief, and it is not a capability today: there is no installable crickets capability by that name, only an agentm-native script. `enhances:` names capabilities the `capability_resolver.py` can resolve to a real provider; naming a `[PENDING-IMPL]` design there would be a fabricated soft-dependency, not a graceful-degrade one (`capability_resolve` returns `no-provider` for an unregistered name regardless, but the manifest should not assert a relationship to something that isn't a capability at all). This manifest names the relationship in prose instead, and the omission is deliberate: when the experience pillar's forward pass is a real, resolvable capability, add it to `enhances:` then.
 
 ## Dependency model
 
@@ -38,5 +38,5 @@ The researcher's stance is turning an open question into grounded, cited knowled
 
 - [Persona activation design](../wiki/designs/agentm-persona-activation.md)
 - [Personas design — the roster](../wiki/designs/agentm-personas.md)
-- [Experience & Dreaming design](../wiki/designs/agentm-experience-and-dreaming.md) — the forward-learning consumer this persona will compose once built
+- [Experience & Dreaming design](../wiki/designs/agentm-experience-and-dreaming.md) — the forward-experience pass this persona will compose once it is a resolvable capability
 - [check-personas gate](../scripts/check-personas.py)

@@ -177,8 +177,8 @@ def parse_digest(entry_path: Path | str) -> CrystallizationDigest:
 # invokes once an exploration is judged closed" — but until this entrypoint
 # existed the module was importable-only, so an operator could not actually
 # invoke it. This is the thin manual path the design names as the right first
-# step ("the same thin-manual-path-first precedent dreaming (`/dream`) and
-# forward learning already set"), not the deferred phase-close trigger.
+# step ("the same thin-manual-path-first precedent dreaming (`/dream`)
+# already set"), not the deferred phase-close trigger.
 #
 # It deliberately does NOT distil. `crystallize_exploration` takes an
 # already-composed digest by design, and turning a transcript into the five
