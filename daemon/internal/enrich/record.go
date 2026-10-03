@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 // Project records (agentm-vault § Projects and tasks, "Dreaming enriches a card
@@ -197,7 +199,7 @@ func unionFlowList(existing string, extra []string) (string, bool) {
 		if !strings.HasPrefix(existing, "[") || !strings.HasSuffix(existing, "]") {
 			return "", false
 		}
-		for _, v := range strings.Split(existing[1:len(existing)-1], ",") {
+		for _, v := range fmlist.SplitFlow(existing[1 : len(existing)-1]) {
 			if v = strings.TrimSpace(v); v != "" {
 				values = append(values, v)
 				seen[strings.ToLower(strings.Trim(v, `"'`))] = true
@@ -211,7 +213,7 @@ func unionFlowList(existing string, extra []string) (string, bool) {
 			continue
 		}
 		seen[strings.ToLower(v)] = true
-		values = append(values, yamlScalar(v))
+		values = append(values, flowItem(v))
 		added = true
 	}
 	if !added {

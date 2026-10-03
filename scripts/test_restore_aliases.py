@@ -43,5 +43,19 @@ class RestoreAliases(unittest.TestCase):
         self.assertEqual(ra.note_aliases(block), ["ConsolidateAgent", "sleep cycles"])
 
 
+    # Task 182 release review: a quoted alias holding a comma is one alias, and
+    # a note this reader cannot split is left alone rather than stopping the run.
+    def test_a_quoted_alias_with_a_comma_is_one_alias(self):
+        text = '---\ntitle: x\naliases: ["when the gate fails, who is told", plain]\n---\nbody\n'
+        self.assertEqual(ra.note_aliases(text), ["when the gate fails, who is told", "plain"])
+        after = ra.with_aliases(text, ["another, with a comma"])
+        self.assertEqual(ra.note_aliases(after),
+                         ["when the gate fails, who is told", "plain", "another, with a comma"])
+
+    def test_a_crlf_note_is_left_alone(self):
+        text = '---\r\ntitle: x\r\n---\r\nbody\r\n'
+        self.assertEqual(ra.with_aliases(text, ["lost alias"]), text)
+
+
 if __name__ == "__main__":
     unittest.main()

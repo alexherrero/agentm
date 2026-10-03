@@ -2,9 +2,10 @@ package enrich
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 // The fields an enrichment response cannot know and must not lose: how the
@@ -147,6 +148,13 @@ func carryProvenance(previous, next string, defaultLifecycle bool) string {
 			continue
 		}
 		value := rawFrontmatterValue(previous, key)
+		// A block-list value (`key:` then `  - item` lines) travels whole: the
+		// one-line read above sees it as empty, and a stamp written that way
+		// was lost on the next rewrite (task 182 release review).
+		if block := fmlist.Block(previous, key); value == "" && strings.Contains(block, "\n") {
+			fmt.Fprintf(&add, "\n%s", block)
+			continue
+		}
 		if key == "created" {
 			value = earlierDate(value, rawFrontmatterValue(previous, "captured"))
 		}
@@ -314,84 +322,32 @@ func rawFrontmatterValue(raw, key string) string {
 	return ""
 }
 
-var aliasesLine = regexp.MustCompile(`(?m)^aliases:[ \t]*.*$`)
-
 // mergeAliases is the rendered frontmatter head with the previous note's
-// aliases kept: the previous list first, as written, then any alias the pass
-// added that it did not already hold. A head the pass gave no aliases gains
-// the previous list; a previous note with none leaves the head as it is.
+// aliases kept: the previous list first, then any alias the pass added that it
+// did not already hold, compared case-insensitively. A head the pass gave no
+// aliases gains the previous list; a previous note with none leaves the head as
+// it is. Read and written through fmlist, so a quoted alias holding a comma
+// stays one alias and one holding a quote is not escaped twice (task 182
+// release review).
 func mergeAliases(previous, head string) string {
-	prev := frontmatterList(previous, "aliases")
+	prev := fmlist.Items(previous, "aliases")
 	if len(prev) == 0 {
 		return head
 	}
+	closed := head + "\n---\n"
 	values := make([]string, 0, len(prev))
 	seen := map[string]bool{}
-	for _, v := range prev {
-		if k := strings.ToLower(v); !seen[k] {
-			seen[k] = true
-			values = append(values, yamlScalar(v))
-		}
-	}
-	for _, v := range frontmatterList(head+"\n---", "aliases") {
-		if k := strings.ToLower(v); !seen[k] {
-			seen[k] = true
-			values = append(values, yamlScalar(v))
+	for _, list := range [][]string{prev, fmlist.Items(closed, "aliases")} {
+		for _, v := range list {
+			if k := strings.ToLower(v); !seen[k] {
+				seen[k] = true
+				values = append(values, fmlist.Quote(v))
+			}
 		}
 	}
 	line := "aliases: [" + strings.Join(values, ", ") + "]"
-	if aliasesLine.MatchString(head) {
-		return aliasesLine.ReplaceAllLiteralString(head, line)
+	if out, ok := fmlist.Replace(closed, "aliases", line); ok {
+		return strings.TrimSuffix(out, "\n---\n")
 	}
 	return head + "\n" + line
-}
-
-// frontmatterList is a top-level list's items, unquoted, whether written as a
-// flow list (`[a, "b c"]`), as a block list (`key:` then `  - a` lines) or as a
-// single scalar. Absent is nil.
-func frontmatterList(raw, key string) []string {
-	if !strings.HasPrefix(raw, "---") {
-		return nil
-	}
-	rest := raw[3:]
-	if i := strings.Index(rest, "\n---"); i >= 0 {
-		rest = rest[:i]
-	}
-	lines := strings.Split(rest, "\n")
-	for i, line := range lines {
-		k, v, ok := strings.Cut(line, ":")
-		if !ok || strings.TrimSpace(k) != key || strings.HasPrefix(line, " ") {
-			continue
-		}
-		v = strings.TrimSpace(v)
-		var out []string
-		switch {
-		case v == "":
-			for _, item := range lines[i+1:] {
-				t := strings.TrimSpace(item)
-				if !strings.HasPrefix(t, "- ") {
-					break
-				}
-				if u := unquoteItem(t[2:]); u != "" {
-					out = append(out, u)
-				}
-			}
-		case strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]"):
-			for _, item := range strings.Split(v[1:len(v)-1], ",") {
-				if u := unquoteItem(item); u != "" {
-					out = append(out, u)
-				}
-			}
-		default:
-			if u := unquoteItem(v); u != "" {
-				out = append(out, u)
-			}
-		}
-		return out
-	}
-	return nil
-}
-
-func unquoteItem(s string) string {
-	return strings.Trim(strings.TrimSpace(s), `"'`)
 }

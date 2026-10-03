@@ -143,18 +143,25 @@ func TestTheReadingsReloadWhenTheNightRewritesThem(t *testing.T) {
 		func() time.Time { return stamp })
 
 	now := time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC)
+	// The first refresh after a source is set loads once, so a reading written
+	// between the caller's load and the source going in is never missed.
 	RefreshProjectActivity(now)
-	if loads != 0 {
+	if loads != 1 {
+		t.Fatalf("the first refresh syncs once; loads = %d", loads)
+	}
+	RefreshProjectActivity(now.Add(activityRecheck + time.Second))
+	if loads != 1 {
 		t.Fatalf("an unchanged file is not read again; loads = %d", loads)
 	}
 	reading = map[string]float64{"primos": 0.5}
 	stamp = stamp.Add(24 * time.Hour)
-	RefreshProjectActivity(now.Add(time.Second))
-	if got := ProjectActivityOf("projects/primos/charter.md"); got != 1.0 || loads != 0 {
+	later := now.Add(activityRecheck + 2*time.Second)
+	RefreshProjectActivity(later)
+	if got := ProjectActivityOf("projects/primos/charter.md"); got != 1.0 || loads != 1 {
 		t.Fatalf("inside the recheck window nothing is read: got %v, loads %d", got, loads)
 	}
-	RefreshProjectActivity(now.Add(activityRecheck + time.Second))
-	if got := ProjectActivityOf("projects/primos/charter.md"); got != 0.5 || loads != 1 {
+	RefreshProjectActivity(later.Add(activityRecheck + time.Second))
+	if got := ProjectActivityOf("projects/primos/charter.md"); got != 0.5 || loads != 2 {
 		t.Fatalf("after the window a rewritten file is read once: got %v, loads %d", got, loads)
 	}
 }
@@ -164,5 +171,21 @@ func TestWithNoReadingsNothingRanksByActivity(t *testing.T) {
 	SetProjectActivity(nil)
 	if got := ProjectActivityOf("projects/anything/a.md"); got != 1.0 {
 		t.Errorf("activity = %v with no readings, want 1.0", got)
+	}
+}
+
+// Task 182's release review: the reading the night writes between the caller's
+// load and the source going in must still reach the ranker.
+func TestAReadingWrittenBetweenLoadAndSourceIsNotLost(t *testing.T) {
+	t.Cleanup(func() { SetProjectActivitySource(nil, nil); SetProjectActivity(nil) })
+	file := map[string]float64{"x": 1.0}
+	mtime := time.Unix(100, 0)
+	SetProjectActivity(file)
+	file = map[string]float64{"x": 0.3}
+	mtime = time.Unix(200, 0)
+	SetProjectActivitySource(func() map[string]float64 { return file }, func() time.Time { return mtime })
+	RefreshProjectActivity(time.Now())
+	if got := ProjectActivityOf("projects/x/a.md"); got != 0.3 {
+		t.Fatalf("activity = %v, want the night's 0.3", got)
 	}
 }

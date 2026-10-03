@@ -67,10 +67,15 @@ def note_aliases(text: str) -> list[str]:
 
 def with_aliases(text: str, add: list[str]) -> str:
     """The note with `add` appended to its aliases (a flow list either way)."""
+    parsed = card_shape.split_note(text)
+    if parsed is None:
+        # No frontmatter this reader can split (a CRLF note among them): left
+        # alone rather than stopping the whole plan (task 182 release review).
+        return text
     current = note_aliases(text)
     seen = {a.lower() for a in current}
     merged = current + [a for a in add if a.lower() not in seen]
-    entries, rest = card_shape.split_note(text)
+    entries, rest = parsed
     rendered = "[" + ", ".join(card_shape.quote(a) for a in merged) + "]"
     return card_shape.reorder(card_shape.join_note(card_shape.set_value(entries, "aliases", rendered), rest))
 

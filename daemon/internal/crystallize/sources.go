@@ -288,6 +288,11 @@ func cardsAndTraces(root, vault string) (cards, candidates []Source) {
 			if unquote(fm["consolidated_into"]) != "" {
 				continue
 			}
+			// An instrument is a note a measurement reads, left byte for byte
+			// (task 182): a lesson would stamp it, and the stamp would move it.
+			if unquote(fm["instrument"]) != "" {
+				continue
+			}
 			body := strings.TrimSpace(fmFenceRe.ReplaceAllString(text, ""))
 			s := Source{
 				Rel: rel, Path: path, Kind: KindCard, Project: unquote(fm["project"]),
