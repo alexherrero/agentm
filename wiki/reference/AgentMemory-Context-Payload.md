@@ -42,14 +42,12 @@ All three were kept by hand until 2026-09-07, and all three had drifted: the rul
 
 ## The write path
 
-Chat surfaces read only. The design gives them one write path — an email door: you write the card, mail it to a capture address, and the hourly sweep files it as an untrusted, unfiled note the nightly pass judges like any other candidate.
-
-The door is not built yet; it lands with the surfaces plan. Until then the payload's posture asks a surface to show you the card so you can file it, and it says so rather than pointing you at a mailbox that does not exist. The address lives at `plugins.autonomy.capture_address` in the engine config, and the renderer switches the sentence when it is set.
+Chat surfaces read everywhere and write in exactly one place: `agent/inbox/` in Drive. The payload asks a surface to keep a durable thing as a card, one card per file, drop it in that folder and say what it wrote. Nothing there is filed until you read it and decide where it goes. A surface that cannot reach the folder says so and shows you the card instead; the Gem is one, since a Gem cannot create a file in Drive. (The email door this page once described was retired with the inbox, agentm-vault plan 16.)
 
 ## The four checks that prove a paste took
 
-1. In a fresh chat on each surface, with no priming: *what's our commit-message convention?* It passes when the answer comes from the vault and cites the note's path.
-2. *Where does agentm stand?* It passes when the answer comes from `moc-projects.md` or a tracker's State. This one can only pass after the projects migration writes the trackers.
+1. In a fresh chat on each surface, with no priming: *what's our commit-message convention?* It passes when the answer states the vault's convention. A path is not required: the payload never asks a surface to name the file it read, and the content is the proof. The Gem can reach only the files attached to it, which are the standards, so it is tested on questions those files answer; the convention note sits under `agent/memory/semantic/`, outside its reach, and that is a limit of the surface, not of the paste (ruled 2026-10-02).
+2. *Where does agentm stand?* It passes when the answer comes from `moc-projects.md` or a tracker's State. It could only pass once the projects migration wrote the trackers, which landed in v10.0.0.
 3. *Where does a new capture go?* It passes when the answer names a memory class and `status: unfiled`, and never `_inbox/`, `_always-load/`, `_index.md` or `_harness/`.
 4. From any session: a Drive title search for `storage-rules.md`, `user-preferences.md` and `index.md` returns exactly one file each, and the doctor reports the Gemini managed section equal to the template. (Before the memory-root trims folded it in, this checked `voice-kernel.md`; a migrated vault holds the voice content inside `user-preferences.md` instead.)
 
