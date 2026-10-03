@@ -323,7 +323,9 @@ def run_engine(topics: "list[str]", runner, *, days: int = 30) -> Engine:
     script, py = engine_script(), find_python()
     if not py or not script.is_file():
         return Engine(note="the last30days engine is not installed here")
-    argv = [py, str(script), " / ".join(topics[:3]), "--emit=compact", "--quick",
+    # One plain topic: joined with " / " the engine reads a comparison ("a vs b vs c")
+    # and changes its output shape. The plan below carries every topic.
+    argv = [py, str(script), topics[0], "--emit=compact", "--quick",
             "--days", str(days), "--plan", json.dumps(build_plan(topics))]
     try:
         code, out, err = runner(argv, None, None, ENGINE_TIMEOUT_SEC)
@@ -566,8 +568,10 @@ def sources_line(run: ClaudeRun, engine: Engine) -> str:
         parts.append(f"web search ({run.tools['WebSearch']} queries)")
     if run.tools.get("WebFetch"):
         parts.append(f"{run.tools['WebFetch']} pages read")
-    parts.append(f"last30days engine ({engine.sources})" if engine.sources
-                 else f"no social layer ({engine.note or 'no engine output'})")
+    if engine.text:
+        parts.append(f"last30days engine ({engine.sources})" if engine.sources else "last30days engine")
+    else:
+        parts.append(f"no social layer ({engine.note or 'no engine output'})")
     return ", ".join(parts)
 
 

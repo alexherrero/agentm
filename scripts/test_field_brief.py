@@ -315,6 +315,8 @@ class RunSettingsTests(Base):
         plan = json.loads(argv[argv.index("--plan") + 1])
         self.assertEqual([s["search_query"] for s in plan["subqueries"]], ["agent memory", "agent skills"])
         self.assertIn("--emit=compact", argv)
+        # One plain topic, never "a / b": the engine reads that as a comparison.
+        self.assertEqual(argv[2], "agent memory")
         # and the model is never handed a way to run it
         self.assertNotIn("Bash", json.loads(r.claude[0]["argv"][r.claude[0]["argv"].index("--settings") + 1])
                          ["permissions"]["allow"])
@@ -386,6 +388,13 @@ class WeeklyNoteTests(Base):
         self.assertEqual(out.code, fb.EXIT_OK)
         self.assertEqual(r.calls, [], "nothing was run")
         self.assertEqual(out.record["total_cost_usd"], 0.0)
+
+    def test_an_engine_that_ran_without_a_sources_line_is_still_named(self):
+        r = FakeRunner(stream([_item(1)]), engine_out="# last30days\n\n### 1. A thing\n   - URL: https://x.example/\n")
+        self.run_brief(r)
+        text = self.note().read_text(encoding="utf-8")
+        self.assertIn("last30days engine", text)
+        self.assertNotIn("no social layer", text)
 
     def test_the_header_says_so_when_the_engine_is_unavailable(self):
         r = FakeRunner(stream([_item(1)]), engine_out="", engine_code=1)
