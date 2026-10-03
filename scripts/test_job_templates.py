@@ -123,9 +123,15 @@ class JobTemplatesLoad(unittest.TestCase):
         for name in night:
             self.assertEqual(loaded[name].window_minutes, (120, 360), name)
         self.assertEqual(sorted(night, key=lambda n: (loaded[n].order, n)), night)
+        # The weekly field brief (task 185) is the one deliberate evening job: it
+        # has no reason to queue behind the night's enrichment and crystallize
+        # phase, and its first run is a supervised Sunday evening.
+        evening = ["field-brief-weekly"]
+        for name in evening:
+            self.assertEqual(loaded[name].window_minutes, (18 * 60, 23 * 60), name)
         # Nothing else is windowed: the hourly sweep and the shepherds are not
         # night work, and a window on them would stall them all day.
-        others = [n for n, j in loaded.items() if j.window and n not in night]
+        others = [n for n, j in loaded.items() if j.window and n not in night and n not in evening]
         self.assertEqual(others, [])
 
     def test_the_second_spending_job_ships_off_and_declares_its_budget(self):

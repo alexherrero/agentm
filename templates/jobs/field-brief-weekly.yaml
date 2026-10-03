@@ -1,0 +1,73 @@
+# field-brief-weekly.yaml — the weekly field brief (task 185).
+#
+# One note a week at resources/briefs/<YYYY-MM-DD>-field-brief.md and the same
+# text by email: at most ten links to what is new in agent harnesses, memory,
+# automation and skills, each ranked against the roadmap's What remains and the
+# open designs. It replaced forward learning, whose daily pass wrote a watchlist
+# nobody read.
+#
+# Per agentm-runner.md's job-manifest contract — the as-built schema is
+# scripts/runner/manifest.py, which this file follows.
+#
+# .harness/jobs/ is gitignored (per-project runtime state), so this templates/
+# copy is the tracked, shipped source. Register it by copying it to
+# .harness/jobs/field-brief-weekly.yaml on the machine that runs the runner, and
+# edit the live file in place afterwards: a second copy overwrites it.
+#
+# Register it on the day the first brief should run, not before. The runner has
+# no weekday key: `weekly` means last run plus seven days, snapped to the window,
+# so the weekday is whichever day the first run lands on, and a job registered
+# on a Tuesday afternoon runs that evening. The plan puts the first run on a
+# Sunday evening, with the operator there to confirm the email.
+schedule: weekly
+
+# A week the machine sleeps through catches up within two days, which moves the
+# anchor a day later. That is accepted, not fought; if two weeks in a row are
+# missed, move the cadence or revisit a cloud-scheduled routine.
+lookback: 2d
+
+# The evening, not the night: the night's window (02:00-06:00) is the enrichment
+# batch's and the weekly crystallize phase's, and the brief has no reason to
+# queue behind either.
+window: "18:00-23:00"
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention), with
+# MEMORY_ROOT exported by the runner itself. The script runs one `claude -p` from
+# a scratch directory with hooks off and only WebSearch and WebFetch, and mails
+# the note through scripts/health/session_email.py's mail path; absent that path
+# the send is skipped and logged, and the note is written anyway. Its last stdout
+# line is a JSON object with `total_cost_usd`, which the runner reads as this
+# job's cost. `--no-mail` writes the note without the email.
+command: python3 ../harness/skills/memory/scripts/field_brief.py
+
+# Spends model calls, over external pages, unattended. The same tier every other
+# job that calls a model carries.
+tier: T3
+
+# Declared so the runner knows this job spends: the fleet's daily dollar ceiling
+# (`.harness/budget.yaml`, $30 when unset) gates only jobs that declare a budget.
+#
+# The number is this job's own line. The measurement behind it is task 185's
+# engine-check: a Sonnet run of the whole question cost $1.08 and read about 1.2
+# million tokens, nearly all of it the cached prompt floor re-read each turn; the
+# shipped script's first live run (an --ask) cost $0.28 in ten turns. 1.5 million
+# leaves room for a run that searches more, and the script's own cap
+# (--max-budget-usd 4) is what stops one that runs away.
+#
+# Third paid job, so the fleet ceiling was re-audited when this registered, as
+# cycle.py's own comment asks. The nightly batch's measured night is about $22
+# (that comment's figure; the night of 2026-10-03 reported $0.00 because the
+# claude login had lapsed), the weekly crystallize phase reported $8.44 on
+# 2026-09-28, and this is about $1.1. The ceiling counts cost reported in the
+# past 20 hours, so the three sum to about $31.5 only if all three ran inside
+# one 20-hour window. On schedule they do not: crystallize anchors on Mondays
+# and this on Sunday evening. The default stands. Re-audit it if crystallize's
+# anchor drifts onto the brief's day, or when a fourth paid job registers.
+budget:
+  tokens: 1500000
+
+# Not a dry run: the job's whole output is the note and the email, and its gates
+# are the audit of the run's tools, the validated JSON, the ten-item cap and the
+# seen-list. The first run is supervised by hand, which is what a dry-run flag
+# would otherwise stand in for.
+dry_run: false

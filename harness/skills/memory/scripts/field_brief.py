@@ -7,7 +7,8 @@ operator receives: at most ten items, each a link, two sentences on what it is
 and one on why it matters to the work in flight, ranked against the roadmap's
 *What remains* and the open designs.
 
-    field_brief.py                       the weekly run: writes the note
+    field_brief.py                       the weekly run: writes the note, mails it
+    field_brief.py --no-mail             the same, without the email
     field_brief.py --ask "<question>"    the same engine, prints, writes nothing
     field_brief.py --deep                the strong tier, for an occasional pass
     field_brief.py keep <note> <n> --why "<why>"
@@ -44,6 +45,7 @@ the operator's (`claude`, then `/login`).
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -106,6 +108,7 @@ EXIT_AUDIT = 4
 EXIT_BUDGET = 5
 EXIT_RUN = 6
 EXIT_PARSE = 7
+EXIT_MAIL = 8                 # the note is written; a configured mail path failed
 
 
 # ── addresses ────────────────────────────────────────────────────────────────
@@ -538,6 +541,91 @@ def drop_seen(items: "list[Item]", seen: "dict[str, str]") -> "tuple[list[Item],
     return fresh, len(items) - len(fresh)
 
 
+# ── the email ────────────────────────────────────────────────────────────────
+
+def mailed_path() -> Path:
+    return engine_state.engine_state_dir() / "field-brief" / "mailed.jsonl"
+
+
+def already_mailed(path: Path, note_name: str) -> bool:
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                if json.loads(line).get("note") == note_name:
+                    return True
+            except (ValueError, AttributeError):
+                continue
+    except OSError:
+        pass
+    return False
+
+
+def record_mailed(path: Path, note_name: str, day: date, reply: "str | None") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"note": note_name, "mailed": day.isoformat(),
+                             "relay_reply": reply}) + "\n")
+
+
+def load_mailer():
+    """`session_email.send`, loaded by file path from this checkout, or None.
+
+    The daily email's own module is the mail path (its config reader and sender,
+    unchanged); this file reaches it rather than keeping a second copy of the
+    credential handling. A checkout without `scripts/health/` has no mail path,
+    and the run says so."""
+    path = _REPO / "scripts" / "health" / "session_email.py"
+    if not path.is_file():
+        return None
+    here = str(path.parent)
+    added = here not in sys.path
+    if added:
+        sys.path.insert(0, here)
+    try:
+        spec = importlib.util.spec_from_file_location("field_brief_session_email", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return getattr(mod, "send", None)
+    except Exception:
+        return None
+    finally:
+        if added:
+            try:
+                sys.path.remove(here)
+            except ValueError:
+                pass
+
+
+def email_text(note_text: str, note: Path) -> str:
+    """The note as an email: no frontmatter, no keep boxes (they only work in the
+    note), and a footer saying how to keep an item."""
+    body = _FRONTMATTER.sub("", note_text, count=1)
+    body = "\n".join(l for l in body.split("\n") if l.strip() not in (_BOX_OPEN, _BOX_DONE))
+    body = re.sub(r"\n{3,}", "\n\n", body).strip()
+    return (f"{body}\n\n--\nTo keep an item as a reference card:\n"
+            f"  python3 {Path(__file__).resolve()} keep {note.name[:10]} <item number> --why \"<why>\"\n"
+            f"The note: {note}\n")
+
+
+def deliver_mail(note: Path, day: date, *, enabled: bool, mailer, mailed_state: Path) -> dict:
+    """Mail the note once. A skip is returned and logged by the caller, never
+    silent; a configured path that fails is a failure the exit code reports."""
+    if not enabled:
+        return {"sent": False, "skipped": "--no-mail"}
+    if already_mailed(mailed_state, note.name):
+        return {"sent": False, "skipped": "already mailed"}
+    mailer = mailer or load_mailer()
+    if mailer is None:
+        return {"sent": False, "skipped": "the mail module is not in this checkout"}
+    subject = f"Field brief — week of {day.isoformat()}"
+    result = mailer(subject, email_text(note.read_text(encoding="utf-8"), note))
+    if result.get("sent"):
+        record_mailed(mailed_state, note.name, day, result.get("relay_reply"))
+        return {"sent": True, "relay_reply": result.get("relay_reply")}
+    return {"sent": False, "skipped": result.get("skipped") or "not sent",
+            "failed": bool(result.get("configured"))}
+
+
 # ── the note ─────────────────────────────────────────────────────────────────
 
 def briefs_dir(vault: Path) -> Path:
@@ -612,18 +700,23 @@ class Outcome:
 
 def run_brief(vault: Path, *, ask: "str | None" = None, deep: bool = False,
               today: "date | None" = None, runner=None, designs_dir: "Path | None" = None,
-              state_path: "Path | None" = None) -> Outcome:
+              state_path: "Path | None" = None, mail: bool = True, mailer=None,
+              mailed_state: "Path | None" = None) -> Outcome:
     today = today or date.today()
     runner = runner or _subprocess_runner
     state_path = state_path or seen_path()
+    mailed_state = mailed_state or mailed_path()
     weekly = ask is None
     note = note_path(vault, today)
     if weekly and note.is_file():
         # A second fire in one day (a runner catch-up, a double click) must not
-        # buy a second brief: the first is the week's.
-        return Outcome(EXIT_OK, f"already written: {note}", path=note,
-                       record={"job": "field-brief", "date": today.isoformat(), "total_cost_usd": 0.0,
-                               "skipped": "already-written"})
+        # buy a second brief: the first is the week's. It may still owe its
+        # email, though, and that costs nothing.
+        mail_rec = deliver_mail(note, today, enabled=mail, mailer=mailer, mailed_state=mailed_state)
+        return Outcome(EXIT_MAIL if mail_rec.get("failed") else EXIT_OK, f"already written: {note}",
+                       path=note, record={"job": "field-brief", "date": today.isoformat(),
+                                          "total_cost_usd": 0.0, "skipped": "already-written",
+                                          "mail": mail_rec})
 
     prefs = read_prefs(vault)
     seen = load_seen(state_path, today=today)
@@ -665,7 +758,9 @@ def run_brief(vault: Path, *, ask: "str | None" = None, deep: bool = False,
                                    engine=engine, repeats=repeats))
     record_seen(state_path, [i.url for i in items], today=today)
     record["note"] = str(note)
-    return Outcome(EXIT_OK, record=record, path=note)
+    mail_rec = deliver_mail(note, today, enabled=mail, mailer=mailer, mailed_state=mailed_state)
+    record["mail"] = mail_rec
+    return Outcome(EXIT_MAIL if mail_rec.get("failed") else EXIT_OK, record=record, path=note)
 
 
 # ── keep ─────────────────────────────────────────────────────────────────────
@@ -750,10 +845,11 @@ def _parser() -> argparse.ArgumentParser:
     k.add_argument("--vault-path", dest="keep_vault_path")
     p.add_argument("--ask", metavar="QUESTION", help="answer one question; writes no note")
     p.add_argument("--deep", action="store_true", help="the strong tier, for an occasional pass")
+    p.add_argument("--no-mail", action="store_true", help="write the note but do not email it")
     return p
 
 
-def main(argv: "list[str] | None" = None, *, runner=None) -> int:
+def main(argv: "list[str] | None" = None, *, runner=None, mailer=None) -> int:
     args = _parser().parse_args(argv)
     vault = _resolve_vault(getattr(args, "keep_vault_path", None) or args.vault_path)
     if vault is None:
@@ -767,11 +863,16 @@ def main(argv: "list[str] | None" = None, *, runner=None) -> int:
         out = keep_item(vault, note, args.item, args.why)
         print(out.message, file=sys.stderr if out.code else sys.stdout)
         return out.code
-    out = run_brief(vault, ask=args.ask, deep=args.deep, runner=runner)
+    out = run_brief(vault, ask=args.ask, deep=args.deep, runner=runner, mail=not args.no_mail,
+                    mailer=mailer)
     if out.text:
         print(out.text)
     if out.message:
         print(f"[field-brief] {out.message}", file=sys.stderr)
+    mail_rec = out.record.get("mail") or {}
+    if mail_rec and not mail_rec.get("sent"):
+        # A skipped email is logged, never silent.
+        print(f"[field-brief] mail not sent: {mail_rec.get('skipped')}", file=sys.stderr)
     # The runner reads the last stdout line as the job's cost report.
     print(json.dumps(out.record))
     return out.code
