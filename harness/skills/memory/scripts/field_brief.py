@@ -427,6 +427,7 @@ def parse_stream(stdout: str) -> ClaudeRun:
     run = ClaudeRun()
     uses: "dict[str, int]" = {}
     result = None
+    init_model = ""
     for line in stdout.splitlines():
         line = line.strip()
         if not line.startswith("{"):
@@ -436,6 +437,8 @@ def parse_stream(stdout: str) -> ClaudeRun:
         except ValueError:
             continue
         kind, sub = str(e.get("type", "")), str(e.get("subtype", ""))
+        if kind == "system" and sub == "init":
+            init_model = str(e.get("model") or "")
         if "hook" in kind or "hook" in sub:
             run.violations.append(f"hook event: {kind}/{sub}")
         if kind == "assistant":
@@ -455,7 +458,11 @@ def parse_stream(stdout: str) -> ClaudeRun:
     run.subtype = str(result.get("subtype") or "")
     run.is_error = bool(result.get("is_error"))
     usage = result.get("modelUsage") or {}
-    run.model = max(usage, key=lambda m: (usage[m] or {}).get("costUSD", 0), default="")
+    # The session's own model, from the init event. The costliest entry in the
+    # usage table is only a fallback: `WebFetch` bills a Haiku page summariser,
+    # and on a run that fetched a lot it out-spent the model that wrote the brief,
+    # so a note's header named Haiku.
+    run.model = init_model or max(usage, key=lambda m: (usage[m] or {}).get("costUSD", 0), default="")
     if run.is_error:
         run.error = run.text or run.subtype
     denied = {str(d.get("tool_name")) for d in (result.get("permission_denials") or [])

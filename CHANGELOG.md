@@ -37,6 +37,10 @@ Forward learning is retired, and a weekly field brief is replacing it (task 185)
 - **The Experience design's Forward experience section** now records the retirement and the brief that replaces it, with the amendment-log row in the same change; the Memory System, Vault, HLD, Runner and Opinions designs and the Memory Daemon reference page are reconciled to match.
 - **`TestThePackagedContractDampensTheWatchlistAndWallsTheTemplates` is now `TestThePackagedContractDampensTheBriefsAndWallsTheTemplates`.** The watchlist was `resources/`'s one dampened corner and the weekly brief takes its place; the test asserts the brief and the inbox are dampened and a topic card is not.
 
+### Fixed
+
+- **A brief's header names the model that wrote it (task 185).** `field_brief.py` took the model from the costliest entry in the run's usage table, and on a run that fetched many pages the Haiku summariser behind `WebFetch` out-spent the model that wrote the brief, so the first live `--ask` recorded Haiku. It now reads the model from the stream's init event and keeps the costliest as the fallback; two tests.
+
 ## [10.4.0] - 2026-10-02
 
 Recall stops losing good answers to bookkeeping, and a note the night moves stays the same file. This release ships task 182 (#797), which closes the retrieval gate's gap after #749 and Plan D, and task 180's move-by-rename. It also carries the merged steps of task 181 (#790–#795: a judgment keyed to what enrichment reads, a ledger that survives a schema change, a batch taken by cause, an unchanged judgment that writes nothing); that task's own entry lands with its close-out.

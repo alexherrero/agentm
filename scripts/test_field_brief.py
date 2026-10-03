@@ -124,10 +124,13 @@ def _item(n, url=None, **kw):
 
 
 def stream(items=None, *, reply=None, cost=1.08, tools=(("WebSearch", 5), ("WebFetch", 4)),
-           denials=(), events=(), is_error=False, subtype="success", model="claude-sonnet-5"):
-    """A canned `--output-format stream-json` run."""
+           denials=(), events=(), is_error=False, subtype="success", model="claude-sonnet-5",
+           init_model=True, haiku_share=0.1):
+    """A canned `--output-format stream-json` run. The init event names the
+    session's model, as the real one does; `haiku_share` is the fraction of the
+    cost billed to the page summariser behind `WebFetch`."""
     text = reply if reply is not None else json.dumps({"items": items or []})
-    lines = [json.dumps({"type": "system", "subtype": "init"})]
+    lines = [json.dumps({"type": "system", "subtype": "init", **({"model": model} if init_model else {})})]
     for name, count in tools:
         for i in range(count):
             lines.append(json.dumps({"type": "assistant", "message": {"content": [
@@ -136,7 +139,8 @@ def stream(items=None, *, reply=None, cost=1.08, tools=(("WebSearch", 5), ("WebF
     lines.append(json.dumps({
         "type": "result", "subtype": subtype, "is_error": is_error, "result": text,
         "total_cost_usd": cost, "duration_ms": 150000, "num_turns": 16,
-        "modelUsage": {model: {"costUSD": cost * 0.9}, "claude-haiku-4-5-20251001": {"costUSD": cost * 0.1}},
+        "modelUsage": {model: {"costUSD": cost * (1 - haiku_share)},
+                       "claude-haiku-4-5-20251001": {"costUSD": cost * haiku_share}},
         "permission_denials": [{"tool_name": n} for n in denials]}))
     return "\n".join(lines)
 
@@ -605,6 +609,18 @@ class FailureTests(Base):
     def test_the_cost_is_reported_even_when_the_run_fails(self):
         out = self.run_brief(FakeRunner(stream(reply="no json here", cost=0.77)))
         self.assertEqual(out.record["total_cost_usd"], 0.77)
+
+
+class ModelLabelTests(unittest.TestCase):
+    def test_the_model_is_the_sessions_own_even_when_the_page_summariser_costs_more(self):
+        # The first live --ask billed more to Haiku (WebFetch's summariser) than to
+        # the model that wrote the brief, and the record named Haiku.
+        run = fb.parse_stream(stream([_item(1)], model="claude-sonnet-5-5", haiku_share=0.6))
+        self.assertEqual(run.model, "claude-sonnet-5-5")
+
+    def test_without_an_init_model_the_costliest_is_the_fallback(self):
+        run = fb.parse_stream(stream([_item(1)], model="claude-sonnet-5-5", init_model=False))
+        self.assertEqual(run.model, "claude-sonnet-5-5")
 
 
 class ParseItemsTests(unittest.TestCase):
