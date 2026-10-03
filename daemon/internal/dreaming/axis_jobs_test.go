@@ -1,6 +1,7 @@
 package dreaming
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -369,5 +370,50 @@ func TestAHandMoveDuringTheRunIsSkippedNamedAndRepaired(t *testing.T) {
 	}
 	if !strings.Contains(text, moved) {
 		t.Error("the facet does not say where reconcile found it")
+	}
+}
+
+// Task 186: a note the operator edited stays touched every night, and the
+// facet named it every night — the 2026-09-30 and 10-01 facets were the same
+// five lines. It is named on the first night only, however many nights pass,
+// and a note touched later is still named on its own first night.
+func TestTheFacetNamesAHandEditedNoteOnItsFirstNightOnly(t *testing.T) {
+	vault := t.TempDir()
+	root := filepath.Join(vault, "agent")
+	for _, d := range []string{root, filepath.Join(vault, ".obsidian"), filepath.Join(vault, "calendar")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	contract := axisContract(t)
+	night := func(day int, touched ...string) string {
+		t.Helper()
+		now := time.Date(2026, 9, day, 9, 0, 0, 0, time.UTC)
+		var moves []Move
+		for _, rel := range touched {
+			moves = append(moves, Move{rel, 0})
+		}
+		rep := &Report{Plan: LifecyclePlan{
+			Demoted: []Move{{fmt.Sprintf("memory/semantic/sank-%d.md", day), 400}},
+			Touched: moves,
+		}}
+		plan := PlanDreamingFacet(root, contract, rep, now)
+		if len(plan.Intents) != 1 {
+			t.Fatalf("night %d: %d intents", day, len(plan.Intents))
+		}
+		applyEntityIntents(t, root, plan.Intents)
+		return string(plan.Intents[0].After)
+	}
+	first := night(18, "memory/semantic/edited.md")
+	second := night(19, "memory/semantic/edited.md")
+	third := night(20, "memory/semantic/edited.md", "memory/semantic/later.md")
+	if !strings.Contains(first, "## Left alone") || !strings.Contains(first, "memory/semantic/edited.md") {
+		t.Errorf("the first night does not name the edited note:\n%s", first)
+	}
+	if strings.Contains(second, "## Left alone") {
+		t.Errorf("the second night named it again:\n%s", second)
+	}
+	if strings.Contains(third, "memory/semantic/edited.md") || !strings.Contains(third, "memory/semantic/later.md") {
+		t.Errorf("the third night should name only the newly edited note:\n%s", third)
 	}
 }
