@@ -37,7 +37,7 @@ type yamlFields struct {
 }
 
 // listKeys are the list-valued keys the reader collects.
-var listKeys = map[string]bool{"code_paths": true, "repositories": true}
+var listKeys = map[string]bool{"code_paths": true, "repositories": true, "former_names": true}
 
 func readFields(path string) yamlFields {
 	out := yamlFields{lists: map[string][]string{}}
@@ -78,18 +78,12 @@ func readFields(path string) yamlFields {
 	return out
 }
 
-// Repositories maps every project's slug to the repositories its project.yaml
-// lists, as `owner/repo` in lower case. A finished project under
-// `projects/completed/` is read too: its notes still name its repo. A project
-// that lists none maps to an empty list, so a caller can tell "no repository"
-// from "no such project".
-//
-// This is how a bare `#12` in a note learns which repo it means (task 179): a
-// note in a project that lists exactly one repository means that repository.
-func Repositories(vaultRoot string) map[string][]string {
-	out := map[string][]string{}
+// eachProject calls fn once for every project.yaml, active projects and the
+// finished ones under `projects/completed/`, in path order. The first file to
+// claim a slug wins, so a finished copy never shadows the live project.
+func eachProject(vaultRoot string, fn func(slug string, fields yamlFields)) {
 	if vaultRoot == "" {
-		return out
+		return
 	}
 	var files []string
 	for _, pattern := range []string{
@@ -100,24 +94,109 @@ func Repositories(vaultRoot string) map[string][]string {
 		files = append(files, found...)
 	}
 	sort.Strings(files)
+	seen := map[string]bool{}
 	for _, f := range files {
 		fields := readFields(f)
 		slug := fields.slug
 		if slug == "" {
 			slug = filepath.Base(filepath.Dir(f))
 		}
-		if _, seen := out[slug]; seen {
+		if seen[slug] {
 			continue
 		}
-		repos := []string{}
-		for _, r := range fields.lists["repositories"] {
-			r = strings.ToLower(strings.Trim(strings.TrimSpace(r), "/"))
-			if strings.Count(r, "/") == 1 && !strings.HasPrefix(r, "/") {
-				repos = append(repos, r)
+		seen[slug] = true
+		fn(slug, fields)
+	}
+}
+
+// repoNames is a list's `owner/repo` entries in lower case, the malformed ones
+// left out.
+func repoNames(values []string) []string {
+	repos := []string{}
+	for _, r := range values {
+		r = strings.ToLower(strings.Trim(strings.TrimSpace(r), "/"))
+		if strings.Count(r, "/") == 1 && !strings.HasPrefix(r, "/") {
+			repos = append(repos, r)
+		}
+	}
+	return repos
+}
+
+// Repositories maps every project's slug to the repositories its project.yaml
+// lists, as `owner/repo` in lower case. A finished project under
+// `projects/completed/` is read too: its notes still name its repo. A project
+// that lists none maps to an empty list, so a caller can tell "no repository"
+// from "no such project".
+//
+// This is how a bare `#12` in a note learns which repo it means (task 179): a
+// note in a project that lists exactly one repository means that repository.
+func Repositories(vaultRoot string) map[string][]string {
+	out := map[string][]string{}
+	eachProject(vaultRoot, func(slug string, fields yamlFields) {
+		out[slug] = repoNames(fields.lists["repositories"])
+	})
+	return out
+}
+
+// FormerNames maps a repository's former `owner/repo` to its current one, both
+// in lower case, from the `former_names` of every project that lists exactly
+// one repository (task 186). GitHub redirects a renamed repository, so an old
+// note's `alexherrero/agentic-harness` is today's `alexherrero/agentm`. A former
+// name that is some project's current repository is left out: it is not former.
+func FormerNames(vaultRoot string) map[string]string {
+	out := map[string]string{}
+	current := map[string]bool{}
+	eachProject(vaultRoot, func(slug string, fields yamlFields) {
+		repos := repoNames(fields.lists["repositories"])
+		for _, r := range repos {
+			current[r] = true
+		}
+		if len(repos) != 1 {
+			return
+		}
+		for _, old := range repoNames(fields.lists["former_names"]) {
+			if old != repos[0] {
+				out[old] = repos[0]
 			}
 		}
-		out[slug] = repos
+	})
+	for old := range out {
+		if current[old] {
+			delete(out, old)
+		}
 	}
+	return out
+}
+
+// Clones maps each repository, as `owner/repo` in lower case, to the folder of
+// its clone on this machine, from the projects' `code_paths` (task 186). A
+// project that lists one repository gives it the first of its paths that is a
+// git checkout; a project that lists several matches a path to the repository
+// whose name is the path's folder name. A repository with no checkout here is
+// absent, and a caller treats it as unknown rather than empty.
+func Clones(vaultRoot string) map[string]string {
+	out := map[string]string{}
+	eachProject(vaultRoot, func(slug string, fields yamlFields) {
+		repos := repoNames(fields.lists["repositories"])
+		for _, p := range fields.lists["code_paths"] {
+			dir := realPath(p)
+			if dir == "" {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+				continue
+			}
+			for _, r := range repos {
+				_, name, _ := strings.Cut(r, "/")
+				if _, taken := out[r]; taken {
+					continue
+				}
+				if len(repos) == 1 || strings.EqualFold(filepath.Base(dir), name) {
+					out[r] = dir
+				}
+			}
+		}
+	})
 	return out
 }
 

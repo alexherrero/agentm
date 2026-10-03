@@ -72,6 +72,20 @@ class TheGate(unittest.TestCase):
                      "unknown key `owner`"):
             self.assertIn(want, text)
 
+    def test_former_names_are_a_list_of_repositories_for_a_one_repository_project(self):
+        # Task 186: a renamed repository's old names, which the entity builder
+        # folds into its page. They need one repository to belong to.
+        _project(self.vault, "alpha", GOOD.format(slug="alpha") + "former_names:\n  - owner/old-alpha\n")
+        self.assertEqual(self.scan(), [])
+        _project(self.vault, "beta", GOOD.format(slug="beta") + "former_names: owner/old-beta\n")
+        _project(self.vault, "gamma", "slug: gamma\ntitle: G\nstatus: active\nrepositories: [o/g1, o/g2]\n"
+                 "code_paths: []\nformer_names: [o/old, not-a-repo]\n")
+        text = "\n".join(self.scan())
+        for want in ("projects/beta/project.yaml: `former_names` must be a list",
+                     "former name `not-a-repo` is not `owner/repo`",
+                     "projects/gamma/project.yaml: `former_names` needs exactly one repository"):
+            self.assertIn(want, text)
+
     def test_the_template_is_held_to_the_schema_without_a_slug(self):
         t = self.vault / "standards" / "templates"
         t.mkdir(parents=True)
