@@ -31,6 +31,7 @@
 - [Archive a finished project](Archive-A-Finished-Project)
 - [Tune the archive](Tune-The-Archive)
 - [Read the morning note and the nightly scorecard](Read-The-Nightly-Scorecards)
+- [Read the weekly field brief](Read-The-Weekly-Field-Brief)
 - [Review flagged memories](Review-Flagged-Memories)
 - [Use the daily calendar](Use-The-Daily-Calendar)
 ### 📖 [Reference](Reference)
