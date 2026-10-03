@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.4.0] - 2026-10-03
+
+Recall stops losing good answers to bookkeeping, and a note the night moves stays the same file. This release ships task 182 (#797), which closes the retrieval gate's gap after #749 and Plan D, and task 180's move-by-rename. It also carries the merged steps of task 181 (#790–#795: a judgment keyed to what enrichment reads, a ledger that survives a schema change, a batch taken by cause, an unchanged judgment that writes nothing); that task's own entry lands with its close-out.
+
 Recall stops losing good answers to bookkeeping (task 182, #797). The retrieval gate's gap after #749 and Plan D traced to defects that nightly passes were writing into the vault: enrichment dropped the stamps other writers leave and every alias, a lesson's demotion applied whether or not the lesson answered, project activity counted machine writes and froze into the index, entity pages dated notes by file, and nothing embedded before the nightly gate. Each is fixed with a test that fails without it, and every question the gate still misses against the 2026-09-19 baseline has a named cause in `scripts/health/fixtures/week1-gold/REPIN-QUEUE.md`. No re-pin and no gold-set edit. Operator rulings of 2026-10-01 in `agentm-vault` and `agentm-rescope-filing`.
 
 A note the night moves stays the same file (task 180). Google Drive for Desktop mirrors the vault, and the dreaming journal used to move a note by writing a copy at its new path and deleting the original. Drive read every move as a new file plus a trashed one, so every device syncing from Drive downloaded the note again. Plan B's 675 moved task files all reached the operator's phone that way. A move is now a rename. Its code went out in 10.3.0 without an entry; this is the entry. Based on the 2026-09-29 phone-sync diagnosis, `agent/diagnostics/2026-09-29-phone-sync-count.md` in the vault.

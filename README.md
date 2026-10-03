@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v10.3.0](https://github.com/alexherrero/agentm/releases/tag/v10.3.0).** The AgentKV convergence closes. A memory is saved once and knows its project, and the vault gains its first entity pages: ask about a repository, an issue or a release by name and its page, listing every note that mentions it, comes first.
+> **Latest release: [v10.4.0](https://github.com/alexherrero/agentm/releases/tag/v10.4.0).** Recall stops losing good answers to bookkeeping. Nightly passes keep the stamps and aliases other writers leave, a lesson demotes the cards that taught it only where it answers too, a project ranks by the work done in it, and a note the night moves stays the same file.
 
 ---
 
