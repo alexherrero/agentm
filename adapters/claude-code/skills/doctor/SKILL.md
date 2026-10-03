@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Verify the agentm install in this project is correctly wired up. Trigger when the user says "check my harness install", "is the harness working", "run doctor", or invokes /doctor. Default mode is structural only (no tokens, <5s) — checks that expected phase commands, sub-agents, skills, state files, and hooks are present and parseable. The --live flag adds real sub-agent dispatches and skill dry-runs to prove end-to-end wiring (~30–90s, moderate token cost). Never installs or mutates state; reports gaps and points at install.sh.
+description: Verify the agentm install in this project is correctly wired up. Trigger when the user says "check my harness install", "is the harness working", "run doctor", or invokes /doctor. Default mode is structural only (no tokens, <5s) — checks that expected phase commands, sub-agents, skills, state files, and hooks are present and parseable. The --live flag adds real sub-agent dispatches and skill dry-runs to prove end-to-end wiring (a few minutes, moderate token cost). Never installs or mutates state; reports gaps and points at install.sh.
 ---
 
 You are running the `doctor` skill. Full canonical spec: `harness/skills/doctor.md` in the agentm repo. The summary below is the operational version.
@@ -21,7 +21,7 @@ You are running the `doctor` skill. Full canonical spec: `harness/skills/doctor.
 | **Antigravity** | `.agents/rules/` present, no `.claude/` | crickets-provided (`.agents/workflows/*.md` if paired) | `.agents/skills/*/` (memory agents; review agents crickets-provided) | `.agents/skills/*/` | none — skip |
 | **Gemini CLI** | `.gemini/settings.json` present, no `.claude/` | crickets-provided (`.gemini/commands/*.toml` if paired) | crickets-provided (`.gemini/agents/*.md` if paired) | `.agents/skills/*/` (shared delivery) | none — skip |
 
-- **Resolve the install prefix** before checking: `$AGENTM_INSTALL_PREFIX` → `~/.claude`. That is the only place agentm installs; use it as `$ROOT`. A populated `<project>/.claude/` is residue from the retired per-project install — do not validate it, but if one exists alongside a healthy install, report `[WARN] legacy per-project tree at <project>/.claude/ — no longer used; safe to delete`.
+- **Resolve the install prefix** before checking: `$AGENTM_INSTALL_PREFIX` → `~/.claude`. That is the only place agentm installs; use it as `$ROOT`. A `<project>/.claude/` holding `agents/`, `skills/` or `commands/` is residue from the retired per-project install (a repo's own `settings.json`, `settings.local.json`, `hooks/` and `worktrees/` are repo-scope configuration, not residue) — do not validate it, but if one exists alongside a healthy install, report `[WARN] legacy per-project tree at <project>/.claude/ — no longer used; safe to delete`.
 - **Antigravity** reads `.agents/` (the 2.0 default; `.agent/` singular is the pre-V4 #22 legacy path, migrated on `--update`). Its sub-agents *and* skills both live under `.agents/skills/`. Always-on rules: `.agents/rules/harness.md` + `.agents/rules/agentmemory-context.md`.
 - **No hook surface on Antigravity / Gemini** — skip the hook-wiring check (#6) and the hook/SessionStart probes (#6–#7); report them `[SKIP] no hook surface on <host>`, never FAIL.
 - **None detected** — abort: `doctor: no agentm install detected (.claude/, .agents/, or .gemini/) — run install.sh /path/to/project`.
@@ -48,11 +48,11 @@ For each expected file:
 3. `name:` field matches dirname — **only** for sub-agents and skills (which carry an explicit `name:`). Phase commands (Claude Code `.md` / Antigravity workflows) intentionally have no `name:` field; their name is implicit from the filename. Don't flag them for a missing `name:`.
 
 Then:
-4. **State files (V4 #26-aware)**: Resolve via this two-step ladder:
-   - **Vault-resident (post-v4.1.0 default)** — shell out to `python3 <agentm-repo>/scripts/harness_memory.py vault-state-path PLAN.md` (and same for `progress.md`). The subcommand exits 0 + prints the path when resolved, exits 1 + empty output when no vault path is configured. If both paths resolve and exist on disk, report `state files [OK] vault-resident — <vault-path>` and move on.
-   - **Legacy `.harness/`** — if the resolver returns nothing or the vault is unavailable, check `<project>/.harness/PLAN.md` + `<project>/.harness/progress.md`. Report `state files [OK] legacy .harness/` if both present.
-   - FAIL only if neither path yields both files. An empty `.harness/` alongside a healthy vault resolution is the EXPECTED post-V4 #26 shape — not a fail.
-   - Note: `scripts/telemetry.sh` is no longer a vault-resident state file (v4.6.2+). It's a user-scope helper — see check 4b below.
+4. **State files (agentm-vault plan 15)**: A project's state root is its own directory. Resolve through the resolver, never by composing a path:
+   - **List the plans** — `python3 <agentm-repo>/scripts/harness_memory.py list-plans --project-root <project>`. On a synced backend (the vault) it prints each open task's `tasks/<name>/plan.md`; for a project with no vault it prints the repo-local `.harness/PLAN.md` and each `PLAN-<name>.md`. Report the set, e.g. `state files [OK] vault-resident — 2 open tasks: tasks/042-build-the-brief, tasks/043-ship-the-brief`.
+   - **Dangling active-plan marker** — if `<project>/.harness/active-plan` exists, confirm `harness_memory.py resolve-active-plan --project-root <project>` exits 0. Exit 2 is **`[WARN] .harness/active-plan -> <name> is dangling`** — never FAIL. A bare call with no marker exits 4 on a project that keeps its plans in tasks; that is the expected shape, not a finding.
+   - (The `vault-state-path` subcommand this step used to call was removed when the per-project state directory was retired, agentm-vault plan 15; it now exits 2 as an unknown command.)
+   - Note: `scripts/telemetry.sh` is not a state file (v4.6.2+). It's a user-scope helper — see check 4b below.
 4b. **Helper scripts (user-scope; v4.6.2+).** Check `<prefix>/scripts/telemetry.sh` exists + is executable. Report `[OK] telemetry.sh installed` if present. Report `[WARN] telemetry.sh not installed — re-run install.sh` if absent (graceful, never FAIL). The script roots across multiple projects (`--all` scans `~/Antigravity`, `~/Claude`, `~/Projects`), so a single copy at the install prefix is the right shape for it.
 4c. **Storage-backend preview (V5-1).** Shell out to `python3 <agentm-repo>/scripts/backend_selection.py --doctor` — the same resolver the memory engine selects through, reusing the identical install-the-plugin message the fail-loud guard raises. It resolves the selected backend (explicit `storage.backend` → existing `vault_path` → fresh `device-local`), confirms that protocol's plugin is registered, and (for `device-local`) that its root is writable — read-only, never constructing a backend. Print its single status line and map: `[OK]` (exit 0) ready; `[WARN]` (exit 0) `device-local` root not writable — preventive, never FAIL; `[FAIL]` (exit 1) unregistered plugin (prints the verbatim install-the-plugin message), `vault` with no `vault_path`, or a corrupt / non-string config. **The one structural check that legitimately FAILs** — it's the fail-loud preview shown *before* the engine refuses.
 4d. **Memory MCP surface.** Nothing to shell out to here. The Python FastMCP server this step used to probe was retired on 2026-09-07 (agentm-vault design, landing group 11a); the Go daemon serves the two memory tools, and `4a`'s daemon checks above already cover it. The payload copies the daemon's surfaces read from are reported by `machinery_doctor.py` in step 7.
@@ -65,7 +65,7 @@ Then:
    | `hooks/` populated + `hooks` block present + **every** registered `command` path resolves to an existing file + **every** installed hook dir has a registered fragment | `[OK] N hooks wired (<comma-list>)` |
    | `hooks/` populated + **no `hooks` block** | **`[FAIL] N hooks installed on disk but not wired in settings.json — install.sh fragment merge did not run. Re-run install.sh.`** ← the V4 #39 bug |
    | `hooks/` populated + `hooks` block + some `command` paths point at missing files | `[FAIL] X of N registered hook commands point at missing scripts: <list>` |
-   | `hooks/` populated + `hooks` block + some installed hook dirs not registered | `[WARN] <list> installed but not registered — partial merge` |
+   | `hooks/` populated + `hooks` block + some installed hook dirs not registered | `[WARN] <list> installed but not registered — partial merge` (a hook dir is one carrying a `settings-fragment-*.json`; a support dir such as `lib/` and a loose script another tool installed are not counted) |
    | `<prefix>/.agentm-config.json` missing while primitives present | `[WARN] partial install — install-state file missing` |
 
    Also confirm bash-installed commands are bash-shell (not pwsh). The pre-V4 #39 behavior — treating an absent `hooks` block as "opt-in, OK" — was a **false-clean**: it masked the exact regression where hook dirs were installed but never registered.
@@ -113,11 +113,11 @@ Pass: returns an executable artifact (failing test or file:line pointer), not pr
 
 If installed, invoke the `ship-release` skill with `--dry-run`.
 
-Pass: prints a proposed `vX.Y.Z` and notes; `git tag --list` unchanged; `git status` still clean.
+Pass: classifies the commit range and prints a proposed `vX.Y.Z` and notes, or says that nothing in the range bumps the version (every commit since the last tag classifies `no-bump`, as on a docs-only range); `git tag --list` unchanged; `git status` still clean.
 
 ### 4. diataxis migration preview (crickets-provided — graceful-skip)
 
-agentm no longer ships a migration skill (the four-mode `migrate-to-diataxis` retired to crickets' `wiki` in the V5 docs slim). **Skip** if absent — `[SKIP] not installed`, never FAIL. If crickets is paired, `/diataxis migrate --preview` against `wiki/` with the `.diataxis` marker present should no-op.
+agentm no longer ships a migration skill (the four-mode `migrate-to-diataxis` retired to crickets' `wiki` in the V5 docs slim). **Skip** if absent — `[SKIP] not installed`, never FAIL. If crickets is paired, `/diataxis migrate --preview` against `wiki/` with the `.diataxis` marker present refuses with `ERROR: already migrated (wiki/.diataxis exists)` and exits 1 — that refusal is the pass.
 
 Pass: skipped on a bare agentm; or the paired crickets preview detects the marker and proposes no moves.
 
@@ -125,7 +125,7 @@ Pass: skipped on a bare agentm; or the paired crickets preview detects the marke
 
 Invoke with no matching Dependabot PRs open.
 
-Pass: one-line "no matching PRs", exit 0.
+Pass: the skill's target lookup (open Dependabot PRs with red CI) comes back empty and the run ends there — one-line "no matching PRs", exit 0.
 
 ### 6. Hook synthetic trigger (optional) — Claude Code only
 
@@ -135,15 +135,25 @@ Pass: verify command exits 0 on the empty file.
 
 ### 7. Synthetic SessionStart probe (V4 #39; best-effort per DC-3) — Claude Code only
 
-Skip on Antigravity/Gemini (no hook surface). Send a synthetic SessionStart event JSON (`{"session_id":"doctor-probe","cwd":"<agentm clone>"}`) on stdin to each registered SessionStart hook script and capture stdout. Confirm at least `harness-context-session-start` returns a non-empty context block — agentm is a harness cwd, so it should emit the `[agentm] Project state…` header + at least one resolved path. **Best-effort:** skip gracefully (report **skip**, not fail) if a hook script can't be exercised standalone. The load-bearing gate is the structural hook-wiring check (#6 above); this probe is confirmation that a wired SessionStart hook actually fires.
+Skip on Antigravity/Gemini (no hook surface). **Run it from a scratch directory under `$TMPDIR`, never from the repo:** `memory-recall-session-start` writes a `.harness/session-id-<id>.start` marker into the directory it runs from, and a stray marker in the clone reads as a live session to the idle sweep. Send a synthetic SessionStart event JSON (`{"session_id":"doctor-probe","cwd":"<agentm clone>"}`) on stdin to the three hooks that only emit context — `memory-recall-session-start`, `project-brief-session-start`, `harness-context-session-start` — and capture stdout. **Never run `memory-reflect-idle`** (registered on SessionStart; it does real orphan recovery and reflection) or `compaction-reanchor` (its matcher is `compact`). Delete the scratch directory afterwards. **Best-effort:** skip gracefully (report **skip**, not fail) if a hook script can't be exercised standalone. The load-bearing gate is the structural hook-wiring check (#6 above); this probe confirms that a wired SessionStart hook actually fires.
 
-**Additionally** assert `memory-recall-session-start` emits **non-empty stdout** when the configured vault has any `<vault>/personal/_always-load/*.md` entries:
+The project-state block belongs to `project-brief-session-start` whenever that hook is registered: confirm it emits a non-empty `[agentm] …` / `Project state:` block. `harness-context-session-start` is silent on purpose in that case (it says so on stderr); it emits the block itself only when the brief is not registered.
 
-- Count always-load entries: `find "$vault_path/personal/_always-load" -maxdepth 1 -name '*.md' | wc -l`.
-- If count > 0 AND the probe's stdout is empty → **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`**. This is the silent-broken shape (V4.7 / agentm-hooks regression): pre-fix, the hook hardcoded a project-scope relative path to `recall.py` and assumed `MEMORY_ROOT` was injected by Claude Code into the hook env — neither held on user-scope installs.
+**Additionally** assert `memory-recall-session-start` emits **non-empty stdout** when the always-load tier has entries:
+
+- The tier is the `.md` files directly under `<vault>/standards/`. Resolve the vault root with `python3 -c "import harness_memory; print(harness_memory.vault_path())"` from `<agentm-repo>/scripts`, never by composing it; `standards/voice/` is on-demand and not counted. Count: `find "<vault>/standards" -maxdepth 1 -name '*.md' | wc -l`.
+- If count > 0 AND the probe's stdout is empty → **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`**. This is the silent-broken shape (V4.7 / agentm-hooks regression).
 - If count == 0 → empty stdout is correctly OK.
 
-Pass: `harness-context-session-start` emits a 2-path block matching the expected shape AND, when vault has always-load entries, `memory-recall-session-start` emits a `# MemoryVault — always-load entries` header followed by entry bodies.
+Pass: `project-brief-session-start` (or, where it is not registered, `harness-context-session-start`) emits the project-state block AND, when the tier has entries, `memory-recall-session-start` emits a `# MemoryVault — always-load entries` header followed by entry bodies.
+
+### 8. Capability resolver sanity (V5-8) — always runs
+
+`python3 <agentm-repo>/scripts/capability_resolver.py "nonexistent-capability-doctor-probe"`.
+
+Pass: exit 1 (unavailable — no plugin declares that name) or exit 0, with no Python traceback. Exit 2 or a traceback is FAIL. Never skipped; it reads no files on an empty host.
+
+The canonical spec's Antigravity probes (`agy` discoverability, skill discovery at `.agents/skills/`, plugin discovery) run only when the Antigravity adapter is detected; on Claude Code report them `[SKIP] antigravity adapter not detected`.
 
 ## Output contract
 
@@ -171,7 +181,8 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
     migrate-diataxis  [OK]   0.9s  — no-op (marker present)
     dependabot-fixer  [OK]   1.2s
     verify.sh         [SKIP] ruff not installed
-    sessionstart      [OK]   0.3s  — harness-context-session-start injected vault paths
+    sessionstart      [OK]   0.6s  — project-brief-session-start emitted the project state; recall emitted the always-load tier
+    capability        [OK]   0.1s  — resolver answered unavailable (exit 1), no traceback
 
 summary: 7 OK, 0 FAIL, 4 SKIP
 
