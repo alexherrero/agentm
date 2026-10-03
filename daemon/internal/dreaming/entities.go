@@ -117,6 +117,8 @@ func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *
 	}
 	memRel := memoryRootRel(root, vault)
 	projects := projectbind.Repositories(vault)
+	former := projectbind.FormerNames(vault)
+	facts := readRepoFacts(projectbind.Clones(vault))
 	minMentions, minSharedWork := EntityThresholds(r)
 
 	rows, err := src.EntityRows(context.Background())
@@ -128,16 +130,20 @@ func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *
 		if !extract.Paged(row.URI) || entitySourceExcluded(row.Path, row.Flags, memRel) {
 			continue
 		}
-		if byURI[row.URI] == nil {
-			byURI[row.URI] = map[string]mention{}
+		uri := foldFormerName(row.URI, former)
+		if byURI[uri] == nil {
+			byURI[uri] = map[string]mention{}
 		}
-		byURI[row.URI][row.Path] = mentionOf(row.NoteRow, projects)
+		byURI[uri][row.Path] = mentionOf(row.NoteRow, projects)
 	}
 
+	// The bar counts sources, not notes (task 186): a task folder is one
+	// source. And a number or a version the repository's clone has never had
+	// gets no page, however often it is mentioned.
 	wanted := map[string]bool{}
 	var uris []string
 	for uri, ms := range byURI {
-		if len(ms) >= minMentions {
+		if distinctSources(ms) >= minMentions && clonePermits(uri, facts) {
 			uris = append(uris, uri)
 		}
 	}
@@ -147,6 +153,9 @@ func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *
 		kind, id, _ := strings.Cut(uri, ":")
 		ms := sortedMentions(byURI[uri])
 		page := entityPageFor(kind, id, ms)
+		if kind == "repo" {
+			page.aliases = append(page.aliases, formerAliases(id, former)...)
+		}
 		rel := entityRel(memRel, kind, page.slug)
 		before, created := mocCurrentPage(root, relUnderRoot(rel, memRel))
 		if handWritten(before) {

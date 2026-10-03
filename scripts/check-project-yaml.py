@@ -16,8 +16,10 @@ those is a finding:
     `repositories` (a list of `owner/repo`), `code_paths` (a list of
     home-relative paths, `~/…`);
   - the optional keys are well formed: `board` (`owner` and a positive
-    `number`) and `sensitivity` (a word); nothing else is allowed, so a typo in
-    a key name is caught rather than ignored.
+    `number`), `sensitivity` (a word) and `former_names` (a list of
+    `owner/repo`, the names a renamed repository had, for a project that lists
+    one repository; task 186); nothing else is allowed, so a typo in a key name
+    is caught rather than ignored.
 
 The template the files are seeded from, `standards/templates/project.yaml`, is
 checked the same way except for the slug, which it does not have.
@@ -49,7 +51,7 @@ for _p in (str(_HERE), str(_TOOLKIT)):
 FILENAME = "project.yaml"
 TEMPLATE_REL = ("standards", "templates", FILENAME)
 REQUIRED = ("slug", "title", "status", "repositories", "code_paths")
-OPTIONAL = ("board", "sensitivity")
+OPTIONAL = ("board", "sensitivity", "former_names")
 STATUSES = ("queued", "active", "parked", "done", "dropped")
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _WORD = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -107,6 +109,16 @@ def check_mapping(data, rel: str, *, slug: "str | None") -> list:
             out.append(f"{rel}: `board` must be `owner` and a positive `number`, nothing else")
     if "sensitivity" in data and not (isinstance(data["sensitivity"], str) and _WORD.match(data["sensitivity"])):
         out.append(f"{rel}: `sensitivity` must be one lowercase word")
+    if "former_names" in data:
+        former = data["former_names"]
+        if not isinstance(former, list):
+            out.append(f"{rel}: `former_names` must be a list of `owner/repo`")
+        else:
+            for r in former:
+                if not (isinstance(r, str) and _REPO.match(r)):
+                    out.append(f"{rel}: former name `{r}` is not `owner/repo`")
+            if former and not (isinstance(repos, list) and len(repos) == 1):
+                out.append(f"{rel}: `former_names` needs exactly one repository to belong to")
     return out
 
 

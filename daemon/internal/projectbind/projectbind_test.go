@@ -111,3 +111,53 @@ func TestAShortNameTwoRepositoriesShareSaysNeither(t *testing.T) {
 		t.Errorf("ShortNames = %v", got)
 	}
 }
+
+// Task 186: a renamed repository's old name maps to the project's one
+// repository, and a name some project still uses is never "former".
+func TestFormerNamesMapAnOldNameToTheProjectsRepository(t *testing.T) {
+	vault := t.TempDir()
+	writeYAML(t, vault, "agentm", "slug: agentm\nrepositories:\n  - alexherrero/agentm\nformer_names:\n  - Alexherrero/Agentic-Harness\n")
+	writeYAML(t, vault, "crickets", "slug: crickets\nrepositories: [alexherrero/crickets]\nformer_names: [alexherrero/agent-toolkit, alexherrero/agentm]\n")
+	writeYAML(t, vault, "metro", "slug: metro\nrepositories:\n  - o/metro-dev\n  - o/metro\nformer_names:\n  - o/old-metro\n")
+	got := FormerNames(vault)
+	want := map[string]string{
+		"alexherrero/agentic-harness": "alexherrero/agentm",
+		"alexherrero/agent-toolkit":   "alexherrero/crickets",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("FormerNames = %v, want %v (no current name, no name from a two-repository project)", got, want)
+	}
+	for old, now := range want {
+		if got[old] != now {
+			t.Errorf("FormerNames[%q] = %q, want %q", old, got[old], now)
+		}
+	}
+}
+
+// Task 186: a repository's clone is the project's code path that is a git
+// checkout; with several repositories, the folder's name says which.
+func TestClonesFindEachRepositorysCheckout(t *testing.T) {
+	root := t.TempDir()
+	vault, code := filepath.Join(root, "vault"), filepath.Join(root, "code")
+	for _, d := range []string{"solo/.git", "metro-dev/.git", "metro", "plain"} {
+		if err := os.MkdirAll(filepath.Join(code, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeYAML(t, vault, "solo", "slug: solo\nrepositories: [o/solo-repo]\ncode_paths:\n  - "+filepath.Join(code, "plain")+"\n  - "+filepath.Join(code, "solo")+"\n")
+	writeYAML(t, vault, "metro", "slug: metro\nrepositories:\n  - o/metro-dev\n  - o/metro\ncode_paths:\n  - "+filepath.Join(code, "metro-dev")+"\n  - "+filepath.Join(code, "metro")+"\n")
+	writeYAML(t, vault, "gone", "slug: gone\nrepositories: [o/gone]\ncode_paths: ["+filepath.Join(code, "missing")+"]\n")
+	got := Clones(vault)
+	if got["o/solo-repo"] != realPath(filepath.Join(code, "solo")) {
+		t.Errorf("solo: %q, want its one checkout (the path with no .git is skipped)", got["o/solo-repo"])
+	}
+	if got["o/metro-dev"] != realPath(filepath.Join(code, "metro-dev")) {
+		t.Errorf("metro-dev: %q, want the folder named for it", got["o/metro-dev"])
+	}
+	if _, ok := got["o/metro"]; ok {
+		t.Errorf("o/metro has no checkout (its folder is not a git repository): %q", got["o/metro"])
+	}
+	if _, ok := got["o/gone"]; ok {
+		t.Errorf("a missing path is no clone: %v", got)
+	}
+}
