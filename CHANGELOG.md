@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Forward learning is retired, and a weekly field brief is on its way to replace it (task 185). The first pipeline collected 113 rubric-scored entries that nobody read, and the operator scrapped it on 2026-10-02; this change takes it out. The brief itself lands in the steps that follow.
+Forward learning is retired, and a weekly field brief is replacing it (task 185). The first pipeline collected 113 rubric-scored entries that nobody read, and the operator scrapped it on 2026-10-02. Step 1 took it out; step 3 builds the brief's engine; the schedule and the email follow.
+
+### Added
+
+- **`field_brief.py`, the weekly field brief's engine (task 185 step 3).** One note a week at `resources/briefs/<YYYY-MM-DD>-field-brief.md` (`kind: brief`, with `question:` and `cost_usd:` in its frontmatter): at most ten items, each a link, two sentences on what it is and one on why it matters to the work in flight, ranked against `projects/agentm/docs/roadmap.md` § What remains and the open designs, with a `- [ ] keep` box per item. `--ask "<question>"` answers one question, prints it and writes neither the note nor the seen-list; `--deep` routes to the strong tier; `keep <note> <item> --why` turns an item into a reference card through the capture door and ticks the box, once. The script drives the `last30days` engine itself (the skill's contract cannot run headless), then runs one `claude -p` from a scratch directory with hooks off and only `WebSearch` and `WebFetch`, and audits the stream: a hook that started or a tool outside the set refuses the run. The seen-list is `~/.local/state/agentm/field-brief/seen.jsonl`, 90 days, keyed on the canonical URL. The last stdout line is a JSON run record whose `total_cost_usd` the runner reads. The operator's file is `projects/agentm/desk/field-brief.md` (topics, favoured sources, ignored sources). Not yet scheduled or mailed: step 4.
+- **`resources/briefs` in the contract's `dampened_spaces`** (packaged default and the live `standards/storage-rules.md`, mirrored), so a digest of unreviewed external links ranks below the operator's memories, as the watchlist did. A `/memory field-brief` section and table row in the memory skill, and `field-brief.md` among the desk files `vault_layout` resolves.
+- **`scripts/test_field_brief.py`** (45 tests): the runner, the engine, the web and the mailer are faked. It checks that the prompt carries What remains and the operator's file, that a seen address is dropped and not shown again, the registered kind and the ten-item cap, that `--ask` writes nothing, that `keep` captures once, and that a run that called a tool outside its set writes nothing.
 
 ### Removed
 
@@ -19,7 +25,7 @@ Forward learning is retired, and a weekly field brief is on its way to replace i
 ### Changed
 
 - **The Experience design's Forward experience section** now records the retirement and the brief that replaces it, with the amendment-log row in the same change; the Memory System, Vault, HLD, Runner and Opinions designs and the Memory Daemon reference page are reconciled to match.
-- **`TestThePackagedContractDampensTheWatchlistAndWallsTheTemplates` is now `TestThePackagedContractLeavesTheReferenceLibraryUndampenedAndWallsTheTemplates`.** It reads the contract's inbox as its dampened example and asserts that a topic card under `resources/` is not dampened, since the watchlist was that space's one dampened corner.
+- **`TestThePackagedContractDampensTheWatchlistAndWallsTheTemplates` is now `TestThePackagedContractDampensTheBriefsAndWallsTheTemplates`.** The watchlist was `resources/`'s one dampened corner and the weekly brief takes its place; the test asserts the brief and the inbox are dampened and a topic card is not.
 
 ## [10.4.0] - 2026-10-02
 

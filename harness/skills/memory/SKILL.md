@@ -33,6 +33,7 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | Run the adapt-don't-import workflow over discovered patterns (Python rubric → enriched JSONs → LLM sub-agent judgment → watchlist entries) | `/memory adapt-skills` |
 | See what the heat-based always-load policy would demote or promote (never applies without `--apply`) | `/memory heat-policy` |
 | Print the context payload to paste into claude.ai or the Gem, or regenerate the copies derived from it | `/memory payload` |
+| See what is new in agent harnesses, memory, automation and skills, ranked by the work in flight, or ask one question about it | `/memory field-brief` |
 | Check the vault for orphans, broken links, contradictions, and a per-note quality score — on demand (the nightly dream cycle also reports it) | `/memory lint` |
 | Ask for the lesson a repetition taught, now, instead of waiting for the weekly phase | `/memory crystallize` |
 | Bring an archived note back to its class folder, active, with its clock reset | `/memory revive` |
@@ -975,6 +976,49 @@ Watchlist entry shape locked in [`agents/adapt-evaluator.md`](../../agents/adapt
 
 > [!NOTE]
 > **Sub-agent budget**: Pass 2 has no hard token cap (operator dispatch is one-shot, bounded by operator attention). For batch dispatch (idle-hook in a future task), a `--limit N` flag caps how many candidates each idle pass evaluates — default 5.
+
+### `/memory field-brief`
+
+The weekly field brief (task 185): one note a week of at most ten items, each a link, two sentences on what it is and one on why it matters to the work in flight. It replaces forward learning, which collected entries nobody read. The items are ranked against `projects/agentm/docs/roadmap.md` § What remains and the open designs, so the brief says what the work in flight could use, not what is merely new.
+
+#### Invocation shape
+
+```
+python3 ~/Antigravity/agentm/harness/skills/memory/scripts/field_brief.py \
+  [--ask "<question>"] [--deep] [--vault-path <memory root>]
+python3 .../field_brief.py keep <note> <item> --why "<why>" [--vault-path <memory root>]
+```
+
+| Form | Use case |
+|---|---|
+| (no flags) | The weekly run. Writes `resources/briefs/<YYYY-MM-DD>-field-brief.md` (`kind: brief`, with `question:` and `cost_usd:` in its frontmatter), records the shown addresses in the seen-list, and prints a one-line JSON run record whose `total_cost_usd` the runner reads. A second run the same day writes nothing and spends nothing. |
+| `--ask "<question>"` | The same engine for one question, such as "what's new in agent memory this month?". It prints the brief and writes neither the note nor the seen-list, but it reads the seen-list, so it repeats nothing a weekly note already showed. |
+| `--deep` | Routes to the strong tier (about twice the cost of the weekly Sonnet run) for an occasional pass. |
+| `keep <note> <item> --why` | Turns one item into a reference card through the capture door, with your why, and ticks the item's `- [ ] keep` box. The note is a path, a filename or a date. An item already ticked is not captured again. |
+
+#### What it reads, and where state lives
+
+- **Your file**, `projects/agentm/desk/field-brief.md`: topics, favoured sources and ignored sources, in plain markdown. Edit it in Obsidian; the next run uses it.
+- **The roadmap's What remains** and each open design's title, status and Objective paragraph (a design carries no summary field).
+- **The seen-list**, `~/.local/state/agentm/field-brief/seen.jsonl` in the engine state directory, never the vault. An item shown once is withheld for 90 days, keyed on its canonical URL; a release or a follow-up paper has its own address and passes.
+
+#### How a run works
+
+The script, not the model, drives the `last30days` engine (the skill itself cannot run headless: its contract is interactive) for the social layer, and puts the output in the prompt as untrusted evidence. It then runs one `claude -p` from a scratch directory, with hooks off and only `WebSearch` and `WebFetch` allowed, and audits the stream: a hook that started, or a tool that ran outside the set, refuses the run and writes nothing. The model replies in fixed JSON; the script validates it and writes the note itself.
+
+#### Failure modes (graceful)
+
+- **The `claude` login has lapsed** → exit 3, "run `claude`, then /login". That fix is yours.
+- **The audit refuses the run** → exit 4, nothing written, the cost still reported.
+- **The run hits its budget cap** → exit 5. **The reply holds no JSON** → exit 7, and nothing is marked seen.
+- **The engine is missing or fails** → the brief goes ahead without a social layer, and its header says so.
+- **A page cannot be fetched** (`reddit.com` is refused) → the item is marked "Not read in full."
+
+#### Anti-patterns
+
+- **Don't call the `last30days` skill from this path.** Its wizard and stop-and-wait step have no answer headless; the engine does not need them.
+- **Don't run it from the repo directory.** `claude -p` there loads `CLAUDE.md` and the memory index, and a brief that is emailed once cited two private notes.
+- **Don't edit the seen-list to force a repeat.** Delete nothing; ask with `--ask` if you want an item again.
 
 ### `/memory diary`
 
