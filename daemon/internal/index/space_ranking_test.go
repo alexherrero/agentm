@@ -232,14 +232,14 @@ func TestTheWallStillWallsWhileTheInboxIsOnlyDampened(t *testing.T) {
 }
 
 // The contract lines the AgentKV layout rulings added, read from the packaged
-// contract itself rather than restated here: no part of `resources/` is in
-// `dampened_spaces` (the watchlist was the one dampened corner, narrowed on
-// 2026-09-25 from all of `resources` and dropped on 2026-10-03 when forward
-// learning retired), so a topic card answers a question about its topic, and
-// `standards/templates` joins the wall. The dampened example is the inbox, a
-// space the contract still dampens. A test that set the lists by hand would
-// pass with the contract unchanged; this one fails the day any of it drifts.
-func TestThePackagedContractLeavesTheReferenceLibraryUndampenedAndWallsTheTemplates(t *testing.T) {
+// contract itself rather than restated here: of `resources/`, only `briefs` is
+// in `dampened_spaces` (the weekly field brief, which took over from the
+// watchlist as the one dampened corner on 2026-10-03), so a topic card answers
+// a question about its topic and a brief does not outrank a memory, and
+// `standards/templates` joins the wall. The inbox is a second dampened space the
+// contract carries. A test that set the lists by hand would pass with the
+// contract unchanged; this one fails the day any of it drifts.
+func TestThePackagedContractDampensTheBriefsAndWallsTheTemplates(t *testing.T) {
 	t.Setenv("AGENTM_STORAGE_RULES", "")
 	contract, err := rules.Load("")
 	if err != nil {
@@ -259,6 +259,7 @@ func TestThePackagedContractLeavesTheReferenceLibraryUndampenedAndWallsTheTempla
 	idx := openScratch(t)
 	body := "FTS5 columnsize stores a per-row token count for bm25.\n"
 	indexNote(t, idx, "agent/inbox/fts5-columnsize.md", "FTS5 columnsize", body)
+	indexNote(t, idx, "resources/briefs/2026-10-04-field-brief.md", "FTS5 columnsize", body)
 	indexNote(t, idx, "agent/memory/semantic/fts5-columnsize.md", "FTS5 columnsize", body)
 	indexNote(t, idx, "resources/topics/sqlite/columnsize-detail.md", "Columnsize detail", body)
 	// The template carries the query's words too, so only the wall keeps it out:
@@ -271,6 +272,7 @@ func TestThePackagedContractLeavesTheReferenceLibraryUndampenedAndWallsTheTempla
 		dampened bool
 	}{
 		{"agent/inbox/fts5-columnsize.md", true},
+		{"resources/briefs/2026-10-04-field-brief.md", true},
 		{"resources/topics/sqlite/columnsize-detail.md", false},
 	} {
 		var flags string
@@ -293,15 +295,15 @@ func TestThePackagedContractLeavesTheReferenceLibraryUndampenedAndWallsTheTempla
 			t.Errorf("a template's placeholder text was served: %s", r.Path)
 		}
 	}
-	// The dampened inbox card ranks below the identical memory and is still
-	// present; the undampened topic card is present too.
+	// The dampened brief ranks below the identical memory and is still present;
+	// the undampened topic card is present too.
 	pos := map[string]int{}
 	for i, p := range paths {
 		pos[p] = i + 1
 	}
-	mem, inbox := pos["agent/memory/semantic/fts5-columnsize.md"], pos["agent/inbox/fts5-columnsize.md"]
-	if mem == 0 || inbox == 0 || inbox < mem {
-		t.Errorf("want the memory above the dampened inbox card, both present: %v", paths)
+	mem, brief := pos["agent/memory/semantic/fts5-columnsize.md"], pos["resources/briefs/2026-10-04-field-brief.md"]
+	if mem == 0 || brief == 0 || brief < mem {
+		t.Errorf("want the memory above the dampened brief, both present: %v", paths)
 	}
 	if pos["resources/topics/sqlite/columnsize-detail.md"] == 0 {
 		t.Errorf("the undampened topic card is missing: %v", paths)

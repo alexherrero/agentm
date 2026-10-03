@@ -373,6 +373,13 @@ dampened_spaces:
   # is a card you triage in order to find it, which makes the inbox a queue to
   # be drained rather than a place a thought can rest.
   - agent/inbox
+  # The weekly field brief (task 185, 2026-10): one note a week of external
+  # links nobody has reviewed yet, as the watchlist it replaces was. It answers a
+  # question that names it and stays below the memories in every other one; a
+  # link worth keeping becomes a card (`field_brief.py keep`) and ranks as one.
+  # Only `resources/briefs`: dampening all of `resources/` knocked seven of the
+  # ten gold questions that ask about a reference card out of the top five.
+  - resources/briefs
 
 # Spaces no background model pass may read. This is a privacy boundary, not a
 # ranking one, and it is absolute: enrichment skips them, dreaming never sends

@@ -160,7 +160,7 @@ def projects_dir_candidates(root) -> list[Path]:
 # The skill watchlist is a directory and keeps its own path.
 DESK_FEATURE_FILES = frozenset({
     "auto-orchestration-config.md", "skill-discovery-sources.md",
-    "trusted-sources.md",
+    "trusted-sources.md", "field-brief.md",
 })
 
 
@@ -179,7 +179,7 @@ def feature_state_candidates(root, name: str) -> list[Path]:
 def feature_state_path(root, name: str) -> Path:
     """Where a feature's state file or directory lives — `_skill-watchlist`,
     `auto-orchestration-config.md`, `skill-discovery-sources.md`,
-    `trusted-sources.md`. The first that exists, else the newest home, so a
+    `trusted-sources.md`, `field-brief.md`. The first that exists, else the newest home, so a
     list seeded fresh lands in `desk/`."""
     return _resolve(feature_state_candidates(root, name))
 
