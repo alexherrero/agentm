@@ -110,6 +110,61 @@ class TraceTests(unittest.TestCase):
         self.assertIn("skipped", err.getvalue())
 
 
+class TheLinksAndTheTitleAreReal(unittest.TestCase):
+    """Task 186: 628 of 1,603 wikilinks in the traces written since 2026-09-20
+    went nowhere — the recall history is the machine's, and it held a test's
+    fixture names and a self-probe's retired note — and five traces took a
+    line the host wrote as their title."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.vault = self.root / "Vault"
+        (self.vault / ".obsidian").mkdir(parents=True)
+        self.memory = self.vault / "agent"
+        (self.memory / "memory" / "episodic").mkdir(parents=True)
+        (self.memory / "memory" / "semantic").mkdir(parents=True)
+        (self.memory / "memory" / "semantic" / "Vault-Location.md").write_text("x\n", encoding="utf-8")
+        (self.vault / "projects" / "agentm").mkdir(parents=True)
+        (self.vault / "projects" / "agentm" / "charter.md").write_text("x\n", encoding="utf-8")
+        (self.vault / ".git").mkdir()
+        (self.vault / ".git" / "exhaust.md").write_text("not a note\n", encoding="utf-8")
+        self.transcript = self.root / "session.jsonl"
+        self.history = self.root / "recall-history.jsonl"
+        self.history.write_text(json.dumps({"ts": "2026-09-05T10:02:00+00:00", "hit_slugs": [
+            "vault-location", "charter", "exhaust", "agentm-self-probe-2026-10-02t07-15-14z"]}) + "\n",
+            encoding="utf-8")
+
+    def test_a_recalled_name_that_is_no_note_is_not_linked(self):
+        _transcript(self.transcript, with_tools=False)
+        trace = et.from_transcript(self.transcript, session_id="s1", history_path=self.history,
+                                   known=et.note_stems(self.memory))
+        self.assertEqual(trace.recalled, ["vault-location", "charter"])
+
+    def test_the_cli_links_only_notes_of_the_vault_the_memory_root_sits_in(self):
+        import contextlib
+        import io
+        _transcript(self.transcript, with_tools=False)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            et.main([str(self.transcript), "--session", "s2", "--vault-path", str(self.memory),
+                     "--history", str(self.history)])
+        text = (self.memory / out.getvalue().strip()).read_text(encoding="utf-8")
+        self.assertIn("[[charter]]", text, "a note outside the memory root is still a note")
+        for gone in ("exhaust", "agentm-self-probe"):
+            self.assertNotIn(gone, text)
+
+    def test_a_line_the_host_wrote_is_not_the_title(self):
+        for opener in ("[Image: original 2560x1600, displayed at 2000x1250. Multiply coordinates by 1.28.]",
+                       "The app was quit while you were working. Please continue from where you left off.",
+                       "[Request interrupted by user]"):
+            with self.subTest(opener=opener):
+                self.transcript.write_text(_line("user", [{"type": "text", "text": opener + "\nWhy did the gate fail?"}],
+                                                 "2026-09-05T10:00:00Z") + "\n", encoding="utf-8")
+                messages = __import__("reflect").load_messages(self.transcript)
+                self.assertEqual(et._first_request(messages), "Why did the gate fail?")
+
+
 class TheHandoffRecord(unittest.TestCase):
     """The trace is what the next session reads instead of this one's context:
     what was asked, what came of it, what was written, what was read, and what

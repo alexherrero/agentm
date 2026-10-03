@@ -183,10 +183,15 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 				continue
 			}
 			num := line[m[4]:m[5]]
-			named := ctx.Known[possessive(strings.ToLower(wordBefore(line, m[3])))]
+			before := strings.ToLower(wordBefore(line, m[3]))
+			named := ctx.Known[possessive(before)]
 			switch {
 			case linked[num] != "":
 				add("issue:" + linked[num] + "#" + num)
+			case !refShaped(line[m[2]:m[3]], before, num):
+				// "ROADMAP item #15", "V4 #30", a colour `#191614`: a number,
+				// but not one of the repository's (task 186).
+				add("issue:#" + num)
 			case named != "":
 				// "Fixed in crickets #235": the word before names the repository.
 				add("issue:" + named + "#" + num)
@@ -351,6 +356,27 @@ func allDigits(w string) bool {
 		}
 	}
 	return true
+}
+
+// roadmapWordRe is a word that numbers something other than an issue: a
+// roadmap's items, a plan's steps, a task, a track, or a version line read as
+// a bucket ("V4 #30", "v3.0 #33", "post-V4 #12"). A three-part version is a
+// release, so "v10.4.0 (#797)" is not one of these.
+var roadmapWordRe = regexp.MustCompile(`^(?:items?|roadmap(?:-[\w.]+)?|plans?|features?|phases?|steps?|parts?|waves?|tracks?|tasks?|rows?|ideas?|catalog|master|(?:post-|pre-)?v\d+(?:\.\d+)?)$`)
+
+// refShaped reports whether a bare `#num` reads as an issue or pull request
+// number at all (task 186, the vault growth audit of 2026-10-03). Six digits or
+// more is a colour or a listing number, never an issue; a number after a
+// roadmap word is that roadmap's. A number in parentheses or brackets — the
+// `(#851)` a squash merge leaves — always is one.
+func refShaped(opener, before, num string) bool {
+	if len(num) >= 6 {
+		return false
+	}
+	if opener == "(" || opener == "[" {
+		return true
+	}
+	return !roadmapWordRe.MatchString(strings.Trim(before, ".:,;"))
 }
 
 // possessive drops a trailing "'s" or "’s": "agentm's v10.0.0" is agentm's.

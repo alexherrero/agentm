@@ -14,12 +14,14 @@ Run directly:
 from __future__ import annotations
 
 import io
+import os
 import json
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _SKILL = _HERE.parent / "harness" / "skills" / "memory" / "scripts"
@@ -144,7 +146,11 @@ class TheMiner(unittest.TestCase):
             with self.subTest(binding=binding):
                 shutil.rmtree(self.root / "memory")
                 (self.root / "memory").mkdir()
-                text = self._route(binding)
+                # Each pass is a fresh machine: the route pass's filed-ledger
+                # (task 186) would otherwise read the second as a re-filing of
+                # the card the first wrote and this test removed.
+                with mock.patch.dict(os.environ, {"AGENTM_STATE_DIR": tempfile.mkdtemp(dir=self.root)}):
+                    text = self._route(binding)
                 self.assertNotIn("\nproject:", text)
                 self.assertNotIn("\ntask:", text)
 

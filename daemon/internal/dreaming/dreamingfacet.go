@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -57,6 +58,23 @@ func PlanDreamingFacet(root string, r *rules.Rules, rep *Report, now time.Time) 
 		plan.Skipped = "no calendar/ space"
 		return plan
 	}
+	// A note the operator edited stays "touched" every night until the night
+	// next moves it, so it is named once, on the first night: a note an
+	// earlier facet named is not named again (task 186).
+	if len(rep.Plan.Touched) > 0 {
+		named := leftAloneNamed(calendarRoot, now)
+		var fresh []Move
+		for _, m := range rep.Plan.Touched {
+			if !named[m.Rel] {
+				fresh = append(fresh, m)
+			}
+		}
+		if len(fresh) != len(rep.Plan.Touched) {
+			copied := *rep
+			copied.Plan.Touched = fresh
+			rep = &copied
+		}
+	}
 	body, acts := renderDreamingFacet(rep, now)
 	plan.Acts = acts
 	if acts == 0 {
@@ -94,6 +112,45 @@ func facetRegistered(r *rules.Rules) bool {
 		}
 	}
 	return false
+}
+
+// leftAloneHeading is the section that names the notes the operator edited.
+const leftAloneHeading = "Left alone — you edited its lifecycle"
+
+// facetRelRe is a facet line's path: "- [[base]] (`rel`)".
+var facetRelRe = regexp.MustCompile("\\(`([^`]+)`\\)")
+
+// leftAloneNamed is every note an earlier dreaming facet already named under
+// leftAloneHeading. Today's own facet is not read, so a rerun renders the
+// same. A note the operator edits a second time while it is still listed here
+// is not named again; the facets are the record of the first.
+func leftAloneNamed(calendarRoot string, now time.Time) map[string]bool {
+	out := map[string]bool{}
+	today := now.UTC().Format("2006-01-02")
+	files, _ := filepath.Glob(filepath.Join(calendarRoot, "*", "*-"+FacetDreaming+".md"))
+	for _, f := range files {
+		day := strings.TrimSuffix(filepath.Base(f), "-"+FacetDreaming+".md")
+		if len(day) != len(today) || day >= today {
+			continue
+		}
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		in := false
+		for _, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
+			if strings.HasPrefix(line, "## ") {
+				in = strings.TrimPrefix(line, "## ") == leftAloneHeading
+				continue
+			}
+			if in {
+				if m := facetRelRe.FindStringSubmatch(line); m != nil {
+					out[m[1]] = true
+				}
+			}
+		}
+	}
+	return out
 }
 
 // renderDreamingFacet writes the day's lines, and says how many acts it found.
@@ -146,7 +203,7 @@ func renderDreamingFacet(rep *Report, now time.Time) (string, int) {
 	}
 	section("Deleted", deleted)
 	section("Moved back into its class by hand", moves(p.Returned, func(Move) string { return "" }))
-	section("Left alone — you edited its lifecycle", moves(p.Touched, func(Move) string { return "" }))
+	section(leftAloneHeading, moves(p.Touched, func(Move) string { return "" }))
 
 	var removed []string
 	for _, row := range rep.Retain.Removed {

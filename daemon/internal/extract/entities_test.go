@@ -271,3 +271,29 @@ func TestTheReviewsReleaseAndIssueCases(t *testing.T) {
 		eq(t, got, want)
 	}
 }
+
+// Task 186: the vault growth audit of 2026-10-03 found the builder paging
+// roadmap item numbers and colours as the note's repository's issues. A
+// number after a roadmap word, or six digits long, stays bare — indexed for
+// search, never paged — and a pull request reference keeps its repository.
+func TestARoadmapNumberOrALongNumberIsNoIssueOfTheRepository(t *testing.T) {
+	ctx := Context{Repo: "alexherrero/agentm"}
+	for line, want := range map[string]string{
+		"Gemini-CLI excluded per ROADMAP item #15.":        "issue:#15",
+		"The registry lands in V4 #30 plan 1.":             "issue:#30",
+		"Deferred to post-V4 #12.":                         "issue:#12",
+		"Observed during the plan #15 close-out.":          "issue:#15",
+		"Task #179 shipped the entity pages.":              "issue:#179",
+		"Dark mode: `--bg #191614` (Cocoa).":               "issue:#191614",
+		"Two MLS numbers were removed: #41138876 in July.": "issue:#41138876",
+		"Shipped in PR #553.":                              "issue:alexherrero/agentm#553",
+		"- #720: an operator's filing survives.":           "issue:alexherrero/agentm#720",
+		"This release ships task 182 (#797).":              "issue:alexherrero/agentm#797",
+		"Recorded in ROADMAP item (#43).":                  "issue:alexherrero/agentm#43",
+	} {
+		got := EntitiesIn(line, ctx)
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("%q: got %v, want [%s]", line, got, want)
+		}
+	}
+}

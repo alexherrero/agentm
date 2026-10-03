@@ -113,5 +113,33 @@ class OnlyThePreferencesFileTests(unittest.TestCase):
         self.assertEqual(route[-1]["dropped_replies"], 3)
 
 
+class TheAuditsRepliesTests(unittest.TestCase):
+    """Task 186: the vault growth audit of 2026-10-03 found replies the idea lane
+    still filed as cards after the 2026-09-28 filter, as typed."""
+
+    NUMBERED = ("1. agree, 2. private on github ok, and make a note so we can follow-up later in another "
+                "session on moving over the jellyfin template.")
+    ACK = ("ack on the minor follow-up, and that reminded me that probably every design needs some a "
+           "diagrams if they don't have them now to help the reader visualize how things are structured.")
+    CHIPS = ("...the handoff prompts.md file, we won't need it. I have 3 chips doing some of those followups, "
+             "are there any others you need from me that we should spawn a chip to fix?")
+
+    def test_a_numbered_answer_and_an_ack_are_replies(self):
+        for text in (self.NUMBERED, self.ACK, "Agreed, ship it after the gates.", "1) yes\n2) no, keep it private"):
+            self.assertIsNotNone(reflect.conversational_reply(text), text)
+        for text in ("1. Install the plugin.", "Acknowledgements go at the end of the post.",
+                     "The agreement with the NAS vendor lapsed."):
+            self.assertIsNone(reflect.conversational_reply(text), text)
+
+    def test_the_bare_follow_up_marker_no_longer_files_an_idea(self):
+        mined = reflect.mine_transcript_messages([_user(self.CHIPS)])
+        self.assertEqual(mined["idea_candidates"], [], "\"followups\" alone is not an idea")
+
+    def test_a_real_idea_still_does(self):
+        mined = reflect.mine_transcript_messages(
+            [_user("We should also look into automating the PlayOn recordings, as that's tedious by hand.")])
+        self.assertEqual(len(mined["idea_candidates"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

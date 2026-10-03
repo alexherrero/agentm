@@ -248,15 +248,23 @@ def _paths_from_result(tool: str, text: str) -> list:
     return out
 
 
+# Lines the host writes into a user turn, not the operator's words: a
+# bracketed annotation ("[Image: original 2560x1600, …]", "[Request
+# interrupted by user]") and the desktop app's resume notice. Five traces
+# took one as their title before task 186.
+_HOST_LINE = re.compile(r"^\[.*\]$|^The app was quit while you were working\b")
+
+
 def _first_request(messages: list) -> str:
     """The session's opening ask, uncut. The title takes its head; `## Asked`
-    takes more of it."""
+    takes more of it. A line the host wrote is skipped."""
     for m in messages:
         if m.get("type") != "user":
             continue
         for b in _blocks(m):
             if b.get("type") == "text":
-                line = next((l.strip() for l in (b.get("text") or "").splitlines() if l.strip()), "")
+                line = next((l.strip() for l in (b.get("text") or "").splitlines()
+                             if l.strip() and not _HOST_LINE.match(l.strip())), "")
                 if line and not line.startswith("<") and "tool_result" not in line:
                     return line
     return ""
@@ -363,9 +371,34 @@ def mined_candidates(messages: list) -> list:
     return out
 
 
+def note_stems(memory_root) -> "set[str]":
+    """Every note's file name, without `.md` and in lower case, across the vault
+    the memory root sits in: the vault is the nearest folder at or above it that
+    holds `.obsidian` or `.git`, else the memory root itself. Hidden folders are
+    not read."""
+    start = Path(memory_root)
+    vault = start
+    for cand in (start, *list(start.parents)[:2]):
+        if (cand / ".obsidian").is_dir() or (cand / ".git").exists():
+            vault = cand
+            break
+    stems: set = set()
+    for dirpath, dirnames, filenames in os.walk(vault):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            if name.endswith(".md"):
+                stems.add(name[:-3].lower())
+    return stems
+
+
 def from_transcript(transcript_path: Path, *, session_id: str, when: date = None,
                     history_path: Path = None, project: str = "", task: str = "", surface: str = "",
-                    candidates: list = None) -> Trace:
+                    candidates: list = None, known: "set | None" = None) -> Trace:
+    """The session's trace. `known` is the vault's note names (`note_stems`):
+    when given, a recall-history slug that names no note is not linked. The
+    history is the machine's, shared by every surface, and holds names that
+    are no note — a self-probe's note retired the same minute, a test's
+    fixture — and a trace that linked them linked nowhere (task 186)."""
     import reflect  # the sidecar's own transcript reader, so both read one shape
 
     messages = reflect.load_messages(Path(transcript_path))
@@ -386,6 +419,8 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
                         target.append(p)
     start, end = _timestamps(messages)
     for slug in recalled_between(history_path or default_history_path(), start, end):
+        if known is not None and slug.lower() not in known:
+            continue
         if slug not in recalled and slug not in captured:
             recalled.append(slug)
     if when is None:
@@ -612,7 +647,8 @@ def main(argv: list | None = None) -> int:
         trace = from_transcript(Path(a.transcript), session_id=a.session,
                                 when=date.fromisoformat(a.day) if a.day else None,
                                 history_path=Path(a.history) if a.history else None,
-                                project=project, task=task, surface=a.surface)
+                                project=project, task=task, surface=a.surface,
+                                known=note_stems(vault))
         rel = write_trace(vault, trace)
     except Exception as e:  # a hook never blocks session end on a trace
         print(f"episodic_trace: skipped ({e})", file=sys.stderr)
