@@ -9,7 +9,7 @@
 | Mode | What runs | Token cost | Typical runtime |
 |---|---|---|---|
 | default (`/doctor`) | Structural discovery only — file presence + frontmatter parse + hook-path resolution. No sub-agent dispatches. | None | <5s |
-| `/doctor --live` | Default checks **plus** live sub-agent probes and skill dry-runs. This is the "does it actually work" mode. | Moderate (one dispatch per agent, one dry-run per skill) | 30–90s |
+| `/doctor --live` | Default checks **plus** live sub-agent probes and skill dry-runs. This is the "does it actually work" mode. | Moderate (one dispatch per agent, one dry-run per skill) | 3–6 minutes; the reviewer dispatch dominates, since it writes and runs a real failing test (measured 2026-10-02: explorer 3s, reviewer 216s, everything else under 2s each) |
 | `/doctor --live --verbose` | Same as `--live` but prints the raw agent outputs instead of pass/fail summaries. Useful when a probe fails and you need to see why. | Same as `--live` | Same as `--live` |
 
 Default is deliberately cheap so `/doctor` can be the reflex "did my install land?" check. `--live` is opt-in because it costs tokens.
@@ -32,9 +32,11 @@ equivalent). Run the full structural battery against it. When it has no
 primitives, abort with `doctor: no harness adapter found at
 $AGENTM_INSTALL_PREFIX — run install.sh first`.
 
-**A populated `<project>/.claude/` is residue, not an install.** The per-project
-install was retired, so a project-local tree can only be left over from an
-install predating that. Doctor no longer validates it — but if one is present
+**A `<project>/.claude/` holding `agents/`, `skills/` or `commands/` is residue,
+not an install.** The per-project install was retired, so those three can only be
+left over from an install predating that. A repo's own `settings.json`,
+`settings.local.json`, `hooks/` and `worktrees/` are repo-scope configuration and
+are not residue; agentm's own checkout carries all four. Doctor no longer validates it — but if one is present
 alongside a healthy machine-wide install, say so once as
 `[WARN] legacy per-project tree at <project>/.claude/ — no longer used; safe to
 delete`. Reporting it beats ignoring it: the files still shadow nothing, but an
@@ -92,11 +94,11 @@ Then:
    - `hooks/` populated + `hooks` block + **every** registered `command` resolves to an existing file + **every** installed hook dir has a registered fragment → `[OK] N hooks wired (<list>)`.
    - `hooks/` populated + **no `hooks` block** → **`[FAIL] N hooks installed on disk but not wired in settings.json — install.sh fragment merge did not run. Re-run install.sh.`** (the V4 #39 regression).
    - `hooks/` populated + `hooks` block + some `command` paths missing → `[FAIL] X of N registered hook commands point at missing scripts: <list>`.
-   - `hooks/` populated + `hooks` block + some installed hook dirs unregistered → `[WARN] <list> installed but not registered — partial merge`.
+   - `hooks/` populated + `hooks` block + some installed hook dirs unregistered → `[WARN] <list> installed but not registered — partial merge`. A hook dir is one that carries a `settings-fragment-*.json`. A support directory with no fragment (`lib/`) and a loose script another tool installed are not hooks and are not counted.
    - `.agentm-config.json` missing while primitives present → `[WARN] partial install — install-state file missing`.
    - Shell prefix must match the installer variant (bash → bash command; pwsh → `pwsh -File`). The pre-V4 #39 "absent block is opt-in, OK" rule was a **false-clean** that masked exactly the hook-dirs-installed-but-unregistered regression.
-   - `--live` adds a **synthetic SessionStart probe** (best-effort, DC-3): feed `{"session_id":"doctor-probe","cwd":"<agentm clone>"}` to each registered SessionStart hook on stdin; confirm `harness-context-session-start` emits a non-empty `[agentm] Project state…` block; skip gracefully if a hook can't run standalone.
-   - **The probe also asserts `memory-recall-session-start` emits non-empty stdout WHEN the configured vault has any `<vault>/personal-private/_always-load/*.md` entries.** Exit 0 with empty stdout in that condition is **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`** — the silent-broken shape (V4.7 / agentm-hooks regression). If the vault has zero always-load entries, empty stdout is correctly OK.
+   - `--live` adds a **synthetic SessionStart probe** (best-effort, DC-3). Run it **from a scratch directory under `$TMPDIR`**, never from the repo: `memory-recall-session-start` writes a `.harness/session-id-<id>.start` marker into the directory it runs from, and a stray marker in the clone reads as a live session to the idle sweep. Feed `{"session_id":"doctor-probe","cwd":"<agentm clone>"}` on stdin to the three hooks that only emit context: `memory-recall-session-start`, `project-brief-session-start` and `harness-context-session-start`. **Never run `memory-reflect-idle`** (it is registered on SessionStart and does real orphan recovery and reflection) or `compaction-reanchor` (its matcher is `compact`). Delete the scratch directory afterwards. The project-state block belongs to `project-brief-session-start` whenever that hook is registered: confirm it emits a non-empty `[agentm] …` / `Project state:` block. `harness-context-session-start` is silent on purpose in that case (it says so on stderr) and emits the block itself only when the brief is not registered. Skip gracefully if a hook can't run standalone.
+   - **The probe also asserts `memory-recall-session-start` emits non-empty stdout WHEN the always-load tier has entries.** The tier is the `.md` files directly under `<vault>/standards/` (resolve the vault root with `harness_memory.vault_path()`, never by composing it; `standards/voice/` is on-demand and not counted). Exit 0 with empty stdout in that condition is **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`** — the silent-broken shape (V4.7 / agentm-hooks regression). If the tier is empty, empty stdout is correctly OK. (This assertion named `personal-private/_always-load/` until 2026-10; that directory has not existed since the memory-root trims, so the count was always zero and the assertion could never fire.)
 
 7. **Machinery integrity (Consolidation follow-ups batch, machinery-integrity lane).** The prior checks all ask "is agentm's own harness distribution installed correctly"; this one asks the operator's own question — "how do we know all these structures are working consistently right now?" — over this repo's *own* dev-loop machinery (its Stop hook, its scheduled runner jobs, its cross-repo bridges), the exact class of thing that sat merged-but-never-installed for weeks in two separate confirmed incidents (the session-cost-capture hook in this repo; crickets' cross-review Gemini-fallback degrading silently). Run `python3 <agentm>/scripts/machinery_doctor.py` (only meaningful from inside an agentm dev checkout — skip with `[SKIP] not an agentm dev checkout` otherwise) and map each printed row by its status:
    - `[OK]` → report as-is; include the `(last fired …)` timestamp when the row carries one — a structure installed but never observed to fire is a different, less-reassuring state than one with a recent timestamp, even though both currently read `[OK]`/`[WARN]` correctly.
@@ -153,12 +155,12 @@ If installed: dispatch with a deliberately-buggy snippet inline in the prompt:
 
 If installed: invoke `ship-release --dry-run`. This should compute a proposed version and notes **without** tagging or pushing.
 
-**Pass criteria:** skill prints a proposed `vX.Y.Z`, classifies the commit range, and exits cleanly without side effects. `git tag --list` is unchanged. `git status` still clean.
+**Pass criteria:** skill classifies the commit range and exits cleanly without side effects, printing a proposed `vX.Y.Z` or, when every commit since the last tag classifies `no-bump` (a docs-only range), saying that nothing in the range bumps the version. `git tag --list` is unchanged. `git status` still clean.
 **Fail signals:** skill actually creates a tag (guardrail broken), skill crashes on the preconditions check, `gh auth status` failure surfaces without being caught.
 
 ### Probe 4: diataxis migration preview (crickets-provided — graceful-skip)
 
-agentm no longer ships a migration skill — the four-mode `migrate-to-diataxis` retired to crickets' `wiki` (`/diataxis migrate`) in the V5 docs slim. If that skill is absent (a bare agentm install), **skip** this probe — report `[SKIP] not installed`, never FAIL. If crickets is paired, optionally invoke `/diataxis migrate --preview` against the current `wiki/`; with the `wiki/.diataxis` marker present it should no-op cleanly with "already migrated".
+agentm no longer ships a migration skill — the four-mode `migrate-to-diataxis` retired to crickets' `wiki` (`/diataxis migrate`) in the V5 docs slim. If that skill is absent (a bare agentm install), **skip** this probe — report `[SKIP] not installed`, never FAIL. If crickets is paired, optionally invoke `/diataxis migrate --preview` against the current `wiki/`; with the `wiki/.diataxis` marker present it refuses with `ERROR: already migrated (wiki/.diataxis exists); remove to re-run` and exits 1. That refusal is the pass: the marker was detected and no move was proposed.
 
 **Pass criteria:** the probe is skipped on a bare agentm; or, when crickets is paired, the migration preview detects the marker and proposes no moves.
 **Fail signals:** doctor hard-FAILs because the migration skill is absent (it must graceful-skip), or a paired crickets migration proposes re-classifications of already-placed files.
@@ -169,7 +171,7 @@ agentm no longer ships a migration skill — the four-mode `migrate-to-diataxis`
 
 If installed: invoke `dependabot-fixer` with no matching Dependabot PRs open. The skill should exit cleanly with "no matching PRs found", not crash or try to fix a non-existent PR.
 
-**Pass criteria:** one-line "nothing to fix" output, exit 0.
+**Pass criteria:** the skill's own target lookup (open Dependabot PRs with red CI) returns an empty list, and the run ends there with a one-line "no matching PRs" and exit 0.
 **Fail signals:** the skill tries to check out a PR branch, or fails on `gh pr list` parsing.
 
 ### Probe 6: hook synthetic trigger (Claude Code + `--hooks`, optional)
