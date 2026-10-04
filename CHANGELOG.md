@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Forward learning is retired, and a weekly field brief is replacing it (task 185). The first pipeline collected 113 rubric-scored entries that nobody read, and the operator scrapped it on 2026-10-02. Step 1 took it out; step 3 built the brief's engine; step 4 adds the email and the weekly job, and the first run is supervised by hand on a Sunday evening.
+Forward learning is retired, and a weekly field brief is replacing it (task 185). The first pipeline collected 113 rubric-scored entries that nobody read, and the operator scrapped it on 2026-10-02. Step 1 took it out; step 3 built the brief's engine; step 4 adds the email and the weekly job. The first brief was run by hand on 2026-10-03, and the job runs Saturday evenings from 2026-10-10.
 
 ### Added
 

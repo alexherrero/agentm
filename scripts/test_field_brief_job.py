@@ -94,7 +94,7 @@ class FieldBriefJobScheduleTests(unittest.TestCase):
         for days in (1, 3, 6):
             with self.subTest(days=days):
                 self.assertFalse(self.due(_local(2026, 10, 4 + days, 19)))
-        self.assertTrue(self.due(_local(2026, 10, 11, 19)))   # the next Sunday evening
+        self.assertTrue(self.due(_local(2026, 10, 11, 19)))   # the same evening a week later
 
     def test_a_week_slept_through_is_caught_up_inside_two_days_and_not_after(self):
         state.mark_done("field-brief-weekly", now=_local(2026, 10, 4, 19), state_root=self.state_root)

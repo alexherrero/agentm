@@ -17,8 +17,10 @@
 # Register it on the day the first brief should run, not before. The runner has
 # no weekday key: `weekly` means last run plus seven days, snapped to the window,
 # so the weekday is whichever day the first run lands on, and a job registered
-# on a Tuesday afternoon runs that evening. The plan puts the first run on a
-# Sunday evening, with the operator there to confirm the email.
+# on a Tuesday afternoon runs that evening. The first brief here was run by hand
+# on Saturday 2026-10-03, with the operator there to confirm the email, and that
+# run was recorded as the job's last run when it was registered, so the runner's
+# first run is the Saturday evening a week later.
 schedule: weekly
 
 # A week the machine sleeps through catches up within two days, which moves the
@@ -61,7 +63,7 @@ tier: T3
 # 2026-09-28, and this is about $1.1. The ceiling counts cost reported in the
 # past 20 hours, so the three sum to about $31.5 only if all three ran inside
 # one 20-hour window. On schedule they do not: crystallize anchors on Mondays
-# and this on Sunday evening. The default stands. Re-audit it if crystallize's
+# and this on Saturday evenings. The default stands. Re-audit it if crystallize's
 # anchor drifts onto the brief's day, or when a fourth paid job registers.
 budget:
   tokens: 1500000
