@@ -202,6 +202,7 @@ record now, not a queue.
 | 5 | `hook e2e` | p50/p90 <300ms warm through the *installed* hook; each stratum within one question of `+question` (75.0%); inject-with-metadata, no manufactured empty | **met, both clauses** — p50/p90 213.8ms/222.4ms end-to-end through the installed hook (n=84); every stratum within one question of `+question` (73.4% overall, 47/64). Honest-empty on the 20 negatives: 0/20 genuine. See NOTES.md for the per-question diff and the latency-cliff finding it also surfaced. |
 | 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | **met** — 73.4% (47/64), byte-identical to `hook e2e` on all 84 rows. The extractor never fires on this gold set (0 questions match), so the "14 at-risk" estimate does not hold up — see the amendment log. Shipped wired. |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | **refuted** — mean 0.6799 across 6 replicates (0.661, 0.683, 0.700, 0.679, 0.617, 0.740; only one clears the bar). Concentrated in negative rejection, 87.5% → 62.5% against the 2026-08-06 baseline; answerable-question recall through the tool is flat-to-improved (78.1% answerable-only, ahead of every retrieval-layer column). Does not implicate the hook, which is deterministic and was measured separately in step 5. |
+| 7 | `+mmr` · `+spread` · `+both` | *(pre-registered 2026-10-04, task 184; `scripts/health/results/goldv3/RULE-ranking-stages.md`)* Two post-fusion stages behind flags, each arm against the hook-shaped baseline on one frozen snapshot: net ≥ +3 at R@5 **and** the exact paired test at p < 0.05 (the contract's power check, so net ≥ +6 in practice); no stratum loses more than one; hard-negative false positives do not rise; p95 ≤ 250 ms; the walls hold; the per-question diff is published | *pending* |
 
 Step 6 exists because the two layers have disagreed once already: the alias
 backfill was slightly better at the tool level and 3.85 points worse at the
@@ -363,6 +364,27 @@ it.
   — the cross-system findings this design absorbs and corrects.
 
 ## Amendment log
+- **2026-10-04 · A ranking-side rung is pre-registered: MMR and one-hop
+  spreading activation (task 184).** Ladder row 7 opens the one rung the
+  2026-08-28 verdict left room for: the out-of-scope section says a future
+  rung "belongs on the ranking side" and has to show what it does
+  differently. MMR changes which fused candidates fill the five slots,
+  where every refuted rung changed a score, the vocabulary or the term
+  selection. Spreading activation admits linked notes that neither arm
+  fetched, and is the first rung to read the link graph. The parameters are
+  fixed before any code: λ = 0.7 over the fused pool, with min-max relevance
+  and mean chunk vectors; activation decays by 0.5, takes at most 3
+  neighbours per seed (the nearest to the query) and seeds from the top 5.
+  Demoted notes are never lifted past a note that outranked them, and walled
+  notes are never admitted. The rule adds the eval contract's power check to
+  the plan's net +3, so the effective bar is net +6. The secondary
+  instrument is descriptive only: task 143's labels are turn-level and name
+  no note, so "a needed note in the top 5" cannot be scored. **Why not
+  re-pin first:** the re-pin is deferred until the perfection passes run,
+  and comparing the arms with each other on one snapshot needs no pinned
+  baseline. **Re-audit trigger:** the row stays *pending* until step 6's
+  verdict. A refuted arm leaves no flag and no code behind; a passing one
+  ships on by default only on the operator's ratification.
 - **2026-09-03 — the AgentKV reciprocal-handoff citation is repointed to the vault-root `Projects/` (filing-v2 part 2b).** The Related section's link named `<vault>/Agent/desk/projects/agentm/_harness/...`, which no longer resolves; project trees now live at `<vault>/Projects/<slug>/`, a sibling of the memory root. Mechanical fix, no measurement or verdict changes. Dated amendment-log citations elsewhere in this file are left as written — they record what was true when measured.
 
 - **2026-08-30 — online measurement added as a second instrument.** The offline
