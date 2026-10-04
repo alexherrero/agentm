@@ -40,6 +40,13 @@ Forward learning is retired, and a weekly field brief is replacing it (task 185)
 ### Fixed
 
 - **A brief's header names the model that wrote it (task 185).** `field_brief.py` took the model from the costliest entry in the run's usage table, and on a run that fetched many pages the Haiku summariser behind `WebFetch` out-spent the model that wrote the brief, so the first live `--ask` recorded Haiku. It now reads the model from the stream's init event and keeps the costliest as the fallback; two tests.
+- **A run of the unit suite leaves nothing in the temporary directory.** `run_unit_suite.py` made a directory there before every test and removed none of them: one run of today's 5,214 tests left 5,218. On one Mac the temporary directory held 1,839,068 entries on 2026-10-03, 1,824,209 of them the runner's, and anything that listed it stalled: `pwsh` took 18 to 45 seconds to start with its home or working directory in there and 0.3 seconds elsewhere. The runner now makes one directory per run with a numbered child per test, removes a child once the next rotation has moved the governed variables off it, and removes the directory when the run stops. A run that is killed leaves one directory, not one per test. The isolation is unchanged, and a run takes as long as it did (251 s before and 246 s after, one run each). `scripts/test_unit_suite_leaves_nothing.py` drives the runner over a probe suite under a scratch `TMPDIR` and checks a finished, an interrupted and a killed run. `scripts/conftest.py` did not have the leak: pytest keeps its directories under one `pytest-of-<user>` entry and prunes all but the last three runs. The entries already on a machine are not removed by this change.
+- **The smaller leaks the same survey found.** Each of these left a directory per run and now removes what it makes:
+  - **`test_eval_write_path.py`** left four `eval-score-*` directories, one per scorer test.
+  - **`health/test_week1_retrieval_experiment.py`** left three fixture vaults in the temporary directory and one `w1t-*` socket directory in `/tmp`.
+  - **`verify-dreaming.sh`** left the directory it copies `dream.yaml` into, once as a battery gate and once more from inside the unit suite.
+  - **`check-all.sh`** left the directory it builds `agentmd` into, a 22 MB binary per battery run.
+  - **The Go suites' build-once helpers** left `enrich-stub-*` (`internal/enrich`), `agentmd-build-*` and `agentmdream-e2e-*` (`e2e`), each holding a compiled binary. A `TestMain` in each package removes them after the last test.
 
 ## [10.4.0] - 2026-10-02
 

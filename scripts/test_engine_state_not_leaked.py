@@ -197,8 +197,11 @@ class TheGuardIsWiredOnBothRunners(unittest.TestCase):
                           "conftest.py is reached through nothing else")
         # The probe sits under scripts/, where pytest finds scripts/conftest.py
         # the way it does for any suite here. Its name matches no discovery
-        # pattern, and its directory goes when this test ends.
-        with tempfile.TemporaryDirectory(dir=str(_REPO / "scripts"), prefix="pytest-guard-probe-") as td:
+        # pattern, and its directory goes when this test ends. So does the base
+        # directory pytest numbers for the run, which it would otherwise keep
+        # under `pytest-of-<user>` in the machine's temporary directory.
+        with tempfile.TemporaryDirectory(dir=str(_REPO / "scripts"), prefix="pytest-guard-probe-") as td, \
+                tempfile.TemporaryDirectory() as temproot:
             out = Path(td) / "seen.jsonl"
             probe = Path(td) / "probe_conftest_guard.py"
             probe.write_text((
@@ -218,7 +221,8 @@ class TheGuardIsWiredOnBothRunners(unittest.TestCase):
                 [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
                  "--rootdir", str(_REPO / "scripts"), str(probe)],
                 capture_output=True, text=True, timeout=300,
-                cwd=str(_REPO / "scripts"), env=_without_the_governed_variables())
+                cwd=str(_REPO / "scripts"),
+                env=dict(_without_the_governed_variables(), PYTEST_DEBUG_TEMPROOT=temproot))
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("2 passed", r.stdout, "pytest did not run both probe tests:\n" + r.stdout)
             seen = {}

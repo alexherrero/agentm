@@ -629,7 +629,9 @@ class TestDaemonSocket(unittest.TestCase):
     def test_a_real_client_round_trip_over_the_socket(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(tmp)
-            run = Path(tempfile.mkdtemp(prefix="w1t-", dir="/tmp"))
+            run_dir = tempfile.TemporaryDirectory(prefix="w1t-", dir="/tmp")
+            self.addCleanup(run_dir.cleanup)
+            run = Path(run_dir.name)
             sock, ready = run / "s.sock", run / "ready"
             proc = subprocess.Popen(
                 [sys.executable, str(_HERE / "week1_search_daemon.py"),
@@ -1507,10 +1509,12 @@ class TestPenaltyCliGuards(unittest.TestCase):
     """A zero weight is exclusion in a demotion's costume — the CLI refuses it."""
 
     def _main(self, penalty):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
         return w1.main([
             "--gold-set", str(_HERE / "fixtures" / "week1-gold" / "smoke-set.json"),
             "--arm", "A", "--driver", "mock", "--penalty", penalty,
-            "--vault-path", str(_make_vault(tempfile.mkdtemp())),
+            "--vault-path", str(_make_vault(d.name)),
         ])
 
     def test_a_zero_weight_is_rejected(self):

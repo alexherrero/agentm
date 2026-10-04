@@ -112,9 +112,9 @@ sys.path.insert(0, '$REPO/scripts')
 from runner import manifest
 import tempfile, shutil
 from pathlib import Path
-tmp = Path(tempfile.mkdtemp())
-shutil.copy('$REPO/templates/jobs/dream.yaml', tmp / 'dream.yaml')
-jobs = manifest.load_manifests(tmp)
+with tempfile.TemporaryDirectory() as tmp:
+    shutil.copy('$REPO/templates/jobs/dream.yaml', Path(tmp) / 'dream.yaml')
+    jobs = manifest.load_manifests(Path(tmp))
 job = jobs[0]
 print('NAME=' + job.name)
 print('DRY_RUN=' + str(job.dry_run))

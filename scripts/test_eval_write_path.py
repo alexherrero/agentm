@@ -63,7 +63,9 @@ class TheScorer(unittest.TestCase):
     def _sheet(self, labels):
         text = "# x\n\n## Decisions\n\n" + "".join(
             f"### {i}. row {i}\n\n- decision: add\n\nlabel: {l}\n\n" for i, l in enumerate(labels, 1))
-        p = Path(tempfile.mkdtemp(prefix="eval-score-")) / "sheet.md"
+        d = Path(tempfile.mkdtemp(prefix="eval-score-"))
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        p = d / "sheet.md"
         p.write_text(text, encoding="utf-8")
         return p
 
