@@ -81,6 +81,58 @@ func TestANewExtractorReExtractsTheIndexedNotesInPlaceOnce(t *testing.T) {
 	}
 }
 
+// Task 187: a project's `bare_issue_floor` is data, and setting it reaches the
+// notes already indexed on the next open, the way a new extractor rule does.
+// Raising it or removing it re-derives them again.
+func TestSettingAFloorReExtractsTheIndexedNotesOnTheNextOpen(t *testing.T) {
+	vault := t.TempDir()
+	writeNote(t, vault, "projects/agentm/project.yaml", "slug: agentm\nrepositories:\n  - alexherrero/agentm\n")
+	writeNote(t, vault, "projects/agentm/tasks/001-a/plan.md",
+		"---\ntitle: Plan\n---\n\nHardening II (#10) shipped in PR #12, and #70 followed.\n")
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	x, err := Open(dbPath, vault, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	if err := x.db.QueryRow(`SELECT id FROM docmeta WHERE path=?`, "projects/agentm/tasks/001-a/plan.md").Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(entityURIs(t, x, id), ","); got !=
+		"issue:alexherrero/agentm#10,issue:alexherrero/agentm#12,issue:alexherrero/agentm#70" {
+		t.Fatalf("with no floor: %s", got)
+	}
+	x.Close()
+
+	reopen := func(floor string) []string {
+		t.Helper()
+		writeNote(t, vault, "projects/agentm/project.yaml",
+			"slug: agentm\nrepositories:\n  - alexherrero/agentm\n"+floor)
+		x, err := Open(dbPath, vault, "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Closed before the test returns: Windows cannot remove an open index.db.
+		defer x.Close()
+		return entityURIs(t, x, id)
+	}
+	if got := strings.Join(reopen("bare_issue_floor: 48\n"), ","); got !=
+		"issue:#10,issue:alexherrero/agentm#12,issue:alexherrero/agentm#70" {
+		t.Errorf("after setting a floor of 48: %s, want #10 unqualified and the explicit PR kept", got)
+	}
+	if got := strings.Join(reopen("bare_issue_floor: 80\n"), ","); got !=
+		"issue:#10,issue:#70,issue:alexherrero/agentm#12" {
+		t.Errorf("after raising it to 80: %s", got)
+	}
+	if got := strings.Join(reopen(""), ","); got !=
+		"issue:alexherrero/agentm#10,issue:alexherrero/agentm#12,issue:alexherrero/agentm#70" {
+		t.Errorf("after removing it: %s", got)
+	}
+}
+
 func entityURIs(t *testing.T, x *Index, id int64) []string {
 	t.Helper()
 	rows, err := x.db.Query(`SELECT entity_uri FROM entities WHERE doc_id = ?`, id)
