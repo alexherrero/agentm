@@ -22,6 +22,7 @@ import (
 
 var (
 	dreamerOnce sync.Once
+	dreamerDir  string // removed by TestMain, in roundtrip_test.go
 	dreamerBin  string
 	dreamerErr  error
 )
@@ -34,6 +35,7 @@ func buildDreamer(t *testing.T) string {
 			dreamerErr = err
 			return
 		}
+		dreamerDir = dir
 		name := "agentmdream"
 		if runtime.GOOS == "windows" {
 			name += ".exe" // exec needs the suffix there; go build writes exactly -o

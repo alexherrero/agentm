@@ -678,9 +678,26 @@ An index that has to be rebuilt by hand is a database pretending to be a cache.
 
 var (
 	buildOnce sync.Once
+	buildDir  string
 	buildPath string
 	buildErr  error
 )
+
+// TestMain removes the directories the two binaries were built into, once
+// every test in the package has run. Each binary is built once and shared by
+// every test that asks, so no one test's t.TempDir can hold it, and nothing
+// else removed them: every run of this package left an `agentmd-build-*` and an
+// `agentmdream-e2e-*` directory in the temporary directory, a compiled binary
+// in each. One machine held 411 of the first by 2026-10-03.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	for _, dir := range []string{buildDir, dreamerDir} {
+		if dir != "" {
+			os.RemoveAll(dir)
+		}
+	}
+	os.Exit(code)
+}
 
 // buildDaemon compiles the real binary, once per test run, with cgo off — the
 // same way it ships.
@@ -692,6 +709,7 @@ func buildDaemon(t *testing.T) string {
 			buildErr = err
 			return
 		}
+		buildDir = dir
 		name := "agentmd"
 		if runtime.GOOS == "windows" {
 			// Windows will not execute a file without the extension, and every

@@ -22,7 +22,11 @@ PY="${PYTHON:-python3}"
 command -v "$PY" >/dev/null 2>&1 || { echo "check-all: $PY not found" >&2; exit 2; }
 
 LOG="$(mktemp)"
-trap 'rm -f "$LOG"' EXIT
+# Set below, once the battery has a directory to build agentmd into. It is
+# removed here with the log: left behind, every battery run added a directory
+# holding a 22 MB binary to the temporary directory.
+AGENTMD_BUILD_DIR=""
+trap 'rm -f "$LOG"; [ -z "$AGENTMD_BUILD_DIR" ] || rm -rf "$AGENTMD_BUILD_DIR"' EXIT
 
 PASS=0; FAIL=0
 RESULTS=()
@@ -71,7 +75,8 @@ gate_tri() {
 # everywhere at once. Several Python gates below read it, so the battery builds
 # the binary from THIS tree first and points them at it. Testing against whatever
 # `agentmd` happens to be installed would grade the last release, not this diff.
-AGENTMD_BUILD="$(mktemp -d)/agentmd"
+AGENTMD_BUILD_DIR="$(mktemp -d)"
+AGENTMD_BUILD="$AGENTMD_BUILD_DIR/agentmd"
 if command -v go >/dev/null 2>&1 && (cd "$REPO/daemon" && go build -o "$AGENTMD_BUILD" ./cmd/agentmd) 2>/dev/null; then
   export AGENTMD="$AGENTMD_BUILD"
   echo "check-all: built agentmd from this tree for the contract-reading gates" >&2

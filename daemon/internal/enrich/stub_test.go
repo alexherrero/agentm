@@ -25,9 +25,23 @@ import (
 
 var (
 	stubOnce sync.Once
+	stubDir  string
 	stubPath string
 	stubErr  error
 )
+
+// TestMain removes the directory the stub was built into, once every test in
+// the package has run. The stub outlives the test that first asks for it, so
+// that test's t.TempDir cannot hold it, and nothing else removed it: every run
+// of this package left an `enrich-stub-*` directory in the temporary directory,
+// 480 of them on one machine by 2026-10-03.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if stubDir != "" {
+		os.RemoveAll(stubDir)
+	}
+	os.Exit(code)
+}
 
 // stubBinary returns the path to the compiled stub, building it on first use.
 func stubBinary(t *testing.T) string {
@@ -38,6 +52,7 @@ func stubBinary(t *testing.T) string {
 			stubErr = err
 			return
 		}
+		stubDir = dir
 		src := filepath.Join(dir, "main.go")
 		if err := os.WriteFile(src, []byte(stubSource), 0o644); err != nil {
 			stubErr = err

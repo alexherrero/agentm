@@ -16,6 +16,13 @@ for isolation a pytest run reached the operator's `~/.agentm/memory/_meta`
 and `~/.cache` by the same paths the battery's runner did. A test that
 genuinely needs a specific directory sets the variable inside its own scope
 and wins; the outer environment is put back when the test ends.
+
+The directories are pytest's to remove, and the fixture removes none.
+`tmp_path_factory` makes them under the base directory pytest numbers for
+each run, inside the one `pytest-of-<user>` entry it keeps in the temporary
+directory, and pytest prunes every run but the last three. So this path never
+left an entry per test in the temporary directory, as `run_unit_suite.py` did
+until 2026-10-03; `test_unit_suite_leaves_nothing.py` holds both.
 """
 from __future__ import annotations
 
