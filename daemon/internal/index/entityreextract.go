@@ -11,10 +11,10 @@ import (
 // Re-extracting entity rows in place (task 186).
 //
 // A change to the extractor used to reach the notes already indexed only
-// through `reindex -from-scratch`, which also discards the enrichment ledger
-// and every vector: the ledger is what keeps the night from re-judging notes
-// that have not changed, and the vectors take hours to rebuild. The entity
-// rows need neither. Every note's body and `project:` label are already in the
+// through `reindex -from-scratch`, which also discards every vector, and the
+// vectors take hours to rebuild. (The enrichment ledger lives apart, in the
+// engine state directory's ledger.db since task 181, and survives a reindex.)
+// The entity rows need neither. Every note's body and `project:` label are already in the
 // index, so when the extractor's rules change, the next open re-derives the
 // rows from them, once, and leaves everything else as it was.
 
