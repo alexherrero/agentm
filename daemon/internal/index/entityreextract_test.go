@@ -73,6 +73,9 @@ func TestANewExtractorReExtractsTheIndexedNotesInPlaceOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Closed before the test returns: Windows cannot remove an open index.db
+	// from the test's temporary directory.
+	defer x.Close()
 	if got := entityURIs(t, x, id); len(got) != 3 {
 		t.Errorf("a second open re-derived the rows: %v", got)
 	}
