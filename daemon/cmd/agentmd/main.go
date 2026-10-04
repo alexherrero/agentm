@@ -225,6 +225,11 @@ func cmdServe(args []string) error {
 		if _, err := repo.RepairUnlistedPacks(); err != nil {
 			log.Error("could not repair unlisted packs", "err", err)
 		}
+		// The vault repository's packing is the daemon's: no client's command
+		// repacks behind it (vcs/maintain.go).
+		if err := repo.OwnMaintenance(); err != nil {
+			log.Error("could not take over the vault repository's maintenance", "err", err)
+		}
 	} else {
 		// Loud, every start. Without git there is no undo for a bad write, and a
 		// capability that is quietly missing is the exact failure mode principle 4

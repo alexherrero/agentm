@@ -325,6 +325,9 @@ func (w *Watcher) Run(ctx context.Context) error {
 			// place. The pass above has already looked at the vault, so this is the
 			// second look the quarantine is waiting for.
 			w.sweepDeletions()
+			// The daemon owns the vault repository's packing, and this tick is the
+			// daemon's own schedule; the repack itself is at most daily.
+			w.maintainRepo()
 			// A new subtree can appear between passes; pick up watches for it.
 			if fsw != nil {
 				w.addDirs(w.cfg.VaultPath)
@@ -557,6 +560,14 @@ func (w *Watcher) sweepDeletions() {
 	}
 	if err != nil {
 		w.log.Warn("confirming deletions failed", "err", err)
+	}
+}
+
+// maintainRepo runs the repository's daily repack when it is due. The repack
+// logs itself; a failure is a warning, and the next tick tries again.
+func (w *Watcher) maintainRepo() {
+	if _, err := w.repo.MaintainIfDue(w.now()); err != nil {
+		w.log.Warn("vault repository maintenance failed", "err", err)
 	}
 }
 

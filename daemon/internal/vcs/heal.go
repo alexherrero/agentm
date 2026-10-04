@@ -125,7 +125,7 @@ func (r *Repo) RepairUnlistedPacks() (bool, error) {
 		return false, fmt.Errorf("repack skipped: %w", err)
 	}
 	defer unlock()
-	if err := r.repackHeld(packs); err != nil {
+	if err := r.repackHeld(packs, "repaired unlisted packs"); err != nil {
 		return false, err
 	}
 	r.reopenHeld()
@@ -160,7 +160,7 @@ func (r *Repo) heal(cause error, haveLock bool) {
 			if lockErr != nil {
 				log.Warn("could not repack unlisted packs", "packs", packs, "err", lockErr)
 			} else {
-				if err := r.repackHeld(packs); err != nil {
+				if err := r.repackHeld(packs, "repaired unlisted packs"); err != nil {
 					r.repackFailedAt = time.Now()
 					log.Error("could not repack unlisted packs", "packs", packs, "err", err)
 				}
@@ -173,10 +173,11 @@ func (r *Repo) heal(cause error, haveLock bool) {
 }
 
 // repackHeld folds every object, reachable or not, into one `pack-` pack with
-// CLI git, and refuses to call it a repair if the distinct object count fell.
+// CLI git, and refuses to report success if the distinct object count fell.
+// done is the log message for a repack that worked.
 //
 // Caller holds r.mu and index.lock.
-func (r *Repo) repackHeld(packs []string) error {
+func (r *Repo) repackHeld(packs []string, done string) error {
 	start := time.Now()
 	before, err := r.countObjects()
 	if err != nil {
@@ -193,7 +194,7 @@ func (r *Repo) repackHeld(packs []string) error {
 		return fmt.Errorf("the object count fell from %d to %d across the repack", before, after)
 	}
 	r.repackFailedAt = time.Time{}
-	r.logger().Info("repaired unlisted packs", "packs", packs,
+	r.logger().Info(done, "packs", packs,
 		"objects_before", before, "objects_after", after,
 		"took", time.Since(start).Round(time.Millisecond).String())
 	return nil

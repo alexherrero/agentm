@@ -107,6 +107,10 @@ type Repo struct {
 	// failed repack back from being retried every cycle.
 	log            *slog.Logger
 	repackFailedAt time.Time
+
+	// lastMaintained is when the daily repack last ran or was found
+	// unnecessary; see maintain.go.
+	lastMaintained time.Time
 }
 
 // pendingDelete is one absence waiting to be confirmed or withdrawn.
