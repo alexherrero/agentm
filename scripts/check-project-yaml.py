@@ -18,8 +18,10 @@ those is a finding:
   - the optional keys are well formed: `board` (`owner` and a positive
     `number`), `sensitivity` (a word) and `former_names` (a list of
     `owner/repo`, the names a renamed repository had, for a project that lists
-    one repository; task 186); nothing else is allowed, so a typo in a key name
-    is caught rather than ignored.
+    one repository; task 186) and `bare_issue_floor` (a positive whole number,
+    for a project that lists a repository: below it a bare `#NN` in the
+    project's notes is not read as one of its issues; task 187); nothing else
+    is allowed, so a typo in a key name is caught rather than ignored.
 
 The template the files are seeded from, `standards/templates/project.yaml`, is
 checked the same way except for the slug, which it does not have.
@@ -51,7 +53,7 @@ for _p in (str(_HERE), str(_TOOLKIT)):
 FILENAME = "project.yaml"
 TEMPLATE_REL = ("standards", "templates", FILENAME)
 REQUIRED = ("slug", "title", "status", "repositories", "code_paths")
-OPTIONAL = ("board", "sensitivity", "former_names")
+OPTIONAL = ("board", "sensitivity", "former_names", "bare_issue_floor")
 STATUSES = ("queued", "active", "parked", "done", "dropped")
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _WORD = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -119,6 +121,12 @@ def check_mapping(data, rel: str, *, slug: "str | None") -> list:
                     out.append(f"{rel}: former name `{r}` is not `owner/repo`")
             if former and not (isinstance(repos, list) and len(repos) == 1):
                 out.append(f"{rel}: `former_names` needs exactly one repository to belong to")
+    if "bare_issue_floor" in data:
+        floor = data["bare_issue_floor"]
+        if not (isinstance(floor, int) and not isinstance(floor, bool) and floor > 0):
+            out.append(f"{rel}: `bare_issue_floor` must be a positive whole number")
+        elif not (isinstance(repos, list) and repos):
+            out.append(f"{rel}: `bare_issue_floor` needs a repository to belong to")
     return out
 
 
@@ -167,6 +175,8 @@ def run_self_test(yaml) -> int:
                   ["missing required key `slug`", "not one of", "must be a list", "unknown key `colour`", "`board` must"]),
         "epsilon": ("slug: epsilon\ntitle: [unclosed\n", ["does not parse"]),
         "zeta": (None, ["missing"]),
+        "eta": ("slug: eta\ntitle: E\nstatus: active\nrepositories: [o/eta]\ncode_paths: []\nbare_issue_floor: '48'\n",
+                ["`bare_issue_floor` must be a positive whole number"]),
     }
     with tempfile.TemporaryDirectory() as td:
         vault = Path(td)

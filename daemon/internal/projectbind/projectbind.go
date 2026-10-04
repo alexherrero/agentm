@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -29,11 +30,15 @@ func readYAML(path string) (slug string, paths []string) {
 	return f.slug, f.lists["code_paths"]
 }
 
-// yamlFields is what the line reader keeps of one project.yaml: its slug, and
-// the two lists a reader asks for.
+// yamlFields is what the line reader keeps of one project.yaml: its slug, the
+// lists a reader asks for, and the bare-issue floor.
 type yamlFields struct {
 	slug  string
 	lists map[string][]string
+	// floor is `bare_issue_floor`, 0 when the file sets none or sets something
+	// that is not a positive whole number (task 187). The gate refuses the
+	// second; the reader just ignores it.
+	floor int
 }
 
 // listKeys are the list-valued keys the reader collects.
@@ -62,6 +67,14 @@ func readFields(path string) yamlFields {
 			switch {
 			case key == "slug":
 				out.slug = unquote(value)
+			case key == "bare_issue_floor":
+				// YAML allows a comment after the value: `48  # the roadmap's last item + 1`.
+				if i := strings.Index(value, " #"); i >= 0 {
+					value = value[:i]
+				}
+				if n, err := strconv.Atoi(unquote(value)); err == nil && n > 0 {
+					out.floor = n
+				}
 			case listKeys[key] && strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]"):
 				for _, p := range strings.Split(value[1:len(value)-1], ",") {
 					if p = unquote(p); p != "" {
@@ -165,6 +178,27 @@ func FormerNames(vaultRoot string) map[string]string {
 			delete(out, old)
 		}
 	}
+	return out
+}
+
+// IssueFloors maps each repository, as `owner/repo` in lower case, to the
+// `bare_issue_floor` of the project that lists it (task 187). Below its floor a
+// bare `#NN`, or one after the repository's short name, is not read as one of
+// its issues: the project's notes used the same numbers for its roadmap's
+// items. A repository two projects list takes the higher floor. A repository
+// with no floor is absent.
+func IssueFloors(vaultRoot string) map[string]int {
+	out := map[string]int{}
+	eachProject(vaultRoot, func(slug string, fields yamlFields) {
+		if fields.floor <= 0 {
+			return
+		}
+		for _, r := range repoNames(fields.lists["repositories"]) {
+			if fields.floor > out[r] {
+				out[r] = fields.floor
+			}
+		}
+	})
 	return out
 }
 

@@ -86,6 +86,25 @@ class TheGate(unittest.TestCase):
                      "projects/gamma/project.yaml: `former_names` needs exactly one repository"):
             self.assertIn(want, text)
 
+    def test_a_bare_issue_floor_is_a_positive_whole_number_for_a_project_with_a_repository(self):
+        # Task 187: below the floor a bare `#NN` in the project's notes is not
+        # read as one of its issues. The entity extractor reads it through
+        # projectbind, which ignores a value it cannot read, so the gate is
+        # what says so.
+        _project(self.vault, "alpha", GOOD.format(slug="alpha") + "bare_issue_floor: 48\n")
+        self.assertEqual(self.scan(), [])
+        _project(self.vault, "beta", GOOD.format(slug="beta") + "bare_issue_floor: forty-eight\n")
+        _project(self.vault, "gamma", GOOD.format(slug="gamma") + "bare_issue_floor: 0\n")
+        _project(self.vault, "delta", GOOD.format(slug="delta") + "bare_issue_floor: 4.5\n")
+        _project(self.vault, "epsilon", GOOD.format(slug="epsilon") + "bare_issue_floor: true\n")
+        _project(self.vault, "zeta", "slug: zeta\ntitle: Z\nstatus: active\nrepositories: []\n"
+                 "code_paths: []\nbare_issue_floor: 48\n")
+        text = "\n".join(self.scan())
+        for slug in ("beta", "gamma", "delta", "epsilon"):
+            self.assertIn(f"projects/{slug}/project.yaml: `bare_issue_floor` must be a positive whole number", text)
+        self.assertIn("projects/zeta/project.yaml: `bare_issue_floor` needs a repository to belong to", text)
+        self.assertNotIn("projects/alpha/", text)
+
     def test_the_template_is_held_to_the_schema_without_a_slug(self):
         t = self.vault / "standards" / "templates"
         t.mkdir(parents=True)

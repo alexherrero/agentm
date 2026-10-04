@@ -297,3 +297,57 @@ func TestARoadmapNumberOrALongNumberIsNoIssueOfTheRepository(t *testing.T) {
 		}
 	}
 }
+
+// Task 187: below a project's `bare_issue_floor`, a bare number or one after
+// the repository's short name stays unqualified, because the project's roadmap
+// numbered its items in the same range. An explicit `PR #NN`, `issue #NN`,
+// `owner/repo#NN` or GitHub address qualifies whatever the number.
+func TestABareNumberBelowItsRepositorysFloorStaysUnqualified(t *testing.T) {
+	floors := map[string]int{"alexherrero/agentm": 48, "alexherrero/crickets": 48}
+	ctx := Context{Repo: "alexherrero/agentm", Known: known, Floors: floors}
+	for line, want := range map[string]string{
+		// Below the floor: bare, in parentheses, or after the repository's name.
+		"Hardening II + Operator-personal (#10).":  "issue:#10",
+		"Closed parent #15 after the split.":       "issue:#15",
+		"#47 is the roadmap's last row.":           "issue:#47",
+		"agentm #46 token-efficiency":              "issue:#46",
+		"The github-projects bundle, crickets #41": "issue:#41",
+		// At and above the floor, as before.
+		"Fixed in #48.":              "issue:alexherrero/agentm#48",
+		"Hardening I follow-up #70.": "issue:alexherrero/agentm#70",
+		"Fixed in crickets #141.":    "issue:alexherrero/crickets#141",
+		// Explicit, whatever the number.
+		"Shipped in PR #36.":                                "issue:alexherrero/agentm#36",
+		"Maps to GitHub issue #11.":                         "issue:alexherrero/agentm#11",
+		"Opened pull request #35 for it.":                   "issue:alexherrero/agentm#35",
+		"Merged in (PR #12).":                               "issue:alexherrero/agentm#12",
+		"The board bodies live on alexherrero/crickets#13.": "issue:alexherrero/crickets#13",
+		// Below the floor and after a roadmap word: unqualified, as before.
+		"Excluded per ROADMAP item #15.": "issue:#15",
+	} {
+		got := EntitiesIn(line, ctx)
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("%q: got %v, want [%s]", line, got, want)
+		}
+	}
+	// An issue's address names its repository and its number.
+	eq(t, EntitiesIn("See https://github.com/alexherrero/agentm/issues/12 (#12).\n", ctx),
+		[]EntityURI{"issue:alexherrero/agentm#12", "repo:alexherrero/agentm"})
+	// "request" alone is no pull request.
+	eq(t, EntitiesIn("A feature request #20 came in.\n", ctx), []EntityURI{"issue:#20"})
+}
+
+// A project with no floor reads exactly as before, and one repository's floor
+// says nothing about another's.
+func TestAFloorBelongsToItsOwnRepository(t *testing.T) {
+	for _, ctx := range []Context{
+		{Repo: "alexherrero/agentm", Known: known},
+		{Repo: "alexherrero/agentm", Known: known, Floors: map[string]int{"alexherrero/crickets": 48}},
+	} {
+		eq(t, EntitiesIn("Hardening II (#10), and #15 too.\n", ctx),
+			[]EntityURI{"issue:alexherrero/agentm#10", "issue:alexherrero/agentm#15"})
+	}
+	ctx := Context{Repo: "alexherrero/agentm", Known: known, Floors: map[string]int{"alexherrero/crickets": 48}}
+	eq(t, EntitiesIn("crickets #41, and agentm #41.\n", ctx),
+		[]EntityURI{"issue:#41", "issue:alexherrero/agentm#41"})
+}

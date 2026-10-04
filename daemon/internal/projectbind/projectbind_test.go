@@ -161,3 +161,32 @@ func TestClonesFindEachRepositorysCheckout(t *testing.T) {
 		t.Errorf("a missing path is no clone: %v", got)
 	}
 }
+
+// Task 187: a project's `bare_issue_floor` applies to each repository it lists.
+// A file that sets none, or sets something other than a positive whole number,
+// gives no floor; a comment after the value is not part of it.
+func TestIssueFloorsMapEachListedRepositoryToItsProjectsFloor(t *testing.T) {
+	vault := t.TempDir()
+	writeYAML(t, vault, "agentm", "slug: agentm\nrepositories:\n  - Alexherrero/Agentm\nbare_issue_floor: 48\n")
+	writeYAML(t, vault, "crickets", "slug: crickets\r\nrepositories: [alexherrero/crickets]\r\nbare_issue_floor: \"48\"  # the roadmap's last item, plus one\r\n")
+	writeYAML(t, vault, "metro", "slug: metro\nrepositories:\n  - o/metro-dev\n  - o/metro\nbare_issue_floor: 12\n")
+	writeYAML(t, vault, "shared", "slug: shared\nrepositories: [o/metro]\nbare_issue_floor: 30\n")
+	writeYAML(t, vault, "blog", "slug: blog\nrepositories: [o/blog]\n")
+	writeYAML(t, vault, "bad", "slug: bad\nrepositories: [o/bad]\nbare_issue_floor: forty\n")
+	writeYAML(t, vault, "zero", "slug: zero\nrepositories: [o/zero]\nbare_issue_floor: 0\n")
+	got := IssueFloors(vault)
+	want := map[string]int{
+		"alexherrero/agentm":   48,
+		"alexherrero/crickets": 48,
+		"o/metro-dev":          12,
+		"o/metro":              30,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("IssueFloors = %v, want %v (no floor for blog, bad or zero)", got, want)
+	}
+	for repo, floor := range want {
+		if got[repo] != floor {
+			t.Errorf("IssueFloors[%q] = %d, want %d", repo, got[repo], floor)
+		}
+	}
+}

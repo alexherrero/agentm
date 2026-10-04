@@ -3,6 +3,7 @@ package extract
 import (
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -75,6 +76,12 @@ type Context struct {
 	// for every repository a project lists, so "crickets v4.0.0" in any note
 	// names crickets' release. A short name two repositories share is left out.
 	Known map[string]string
+	// Floors maps a repository's `owner/repo` to its project's
+	// `bare_issue_floor` (task 187). Below it a bare `#15`, or one after the
+	// repository's short name, stays `issue:#15`: the project's notes used the
+	// same numbers for its roadmap's items. A repository with no floor is
+	// absent.
+	Floors map[string]int
 }
 
 // releaseWords are the words that may stand right before a version tag that
@@ -191,6 +198,11 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 			case !refShaped(line[m[2]:m[3]], before, num):
 				// "ROADMAP item #15", "V4 #30", a colour `#191614`: a number,
 				// but not one of the repository's (task 186).
+				add("issue:#" + num)
+			case belowFloor(ctx, named, num) && !explicitRef(line, m[3]):
+				// "Hardening II (#10)", "crickets #41": below the floor the
+				// project's roadmap numbered its items in the same range, and
+				// only an explicit `PR #12` or `issue #12` says which (task 187).
 				add("issue:#" + num)
 			case named != "":
 				// "Fixed in crickets #235": the word before names the repository.
@@ -377,6 +389,43 @@ func refShaped(opener, before, num string) bool {
 		return true
 	}
 	return !roadmapWordRe.MatchString(strings.Trim(before, ".:,;"))
+}
+
+// belowFloor reports whether a bare `#num` falls under the floor of the
+// repository it would qualify to: the one the word before names, else the
+// note's own.
+func belowFloor(ctx Context, named, num string) bool {
+	repo := named
+	if repo == "" {
+		repo = ctx.Repo
+	}
+	floor := ctx.Floors[repo]
+	if floor == 0 {
+		return false
+	}
+	n, err := strconv.Atoi(num)
+	return err == nil && n < floor
+}
+
+// explicitWords say that the number after them is an issue or a pull request.
+var explicitWords = map[string]bool{"pr": true, "prs": true, "pull": true, "pulls": true,
+	"issue": true, "issues": true}
+
+// explicitRef reports whether the bare number whose `#` sits at line[i] is
+// written as an issue or a pull request: "PR #12", "issue #12", "pull request
+// #12". An `owner/repo#12` and an address are explicit too, and are qualified
+// before this is asked.
+func explicitRef(line string, i int) bool {
+	w, at := wordBeforeAt(line, i)
+	w = strings.ToLower(w)
+	if explicitWords[w] {
+		return true
+	}
+	if w == "request" || w == "requests" {
+		prev, _ := wordBeforeAt(line, at)
+		return strings.ToLower(prev) == "pull"
+	}
+	return false
 }
 
 // possessive drops a trailing "'s" or "’s": "agentm's v10.0.0" is agentm's.
