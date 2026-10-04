@@ -21,6 +21,8 @@ var testThresholds = Thresholds{
 	IndexStale:   15 * time.Minute,
 	ProbeStale:   48 * time.Hour,
 	ProbeBudget:  10 * time.Second,
+	// The production value; see thresholds() in cmd/agentmd/health.go.
+	CommitStalled: 30 * time.Minute,
 }
 
 // now is a fixed clock. A test that reads the wall clock is a test whose failure
@@ -380,6 +382,90 @@ func TestAReportSurvivesTheRoundTripThroughJSON(t *testing.T) {
 	if after.Level != LevelRed || after.Queue.OldestAge != before.Queue.OldestAge {
 		t.Errorf("the report changed across the round trip:\n  before %+v\n  after  %+v",
 			before.Queue, after.Queue)
+	}
+}
+
+// A committer that keeps failing pages once the run is half an hour old, not
+// before: one failed cycle is usually a CLI command holding index.lock.
+func TestACommitStallPagesAfterHalfAnHour(t *testing.T) {
+	in := healthy()
+	in.CommitFailures = 6
+	in.LastCommitError = "status: object not found"
+
+	in.FirstCommitFailure = now.Add(-29 * time.Minute)
+	r := Evaluate(in)
+	if has(r, AlertCommitStalled) || r.Level != LevelOK {
+		t.Fatalf("a 29-minute run of failed commits paged: %s", codes(r))
+	}
+	if r.Git.CommitFailures != 6 || r.Git.LastCommitError != in.LastCommitError {
+		t.Fatalf("the run is not on the git block before it pages: %+v", r.Git)
+	}
+
+	in.FirstCommitFailure = now.Add(-31 * time.Minute)
+	r = Evaluate(in)
+	if !has(r, AlertCommitStalled) || r.Level != LevelRed {
+		t.Fatalf("a 31-minute run of failed commits did not page: %s", codes(r))
+	}
+	for _, a := range r.Alerts {
+		if a.Code == AlertCommitStalled && !strings.Contains(a.Detail, "object not found") {
+			t.Errorf("the alert does not carry the last error: %q", a.Detail)
+		}
+	}
+}
+
+// The next good cycle clears it: the watcher zeroes the run, and nothing here
+// latches.
+func TestACommitStallClearsWithTheNextCommit(t *testing.T) {
+	in := healthy()
+	in.CommitFailures, in.FirstCommitFailure = 0, time.Time{}
+	r := Evaluate(in)
+	if has(r, AlertCommitStalled) || r.Git.CommitFailures != 0 || r.Git.FirstCommitFailure != "" {
+		t.Fatalf("a committer with no failures reports a stall: %s %+v", codes(r), r.Git)
+	}
+}
+
+// Git being unavailable is its own, unalerted condition; it is not also a
+// stall.
+func TestNoRepositoryIsNotACommitStall(t *testing.T) {
+	in := healthy()
+	in.GitAvailable = false
+	in.CommitFailures, in.FirstCommitFailure = 9, now.Add(-5*time.Hour)
+	if r := Evaluate(in); has(r, AlertCommitStalled) {
+		t.Fatalf("a vault with no repository paged as a commit stall: %s", codes(r))
+	}
+}
+
+// The field names are what `agentmd status --json`, the doctor row and any
+// script read, so they are pinned here as the wire shape.
+func TestTheCommitStallFieldsOnTheWire(t *testing.T) {
+	in := healthy()
+	in.CommitFailures = 2
+	in.FirstCommitFailure = time.Date(2026, 10, 4, 0, 32, 14, 0, time.UTC)
+	in.LastCommitError = "status: object not found"
+	blob, err := json.Marshal(Evaluate(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Git map[string]any `json:"git"`
+	}
+	if err := json.Unmarshal(blob, &wire); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"commit_failures":      float64(2),
+		"first_commit_failure": "2026-10-04T00:32:14Z",
+		"last_commit_error":    "status: object not found",
+	}
+	for k, v := range want {
+		if wire.Git[k] != v {
+			t.Errorf("git.%s = %v, want %v\n  %s", k, wire.Git[k], v, blob)
+		}
+	}
+
+	blob, _ = json.Marshal(Evaluate(healthy()))
+	if !strings.Contains(string(blob), `"commit_failures":0`) {
+		t.Errorf("a clean committer omits commit_failures rather than reporting 0:\n  %s", blob)
 	}
 }
 

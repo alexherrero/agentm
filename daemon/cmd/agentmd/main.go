@@ -332,6 +332,9 @@ func cmdServe(args []string) error {
 		}
 		in.Embedder = embedderHealth(embedder, idx, cfg)
 		in.Contract = contractHealth(cfg, cp)
+		stall := w.CommitStall()
+		in.CommitFailures, in.FirstCommitFailure, in.LastCommitError =
+			stall.Failures, stall.FirstAt, stall.LastError
 		return health.Evaluate(in)
 	}
 

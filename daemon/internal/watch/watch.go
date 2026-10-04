@@ -52,6 +52,11 @@ type Watcher struct {
 	lastReconcile   index.ReconcileReport
 	lastReconcileAt time.Time
 	lastEventAt     time.Time
+	stall           CommitStall
+
+	// now is the clock the stall's first-failure time is read from; tests
+	// replace it.
+	now func() time.Time
 
 	// selfWritten holds paths the daemon wrote itself, so their commits are
 	// attributed to what the daemon was doing rather than mistaken for someone
@@ -68,7 +73,42 @@ func New(cfg *config.Config, idx *index.Index, repo *vcs.Repo, log *slog.Logger)
 	return &Watcher{
 		cfg: cfg, idx: idx, repo: repo, log: log,
 		selfWritten: map[string]selfWrite{},
+		now:         time.Now,
 	}
+}
+
+// CommitStall is the committer's current run of failed cycles: how many in a
+// row, when the first one failed, and the latest reason. A cycle fails when it
+// can't read the worktree's status, or when a commit with changes waiting
+// records nothing and returns an error. A cycle that commits, or finds
+// nothing to commit, ends the run. Health turns a run older than half an hour
+// into the commit-stalled alert.
+type CommitStall struct {
+	Failures  int
+	FirstAt   time.Time
+	LastError string
+}
+
+// CommitStall reports the committer's current run of failed cycles.
+func (w *Watcher) CommitStall() CommitStall {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.stall
+}
+
+// noteCommitCycle records how one commit cycle ended.
+func (w *Watcher) noteCommitCycle(err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err == nil {
+		w.stall = CommitStall{}
+		return
+	}
+	if w.stall.Failures == 0 {
+		w.stall.FirstAt = w.now()
+	}
+	w.stall.Failures++
+	w.stall.LastError = err.Error()
 }
 
 // MarkSelfWritten records that the daemon itself just wrote this path as an
@@ -394,14 +434,16 @@ func (w *Watcher) process(batch []string) {
 func (w *Watcher) commitDirty() {
 	dirty, err := w.repo.Dirty()
 	if err != nil {
+		// No repository at all is reported as git degraded, not as a stall.
 		if !errors.Is(err, vcs.ErrNoRepo) {
 			w.log.Warn("could not read worktree status", "err", err)
+			w.noteCommitCycle(err)
 		}
 		return
 	}
 	committable := w.committable(dirty)
 	w.warnOnLargeAdditions(committable)
-	w.commitPaths(committable)
+	w.noteCommitCycle(w.commitPaths(committable))
 }
 
 // largeFileWarnBytes is where an addition stops looking like vault content.
@@ -468,10 +510,16 @@ func (w *Watcher) committable(dirty []string) []string {
 // batch can legitimately mix them — the operator editing in Obsidian while the
 // phone syncs — and collapsing that into one commit would make the attribution a
 // guess.
-func (w *Watcher) commitPaths(paths []string) {
+//
+// It returns the first commit that failed outright, recording nothing. A
+// commit that went through with problems on some paths is progress, not a
+// failure: the paths it couldn't stage stay dirty, and the next cycle counts
+// them if they fail on their own.
+func (w *Watcher) commitPaths(paths []string) error {
 	if len(paths) == 0 {
-		return
+		return nil
 	}
+	var failed error
 	byOrigin := map[vcs.Origin][]string{}
 	for _, rel := range paths {
 		origin := w.attribute(rel)
@@ -481,6 +529,9 @@ func (w *Watcher) commitPaths(paths []string) {
 		hash, err := w.repo.Commit(origin, paths)
 		if err != nil {
 			w.log.Warn("commit failed", "origin", origin, "paths", len(paths), "err", err)
+			if hash == "" && failed == nil {
+				failed = fmt.Errorf("commit (%s, %d paths): %w", origin, len(paths), err)
+			}
 			continue
 		}
 		if hash != "" {
@@ -492,6 +543,7 @@ func (w *Watcher) commitPaths(paths []string) {
 				"origin", origin, "paths", len(paths), "reason", "git unavailable")
 		}
 	}
+	return failed
 }
 
 // sweepDeletions asks the repository to settle its quarantined absences, and

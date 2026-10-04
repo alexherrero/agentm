@@ -29,6 +29,10 @@ func thresholds(cfg *config.Config) health.Thresholds {
 		IndexStale:   3 * cfg.ReconcileEvery,
 		ProbeStale:   2 * cfg.ProbeEvery,
 		ProbeBudget:  cfg.ProbeBudget,
+		// Not derived: the commit cycle runs on every debounce and reconcile
+		// tick, and half an hour is long enough to outlast any CLI command
+		// holding index.lock and short enough to page well inside the hour.
+		CommitStalled: 30 * time.Minute,
 	}
 }
 
@@ -147,6 +151,10 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 	fmt.Fprintf(&b, "  git      %s\n", rep.Git)
 	if !rep.Git.Healthy() {
 		b.WriteString("           no undo for a bad write, and `agentmd gate corpus-write` refuses\n")
+	}
+	if rep.Git.CommitFailures > 0 {
+		fmt.Fprintf(&b, "           %d commit cycles failing since %s: %s\n",
+			rep.Git.CommitFailures, rep.Git.FirstCommitFailure, rep.Git.LastCommitError)
 	}
 
 	fmt.Fprintf(&b, "  embedder %s\n", rep.Embedder)
