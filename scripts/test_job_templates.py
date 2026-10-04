@@ -125,7 +125,7 @@ class JobTemplatesLoad(unittest.TestCase):
         self.assertEqual(sorted(night, key=lambda n: (loaded[n].order, n)), night)
         # The weekly field brief (task 185) is the one deliberate evening job: it
         # has no reason to queue behind the night's enrichment and crystallize
-        # phase, and its first run is a supervised Sunday evening.
+        # phase, and it runs weekly on the evening its first run set.
         evening = ["field-brief-weekly"]
         for name in evening:
             self.assertEqual(loaded[name].window_minutes, (18 * 60, 23 * 60), name)

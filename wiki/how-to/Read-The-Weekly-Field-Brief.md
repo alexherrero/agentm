@@ -1,7 +1,7 @@
 # How to read the weekly field brief
 
 > [!NOTE]
-> **Status: implemented** — shipped by `tasks/185-keep-up-with-the-field` (steps 3 and 4): the engine, `scripts/health/session_email.py`'s `send()`, and the weekly job template. The first weekly run is supervised by hand on a Sunday evening.
+> **Status: implemented** — shipped by `tasks/185-keep-up-with-the-field` (steps 3 and 4): the engine, `scripts/health/session_email.py`'s `send()`, and the weekly job template. The first brief was run by hand on Saturday 2026-10-03, and the weekly job runs Saturday evenings from 2026-10-10.
 > **Goal:** Read the week's field brief, steer what it looks for, ask it a question of your own, and keep the items worth keeping.
 > **Prereqs:** The agentm runner on the machine that holds your vault, with the weekly job registered (step 7). For the emailed copy, the mail path from [Enable the daily email](Enable-Email-Digest-Delivery).
 
@@ -41,14 +41,14 @@ Once a week, one note lands in your vault, and in your inbox if you set up a mai
    cp templates/jobs/field-brief-weekly.yaml .harness/jobs/field-brief-weekly.yaml
    ```
 
-   The job runs weekly in an `18:00-23:00` window, under a token budget, with a two-day lookback. The runner has no weekday key: the first run sets the day, so register the job on the day you want it to run, because one registered on a Tuesday afternoon runs that evening. The first run is a Sunday. A week the machine sleeps through catches up within two days. `.harness/jobs/` is local to your machine. After this copy, edit the live file in place, because a second copy overwrites it.
+   The job runs weekly in an `18:00-23:00` window, under a token budget, with a two-day lookback. The runner has no weekday key: the first run sets the day, so register the job on the day you want it to run, because one registered on a Tuesday afternoon runs that evening. If you have already run the brief by hand, record that run as the job's last run when you register it, or the runner writes a second brief that evening. This machine's first brief was run by hand on Saturday 2026-10-03, so its job runs on Saturday evenings. A week the machine sleeps through catches up within two days. The runner runs the scripts in the checkout it lives in, so that checkout must be at a commit that has `harness/skills/memory/scripts/field_brief.py`. `.harness/jobs/` is local to your machine. After this copy, edit the live file in place, because a second copy overwrites it.
 
 ## Verify
 
 Check the setup:
 
 - `python3 scripts/machinery_doctor.py` reports whether the weekly job is registered.
-- After the first Sunday evening, the note exists under `<vault>/resources/briefs/`, its frontmatter carries `cost_usd`, and the email has arrived.
+- After the first scheduled evening, the note exists under `<vault>/resources/briefs/`, its frontmatter carries `cost_usd`, and the email has arrived.
 - `python3 harness/skills/memory/scripts/field_brief.py --no-mail` writes the week's note without the email, for a dry run.
 
 ## See also
