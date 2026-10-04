@@ -30,7 +30,7 @@ The runner runs **jobs**: jobs are registered by capabilities (crickets plugins)
 
 ![How a job runs: a host scheduled task (Claude Desktop Scheduled Tasks or Antigravity Scheduled Tasks), OS cron, or an on-demand call invokes the agentm runner, which runs one idempotent cycle — reading the job manifests in .harness/jobs/, deciding which jobs are due (including past-due ones missed while the device was off), checking the fleet budget, running them, then writing through vault_lock as the third writer (routed by ownership tier) and reporting each change to the digest](diagrams/agentm-runner.svg)
 
-Nothing of the runner is built today. Each consumer's on-demand half exists — the manually-invocable seed (the import watchlist for the forward pass, the thin `/dream`, `/diagnose`) — so every consumer degrades to "run it by hand" until the runner lands. This is the spec for the substrate; the individual jobs are designed by their own capabilities.
+Nothing of the runner is built today. Each consumer's on-demand half exists — the manually-invocable seed (`field_brief.py` for the weekly field brief, the thin `/dream`, `/diagnose`) — so every consumer degrades to "run it by hand" until the runner lands. This is the spec for the substrate; the individual jobs are designed by their own capabilities.
 
 ### The job (the unit)
 A job is a manifest at `.harness/jobs/<name>.yaml`. The schema:

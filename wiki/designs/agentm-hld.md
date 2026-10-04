@@ -79,11 +79,11 @@ The durable record: everything agentm knows, kept on disk so it survives a sessi
 
 ### Experience — what's worked before, and what's worth knowing
 
-How the person learns, in two directions. **Backward:** it learns from its own past — every finished session leaves something behind. **Forward:** on a schedule (when configured), it goes out and learns from the world — approved sources, feeds, the web — and surfaces what's worth knowing back to you.
+How the person learns, in two directions. **Backward:** it learns from its own past — every finished session leaves something behind. **Forward:** on a schedule (when configured), it goes out and learns from the world — the sources you favour, the web — and surfaces what's worth knowing back to you.
 
 **Components:**
 - **Reflection** *(backward)* — mines a finished session's transcript for durable preferences, workflows, and fixes (a `reflect.py` engine + a Stop-event hook + an idle-recovery hook).
-- **Scheduled learning** *(forward — largely designed)* — a periodic, opt-in pass that pulls from approved sources (RSS, the web, named repos) to mine ideas for improving the agent, then surfaces them to you to accept or pass on. The **import watchlist** (adapt-don't-import: a rubric plus a judge sub-agent) is one element of this — the part that screens external *skills* worth borrowing.
+- **Scheduled learning** *(forward — built as the weekly field brief)* — once a week it searches the web and the sources you favour for what is new in agent harnesses, memory, automation and skills, ranks it against the work in flight, and writes one note, and an email, for you to read; you keep what is worth keeping. It replaced the first version, forward learning, on 2026-10-03. Beside it, the **import watchlist** (adapt-don't-import: a rubric plus a judge sub-agent) screens external *skills* worth borrowing.
 - **The runner** *(the background-job executor)* — what lets the weekly field brief, and other upkeep, run on a schedule (fired by the host's scheduler) rather than only as in-session hooks. *(Its own [Runner design](agentm-runner.md).)*
 - **Heat policy** — curates which memories load every session, promoting frequently-hit ones and demoting cold ones.
 - **Idea incubation** — captures a half-formed idea as a skeleton a researcher sub-agent later fills.

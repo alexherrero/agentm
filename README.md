@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v10.4.0](https://github.com/alexherrero/agentm/releases/tag/v10.4.0).** Recall stops losing good answers to bookkeeping. Nightly passes keep the stamps and aliases other writers leave, a lesson demotes the cards that taught it only where it answers too, a project ranks by the work done in it, and a note the night moves stays the same file.
+> **Latest release: [v10.5.0](https://github.com/alexherrero/agentm/releases/tag/v10.5.0).** A weekly brief of what is new in agent harnesses, memory, automation and skills lands in your vault and your inbox, ranked by the work in flight, and replaces the forward learning nobody read. The vault's writers stop filing junk: entity pages need two sources, and replies and dead links stay out of the notes.
 
 ---
 

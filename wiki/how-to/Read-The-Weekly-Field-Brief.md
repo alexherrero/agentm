@@ -5,7 +5,7 @@
 > **Goal:** Read the week's field brief, steer what it looks for, ask it a question of your own, and keep the items worth keeping.
 > **Prereqs:** The agentm runner on the machine that holds your vault, with the weekly job registered (step 7). For the emailed copy, the mail path from [Enable the daily email](Enable-Email-Digest-Delivery).
 
-Once a week, one note lands in your vault, and in your inbox if you set up a mail path. It holds at most ten links to what is new in agent harnesses, memory, automation and skills. Each item gives the link, two sentences on what it is, and one on why it matters to the work in flight. The brief ranks the items against the roadmap's *What remains* and the open designs. It replaces forward learning and its watchlist, which the same task retires.
+Once a week, one note lands in your vault, and in your inbox if you set up a mail path. It holds at most ten links to what is new in agent harnesses, memory, automation and skills. Each item gives the link, two sentences on what it is, and one on why it matters to the work in flight. The brief ranks the items against the roadmap's *What remains* and the open designs. It replaced forward learning and its watchlist, which the same task retired.
 
 ## Steps
 
