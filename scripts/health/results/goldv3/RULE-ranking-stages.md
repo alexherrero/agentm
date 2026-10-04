@@ -110,10 +110,24 @@ recorded in the table below. These are upper bounds on reach:
 reaches fewer than 6 misses cannot clear the bar below. It closes *refuted for
 want of reach*, and its stage is not built.
 
-| stage | reachable misses (upper bound) | floor met? |
-|---|---|---|
-| MMR | *step 2* | |
-| spreading activation | *step 2* | |
+Counted 2026-10-04 (step 2), with no stage code in existence. The snapshot is
+`~/.agentm/corpus-snapshots/184-20261004` (taken 17:02Z; 4,236 documents;
+3,548 vectors, 0 stale after an embed pass on the copy). On it, the baseline
+scored **R@5 0.635 (40 of 63)** and R@1 0.381, with 4 of the 10 near-miss
+negatives served. Two runs were identical on all 94 questions. Against the
+pinned baseline that is 2 gains (`rc06`, `rc10`) and 4 losses (`dt06`,
+`ep06`, `ep10`, `pp02`), p 0.6875. Last night's gate printed the same p, so
+the snapshot reproduces the nightly figure.
+
+| stage | reachable misses (upper bound), of 23 | which | floor met? |
+|---|---|---|---|
+| MMR | **20**: the answer is in the hook-shaped pool (admissible, depth 100) but not in the top 5 | all misses except `dt02`, `pp15` and `rc09` | yes |
+| spreading activation | **7**: the answer is one typed hop from one of the daemon's first 6 rows | `dt06`, `ep06`, `ep10`, `pp09`, `pp14`, `pp17`, `rc08` | yes, narrowly: 6 without `ep10`, which the gold set marks `hook_reachable: false` |
+
+So spreading activation can pass only by converting nearly every reachable
+miss and losing nothing. MMR's pool ranks run from 6 to 90. Most of the 20
+sit past rank 10, where a λ = 0.7 pick against min-max relevance rarely
+reaches.
 
 ## The bar
 

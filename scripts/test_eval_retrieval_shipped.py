@@ -1024,5 +1024,136 @@ class ALessonStandsInForItsCard(unittest.TestCase):
             self.assertGreater(len(why), 40, f"{card}'s row names no evidence")
 
 
+class TheExperimentShape(unittest.TestCase):
+    """Task 184 runs its arms through this eval on a frozen snapshot: the copy's
+    `-vault`/`-index` and an arm's stage flag ride on every query, and the run
+    keeps the rank lists a stage changes. None of it may touch the gate's own
+    shape, and a snapshot must answer for its own vectors rather than borrow
+    the live daemon's."""
+
+    def setUp(self):
+        self._extra, self._snapshot = list(ev.SEARCH_EXTRA), ev.SNAPSHOT_INDEX
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        ev.SEARCH_EXTRA[:] = self._extra
+        ev.SNAPSHOT_INDEX = self._snapshot
+
+    def _daemon_returning(self, paths: list, payload_extra: dict = None):
+        import unittest.mock as mock
+        seen = {}
+
+        def fake_run(argv, *a, **kw):
+            seen["argv"] = argv
+            payload = {"results": [{"path": p, "score": 1.0 - i / 100}
+                                   for i, p in enumerate(paths)]}
+            payload.update(payload_extra or {})
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(payload),
+                                               stderr="")
+        return mock.patch.object(subprocess, "run", side_effect=fake_run), seen
+
+    def _snapshot_index(self, fresh: int, stale: int) -> str:
+        import sqlite3
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        path = os.path.join(d, "index.db")
+        con = sqlite3.connect(path)
+        con.execute("CREATE TABLE docmeta (id INTEGER PRIMARY KEY, path TEXT, mtime_ns INTEGER)")
+        con.execute("CREATE TABLE embeddings (doc_id INTEGER, chunk_idx INTEGER, mtime_ns INTEGER)")
+        for i in range(fresh + stale):
+            con.execute("INSERT INTO docmeta VALUES (?, ?, 100)", (i, f"agent/memory/n{i}.md"))
+            # Two chunks for the first note, to check a note is counted once.
+            for chunk in range(2 if i == 0 else 1):
+                con.execute("INSERT INTO embeddings VALUES (?, ?, ?)",
+                            (i, chunk, 100 if i < fresh else 99))
+        con.execute("INSERT INTO docmeta VALUES (?, 'agent/memory/unembedded.md', 100)",
+                    (fresh + stale,))
+        con.commit()
+        con.close()
+        return path
+
+    def test_with_no_extra_flags_the_argv_is_the_hook_s(self):
+        patcher, seen = self._daemon_returning(["agent/memory/2026/08/a.md"])
+        with patcher:
+            ev.search("agentmd", "what did we decide about the ranker", k=5)
+        for flag in ("-vault", "-index", "-mmr", "-spread"):
+            self.assertNotIn(flag, seen["argv"])
+
+    def test_extra_flags_ride_before_the_terms(self):
+        # Go's flag parser stops at the first positional argument, so a stage
+        # flag after the terms would be searched for as a word.
+        ev.SEARCH_EXTRA[:] = ["-vault", "/snap/vault", "-index", "/snap/index.db", "-mmr"]
+        patcher, seen = self._daemon_returning(["agent/memory/2026/08/a.md"])
+        with patcher:
+            ev.search("agentmd", "what did we decide about the ranker", k=5)
+        argv = seen["argv"]
+        terms = recall._daemon_query_terms("what did we decide about the ranker")
+        self.assertEqual(argv[-1], terms)
+        self.assertEqual(argv[argv.index("-index") + 1], "/snap/index.db")
+        self.assertLess(argv.index("-mmr"), len(argv) - 1)
+
+    def test_a_record_keeps_the_daemon_s_whole_answer_and_its_time(self):
+        daemon = ["agent/memory/_inbox/noise.md", "agent/memory/2026/08/real.md"]
+        patcher, _ = self._daemon_returning(daemon)
+        record = {}
+        with patcher:
+            rows = ev._search_rows("agentmd", "what did we decide about the ranker",
+                                   k=5, record=record)
+        self.assertEqual([p for p, _ in rows], ["agent/memory/2026/08/real.md"])
+        self.assertEqual(record["daemon"], daemon,
+                         "the record lost the row the hook filters out")
+        self.assertIsInstance(record["ms"], float)
+
+    def test_a_snapshot_counts_its_own_vectors_once_per_note(self):
+        snap = ev.snapshot_vectors(self._snapshot_index(fresh=3, stale=1))
+        self.assertEqual(snap, {"documents": 5, "fresh": 3, "stale": 1})
+
+    def test_a_snapshot_with_stale_vectors_refuses_even_when_the_live_one_is_clean(self):
+        ev.SNAPSHOT_INDEX = self._snapshot_index(fresh=10, stale=5)
+        live = {"health": {"embedder": {"state": "warm", "vectors": 100,
+                                        "in_scope": 100, "stale": 0}}}
+        patcher, _ = self._daemon_returning([], payload_extra=live)
+        with patcher:
+            with self.assertRaises(ev.Setup) as caught:
+                ev.require_warm_embedder("agentmd")
+        self.assertIn("half-embedded", str(caught.exception))
+
+    def test_a_snapshot_fingerprint_is_the_snapshot_s(self):
+        ev.SNAPSHOT_INDEX = self._snapshot_index(fresh=3, stale=0)
+        fp = ev.corpus_fingerprint("agentmd")
+        self.assertEqual((fp["documents"], fp["embedded_in_scope"]), (4, 3))
+        self.assertEqual(fp["snapshot"], str(ev.SNAPSHOT_INDEX))
+
+    def test_a_vault_without_its_index_is_refused(self):
+        self.assertEqual(ev.main(["--vault", "/snap/vault"]), 2)
+
+    def test_recorded_rank_lists_join_the_row_and_timings_stay_outside_it(self):
+        entries = [{"id": "q1", "question": "how does the ranker weight titles",
+                    "stratum": "pure-paraphrase",
+                    "expected_note_paths": ["agent/memory/2026/08/b.md"]}]
+        patcher, _ = self._daemon_returning(["agent/memory/2026/08/a.md",
+                                             "agent/memory/2026/08/b.md"])
+        with patcher:
+            result = ev.score("agentmd", entries, k=5, record=True)
+        row = result["per_question"]["q1"]
+        self.assertEqual(row["got"], ["agent/memory/2026/08/a.md",
+                                      "agent/memory/2026/08/b.md"])
+        self.assertEqual(row["rank"], 2)
+        self.assertNotIn("ms", row)
+        self.assertIn("q1", result["latency_ms"])
+
+    def test_without_record_the_row_keeps_the_gate_s_shape(self):
+        entries = [{"id": "q1", "question": "how does the ranker weight titles",
+                    "stratum": "pure-paraphrase",
+                    "expected_note_paths": ["agent/memory/2026/08/b.md"]}]
+        patcher, _ = self._daemon_returning(["agent/memory/2026/08/b.md",
+                                             "agent/memory/2026/08/c.md"])
+        with patcher:
+            result = ev.score("agentmd", entries, k=5)
+        self.assertEqual(result["per_question"]["q1"],
+                         {"hit": True, "negative": False, "rank": 1})
+        self.assertNotIn("latency_ms", result)
+
+
 if __name__ == "__main__":
     unittest.main()

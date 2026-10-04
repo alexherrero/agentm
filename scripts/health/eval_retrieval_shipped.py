@@ -45,6 +45,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -541,6 +542,18 @@ NEGATIVE_STRATUM = "negative"
 
 DEFAULT_K = 5
 
+# Extra `agentmd search` flags every query carries: a frozen snapshot's
+# `-vault`/`-index`, and an experiment arm's stage flag (task 184's `-mmr`,
+# `-spread`). Empty is the nightly gate's shape, and the argv is then the hook's
+# exactly. Set from the command line, never by a gate.
+SEARCH_EXTRA: list = []
+
+# The snapshot index an experiment measures, or None for the live one. `agentmd
+# status` always reports the resident daemon's own index, so with a snapshot the
+# fingerprint and the stale-vector refusal read the snapshot's tables instead —
+# otherwise a run on a frozen copy would carry the live corpus's provenance.
+SNAPSHOT_INDEX = None
+
 
 class Setup(Exception):
     """The environment cannot produce a trustworthy measurement."""
@@ -573,12 +586,55 @@ def require_warm_embedder(binary: str) -> str:
         raise Setup(
             f"the embedder is {state!r}, so this would be a lexical-only run "
             f"reported as a hybrid one. Start the daemon and let the model load.")
+    if SNAPSHOT_INDEX is not None:
+        # The model is the resident daemon's, which is what a snapshot run
+        # attaches to; the vectors are the snapshot's own.
+        snap = snapshot_vectors(SNAPSHOT_INDEX)
+        vectors, in_scope, stale = snap["fresh"], snap["fresh"] + snap["stale"], snap["stale"]
     if in_scope and stale > in_scope * 0.05:
         raise Setup(
             f"{stale} of {in_scope} in-scope notes carry stale vectors "
             f"({stale / in_scope:.0%}). Scoring now measures a half-embedded "
             f"corpus rather than the ranker. Run `agentmd embed` first.")
-    return f"{vectors}/{in_scope} embedded, {stale} stale"
+    where = f" (snapshot {SNAPSHOT_INDEX})" if SNAPSHOT_INDEX is not None else ""
+    return f"{vectors}/{in_scope} embedded, {stale} stale{where}"
+
+
+def snapshot_vectors(index_path) -> dict:
+    """A snapshot index's documents and vector freshness, read from its tables.
+
+    Stale is the daemon's own definition (`VectorStats`): a note whose stored
+    vector was taken at a different mtime than the one indexed. Counted over the
+    whole index rather than the embed scope — a superset, so a snapshot that
+    passes here passes the scoped check too.
+    """
+    import sqlite3
+    uri = f"file:{index_path}?mode=ro"
+    wal = Path(f"{index_path}-wal")
+    if not wal.exists() or wal.stat().st_size == 0:
+        # `agentmd` opens every index in WAL mode, and a WAL database opened
+        # read-only needs a `-shm` that only a writer creates — after the last
+        # search closes, it is gone and the open fails. With no frames waiting
+        # in the WAL, the main file is the whole database, so `immutable`
+        # reads it exactly and creates nothing beside it.
+        uri += "&immutable=1"
+    try:
+        con = sqlite3.connect(uri, uri=True)
+    except sqlite3.Error as exc:
+        raise Setup(f"snapshot index {index_path} could not be opened: {exc}") from exc
+    try:
+        documents = con.execute("SELECT count(*) FROM docmeta").fetchone()[0]
+        fresh = con.execute(
+            "SELECT count(DISTINCT m.id) FROM docmeta m JOIN embeddings e "
+            "ON e.doc_id = m.id AND e.mtime_ns = m.mtime_ns").fetchone()[0]
+        stale = con.execute(
+            "SELECT count(DISTINCT m.id) FROM docmeta m JOIN embeddings e "
+            "ON e.doc_id = m.id AND e.mtime_ns <> m.mtime_ns").fetchone()[0]
+    except sqlite3.Error as exc:
+        raise Setup(f"snapshot index {index_path} is not an agentmd index: {exc}") from exc
+    finally:
+        con.close()
+    return {"documents": documents, "fresh": fresh, "stale": stale}
 
 
 class Control(Exception):
@@ -634,6 +690,10 @@ def corpus_fingerprint(binary: str) -> dict:
     nearly got read as a code regression when six of its nine flips were the
     corpus halving underneath the instrument (see goldv3/NOTES.md, task 1).
     """
+    if SNAPSHOT_INDEX is not None:
+        snap = snapshot_vectors(SNAPSHOT_INDEX)
+        return {"documents": snap["documents"], "embedded_in_scope": snap["fresh"],
+                "gold_sha": gold_sha(), "snapshot": str(SNAPSHOT_INDEX)}
     proc = subprocess.run([binary, "status", "--json"], capture_output=True, text=True)
     if proc.returncode not in (0, 3):
         raise Setup(f"{binary} status failed: {(proc.stderr or '').strip()[:200]}")
@@ -793,7 +853,7 @@ def check_canary(binary: str) -> None:
 
 
 def _search_rows(binary: str, question: str, k: int,
-                 mode: str = None) -> list:
+                 mode: str = None, record: dict = None) -> list:
     """One query, as the recall hook issues it — including what it does after.
 
     Same mode, same `-question` for the dense arm, same extracted terms for the
@@ -820,6 +880,11 @@ def _search_rows(binary: str, question: str, k: int,
     dependency here for `_daemon_query_terms` and `DAEMON_SEARCH_MODE`, so this
     adds no new direction — and a second copy of the admissibility rules is a
     second thing to drift.
+
+    `record`, when given, receives the daemon's whole answer in order
+    (`daemon`) and the call's wall time in milliseconds (`ms`) — what an
+    experiment needs to see a stage reorder rows the hook then filters, and to
+    price it against the hook's budget.
     """
     terms = recall._daemon_query_terms(question)
     if not terms:
@@ -840,13 +905,20 @@ def _search_rows(binary: str, question: str, k: int,
             argv += ["-after", after]
         if before:
             argv += ["-before", before]
+    # Before the terms, because the flag parser stops at the first positional.
+    argv += SEARCH_EXTRA
     argv.append(terms)
 
+    started = time.monotonic()
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+    elapsed_ms = (time.monotonic() - started) * 1000
     if proc.returncode != 0:
         raise Setup(f"search failed for {question[:60]!r}: "
                     f"{(proc.stderr or '').strip()[:200]}")
     payload = json.loads(proc.stdout or "{}")
+    if record is not None:
+        record["daemon"] = [row.get("path", "") for row in (payload.get("results") or [])]
+        record["ms"] = round(elapsed_ms, 1)
 
     # `include_inbox` / `include_archive` are False here because that is what a
     # prompt-submit recall passes. A measurement run that admitted more than the
@@ -871,9 +943,17 @@ def search(binary: str, question: str, k: int) -> list:
     return [path for path, _score in _search_rows(binary, question, k)]
 
 
-def score(binary: str, entries: list, k: int) -> dict:
-    """Run every question and return the per-question outcomes plus the summary."""
+def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
+    """Run every question and return the per-question outcomes plus the summary.
+
+    `record` keeps each question's returned paths (`got`, after admissibility)
+    and the daemon's own answer (`daemon`) on its row, and every call's wall
+    time under `latency_ms`. The paths sit inside `per_question`, so the
+    determinism check compares whole rank lists rather than hit flags; the
+    timings sit outside it, because no two runs take the same time.
+    """
     per_question = {}
+    latency_ms = {}
     hits = 0
     hits_at_1 = 0
     scored = 0
@@ -894,9 +974,12 @@ def score(binary: str, entries: list, k: int) -> dict:
         # got in: `_remap_projects` has to run outermost, after the casing
         # fold, because its table is keyed on the folded path.
         expected, _retired = resolve_expected(e)
-        rows = _search_rows(binary, question, k)
+        seen = {} if record else None
+        rows = _search_rows(binary, question, k, record=seen)
         got = [path for path, _score in rows]
         all_scores.extend(s for _path, s in rows if s is not None)
+        if record:
+            latency_ms[e["id"]] = seen.get("ms")
 
         if e.get("stratum") == NEGATIVE_STRATUM:
             negatives += 1
@@ -918,6 +1001,8 @@ def score(binary: str, entries: list, k: int) -> dict:
                         false_positives_hard += 1
             per_question[e["id"]] = {"hit": not hit, "negative": True,
                                      "rank": None, "hard": hard}
+            if record:
+                per_question[e["id"]].update(got=got, daemon=seen.get("daemon", []))
             continue
 
         if not expected:
@@ -946,6 +1031,8 @@ def score(binary: str, entries: list, k: int) -> dict:
         per_question[e["id"]] = {"hit": rank is not None, "negative": False, "rank": rank}
         if via:
             per_question[e["id"]]["successor"] = via
+        if record:
+            per_question[e["id"]].update(got=got, daemon=seen.get("daemon", []))
 
     # Rounded at the source, not for taste: a full-precision float carries a
     # ten-digit decimal run, and the PII gate reads that as a US phone number.
@@ -980,6 +1067,7 @@ def score(binary: str, entries: list, k: int) -> dict:
         "negatives_easy": negatives - negatives_hard,
         "false_positives_easy": false_positives - false_positives_hard,
         "per_question": per_question,
+        **({"latency_ms": latency_ms} if record else {}),
     }
 
 
@@ -1159,7 +1247,30 @@ def main(argv: list) -> int:
                          "verdict (the standing tripwire's mode — experiments "
                          "should re-pin instead)")
     ap.add_argument("-k", type=int, default=DEFAULT_K)
+    ap.add_argument("--vault", metavar="DIR",
+                    help="measure a frozen snapshot: its copy of the vault "
+                         "(with --index). The caller freezes the engine state "
+                         "too, through AGENTM_STATE_DIR")
+    ap.add_argument("--index", metavar="FILE",
+                    help="measure a frozen snapshot: its copy of the index "
+                         "(with --vault)")
+    ap.add_argument("--search-flag", action="append", default=[], metavar="FLAG",
+                    help="an extra `agentmd search` flag every query carries — "
+                         "an experiment arm's stage, such as -mmr; repeatable")
+    ap.add_argument("--record", action="store_true",
+                    help="keep each question's returned paths and the daemon's "
+                         "own answer in the result, and every call's wall time")
     args = ap.parse_args(argv)
+
+    global SNAPSHOT_INDEX
+    if bool(args.vault) != bool(args.index):
+        print("eval-retrieval-shipped: --vault and --index name one snapshot "
+              "and come together", file=sys.stderr)
+        return 2
+    SEARCH_EXTRA[:] = list(args.search_flag)
+    if args.index:
+        SNAPSHOT_INDEX = Path(args.index)
+        SEARCH_EXTRA[:0] = ["-vault", args.vault, "-index", args.index]
 
     binary = daemon_binary()
     try:
@@ -1175,7 +1286,7 @@ def main(argv: list) -> int:
         return 4
 
     try:
-        first = score(binary, entries, args.k)
+        first = score(binary, entries, args.k, record=args.record)
     except Setup as exc:
         print(f"eval-retrieval-shipped: {exc}", file=sys.stderr)
         return 2
@@ -1186,7 +1297,7 @@ def main(argv: list) -> int:
     print(render(first, provenance, census))
 
     if args.verify_determinism:
-        second = score(binary, entries, args.k)
+        second = score(binary, entries, args.k, record=args.record)
         differing = [q for q in first["per_question"]
                      if first["per_question"][q] != second["per_question"].get(q)]
         if differing:
@@ -1198,10 +1309,16 @@ def main(argv: list) -> int:
         print(f"\ndeterministic: two consecutive runs agree on all "
               f"{len(first['per_question'])} question(s)")
 
+    try:
+        fingerprint = (corpus_fingerprint(binary)
+                       if args.baseline or args.compare else None)
+    except Setup as exc:
+        print(f"eval-retrieval-shipped: {exc}", file=sys.stderr)
+        return 2
+
     if args.baseline:
         pinned = dict(first)
-        pinned["corpus"] = {**corpus_fingerprint(binary),
-                            "pinned": date.today().isoformat()}
+        pinned["corpus"] = {**fingerprint, "pinned": date.today().isoformat()}
         Path(args.baseline).write_text(json.dumps(pinned, indent=2, sort_keys=True) + "\n",
                                        encoding="utf-8")
         print(f"\nbaseline written to {args.baseline} "
@@ -1210,8 +1327,7 @@ def main(argv: list) -> int:
     if args.compare:
         baseline = json.loads(Path(args.compare).read_text(encoding="utf-8"))
         try:
-            drift = check_comparable(baseline, corpus_fingerprint(binary),
-                                     args.drifted_ok)
+            drift = check_comparable(baseline, fingerprint, args.drifted_ok)
         except Refused as exc:
             print(f"\nCOMPARISON REFUSED: {exc}", file=sys.stderr)
             return 3
