@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/dreaming"
 	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/note"
@@ -288,5 +290,47 @@ func TestTheRunRecordCarriesTheRefusalNumbers(t *testing.T) {
 	if got["refused"] != float64(2) || got["refusals_open"] != float64(19) {
 		t.Errorf("the record carries refused=%v open=%v, want 2 and 19",
 			got["refused"], got["refusals_open"])
+	}
+}
+
+// Task 187: enrichment's sink is journaled as the machinery's, under the memory
+// root's path, so the lifecycle pass never reads it as the operator's hand. A
+// card already dormant has not moved and gets no line; and a note the operator
+// set is read back from the journal for the batch.
+func TestEnrichmentJournalsItsOwnSink(t *testing.T) {
+	cfg := &config.Config{EngineStateDir: t.TempDir(), MemoryRoot: "agent"}
+	at := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	active := []byte("---\ntitle: A\nlifecycle: active\n---\n\nbody\n")
+	if err := journalSink(cfg, "agent/memory/semantic/a.md", active, at); err != nil {
+		t.Fatal(err)
+	}
+	dormant := []byte("---\ntitle: B\nlifecycle: dormant\nlifecycle_since: 2026-09-19\n---\n\nbody\n")
+	if err := journalSink(cfg, "agent/memory/semantic/b.md", dormant, at); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := os.ReadFile(filepath.Join(cfg.EngineStateDir, dreaming.LifecycleJournalName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(blob)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("journal = %q, want one line, for the card that moved", blob)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["actor"] != "policy" || got["rel"] != "memory/semantic/a.md" || got["from"] != "active" || got["to"] != "dormant" {
+		t.Errorf("the sink's line = %v, want policy, memory/semantic/a.md, active → dormant", got)
+	}
+	if len(enrichHandStates(cfg)) != 0 {
+		t.Errorf("a machinery sink read back as the operator's: %v", enrichHandStates(cfg))
+	}
+	if err := dreaming.EnsureLifecycleJournalAs(cfg.EngineStateDir, "memory/semantic/a.md", "dormant", "active",
+		"edited by hand", "r", dreaming.ActorOperator, at.AddDate(0, 0, 1)); err != nil {
+		t.Fatal(err)
+	}
+	if got := enrichHandStates(cfg); got["memory/semantic/a.md"] != "active" {
+		t.Errorf("the operator's edit is not read back: %v", got)
 	}
 }

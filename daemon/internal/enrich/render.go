@@ -91,6 +91,12 @@ type Stamp struct {
 	// pass returns are filed under it and kept only where the note's own text
 	// names them; the zero table merges and denies nothing.
 	People people.Table
+	// HandLifecycle says the operator set the card's `lifecycle` themselves —
+	// by hand in Obsidian, or through the CLI — and the lifecycle journal's last
+	// line about it is still theirs. A verdict below the floor then does not
+	// sink it: nothing the operator edits is edited back by the night, and
+	// enrichment is part of the night (task 187).
+	HandLifecycle bool
 	// OperatorFiled keeps the operator's filing on the card exactly as they
 	// left it. It is set for an idea card (IsIdeaCard), which the operator filed
 	// themselves and which the night may think about but never re-grade

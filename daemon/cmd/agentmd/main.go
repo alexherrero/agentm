@@ -1621,6 +1621,10 @@ func cmdEnrich(args []string) error {
 	// What the night judged, by the cause it was owed for (task 181 step 4).
 	judgedBy := map[string]int{}
 
+	// The notes whose lifecycle the operator set, which no verdict sinks
+	// (task 187). Read once: the batch's own writes never add an operator line.
+	handStates := enrichHandStates(cfg)
+
 	write := func(ctx context.Context, rel string, out enrich.Outcome) error {
 		r, err := enrich.ParseResponse(out.Body)
 		if err != nil {
@@ -1638,6 +1642,7 @@ func cmdEnrich(args []string) error {
 		// operator filed it, so the night may think it through under its own
 		// heading and may never re-grade it (agentm-vault part 13, ruling 6).
 		stamp.OperatorFiled = enrich.IsIdeaCard(rel)
+		stamp.HandLifecycle = handStates[enrichMemoryRel(cfg, rel)] != ""
 		// New frontmatter over the card's own text, byte for byte, and on a deep
 		// pass the dated section below it. Compose refuses a composition that
 		// would change a byte of what the session wrote.
@@ -1712,6 +1717,13 @@ func cmdEnrich(args []string) error {
 			verdicts.Ideas++
 		default:
 			verdicts.count(dest, verdict)
+		}
+		if verdict.Sank && !unchanged {
+			// The sink is the machinery's, and says so in the lifecycle journal.
+			// A failure to record it is reported, not fatal: the card is written.
+			if err := journalSink(cfg, dest, previous, stamp.At); err != nil {
+				fmt.Fprintf(os.Stderr, "enrich: %s sank, but its lifecycle journal line failed: %v\n", dest, err)
+			}
 		}
 		landed[rel] = written
 		if c, ok := causes[rel]; ok {

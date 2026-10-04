@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/dreaming"
 	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/ledger"
@@ -60,6 +61,45 @@ func (v *enrichVerdicts) count(rel string, verdict enrich.FilingVerdict) {
 		v.Sank++
 		v.SankNotes = append(v.SankNotes, rel)
 	}
+}
+
+// enrichMemoryRel is a vault-relative note path from the memory root, the base
+// the lifecycle journal keys by: `agent/memory/semantic/a.md` is
+// `memory/semantic/a.md`. A path outside the memory root is returned as it is.
+func enrichMemoryRel(cfg *config.Config, rel string) string {
+	if cfg.MemoryRoot == "" {
+		return rel
+	}
+	return strings.TrimPrefix(rel, cfg.MemoryRoot+"/")
+}
+
+// enrichHandStates is every note whose lifecycle the operator set, by its
+// vault-relative path's memory-root form, from the lifecycle journal.
+func enrichHandStates(cfg *config.Config) map[string]string {
+	if cfg.EngineStateDir == "" {
+		return map[string]string{}
+	}
+	return dreaming.OperatorStates(cfg.EngineStateDir)
+}
+
+// journalSink records enrichment's sink in the lifecycle journal as the
+// machinery's (task 187). Without the line, the lifecycle pass found a state no
+// writer had journaled and named it as the operator's edit: the five notes the
+// 2026-09-30 facet listed as "you edited its lifecycle" were all enrichment's.
+// A card that was already dormant has not moved, and gets no line.
+func journalSink(cfg *config.Config, rel string, previous []byte, at time.Time) error {
+	if cfg.EngineStateDir == "" {
+		return nil
+	}
+	from := note.Parse(rel, string(previous), time.Time{}).Lifecycle
+	if from == "" {
+		from = "active"
+	}
+	if from == "dormant" {
+		return nil
+	}
+	return dreaming.AppendLifecycleJournal(cfg.EngineStateDir, enrichMemoryRel(cfg, rel), from, "dormant",
+		"enrichment: a second verdict below the floor", "", at)
 }
 
 // enrichRun is one line of the record.

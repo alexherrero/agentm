@@ -169,6 +169,10 @@ func Compose(previous string, r Response, s Stamp, depth Depth, offered []Neighb
 	}
 
 	verdict := VerdictForNote(previous, r, s.ConfidenceFloor, s.NeverFiles)
+	if s.HandLifecycle {
+		// The operator set this card's lifecycle; a low score does not undo it.
+		verdict.Sank = false
+	}
 	if s.OperatorFiled {
 		// A card the operator filed keeps what they filed it as: its standing,
 		// its name and its kind. Taken from the card, over the response, at

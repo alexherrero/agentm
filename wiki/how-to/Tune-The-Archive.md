@@ -28,14 +28,15 @@ Aging runs on its own. The nightly `agentmdream` pass sinks, archives and — pa
 
    A session trace runs on a shorter line — 90 · 365 · 1,095 — set in `lifecycle_overrides.episodic`. The diagnostics have their own `retention:` block, per file kind; migration and purge manifests are deliberately absent from it, because they are the record of what moved and what was forgotten. The sweep's first deletion waits for you: it lists what it would remove in `agent/diagnostics/migrations/purge/retention-first-deletion.md` and deletes nothing until you set `approved: true` there.
 
-3. **Know what the clock reads.** Only a genuine recall resets it. Opening a file, or reading it through a skill, does not. A recall before the archive line returns the note to day 0; after the archive move, serving it on an explicit archive query or moving it back returns it to `active` with its clock reset. A hand edit of `lifecycle:` counts as a touch, so a note you have just reconsidered does not sink the same night.
+3. **Know what the clock reads.** Only a genuine recall resets it. Opening a file, or reading it through a skill, does not. A recall before the archive line returns the note to day 0; after the archive move, serving it on an explicit archive query or moving it back returns it to `active` with its clock reset. A hand edit of `lifecycle:` restarts it. The night journals the edit as yours, stamps `lifecycle_since` with the day it found it, and counts the note's quiet time from that day, so a note you have just reconsidered does not sink until it has been quiet for the full line again.
 
 4. **Bring something back.**
    - **See what is coming.** The morning note's *what needs you* lists *sinking within 30 days* and *archiving within 30 days* with how long each note has been silent. A threshold is easier to argue with while it is still thirty days off. `agentmdream run -force` prints what the next pass would do and writes nothing.
-   - **A dormant note** returns on its own: the next genuine recall lifts it.
+   - **A dormant note** returns on its own: the first genuine recall after its `lifecycle_since` lifts it. A recall from before it sank does not. To bring it back yourself, edit `lifecycle: dormant` to `active`; the next night journals the edit as yours and the clock starts over.
+   - **See what the night took as your edit.** The day's dreaming facet, which the morning note links to, lists a note whose `lifecycle` you edited under *Left alone — you edited its lifecycle*, once, on the night it journals the edit. `agentmdream run -force` prints the same note as `left alone <path>`, and a note you moved back out of the archive as `returned <path>`.
    - **An archived note** is still a file, at `archive/memory/<class>/<slug>.md`. Bring it back with `/memory revive <slug>`, which moves it to its class folder, sets `active` and resets the clock. Find it first with `/memory search --deep <words>` or `recall.py query "<words>" --include-archive`.
    - **A deleted note** was named in a manifest under `diagnostics/migrations/purge/` before it went, and the vault's git history still holds it. `/memory search --deep <words>` reads both and prints the `git show` that recovers the file.
-   - **Pin something so none of this reaches it:** `/memory pin <slug>`.
+   - **Pin something so none of this reaches it:** `/memory pin <slug>`, or edit `lifecycle: active` to `pinned`.
 
 5. **Change a number, then prove it.** Edit the contract line, then run `bash scripts/check-all.sh`. The decay curve is one curve read by both arms from that block, so a change reaches the daemon and `recall.py` together; `scripts/test_decay_curve_parity.py` is what holds them to it. Before trusting a new curve in live ranking, run the retrieval gate: `python3 scripts/health/eval_v6_retrieval.py --vault-path <path>`.
 
@@ -43,12 +44,13 @@ Aging runs on its own. The nightly `agentmdream` pass sinks, archives and — pa
 
 - `scripts/test_decay_curve_parity.py` — the two arms score the same note the same way from the same contract block.
 - `scripts/test_lifecycle_transitions.py` — the archive lane moves the file and moves it back, the exempt states, the cap, and the thresholds read from the contract.
-- `go test ./internal/dreaming/` from `daemon/` — the sink, the archive move, the manifest-before-deletion rule, and the two clocks a deletion needs.
+- `go test ./internal/dreaming/` from `daemon/` — the sink, the archive move, the manifest-before-deletion rule, the two clocks a deletion needs, and a hand edit journaled as yours with the clock restarting from it.
 
 ## Troubleshooting
 
 - **A long-silent note is still `active`.** Check whether it is exempt (step 1), then whether a recall reset its clock: the sidecar lives in `<engine state dir>`, keyed by path. `agentmdream status` reports the last pass; a note sinks only on a pass.
 - **A note vanished from its class folder.** It was archived, which moves it now. Look in `archive/memory/<class>/`, or run `/memory search --deep`.
+- **The facet names a note as your edit and you did not edit it.** Something other than you changed its `lifecycle` without writing a journal line, and the night cannot tell that from your hand. It is journaled as yours, and its quiet time counts from the day the night found it.
 - **`daemon.decay_enabled` is off.** Then the curve computes and nothing ranks by it. It is thrown only with the retrieval gate clean on both arms.
 
 ## See also

@@ -307,6 +307,12 @@ func writeNote(t *testing.T, root, rel, lifecycle string, daysSilent int, now ti
 	if daysSilent >= 0 {
 		fm += "created: " + now.Add(-time.Duration(daysSilent)*24*time.Hour).Format("2006-01-02") + "\n"
 	}
+	// Every writer that sinks a note stamps the day it did, and a `dormant`
+	// with no stamp and no journal line is read as the operator's hand (task
+	// 187). A fixture's dormant note is the machinery's, so it carries one.
+	if lifecycle == "dormant" && daysSilent >= 0 && !strings.Contains(extra, "lifecycle_since:") {
+		fm += "lifecycle_since: " + now.Add(-time.Duration(daysSilent)*24*time.Hour).Format("2006-01-02") + "\n"
+	}
 	if err := os.WriteFile(p, []byte(fm+extra+"---\n\nA plain body.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

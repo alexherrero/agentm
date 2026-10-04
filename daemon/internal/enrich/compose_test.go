@@ -309,6 +309,29 @@ func TestTheVerdictRules(t *testing.T) {
 	}
 }
 
+// Task 187: a card whose lifecycle the operator set by hand is not sunk by a
+// second verdict below the floor. It keeps the state they gave it.
+func TestACardTheOperatorSetIsNotSunk(t *testing.T) {
+	low := fullResponse()
+	low.Confidence = 0.4
+	low.Type = "reference"
+	judged := strings.Replace(card, "type: preference\n", "type: reference\n", 1)
+	judged = strings.Replace(judged, "status: unfiled\n",
+		"status: unfiled\nenriched_by: enrich/1+prompt/33dddba25c84\nenriched_at: 2026-09-10T00:00:00Z\n", 1)
+	s := stampAt()
+	s.HandLifecycle = true
+	next, v, err := Compose(judged, low, s, DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Sank || frontmatterValue(next, "lifecycle") != "active" {
+		t.Errorf("a card the operator set sank: %+v, lifecycle %q", v, frontmatterValue(next, "lifecycle"))
+	}
+	if v.Status != "unfiled" || v.FilingConfidence != "low" {
+		t.Errorf("the verdict itself should stand: %+v", v)
+	}
+}
+
 // The light pass moves what ranks nothing, keeps importance, and leaves the
 // body — the added section included — exactly as it was.
 func TestTheLightPassMovesOnlyWhatRanksNothing(t *testing.T) {
