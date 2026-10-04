@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A commit stall is reported within the hour (task 188 step 3).** The watcher counts failed commit cycles in a row, from the first failure's time, with the last error. `agentmd status --json` carries them on the `git` block as `commit_failures` (always present), `first_commit_failure` and `last_commit_error`. `commit-stalled` goes red after 30 minutes, and the doctor's new `daemon-commits` row fails on any non-zero count. On 2026-10-04 a stall ran eleven hours with nothing on any status surface.
+
+### Fixed
+
+- **The daemon keeps committing when git leaves objects where go-git can't read them (task 188 steps 1–2).** go-git v5.19.2 lists only `pack-*.pack` and keeps its pack list for the life of the process. On 2026-10-04 objects held only in a `loose-<hash>.pack` stopped every commit for eleven hours, and a restart didn't help. On a missing object the daemon now reopens the repository and retries once. When a non-`pack-` pack is present, it first folds everything into one `pack-` pack with a lossless `git repack -a -d --keep-unreachable` under `index.lock`, checking the distinct object count. A commit rolls its index and deletion quarantine back before the retry. `agentmd` also repairs such a pack at startup.
+- **A daemon killed mid-commit no longer stalls its successor (task 188 step 2).** `index.lock` is removed when it reads exactly `held by agentmd (pid N)` and that pid is dead and isn't the daemon itself. Every other lock is still waited out and refused.
+
+### Changed
+
+- **The daemon owns the vault repository's packing (task 188 step 4).** On start, `agentmd` sets `gc.auto=0` and `maintenance.auto=false` in the vault repository's own config, and only those two keys, so no client's `fetch` or `commit` repacks behind it. The reconcile tick runs the lossless repack once a day, counted from the newest pack's `.idx`, and only when there is something to fold. The search for whatever wrote the `loose-` pack on 2026-10-03 found nothing; the repository config makes it harmless either way.
+
 ## [10.5.2] - 2026-10-07
 
 Task 181 closes: the night no longer pays to re-judge a note whose answer has not changed. Its five changes shipped in [v10.4.0](https://github.com/alexherrero/agentm/releases/tag/v10.4.0): a skip that kept a note's judgment (#785), a ledger in a file of its own (#783), a judgment keyed to the part of the contract it reads, the night ordered by cause (#784), and an unchanged judgment that writes nothing. Five measured nights followed, 2026-10-02 to 10-06. Rewrites that changed only the stamps fell to 0 of 124, from 159 of 413 in the nine nights before. No note was judged twice in the window, where 64.6% of rewrites had re-judged one. The backlog of never-judged notes, mostly project records the old order never reached, fell from 385 to 238. The measurement is in the task's `measure-five-nights.md`. This release also carries task 189's step 4, part one ([#880](https://github.com/alexherrero/agentm/pull/880)); task 189 is still open, and its notes land at its close-out.

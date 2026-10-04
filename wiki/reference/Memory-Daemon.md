@@ -302,6 +302,8 @@ RED
 
 **Degraded git is reported and does not page.** It blocks the corpus-write gate below, and it is on every status surface, but the vault is not a repository until the git-transport migration runs and a daily email about a deferred migration teaches its reader to ignore the channel.
 
+**A commit stall pages after half an hour.** A repository that is there and refuses every commit is the opposite case: nobody chose it, and while it lasts the vault's history and its backup both stop. On 2026-10-04 that ran for eleven hours, and the only trace was a warning in the log every five minutes. The daemon now counts its failed commit cycles in a row. A cycle fails when it can't read the worktree's status, or when a commit with changes waiting records nothing and returns an error. A cycle that commits, or finds nothing to commit, ends the run. The run is on the `git` block of `agentmd status --json` as `commit_failures` (always present, so a clean `0` is visible), `first_commit_failure` and `last_commit_error`, and the text status adds a line under `git` while it lasts. Once the first failure is 30 minutes old, `commit-stalled` goes red. The doctor's `daemon-commits` row (`scripts/machinery_doctor.py`) fails as soon as the count is above zero.
+
 On red, the daemon emails through the operator's own relay — once per calendar day for the same set of conditions, and again when a different one goes red. With no relay configured the channel is a silent skip, said once at startup rather than discovered at 3am. Credentials are never sent over a connection that did not negotiate TLS: if the relay offers no `STARTTLS`, a URL carrying a password refuses to send rather than downgrading to a plaintext login.
 
 ## The self-probe
@@ -1830,7 +1832,9 @@ Every change is committed with an `origin:` trailer naming where it came from: `
 
 The daemon is not the only git client in the vault — you run `git` there too — so it speaks git's own concurrency protocol rather than assuming it is alone. Every index-mutating operation holds `.git/index.lock` (the same file C-git takes) for its whole read-modify-write span, and writes the index by temp-file-and-rename so a concurrent `git status` never reads a torn file. go-git does neither on its own; the daemon adds both, which is what stops a daemon commit cycle that overlaps your `git rm` from silently discarding your staging — the clobber that fired twice during the 2026-08-11 rehoming pass.
 
-When something else holds the lock, the daemon waits up to 10 seconds with backoff, then skips the cycle with a WARN naming the lock and its age, and retries on the next debounce or reconcile. It never steals the lock: a lock that will not clear is either a live git operation or a crashed one, and both deserve a human look. If the daemon logs that warning repeatedly and no git command is running, the lock is stale — remove it by hand.
+When something else holds the lock, the daemon waits up to 10 seconds with backoff, then skips the cycle with a WARN naming the lock and its age, and retries on the next debounce or reconcile. It never steals another client's lock: a lock that will not clear is either a live git operation or a crashed one, and both deserve a human look. If the daemon logs that warning repeatedly and no git command is running, the lock is stale — remove it by hand.
+
+The one lock the daemon removes is its own. While it holds `index.lock`, the file reads exactly `held by agentmd (pid N)`. If a lock with that content names a pid that is no longer running, and isn't the daemon's own process, it is a daemon that was killed mid-commit, so the daemon removes it, logs `removed a stale index.lock left by a dead agentmd`, and takes the lock. Any other content, or a live pid, is waited out and refused as above. Before this, a restart that killed a daemon mid-commit on 2026-10-04 left a lock its successor skipped on every cycle until someone removed it by hand.
 
 ### What gets committed
 
@@ -1845,6 +1849,19 @@ One rule sits above `.gitignore`, and it is a safety rail rather than a policy: 
 Dot directories never wake the committer either, so a tracked file under one is picked up by the reconcile pass rather than within a second. A long sync would otherwise keep resetting the debounce and starve the very commit this exists to make.
 
 A file large enough to be surprising is committed and **logged as a warning**, not skipped. Skipping was considered and rejected: a skipped file stays dirty, and a dirty worktree shuts the gate, which is the defect this design removes. Committing is also the recoverable direction — `.gitignore` plus `git rm --cached` undoes it with the control you already use, whereas a gate held shut by a file the daemon refuses to touch has no lever at all.
+
+### Packs, and who packs the repository
+
+The daemon reads the repository through go-git, which reads less of git's object store than git does. go-git v5.19.2 lists only packs named `pack-*.pack` (`storage/filesystem/dotgit/dotgit.go:300`), while CLI git reads any `*.pack` with its index beside it. It also loads the list of packs once per process (`storage/filesystem/object.go:53`), so a long-running daemon doesn't see a pack another process writes later. On 2026-10-04 git's loose-objects maintenance had left 6,716 objects in a `loose-<hash>.pack`, and once a later repack pruned their loose copies, every status read failed with `object not found` while CLI git and `fsck` stayed clean. A restart didn't help, because the objects were missing for any go-git process.
+
+The daemon repairs that itself (`daemon/internal/vcs/heal.go`). When a status read or a commit hits a missing object, it reopens the repository, which re-reads the pack list, and tries again once. Before reopening, if `objects/pack` holds a pack go-git can't list, it runs `git repack -a -d --keep-unreachable` through CLI git under `index.lock`. That folds every object, reachable or not, into one `pack-` pack. It counts the distinct objects before and after, refuses to call a falling count a repair, and logs `repaired unlisted packs` with both counts. `agentmd` also checks for such a pack when it starts. A commit that hits the missing object part-way puts the index and its deletion quarantine back as it found them before the retry. The repair needs CLI git on the `PATH`. Without it the daemon logs the failure once an hour and keeps retrying the reopen, and the commit-stall alarm above is what tells you.
+
+So that nothing writes such a pack in the first place, the daemon owns the repository's packing (`daemon/internal/vcs/maintain.go`):
+
+- **The repository's own config.** On start, `agentmd` makes sure the vault repository's `config` has `gc.auto=0` and `maintenance.auto=false`, so no git command repacks behind it: `git fetch` and `git commit` normally run maintenance when they finish. It changes those two keys only, never the global or system config, and logs `set repo-local git config` when it changes one.
+- **A daily repack.** On the reconcile tick, once a day, the daemon runs the same lossless repack under `index.lock` and logs `daily repack`. The day is counted from when the newest `pack-*.idx` was written, which survives restarts. A repository with no pack yet counts from the first check. It skips the repack when there is nothing to fold: no loose objects and at most one pack.
+
+A git command run by hand still works on the repository as before. Running `git gc` or `git maintenance` yourself is safe too, because the daemon heals around whatever it leaves.
 
 ## Capture dates
 
