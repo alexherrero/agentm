@@ -263,6 +263,7 @@ class _FakeSmtp:
     connection is what is under test."""
 
     refuse = False
+    login_error = None   # an exception to raise from `login`, as a relay's refusal does
 
     def __init__(self, host, port, timeout=None):
         self.host, self.port = host, port
@@ -277,6 +278,8 @@ class _FakeSmtp:
         return (220, b"ready")
 
     def login(self, user, password):
+        if self.login_error is not None:
+            raise self.login_error
         return (235, b"ok")
 
     def data(self, msg):
@@ -332,6 +335,30 @@ class SendTests(unittest.TestCase):
                 out = se.send("subj", "body", install_prefix=self.prefix)
             self.assertNotIn("s3cr3t-pass", repr(out))
             self.assertNotIn("smtp://", repr(out))
+
+    def test_a_relay_error_that_quotes_the_credential_does_not_reach_the_caller(self):
+        # The refusal above carries no text, so it could not fail a leak. A real
+        # relay's auth error echoes what it was given, and so does an OS error
+        # that names the URL it could not reach: neither may come back.
+        import smtplib
+        self._configure()
+        for err in (smtplib.SMTPAuthenticationError(535, b"bad login for relay:s3cr3t-pass"),
+                    OSError("could not reach smtp://relay:s3cr3t-pass@localhost:587")):
+            _FakeSmtp.login_error = err
+            self.addCleanup(setattr, _FakeSmtp, "login_error", None)
+            with mock.patch("smtplib.SMTP", _FakeSmtp):
+                out = se.send("subj", "body", install_prefix=self.prefix)
+            self.assertFalse(out["sent"])
+            self.assertTrue(out["configured"])
+            self.assertNotIn("s3cr3t-pass", repr(out))
+            self.assertNotIn("smtp://", repr(out))
+
+    def test_an_error_while_reading_the_config_does_not_reach_the_caller_either(self):
+        with mock.patch.object(se, "email_config", side_effect=RuntimeError("smtp://relay:s3cr3t-pass@x")):
+            out = se.send("subj", "body", install_prefix=self.prefix)
+        self.assertFalse(out["sent"])
+        self.assertNotIn("s3cr3t-pass", repr(out))
+        self.assertIn("RuntimeError", out["skipped"])
 
     def test_a_refusal_is_a_failed_send_with_a_reason_not_a_raise(self):
         self._configure()
