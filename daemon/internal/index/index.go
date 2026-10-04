@@ -168,6 +168,10 @@ func OpenWithSidecar(dbPath, vault, memoryRoot, sidecarDir string, decay bool) (
 		db.Close()
 		return nil, err
 	}
+	if err := idx.reextractEntities(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return idx, nil
 }
 
