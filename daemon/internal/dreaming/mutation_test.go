@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -367,6 +369,93 @@ func TestPromoteNeedsThreeDistinctSessions(t *testing.T) {
 	plan, _ = PlanPromote(root, nil, time.Now())
 	if len(plan.Promotions) != 1 || len(plan.Promotions[0].Sources) != 3 {
 		t.Errorf("three sessions did not promote it: %+v", plan.Promotions)
+	}
+}
+
+// A promoted candidate is a card, so it carries the card's fields. Its type is
+// the contract's default — a guess, not a judgment — so its filing confidence
+// is low, as capture marks a note it typed by default. The first two the job
+// ever wrote (2026-10-04) carried none, and the card-shape gate refused them.
+func TestAPromotedCandidateCarriesALowFilingConfidence(t *testing.T) {
+	root := t.TempDir()
+	writeFixtureTraces(t, root)
+	var contract rules.Rules
+	contract.DefaultType = "preference"
+	plan, err := PlanPromote(root, &contract, time.Date(2026, 10, 4, 2, 18, 0, 0, time.UTC))
+	if err != nil || len(plan.Intents) != 1 {
+		t.Fatalf("plan = %+v, %v; want the one candidate", plan.Promotions, err)
+	}
+	fm, _ := ParseFrontmatter(string(plan.Intents[0].After))
+	if fm["filing_confidence"] != "low" {
+		t.Errorf("filing_confidence = %q, want low: the type is the contract's default", fm["filing_confidence"])
+	}
+}
+
+// The shape is the vault gate's to decide, so the card a promotion writes is
+// run through `check-card-shape`, alone in a memory root of its own, with the
+// backfill marker that makes the gate enforce rather than report.
+func TestAPromotedCandidatePassesTheCardShapeGate(t *testing.T) {
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not on PATH")
+	}
+	_, here, _, _ := runtime.Caller(0)
+	gate := filepath.Join(filepath.Dir(here), "..", "..", "..", "scripts", "check-card-shape.py")
+
+	traces := t.TempDir()
+	writeFixtureTraces(t, traces)
+	var contract rules.Rules
+	contract.DefaultType = "preference"
+	plan, err := PlanPromote(traces, &contract, time.Date(2026, 10, 4, 2, 18, 0, 0, time.UTC))
+	if err != nil || len(plan.Intents) != 1 {
+		t.Fatalf("plan = %+v, %v; want the one candidate", plan.Promotions, err)
+	}
+	root := t.TempDir()
+	writeRaw(t, root, plan.Intents[0].Rel, string(plan.Intents[0].After))
+	writeRaw(t, root, "memory/.card-backfill-complete", "")
+	cmd := exec.Command(py, gate, "--memory-root", root)
+	cmd.Env = append(os.Environ(), "AGENTM_STORAGE_RULES=")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Errorf("check-card-shape refuses the promoted candidate: %v\n%s", err, out)
+	}
+}
+
+// Two kinds of `## Candidates` line never become a card, however many
+// sessions carry them. A reply the miner logged and refused to file is one:
+// three sessions answering "yes" is not a memory. An excerpt the miner cut at
+// its start is the other: a window around a match inside a longer message,
+// which begins mid-sentence. What recurs there is a pasted block — standing
+// instructions in three task prompts — and the first two candidates the job
+// wrote (2026-10-04) were two such windows of one paragraph.
+func TestPromoteSkipsRefusedRepliesAndWindowsCutAtTheirStart(t *testing.T) {
+	for _, tc := range []struct {
+		name, line string
+		promote    bool
+	}{
+		{"a reply the miner did not file",
+			"- not filed: a reply that opens with an acknowledgement — “yes”", false},
+		{"a window cut at its start",
+			"- explicit always/never directive — “...hides it); no trailer on commits; never merge main back.”", false},
+		{"a window cut at its start, one-character ellipsis",
+			"- explicit always/never directive — “…hides it); no trailer on commits; never merge main back.”", false},
+		{"a window cut only at its end starts where the operator did",
+			"- explicit always/never directive — “Never merge main back into a branch; rebase...”", true},
+		{"a whole statement",
+			"- explicit always/never directive — “Never merge main back into a branch.”", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, s := range []string{"a", "b", "c"} {
+				writeRaw(t, root, "memory/episodic/"+s+".md", trace(s, "", "", tc.line))
+			}
+			plan, err := PlanPromote(root, nil, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(plan.Promotions) == 1; got != tc.promote {
+				t.Errorf("promoted = %v, want %v: %+v", got, tc.promote, plan.Promotions)
+			}
+		})
 	}
 }
 
