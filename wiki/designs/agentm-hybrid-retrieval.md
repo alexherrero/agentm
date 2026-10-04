@@ -197,12 +197,14 @@ plan closed the climb at its measured plateau: hook-true 73.4% R@5 on a
 provenance-pinned baseline, residue characterized as a gold-blind-irreducible
 vocabulary gap, instrument trusted. The amendment log's 2026-08-28 verdict
 entry carries the numbers and the priced re-audit triggers; the ladder is a
-record now, not a queue.
+record now, not a queue. Row 7 (2026-10-04) was the one ranking-side rung
+the verdict left room for. It tried the two ranking stages never run here,
+MMR and spreading activation, and refuted both.
 
 | 5 | `hook e2e` | p50/p90 <300ms warm through the *installed* hook; each stratum within one question of `+question` (75.0%); inject-with-metadata, no manufactured empty | **met, both clauses** — p50/p90 213.8ms/222.4ms end-to-end through the installed hook (n=84); every stratum within one question of `+question` (73.4% overall, 47/64). Honest-empty on the 20 negatives: 0/20 genuine. See NOTES.md for the per-question diff and the latency-cliff finding it also surfaced. |
 | 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | **met** — 73.4% (47/64), byte-identical to `hook e2e` on all 84 rows. The extractor never fires on this gold set (0 questions match), so the "14 at-risk" estimate does not hold up — see the amendment log. Shipped wired. |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | **refuted** — mean 0.6799 across 6 replicates (0.661, 0.683, 0.700, 0.679, 0.617, 0.740; only one clears the bar). Concentrated in negative rejection, 87.5% → 62.5% against the 2026-08-06 baseline; answerable-question recall through the tool is flat-to-improved (78.1% answerable-only, ahead of every retrieval-layer column). Does not implicate the hook, which is deterministic and was measured separately in step 5. |
-| 7 | `+mmr` · `+spread` · `+both` | *(pre-registered 2026-10-04, task 184; `scripts/health/results/goldv3/RULE-ranking-stages.md`)* Two post-fusion stages behind flags, each arm against the hook-shaped baseline on one frozen snapshot: net ≥ +3 at R@5 **and** the exact paired test at p < 0.05 (the contract's power check, so net ≥ +6 in practice); no stratum loses more than one; hard-negative false positives do not rise; p95 ≤ 250 ms; the walls hold; the per-question diff is published | *pending* |
+| 7 | `+mmr` · `+spread` · `+both` | *(pre-registered 2026-10-04, task 184; `scripts/health/results/goldv3/RULE-ranking-stages.md`)* Two post-fusion stages behind flags, each arm against the hook-shaped baseline on one frozen snapshot: net ≥ +3 at R@5 **and** the exact paired test at p < 0.05 (the contract's power check, so net ≥ +6 in practice); no stratum loses more than one; hard-negative false positives do not rise; p95 ≤ 250 ms; the walls hold; the per-question diff is published | **refuted, all three arms** (2026-10-04). Baseline 0.635 (40/63) on the snapshot. `+mmr` 0.603 (38/63), net −2: it lost `pp06` and `pp08`, two answers at ranks 4 and 5 displaced by off-topic notes chosen for being unlike the leaders; pure-paraphrase −2. `+spread` 0.635, net 0: neighbours reached ranks 4 to 10 on 13 questions and moved no answer. `+both` 0.603, net −2. No arm gained a question. Hard negatives held at 4; worst p95 160 ms; every control held. The stage code was removed. Per-question record in the RULE file. |
 
 Step 6 exists because the two layers have disagreed once already: the alias
 backfill was slightly better at the tool level and 3.85 points worse at the
@@ -333,6 +335,10 @@ query-formulation- and fusion-shaped, not vocabulary-shaped** — the framing th
 design's own Alternatives section once argued the other way. A future rung
 belongs on the ranking side; another write-side vocabulary rung does not, and
 the burden on one is now to show what it would do differently from all three.
+Row 7 took that opening on 2026-10-04, and both its stages were refuted.
+Reordering the fused pool for diversity cost two answers, and following the
+link graph one hop reached none, so a next ranking-side rung also has to
+differ from those two.
 
 **Corrected 2026-08-17 (see the amendment log): that redrawing generalized from
 a single case and does not hold across its own population.** The `pp09` trace
@@ -364,6 +370,33 @@ it.
   — the cross-system findings this design absorbs and corrects.
 
 ## Amendment log
+- **2026-10-04 · Row 7 is measured, and refuted on all three arms (task 184).**
+  The rung ran on one frozen snapshot, with one binary and the hook's exact
+  query shape. The baseline, R@5 0.635 (40 of 63), reproduced the night's
+  gate.
+  - **`+mmr`, net −2 at p 0.5.** It lost `pp06` and `pp08`, both
+    pure-paraphrase. The two answers sat at ranks 4 and 5, and off-topic
+    notes that MMR chose for being unlike the leaders displaced them. On
+    `ep06`, the case it was registered for, two release pages stayed in the
+    top five, and the answers sat at pool rank 12 or below, out of reach.
+  - **`+spread`, net 0.** It admitted entity pages and other linked notes at
+    ranks 4 to 10 on 13 questions, 7 of them negatives, and moved no answer.
+    At half a seed's score, a neighbour doesn't reach the five slots.
+  - **`+both`** is `+mmr`'s result.
+
+  Nothing regressed on hard negatives (4 of 10 served, unchanged), the worst
+  p95 was 160 ms, and every control held: flags-off identity, determinism,
+  liveness, the walls and the demotion guard. The prediction ("no arm
+  passes") held. The stage code and flags were removed before they reached
+  `main`. The eval keeps its snapshot options (`--vault`/`--index`,
+  `--search-flag`, `--record`), which are instrument and not stage. **Why not
+  tune λ or the decay and re-run:** the parameters were fixed before the
+  code, and a value moved after seeing these questions would be fitted to
+  them. **Re-audit trigger:** a ranking-side proposal that fills the five
+  slots differently from both of these mechanisms. Diversity can't reach an
+  answer below rank 10, and a one-hop neighbour at a decayed score doesn't
+  reach the slots, so a proposal that clears this record has to explain how
+  it gets past both.
 - **2026-10-04 · A ranking-side rung is pre-registered: MMR and one-hop
   spreading activation (task 184).** Ladder row 7 opens the one rung the
   2026-08-28 verdict left room for: the out-of-scope section says a future

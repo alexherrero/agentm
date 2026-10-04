@@ -195,8 +195,76 @@ refuted, and the instrument's minimum detectable gain is six one-way flips
 
 ## Per-question record
 
-*Filled in step 5.*
+Measured on 2026-10-04 on the frozen snapshot, using one binary for every arm
+(`agentmd-stages`, built at 6994793a, whose `daemon/` tree is step 4's
+5cbb611b unchanged). Each arm's eval ran with
+`--record --verify-determinism`. The timing came from three interleaved passes
+of the 94 gold questions per arm. Every command is in the task folder's
+`results/commands.txt`, and the full tables are in `results.md`.
+
+**Controls, all held.**
+- **Flags-off identity:** the stage binary with no flag reproduced the step-2
+  baseline on all 94 questions, rank lists included.
+- **Determinism:** each arm's two runs agreed on all 94 questions.
+- **Liveness:** `+mmr` changed the daemon's top 10 on 92 questions, `+spread`
+  on 13 and `+both` on 92.
+- **Walls:** no arm served a note from `recall_exempt_areas`.
+- **Demotion guard:** no demoted note sat above a row that outranked it.
+- **Standing controls:** the canary and the score spread fired on none of the
+  runs.
+
+| arm | R@5 | R@1 | MRR | FP all / near-miss | p50 / p95 ms |
+|---|---|---|---|---|---|
+| baseline | 0.635 (40/63) | 0.381 | 0.464 | 4 / 4 | 95 / 106 |
+| `+mmr` | 0.603 (38/63) | 0.381 | 0.457 | 4 / 4 | 111 / 123 |
+| `+spread` | 0.635 (40/63) | 0.381 | 0.464 | 4 / 4 | 107 / 140 |
+| `+both` | 0.603 (38/63) | 0.381 | 0.457 | 4 / 4 | 124 / 160 |
+
+| arm | gained | lost | net | exact p | strata (hits vs baseline) |
+|---|---|---|---|---|---|
+| `+mmr` | none | `pp06` (5 → out), `pp08` (4 → out) | −2 | 0.5 | pure-paraphrase −2, others 0 |
+| `+spread` | none | none | 0 | 1.0 | all 0 |
+| `+both` | none | `pp06`, `pp08` | −2 | 0.5 | pure-paraphrase −2, others 0 |
+
+`+mmr` and `+both` also moved ranks inside the five slots on questions they
+did not flip: `dt11` 3 → 2, `ep02` 4 → 3, `ep03` 4 → 5, `pp01` 3 → 4,
+`rd03` 3 → 4. `+spread` moved no answer at all. On the secondary sample
+(90 judged turns, descriptive only), `+mmr` changed 79 turns' top five and
+brought in 80 notes, `+spread` changed none, and `+both` changed 79 and
+brought in 89.
+
+**Mechanism.**
+- **MMR's losses aren't duplicates giving way.** On `pp06` an off-topic
+  `Ideas.md` took a lower slot ahead of the answer, and on `pp08` it was
+  `analysis/_summary.md`. Each was chosen for being unlike what was already
+  picked, and each pushed an answer that sat at rank 4 or 5 out of the five
+  slots.
+- **The case MMR was registered for didn't move.** On `ep06`, MMR lifted the
+  project charter past a release page, but two release pages stayed in the
+  top five, and the expected notes sit at pool rank 12 or below, where
+  min-max relevance never lets diversity reach them.
+- **Activation reached no answer.** It admitted neighbours into the daemon's
+  top 10 on 13 questions, 7 of them negatives. On 6 of the 13 the admitted
+  note was an issue or repo entity page. All landed at ranks 4 to 10. At
+  half their seed's fused score they never displaced an answer, and none of
+  the 7 reachable misses converted.
 
 ## Outcome
 
-*Filled in step 6, whatever it says.*
+**Refuted, all three arms (2026-10-04).** No arm clears clause 2 (no arm
+gained a question). `+mmr` and `+both` also fail clause 1 (net −2) and
+clause 3 (pure-paraphrase −2). `+spread` fails clause 1 (net 0). Clauses 4
+to 6 held for every arm: hard negatives didn't move, the worst p95 was
+160 ms against the 250 ms budget, and the walls held.
+
+**The prediction held** ("no arm passes", about 85%). MMR came in one
+question below its predicted range (−2 against −1 to +2), and activation
+landed inside its range (0 against −2 to +1). The hub-page failure that
+the prediction expected for activation didn't show: hard negatives stayed
+at 4.
+
+As the rule requires, the stage code and its flags are removed. They never
+reached `main`, because #865 squash-merges only the eval's snapshot options
+and this record. A ranking-side rung now has two more refutations to differ
+from: one that reorders the fused pool, and one that admits linked notes
+below the seeds.

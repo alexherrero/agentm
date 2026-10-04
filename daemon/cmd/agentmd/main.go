@@ -420,12 +420,6 @@ func cmdSearch(args []string) error {
 	lex3 := fs.Bool("lex3", false,
 		"widen `fusion`/`hybrid`'s lexical arm from 2-term to 2- and 3-term subsets "+
 			"(task 4, column `+lex3`); false reproduces `lexical-fusion`/`+question` exactly")
-	mmr := fs.Bool("mmr", false,
-		"reorder `hybrid`'s fused candidates by maximal marginal relevance, lambda 0.7 "+
-			"(task 184, ladder row 7, under measurement); off is the shipped search exactly")
-	spread := fs.Bool("spread", false,
-		"admit up to 3 linked notes per top-5 hit of `hybrid`'s fused list, one hop out, at half "+
-			"the seed's score (task 184, ladder row 7, under measurement); off is the shipped search exactly")
 	project := fs.String("project", "",
 		"the session's vault project: a note whose project: names another one, or none, ranks a little "+
 			"lower (agentm-vault, projects and tasks); empty ranks exactly as before")
@@ -466,8 +460,7 @@ func cmdSearch(args []string) error {
 	}
 
 	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode, Lex3: *lex3,
-		IncludeArchived: *includeArchived, Project: *project, Surface: note.NormalizeSurface(*surface),
-		MMR: *mmr, Spread: *spread}
+		IncludeArchived: *includeArchived, Project: *project, Surface: note.NormalizeSurface(*surface)}
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if innerMode == index.ModeHybrid {
