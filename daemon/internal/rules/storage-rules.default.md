@@ -532,10 +532,11 @@ thresholds:
   # moves to the project's `completed/tasks/`. The night moves at most
   # `demotion_cap` folders, counted in folders, so a task is never split.
   task_completed_after_days: 14
-  # The entity builder's bars (2026-09-29). A repo, a repo-qualified issue or a
-  # release gets a page once this many distinct notes mention it; a person, once
-  # named in this many distinct pieces of shared work. A page below its bar is
-  # removed through the journal.
+  # The entity builder's bars (2026-09-29; sources since 2026-10-03). A repo, a
+  # repo-qualified issue or a release gets a page once this many distinct
+  # sources mention it — a note, or a task's folder, whose notes count once
+  # together; a person, once named in this many distinct pieces of shared work.
+  # A page below its bar is removed through the journal.
   entity_min_mentions: 2
   person_min_shared_work: 2
   # A note at or below this ranks quietly on an ordinary question. The rubric
@@ -605,12 +606,17 @@ move.
 
 `entity_min_mentions` and `person_min_shared_work` are the entity builder's
 bars. A repo, a repo-qualified issue or a release gets a page under
-`memory/entities/` once that many distinct notes mention it. A person gets one
+`memory/entities/` once that many distinct sources mention it: a note is one
+source, and a task's folder (open or completed) is one source however many of
+its notes name the entity. Where the repository's clone is on this machine, an
+issue page also needs a number the clone's commit subjects reach, and a release
+page one of its tags. A person gets one
 once named in that many distinct pieces of shared work: a task's plan,
 progress or tracker, a `decisions/` note, a project tracker, a calendar note or
 a meeting note. A page that falls below its bar is removed through the
-journal, which keeps its bytes. No page is written for a commit or for an
-issue number whose repo is not known.
+journal, which keeps its bytes. No page is written for a commit, for an
+issue number whose repo is not known, or for a bare number six digits long or
+right after a word that numbers something else ("ROADMAP item #15").
 
 ## Importance
 
