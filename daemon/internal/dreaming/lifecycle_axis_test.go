@@ -342,3 +342,183 @@ func TestTheNightsOwnLastMoveIsNotAHandEdit(t *testing.T) {
 		t.Errorf("archived = %v, want the pass to carry on with its own note", got)
 	}
 }
+
+// planAndApply is one night of the lifecycle pass, applied through a journal
+// whose governance lines land in engine.
+func planAndApply(t *testing.T, root, engine string, now time.Time) LifecyclePlan {
+	t.Helper()
+	plan, err := PlanLifecycle(root, engine, axisContract(t), now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal, err := OpenJournal(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applyAll(journal, root, "run-"+now.Format("20060102"), plan.Intents, now, 0, &Report{}); err != nil {
+		t.Fatal(err)
+	}
+	return plan
+}
+
+// recallOn records a genuine recall of the note on day, in the sidecar the
+// pass reads.
+func recallOn(t *testing.T, root, slug string, day time.Time) {
+	t.Helper()
+	blob, _ := json.Marshal(map[string]any{"version": 1, "entries": map[string]any{
+		slug: map[string]any{"last_access": day.Format("2006-01-02")}}})
+	if err := os.WriteFile(filepath.Join(root, ".lifecycle.json"), blob, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func journalLinesFor(t *testing.T, engine, rel string) []lifecycleLine {
+	t.Helper()
+	blob, _ := os.ReadFile(filepath.Join(engine, LifecycleJournalName))
+	var out []lifecycleLine
+	for _, raw := range strings.Split(string(blob), "\n") {
+		var line lifecycleLine
+		if json.Unmarshal([]byte(raw), &line) == nil && line.Rel == rel {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// Task 187: the operator's edit of `dormant` back to `active` is journaled as
+// theirs, once, with `lifecycle_since` stamped, and the note's quiet time
+// counts from that day. It is not sunk the next night, nor on any night within
+// the line, and it is sunk once it has been quiet for the full line again.
+func TestAHandEditIsJournaledAsTheOperatorsAndTheClockRestartsFromIt(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	edit := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	rel := writeNote(t, root, "memory/semantic/put-back.md", "active", 400, edit, "")
+	if err := AppendLifecycleJournal(engine, rel, "active", "dormant", "silent 370 days",
+		"run-0", edit.AddDate(0, -1, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := planAndApply(t, root, engine, edit)
+	if got := relsOf(plan.Touched); strings.Join(got, ",") != rel {
+		t.Fatalf("touched = %v, want the note the operator edited", got)
+	}
+	lines := journalLinesFor(t, engine, rel)
+	if len(lines) != 2 {
+		t.Fatalf("journal lines for the note = %+v, want the night's sink and the operator's edit", lines)
+	}
+	if got := lines[1]; got.Actor != ActorOperator || got.From != "dormant" || got.To != "active" {
+		t.Errorf("the edit's line = %+v, want the operator, dormant → active", got)
+	}
+	raw, _ := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	if !strings.Contains(string(raw), "lifecycle_since: 2026-10-05\n") {
+		t.Errorf("the note is not stamped with the day the edit was found:\n%s", raw)
+	}
+
+	for _, after := range []int{1, 100, 364, 365} {
+		plan := planAndApply(t, root, engine, edit.AddDate(0, 0, after))
+		if len(plan.Demoted) != 0 || len(plan.Touched) != 0 || len(plan.Intents) != 0 {
+			t.Errorf("%d days after the edit: demoted %v, touched %v, %d intents; want nothing",
+				after, relsOf(plan.Demoted), relsOf(plan.Touched), len(plan.Intents))
+		}
+	}
+	if got := len(journalLinesFor(t, engine, rel)); got != 2 {
+		t.Errorf("journal lines after the quiet nights = %d, want still 2: an edit is journaled once", got)
+	}
+	plan = planAndApply(t, root, engine, edit.AddDate(0, 0, 366))
+	if got := relsOf(plan.Demoted); strings.Join(got, ",") != rel {
+		t.Errorf("a full line of quiet after the edit: demoted %v, want the note", got)
+	}
+}
+
+// Task 187: a note the operator sinks by hand — one no writer ever journaled —
+// stays `dormant`. A recall from before the edit does not bring it back; a
+// genuine recall after it does.
+func TestAHandSinkStaysDormantUntilARecallAfterIt(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	edit := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	rel := writeNote(t, root, "memory/semantic/set-aside.md", "active", 40, edit, "")
+	recallOn(t, root, "set-aside", edit.AddDate(0, 0, -10))
+	p := filepath.Join(root, filepath.FromSlash(rel))
+	raw, _ := os.ReadFile(p)
+	if err := os.WriteFile(p, []byte(strings.Replace(string(raw), "lifecycle: active", "lifecycle: dormant", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := planAndApply(t, root, engine, edit)
+	if got := relsOf(plan.Touched); strings.Join(got, ",") != rel {
+		t.Fatalf("touched = %v, want the hand sink", got)
+	}
+	if lines := journalLinesFor(t, engine, rel); len(lines) != 1 || lines[0].Actor != ActorOperator ||
+		lines[0].From != "active" || lines[0].To != "dormant" {
+		t.Errorf("journal = %+v, want one line: the operator, active → dormant", lines)
+	}
+	plan = planAndApply(t, root, engine, edit.AddDate(0, 0, 1))
+	if len(plan.Revived) != 0 || len(plan.Intents) != 0 {
+		t.Errorf("the next night: revived %v, %d intents; a recall from before the edit brought it back",
+			relsOf(plan.Revived), len(plan.Intents))
+	}
+	recallOn(t, root, "set-aside", edit.AddDate(0, 0, 3))
+	plan = planAndApply(t, root, engine, edit.AddDate(0, 0, 4))
+	if got := relsOf(plan.Revived); strings.Join(got, ",") != rel {
+		t.Errorf("after a recall that followed the edit: revived %v, want the note", got)
+	}
+}
+
+// Task 187, the operator's ruling of 2026-10-04: a dormant note returns only on
+// a genuine recall after its `lifecycle_since`. Enrichment's sink, journaled as
+// the machinery's, restamps `updated` as it writes; that is no recall.
+func TestEnrichmentsSinkIsNotUndoneByItsOwnRewrite(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	rel := writeNote(t, root, "memory/semantic/below-the-floor.md", "dormant", 60, now,
+		"lifecycle_since: 2026-09-19\nupdated: 2026-10-01\n")
+	if err := AppendLifecycleJournal(engine, rel, "active", "dormant",
+		"enrichment: a second verdict below the floor", "", time.Date(2026, 9, 19, 9, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	recallOn(t, root, "below-the-floor", time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC))
+	plan := planAndApply(t, root, engine, now)
+	if len(plan.Revived) != 0 || len(plan.Touched) != 0 {
+		t.Errorf("revived %v, touched %v; want it left dormant", relsOf(plan.Revived), relsOf(plan.Touched))
+	}
+	recallOn(t, root, "below-the-floor", now)
+	plan = planAndApply(t, root, engine, now.AddDate(0, 0, 1))
+	if got := relsOf(plan.Revived); strings.Join(got, ",") != rel {
+		t.Errorf("after a recall: revived %v, want the note", got)
+	}
+}
+
+// Editing a note to `pinned` exempts it: journaled as the operator's, and never
+// moved again, however long it stays quiet.
+func TestEditingToPinnedExemptsTheNote(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	rel := writeNote(t, root, "memory/semantic/keep.md", "pinned", 3000, now, "")
+	if err := AppendLifecycleJournal(engine, rel, "active", "dormant", "silent", "run-0", now.AddDate(-5, 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	plan := planAndApply(t, root, engine, now)
+	if lines := journalLinesFor(t, engine, rel); len(lines) != 2 || lines[1].Actor != ActorOperator || lines[1].To != "pinned" {
+		t.Errorf("journal = %+v, want the operator's pin after the night's sink", lines)
+	}
+	for _, years := range []int{1, 5, 10} {
+		plan = planAndApply(t, root, engine, now.AddDate(years, 0, 1))
+		if len(plan.Intents) != 0 {
+			t.Errorf("%d years on: %d intents for a pinned note", years, len(plan.Intents))
+		}
+	}
+}
+
+// A journal line that ends where no file can be — `purged` — says nothing about
+// the file at that path now, which is a new note: it is no hand edit.
+func TestAPurgedPathHoldsANewNoteNotAHandEdit(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	rel := writeNote(t, root, "memory/semantic/again.md", "active", 10, now, "")
+	if err := AppendLifecycleJournal(engine, rel, "active", "purged", "purge manifest", "", now.AddDate(0, -1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if plan := planAndApply(t, root, engine, now); len(plan.Touched) != 0 || len(plan.Intents) != 0 {
+		t.Errorf("touched %v, %d intents; want nothing", relsOf(plan.Touched), len(plan.Intents))
+	}
+}

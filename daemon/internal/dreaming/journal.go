@@ -338,7 +338,8 @@ func (j *Journal) governance(e Entry, now time.Time) error {
 	if e.Meta == nil || e.Meta["to"] == "" || j.EngineStateDir == "" {
 		return nil
 	}
-	return EnsureLifecycleJournal(j.EngineStateDir, e.Rel, e.Meta["from"], e.Meta["to"], e.Meta["reason"], e.RunID, now)
+	return EnsureLifecycleJournalAs(j.EngineStateDir, e.Rel, e.Meta["from"], e.Meta["to"], e.Meta["reason"],
+		e.RunID, e.Meta["actor"], now)
 }
 
 // Commit journals an intent, makes the write, and journals it applied —

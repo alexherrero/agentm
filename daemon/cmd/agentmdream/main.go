@@ -423,7 +423,7 @@ func printReport(rep dreaming.Report) {
 		fmt.Printf("  returned %s — moved back into its class by hand\n", m.Rel)
 	}
 	for _, m := range p.Touched {
-		fmt.Printf("  left alone %s — its `lifecycle` was edited by hand since this pass last moved it\n", m.Rel)
+		fmt.Printf("  left alone %s — its `lifecycle` was edited by hand; journaled as the operator's\n", m.Rel)
 	}
 	// What is coming, so a threshold can be argued with before it fires.
 	if len(p.SinkingSoon) > 0 {

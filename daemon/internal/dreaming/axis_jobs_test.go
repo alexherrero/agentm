@@ -1,7 +1,6 @@
 package dreaming
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -373,47 +372,67 @@ func TestAHandMoveDuringTheRunIsSkippedNamedAndRepaired(t *testing.T) {
 	}
 }
 
-// Task 186: a note the operator edited stays touched every night, and the
-// facet named it every night — the 2026-09-30 and 10-01 facets were the same
-// five lines. It is named on the first night only, however many nights pass,
-// and a note touched later is still named on its own first night.
-func TestTheFacetNamesAHandEditedNoteOnItsFirstNightOnly(t *testing.T) {
+// A note the operator edits is named under "Left alone" once, on the night the
+// lifecycle pass finds the edit and journals it as theirs (task 187). The
+// journal then agrees with the note, so the next night finds nothing to name;
+// a later edit of the same note is a new edit, and is named on its own night.
+// Task 186 kept a standing touch and filtered on the earlier facets instead —
+// the 2026-09-30 and 10-01 facets had carried the same five lines.
+func TestTheFacetNamesEachHandEditOnce(t *testing.T) {
 	vault := t.TempDir()
 	root := filepath.Join(vault, "agent")
+	engine := t.TempDir()
 	for _, d := range []string{root, filepath.Join(vault, ".obsidian"), filepath.Join(vault, "calendar")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	contract := axisContract(t)
-	night := func(day int, touched ...string) string {
+	journal, err := OpenJournal(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	// The night sank it last month; the operator has put it back by hand.
+	rel := writeNote(t, root, "memory/semantic/edited.md", "active", 400, start, "")
+	if err := AppendLifecycleJournal(engine, rel, "active", "dormant", "silent 370 days",
+		"run-0", start.AddDate(0, -1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	night := func(now time.Time) string {
 		t.Helper()
-		now := time.Date(2026, 9, day, 9, 0, 0, 0, time.UTC)
-		var moves []Move
-		for _, rel := range touched {
-			moves = append(moves, Move{rel, 0})
+		plan, err := PlanLifecycle(root, engine, contract, now, 0)
+		if err != nil {
+			t.Fatal(err)
 		}
-		rep := &Report{Plan: LifecyclePlan{
-			Demoted: []Move{{fmt.Sprintf("memory/semantic/sank-%d.md", day), 400}},
-			Touched: moves,
-		}}
-		plan := PlanDreamingFacet(root, contract, rep, now)
-		if len(plan.Intents) != 1 {
-			t.Fatalf("night %d: %d intents", day, len(plan.Intents))
+		rep := &Report{Plan: plan}
+		runID := "run-" + now.Format("0102")
+		if err := applyAll(journal, root, runID, plan.Intents, now, 0, rep); err != nil {
+			t.Fatal(err)
 		}
-		applyEntityIntents(t, root, plan.Intents)
-		return string(plan.Intents[0].After)
+		facet := PlanDreamingFacet(root, contract, rep, now)
+		if err := applyAll(journal, root, runID+"-facet", facet.Intents, now, 0, rep); err != nil {
+			t.Fatal(err)
+		}
+		if len(facet.Intents) == 0 {
+			return ""
+		}
+		return string(facet.Intents[0].After)
 	}
-	first := night(18, "memory/semantic/edited.md")
-	second := night(19, "memory/semantic/edited.md")
-	third := night(20, "memory/semantic/edited.md", "memory/semantic/later.md")
-	if !strings.Contains(first, "## Left alone") || !strings.Contains(first, "memory/semantic/edited.md") {
-		t.Errorf("the first night does not name the edited note:\n%s", first)
+	first := night(start)
+	if !strings.Contains(first, "## "+leftAloneHeading) || !strings.Contains(first, rel) {
+		t.Errorf("the night that found the edit does not name it:\n%s", first)
 	}
-	if strings.Contains(second, "## Left alone") {
-		t.Errorf("the second night named it again:\n%s", second)
+	if second := night(start.AddDate(0, 0, 1)); strings.Contains(second, rel) {
+		t.Errorf("the next night named it again:\n%s", second)
 	}
-	if strings.Contains(third, "memory/semantic/edited.md") || !strings.Contains(third, "memory/semantic/later.md") {
-		t.Errorf("the third night should name only the newly edited note:\n%s", third)
+	// A second edit, a week later: the operator sets it `dormant`.
+	p := filepath.Join(root, filepath.FromSlash(rel))
+	raw, _ := os.ReadFile(p)
+	if err := os.WriteFile(p, []byte(strings.Replace(string(raw), "lifecycle: active", "lifecycle: dormant", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if third := night(start.AddDate(0, 0, 7)); !strings.Contains(third, rel) {
+		t.Errorf("a later edit of the same note is not named:\n%s", third)
 	}
 }

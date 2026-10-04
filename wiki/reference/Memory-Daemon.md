@@ -1027,7 +1027,22 @@ stays `unfiled` — fully indexed, rank-penalized, and listed for you in
 enrichment stamp and was already `unfiled` — sinks it to
 `lifecycle: dormant` with a `lifecycle_since` date, journaled and named in
 the morning note; a `pinned` card and the two rule types, `preference` and
-`convention`, never sink, and stay `unfiled` and listed instead.
+`convention`, never sink, and stay `unfiled` and listed instead. Neither
+does a card whose lifecycle the operator set. `cmdEnrich` reads once, per
+batch, every note whose last lifecycle-journal line is the operator's
+(`enrichHandStates`, `daemon/cmd/agentmd/enrich_run.go:78`, over
+`dreaming.OperatorStates`) and sets `Stamp.HandLifecycle` on each of them
+(`main.go:1626` and `:1645`); `Compose` then clears the sink
+(`compose.go:172-175`), and the verdict itself stands, so the card stays
+`unfiled` at low confidence and listed. The sink that does happen is
+journaled by enrichment itself: `journalSink` (`enrich_run.go:90`, called
+after the write at `main.go:1724`) appends one line to the lifecycle journal
+as actor `policy`, reason `enrichment: a second verdict below the floor`,
+under the note's memory-root-relative path, and writes nothing for a card
+that was already dormant. A failure to write the line is reported on stderr
+and does not undo the write. Without the line the lifecycle pass found a
+state no writer had journaled and read it as an edit of yours (see [the
+lifecycle journal's actors](#the-lifecycle-journals-actors-and-your-edit-of-lifecycle)).
 `FilingConfidenceFor` stamps the categorical twin of the confidence number
 every other writer already shares, two bands on purpose: the floor is the
 one judgment this pass makes about its own number, and a third band would
@@ -1312,7 +1327,7 @@ The intent line is still fsynced before anything on disk changes, and a deletion
 
 | Job | What it does |
 |---|---|
-| `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`; the next genuine recall lifts it back. A dormant memory past `archive_after_days` (1825) becomes an archive candidate — named in the pass's report and never moved by this job. You archive one by hand with `lifecycle_transitions.py --vault <memory-root> set <rel> archived`. |
+| `lifecycle` | A memory silent past `dormant_after_days` (365) sinks to `dormant`. A dormant memory returns to `active` only on a genuine recall after its `lifecycle_since` — the access sidecar's record, never the note's own `updated` (`recalledSince`, `daemon/internal/dreaming/lifecycle.go:820`); one with no `lifecycle_since` returns on any recall. A dormant memory past `archive_after_days` (1825) moves to `archive/memory/<class>/`, stamped `archived` (`lifecycle.go:493`). An archived one past `forget_after_days` (2555) that has also been in the archive for the wait between the two lines is deleted (`lifecycle.go:448`). Your edit of `lifecycle` is found, journaled as yours and restarts the clock, and so is a note you move back out of the archive; see [the lifecycle journal's actors](#the-lifecycle-journals-actors-and-your-edit-of-lifecycle). |
 | `copies` | Content-identical families collapse into the earliest note; every other copy is marked `lifecycle: superseded` + `superseded_by: <canonical>`, never deleted; `status` is untouched. |
 | `refile` | A memory whose `type:` the contract routes elsewhere moves under the same basename; a stale `near-duplicate` flag whose twin is gone gets cleared. |
 | `promote` | Reads every session trace's `## Captured` and `## Candidates` sections (agentm-vault plan 04, task 4); the recall hook's own `## Recalled` list is basenames, not judgments, and promote no longer reads it. A `## Candidates` line three or more distinct traces carry becomes a semantic candidate at `memory/semantic/candidate-<first-words>.md` — `status: unfiled`, no `why`, `derived_from` naming the traces — for the next enrichment batch to judge; capped at 10 new candidates a pass. A `## Captured` link three traces carry already has a card and is only reported. Nothing is ever written to `crystallized/`, which holds model syntheses made at a task's close or on request. |
@@ -1325,6 +1340,30 @@ The intent line is still fsynced before anything on disk changes, and a deletion
 | `projects` | Writes each project's `activity:` and `last_worked:`, and moves a finished record under `completed/` when its task closes or it is superseded. A record naming a task that has moved to `completed/tasks/` still counts as its task closed. Only work moves `last_worked` (task 182): a map (`kind: moc`) never counts, nor an `updated` on the day enrichment last rewrote the record, and a blueprint counts only once edited after it was created. The reading is written to `project-activity.json` even on a reporting pass, and the ranker applies the band at query time, reloading the file when it changes — no reindex. |
 
 Then three checks that write nothing: a vocabulary audit (every `type:`/`kind:` against the contract's own registers), trend flags (writes doubling week over week, a day at the cap, a class growing by half since the last pass), and a sampled re-classification diff (`reclassify_sample`, 30 notes) whenever the filing-pass version has changed since the last pass, or on `-reclassify`.
+
+### The lifecycle journal's actors, and your edit of `lifecycle`
+
+Every change to a note's `lifecycle` leaves one line in the lifecycle journal, `<engine state dir>/lifecycle-journal.jsonl` (`LifecycleJournalName`, `daemon/internal/dreaming/lifecycle.go:64`): `actor`, `from`, `reason`, `rel` (relative to the memory root), `run_id`, `to` and `ts` (`lifecycleLine`, `lifecycle.go:543`). The pass writes its lines through the mutation journal's governance step (`governance`, `journal.go:337`, over `EnsureLifecycleJournalAs`, `lifecycle.go:572`), once per run, note and state, with the actor the intent names, or `policy` when it names none.
+
+| Actor | Written for | Constant |
+|---|---|---|
+| `policy` | The machinery: this pass's sinks, lifts, archive moves and deletions, the `copies` job, and enrichment's sink | `ActorPolicy`, `lifecycle.go:100` |
+| `operator` | A person: a hand edit of `lifecycle` the night finds, a note moved back out of the archive by hand, and the Python CLI's `set` and `revive` | `ActorOperator`, `lifecycle.go:101` |
+
+`HandEdited` (`lifecycle.go:775`) finds your edit by comparing a note's `lifecycle` with the journal, and the pass acts on what it finds before it weighs the note's age (`lifecycle.go:370-397`):
+
+| The pass finds | It reads that as | The night does |
+|---|---|---|
+| `lifecycle` disagrees with the journal's last line about the note, whoever wrote that line, and the line ends in `active`, `dormant`, `archived`, `pinned` or `superseded` | Your edit, from the state the line ended in | Journals it as actor `operator`, reason `edited by hand: <from> → <to>`, stamps `lifecycle_since`, lists the note in `touched_by_hand`, and leaves it alone that night |
+| The journal has no line about the note, or its last line ends in `purged`, `completed`, `written` or `activity` (which says nothing about the file at that path now), and the note is `dormant` with no `lifecycle_since` | Your edit from `active`: every writer that sinks a note stamps one | The same |
+| Any other state on such a note | Not an edit: a pin is exempt either way, and `superseded` and `archived` are the machinery's words, written with their own fields | Nothing |
+| `lifecycle: archived` on a note in its class folder, outside `archive/` | A note you moved back by hand | Journals it as actor `operator`, reason `moved back into its class by hand → active`, sets `active`, stamps `lifecycle_since`, and lists it in `returned` |
+
+The stamp on an edit is the day the pass found it, unless you wrote a `lifecycle_since` of your own that is later than the journal's last line about the note and not in the future (`handEditDay`, `lifecycle.go:788`).
+
+**The clock restarts.** When the journal's last line about a note is the operator's and still names the note's state (a hand edit, a note moved back out of the archive, or the CLI's `set` or `revive`), the pass counts quiet time from the later of the last activity and the day the state was set: `lifecycle_since`, else the day of the journal line (`daysSinceSet`, `lifecycle.go:802`, applied at `lifecycle.go:437-441`). No night sinks such a note until it has been quiet for the full `dormant_after_days` since the edit.
+
+**Each edit is named once.** The pass lists the note in `touched_by_hand` (`LifecyclePlan.Touched`, `lifecycle.go:131`) and `agentmdream run` prints it as ``left alone <rel> — its `lifecycle` was edited by hand; journaled as the operator's`` (`daemon/cmd/agentmdream/main.go:425-427`). The dreaming facet names the same notes under *Left alone — you edited its lifecycle* (`leftAloneHeading`, `daemon/internal/dreaming/dreamingfacet.go:104`, rendered at `:156`), and a note moved back by hand under *Moved back into its class by hand*. The facet reads the pass's list and nothing else: once the edit is journaled the journal agrees with the note, the next night finds nothing to name, and a later edit of the same note is a new edit, named on its own night.
 
 ### The takeover (2026-09-05)
 

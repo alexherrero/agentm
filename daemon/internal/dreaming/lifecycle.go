@@ -92,6 +92,21 @@ var sinceRe = regexp.MustCompile(`(?m)^lifecycle_since:[ \t]*"?'?(\d{4}-\d{2}-\d
 
 var slugRe = regexp.MustCompile(`(?m)^slug:[ \t]*(\S+)`)
 
+// The lifecycle journal's actors. `policy` is the machinery: this pass, the
+// copies job, enrichment's sink. `operator` is a person: their hand edit of
+// `lifecycle`, their move of a note back out of the archive, and the CLI's
+// `set` and `revive`.
+const (
+	ActorPolicy   = "policy"
+	ActorOperator = "operator"
+)
+
+// lifecycleStates are the states a note can carry. A journal line that ends
+// anywhere else — `purged`, `completed`, a facet's `written` — says nothing
+// about the state of a file now at that path.
+var lifecycleStates = map[string]bool{"active": true, "dormant": true, "archived": true,
+	"pinned": true, "superseded": true}
+
 // LifecyclePlan is what one pass would (or did) do.
 type LifecyclePlan struct {
 	Intents  []Intent `json:"-"`
@@ -109,8 +124,10 @@ type LifecyclePlan struct {
 	// candidate that did not move tonight.
 	Candidates []Move `json:"archive_candidates"`
 	Previews   []Move `json:"previews"`
-	// Touched is a note whose `lifecycle` the operator edited by hand since the
-	// journal last recorded it. Named and left alone for the night.
+	// Touched is a note whose `lifecycle` the operator edited by hand, found
+	// tonight: a state no writer journaled. Tonight's pass journals it as theirs
+	// and stamps `lifecycle_since`, so each edit is found, and named, once
+	// (task 187).
 	Touched []Move `json:"touched_by_hand"`
 	// The two forward lists the morning note carries, each omitted when empty:
 	// what sinks within thirty days, and what is archived within thirty days.
@@ -359,16 +376,23 @@ func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap i
 			summary := "moved back into its class by hand → active"
 			plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel,
 				Before: raw, After: []byte(after), Summary: summary,
-				Meta: map[string]string{"from": state, "to": lifecycleDefaultState, "reason": summary}})
+				Meta: map[string]string{"from": state, "to": lifecycleDefaultState, "reason": summary,
+					"actor": ActorOperator}})
 			plan.Returned = append(plan.Returned, Move{rel, 0})
 			continue
 		}
 		// The operator's own edit of `lifecycle`, made in Obsidian rather than
-		// through a lane that journals. It counts as a touch: the note is named
-		// in tonight's report as theirs and left alone until the next pass, so
-		// the night does not spend the same night arguing with an edit the
-		// operator just made.
-		if OperatorEdited(lastJournaled, rel, state) {
+		// through a lane that journals. The night journals it as theirs and
+		// stamps `lifecycle_since` with the day it found it, unless they stamped
+		// one themselves; from then on the note's quiet time counts from that
+		// day (below), so no later night sinks it until it has been quiet for the
+		// full line again (task 187). Tonight it is left alone.
+		if from, edited := HandEdited(lastJournaled, rel, state, text); edited {
+			stamp := handEditDay(text, lastJournaled[rel], since)
+			summary := fmt.Sprintf("edited by hand: %s → %s", from, state)
+			plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel,
+				Before: raw, After: []byte(SetLifecycle(text, state, stamp)), Summary: summary,
+				Meta: map[string]string{"from": from, "to": state, "reason": summary, "actor": ActorOperator}})
 			plan.Touched = append(plan.Touched, Move{rel, 0})
 			continue
 		}
@@ -407,6 +431,14 @@ func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap i
 		if !ok {
 			continue
 		}
+		// A state the operator set — by hand, by moving the note back, or
+		// through the CLI — restarts the clock: quiet time counts from the later
+		// of the last activity and the day they set it (task 187).
+		if line, ok := lastJournaled[rel]; ok && line.Actor == ActorOperator && line.To == state {
+			if edit, ok := daysSinceSet(text, line, dayNow); ok && edit < days {
+				days = edit
+			}
+		}
 		switch {
 		// The deletion, and it is the only thing in this job that removes a
 		// file. Two clocks have to agree: the note has been silent past
@@ -442,7 +474,12 @@ func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap i
 			plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel, Before: raw, After: []byte(after), Summary: summary,
 				Meta: map[string]string{"from": state, "to": "dormant", "reason": summary}})
 			plan.Demoted = append(plan.Demoted, Move{rel, days})
-		case state == "dormant" && days <= dormantAfter:
+		// A dormant note comes back only on a genuine recall after it went
+		// dormant (task 187). Its clock alone is not enough: a note sunk before
+		// its line — by the operator's hand, or by enrichment's second verdict
+		// below the floor — reads as recently active, and a clock-only rule sent
+		// it straight back to `active`.
+		case state == "dormant" && days <= dormantAfter && recalledSince(log, rel, slug, text):
 			after := SetLifecycle(text, lifecycleDefaultState, since)
 			summary := fmt.Sprintf("recalled %.0f days ago, within %s → active", days, lifecycleKeyDormant)
 			plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel, Before: raw, After: []byte(after), Summary: summary,
@@ -520,13 +557,19 @@ func AppendLifecycleJournal(engineStateDir, rel, from, to, reason, runID string,
 	if err := os.MkdirAll(engineStateDir, 0o755); err != nil {
 		return err
 	}
-	return appendLifecycleLine(p, rel, from, to, reason, runID, now)
+	return appendLifecycleLine(p, rel, from, to, reason, runID, ActorPolicy, now)
 }
 
 // EnsureLifecycleJournal is AppendLifecycleJournal made idempotent: a line
 // for the same run, note and state is written once, whichever of the pass
 // and its resume gets there first.
 func EnsureLifecycleJournal(engineStateDir, rel, from, to, reason, runID string, now time.Time) error {
+	return EnsureLifecycleJournalAs(engineStateDir, rel, from, to, reason, runID, ActorPolicy, now)
+}
+
+// EnsureLifecycleJournalAs is EnsureLifecycleJournal with the actor named: the
+// operator's hand edit, found and journaled by the night, is theirs.
+func EnsureLifecycleJournalAs(engineStateDir, rel, from, to, reason, runID, actor string, now time.Time) error {
 	p := filepath.Join(engineStateDir, LifecycleJournalName)
 	if blob, err := os.ReadFile(p); err == nil {
 		for _, line := range strings.Split(string(blob), "\n") {
@@ -542,11 +585,14 @@ func EnsureLifecycleJournal(engineStateDir, rel, from, to, reason, runID string,
 	if err := os.MkdirAll(engineStateDir, 0o755); err != nil {
 		return err
 	}
-	return appendLifecycleLine(p, rel, from, to, reason, runID, now)
+	return appendLifecycleLine(p, rel, from, to, reason, runID, actor, now)
 }
 
-func appendLifecycleLine(p, rel, from, to, reason, runID string, now time.Time) error {
-	line := lifecycleLine{Actor: "policy", From: from, Reason: reason, Rel: rel, To: to,
+func appendLifecycleLine(p, rel, from, to, reason, runID, actor string, now time.Time) error {
+	if actor == "" {
+		actor = ActorPolicy
+	}
+	line := lifecycleLine{Actor: actor, From: from, Reason: reason, Rel: rel, To: to,
 		TS: now.UTC().Format("2006-01-02T15:04:05+00:00")}
 	if runID != "" {
 		line.RunID = &runID
@@ -698,26 +744,90 @@ func LastJournaledStates(engineStateDir string) map[string]lifecycleLine {
 	return out
 }
 
-// OperatorEdited reports whether a note's state was changed by someone other
-// than this machinery since the journal last recorded it.
+// OperatorStates is every note whose state the operator set and still holds:
+// the journal's last line about it is theirs and names a lifecycle state. Read
+// by enrichment, which must not sink a note the operator put where it is
+// (task 187). Keys are memory-root-relative, as the journal writes them.
+func OperatorStates(engineStateDir string) map[string]string {
+	out := map[string]string{}
+	for rel, line := range LastJournaledStates(engineStateDir) {
+		if line.Actor == ActorOperator && lifecycleStates[line.To] {
+			out[rel] = line.To
+		}
+	}
+	return out
+}
+
+// HandEdited reports whether a note's state was set by someone the journal
+// does not name, and the state it was in before: the operator's hand, since
+// every writer in the machinery journals what it sets (task 187 — enrichment's
+// sink included).
 //
-// The design's words: your edit of `lifecycle` in Obsidian is a touch. The
-// night journals it as yours, stamps `lifecycle_since`, and does not re-sink
-// the note that night — because re-sinking it would be the night arguing with
-// the operator about a file they just edited, and nothing the operator moves or
-// edits is moved or edited back.
-//
-// Only a note the journal has seen can answer this. A note the night has never
-// moved has no recorded state to disagree with, and its own frontmatter is the
-// only account of it there is.
-func OperatorEdited(last map[string]lifecycleLine, rel, state string) bool {
-	line, ok := last[rel]
-	if !ok || line.To == "" {
+// A note the journal has seen disagrees with its last line. A note it has not
+// seen, or whose last line ended somewhere a file cannot be (`purged`: the file
+// there now is a new one), is read from its own frontmatter: `dormant` with no
+// `lifecycle_since` is a sink no writer made, because every writer that sinks a
+// note stamps one. That is the hand edit that needs catching, because the night
+// would otherwise treat the note as its own dormant and send it back to
+// `active` on its next recall. The other states are left to the journal: a pin
+// is exempt either way, and `superseded` and `archived` are the machinery's
+// words, written with their own fields.
+func HandEdited(last map[string]lifecycleLine, rel, state, text string) (from string, edited bool) {
+	if line, ok := last[rel]; ok && lifecycleStates[line.To] {
+		return line.To, line.To != state
+	}
+	if state != "dormant" || sinceRe.MatchString(text) {
+		return "", false
+	}
+	return lifecycleDefaultState, true
+}
+
+// handEditDay is the `lifecycle_since` a hand edit found tonight is stamped
+// with: the operator's own, when they wrote one after the journal's last line
+// about the note and not in the future, else today.
+func handEditDay(text string, last lifecycleLine, today string) string {
+	m := sinceRe.FindStringSubmatch(text)
+	if m == nil || m[1] > today {
+		return today
+	}
+	if len(last.TS) >= 10 && m[1] > last.TS[:10] {
+		return m[1]
+	}
+	return today
+}
+
+// daysSinceSet is how many days ago the operator set the note's state: its
+// `lifecycle_since`, which the night stamps when it journals the edit, else the
+// day the journal line was written.
+func daysSinceSet(text string, line lifecycleLine, now time.Time) (float64, bool) {
+	day := ""
+	if m := sinceRe.FindStringSubmatch(text); m != nil {
+		day = m[1]
+	} else if len(line.TS) >= 10 {
+		day = line.TS[:10]
+	}
+	t, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		return 0, false
+	}
+	return now.Sub(t).Hours() / 24, true
+}
+
+// recalledSince reports whether a genuine recall reached the note after the
+// day it went dormant (its `lifecycle_since`): the access sidecar's record, and
+// not the note's own `updated`, which enrichment restamps without anyone
+// reading the note. A dormant note with no stamp comes back on any recall.
+func recalledSince(log *note.AccessLog, rel, slug, text string) bool {
+	if log == nil {
 		return false
 	}
-	if line.Actor != "policy" {
-		// The operator's own lane already recorded it; nothing to notice.
+	t, ok := log.LastAccess(rel, slug)
+	if !ok {
 		return false
 	}
-	return line.To != state
+	m := sinceRe.FindStringSubmatch(text)
+	if m == nil {
+		return true
+	}
+	return t.UTC().Format("2006-01-02") > m[1]
 }
