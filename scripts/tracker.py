@@ -17,6 +17,14 @@ tracker's own status, when that status is not final, is that rewrite. It names
 State, Next or both and stamps `updated`; it never writes the Outcome or
 `closed`, and `done` and `dropped` are never rewritten.
 
+A task's tracker also opens with one derived line that links its plan and its
+progress log by path, so the map's link to the tracker reaches both and neither
+sits unlinked in the graph. The line is computed from where the tracker sits
+and which of the two files exist, on every write; `parse` reads past it, and
+`relink` writes it alone, never touching anything else. That makes `relink`
+the one writer that may touch a final tracker: the line is a pointer, not the
+record.
+
 This module owns the schema so both plugins write it the same way. agentm
 imports it; crickets shells to its command line rather than re-deriving it.
 Standard library only.
@@ -29,8 +37,9 @@ Usage:
   python3 scripts/tracker.py transition PATH --to STATUS [--state TEXT] [--next TEXT]
                                  [--outcome TEXT] [--today YYYY-MM-DD]
   python3 scripts/tracker.py check PATH [PATH ...]
-Exit: 0 ok · 1 a finding, a refused transition or rewrite, or a file that changed
-under the write · 2 a usage or I/O error
+  python3 scripts/tracker.py relink PATH [PATH ...]
+Exit: 0 ok · 1 a finding, a refused transition or rewrite, a tracker relink could
+not read, or a file that changed under the write · 2 a usage or I/O error
 """
 from __future__ import annotations
 
@@ -73,6 +82,8 @@ FIELDS = ("kind", "title", "project", "task", "status", "importance",
 REQUIRED = ("kind", "title", "project", "status", "opened", "updated", "closed")
 SECTIONS = ("Objective", "State", "Next", "Outcome")
 NOT_STARTED = "Not started."
+# The task files a task's tracker links, by file name without `.md`, in order.
+LINKED = (("plan", "Plan"), ("progress", "Progress log"))
 
 _KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*):(.*)$")
 _HEADING = re.compile(r"^## (.*?)[ \t]*$", re.M)
@@ -80,6 +91,13 @@ _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _PLAIN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ ./()'-]*$")
 _NUMBERISH = re.compile(r"^[-+]?[0-9][0-9_.eE+-]*$")
 _YAML_WORDS = frozenset({"true", "false", "yes", "no", "on", "off", "null", "y", "n", "~"})
+# The links line: path wikilinks with a label, joined by ` · `. Path wikilinks
+# because Obsidian resolves a bare `plan` or `plan.md` by name across the vault,
+# where hundreds of plans share it, and because the task mover rewrites a path
+# wikilink into a moved folder and keeps its label.
+_LINK = r"\[\[[^\[\]|#^]+\|[^\[\]|]+\]\]"
+_LINKS_LINE = re.compile(rf"{_LINK}(?: · {_LINK})*")
+_UNLINKABLE = re.compile(r"[\[\]|#^]")
 
 
 class TrackerError(ValueError):
@@ -161,7 +179,9 @@ def _scalar_in(raw: str, key: str) -> str:
     return v
 
 
-def render(t: Tracker) -> str:
+def render(t: Tracker, links: str = "") -> str:
+    """The tracker as text. `links` is the links line `links_line` computes for
+    where the tracker is written; without a path there is none."""
     lines = ["---", f"kind: {KIND}", f"title: {_scalar_out(t.title)}",
              f"project: {_scalar_out(t.project)}"]
     if t.task:
@@ -189,7 +209,8 @@ def render(t: Tracker) -> str:
         if text:
             body += ["", text]
         body.append("")
-    return "\n".join(lines) + "\n\n" + "\n".join(body).rstrip("\n") + "\n"
+    head = "\n".join(lines) + "\n\n" + (links + "\n\n" if links else "")
+    return head + "\n".join(body).rstrip("\n") + "\n"
 
 
 def _split(text: str) -> tuple[str, str]:
@@ -206,8 +227,9 @@ def _sections(body: str) -> dict:
     names = [name for name, _, _ in found]
     if names != list(SECTIONS):
         raise TrackerError(f"the body's sections are {names}, not {list(SECTIONS)} in that order")
-    if body[:found[0][1]].strip():
-        raise TrackerError("the body has text before `## Objective`")
+    before = body[:found[0][1]].strip()
+    if before and not _LINKS_LINE.fullmatch(before):
+        raise TrackerError("the body has text before `## Objective` other than its links line")
     out = {}
     for i, (name, _start, end) in enumerate(found):
         stop = found[i + 1][1] if i + 1 < len(found) else len(body)
@@ -405,8 +427,48 @@ def read(path: Path) -> tuple[Tracker, str]:
     return parse(text), content_hash(text)
 
 
+def links_line(path: Path, t: Tracker) -> str:
+    """The line linking a task's tracker to its plan and progress log, from
+    where the tracker sits: `projects/<project>/…/<task>/tracker.md`, through
+    the vault's `projects/` folder. A file is linked only once it exists, so the
+    line never dangles; the next write adds a progress log opened after the
+    tracker. Empty for a project's own tracker, a tracker outside a task folder
+    under `projects/<project>/`, or a folder name a wikilink cannot carry."""
+    path = Path(path).absolute()
+    if not t.task or path.name != "tracker.md" or path.parent.name != t.task:
+        return ""
+    parts = path.parent.parts
+    for i in range(len(parts) - 2, 0, -1):
+        if parts[i] == "projects" and parts[i + 1] == t.project:
+            folder = "/".join(parts[i:])
+            break
+    else:
+        return ""
+    if _UNLINKABLE.search(folder):
+        return ""
+    return " · ".join(f"[[{folder}/{name}|{label}]]" for name, label in LINKED
+                      if (path.parent / f"{name}.md").is_file())
+
+
+def _replace(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def write(path: Path, t: Tracker, *, expected_hash: Optional[str] = None) -> Path:
-    """Replace `path` with the rendered tracker, atomically.
+    """Replace `path` with the rendered tracker and its links line, atomically.
 
     With `expected_hash`, refuses when the file no longer holds the text that
     hash was taken from: a session rewriting a tracker another writer changed
@@ -419,27 +481,37 @@ def write(path: Path, t: Tracker, *, expected_hash: Optional[str] = None) -> Pat
         current = content_hash(path.read_text(encoding="utf-8")) if path.exists() else None
         if current != expected_hash:
             raise ChangedError(f"{path} changed since it was read; read it again")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(render(t))
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    _replace(path, render(t, links_line(path, t)))
     return path
+
+
+def relink(path: Path) -> bool:
+    """Write the tracker's links line and nothing else; True when it changed.
+
+    Every byte from `## Objective` on, and the frontmatter, stays as it was:
+    no field is stamped, so a final tracker may be relinked and a tracker
+    already right is not written at all. Refuses a tracker that does not parse,
+    and one that changed while this ran."""
+    path = Path(path)
+    text = path.read_text(encoding="utf-8")
+    t = parse(text)
+    head_end = text.find("\n---\n", 3) + len("\n---\n")
+    body = text[head_end:]
+    objective = _HEADING.search(body)
+    line = links_line(path, t)
+    relinked = text[:head_end] + "\n" + (line + "\n\n" if line else "") + body[objective.start():]
+    if relinked == text:
+        return False
+    if path.read_text(encoding="utf-8") != text:
+        raise ChangedError(f"{path} changed while it was relinked; run it again")
+    _replace(path, relinked)
+    return True
 
 
 # --- command line -------------------------------------------------------------
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="tracker.py", description="The tracker schema: new, show, transition, check.")
+    p = argparse.ArgumentParser(prog="tracker.py", description="The tracker schema: new, show, transition, check, relink.")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     n = sub.add_parser("new", help="render a tracker at `queued`")
@@ -469,6 +541,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     c = sub.add_parser("check", help="report schema findings")
     c.add_argument("paths", nargs="+")
+
+    r = sub.add_parser("relink", help="write each task tracker's links line to its plan and "
+                                      "progress log, changing nothing else; prints what changed")
+    r.add_argument("paths", nargs="+")
     return p
 
 
@@ -501,6 +577,16 @@ def main(argv: Optional[list] = None) -> int:
             write(path, after, expected_hash=digest)
             print(f"{path}: {before.status} -> {after.status}")
             return 0
+        if args.cmd == "relink":
+            refused = 0
+            for raw in args.paths:
+                try:
+                    if relink(Path(raw)):
+                        print(raw)
+                except (TrackerError, OSError) as exc:
+                    print(f"tracker: {raw}: {exc}", file=sys.stderr)
+                    refused += 1
+            return 1 if refused else 0
         bad = 0
         for raw in args.paths:
             try:
