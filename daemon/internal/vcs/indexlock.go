@@ -19,10 +19,17 @@
 //     lock is held across a longer span than one write, so the payload
 //     travels in its own temp file and the lock stays a pure mutex.
 //
-// The lock is never stolen. A lock that will not clear means another git
-// process is mid-operation or died mid-operation, and both are conditions a
-// human should look at; the daemon retries with backoff, then skips the
-// cycle loudly and lets the next debounce try again.
+// Another client's lock is never stolen. A lock that will not clear means
+// another git process is mid-operation or died mid-operation, and both are
+// conditions a human should look at; the daemon retries with backoff, then
+// skips the cycle loudly and lets the next debounce try again.
+//
+// There is one exception, and it is narrow: a lock carrying the daemon's own
+// content (lockOwner) whose pid is no longer running. Only a killed daemon
+// leaves that file, and no human needs to look at it. On 2026-10-04 a restart
+// killed a daemon mid-commit, and its successor skipped every commit for that
+// lock until someone removed it by hand. Two daemons racing to remove the same
+// dead lock could still collide, but only one daemon runs per vault.
 package vcs
 
 import (
@@ -147,6 +154,7 @@ func (s *atomicIndexStorage) SetIndex(idx *formatindex.Index) (err error) {
 // lockIndex takes git's own index.lock and returns the release function. It
 // waits out a busy lock with backoff up to r.lockWait, and refuses — loudly,
 // naming the lock and its age — rather than stealing one that will not clear.
+// The one lock it removes is a dead daemon's own; see the top of this file.
 //
 // Reentrancy is deliberately absent: r.mu already serializes the daemon's own
 // goroutines, so the only contention here is with other processes, and a
@@ -168,12 +176,19 @@ func (r *Repo) lockIndex() (func(), error) {
 	for {
 		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err == nil {
-			fmt.Fprintf(f, "held by agentmd (pid %d)\n", os.Getpid())
+			fmt.Fprintf(f, lockOwner, os.Getpid())
 			f.Close()
 			return func() { os.Remove(lockPath) }, nil
 		}
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, fmt.Errorf("index.lock at %s: %w", lockPath, err)
+		}
+		if pid, stale := ownStaleLockPid(lockPath); stale {
+			if rmErr := os.Remove(lockPath); rmErr == nil || errors.Is(rmErr, fs.ErrNotExist) {
+				r.logger().Warn("removed a stale index.lock left by a dead agentmd",
+					"path", lockPath, "pid", pid)
+				continue
+			}
 		}
 		if time.Now().After(deadline) {
 			age := "unknown age"

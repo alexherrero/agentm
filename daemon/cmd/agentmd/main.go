@@ -212,6 +212,7 @@ func cmdServe(args []string) error {
 	defer idx.Close()
 
 	repo := vcs.Open(cfg.VaultPath)
+	repo.SetLogger(log)
 	// An absence has to outlive a reconcile interval before it counts as a
 	// deletion, because the pass that would notice the file back runs on that
 	// interval. On a cloud-sync mount the alternative is recording a deletion for
@@ -219,6 +220,11 @@ func cmdServe(args []string) error {
 	repo.SetDeletionGrace(max(cfg.ReconcileEvery, vcs.DefaultDeletionGrace))
 	if repo.Available() {
 		log.Info("git", "status", repo.Status())
+		// A pack git named anything but pack-* is invisible to go-git. Fold it in
+		// now rather than failing the first commit to find out (vcs/heal.go).
+		if _, err := repo.RepairUnlistedPacks(); err != nil {
+			log.Error("could not repair unlisted packs", "err", err)
+		}
 	} else {
 		// Loud, every start. Without git there is no undo for a bad write, and a
 		// capability that is quietly missing is the exact failure mode principle 4
