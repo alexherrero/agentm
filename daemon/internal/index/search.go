@@ -149,11 +149,13 @@ type Query struct {
 	// note.ProjectMismatch: a modest lift for the session's own cards. Empty ranks
 	// exactly as before.
 	Project string
-	// MMR reorders ModeHybrid's fused candidates by maximal marginal relevance
-	// (task 184, ladder row 7, under measurement; see stages.go). It runs only
-	// with a query vector in hand, and false — every existing caller — is the
-	// shipped search byte for byte.
-	MMR bool
+	// MMR and Spread are the ranking-side rung's two stages (task 184, ladder
+	// row 7, under measurement; see stages.go): MMR reorders ModeHybrid's fused
+	// candidates by maximal marginal relevance, Spread admits linked notes one
+	// hop out from the top five. Both run only with a query vector in hand, and
+	// false — every existing caller — is the shipped search byte for byte.
+	MMR    bool
+	Spread bool
 	// Surface is who is asking, and it decides whether this search counts as a
 	// genuine recall — `cli`, `mcp:<client>`, or `measure` for a pass that is
 	// grading the ranker rather than reading memory. Empty means the CLI, the
@@ -732,7 +734,13 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 		note.QueryWantsArtifact(text), project, x.lessonsOf)
 
 	fused := fuseRRF(lexical.Results, dense)
-	// The ranking-side stage, after fusion and never instead of it.
+	// The ranking-side stages, after fusion and never instead of it:
+	// activation first, so MMR chooses among what it admitted too.
+	if q.Spread {
+		if fused, err = x.spreadActivation(fused, q, after, before); err != nil {
+			return lexical, err
+		}
+	}
 	if q.MMR {
 		if fused, err = x.mmrRerank(fused, q.EmbedModel); err != nil {
 			return lexical, err

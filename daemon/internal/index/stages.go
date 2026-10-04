@@ -1,7 +1,9 @@
 package index
 
 import (
+	"database/sql"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/alexherrero/agentm/daemon/internal/note"
@@ -20,6 +22,14 @@ const (
 	// well the fused ranking placed the note, 0.3 is how unlike the notes
 	// already picked it is.
 	mmrLambda = 0.7
+	// spreadSeeds is how many of the fused list's leaders activation starts from.
+	spreadSeeds = 5
+	// spreadPerSeed caps what one seed admits. Entity pages link to everything —
+	// a repo page here links to 171 notes — and an uncapped hop would fill the
+	// list with a hub's neighbourhood.
+	spreadPerSeed = 3
+	// spreadDecay is what one hop costs: a neighbour scores at half its seed.
+	spreadDecay = 0.5
 )
 
 // mmrRerank reorders the fused pool by maximal marginal relevance: each pick
@@ -112,6 +122,186 @@ func demoted(r Result) bool {
 	flags := splitFlags(r.Penalty)
 	return hasFlag(flags, note.ClassConsolidated) ||
 		hasFlag(flags, note.ClassSuperseded) || hasFlag(flags, note.ClassArchived)
+}
+
+// spreadActivation follows one hop of the link graph out from the fused
+// list's top five and merges what it finds back in.
+//
+// The edges are the ones a writer drew on purpose: a seed's own wikilinks,
+// body and frontmatter alike — which is where `related:`,
+// `consolidated_into:` and `consolidated_from:` live — and the entity pages
+// that link to it. Markdown links, every other backlink and second hops are
+// not followed, and an activated note never seeds, so a cycle ends after one
+// step.
+//
+// A neighbour goes through the same walls the arms apply and the query's date
+// bounds, before the cap, so a walled note neither appears nor takes a slot.
+// Each seed admits the three whose vector sits nearest the query; notes with no
+// vector follow, by path. A neighbour scores its seed's fused score × 0.5 ×
+// its own multiplier — class penalty, project activity, age and project, by
+// the function the arms use — with a consolidated neighbour always demoted. A
+// note already in the list keeps the better of its two scores.
+func (x *Index) spreadActivation(rows []Result, q Query, after, before string) ([]Result, error) {
+	seeds := rows
+	if len(seeds) > spreadSeeds {
+		seeds = seeds[:spreadSeeds]
+	}
+	isSeed := make(map[string]bool, len(seeds))
+	for _, s := range seeds {
+		isSeed[s.Path] = true
+	}
+
+	activated := map[string]Result{}
+	decayLog, decayNow := x.decayClock()
+	wantArtifact := note.QueryWantsArtifact(q.Text)
+	for _, seed := range seeds {
+		cands, err := x.linkedRows(seed.Path, after, before)
+		if err != nil {
+			return rows, err
+		}
+		kept := cands[:0]
+		for _, c := range cands {
+			if !isSeed[c.Path] {
+				kept = append(kept, c)
+			}
+		}
+		cands, _ = wallUnserved(kept, q.IncludeArchived)
+		if cands, err = x.nearestToQuery(cands, q.Vector, q.EmbedModel, spreadPerSeed); err != nil {
+			return rows, err
+		}
+		for i := range cands {
+			cands[i].Score = seed.Score * spreadDecay
+		}
+		// No lessons function: a consolidated neighbour keeps its demotion
+		// whatever the list holds, so activation can never be what lifts one.
+		cands = penalizeRankAndDecay(cands, len(cands), decayLog, decayNow,
+			wantArtifact, q.Project, nil)
+		for _, c := range cands {
+			if prev, ok := activated[c.Path]; !ok || c.Score > prev.Score {
+				activated[c.Path] = c
+			}
+		}
+	}
+	if len(activated) == 0 {
+		return rows, nil
+	}
+
+	out := make([]Result, 0, len(rows)+len(activated))
+	for _, r := range rows {
+		if a, ok := activated[r.Path]; ok {
+			if a.Score > r.Score {
+				r.Score = a.Score
+			}
+			delete(activated, r.Path)
+		}
+		out = append(out, r)
+	}
+	for _, a := range activated {
+		out = append(out, a)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Score != out[j].Score {
+			return out[i].Score > out[j].Score
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out, nil
+}
+
+// linkedRows is every note one typed hop from `seed`, as rows ready for the
+// walls and the penalty: its resolved wikilinks, and the entity pages that
+// link to it. A note outside the date bounds is left out, as the arms leave it
+// out in SQL.
+func (x *Index) linkedRows(seed, after, before string) ([]Result, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+
+	targets := map[string]bool{}
+	collect := func(keep func(string) bool, query string) error {
+		rows, err := x.db.Query(query, seed)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var p string
+			if err := rows.Scan(&p); err != nil {
+				return err
+			}
+			if keep(p) {
+				targets[p] = true
+			}
+		}
+		return rows.Err()
+	}
+	if err := collect(func(string) bool { return true },
+		`SELECT DISTINCT l.resolved FROM links l JOIN docmeta d ON d.id = l.source_id
+		 WHERE d.path = ? AND l.wiki = 1 AND l.resolved <> ''`); err != nil {
+		return nil, err
+	}
+	if err := collect(isEntityPagePath,
+		`SELECT DISTINCT d.path FROM links l JOIN docmeta d ON d.id = l.source_id
+		 WHERE l.resolved = ?`); err != nil {
+		return nil, err
+	}
+	delete(targets, seed)
+
+	out := make([]Result, 0, len(targets))
+	for p := range targets {
+		var r Result
+		err := x.db.QueryRow(`
+			SELECT m.id, m.path, m.flags, m.captured, m.captured_src, m.updated,
+			       m.created, m.project
+			FROM docmeta m
+			WHERE m.path = ?
+			  AND (? = '' OR m.captured >= ?)
+			  AND (? = '' OR m.captured <  ?)`,
+			p, after, after, before, before).Scan(&r.rowid, &r.Path, &r.Penalty,
+			&r.Captured, &r.CapturedSource, &r.Updated, &r.Created, &r.project)
+		if err == sql.ErrNoRows {
+			// Outside the date bounds, or a link resolved to a note since removed.
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// nearestToQuery keeps the `limit` rows whose note vector sits closest to the
+// query's, then the rows with no vector, by path.
+func (x *Index) nearestToQuery(rows []Result, query []float32, model string, limit int) ([]Result, error) {
+	if len(rows) == 0 {
+		return rows, nil
+	}
+	vecs, err := x.noteVectors(model, pathsOf(rows))
+	if err != nil {
+		return rows, err
+	}
+	q := normalised(query)
+	sim := make(map[string]float64, len(rows))
+	for _, r := range rows {
+		if v, ok := vecs[r.Path]; ok && len(v) == len(q) {
+			sim[r.Path] = dot(v, q)
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		si, iok := sim[rows[i].Path]
+		sj, jok := sim[rows[j].Path]
+		if iok != jok {
+			return iok
+		}
+		if iok && si != sj {
+			return si > sj
+		}
+		return rows[i].Path < rows[j].Path
+	})
+	if len(rows) > limit {
+		rows = rows[:limit]
+	}
+	return rows, nil
 }
 
 // noteVectors is each note's vector for the stages: the normalised mean of its
