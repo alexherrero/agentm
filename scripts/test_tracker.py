@@ -402,5 +402,108 @@ class CommandLine(unittest.TestCase):
         self.assertIn("missing", out)
 
 
+class LinksLine(unittest.TestCase):
+    """A task's tracker links its plan and progress log by path, so the map's
+    link to the tracker reaches both: archived plans and progress logs sat
+    unlinked in the graph before (2026-10-04 orphan census, 80 of 381)."""
+
+    TASK = "188-keep-committing"
+
+    def setUp(self) -> None:
+        self.vault = Path(tempfile.mkdtemp(prefix="agentm-tracker-links-"))
+        self.folder = self.vault / "projects" / "agentm" / "tasks" / self.TASK
+        self.folder.mkdir(parents=True)
+        self.path = self.folder / "tracker.md"
+        self.rel = f"projects/agentm/tasks/{self.TASK}"
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.vault, ignore_errors=True)
+
+    def _t(self, **kw) -> tk.Tracker:
+        return _tracker(task=self.TASK, **kw)
+
+    def _touch(self, *names: str) -> None:
+        for name in names:
+            (self.folder / f"{name}.md").write_text("x\n", encoding="utf-8")
+
+    def test_a_task_tracker_links_the_files_that_exist(self) -> None:
+        self.assertEqual(tk.links_line(self.path, self._t()), "")
+        self._touch("plan")
+        self.assertEqual(tk.links_line(self.path, self._t()), f"[[{self.rel}/plan|Plan]]")
+        self._touch("progress")
+        self.assertEqual(tk.links_line(self.path, self._t()),
+                         f"[[{self.rel}/plan|Plan]] · [[{self.rel}/progress|Progress log]]")
+
+    def test_no_line_where_no_task_folder_says_where_it_is(self) -> None:
+        self._touch("plan", "progress")
+        self.assertEqual(tk.links_line(self.path, _tracker(task=None)), "")      # a project's tracker
+        self.assertEqual(tk.links_line(self.path, _tracker(task="other")), "")   # not its own folder
+        self.assertEqual(tk.links_line(self.folder / "tracker-x.md", self._t()), "")
+        self.assertEqual(tk.links_line(self.path, self._t(project="crickets")), "")
+
+    def test_a_write_carries_the_line_and_it_reads_back(self) -> None:
+        self._touch("plan")
+        tk.write(self.path, self._t())
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn(f"---\n\n[[{self.rel}/plan|Plan]]\n\n## Objective\n", text)
+        t, _ = tk.read(self.path)
+        self.assertEqual(t, self._t())
+        self.assertEqual(tk.check_text(text), [])
+        self.assertEqual(tk.render(t, tk.links_line(self.path, t)), text)
+
+    def test_the_next_write_adds_a_progress_log_opened_later(self) -> None:
+        self._touch("plan")
+        tk.write(self.path, self._t(status="queued", state="Not started."))
+        self._touch("progress")
+        before, digest = tk.read(self.path)
+        tk.write(self.path, tk.transition(before, "active", today=TODAY, state="Started."),
+                 expected_hash=digest)
+        self.assertIn("|Progress log]]", self.path.read_text(encoding="utf-8"))
+
+    def test_only_a_links_line_may_precede_the_objective(self) -> None:
+        good = tk.render(self._t(), f"[[{self.rel}/plan|Plan]]")
+        self.assertEqual(tk.parse(good), self._t())
+        for bad in ("[[plan]]", f"[[{self.rel}/plan|Plan]] and more", "Plan: [[x|y]]"):
+            with self.assertRaisesRegex(tk.TrackerError, "text before"):
+                tk.parse(good.replace(f"[[{self.rel}/plan|Plan]]", bad))
+
+    def test_relink_writes_the_line_into_a_final_tracker_and_nothing_else(self) -> None:
+        self._touch("plan", "progress")
+        done = self._t(status="done", closed="2026-09-06", outcome="It shipped.")
+        old = tk.render(done)
+        self.path.write_text(old, encoding="utf-8")
+        self.assertTrue(tk.relink(self.path))
+        new = self.path.read_text(encoding="utf-8")
+        line = tk.links_line(self.path, done)
+        self.assertEqual(new.replace(line + "\n\n", "", 1), old)  # only the line was added
+        self.assertEqual(tk.read(self.path)[0], done)               # no field stamped
+        self.assertFalse(tk.relink(self.path))                      # already right: no write
+        self.assertEqual(self.path.read_text(encoding="utf-8"), new)
+
+    def test_relink_repoints_a_line_left_by_a_move(self) -> None:
+        self._touch("plan", "progress")
+        tk.write(self.path, self._t())
+        moved = self.vault / "projects" / "agentm" / "completed" / "tasks" / self.TASK
+        moved.parent.mkdir(parents=True)
+        self.folder.rename(moved)
+        path = moved / "tracker.md"
+        self.assertTrue(tk.relink(path))
+        self.assertIn("[[projects/agentm/completed/tasks/188-keep-committing/plan|Plan]]",
+                      path.read_text(encoding="utf-8"))
+
+    def test_relink_on_the_command_line(self) -> None:
+        self._touch("plan")
+        self.path.write_text(tk.render(self._t()), encoding="utf-8")
+        broken = self.folder.parent / "broken" / "tracker.md"
+        broken.parent.mkdir()
+        broken.write_text("# not a tracker\n", encoding="utf-8")
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = tk.main(["relink", str(self.path), str(broken)])
+        self.assertEqual((rc, out.getvalue()), (1, f"{self.path}\n"))
+        self.assertIn("broken", err.getvalue())
+        self.assertEqual(broken.read_text(encoding="utf-8"), "# not a tracker\n")
+
+
 if __name__ == "__main__":
     unittest.main()
