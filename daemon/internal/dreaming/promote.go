@@ -22,7 +22,9 @@ import (
 // fired on. A candidate whose words three distinct sessions carry is a real
 // recurrence: the same thing said three times. It becomes a semantic
 // candidate — `status: unfiled`, no `why`, `derived_from` naming the traces —
-// for the next enrichment batch to judge like any other card. A `## Captured`
+// for the next enrichment batch to judge like any other card. A reply the miner
+// refused to file, or an excerpt it cut mid-sentence, never counts (see
+// promotable). A `## Captured`
 // link three sessions carry names a card that already exists; it is reported,
 // and nothing is written.
 //
@@ -142,6 +144,27 @@ func candidateKey(excerpt string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// promotable says whether a `## Candidates` line can become a card at all,
+// however many sessions carry it. Two kinds cannot.
+//
+// A reply the miner logged and refused to file (`not filed: …`): the trace is
+// where a reply is logged, and three sessions answering "yes" is not a memory.
+//
+// An excerpt the miner cut at its start: `reflect`'s window around a match
+// opens with an ellipsis when the message went on before it, so it begins
+// mid-sentence and cannot stand as a statement. What recurs across sessions
+// there is a pasted block — the same standing instructions in three task
+// prompts — not the same thing said three times; the first two candidates this
+// job ever wrote (2026-10-04) were two windows of one such paragraph. A window
+// cut only at its end starts where the operator did, and still counts.
+func promotable(rule, excerpt string) bool {
+	if strings.HasPrefix(strings.TrimSpace(rule), "not filed:") {
+		return false
+	}
+	e := strings.TrimSpace(excerpt)
+	return !strings.HasPrefix(e, "...") && !strings.HasPrefix(e, "…")
+}
+
 // candidateSlug is a candidate's filename stem: its first words, hyphenated.
 func candidateSlug(key string) string {
 	words := strings.Fields(key)
@@ -172,6 +195,10 @@ func RenderCandidate(excerpt string, sources []string, defaultType, today string
 	}
 	b.WriteString("status: unfiled\n")
 	b.WriteString("lifecycle: active\n")
+	// The type is the contract's default, a guess rather than a judgment, so
+	// the filing confidence is low — what capture writes for a note it typed
+	// by default, and what keeps the card off `active` until a pass judges it.
+	b.WriteString("filing_confidence: low\n")
 	b.WriteString("source: conversation\n")
 	b.WriteString("trust: trusted\n")
 	fmt.Fprintf(&b, "created: %s\n", today)
@@ -232,7 +259,7 @@ func PlanPromote(root string, contract *rules.Rules, now time.Time) (PromotePlan
 		}
 		for _, l := range candLines {
 			m := candidateRe.FindStringSubmatch(l)
-			if m == nil || strings.TrimSpace(m[2]) == "" {
+			if m == nil || strings.TrimSpace(m[2]) == "" || !promotable(m[1], m[2]) {
 				continue
 			}
 			key := candidateKey(m[2])
