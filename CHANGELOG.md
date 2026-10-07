@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The night's refile job no longer moves an archived memory back out of the archive (task 187).** `refile` walked the memory archive along with the classes and read `archive/memory/semantic/` as a class of its own. So it "re-filed" every archived memory into its live class the first night after it was archived. Only two notes had ever been archived: the operator's lane archived them on 2026-10-04, and they were back in `semantic/` the next night. The step 4 deploy had made it worse: a later lifecycle pass would read such a note as moved back by hand and journal it as the operator's. The archive is now the lifecycle axis's alone.
+
 ## [10.5.0] - 2026-10-04
 
 Forward learning is gone, a weekly field brief takes its place, and the vault's writers stop filing junk. This release ships task 185 (#835, #836), task 186, task 184 and the merged steps of task 187, with a clean-up of what the unit suite left behind and a fix to the doctor's own spec.

@@ -61,6 +61,15 @@ func PlanRefile(root string, r *rules.Rules) (RefilePlan, error) {
 		exists[rel] = true
 	}
 	for _, rel := range rels {
+		// The archive is the lifecycle axis's, not a misfiling: `MemoryNotes`
+		// walks it so the lifecycle job can see what is in it, and a note there
+		// sits in the mirror of its class. Read as a class of its own it routed
+		// every archived memory straight back out — the first two archived on
+		// 2026-10-04, by the operator's own lane, were back in `semantic/` by
+		// the next night (task 187). Nothing the operator moves is moved back.
+		if InArchive(rel) {
+			continue
+		}
 		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			continue
