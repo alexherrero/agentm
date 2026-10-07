@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|EnterWorktree|Agent|Task|mcp__ccd_session__spawn_task)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/vault-worktree-guard.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

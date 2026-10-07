@@ -68,6 +68,8 @@ expected=(
   hooks/verify-dispatch/verify-dispatch.sh
   hooks/compaction-marker/compaction-marker.sh
   hooks/compaction-reanchor/compaction-reanchor.sh
+  hooks/vault-worktree-guard/vault-worktree-guard.sh
+  hooks/vault-worktree-guard/vault_worktree_guard.py
 )
 for p in "${expected[@]}"; do
   if [[ ! -e "$PREFIX/$p" ]]; then
@@ -182,6 +184,7 @@ user_hooks=(
   verify-dispatch
   compaction-marker
   compaction-reanchor
+  vault-worktree-guard
 )
 python3 - "$PREFIX/settings.json" "${user_hooks[@]}" <<'PY' || fail=1
 import json, sys
