@@ -159,6 +159,24 @@ func testRules(t *testing.T) *rules.Rules {
 	return r
 }
 
+// Task 187: an archived memory is not misfiled. The refile job read
+// `archive/memory/semantic/…` as a class of its own and moved both notes the
+// operator archived on 2026-10-04 back into `memory/semantic/` the next night.
+func TestRefileLeavesTheArchiveAlone(t *testing.T) {
+	root := t.TempDir()
+	r := testRules(t)
+	archived := "---\ntitle: set aside\ntype: preference\nstatus: unfiled\nlifecycle: archived\nlifecycle_since: 2026-10-04\n---\n\nA card the operator archived.\n"
+	writeRaw(t, root, ArchiveDir+"/memory/semantic/set-aside.md", archived)
+	writeRaw(t, root, ArchiveDir+"/memory/semantic/stale.md", "---\ntitle: flagged\ntype: fact\nstatus: active\nlifecycle: archived\nreview_flags: [near-duplicate]\nrelated: memory/semantic/gone.md\n---\n\nArchived with a stale flag.\n")
+	plan, err := PlanRefile(root, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Intents) != 0 || len(plan.Moves) != 0 || len(plan.Unflags) != 0 || len(plan.Blocked) != 0 {
+		t.Errorf("refile acted on the archive: moves %+v, unflags %+v, blocked %+v", plan.Moves, plan.Unflags, plan.Blocked)
+	}
+}
+
 func TestRefileMovesAWrongClassNoteAndClearsAStaleFlag(t *testing.T) {
 	root := t.TempDir()
 	r := testRules(t)
