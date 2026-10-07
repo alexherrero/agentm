@@ -54,6 +54,7 @@ import corpus_scorecard  # noqa: E402  (same skill dir)
 import engine_state  # noqa: E402
 import lifecycle_transitions  # noqa: E402
 import needs_review  # noqa: E402
+import vault_worktrees  # noqa: E402
 
 DIAGNOSTICS_DIR = Path("diagnostics") / "morning"
 STABLE_NAME = "latest_morning_note.md"
@@ -309,6 +310,7 @@ class Night:
     coverage_missing: str = ""
     scorecard: str = ""
     sessions: Optional[tuple] = None
+    worktrees: list = field(default_factory=list)  # signs of a git worktree in the vault
 
 
 # The reasons a cycle gives whatever the hour, because it reads the switch and
@@ -427,6 +429,14 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
         night.sank = [e.get("rel", "") for e in summary["entries"]["sank"] if e.get("rel")]
     except Exception:  # a journal that will not read costs the note one list
         night.sank = []
+    # A git worktree in the vault. Drive uploads it, and the config key it
+    # leaves stops the daemon committing on its next restart (#859), so the
+    # morning after is the day to hear about it.
+    try:
+        night.worktrees = vault_worktrees.describe(
+            vault_worktrees.inspect(vault_worktrees.vault_root_of(vault)))
+    except Exception:  # a check that will not run costs the note one line
+        night.worktrees = []
 
     night.populations = corpus_scorecard.class_populations(vault)
     try:
@@ -638,6 +648,10 @@ def what_ran(night: Night) -> list:
 
 def needs_you(night: Night) -> list:
     lines = []
+    if night.worktrees:
+        lines.append(f"- **A git worktree is in the vault** ({len(night.worktrees)}): "
+                     + "; ".join(night.worktrees[:FIRST])
+                     + ". Archive the session that owns it; the doctor's `vault-worktrees` row has the detail.")
     tasks = (night.binary or {}).get("tasks") if night.binary_tonight else None
     held = (tasks or {}).get("held") or [] if isinstance(tasks, dict) else []
     if held:

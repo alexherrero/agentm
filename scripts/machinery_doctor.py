@@ -1086,6 +1086,50 @@ def check_harness_dirs(*, projects_dir: Optional[Path] = None, backend=None) -> 
 
 
 
+# ── a git worktree in the vault (task 189) ─────────────────────────────────
+def check_vault_worktrees(*, vault: Optional[Path] = None) -> Check:
+    """Whether a git worktree has got into the vault.
+
+    On 2026-10-02 a background-task chip opened from a session in the vault
+    made a worktree there. Drive uploaded it file by file, and the desktop app
+    left `extensions.worktreeConfig` in the vault repository's config. The
+    daemon's git library refuses that extension, so the daemon stopped
+    committing on its next restart, a day later (#859). The vault-worktree-guard
+    hook refuses the tool calls that make one. This row catches what came by a
+    route no hook reaches, before the next restart rather than after it.
+
+    Fails on any of three signs: the vault repository lists a worktree besides
+    its main working tree, a `.claude/worktrees/` folder under the vault root
+    holds something, or the repository's config carries an `extensions.` key.
+    The empty folder at the vault root, left from 2026-08-16, is not a sign.
+    Reported, never repaired: the doctor is read-only.
+    """
+    name = "vault-worktrees"
+    try:
+        if vault is None:
+            import harness_memory as hm  # noqa: PLC0415
+            vault = hm.vault_path()
+            if vault is None:
+                return Check(name, "UNVERIFIED", "no vault configured on this machine")
+        sys.path.insert(0, str(repo_root() / "harness" / "skills" / "memory" / "scripts"))
+        import vault_worktrees as vault_worktrees_mod  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001 — a doctor row reports, never raises
+        return Check(name, "UNVERIFIED", f"the vault did not resolve: {exc}")
+    report = vault_worktrees_mod.inspect(Path(vault))
+    signs = vault_worktrees_mod.describe(report)
+    if signs:
+        remedy = ("archive the session that owns it in the desktop app, so the app's own cleanup "
+                  "restores the config; after a raw `git worktree remove`, unset the key by hand")
+        if any(prunable for _path, prunable in report.worktrees):
+            remedy += "; `git worktree prune` removes the records of worktrees already gone"
+        return Check(name, "FAIL", f"in {report.vault}: " + "; ".join(signs) + f" — {remedy}")
+    if report.unverified:
+        return Check(name, "UNVERIFIED", f"{report.vault}: " + "; ".join(report.unverified))
+    return Check(name, "OK", f"no worktree in {report.vault}: git lists only the main working tree, "
+                             "no `.claude/worktrees/` under it holds anything, and its config has no "
+                             "`extensions.` key")
+
+
 # ── the clone that IS the installation (2026-09-06 stale-main regression) ───
 def _git_out(repo: Path, *args: str) -> "tuple[int, str]":
     try:
@@ -1382,6 +1426,7 @@ def run_inventory(
     for config_path, label in project_json_configs(repo):
         checks.append(check_project_json_pointers(config_path, label))
     checks.append(check_harness_dirs())
+    checks.append(check_vault_worktrees())
     crickets_check = check_crickets_sibling()
     checks.append(crickets_check)
     crickets_root = find_crickets_root()
