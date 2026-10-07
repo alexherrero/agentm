@@ -78,6 +78,8 @@ try {
         'hooks/verify-dispatch/verify-dispatch.ps1'
         'hooks/compaction-marker/compaction-marker.ps1'
         'hooks/compaction-reanchor/compaction-reanchor.ps1'
+        'hooks/vault-worktree-guard/vault-worktree-guard.ps1'
+        'hooks/vault-worktree-guard/vault_worktree_guard.py'
     )
     foreach ($p in $expected) {
         if (-not (Test-Path -LiteralPath (Join-Path $prefix $p))) {
@@ -194,6 +196,7 @@ try {
         'verify-dispatch'
         'compaction-marker'
         'compaction-reanchor'
+        'vault-worktree-guard'
     )
     if (Test-Path -LiteralPath $settingsPath) {
         $settings = Get-Content -Raw -LiteralPath $settingsPath | ConvertFrom-Json
