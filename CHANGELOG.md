@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Task 181 closes: the night no longer pays to re-judge a note whose answer has not changed. Its five changes shipped in [v10.4.0](https://github.com/alexherrero/agentm/releases/tag/v10.4.0): a skip that kept a note's judgment (#785), a ledger in a file of its own (#783), a judgment keyed to the part of the contract it reads, the night ordered by cause (#784), and an unchanged judgment that writes nothing. Five measured nights followed, 2026-10-02 to 10-06. Rewrites that changed only the stamps fell to 0 of 124, from 159 of 413 in the nine nights before. No note was judged twice in the window, where 64.6% of rewrites had re-judged one. The backlog of never-judged notes, mostly project records the old order never reached, fell from 385 to 238. The measurement is in the task's `measure-five-nights.md`.
+
+### Fixed
+
+- **A project record with no frontmatter block is declined before the model is paid (task 181, [#881](https://github.com/alexherrero/agentm/pull/881)).** The order by cause sent the night to the never-judged project records first. 100 of the 377 records under `research/`, `designs/` and `decisions/` have no frontmatter. `ComposeRecord` refused to write one only after the judgment was paid for, and left no ledger row, so the record stayed owed as never judged at the head of the queue and was paid for again every night. On 2026-10-07 all 43 judgments failed this way. The eligibility pre-gate now declines such a record before any call, using the same split `ComposeRecord` makes, and the next night owes it as skipped.
+
+### Changed
+
+- **The Memory Daemon reference describes what task 181 changed.** It covers the judgment hash beside `rules_hash`, the ledger's own file and how a row follows a moved note, the order by cause, an unchanged judgment that writes nothing, and the frontmatter gate. The orphan-sweep paragraph no longer calls the ledger a table in the index.
+- **The vault design records task 181 as built and measured.** The judgment hash covers the type vocabulary alone, the order by cause applies where the batch serves its queue, and a record with no frontmatter is declined before the call.
+
 ## [10.5.1] - 2026-10-07
 
 The night stops moving archived notes back out of the archive, and the vault refuses a git worktree before one is made. This release closes task 187, whose steps 1 to 4 shipped in 10.5.0: it adds the refile fix that task 187's two-night check found, and the record of that check. It also carries task 189's step 3. Task 189 is still open, and its full notes land at its close-out.
