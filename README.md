@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v10.5.1](https://github.com/alexherrero/agentm/releases/tag/v10.5.1).** The night stops moving archived notes back out of the archive, and the vault refuses a git worktree before one is made. Task 187 closes: a bare issue number below a project's floor is no issue, and your hand edit of a note's lifecycle is journaled as yours.
+> **Latest release: [v10.5.2](https://github.com/alexherrero/agentm/releases/tag/v10.5.2).** The night stops paying to re-judge notes whose answer has not changed. Over five measured nights no rewrite changed only a note's stamps, where 159 of 413 had before, and no note was paid for twice; a project record with no frontmatter is now turned away before the model is paid.
 
 ---
 

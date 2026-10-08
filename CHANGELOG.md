@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Task 181 closes: the night no longer pays to re-judge a note whose answer has not changed. Its five changes shipped in [v10.4.0](https://github.com/alexherrero/agentm/releases/tag/v10.4.0): a skip that kept a note's judgment (#785), a ledger in a file of its own (#783), a judgment keyed to the part of the contract it reads, the night ordered by cause (#784), and an unchanged judgment that writes nothing. Five measured nights followed, 2026-10-02 to 10-06. Rewrites that changed only the stamps fell to 0 of 124, from 159 of 413 in the nine nights before. No note was judged twice in the window, where 64.6% of rewrites had re-judged one. The backlog of never-judged notes, mostly project records the old order never reached, fell from 385 to 238. The measurement is in the task's `measure-five-nights.md`.
+## [10.5.2] - 2026-10-07
+
+Task 181 closes: the night no longer pays to re-judge a note whose answer has not changed. Its five changes shipped in [v10.4.0](https://github.com/alexherrero/agentm/releases/tag/v10.4.0): a skip that kept a note's judgment (#785), a ledger in a file of its own (#783), a judgment keyed to the part of the contract it reads, the night ordered by cause (#784), and an unchanged judgment that writes nothing. Five measured nights followed, 2026-10-02 to 10-06. Rewrites that changed only the stamps fell to 0 of 124, from 159 of 413 in the nine nights before. No note was judged twice in the window, where 64.6% of rewrites had re-judged one. The backlog of never-judged notes, mostly project records the old order never reached, fell from 385 to 238. The measurement is in the task's `measure-five-nights.md`. This release also carries task 189's step 4, part one ([#880](https://github.com/alexherrero/agentm/pull/880)); task 189 is still open, and its notes land at its close-out.
 
 ### Fixed
 
