@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v10.5.0](https://github.com/alexherrero/agentm/releases/tag/v10.5.0).** A weekly brief of what is new in agent harnesses, memory, automation and skills lands in your vault and your inbox, ranked by the work in flight, and replaces the forward learning nobody read. The vault's writers stop filing junk: entity pages need two sources, and replies and dead links stay out of the notes.
+> **Latest release: [v10.5.1](https://github.com/alexherrero/agentm/releases/tag/v10.5.1).** The night stops moving archived notes back out of the archive, and the vault refuses a git worktree before one is made. Task 187 closes: a bare issue number below a project's floor is no issue, and your hand edit of a note's lifecycle is journaled as yours.

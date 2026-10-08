@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.5.1] - 2026-10-07
+
+The night stops moving archived notes back out of the archive, and the vault refuses a git worktree before one is made. This release closes task 187, whose steps 1 to 4 shipped in 10.5.0: it adds the refile fix that task 187's two-night check found, and the record of that check. It also carries task 189's step 3. Task 189 is still open, and its full notes land at its close-out.
+
+### Added
+
+- **A worktree in the vault is refused before it is made (task 189 step 3; #876).** A machine-wide PreToolUse hook, `harness/hooks/vault-worktree-guard`, refuses any tool call that would create a git worktree in the vault: a background-task chip whose working folder is in the vault, `EnterWorktree`, a subagent with `isolation: "worktree"`, or a `git worktree add` in Bash. On 2026-10-02 a desktop-app chip made a worktree in the vault and set `extensions.worktreeConfig`, and the daemon stopped committing on its next restart (#859). A worktree in any other checkout passes untouched. The install registers the hook; this release deploys nothing. Task 189 is open: its doctor row, morning-note line and daemon tolerance follow, with its full notes.
+
 ### Fixed
 
-- **The night's refile job no longer moves an archived memory back out of the archive (task 187).** `refile` walked the memory archive along with the classes and read `archive/memory/semantic/` as a class of its own. So it "re-filed" every archived memory into its live class the first night after it was archived. Only two notes had ever been archived: the operator's lane archived them on 2026-10-04, and they were back in `semantic/` the next night. The step 4 deploy had made it worse: a later lifecycle pass would read such a note as moved back by hand and journal it as the operator's. The archive is now the lifecycle axis's alone.
+- **The night's refile job no longer moves an archived memory back out of the archive (task 187; #875).** `refile` walked the memory archive along with the classes and read `archive/memory/semantic/` as a class of its own. So it "re-filed" every archived memory into its live class the first night after it was archived. Only two notes had ever been archived: the operator's lane archived them on 2026-10-04, and they were back in `semantic/` the next night. The step 4 deploy had made it worse: a later lifecycle pass would read such a note as moved back by hand and journal it as the operator's. The archive is now the lifecycle axis's alone.
 
 ### Internal
 
