@@ -40,6 +40,10 @@ const (
 	AlertProbeFailed = "probe-failed"
 	AlertProbeStale  = "probe-stale"
 	AlertContract    = "filing-contract"
+	// AlertCommitStalled is the committer failing cycle after cycle while the
+	// vault has changes waiting. On 2026-10-04 that ran eleven hours with nothing
+	// on any status surface, because each failure was only a log line.
+	AlertCommitStalled = "commit-stalled"
 )
 
 // Filing-contract states.
@@ -187,6 +191,10 @@ type Thresholds struct {
 	ProbeStale time.Duration `json:"probe_stale"`
 	// ProbeBudget is how long one round trip may take.
 	ProbeBudget time.Duration `json:"probe_budget"`
+	// CommitStalled is how long the committer may go on failing before it pages.
+	// A single failed cycle is usually a CLI command holding index.lock for a
+	// moment; half an hour of them is not.
+	CommitStalled time.Duration `json:"commit_stalled"`
 }
 
 // Alert is one reason the daemon is red.
@@ -237,6 +245,15 @@ type Git struct {
 	// Detail carries the reason when the state is degraded, so `degraded` is
 	// never a bare word the reader has to go and interpret.
 	Detail string `json:"detail,omitempty"`
+
+	// CommitFailures is how many commit cycles in a row have failed, counting
+	// from FirstCommitFailure; LastCommitError is the most recent reason. All
+	// three clear on the next cycle that commits or finds nothing to commit.
+	// The count is always present, so a clean zero is something a reader can
+	// see rather than infer from an absence.
+	CommitFailures     int    `json:"commit_failures"`
+	FirstCommitFailure string `json:"first_commit_failure,omitempty"`
+	LastCommitError    string `json:"last_commit_error,omitempty"`
 }
 
 // Healthy reports whether commits are actually happening.
@@ -317,6 +334,12 @@ type Input struct {
 	GitAvailable bool
 	GitReason    string
 
+	// CommitFailures, FirstCommitFailure and LastCommitError are the
+	// committer's current run of failed cycles; see watch.CommitStall.
+	CommitFailures     int
+	FirstCommitFailure time.Time
+	LastCommitError    string
+
 	// Embedder is passed through rather than derived: the supervisor owns the
 	// child's state and the index owns the vector counts. Health reports both and
 	// is a second source of truth about neither.
@@ -359,6 +382,28 @@ func Evaluate(in Input) Report {
 
 	if !in.GitAvailable {
 		r.Git = Git{State: GitDegraded, Detail: gitDetail(in.GitReason)}
+	}
+
+	// --- the committer ------------------------------------------------------
+	//
+	// Unlike git being unavailable, this is alerted: a repository that is there
+	// and refuses every commit is not a condition anyone chose, and the vault's
+	// history and its backup both stop while it lasts.
+	if in.GitAvailable && in.CommitFailures > 0 {
+		r.Git.CommitFailures = in.CommitFailures
+		r.Git.LastCommitError = firstLine(in.LastCommitError)
+		if !in.FirstCommitFailure.IsZero() {
+			r.Git.FirstCommitFailure = in.FirstCommitFailure.UTC().Format(time.RFC3339)
+			age := since(in.Now, in.FirstCommitFailure)
+			if in.Thresholds.CommitStalled > 0 && age >= in.Thresholds.CommitStalled {
+				r.add(AlertCommitStalled, fmt.Sprintf(
+					"%d commit cycles in a row have failed over %s, past the %s threshold — "+
+						"changes are reaching the index but not history or the backup; "+
+						"last error: %s",
+					in.CommitFailures, short(age), short(in.Thresholds.CommitStalled),
+					firstLine(in.LastCommitError)))
+			}
+		}
 	}
 
 	// --- the queue ----------------------------------------------------------

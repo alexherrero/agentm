@@ -21,6 +21,8 @@ package vcs
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -100,6 +102,15 @@ type Repo struct {
 	// the absence has survived a second look at least `grace` later.
 	grace          time.Duration
 	pendingDeletes map[string]pendingDelete
+
+	// log is where a repair is reported; see heal.go. repackFailedAt holds a
+	// failed repack back from being retried every cycle.
+	log            *slog.Logger
+	repackFailedAt time.Time
+
+	// lastMaintained is when the daily repack last ran or was found
+	// unnecessary; see maintain.go.
+	lastMaintained time.Time
 }
 
 // pendingDelete is one absence waiting to be confirmed or withdrawn.
@@ -173,6 +184,9 @@ func (r *Repo) Head() (string, error) {
 	if !r.available {
 		return "", ErrNoRepo
 	}
+	// Under the lock because a repair can swap r.repo (heal.go).
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	ref, err := r.repo.Head()
 	if err != nil {
 		if errors.Is(err, plumbing.ErrReferenceNotFound) {
@@ -204,6 +218,18 @@ func (r *Repo) Dirty() ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	dirty, err := r.dirtyOnce()
+	if missingObject(err) {
+		// go-git can't see an object CLI git can. heal.go has the two ways
+		// that happens; one repair and one retry cover both.
+		r.heal(err, false)
+		dirty, err = r.dirtyOnce()
+	}
+	return dirty, err
+}
+
+// Caller holds r.mu.
+func (r *Repo) dirtyOnce() ([]string, error) {
 	wt, err := r.repo.Worktree()
 	if err != nil {
 		return nil, fmt.Errorf("worktree: %w", err)
@@ -279,12 +305,44 @@ func (r *Repo) Commit(origin Origin, paths []string) (string, error) {
 	}
 	defer unlock()
 
+	sort.Strings(paths)
+	hash, err := r.commitOnce(origin, paths)
+	if missingObject(err) {
+		// commitOnce put the index and the quarantine back as it found them,
+		// so the retry starts from the same state the first attempt did.
+		r.heal(err, true)
+		hash, err = r.commitOnce(origin, paths)
+	}
+	return hash, err
+}
+
+// commitOnce is one attempt at Commit. When go-git reports a missing object it
+// stops, restores the index and the deletion quarantine to what they were
+// before it began, and returns that error, so the caller can repair the
+// repository and try again from the same starting point.
+//
+// Caller holds r.mu and index.lock; paths is sorted.
+func (r *Repo) commitOnce(origin Origin, paths []string) (string, error) {
 	wt, err := r.repo.Worktree()
 	if err != nil {
 		return "", fmt.Errorf("worktree: %w", err)
 	}
 
-	sort.Strings(paths)
+	// touched records whether this attempt changed the index, so a rollback
+	// rewrites it only when there is something to undo.
+	savedIdx, savedIdxErr := r.repo.Storer.Index()
+	savedPending := maps.Clone(r.pendingDeletes)
+	touched := false
+	rollback := func(cause error) error {
+		if touched && savedIdxErr == nil {
+			if err := r.repo.Storer.SetIndex(savedIdx); err != nil {
+				return fmt.Errorf("%w (and restoring the index failed: %v)", cause, err)
+			}
+		}
+		r.pendingDeletes = savedPending
+		return cause
+	}
+
 	var staged []string
 	var problems []string
 	for _, rel := range paths {
@@ -308,9 +366,13 @@ func (r *Repo) Commit(origin Origin, paths []string) (string, error) {
 			// Mac's local volume treats the two spellings as one file — and this
 			// vault is on a synced mount that may not.
 			if _, err := wt.Add(rel); err != nil {
+				if missingObject(err) {
+					return "", rollback(fmt.Errorf("%s: %w", rel, err))
+				}
 				problems = append(problems, fmt.Sprintf("%s: %v", rel, err))
 				continue
 			}
+			touched = true
 			if name != rel {
 				if err := r.recomposeIndexEntry(rel, name); err != nil {
 					problems = append(problems, fmt.Sprintf("%s: %v", rel, err))
@@ -324,6 +386,7 @@ func (r *Repo) Commit(origin Origin, paths []string) (string, error) {
 				continue
 			}
 			if r.stageDeletion(rel) {
+				touched = true
 				staged = append(staged, name)
 			}
 
@@ -338,6 +401,9 @@ func (r *Repo) Commit(origin Origin, paths []string) (string, error) {
 
 	hash, err := r.commitStaged(wt, origin, paths, staged)
 	if err != nil {
+		if missingObject(err) {
+			return "", rollback(err)
+		}
 		return "", err
 	}
 	if len(problems) == 0 {

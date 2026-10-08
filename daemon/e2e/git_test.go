@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,6 +44,21 @@ func TestGit_CaptureIsCommittedWithAttribution(t *testing.T) {
 	}
 	if !strings.Contains(subject, "memory: capture") {
 		t.Errorf("commit subject %q does not name what happened", subject)
+	}
+
+	// A committer that is keeping up says so as a visible zero on the status
+	// surface's git block, which is where a stall would show (task 188).
+	var status struct {
+		Health struct {
+			Git map[string]any `json:"git"`
+		} `json:"health"`
+	}
+	blob := d.httpGet(t, "/status")
+	if err := json.Unmarshal(blob, &status); err != nil {
+		t.Fatalf("undecodable status: %v\n%s", err, blob)
+	}
+	if got, ok := status.Health.Git["commit_failures"]; !ok || got != float64(0) {
+		t.Errorf("health.git.commit_failures = %v (present: %v), want 0\n  %s", got, ok, blob)
 	}
 }
 

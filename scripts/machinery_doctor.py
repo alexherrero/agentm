@@ -1380,6 +1380,13 @@ def check_install_binary(
 
 def _daemon_uptime_seconds(binary: Path) -> "float | None":
     """The resident daemon's uptime, or None when it cannot be asked."""
+    payload = _daemon_status(binary)
+    return _parse_go_duration(str(payload.get("uptime") or "")) if payload is not None else None
+
+
+def _daemon_status(binary: Path) -> "dict | None":
+    """The resident daemon's `status --json` payload, or None when it cannot be
+    asked."""
     try:
         proc = subprocess.run([str(binary), "status", "--json"],
                               capture_output=True, text=True, timeout=10)
@@ -1391,7 +1398,53 @@ def _daemon_uptime_seconds(binary: Path) -> "float | None":
         payload = json.loads(proc.stdout or "{}")
     except json.JSONDecodeError:
         return None
-    return _parse_go_duration(str(payload.get("uptime") or "")) if isinstance(payload, dict) else None
+    return payload if isinstance(payload, dict) and payload else None
+
+
+def check_daemon_commits(*, binary: "Path | None" = None, status: "dict | None" = None) -> Check:
+    """Whether the resident daemon is committing the vault.
+
+    On 2026-10-04 the daemon failed every commit cycle from 00:32 to 11:30. The
+    vault kept changing, the index kept up, and 214 paths reached neither
+    history nor the backup. The only trace was a warning line every five
+    minutes in a log nobody was reading, and the backup job logged "already
+    current" twice because nothing new had been committed. The daemon now
+    counts its run of failed cycles in `health.git.commit_failures` and pages
+    as `commit-stalled` after half an hour. This row fails as soon as the run
+    is longer than zero, so a doctor run catches it before the page does.
+
+    Reported, never repaired. The remedy depends on the cause, and the last
+    error names it.
+    """
+    name = "daemon-commits"
+    if status is None:
+        path = _daemon_binary(binary)
+        if path is None:
+            return Check(name, "UNVERIFIED", "no `agentmd` on PATH or at ~/.local/bin — nothing to ask")
+        status = _daemon_status(path)
+    if status is None:
+        return Check(name, "UNVERIFIED",
+                     "`agentmd status --json` did not answer — the daemon may be down, "
+                     "which the liveness rows own")
+    git_block = (status.get("health") or {}).get("git") or {}
+    if git_block.get("state") not in (None, "healthy"):
+        return Check(name, "UNVERIFIED",
+                     f"git is {git_block.get('state')}: {git_block.get('detail') or 'no detail'} "
+                     "— the daemon attempts no commits")
+    failures = git_block.get("commit_failures")
+    if failures is None:
+        return Check(name, "UNVERIFIED",
+                     "the running daemon does not report commit_failures — it predates "
+                     "the commit-stall report (task 188); rebuild and restart it")
+    if not isinstance(failures, int) or isinstance(failures, bool) or failures < 0:
+        return Check(name, "UNVERIFIED", f"commit_failures is not a count: {failures!r}")
+    if failures > 0:
+        return Check(name, "FAIL",
+                     f"{failures} commit cycle(s) in a row have failed since "
+                     f"{git_block.get('first_commit_failure') or 'an unknown time'}: "
+                     f"{git_block.get('last_commit_error') or 'no error recorded'} — vault "
+                     "changes are not reaching history or the backup; the daemon log has every attempt")
+    return Check(name, "OK", "the daemon's last commit cycle succeeded (0 failures in a row)")
 
 
 # ── composition ───────────────────────────────────────────────────────────
@@ -1414,6 +1467,7 @@ def run_inventory(
     ]
     checks.append(check_install_head(repo))
     checks.append(check_install_binary(repo))
+    checks.append(check_daemon_commits())
     checks.append(check_runner_cycle(state_root=state_root))
     for job_name in job_names(repo):
         checks.append(check_runner_job(repo, job_name, state_root=state_root))
