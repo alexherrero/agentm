@@ -387,6 +387,8 @@ Rewording the prose around it therefore leaves every judgment in the corpus
 standing, while changing what the block says marks them stale — identifiable, and
 queued for a later re-filing pass rather than corrected on the spot.
 
+**The judgment hash** (task 181). An enrichment judgment reads only part of the contract: the type vocabulary, which is `memory_types`, `default_type` and `deprecations`. `JudgmentHash` (`daemon/internal/rules/judgment.go`) is computed over those three alone, and it is what a judgment is keyed to: the fingerprint key, the ledger's version, the `rules_hash` stamp a note carries, and the refusal record. An edit to anything else in the block, such as the dampened spaces, the wall, a threshold or the routing, leaves every judgment standing. A changed confidence floor applies at each note's next judgment. The importance rubric stays outside both hashes. Filing still halts on a block that does not parse. `agentmd rules` prints both hashes, and `agentmd rules --history` lists every committed text of the contract with both, which is how an edit can be checked against what it re-owes. A test classifies every field of the block on one side or the other, so a new field cannot ship unweighed.
+
 ### Lifecycle, sources, and facets
 
 [AgentM Filing v2](agentm-filing-v2) adds three
@@ -573,8 +575,20 @@ prompt never answered what this one asks for: the neighbours, `related`,
 `importance_proposed`. Only a stamp naming the current pass version is owed
 the lighter pass a note that has moved since (`DepthLight`). A note
 genuinely unchanged since its last pass is caught for free by the separate
-fingerprint gate, keyed on the pass version, the rules hash, and the body
-together (`Fingerprint.Check`, `pregates.go:365-374`).
+fingerprint gate, keyed on the pass version, the judgment hash, and the body
+together (`Fingerprint.Check`).
+
+### What the night owes, and in what order (task 181)
+
+**The ledger has a file of its own.** It lives in `~/.local/state/agentm/ledger.db`, beside the night's other records, where an index schema change cannot reach it (`ledger.OpenFile`). The first open after task 181 carried every row out of the index and dropped the index's table. A missing file is rebuilt from the notes' stamps and says so on stderr, but a rebuilt row has no input key, so a reindex is never followed by `agentmd ledger --rebuild`. A row follows a note the night moved. When a row's path is gone, it moves to the one note whose body matches it and that has no finished row of its own, the rule the axis reconcile follows a move by (`Ledger.Follow`).
+
+**A skip never replaces a finished judgment.** A gate's skip used to overwrite the done row it had just matched, so the next night bought the same judgment again (#785); `Ledger.Record` refuses that replacement.
+
+**The night takes what it owes by cause** (`enrichCauses` and `orderByCause`, `daemon/cmd/agentmd/enrich_run.go`): never judged first, then changed, then retried, then owed the deep pass, then owed under an older judgment hash, then skipped, and last the notes it is current on, which the fingerprint gate skips free. Never-judged notes keep the tiers' order, the inbox first; every other cause goes least recently judged first, so a second contract edit reaches the notes the first one did not. `agentmd ledger --pending`, the dry run, the run record (`owed`, `judged_by`) and the morning note's enrichment line carry the counts by cause.
+
+**An unchanged judgment writes nothing.** When the rendering differs from the note on disk only in `updated`, `enriched_at` and `rules_hash`, and the pass is not renaming the note, the file stays exactly as it is and the ledger records the judgment against the bytes on disk (`enrich.SameButStamps`). `enriched_by` is always written, because `PassDepth` reads it to decide whether a note is owed the deep pass. The run record counts these as `verdicts.unchanged`, and the morning note says how many judgments wrote nothing.
+
+**A project record with no frontmatter block is declined before the call.** `ComposeRecord` cannot merge into one, and it used to refuse only after the judgment was paid for, leaving no ledger row, so the record was paid for again every night.
 
 ### The people a note names
 
@@ -593,7 +607,7 @@ The refusal is written down instead, one JSON line per card in
 `enrich-refusals.jsonl` beside the run record
 (`Refusals`, `daemon/internal/enrich/refusals.go`). It is keyed by
 `Fingerprint.Key` — literally the same function the fingerprint gate calls,
-passed in rather than reimplemented — so pass version, rules hash and body
+passed in rather than reimplemented — so pass version, judgment hash and body
 decide a standing refusal exactly as they decide an idempotent skip. The
 `refusal` pre-gate reads it, seventh in the order, between the fingerprint and
 the budget: after the fingerprint because that answers the commoner case,
@@ -649,7 +663,7 @@ which is where the lister pages from, rather than from every path that
 sorts after `--after`. `--sample` draws from the same queue, and the
 coverage ledger's population (`pendingFor`) is the same queue too.
 
-The project records queue after the cards, inside the same line
+Within a cause (see [What the night owes, and in what order](#what-the-night-owes-and-in-what-order-task-181)), the project records queue after the cards, inside the same line
 (agentm-vault § Projects and tasks): `enrichRecordQueue` walks the index
 for a project's charter and the notes under its `decisions/`, `designs/`
 and `research/` (`IsProjectRecord`, `daemon/internal/enrich/record.go`),
@@ -1500,9 +1514,9 @@ kept.
 gone, and sets back to dangling every link naming a path the index no longer
 holds. `Reconcile` runs it, which means the daemon's startup pass, its
 five-minute pass, and `agentmd reindex` — whose output carries the one line it
-prints. It works in place: the enrichment ledger and the work queue are tables
-in this same file, so deleting the index to clean it would cost a ledger rebuild
-and a full re-embed. On a clean index it is one existence check per table and
+prints. It works in place: the work queue is a table in this same file, and
+deleting the index to clean it would cost a full re-embed. The enrichment ledger
+is not in this file since task 181. On a clean index it is one existence check per table and
 takes no write lock; the checks stop at the first table that answers yes, and
 `docs` is asked last because it is the FTS5 virtual table, where the query has
 no plan and scans (182ms cold, 10ms warm over 8,000 notes, against microseconds
