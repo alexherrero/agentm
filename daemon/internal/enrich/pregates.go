@@ -247,6 +247,17 @@ func (g *Eligibility) Check(_ context.Context, req Request, body string) error {
 				"charter and decisions/, designs/ and research/ notes take its section",
 				ErrNotEligible, req.Rel)
 		}
+		// A record with no frontmatter block cannot be merged into, and
+		// ComposeRecord refuses it — but only after the model has been paid.
+		// The record then had no ledger row, so it stayed owed as never judged
+		// at the head of the queue and was paid for again every night: on
+		// 2026-10-07 all 43 judgments of the night failed this way (task 181).
+		// Declined here, before any call, by the same split ComposeRecord
+		// makes, so the two cannot disagree about which records it is.
+		if front, _ := splitNote(body); front == "" {
+			return fmt.Errorf("%w: %s has no frontmatter block, and a record is "+
+				"merged into, never rendered over", ErrNotEligible, req.Rel)
+		}
 		// A record keeps its writer's shape, so the record-kind refusal does not
 		// apply: ComposeRecord merges into the record rather than rendering a card.
 		return nil
