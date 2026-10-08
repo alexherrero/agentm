@@ -1863,6 +1863,18 @@ So that nothing writes such a pack in the first place, the daemon owns the repos
 
 A git command run by hand still works on the repository as before. Running `git gc` or `git maintenance` yourself is safe too, because the daemon heals around whatever it leaves.
 
+### A git worktree in the vault
+
+A git worktree doesn't belong in the vault. Drive uploads one file by file, and the Claude desktop app sets `extensions.worktreeConfig = true` in the repository's config when it makes one. On 2026-10-02 a background-task chip opened from a session in `projects/pixelton` made a worktree there. Drive recorded 6,276 upload events, and after its next restart, on 2026-10-03, the daemon came up with git degraded: no commits, no undo, and the corpus-write gate refusing (#859).
+
+Three things now hold:
+
+- **The daemon reads past the key** (`daemon/internal/vcs/worktreeconfig.go`). go-git v5.19.2 refuses the extension for two reasons of its own: it never reads `core.repositoryformatversion` back from the file, and its list of extensions allowed at format 0 doesn't match the lowercased name it compares. The daemon's storer hides that one key from go-git, because nothing the daemon does reads per-worktree config. It never removes the key from the file, and any other unknown extension still refuses the repository.
+- **The status surface names a worktree in the vault** (`daemon/internal/vcs/worktrees.go`). There are three signs: the repository lists a worktree besides its main working tree, a `.claude/worktrees/` folder under the vault root holds something other than a dot-file, or the config carries an `extensions.` key. The empty folder at the vault root, left from 2026-08-16, is not a sign, and neither is a `.DS_Store` Finder leaves in it. The daemon checks at startup and on every reconcile tick, and reports what it finds as `vault_worktrees` on the `git` block of `agentmd status --json`. The text status adds a `! a git worktree is in the vault` line for each sign. None of these pages: nothing is lost while a worktree sits there, but it should go. The doctor's `vault-worktrees` row fails on the same signs, and the morning note puts them first under "What needs you".
+- **The record of a worktree long gone is pruned.** A registered worktree whose directory has been missing for three months has its record removed by `git worktree prune --expire=3.months.ago`, and the daemon logs `pruned the records of worktrees that are gone`. Three months is git's own default for `gc.worktreePruneExpire`. `git gc` would do this prune itself, but the daemon turns automatic gc off in this repository. A shorter wait isn't safe: the record holds that worktree's HEAD and index, and a directory that only looks missing may be on a volume that isn't mounted. git keeps a locked record whatever its age. The daemon tries at most once a day while a gone worktree is registered, and until the record goes the sign says the directory is gone.
+
+The vault-worktree-guard hook (`harness/hooks/vault-worktree-guard/`) refuses the tool calls that would make a worktree in the vault in the first place. To remove one the app made, archive the session that owns it, so the app's own cleanup restores the config. A worktree removed with `git worktree remove` leaves the key behind, and the doctor row says so.
+
 ## Capture dates
 
 `captured` is immutable: it records an event in the daemon's own life, and the shard a note is born into is the one it dies in. The daemon reads it from frontmatter `captured`, then frontmatter `date`, then the filesystem mtime, and every result reports which one it used.

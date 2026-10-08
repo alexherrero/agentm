@@ -254,6 +254,12 @@ type Git struct {
 	CommitFailures     int    `json:"commit_failures"`
 	FirstCommitFailure string `json:"first_commit_failure,omitempty"`
 	LastCommitError    string `json:"last_commit_error,omitempty"`
+
+	// VaultWorktrees names each sign that a git worktree has got into the vault:
+	// Drive uploads one, and the config key it leaves once stopped the daemon
+	// committing (#859). Reported, not alerted: the daemon now reads past the key,
+	// so nothing is being lost, but the operator should remove the worktree.
+	VaultWorktrees []string `json:"vault_worktrees,omitempty"`
 }
 
 // Healthy reports whether commits are actually happening.
@@ -340,6 +346,9 @@ type Input struct {
 	FirstCommitFailure time.Time
 	LastCommitError    string
 
+	// VaultWorktrees is vcs.Repo.WorktreeSigns, passed through.
+	VaultWorktrees []string
+
 	// Embedder is passed through rather than derived: the supervisor owns the
 	// child's state and the index owns the vector counts. Health reports both and
 	// is a second source of truth about neither.
@@ -383,6 +392,7 @@ func Evaluate(in Input) Report {
 	if !in.GitAvailable {
 		r.Git = Git{State: GitDegraded, Detail: gitDetail(in.GitReason)}
 	}
+	r.Git.VaultWorktrees = in.VaultWorktrees
 
 	// --- the committer ------------------------------------------------------
 	//

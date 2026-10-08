@@ -204,6 +204,67 @@ func TestGit_MissingRepositoryDegradesLoudly(t *testing.T) {
 	}
 }
 
+// TestGit_AWorktreeLeftInTheVaultNeitherStopsCommitsNorGoesUnnamed is #859 end
+// to end. On 2026-10-02 a worktree made inside the vault left
+// `extensions.worktreeConfig = true` in the repository config, and the next
+// daemon start came up with git degraded: no commits, no undo. With the key set
+// and a worktree folder left under a project, the daemon must start healthy,
+// commit a capture, and name both signs on the status surface (task 189).
+func TestGit_AWorktreeLeftInTheVaultNeitherStopsCommitsNorGoesUnnamed(t *testing.T) {
+	bin := buildDaemon(t)
+	env := newVault(t)
+	gitInit(t, env.vault)
+	cmd := exec.Command("git", "config", "extensions.worktreeConfig", "true")
+	cmd.Dir = env.vault
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git config: %v\n%s", err, out)
+	}
+	left := filepath.Join(env.vault, "projects", "pixelton", ".claude", "worktrees", "laughing-bassi-06d858")
+	if err := os.MkdirAll(left, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	d := start(t, bin, env)
+	defer d.kill(t)
+
+	if logs := d.logs(); strings.Contains(logs, "git DEGRADED") {
+		t.Fatalf("the worktreeConfig key took git down at startup again:\n%s", logs)
+	}
+	res := d.capture(t, captureArgs{
+		Text:   "A worktree left in the vault does not stop the daemon committing.",
+		Type:   "convention",
+		Status: "active",
+	})
+	waitForCommit(t, env.vault, res.str(t, "path"))
+
+	var status struct {
+		Health struct {
+			Git struct {
+				State          string   `json:"state"`
+				VaultWorktrees []string `json:"vault_worktrees"`
+			} `json:"git"`
+		} `json:"health"`
+	}
+	blob := d.httpGet(t, "/status")
+	if err := json.Unmarshal(blob, &status); err != nil {
+		t.Fatalf("undecodable status: %v\n%s", err, blob)
+	}
+	if status.Health.Git.State != "healthy" {
+		t.Errorf("git state = %q, want healthy\n  %s", status.Health.Git.State, blob)
+	}
+	signs := strings.Join(status.Health.Git.VaultWorktrees, "\n")
+	for _, want := range []string{"extensions.worktreeConfig=true", "projects/pixelton/.claude/worktrees/ holds a worktree"} {
+		if !strings.Contains(signs, want) {
+			t.Errorf("health.git.vault_worktrees does not name %q:\n  %s", want, blob)
+		}
+	}
+
+	out := runCLI(t, bin, 0, "status", "--config", env.config, "--port", d.port(t))
+	if !strings.Contains(out, "! a git worktree is in the vault: projects/pixelton/.claude/worktrees/ holds a worktree") {
+		t.Errorf("`agentmd status` does not warn about the worktree:\n%s", out)
+	}
+}
+
 // ---------------------------------------------------------------------------
 
 func gitInit(t *testing.T, dir string) {

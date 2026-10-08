@@ -92,6 +92,8 @@ class EachSignIsNamedAndClears(_Vault):
         self.assertClear()
         (self.vault / ".claude" / "worktrees").mkdir(parents=True)
         self.assertClear()
+        (self.vault / ".claude" / "worktrees" / ".DS_Store").write_text("finder\n", encoding="utf-8")
+        self.assertClear()
 
     def test_a_registered_worktree(self):
         outside = self.root / "elsewhere"

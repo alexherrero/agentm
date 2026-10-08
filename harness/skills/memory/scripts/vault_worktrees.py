@@ -12,10 +12,11 @@ THREE SIGNS, ANY ONE OF WHICH IS ENOUGH.
 
 - **The vault repository lists a worktree besides its main working tree.**
   `git worktree list` shows it wherever it sits, under the vault or not.
-- **A `.claude/worktrees/` folder under the vault root holds something.** This is
-  where Claude Code and the desktop app put their worktrees. It catches one that
-  belongs to some other repository but sits where Drive uploads it. The empty
-  folder at the vault root, left from 2026-08-16, is not a sign.
+- **A `.claude/worktrees/` folder under the vault root holds something** other
+  than a dot-file. This is where Claude Code and the desktop app put their
+  worktrees. It catches one that belongs to some other repository but sits where
+  Drive uploads it. The empty folder at the vault root, left from 2026-08-16, is
+  not a sign, and neither is a `.DS_Store` Finder leaves in it.
 - **The vault repository's config carries an `extensions.` key.** The desktop
   app sets `extensions.worktreeConfig` when it makes a worktree, and a raw
   `git worktree remove` leaves it behind. The daemon's git library refuses any
@@ -92,8 +93,10 @@ def _worktree_folders(vault: Path) -> tuple:
         here = Path(dirpath)
         if here.name == "worktrees" and here.parent.name == ".claude":
             try:
+                # Finder leaves a `.DS_Store` in an empty folder; a dot-file
+                # is not a worktree.
                 with os.scandir(here) as entries:
-                    holds = any(True for _ in entries)
+                    holds = any(not e.name.startswith(".") for e in entries)
             except OSError:
                 holds = False
             if holds:

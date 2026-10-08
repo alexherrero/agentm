@@ -111,6 +111,11 @@ type Repo struct {
 	// lastMaintained is when the daily repack last ran or was found
 	// unnecessary; see maintain.go.
 	lastMaintained time.Time
+
+	// worktreeSigns is the last answer CheckWorktrees found, and
+	// worktreePruneTriedAt when it last asked git to prune; see worktrees.go.
+	worktreeSigns        []string
+	worktreePruneTriedAt time.Time
 }
 
 // pendingDelete is one absence waiting to be confirmed or withdrawn.

@@ -328,6 +328,8 @@ func (w *Watcher) Run(ctx context.Context) error {
 			// The daemon owns the vault repository's packing, and this tick is the
 			// daemon's own schedule; the repack itself is at most daily.
 			w.maintainRepo()
+			// A git worktree in the vault, named on the status surface the same day.
+			w.repo.CheckWorktrees()
 			// A new subtree can appear between passes; pick up watches for it.
 			if fsw != nil {
 				w.addDirs(w.cfg.VaultPath)

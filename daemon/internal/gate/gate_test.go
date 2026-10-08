@@ -73,6 +73,34 @@ func TestEvaluate_AccentedFilenameWithRealEditStillRefuses(t *testing.T) {
 	}
 }
 
+// TestEvaluate_TheWorktreeConfigKeyDoesNotHoldTheGateShut pins #859 where it
+// was felt. A worktree made in the vault on 2026-10-02 left
+// `extensions.worktreeConfig = true` in the repository config. go-git refused
+// the repository, so after its next restart the daemon had no git, and this
+// gate refused every corpus-wide job for want of an undo.
+func TestEvaluate_TheWorktreeConfigKeyDoesNotHoldTheGateShut(t *testing.T) {
+	dir := vaultWithCommittedNote(t, "personal/kept.md")
+	cfgPath := filepath.Join(dir, ".git", "config")
+	f, err := os.OpenFile(cfgPath, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("[extensions]\n\tworktreeConfig = true\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Evaluate(&config.Config{VaultPath: dir})
+	if err != nil || !res.Pass {
+		t.Fatalf("the worktreeConfig key held the corpus-write gate shut (%v):\n%s", err, res.Explain())
+	}
+	if res.Head == "" {
+		t.Error("the gate passed without naming a head to undo to")
+	}
+}
+
 // ---------------------------------------------------------------------------
 
 // vaultWithCommittedNote returns a vault root holding one committed note.

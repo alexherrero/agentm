@@ -156,6 +156,12 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 		fmt.Fprintf(&b, "           %d commit cycles failing since %s: %s\n",
 			rep.Git.CommitFailures, rep.Git.FirstCommitFailure, rep.Git.LastCommitError)
 	}
+	for _, sign := range rep.Git.VaultWorktrees {
+		fmt.Fprintf(&b, "           ! a git worktree is in the vault: %s\n", sign)
+	}
+	if len(rep.Git.VaultWorktrees) > 0 {
+		b.WriteString("             archive the session that made it; the doctor's vault-worktrees row has the detail\n")
+	}
 
 	fmt.Fprintf(&b, "  embedder %s\n", rep.Embedder)
 	if rep.Embedder.State == "degraded" {
