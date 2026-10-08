@@ -469,6 +469,29 @@ func TestTheCommitStallFieldsOnTheWire(t *testing.T) {
 	}
 }
 
+// TestAWorktreeInTheVaultIsReportedAndDoesNotPage pins the status half of task
+// 189 step 4. The signs travel to the wire under git, and they don't page: the
+// daemon reads past the config key now, so nothing is being lost.
+func TestAWorktreeInTheVaultIsReportedAndDoesNotPage(t *testing.T) {
+	in := healthy()
+	in.VaultWorktrees = []string{"projects/pixelton/.claude/worktrees/ holds a worktree"}
+	rep := Evaluate(in)
+	if rep.Red() {
+		t.Errorf("a worktree in the vault paged the operator: %s", codes(rep))
+	}
+	blob, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(blob), `"vault_worktrees":["projects/pixelton/.claude/worktrees/ holds a worktree"]`) {
+		t.Errorf("the sign is not on the wire under git:\n  %s", blob)
+	}
+	blob, _ = json.Marshal(Evaluate(healthy()))
+	if strings.Contains(string(blob), "vault_worktrees") {
+		t.Errorf("a clean vault reports vault_worktrees:\n  %s", blob)
+	}
+}
+
 func has(r Report, code string) bool {
 	for _, a := range r.Alerts {
 		if a.Code == code {

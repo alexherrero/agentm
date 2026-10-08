@@ -230,6 +230,11 @@ func cmdServe(args []string) error {
 		if err := repo.OwnMaintenance(); err != nil {
 			log.Error("could not take over the vault repository's maintenance", "err", err)
 		}
+		// A git worktree in the vault is named from the first status call, not
+		// from the first reconcile tick (vcs/worktrees.go).
+		if signs := repo.CheckWorktrees(); len(signs) > 0 {
+			log.Warn("a git worktree is in the vault", "signs", signs)
+		}
 	} else {
 		// Loud, every start. Without git there is no undo for a bad write, and a
 		// capability that is quietly missing is the exact failure mode principle 4
@@ -340,6 +345,7 @@ func cmdServe(args []string) error {
 		stall := w.CommitStall()
 		in.CommitFailures, in.FirstCommitFailure, in.LastCommitError =
 			stall.Failures, stall.FirstAt, stall.LastError
+		in.VaultWorktrees = repo.WorktreeSigns()
 		return health.Evaluate(in)
 	}
 
