@@ -227,3 +227,33 @@ func TestAPassVersionBumpStillWritesAndLeavesNothingOwed(t *testing.T) {
 		t.Errorf("after the bumped judgment the card is still pending: %+v", rep.Pending)
 	}
 }
+
+// Through a whole night: a project record with no frontmatter block costs no
+// model call, writes nothing, and is not offered as never judged again.
+func TestARecordWithNoFrontmatterCostsTheNightNothing(t *testing.T) {
+	n := newStubNight(t)
+	rec := "projects/agentm/decisions/no-front.md"
+	n.put(rec, "# A decision\n\nWe keep the wall.\n")
+	run := n.run(sameAnswer)
+	if run.ModelCalls != 0 || run.Failed != 0 || run.Enriched != 0 {
+		t.Fatalf("the night made %d call(s), failed %d, enriched %d; want the record "+
+			"declined before any call", run.ModelCalls, run.Failed, run.Enriched)
+	}
+	if run.Skipped != 1 {
+		t.Errorf("skipped %d, want the record", run.Skipped)
+	}
+	raw, err := os.ReadFile(filepath.Join(n.vault, filepath.FromSlash(rec)))
+	if err != nil || string(raw) != "# A decision\n\nWe keep the wall.\n" {
+		t.Errorf("the record was written: %q (%v)", raw, err)
+	}
+	if run.Owed["never"] != 1 {
+		t.Fatalf("owed at the start %v; want the record owed as never judged", run.Owed)
+	}
+	// The next night owes it as skipped — free, and after every note a call
+	// could help — not as never judged at the head of the queue.
+	if again := n.run(sameAnswer); again.Owed["never"] != 0 || again.Owed["skipped"] != 1 ||
+		again.ModelCalls != 0 {
+		t.Errorf("the second night owed %v and made %d call(s); want the record owed "+
+			"as skipped and no call", again.Owed, again.ModelCalls)
+	}
+}
