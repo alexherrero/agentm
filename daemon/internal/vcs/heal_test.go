@@ -323,13 +323,20 @@ func TestOwnStaleLock_TheDaemonsLockCarriesTheContentItReclaims(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 
+// quietGitConfig turns off git's automatic maintenance for a test's own git
+// commands. git 2.55 (CI's) starts maintenance in the background after a
+// commit, and it repacked a fixture's packs while the test was counting them.
+// That is the behaviour maintain.go turns off in the vault repository.
+const quietGitConfig = "[gc]\n\tauto = 0\n[maintenance]\n\tauto = false\n"
+
 // isolateGit keeps every git process in the test — the CLI calls here and any
 // the daemon makes — away from the machine's own global and system config,
-// whose hooksPath and maintenance settings would otherwise leak in.
+// whose hooksPath and maintenance settings would otherwise leak in, and turns
+// automatic maintenance off in the test's own global config.
 func isolateGit(t *testing.T) {
 	t.Helper()
 	global := filepath.Join(t.TempDir(), "gitconfig")
-	if err := os.WriteFile(global, nil, 0o644); err != nil {
+	if err := os.WriteFile(global, []byte(quietGitConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", global)

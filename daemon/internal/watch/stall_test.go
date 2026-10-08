@@ -94,8 +94,11 @@ func TestCommitStall_NoRepositoryIsNotAStall(t *testing.T) {
 // with every git process kept away from the machine's own config.
 func newGitWatcher(t *testing.T) (*Watcher, string) {
 	t.Helper()
+	// Automatic maintenance off, as the vault repository has it: git 2.55
+	// starts it in the background after a commit, and it would pack the loose
+	// object this test removes.
 	global := filepath.Join(t.TempDir(), "gitconfig")
-	if err := os.WriteFile(global, nil, 0o644); err != nil {
+	if err := os.WriteFile(global, []byte("[gc]\n\tauto = 0\n[maintenance]\n\tauto = false\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
