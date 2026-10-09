@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.6.0] - 2026-10-09
+
+Tasks 188 and 189 close: the vault's history keeps being written however git stores it, and a git worktree is kept out of the vault.
+
+**Task 188.** On 2026-10-04 the daemon stopped committing for eleven hours, with nothing on any status surface. Its git library, go-git, couldn't read a pack named `loose-<hash>.pack`, and a restart didn't help. The daemon now heals itself, reports a stall within the hour, and owns the repository's packing.
+
+**Task 189.** On 2026-10-02 a worktree was made inside the vault, and Drive uploaded about 6,300 of its items. The hook that refuses a worktree in the vault shipped in 10.5.1, and the same-day detection ([#880](https://github.com/alexherrero/agentm/pull/880)) shipped in 10.5.2. Their notes land here, at the task's close-out. What's new in this release is the daemon surviving the config key a worktree leaves (#859).
+
+**Verified live before the tag.** Both changes ran on this machine first. After task 188's deploy, there were 69 commits and five backup runs with no failure, and the first daily repack kept all 119,047 objects. Task 189's guard refused a worktree from a session started in the vault.
+
+The two tasks ship as one release because task 188 waited on task 181's five-night read before deploying, and finished alongside task 189.
+
 ### Added
 
 - **A git worktree in the vault is named the same day (task 189 step 4, [#880](https://github.com/alexherrero/agentm/pull/880)).** Three signs count: the vault repository lists a worktree besides its main working tree, a `.claude/worktrees/` folder under the vault root holds something, or the repository's config carries an `extensions.` key. The doctor's `vault-worktrees` row fails on them, the morning note puts them first under "What needs you", and `agentmd status` names each one (`vault_worktrees` on the `git` block of `--json`). They are reported, never paged. The daemon also prunes the record of a registered worktree whose directory has been gone for three months. That is git's own `gc.worktreePruneExpire` default, which the daemon's `gc.auto=0` otherwise turns off. A record that is only temporarily unreachable keeps its HEAD. This covers the routes the vault-worktree-guard hook from 10.5.1 can't reach, such as a desktop session opened on a vault folder with the worktree option on, or `claude --worktree`.

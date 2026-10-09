@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v10.5.2](https://github.com/alexherrero/agentm/releases/tag/v10.5.2).** The night stops paying to re-judge notes whose answer has not changed. Over five measured nights no rewrite changed only a note's stamps, where 159 of 413 had before, and no note was paid for twice; a project record with no frontmatter is now turned away before the model is paid.
+> **Latest release: [v10.6.0](https://github.com/alexherrero/agentm/releases/tag/v10.6.0).** The vault keeps its history however git packs it: the daemon heals around packs it couldn't read, takes back a lock its own dead process left, and says within the hour if commits stall. A git worktree is also kept out of the vault, and the daemon survives the config key one leaves behind.
