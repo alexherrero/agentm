@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -184,6 +185,27 @@ def _agentmd(args: list) -> Any:
 # ── the sections ────────────────────────────────────────────────────────────
 
 CLASS_DIRS = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
+_PROBE_LINE = re.compile(r"^probe:\s*['\"]?(self-probe|true|yes)['\"]?\s*$", re.M | re.I)
+
+
+def is_self_probe(path: Path) -> bool:
+    """Whether a note is the daemon's self-probe (`probe: self-probe` in its
+    frontmatter): written and retired every day by design, and no card."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            head = fh.read(4096)
+    except OSError:
+        return False
+    if not head.startswith("---"):
+        return False
+    return bool(_PROBE_LINE.search(head.split("\n---", 1)[0]))
+
+
+def self_probes(vault: Path) -> int:
+    """The self-probes in the classes, which `class_populations` leaves out."""
+    mem = Path(vault) / "memory"
+    return sum(1 for cls in CLASS_DIRS if (mem / cls).is_dir()
+               for p in (mem / cls).glob("*.md") if is_self_probe(p))
 
 
 def class_populations(vault: Path) -> "dict | None":
@@ -195,7 +217,8 @@ def class_populations(vault: Path) -> "dict | None":
     the flat `.md` files directly in the class (its generated `_index.md`
     aside); files in a subdirectory are the accumulate loop's supplement
     lanes, reported apart so a class that holds only lanes does not read as
-    populated."""
+    populated. The daemon's self-probe is no card and is left out (task 190);
+    `self_probes` counts it apart."""
     mem = Path(vault) / "memory"
     if not mem.is_dir():
         return None
@@ -208,7 +231,7 @@ def class_populations(vault: Path) -> "dict | None":
                 if p.name == "_index.md" or drive_artifacts.is_artifact(p):
                     continue
                 if p.parent == d:
-                    flat += 1
+                    flat += 0 if is_self_probe(p) else 1
                 else:
                     lanes += 1
         out[cls] = (flat, lanes)
@@ -224,6 +247,9 @@ def _class_reading(vault) -> Reading:
     parts = []
     for cls, (flat, lanes) in pops.items():
         parts.append(f"{cls} {flat}" + (f" (+{lanes} in lanes)" if lanes else ""))
+    probes = self_probes(vault)
+    if probes:
+        parts.append(f"{probes} self-probe(s) apart")
     return Reading.measured("class populations", total, source="memory/<class>/ walk",
                             note=" · ".join(parts))
 

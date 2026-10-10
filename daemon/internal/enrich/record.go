@@ -104,13 +104,11 @@ func ComposeRecord(previous string, r Response, s Stamp, depth Depth, offered []
 	if when.IsZero() {
 		when = time.Now()
 	}
+	// A project's record is the operator's document, and a pass writes its
+	// retrieval fields and stamps, never prose (task 190): the deep pass's
+	// "Added by dreaming" section is a card's only. A section an earlier pass
+	// left stays as it was; nothing here deletes it.
 	section := oldSection
-	if depth == DepthDeep {
-		section = ""
-		if add := addition(r.Body); add != "" {
-			section = fmt.Sprintf("%s (%s)\n\n%s\n", DreamingHeading, when.UTC().Format("2006-01-02"), add)
-		}
-	}
 
 	blocks := blockListKeys(front)
 	fields := map[string]string{}
@@ -163,7 +161,7 @@ func ComposeRecord(previous string, r Response, s Stamp, depth Depth, offered []
 			front = dropTopKey(front, "people")
 		}
 	}
-	set("updated", when.UTC().Format("2006-01-02"))
+	// `updated` stays the author's date (task 190); the pass's own is `enriched_at`.
 	version := s.Version
 	if version == "" {
 		version = PassVersion

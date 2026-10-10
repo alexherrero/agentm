@@ -49,7 +49,8 @@ import (
 // and that re-audit is a person changing these constants with the reason in
 // the commit, not a config key nobody reads.
 const (
-	// MinSources is how many Outcomes or cards must name the same thing.
+	// MinSources is how many Outcomes or cards must name the same thing:
+	// distinct notes, so two candidate lines of one trace are one (task 190).
 	MinSources = 3
 	// MinSessions is how many distinct sessions those sources must span. Three
 	// mentions in one sitting is one thought, said three times.
@@ -144,6 +145,21 @@ type Cluster struct {
 	Sources []Source `json:"sources"`
 }
 
+// Notes is how many distinct notes the cluster's sources are. A trace's
+// candidate lines share their trace, and two of them are one note: the
+// audit's gh-pr-merge lesson rested on four lines from two traces.
+func (c Cluster) Notes() int {
+	seen := map[string]bool{}
+	for _, s := range c.Sources {
+		k := s.Rel
+		if k == "" {
+			k = s.Session
+		}
+		seen[k] = true
+	}
+	return len(seen)
+}
+
 // Sessions is how many distinct sittings the cluster spans.
 func (c Cluster) Sessions() int {
 	seen := map[string]bool{}
@@ -178,7 +194,11 @@ func (c Cluster) SpanDays() float64 {
 // bar is too high" — and answering that needs to know whether the near misses
 // were short of sources, short of sessions or short of days.
 func (c Cluster) Meets() (bool, string) {
-	if n := len(c.Sources); n < MinSources {
+	if n := c.Notes(); n < MinSources {
+		if len(c.Sources) > n {
+			return false, fmt.Sprintf("%d source(s) in %d note(s), and the bar is %d notes",
+				len(c.Sources), n, MinSources)
+		}
 		return false, fmt.Sprintf("%d source(s), and the bar is %d", n, MinSources)
 	}
 	if n := c.Sessions(); n < MinSessions {
@@ -413,10 +433,14 @@ type Report struct {
 	Lessons    []Written `json:"lessons,omitempty"`
 	Skipped    []Skipped `json:"skipped,omitempty"`
 	// NearMisses are the clusters that did not reach a model, with the leg of
-	// the bar each missed. The cadence re-audit reads these.
+	// the bar each missed, and the drafts that missed it on the sources they
+	// kept. The cadence re-audit reads these.
 	NearMisses []Skipped `json:"near_misses,omitempty"`
-	Errors     []string  `json:"errors,omitempty"`
-	DryRun     bool      `json:"dry_run,omitempty"`
+	// Linked are the drafts that restated a lesson already written and named
+	// it instead of minting a second one.
+	Linked []Linked `json:"linked,omitempty"`
+	Errors []string `json:"errors,omitempty"`
+	DryRun bool     `json:"dry_run,omitempty"`
 }
 
 // --- the prompt -------------------------------------------------------------
@@ -736,6 +760,9 @@ type Options struct {
 	// DryRun plans and never writes, and never calls a model: a dry run that
 	// spent money would be the one thing a dry run must not do.
 	DryRun bool
+	// StateDir holds the ledger of what written lessons consumed
+	// (ConsumedName). Empty keeps no ledger beyond the lessons on disk.
+	StateDir string
 }
 
 // DefaultCap is the most lessons one run writes.
@@ -777,6 +804,7 @@ func Run(opt Options, call Caller) (Report, error) {
 	rep.Clusters = len(clusters)
 
 	existing := existingLessons(opt.Root)
+	used := loadConsumed(opt.Root, opt.StateDir)
 	for _, c := range clusters {
 		if len(rep.Lessons) >= opt.Cap {
 			break
@@ -784,6 +812,16 @@ func Run(opt Options, call Caller) (Report, error) {
 		if existing[c.Subject] {
 			rep.Skipped = append(rep.Skipped, Skipped{Subject: c.Subject,
 				Sources: len(c.Sources), Reason: "a lesson on this subject exists"})
+			continue
+		}
+		// Every source has taught a lesson already: the closed tasks a lesson
+		// rested on cluster again each week, and a lesson the operator deleted
+		// must not come back from them (task 190). An arc's synthesis is owed
+		// to its name from the arc's Outcomes whatever else they taught, so the
+		// ledger does not stop it; its name does.
+		if c.Arc == "" && used.all(c) {
+			rep.Skipped = append(rep.Skipped, Skipped{Subject: c.Subject,
+				Sources: len(c.Sources), Reason: "every source has taught a lesson already"})
 			continue
 		}
 		rep.Considered++
@@ -816,13 +854,43 @@ func Run(opt Options, call Caller) (Report, error) {
 			rep.Errors = append(rep.Errors, fmt.Sprintf("%s: %v", c.Subject, err))
 			continue
 		}
+		// The bar again, on the sources the lesson kept (task 190). The cluster
+		// cleared it on a shared word; a lesson true of fewer is a near miss,
+		// and a lesson never decays, so admitting a wrong one is the costly
+		// mistake.
+		if ok, why := covered.Meets(); !ok {
+			rep.NearMisses = append(rep.NearMisses, Skipped{Subject: c.Subject,
+				Sources: len(covered.Sources), Reason: "the lesson rests on " + why})
+			continue
+		}
+		// A draft resting mostly on what a lesson already taught restates it:
+		// the lesson is named in the new cards' `related` and none is minted.
+		if prior := used.mostly(covered); c.Arc == "" && prior != "" {
+			lk := Linked{Subject: c.Subject, Lesson: prior, Cards: link(covered, prior, used)}
+			for _, s := range covered.Sources {
+				lk.Sources = append(lk.Sources, s.Link())
+				used.add(ledgerKey(s), prior)
+			}
+			rep.Linked = append(rep.Linked, lk)
+			existing[c.Subject] = true
+			continue
+		}
 		w, err := write(opt, l, covered)
 		if err != nil {
 			rep.Errors = append(rep.Errors, fmt.Sprintf("%s: %v", c.Subject, err))
 			continue
 		}
 		existing[c.Subject] = true
+		stem := strings.TrimSuffix(path.Base(w.Rel), ".md")
+		for _, s := range covered.Sources {
+			used.add(ledgerKey(s), stem)
+		}
 		rep.Lessons = append(rep.Lessons, w)
+	}
+	if !opt.DryRun && (len(rep.Lessons) > 0 || len(rep.Linked) > 0) {
+		if err := used.save(opt.StateDir); err != nil {
+			rep.Errors = append(rep.Errors, "the consumed-source ledger: "+err.Error())
+		}
 	}
 	return rep, nil
 }
@@ -842,6 +910,11 @@ func write(opt Options, l Lesson, c Cluster) (Written, error) {
 	// reader of that record joins correctly and no link resolves.
 	under := path.Join(Dir, stem+".md")
 	p := filepath.Join(opt.Root, filepath.FromSlash(under))
+	// A lesson is written once, and a person may have edited it since: a
+	// second draft the model names alike is refused, never written over it.
+	if _, err := os.Lstat(p); err == nil {
+		return Written{}, fmt.Errorf("a lesson already sits at %s", under)
+	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return Written{}, err
 	}

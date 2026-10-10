@@ -537,12 +537,14 @@ thresholds:
   # moves to the project's `completed/tasks/`. The night moves at most
   # `demotion_cap` folders, counted in folders, so a task is never split.
   task_completed_after_days: 14
-  # The entity builder's bars (2026-09-29; sources since 2026-10-03). A repo, a
-  # repo-qualified issue or a release gets a page once this many distinct
-  # sources mention it — a note, or a task's folder, whose notes count once
-  # together; a person, once named in this many distinct pieces of shared work.
-  # A page below its bar is removed through the journal.
+  # The entity builder's bars (2026-09-29; sources since 2026-10-03). A repo
+  # gets a page once this many distinct sources mention it — a note, or a
+  # task's folder, whose notes count once together; a repo-qualified issue or
+  # a release once `entity_min_sources_numbered` do (three, the operator's
+  # ruling of 2026-10-07); a person, once named in this many distinct pieces of
+  # shared work. A page below its bar is removed through the journal.
   entity_min_mentions: 2
+  entity_min_sources_numbered: 3
   person_min_shared_work: 2
   # A note at or below this ranks quietly on an ordinary question. The rubric
   # above calls 1 residue and 2-3 the record of a moment that decides nothing,
@@ -609,11 +611,12 @@ the morning note, because those notes are yours. The move runs only once
 `daemon.task_mover_enabled` is on; until then the night lists what it would
 move.
 
-`entity_min_mentions` and `person_min_shared_work` are the entity builder's
-bars. A repo, a repo-qualified issue or a release gets a page under
-`memory/entities/` once that many distinct sources mention it: a note is one
-source, and a task's folder (open or completed) is one source however many of
-its notes name the entity. Where the repository's clone is on this machine, an
+`entity_min_mentions`, `entity_min_sources_numbered` and
+`person_min_shared_work` are the entity builder's bars. A repo gets a page under
+`memory/entities/` once `entity_min_mentions` distinct sources mention it, and a
+repo-qualified issue or a release once `entity_min_sources_numbered` do: a note
+is one source, and a task's folder (open or completed) is one source however
+many of its notes name the entity. Where the repository's clone is on this machine, an
 issue page also needs a number the clone's commit subjects reach, and a release
 page one of its tags. A person gets one
 once named in that many distinct pieces of shared work: a task's plan,
@@ -637,4 +640,4 @@ high `importance` is not a way to spell it.
 
 ## Enrichment
 
-The nightly batch judges a card once, deeply, and again lightly when its body changes. The deep pass reads the card, its five nearest neighbours by the daemon's own search as title and summary, and the importance paragraph above. It may set `title`, `type`, `summary`, `tags` (at most eight), `aliases` it can derive from the card, `people` (the people the card names, kept only where the card's own words name them and filed under your table in `standards/people/aliases.md`), `related` (chosen only from the neighbours it was shown), `importance_proposed` and `confidence`, and it may add prose under a dated `## Added by dreaming` heading below what the session wrote. It never writes `why`, never changes the text above that heading, never rewrites the `## Evidence` block, and never overwrites an `importance` you set. The light pass may move `summary`, `tags`, `people`, `related` and `confidence`, and `title` or `type` only above the floor, and it adds no prose. At or above `thresholds.low_confidence` a card lands `active` with `filing_confidence: high`; below it the card stays `unfiled` and is listed for you in needs-review; a second verdict below the floor sinks it to `lifecycle: dormant`, journaled and in the morning note. A change to the enrichment prompt re-owes the deep pass to every card, and session traces and other records are never enriched.
+The nightly batch judges a card once, deeply, and again lightly when its body changes. The deep pass reads the card, its five nearest neighbours by the daemon's own search as title and summary, and the importance paragraph above. It may set `title`, `type`, `summary`, `tags` (at most eight), `aliases` it can derive from the card, `people` (the people the card names, kept only where the card's own words name them and filed under your table in `standards/people/aliases.md`), `related` (chosen only from the neighbours it was shown), `importance_proposed` and `confidence`, and on a card it may add prose under a dated `## Added by dreaming` heading below what the session wrote. A project's charter, decisions, designs and research take its fields and stamps and never its prose. It leaves `updated` as the note had it, because that is the author's date and the age clock reads it; its own date is `enriched_at`. A superseded note and a paste-ready `PROMPTS-*.md` pack are not enriched. It never writes `why`, never changes the text above that heading, never rewrites the `## Evidence` block, and never overwrites an `importance` you set. The light pass may move `summary`, `tags`, `people`, `related` and `confidence`, and `title` or `type` only above the floor, and it adds no prose. At or above `thresholds.low_confidence` a card lands `active` with `filing_confidence: high`; below it the card stays `unfiled` and is listed for you in needs-review; a second verdict below the floor sinks it to `lifecycle: dormant`, journaled and in the morning note. A change to the enrichment prompt re-owes the deep pass to every card, and session traces and other records are never enriched.

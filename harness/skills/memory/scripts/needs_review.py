@@ -29,9 +29,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -298,17 +299,32 @@ def render(entries: list, *, created: str, today: str, proposals: "dict | None" 
         lines += [f"The sections below come from the dream cycle{when}. Nothing acts on them "
                   "but you.", ""]
         lines += dream_lines
-    lines += _forward_lines(forward or {})
+    lines += _forward_lines(forward or {}, today)
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
-def _forward_lines(forward: dict) -> list:
+def _since(row: dict, today: str) -> str:
+    """The day a forward row's note was last read: the row's own `since`, which
+    `read_forward` dates from the binary's run, else `today` less its days."""
+    if row.get("since"):
+        return str(row["since"])
+    try:
+        return (datetime.fromisoformat(today) - timedelta(days=float(row.get("days") or 0))).date().isoformat()
+    except (TypeError, ValueError):
+        return "unknown"
+
+
+def _forward_lines(forward: dict, today: str) -> list:
     """The two forward lists, in full.
 
     The morning note carries a count and the first five of each; this page is
     where the rest of them are. A note about to sink is not something to act on
     — recalling it is what stops it, and doing nothing is a decision too — so
     these are listed rather than queued, and nothing here waits on the operator.
+
+    Each row says since when the note has been silent, not for how many days:
+    a count ticks every night and rewrote the page with nothing else changed
+    (task 190).
     """
     out = []
     for key, title in (("sinking_within_30_days", "Sinking within 30 days"),
@@ -320,8 +336,7 @@ def _forward_lines(forward: dict) -> list:
         for row in rows:
             rel = str(row.get("rel") or "")
             slug = rel.rsplit("/", 1)[-1][:-3] if rel.endswith(".md") else rel
-            days = int(row.get("days") or 0)
-            out.append(f"- [[{slug}]] — {days:,} days silent · `{rel}`")
+            out.append(f"- [[{slug}]] — silent since {_since(row, today)} · `{rel}`")
         out.append("")
     return out
 
@@ -338,18 +353,49 @@ def read_forward() -> dict:
         import json
         blob = (engine_state.engine_state_dir() / "dreaming" / "last-report.json").read_text(
             encoding="utf-8")
-        plan = (json.loads(blob) or {}).get("plan") or {}
+        report = json.loads(blob) or {}
+        plan = report.get("plan") or {}
     except Exception:
         return {}
-    return {k: plan.get(k) or [] for k in
-            ("sinking_within_30_days", "archiving_within_30_days")}
+    # The run's day, from its id (`YYYYMMDD-HHMMSS-<hex>`, UTC). The binary counts
+    # each row's days from that day's UTC midnight (the lifecycle job's `dayNow`),
+    # so the day the note was last read is fixed however many nights later the
+    # page is rendered, and whatever hour the run started.
+    try:
+        at = datetime.strptime(str(report.get("run_id", ""))[:8], "%Y%m%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        at = None
+    out = {}
+    for k in ("sinking_within_30_days", "archiving_within_30_days"):
+        rows = []
+        for row in plan.get(k) or []:
+            row = dict(row)
+            if at is not None and isinstance(row.get("days"), (int, float)):
+                row["since"] = (at - timedelta(days=float(row["days"]))).date().isoformat()
+            rows.append(row)
+        out[k] = rows
+    return out
+
+
+# What moves with the calendar alone: the frontmatter's `updated` and the dream
+# cycle's date. A page that differs from the one on disk in these and nothing
+# else is not written.
+_CALENDAR = (re.compile(r"(?m)^updated: .*$"),
+             re.compile(r"(The sections below come from the dream cycle) of \d{4}-\d{2}-\d{2}"))
+
+
+def _without_calendar(text: str) -> str:
+    for pat in _CALENDAR:
+        text = pat.sub(lambda m: m.group(1) if m.groups() else "updated:", text)
+    return text
 
 
 def write(vault: "Path | str", *, today: "str | None" = None,
           proposals: "dict | None" = None, forward: "dict | None" = None) -> Path:
     """Regenerate the MOC. `created` survives regeneration (the page is one
-    page, not a page a day); `updated` is today. The dream sections come from
-    the engine state unless `proposals` is handed in."""
+    page, not a page a day); `updated` is today when the page changes, and the
+    page is not written when only the calendar would change it (task 190). The
+    dream sections come from the engine state unless `proposals` is handed in."""
     vault = Path(vault)
     today = today or date.today().isoformat()
     target = vault / MOC_REL
@@ -363,7 +409,8 @@ def write(vault: "Path | str", *, today: "str | None" = None,
     text = render(collect(vault), created=created, today=today,
                   proposals=read_proposals() if proposals is None else proposals,
                   forward=read_forward() if forward is None else forward)
-    if not target.exists() or target.read_text(encoding="utf-8") != text:
+    current = target.read_text(encoding="utf-8") if target.exists() else None
+    if current is None or (current != text and _without_calendar(current) != _without_calendar(text)):
         target.write_text(text, encoding="utf-8")
     return target
 

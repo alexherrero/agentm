@@ -138,6 +138,17 @@ func Compose(previous string, r Response, s Stamp, depth Depth, offered []Neighb
 	_, prevBody := splitNote(previous)
 	captured, oldSection, after := splitDreaming(prevBody)
 	r.Related = relatedIDs(r.Related, offered)
+	// The card keeps its author's date: its own `updated`, else its `created`
+	// (task 190). Enrichment's date is `enriched_at`; moving `updated` reset
+	// the card's age on the night of every pass.
+	if s.Updated == "" {
+		s.Updated = frontmatterValue(previous, "updated")
+	}
+	if s.Updated == "" {
+		if c := frontmatterValue(previous, "created"); len(c) >= 10 {
+			s.Updated = c[:10]
+		}
+	}
 	r.People = groundPeople(previous, captured, after, r.People, s.People)
 
 	when := s.At

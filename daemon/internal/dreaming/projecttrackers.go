@@ -199,8 +199,11 @@ func renderProjectTracker(slug, title, status, sensitivity, what, opened, update
 }
 
 // PlanProjectTrackers decides every project's `tracker.md`. It writes nothing,
-// and plans nothing when the vault has no projects space.
-func PlanProjectTrackers(root string, now time.Time) (MocsPlan, error) {
+// and plans nothing when the vault has no projects space. `activity` is the
+// projects job's reading of tonight, by slug (ProjectActivity): rendered into
+// the tracker so that job has nothing left to edit. A project without one
+// carries the two fields from the page as it stands.
+func PlanProjectTrackers(root string, now time.Time, activity map[string]ActivityReading) (MocsPlan, error) {
 	plan := MocsPlan{BelowFloor: map[string]int{}}
 	vault := vaultRootOf(root)
 	space := filepath.Join(vault, projectsSpaceName)
@@ -267,20 +270,47 @@ func PlanProjectTrackers(root string, now time.Time) (MocsPlan, error) {
 		if status == "done" || status == "dropped" {
 			closed = updated
 		}
+		reading, read := activity[slug]
 		text := renderProjectTracker(slug, title, status, cfg["sensitivity"], what, opened, updated, closed,
-			carriedFields(before), tasks)
+			trackerMachineFields(before, reading, read), tasks)
 		plan.add(MocPage{Rel: rel, Members: len(tasks), Newest: updated}, before, text,
 			fmt.Sprintf("the tracker of project %s regenerated (%d %s)", slug, len(tasks), mocPlural(len(tasks), "task", "tasks")))
 	}
 	return plan, nil
 }
 
-// carriedMachineFields are the lines another night job owns in a project's
-// tracker: the projects job writes `activity` and `last_worked` after this job
-// has run. They are carried from the page as it stands, in that job's own
-// order, so an unchanged night rewrites nothing and the projects job's
-// line-surgical edit finds its values already in place.
+// carriedMachineFields are the lines the projects job owns in a project's
+// tracker, `activity` and `last_worked`, in that job's own order. The night
+// renders tonight's reading into them (trackerMachineFields); without one they
+// are carried from the page as it stands, so an unchanged night rewrites
+// nothing and the projects job's line-surgical edit finds its values already
+// in place.
 var carriedMachineFields = []string{"activity", "last_worked"}
+
+// trackerMachineFields is the two lines as the projects job would write them
+// tonight: the reading's `activity`, and its `last_worked` when it has one,
+// the page's own values otherwise. setActivityFields makes the same edit.
+func trackerMachineFields(before []byte, reading ActivityReading, read bool) [][2]string {
+	carried := carriedFields(before)
+	if !read {
+		return carried
+	}
+	values := map[string]string{}
+	for _, kv := range carried {
+		values[kv[0]] = kv[1]
+	}
+	values["activity"] = fmt.Sprintf("%.1f", reading.Activity)
+	if reading.LastWorked != "" {
+		values["last_worked"] = reading.LastWorked
+	}
+	var out [][2]string
+	for _, k := range carriedMachineFields {
+		if v := values[k]; v != "" {
+			out = append(out, [2]string{k, v})
+		}
+	}
+	return out
+}
 
 func carriedFields(before []byte) [][2]string {
 	if before == nil {

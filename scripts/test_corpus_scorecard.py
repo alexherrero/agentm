@@ -410,6 +410,24 @@ class ClassPopulationTests(ScorecardTests):
             self.assertIn("crystallized 0 (+1 in lanes)", row)
             self.assertIn("mocs 0", row)
 
+    def test_the_self_probe_is_counted_apart_not_as_a_card(self):
+        # Task 190 step 3: the daemon writes one a day and retires the last,
+        # so in the census it read as a card that came and went every night.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            sem = tmp / "memory" / "semantic"
+            sem.mkdir(parents=True)
+            (sem / "a.md").write_text("---\ntype: reference\n---\n\na\n", encoding="utf-8")
+            (sem / "agentm-self-probe-2026-10-06t07-35-48z.md").write_text(
+                "---\ntype: reference\nprobe: self-probe\n---\n\nSynthetic round-trip probe.\n", encoding="utf-8")
+            self.assertEqual(sc.class_populations(tmp)["semantic"], (1, 0))
+            self.assertEqual(sc.self_probes(tmp), 1)
+            self.build(answers(**HEALTHY), tmp)
+            row = next(l for l in self.read(tmp).splitlines() if "class populations" in l)
+            self.assertIn("| 1 |", row)
+            self.assertIn("semantic 1", row)
+            self.assertIn("1 self-probe(s) apart", row)
+
     def test_a_vault_without_a_memory_root_says_so(self):
         with tempfile.TemporaryDirectory() as td:
             self.build(answers(**HEALTHY), Path(td))

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -241,6 +242,18 @@ func (g *Eligibility) Check(_ context.Context, req Request, body string) error {
 				ErrNotEligible, seg)
 		}
 	}
+	// A dead draft and a spent prompt pack are not enriched (task 190). The
+	// write-quality audit found superseded drafts given aliases and a fresh
+	// date, so a search for a roadmap id surfaced a dead draft; a paste-ready
+	// `PROMPTS-*.md` pack is spent once pasted and is no knowledge to summarize.
+	if superseded(body) {
+		return fmt.Errorf("%w: %s is superseded; a dead draft is not enriched",
+			ErrNotEligible, req.Rel)
+	}
+	if InProjectsSpace(req.Rel) && isPromptPack(req.Rel) {
+		return fmt.Errorf("%w: %s is a paste-ready prompt pack, spent once pasted",
+			ErrNotEligible, req.Rel)
+	}
 	if g.ProjectRecord != nil && InProjectsSpace(req.Rel) {
 		if !g.ProjectRecord(req.Rel) {
 			return fmt.Errorf("%w: %s is project state a pass does not write; only a "+
@@ -274,6 +287,24 @@ func (g *Eligibility) Check(_ context.Context, req Request, body string) error {
 	// asserted it rather than because anything read it. Status said nothing
 	// about whether the pass had run.
 	return nil
+}
+
+// superseded reports whether a note says it is superseded: `status` or
+// `lifecycle` reading `superseded`, or a `superseded_by` naming its successor.
+func superseded(body string) bool {
+	for _, key := range []string{"status", "lifecycle"} {
+		if strings.EqualFold(strings.Trim(strings.TrimSpace(frontmatterValue(body, key)), `"'`), "superseded") {
+			return true
+		}
+	}
+	return strings.TrimSpace(frontmatterValue(body, "superseded_by")) != ""
+}
+
+// isPromptPack is a `PROMPTS-*.md` file: the paste-ready prompts a design
+// arc's coordinator wrote for the sessions that built it.
+func isPromptPack(rel string) bool {
+	base := path.Base(strings.ReplaceAll(rel, "\\", "/"))
+	return strings.HasPrefix(base, "PROMPTS-") && strings.HasSuffix(strings.ToLower(base), ".md")
 }
 
 // Depth says how much of the pass a note is owed.

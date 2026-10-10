@@ -440,9 +440,9 @@ func TestAFixtureNightMergesIntoARecordAfterTheCardsAndLeavesSessionFilesAlone(t
 			t.Errorf("the record lacks %q:\n%s", line, got)
 		}
 	}
-	if strings.Contains(got, "\nupdated: 2026-07-02\n") || !strings.Contains(got, "\nupdated: ") ||
-		!strings.Contains(got, "\nenriched_at: ") {
-		t.Errorf("the record's stamps did not land:\n%s", got)
+	// The pass's date is `enriched_at`; `updated` stays the author's (task 190).
+	if !strings.Contains(got, "\nupdated: 2026-07-02\n") || !strings.Contains(got, "\nenriched_at: ") {
+		t.Errorf("the record's stamps did not land, or its updated moved:\n%s", got)
 	}
 	if strings.Contains(got, "\ntitle:") {
 		t.Errorf("a card's title was rendered onto the record:\n%s", got)
@@ -450,9 +450,9 @@ func TestAFixtureNightMergesIntoARecordAfterTheCardsAndLeavesSessionFilesAlone(t
 	if !strings.Contains(got, "\n# Keep the wall\n\nArchived notes stay walled.\n") {
 		t.Errorf("the record's text did not survive:\n%s", got)
 	}
-	if !strings.Contains(got, enrich.DreamingHeading+" (") ||
-		!strings.Contains(got, "\n\nIt follows from the lifecycle ruling.") {
-		t.Errorf("no dated section on the record:\n%s", got)
+	// A project's record takes no prose from the pass (task 190).
+	if strings.Contains(got, enrich.DreamingHeading) || strings.Contains(got, "It follows from the lifecycle ruling.") {
+		t.Errorf("the pass appended prose to the record:\n%s", got)
 	}
 	for _, rel := range []string{tracker, plan, progress} {
 		if now, err := read(rel); err != nil || now != notes[rel] {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -334,12 +335,16 @@ func dueTasks(vault, space string, contract *rules.Rules, now time.Time, plan *T
 
 // linkEdits are the edits that point every link in `notes` at where its target
 // sits after the moves `rw` knows: not in a folder being moved (those rewrite
-// their own links as they move), and never under `personal/` or `standards/`.
+// their own links as they move), never under `personal/` or `standards/`, and
+// never a page the entity builder wrote, which it renders from the notes after
+// the mover has run (task 190: one writer per page). A hand-written note under
+// `memory/entities/` is the builder's to leave alone, so the mover repairs it.
 func linkEdits(vault, root string, notes []string, moving map[string]bool,
 	rw *linkrewrite.Rewriter, exists func(string) bool) ([]Intent, []EditedNote, int) {
 	var intents []Intent
 	var edited []EditedNote
 	links := 0
+	entities := path.Join(memoryRootRel(root, vault), "memory", "entities") + "/"
 	for _, rel := range notes {
 		if moving[rel] || inHeldSpace(rel) {
 			continue
@@ -347,6 +352,9 @@ func linkEdits(vault, root string, notes []string, moving map[string]bool,
 		abs := filepath.Join(vault, filepath.FromSlash(rel))
 		raw, err := os.ReadFile(abs)
 		if err != nil || !mightLink(raw) {
+			continue
+		}
+		if strings.HasPrefix(rel, entities) && !handWritten(raw) {
 			continue
 		}
 		text, n := rw.Text(string(raw), rel, rel, exists)

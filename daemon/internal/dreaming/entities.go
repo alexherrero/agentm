@@ -38,6 +38,7 @@ const JobEntities = "entities"
 // Default bars, used when the contract does not say.
 const (
 	defaultEntityMinMentions   = 2
+	defaultEntityMinNumbered   = 3
 	defaultPersonMinSharedWork = 2
 )
 
@@ -89,6 +90,42 @@ func EntityThresholds(r *rules.Rules) (minMentions, minSharedWork int) {
 	return
 }
 
+// EntityNumberedThreshold is the bar for an issue or a release page: the
+// contract's `entity_min_sources_numbered`, or three (the operator's ruling of
+// 2026-10-07, task 190). A repository page keeps `entity_min_mentions`.
+func EntityNumberedThreshold(r *rules.Rules) int {
+	if r != nil {
+		if v, ok := r.Threshold("entity_min_sources_numbered"); ok && v >= 1 {
+			return int(v)
+		}
+	}
+	return defaultEntityMinNumbered
+}
+
+// livePath is where a mentioning note sits tonight. The night builds the pages
+// after the mover and the completed move (task 190), and the index can still
+// name a note where it was for a moment after either took it to the project's
+// `completed/`: `projects/<slug>/<rest>` is then at
+// `projects/<slug>/completed/<rest>`. A path that is neither is left as the
+// index has it.
+func livePath(vault, rel string, seen map[string]string) string {
+	if p, ok := seen[rel]; ok {
+		return p
+	}
+	out := rel
+	if _, err := os.Lstat(filepath.Join(vault, filepath.FromSlash(rel))); err != nil {
+		parts := strings.SplitN(rel, "/", 3)
+		if len(parts) == 3 && parts[0] == projectsSpaceName && parts[1] != completedDirName {
+			moved := parts[0] + "/" + parts[1] + "/" + completedDirName + "/" + parts[2]
+			if _, err := os.Lstat(filepath.Join(vault, filepath.FromSlash(moved))); err == nil {
+				out = moved
+			}
+		}
+	}
+	seen[rel] = out
+	return out
+}
+
 // mention is one note on a page.
 type mention struct {
 	Rel     string
@@ -120,12 +157,14 @@ func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *
 	former := projectbind.FormerNames(vault)
 	facts := readRepoFacts(projectbind.Clones(vault))
 	minMentions, minSharedWork := EntityThresholds(r)
+	minNumbered := EntityNumberedThreshold(r)
 
 	rows, err := src.EntityRows(context.Background())
 	if err != nil {
 		return plan, err
 	}
 	byURI := map[string]map[string]mention{}
+	live := map[string]string{}
 	for _, row := range rows {
 		if !extract.Paged(row.URI) || entitySourceExcluded(row.Path, row.Flags, memRel) {
 			continue
@@ -134,16 +173,24 @@ func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *
 		if byURI[uri] == nil {
 			byURI[uri] = map[string]mention{}
 		}
-		byURI[uri][row.Path] = mentionOf(row.NoteRow, projects)
+		n := row.NoteRow
+		n.Path = livePath(vault, n.Path, live)
+		byURI[uri][n.Path] = mentionOf(n, projects)
 	}
 
 	// The bar counts sources, not notes (task 186): a task folder is one
-	// source. And a number or a version the repository's clone has never had
-	// gets no page, however often it is mentioned.
+	// source. An issue or a release needs three of them and a repository two
+	// (the operator's ruling of 2026-10-07). And a number or a version the
+	// repository's clone has never had gets no page, however often it is
+	// mentioned.
 	wanted := map[string]bool{}
 	var uris []string
 	for uri, ms := range byURI {
-		if distinctSources(ms) >= minMentions && clonePermits(uri, facts) {
+		bar := minMentions
+		if kind, _, _ := strings.Cut(uri, ":"); kind == "issue" || kind == "release" {
+			bar = minNumbered
+		}
+		if distinctSources(ms) >= bar && clonePermits(uri, facts) {
 			uris = append(uris, uri)
 		}
 	}

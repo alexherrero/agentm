@@ -262,21 +262,6 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		}
 		intents = nil
 	}
-	// The entity pages (task 179): built from the index at no model cost, and
-	// derived — nothing else writes them. A builder that cannot plan says so in
-	// its own row and the night goes on.
-	entities, err := planEntitiesFor(cfg, root, contract, now)
-	if err != nil {
-		entities = EntitiesPlan{Counts: map[string]int{}, Skipped: "the builder could not plan: " + err.Error()}
-	}
-	rep.Entities = entities
-	intents = append(intents, entities.Intents...)
-	if opt.Apply {
-		if err := applyAll(journal, root, runID, intents, now, opt.Pace, &rep); err != nil {
-			return rep, err
-		}
-		intents = nil
-	}
 	// Batch 2 (task 5): the maintenance jobs — the register's reviews, the
 	// maps of content, the date glosses — then the report-only checks.
 	calendar, err := PlanCalendar(root, contract, now, DefaultRollupWeeks)
@@ -299,20 +284,20 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	mocs.Intents = append(mocs.Intents, projectMaps.Intents...)
 	// Every project's tracker is generated in the same job from its task
 	// trackers (task 176 step 6), so the checklist cannot disagree with them.
-	projectTrackers, err := PlanProjectTrackers(root, now)
+	// Tonight's activity reading is taken first and rendered in, and the
+	// projects job below writes the same reading, so a tracker is written
+	// once a night rather than rendered here and line-edited there (task 190).
+	projActivity, projSkipped := ProjectActivity(root, note.NewAccessLog(cfg.EngineStateDir, root), now)
+	activityBySlug := map[string]ActivityReading{}
+	for _, a := range projActivity {
+		activityBySlug[a.Slug] = a
+	}
+	projectTrackers, err := PlanProjectTrackers(root, now, activityBySlug)
 	if err != nil {
 		return rep, err
 	}
 	mocs.Pages = append(mocs.Pages, projectTrackers.Pages...)
 	mocs.Intents = append(mocs.Intents, projectTrackers.Intents...)
-	// The entity map lists the builder's four folders (task 179). A builder
-	// that could not plan tonight leaves the map as it was, with its pages.
-	if rep.Entities.Skipped == "" {
-		entityMap := PlanEntityMap(root, rep.Entities.Pages, now)
-		mocs.Pages = append(mocs.Pages, entityMap.Pages...)
-		mocs.Removed = append(mocs.Removed, entityMap.Removed...)
-		mocs.Intents = append(mocs.Intents, entityMap.Intents...)
-	}
 	// The two shared spaces of 2026-09-24 ride in it too, once they hold a note.
 	spaceMaps, err := PlanSpaceMaps(root, now)
 	if err != nil {
@@ -420,10 +405,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	//
 	// Read before reconcile so a record this pass moved to `completed/` is one
 	// reconcile can pair rather than one it reports as vanished.
-	projects, err := PlanProjects(root, note.NewAccessLog(cfg.EngineStateDir, root), now, opt.Cap)
-	if err != nil {
-		return rep, err
-	}
+	projects := PlanProjectsFrom(root, projActivity, projSkipped)
 	rep.Projects = projects
 	if len(projects.Activity) > 0 {
 		// Written whether or not this is an apply pass: the reading is a
@@ -437,6 +419,33 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	}
 	if opt.Apply && len(projects.Intents) > 0 {
 		if err := applyAll(journal, root, runID, projects.Intents, now, opt.Pace, &rep); err != nil {
+			return rep, err
+		}
+	}
+
+	// The entity pages (task 179): built from the index at no model cost, and
+	// derived — nothing else writes them. Built after the mover and the
+	// completed move (task 190), so a page lists a note moved tonight where it
+	// now sits, and the mover has no page of the builder's to repair: one
+	// writer, once a night. A builder that cannot plan says so in its own row
+	// and the night goes on.
+	entities, err := planEntitiesFor(cfg, root, contract, now)
+	if err != nil {
+		entities = EntitiesPlan{Counts: map[string]int{}, Skipped: "the builder could not plan: " + err.Error()}
+	}
+	rep.Entities = entities
+	entityIntents := entities.Intents
+	// The entity map lists the builder's four folders. A builder that could
+	// not plan tonight leaves the map as it was, with its pages.
+	if entities.Skipped == "" {
+		entityMap := PlanEntityMap(root, entities.Pages, now)
+		rep.Mocs.Pages = append(rep.Mocs.Pages, entityMap.Pages...)
+		rep.Mocs.Removed = append(rep.Mocs.Removed, entityMap.Removed...)
+		rep.Mocs.Intents = append(rep.Mocs.Intents, entityMap.Intents...)
+		entityIntents = append(entityIntents, entityMap.Intents...)
+	}
+	if opt.Apply && len(entityIntents) > 0 {
+		if err := applyAll(journal, root, runID, entityIntents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
 	}

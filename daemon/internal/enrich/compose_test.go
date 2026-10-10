@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	notes "github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/people"
 )
 
@@ -606,5 +607,57 @@ func TestThePromptAsksForThePeopleAndWhomToLeaveOut(t *testing.T) {
 	g := DefaultSchema(nil, nil)
 	if err := g.Validate(Response{Title: "t", People: make([]string, MaxPeople+1), Confidence: 0.5}); err == nil {
 		t.Error("a response naming more people than the cap passed")
+	}
+}
+
+// `updated` is the author's date and the age clock's input; enrichment's own
+// date is `enriched_at` (task 190). The write-quality audit found 48 of 107
+// semantic cards carrying 2026-09-30 or 10-01, the two nights enrichment
+// restamped them, so every one of them read as freshly written.
+func TestEnrichmentKeepsACardsUpdatedAndStampsItsOwnDate(t *testing.T) {
+	dated := strings.Replace(card, "created: 2026-09-06\n", "created: 2026-09-06\nupdated: 2026-09-08\n", 1)
+	next, _, err := Compose(dated, fullResponse(), stampAt(), DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := frontmatterValue(next, "updated"); got != "2026-09-08" {
+		t.Errorf("updated = %q, want the card's own 2026-09-08:\n%s", got, next)
+	}
+	if got := frontmatterValue(next, "enriched_at"); !strings.HasPrefix(got, "2026-09-12") {
+		t.Errorf("enriched_at = %q, want the pass's moment", got)
+	}
+	// A card is still the deep pass's to add to; only a project's record is not.
+	if !strings.Contains(next, DreamingHeading+" (2026-09-12)") {
+		t.Errorf("the deep pass no longer adds its section to a card:\n%s", next)
+	}
+
+	// A card that never carried `updated` keeps its author's date: `created`.
+	next, _, err = Compose(card, fullResponse(), stampAt(), DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := frontmatterValue(next, "updated"); got != "2026-09-06" {
+		t.Errorf("updated = %q on a card with none, want its created 2026-09-06", got)
+	}
+}
+
+// And so enrichment no longer resets a card's age.
+func TestEnrichmentDoesNotResetACardsAge(t *testing.T) {
+	dated := strings.Replace(card, "created: 2026-09-06\n", "created: 2026-01-06\nupdated: 2026-02-01\n", 1)
+	next, _, err := Compose(dated, fullResponse(), stampAt(), DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 12, 9, 0, 0, 0, time.UTC)
+	age := func(text string) float64 {
+		d, ok := notes.ElapsedDays(nil, "agent/memory/semantic/x.md", "x", frontmatterValue(text, "updated"),
+			frontmatterValue(text, "created"), "", "", now)
+		if !ok {
+			t.Fatalf("no age for:\n%s", text)
+		}
+		return d
+	}
+	if before, after := age(dated), age(next); before != after {
+		t.Errorf("enrichment moved the card's age from %.0f to %.0f days", before, after)
 	}
 }

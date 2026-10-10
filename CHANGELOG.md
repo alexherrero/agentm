@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Task 190: the vault gains only the cards that earned their place, and a page is rewritten only when what it says changes. The write-quality audit of 2026-10-07 judged every file the vault wrote on 10-05 and 10-06. It found none of the 18 new memory cards earned: nine were traces of one unattended poll, and four of five crystallized lessons were under their own bar. It also found maps, trackers, `needs-review` and entity pages rewritten with nothing in them changed. A meter now measures that every morning, and each writer is held to it.
+
+### Added
+
+- **A write meter, in the morning note and the health scorecard (task 190 step 1, [#885](https://github.com/alexherrero/agentm/pull/885)).** `write_meter.py` reads the vault's git history and counts the following: new memory cards by class, with the self-probe apart; the vault's net notes; each rewrite of a map, project tracker, `needs-review` or entity page, and how many changed only dates or only line order; and enrichment restamps and `Added by dreaming` sections in project docs. It warns when cards pass the new `thresholds.daily_card_budget` (30 a day), on any rewrite that changed only dates or order, and when the committer is an hour behind. Over the audit's window it reads 18 cards plus 2 self-probes, as the audit found.
+
+### Changed
+
+- **A session with no operator turn writes no episodic trace (task 190 step 2, the operator's ruling of 2026-10-07).** A Desktop scheduled task and a headless `claude -p` run leave nothing unless you reply. The host stamps a scheduled run `origin.kind: human`, so it is read by its `<scheduled-task>` wrapper. A typed message or slash command is a turn.
+- **Maps change only when their membership or text does (task 190 step 3).** The daemon's self-probe is no longer a map member, and a regeneration that would move only `updated` writes nothing. The scorecard's class census counts the probe apart.
+- **One write a night for a project tracker, and `needs-review` stops following the calendar (task 190 step 4).** The night reads each project's activity before rendering its tracker, so the projects job has nothing left to edit. `needs-review` says "silent since <date>" and moves `updated` only when its lists change.
+- **An issue or release entity page needs three origins, and the builder is a page's one writer (task 190 step 5, the operator's ruling of 2026-10-07).** The new `thresholds.entity_min_sources_numbered` is 3, and repositories keep 2. The task mover no longer edits entity pages, and the night builds them after it. A dry run on 2026-10-09 kept 290 of 527 pages and removes 237 through the journal.
+- **Crystallize checks its bar on the lesson's own sources, counted in notes, and a source teaches one lesson (task 190 step 6).** A ledger in the engine's state directory remembers the trackers and trace lines a lesson consumed. A draft restating a lesson links it rather than minting a second. A lesson's file is never written over. Four of the five 10-06 lessons fail the rechecked bar; they are listed for the operator, and none is removed.
+- **Enrichment leaves designs, dead drafts and `updated` alone (task 190 step 7).** A project's records take fields and stamps, never prose. `updated` stays the author's date, the one the age clock reads, and the pass's own date is `enriched_at`. A superseded note and a `PROMPTS-*.md` pack are not enriched.
+
 ## [10.6.0] - 2026-10-09
 
 Tasks 188 and 189 close: the vault's history keeps being written however git stores it, and a git worktree is kept out of the vault.

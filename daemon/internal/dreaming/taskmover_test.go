@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -538,5 +539,119 @@ func TestThePackagedContractWaitsFourteenDays(t *testing.T) {
 	}
 	if got := TaskCompletedAfterDays(nil); got != DefaultTaskCompletedAfterDays {
 		t.Errorf("no contract reads %v days", got)
+	}
+}
+
+// One writer for an entity page (task 190 step 5). The mover repaired an
+// entity page's links into a moved folder, and the builder rebuilt the same
+// page the next night: the write-quality audit of 2026-10-07 found pages
+// written twice for it. The builder renders the pages from the notes, so the
+// mover leaves them to it.
+func TestTheMoverLeavesEntityPagesToTheBuilder(t *testing.T) {
+	root, space := projectVault(t)
+	vault := filepath.Dir(root)
+	closedTask(t, space, "agentm", "001-done", "done", "2026-08-01")
+	writeAt(t, vault, "agent/memory/entities/issues/alexherrero-agentm-900.md",
+		"---\ntitle: alexherrero/agentm#900\nkind: entity-profile\n---\n\n- [[projects/agentm/tasks/001-done/plan|001-done plan]]\n")
+	writeAt(t, vault, "agent/memory/semantic/a-card.md",
+		"---\ntitle: a\n---\n\nFrom [[projects/agentm/tasks/001-done/plan|the plan]].\n")
+	plan, _ := PlanTaskMoves(root, taskRules(t), taskNow, 0)
+	for _, in := range plan.Intents {
+		if strings.Contains(in.Rel, "memory/entities/") {
+			t.Errorf("the mover planned an edit of the entity page %s:\n%s", in.Rel, in.After)
+		}
+	}
+	if len(plan.Edited) != 1 || !strings.HasSuffix(plan.Edited[0].Path, "memory/semantic/a-card.md") {
+		t.Errorf("edited %+v, want the card alone", plan.Edited)
+	}
+}
+
+// The night builds the entity pages after the mover, so a page lists a task
+// moved tonight where it now sits, the same night — even while the index still
+// names its notes at `tasks/`.
+func TestTheNightBuildsEntityPagesAfterTheMover(t *testing.T) {
+	root, space := projectVault(t)
+	vault := filepath.Dir(root)
+	writeAt(t, space, "agentm/project.yaml", "slug: agentm\nrepositories:\n  - alexherrero/agentm\n")
+	dir := closedTask(t, space, "agentm", "001-done", "done", "2026-08-01")
+	writeAt(t, dir, "plan.md", "# Plan\n\nFixed in #900.\n")
+	writeAt(t, space, "agentm/tasks/002-open/plan.md", "# Plan\n\nBuilds on #900.\n")
+	writeAt(t, space, "agentm/research/why.md", "# Why\n\nWhy #900 mattered.\n")
+	cfg := moverConfig(t, root)
+	cfg.TaskMoverEnabled = true
+	cfg.IndexPath = filepath.Join(t.TempDir(), "index.db")
+	x, err := index.Open(cfg.IndexPath, vault, "agent", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	x.Close()
+
+	rep, err := Run(cfg, Options{Now: taskNow, Apply: true, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Tasks.Folders) != 1 {
+		t.Fatalf("the mover planned %+v", rep.Tasks.Folders)
+	}
+	if _, err := os.Stat(filepath.Join(space, "agentm", "completed", "tasks", "001-done", "plan.md")); err != nil {
+		t.Fatalf("the task did not move: %v", err)
+	}
+	page, err := os.ReadFile(filepath.Join(root, "memory", "entities", "issues", "alexherrero-agentm-900.md"))
+	if err != nil {
+		t.Fatalf("#900 has three origins and no page: %v (entities %+v)", err, rep.Entities)
+	}
+	if !strings.Contains(string(page), "projects/agentm/completed/tasks/001-done/plan") ||
+		strings.Contains(string(page), "projects/agentm/tasks/001-done/") {
+		t.Errorf("the page built tonight does not list the moved task where it sits:\n%s", page)
+	}
+	for _, e := range rep.Tasks.Edited {
+		if strings.Contains(e.Path, "memory/entities/") {
+			t.Errorf("the mover edited the entity page %s as well; the builder is its one writer", e.Path)
+		}
+	}
+}
+
+// Found by the adversarial review of task 190 steps 3-7.
+//
+// linkEdits now skips every note under `<memRel>/memory/entities/` on the
+// grounds that "the builder renders [entity pages] from the notes after the
+// mover has run". But the builder only renders its own `kind: entity-profile`
+// pages: a hand-written note in the same folders is `handWritten` and goes to
+// plan.Held, never re-rendered. Its links into a moved task folder are now
+// repaired by nobody, so they break the night the task moves.
+func TestTheMoverStillRepairsAHandWrittenNoteUnderEntities(t *testing.T) {
+	root, space := projectVault(t)
+	vault := filepath.Dir(root)
+	closedTask(t, space, "agentm", "001-done", "done", "2026-08-01")
+	hand := "---\ntitle: Alex\ntype: person\n---\n\nLed [[projects/agentm/tasks/001-done/plan|the plan]].\n"
+	writeAt(t, vault, "agent/memory/entities/people/alex.md", hand)
+
+	// The builder would hold this note, not render it.
+	if !handWritten([]byte(hand)) {
+		t.Fatalf("fixture: the note is not hand-written to the builder")
+	}
+
+	plan, err := PlanTaskMoves(root, taskRules(t), taskNow, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Folders) != 1 {
+		t.Fatalf("fixture: the mover planned %+v", plan.Folders)
+	}
+	repaired := false
+	for _, in := range plan.Intents {
+		if strings.HasSuffix(in.Rel, "memory/entities/people/alex.md") &&
+			strings.Contains(string(in.After), "projects/agentm/completed/tasks/001-done/plan") {
+			repaired = true
+		}
+	}
+	if !repaired {
+		b, _ := os.ReadFile(filepath.Join(vault, "agent", "memory", "entities", "people", "alex.md"))
+		t.Errorf("a hand-written note under memory/entities/ links into a task folder the mover is "+
+			"moving tonight, the builder holds it (never re-renders it), and the mover no longer "+
+			"repairs it: the link breaks.\nnote:\n%s\nedited: %+v", b, plan.Edited)
 	}
 }

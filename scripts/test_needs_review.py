@@ -16,9 +16,11 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _SCRIPTS = _HERE.parent / "harness" / "skills" / "memory" / "scripts"
@@ -29,6 +31,7 @@ import capture as cap  # noqa: E402
 import corpus_scorecard  # noqa: E402
 import dream  # noqa: E402
 import filing_engine as fe  # noqa: E402
+import engine_state  # noqa: E402
 import needs_review  # noqa: E402
 import save  # noqa: E402
 
@@ -155,9 +158,15 @@ class TheReading(_Vault):
         first = needs_review.write(self.root, today="2026-09-04").read_text(encoding="utf-8")
         second = needs_review.write(self.root, today="2026-09-04").read_text(encoding="utf-8")
         self.assertEqual(first, second)
+        # The next day with the same lists writes nothing (task 190 step 4):
+        # `updated` moves when what the page lists does, not with the calendar.
         later = needs_review.write(self.root, today="2026-09-05").read_text(encoding="utf-8")
-        self.assertIn("created: 2026-09-04", later)
-        self.assertIn("updated: 2026-09-05", later)
+        self.assertEqual(later, first)
+        save.save_entry(self.root, "preference", "long-bodies", "Prefer long commit bodies.",
+                        filing_confidence="low", status="unfiled")
+        changed = needs_review.write(self.root, today="2026-09-05").read_text(encoding="utf-8")
+        self.assertIn("created: 2026-09-04", changed)
+        self.assertIn("updated: 2026-09-05", changed)
 
     def test_the_page_is_a_moc_that_never_lists_itself(self):
         text = self._moc()
@@ -353,12 +362,109 @@ class TheForwardLists(unittest.TestCase):
         # All nine, not the morning note's five.
         for i in range(9):
             self.assertIn(f"[[n{i}]]", text)
-        self.assertIn("1,815 days silent", text)
+        # Since when, not how many days (task 190 step 4): 1,815 days before 2026-09-18.
+        self.assertIn("- [[cold]] — silent since 2021-09-29 · `memory/semantic/cold.md`", text)
 
     def test_an_empty_list_writes_no_heading(self):
         text = needs_review.render([], created="2026-09-18", today="2026-09-18", forward={})
         self.assertNotIn("Sinking within 30 days", text)
         self.assertNotIn("Archiving within 30 days", text)
+
+
+
+class TheCalendarAloneChangesNothing(_Vault):
+    """Task 190 step 4. The write-quality audit of 2026-10-07 found the page
+    rewritten every night: today's date in `updated`, the dream cycle's date in
+    a sentence, and "N days silent" ticking on every forward row. Two nights
+    with the same lists write the page once."""
+
+    FORWARD_1 = {"sinking_within_30_days": [{"rel": "memory/semantic/old-rule.md", "days": 341.6}],
+                 "archiving_within_30_days": []}
+    FORWARD_2 = {"sinking_within_30_days": [{"rel": "memory/semantic/old-rule.md", "days": 342.6}],
+                 "archiving_within_30_days": []}
+
+    def setUp(self):
+        super().setUp()
+        save.save_entry(self.root, "preference", "short-subjects", "Prefer short commit subjects.",
+                        filing_confidence="low", status="unfiled")
+
+    def night(self, today, forward, at):
+        proposals = {"at": at, "twins": [{"a": "memory/semantic/t-a.md", "b": "memory/semantic/t-b.md",
+                                          "similarity": 0.95}]}
+        target = needs_review.write(self.root, today=today, proposals=proposals, forward=forward)
+        return target.read_text(encoding="utf-8"), target.stat().st_mtime_ns
+
+    def test_two_nights_with_the_same_lists_write_once(self):
+        first, at_first = self.night("2026-10-05", self.FORWARD_1, datetime(2026, 10, 5, 9, 26, tzinfo=timezone.utc).timestamp())
+        time.sleep(0.01)
+        second, at_second = self.night("2026-10-06", self.FORWARD_2, datetime(2026, 10, 6, 9, 26, tzinfo=timezone.utc).timestamp())
+        self.assertEqual(second, first)
+        self.assertEqual(at_second, at_first, "an unchanged page was written again")
+        self.assertIn("updated: 2026-10-05", second)
+
+    def test_a_forward_row_says_since_when_not_how_many_days(self):
+        text, _ = self.night("2026-10-05", self.FORWARD_1, None)
+        self.assertIn("- [[old-rule]] — silent since 2025-10-28 · `memory/semantic/old-rule.md`", text)
+        self.assertNotIn("days silent", text)
+
+    def test_the_binarys_report_dates_each_row_from_its_own_run(self):
+        state = self.root / "state"
+        (state / "dreaming").mkdir(parents=True)
+        (state / "dreaming" / "last-report.json").write_text(json.dumps({
+            "run_id": datetime(2026, 10, 6, 9, 26, tzinfo=timezone.utc).strftime("%Y%m%d-%H%M%S") + "-abcd1234",
+            "plan": {"sinking_within_30_days": [{"rel": "memory/semantic/old-rule.md", "days": 342.6}]},
+        }), encoding="utf-8")
+        import engine_state
+        with mock.patch.object(engine_state, "engine_state_dir", return_value=state):
+            rows = needs_review.read_forward()["sinking_within_30_days"]
+        self.assertEqual(rows[0]["since"], "2025-10-28")
+
+    def test_a_changed_list_moves_updated(self):
+        self.night("2026-10-05", self.FORWARD_1, None)
+        save.save_entry(self.root, "preference", "long-bodies", "Prefer long commit bodies.",
+                        filing_confidence="low", status="unfiled")
+        text, _ = self.night("2026-10-06", self.FORWARD_2, None)
+        self.assertIn("updated: 2026-10-06", text)
+        self.assertIn("[[long-bodies]]", text)
+
+
+# The note was last read 2026-08-01 at 20:00 UTC.
+SINCE_ANCHOR = datetime(2026, 8, 1, 20, 0, tzinfo=timezone.utc)
+
+
+def _since_days(run_at: datetime) -> float:
+    """What the Go lifecycle job writes: elapsed days from the run day's UTC midnight."""
+    day_now = run_at.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (day_now - SINCE_ANCHOR).total_seconds() / 86400
+
+
+class TheSinceDateFollowsTheBinarysDay(unittest.TestCase):
+    """Found by the adversarial review of task 190: the binary counts a row's days
+    from its run day's UTC midnight, so `since` must too, or it reads a day late
+    and moves with the hour the run started."""
+    def setUp(self):
+        self.state = Path(tempfile.mkdtemp())
+        (self.state / "dreaming").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.state, ignore_errors=True)
+
+    def _since(self, run_at: datetime) -> str:
+        (self.state / "dreaming" / "last-report.json").write_text(json.dumps({
+            "run_id": run_at.strftime("%Y%m%d-%H%M%S") + "-abcd1234",
+            "plan": {"sinking_within_30_days": [{"rel": "memory/semantic/n.md", "days": _since_days(run_at)}]},
+        }), encoding="utf-8")
+        with mock.patch.object(engine_state, "engine_state_dir", return_value=self.state):
+            return needs_review.read_forward()["sinking_within_30_days"][0]["since"]
+
+    def test_since_is_the_day_the_note_was_last_read(self):
+        self.assertEqual(self._since(datetime(2026, 10, 9, 5, 0, tzinfo=timezone.utc)), "2026-08-01")
+
+    def test_since_does_not_move_with_the_runs_start_time(self):
+        a = self._since(datetime(2026, 10, 9, 5, 0, tzinfo=timezone.utc))
+        b = self._since(datetime(2026, 10, 10, 3, 0, tzinfo=timezone.utc))
+        self.assertEqual(a, b, "the same silent note reads a different since-date on two nights")
+
 
 
 if __name__ == "__main__":

@@ -34,7 +34,9 @@ func TestEligibilityRefusesWhatIsNotEnrichmentsBusiness(t *testing.T) {
 		// has ever run over it — and 283 notes in the corpus had been enriched
 		// and scored below the floor while sitting `unfiled`.
 		{"already active", "agent/memory/semantic/x.md", note("active", "b"), true},
-		{"superseded", "agent/memory/semantic/x.md", note("superseded", "b"), true},
+		// A superseded note is a dead draft: enriching it gave it aliases and a
+		// fresh date, and a search for its subject surfaced it (task 190).
+		{"superseded", "agent/memory/semantic/x.md", note("superseded", "b"), false},
 		{"no status at all", "agent/memory/semantic/x.md", "no frontmatter", true},
 		{"the operator's own space", "personal/Church/x.md", note("unfiled", "b"), false},
 		{"a derived class — entities", "agent/memory/entities/x.md", note("unfiled", "b"), false},

@@ -78,6 +78,10 @@ func fixtureEntityNotes() map[string]string {
 			"Shipped v10.0.0. Landed as 8296fc5a.\n",
 		"projects/agentm/tasks/002-b/plan.md": "---\nupdated: 2026-09-25\n---\n\n" +
 			"Reopened #466 after v10.0.0.\nSee github.com/alexherrero/crickets again. 8296fc5a.\n",
+		// A third origin for the issue and the release, whose bar is three
+		// (task 190); the repository's is two.
+		"projects/agentm/research/history.md": "---\nupdated: 2026-09-22\n---\n\n" +
+			"The fix for #466 landed in v10.0.0.\n",
 		"agent/memory/semantic/a-card.md": "---\ntitle: A card\ntype: reference\ncreated: 2026-08-01\nproject: agentm\n---\n\n" +
 			"The toolkit lives at github.com/alexherrero/crickets.\n",
 		"personal/notes/loose.md":     "---\ntitle: Loose\n---\n\nSee #77 and github.com/alexherrero/rare.\n",
@@ -107,8 +111,8 @@ func TestTheBuilderWritesRepoIssueAndReleasePagesAndNothingElse(t *testing.T) {
 	}
 	for id, want := range map[string]int{
 		"repo:alexherrero/crickets":          3,
-		"issue:alexherrero/agentm#466":       2,
-		"release:alexherrero/agentm@v10.0.0": 2,
+		"issue:alexherrero/agentm#466":       3,
+		"release:alexherrero/agentm@v10.0.0": 3,
 	} {
 		if got[id].Mentions != want {
 			t.Errorf("%s: %d mentions, want %d (pages %v)", id, got[id].Mentions, want, plan.Pages)
@@ -155,8 +159,8 @@ func TestARebuildWritesNothingAndAPageUnderItsBarIsRemovedWithItsBytesJournaled(
 		t.Fatalf("a rebuild over an unchanged corpus planned %d write(s): %+v", len(second.Intents), second.Intents)
 	}
 
-	// One of the two notes naming #466 stops naming it: the page falls under
-	// the bar of two and goes, and the journal keeps what it said.
+	// One of the three origins naming #466 stops naming it: the page falls
+	// under the bar of three and goes, and the journal keeps what it said.
 	vault := filepath.Dir(root)
 	putEntityNote(t, vault, "projects/agentm/tasks/002-b/plan.md", "---\nupdated: 2026-09-25\n---\n\n"+
 		"Reopened after v10.0.0.\nSee github.com/alexherrero/crickets again.\n")

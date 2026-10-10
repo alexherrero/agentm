@@ -136,28 +136,49 @@ func ActivityFor(days float64) float64 {
 // PlanProjects reads every project's activity, writes it where a tracker takes
 // it, and moves what has finished.
 func PlanProjects(root string, log *note.AccessLog, now time.Time, cap int) (ProjectsPlan, error) {
-	var plan ProjectsPlan
+	readings, skipped := ProjectActivity(root, log, now)
+	return PlanProjectsFrom(root, readings, skipped), nil
+}
+
+// ProjectActivity reads every project's activity signal, sorted by slug, or
+// says why it could not.
+//
+// The night takes this reading once, before the maps job renders the project
+// trackers, and hands the same reading to both: the tracker is rendered with
+// it, and PlanProjectsFrom then finds its values in place. Rendered first and
+// edited after, a tracker was committed twice a night (task 190).
+func ProjectActivity(root string, log *note.AccessLog, now time.Time) ([]ActivityReading, string) {
 	space := ProjectsRoot(root)
 	if space == "" {
-		plan.Skipped = "no projects/ space"
-		return plan, nil
-	}
-	if cap <= 0 {
-		cap = DefaultDemotionCap
+		return nil, "no projects/ space"
 	}
 	day := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	entries, err := os.ReadDir(space)
 	if err != nil {
-		plan.Skipped = "the projects space is unreadable"
-		return plan, nil
+		return nil, "the projects space is unreadable"
 	}
+	var out []ActivityReading
 	for _, e := range entries {
 		name := e.Name()
 		if !e.IsDir() || strings.HasPrefix(name, ".") ||
 			name == completedDirName || name == "_archive" {
 			continue
 		}
-		reading := readActivity(filepath.Join(space, name), name, log, root, day)
+		out = append(out, readActivity(filepath.Join(space, name), name, log, root, day))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Slug < out[j].Slug })
+	return out, ""
+}
+
+// PlanProjectsFrom writes each reading where its project's tracker takes it.
+func PlanProjectsFrom(root string, readings []ActivityReading, skipped string) ProjectsPlan {
+	plan := ProjectsPlan{Skipped: skipped}
+	space := ProjectsRoot(root)
+	if skipped != "" || space == "" {
+		return plan
+	}
+	for _, reading := range readings {
+		name := reading.Slug
 		plan.Activity = append(plan.Activity, reading)
 
 		// The tracker, when there is one.
@@ -176,8 +197,7 @@ func PlanProjects(root string, log *note.AccessLog, now time.Time, cap int) (Pro
 			}
 		}
 	}
-	sort.Slice(plan.Activity, func(i, j int) bool { return plan.Activity[i].Slug < plan.Activity[j].Slug })
-	return plan, nil
+	return plan
 }
 
 const completedDirName = "completed"
