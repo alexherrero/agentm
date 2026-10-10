@@ -55,6 +55,7 @@ import engine_state  # noqa: E402
 import lifecycle_transitions  # noqa: E402
 import needs_review  # noqa: E402
 import vault_worktrees  # noqa: E402
+import write_meter  # noqa: E402
 
 DIAGNOSTICS_DIR = Path("diagnostics") / "morning"
 STABLE_NAME = "latest_morning_note.md"
@@ -311,6 +312,8 @@ class Night:
     scorecard: str = ""
     sessions: Optional[tuple] = None
     worktrees: list = field(default_factory=list)  # signs of a git worktree in the vault
+    writes: Optional[dict] = None   # the write meter over the last 24 hours
+    writes_missing: str = ""
 
 
 # The reasons a cycle gives whatever the hour, because it reads the switch and
@@ -439,6 +442,7 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
         night.worktrees = []
 
     night.populations = corpus_scorecard.class_populations(vault)
+    read_writes(night, vault)
     try:
         status = ask(["status"]) or {}
         night.queue = (status.get("health") or {}).get("queue") or {}
@@ -748,6 +752,27 @@ def corpus_line(night: Night) -> list:
     return [" — ".join(parts)] if parts else []
 
 
+def read_writes(night: Night, vault: Path) -> None:
+    """The write meter over the 24 hours before the note (task 190): what
+    the vault wrote, by class, against the card budget."""
+    try:
+        night.writes = write_meter.measure(vault, until=night.now)
+    except RuntimeError as exc:
+        night.writes_missing = str(exc)
+
+
+def writes_line(night: Night) -> list:
+    """One line: the new cards against the budget, the derived pages that
+    were rewritten with only dates or order moved, and enrichment in project
+    docs. A warning rides on the line itself, so drift shows the morning it
+    starts."""
+    if night.writes is not None:
+        return [f"- **Writes, the last 24 hours:** {write_meter.describe(night.writes)}"]
+    if night.writes_missing:
+        return [f"- Writes not measured ({night.writes_missing})"]
+    return []
+
+
 def _tier_added(runs: list) -> dict:
     """What the line counts, per tier: the tokens a call added — input, cache
     writes, output — and not the cached prefix it re-read (the operator's
@@ -882,7 +907,8 @@ def headline(night: Night, needs: list) -> str:
 def render(night: Night, *, vault: Path) -> tuple:
     """(the note's text, its headline)."""
     stamp = datetime.fromtimestamp(night.now).strftime("%Y-%m-%d")
-    ran, needs, corpus, money = what_ran(night), needs_you(night), corpus_line(night), spend(night)
+    ran, needs, money = what_ran(night), needs_you(night), spend(night)
+    corpus = corpus_line(night) + writes_line(night)
     head = headline(night, needs)
     out = [
         "---",

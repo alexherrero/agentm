@@ -257,6 +257,24 @@ def _writes_reading(vault, *, today=None) -> Reading:
                             note=volume_gate.describe(t))
 
 
+def _write_meter_reading(vault, *, now: "datetime | None" = None) -> Reading:
+    """What the vault wrote in the last 24 hours, from its git history: new
+    cards by class against the contract's `daily_card_budget`, the vault's net
+    notes, derived pages rewritten with only dates or order moved, and
+    enrichment in project docs (task 190, the write-quality audit). The value
+    is new cards, self-probes aside."""
+    source = "git log of the vault, the last 24 hours"
+    if vault is None:
+        return Reading.unavailable("writes, the last 24 hours", "no memory root", source=source)
+    import write_meter  # same skill dir
+    try:
+        m = write_meter.measure(Path(vault), until=now.timestamp() if now else None)
+    except RuntimeError as exc:
+        return Reading.unavailable("writes, the last 24 hours", str(exc), source=source)
+    return Reading.measured("writes, the last 24 hours", m["new_cards"], source=source,
+                            note=write_meter.describe(m))
+
+
 def _lifecycle_reading(vault, *, today=None) -> Reading:
     """The lifecycle axis, counted (filing v2 part 6): how many memories sit
     in each state, and what the automatic lane and the confirm surface moved
@@ -305,7 +323,7 @@ def _residue_reading(vault) -> Reading:
                                        "`deleted` or `~dup` in the classes"))
 
 
-def section_corpus(vault: "Path | None" = None, *, today=None) -> Section:
+def section_corpus(vault: "Path | None" = None, *, today=None, now=None) -> Section:
     """How much memory there is, and how much of it is waiting."""
     s = Section("The corpus", blurb=(
         "How much there is, and how much of it is still waiting to be filed."))
@@ -313,6 +331,7 @@ def section_corpus(vault: "Path | None" = None, *, today=None) -> Section:
     s.readings.append(_residue_reading(vault))
     s.readings.append(_needs_review_reading(vault))
     s.readings.append(_writes_reading(vault, today=today))
+    s.readings.append(_write_meter_reading(vault, now=now))
     s.readings.append(_lifecycle_reading(vault, today=today))
     try:
         status = _agentmd(["status"])
@@ -728,7 +747,7 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sections = [
-        section_corpus(vault, today=now.date()),
+        section_corpus(vault, today=now.date(), now=now),
         section_completeness(out_dir),
         section_meters(),
         _with_gate(section_retrieval(repo), out_dir),
