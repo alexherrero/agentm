@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -20,9 +21,13 @@ import (
 // from the root map. A page is flagged stale when its newest member is older
 // than `moc_stale_after_days` (ninety).
 //
-// A page carries its newest member's date as `updated`, so a regeneration on
-// an unchanged membership is byte-identical and writes nothing; `created`
-// survives regeneration. A page whose type has since fallen below the floor
+// A page carries its newest member's date as `updated`, and a regeneration on
+// an unchanged membership writes nothing: one that differs from the page on
+// disk in `updated` alone keeps the page as it is (task 190), so a type whose
+// members carry no date, which takes today's, does not move every night.
+// `created` survives regeneration. The daemon's self-probe is no member of
+// any map: it is written and retired every day, and as a member it rewrote
+// two maps every night. A page whose type has since fallen below the floor
 // is left alone and reported — nothing here deletes.
 
 const (
@@ -138,7 +143,7 @@ func mocMembers(root string, r *rules.Rules) (map[string][]Member, int, error) {
 			continue
 		}
 		fm, body := ParseFrontmatter(string(raw))
-		if fm["kind"] != "" {
+		if fm["kind"] != "" || note.IsProbeValue(fm[note.ProbeMarker]) {
 			continue
 		}
 		t := strings.TrimSpace(fm["type"])
@@ -389,13 +394,37 @@ func mocCurrentPage(root, rel string) ([]byte, string) {
 	return cur, strings.TrimSpace(fm["created"])
 }
 
-// add records a page, and an intent when its text differs from the file.
+// add records a page, and an intent when its text differs from the file in
+// more than its `updated` line.
 func (plan *MocsPlan) add(item MocPage, before []byte, text, summary string) {
-	if before != nil && string(before) == text {
+	if before != nil && (string(before) == text || sameButUpdated(string(before), text)) {
 		plan.Pages = append(plan.Pages, item)
 		return
 	}
 	item.Changed = true
 	plan.Pages = append(plan.Pages, item)
 	plan.Intents = append(plan.Intents, Intent{Job: JobMocs, Rel: item.Rel, Before: before, After: []byte(text), Summary: summary})
+}
+
+// sameButUpdated says whether two renderings of a page differ in nothing but
+// the frontmatter's `updated` line: a date that moved while what the page says
+// did not.
+func sameButUpdated(before, after string) bool {
+	b, a := strings.Split(before, "\n"), strings.Split(after, "\n")
+	if len(b) != len(a) {
+		return false
+	}
+	inFront := len(b) > 0 && b[0] == "---"
+	for i := range b {
+		if i > 0 && b[i] == "---" {
+			inFront = false
+		}
+		if b[i] == a[i] {
+			continue
+		}
+		if !inFront || !strings.HasPrefix(b[i], "updated: ") || !strings.HasPrefix(a[i], "updated: ") {
+			return false
+		}
+	}
+	return true
 }

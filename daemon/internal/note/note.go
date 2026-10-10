@@ -333,7 +333,13 @@ func parseProbe(head string) bool {
 	if m == nil {
 		return false
 	}
-	switch strings.ToLower(strings.Trim(m[1], `'"`)) {
+	return IsProbeValue(m[1])
+}
+
+// IsProbeValue says whether a `probe:` value marks a self-probe, for a reader
+// that has the frontmatter parsed already.
+func IsProbeValue(v string) bool {
+	switch strings.ToLower(strings.Trim(strings.TrimSpace(v), `'"`)) {
 	case ProbeMarkerValue, "true", "yes":
 		return true
 	}
