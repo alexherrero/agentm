@@ -613,6 +613,81 @@ func TestCoveredKeepsOnlyTheSourcesTheLessonNames(t *testing.T) {
 
 func TestOnlyTheCoveredCardsAreStampedAndNamed(t *testing.T) {
 	f := newFixture(t)
+	// Three of the four: a lesson must still clear the bar on the sources it
+	// keeps (task 190), so it names three and leaves the fourth.
+	f.answer = func(prompt string) (string, error) {
+		return `{"subject":"worktree-guard","title":"A worktree guard refuses what it cannot verify",
+		          "lesson":"The guard reads the command, not the intent.","why":"Three tasks hit it.",
+		          "sources":[1,2,4]}`, nil
+	}
+	cards := []string{
+		f.card(t, "semantic", "a", "2026-08-01", "sess-1", "worktree-guard"),
+		f.card(t, "semantic", "b", "2026-08-20", "sess-2", "worktree-guard"),
+		f.card(t, "semantic", "c", "2026-09-05", "sess-3", "worktree-guard"),
+		f.card(t, "semantic", "d", "2026-09-10", "sess-4", "worktree-guard"),
+	}
+	rep := f.run(t, Options{})
+	if len(rep.Lessons) != 1 {
+		t.Fatalf("lessons %+v, errors %v", rep.Lessons, rep.Errors)
+	}
+	if w := rep.Lessons[0]; len(w.Sources) != 3 || len(w.Stamped) != 3 {
+		t.Errorf("the lesson names %v and stamped %v, want the 3 it rests on", w.Sources, w.Stamped)
+	}
+	raw, err := os.ReadFile(filepath.Join(f.vault, filepath.FromSlash(rep.Lessons[0].Rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(raw), "\n  - \"[["); n != 3 {
+		t.Errorf("consolidated_from lists %d sources, want 3:\n%s", n, raw)
+	}
+	stamped := 0
+	for _, p := range cards {
+		if b, _ := os.ReadFile(p); strings.Contains(string(b), "consolidated_into:") {
+			stamped++
+		}
+	}
+	if b, _ := os.ReadFile(cards[2]); stamped != 3 || strings.Contains(string(b), "consolidated_into:") {
+		t.Errorf("%d cards stamped, want the 3 the lesson rests on and never c", stamped)
+	}
+}
+
+// --- task 190 step 6: the bar on the lesson, and a lesson minted once --------
+
+// trace writes a session trace whose `## Candidates` carry `lines`, each
+// naming `term`.
+func (f *fixture) trace(t *testing.T, name, created, session, term string, lines int) string {
+	t.Helper()
+	p := filepath.Join(f.root, "memory", "episodic", name+".md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	b.WriteString("---\ntitle: " + name + "\nkind: session-trace\ncreated: " + created +
+		"\nsession: " + session + "\n---\n\n## Candidates\n\n")
+	for i := 0; i < lines; i++ {
+		fmt.Fprintf(&b, "- rule-%d — \"the merge stranded the worktree on `%s`, line %d\"\n", i, term, i)
+	}
+	if err := os.WriteFile(p, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func lessonFiles(t *testing.T, f *fixture) []string {
+	t.Helper()
+	entries, _ := os.ReadDir(filepath.Join(f.root, filepath.FromSlash(Dir)))
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+// The audit's gh-pr-merge-delete-branch-strands-worktree shape: the cluster
+// cleared the bar, and the lesson the model wrote rests on fewer sources than
+// the bar asks. Checked on the sources the lesson kept, it is a near miss.
+func TestADraftNarrowedUnderTheBarIsNotWritten(t *testing.T) {
+	f := newFixture(t)
 	f.answer = func(prompt string) (string, error) {
 		return `{"subject":"worktree-guard","title":"A worktree guard refuses what it cannot verify",
 		          "lesson":"The guard reads the command, not the intent.","why":"Two tasks hit it.",
@@ -624,26 +699,172 @@ func TestOnlyTheCoveredCardsAreStampedAndNamed(t *testing.T) {
 		f.card(t, "semantic", "c", "2026-09-10", "sess-3", "worktree-guard"),
 	}
 	rep := f.run(t, Options{})
-	if len(rep.Lessons) != 1 {
-		t.Fatalf("lessons %+v, errors %v", rep.Lessons, rep.Errors)
+	if len(rep.Lessons) != 0 || len(lessonFiles(t, f)) != 0 {
+		t.Fatalf("a lesson resting on 2 of 3 sources was written: %+v", rep.Lessons)
 	}
-	if w := rep.Lessons[0]; len(w.Sources) != 2 || len(w.Stamped) != 2 {
-		t.Errorf("the lesson names %v and stamped %v, want the 2 it rests on", w.Sources, w.Stamped)
-	}
-	raw, err := os.ReadFile(filepath.Join(f.vault, filepath.FromSlash(rep.Lessons[0].Rel)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := strings.Count(string(raw), "\n  - \"[["); n != 2 {
-		t.Errorf("consolidated_from lists %d sources, want 2:\n%s", n, raw)
-	}
-	stamped := 0
-	for _, p := range cards {
-		if b, _ := os.ReadFile(p); strings.Contains(string(b), "consolidated_into:") {
-			stamped++
+	found := false
+	for _, n := range rep.NearMisses {
+		if n.Subject == "worktree-guard" && n.Sources == 2 && strings.Contains(n.Reason, "the lesson rests on") {
+			found = true
 		}
 	}
-	if stamped != 2 {
-		t.Errorf("%d cards stamped, want the 2 the lesson rests on", stamped)
+	if !found {
+		t.Errorf("the narrowed draft is not reported as a near miss: %+v", rep.NearMisses)
+	}
+	for _, p := range cards {
+		if b, _ := os.ReadFile(p); strings.Contains(string(b), "consolidated_into") {
+			t.Errorf("%s was stamped by a lesson that was not written", p)
+		}
+	}
+}
+
+// Two candidate lines of one trace are one note. The audit's gh-pr-merge
+// lesson rested on four lines from two traces a day apart.
+func TestCandidateLinesFromOneTraceAreOneNote(t *testing.T) {
+	f := newFixture(t)
+	f.trace(t, "2026-08-01-session-a", "2026-08-01", "sess-a", "gh-pr-merge", 2)
+	f.trace(t, "2026-08-20-session-b", "2026-08-20", "sess-b", "gh-pr-merge", 2)
+	rep := f.run(t, Options{})
+	if len(f.prompts) != 0 || rep.Clusters != 0 {
+		t.Fatalf("four lines in two traces reached a model (%d call(s), %d cluster(s))", len(f.prompts), rep.Clusters)
+	}
+	found := false
+	for _, n := range rep.NearMisses {
+		if n.Subject == "gh-pr-merge" && strings.Contains(n.Reason, "2 note(s)") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the near miss does not say the lines were two notes: %+v", rep.NearMisses)
+	}
+}
+
+// A tracker cannot take `consolidated_into`, so the closed tasks that taught a
+// lesson cluster again every week. The ledger remembers them: a lesson the
+// operator deletes is not minted again from the same sources.
+func TestALedgeredTrackerClusterIsNotReproposedNextWeek(t *testing.T) {
+	f := newFixture(t)
+	f.outcome(t, "agentm", "101-one", "2026-08-01", "git worktree")
+	f.outcome(t, "agentm", "102-two", "2026-08-20", "git worktree")
+	f.outcome(t, "agentm", "103-three", "2026-09-10", "git worktree")
+	state := t.TempDir()
+	first := f.run(t, Options{StateDir: state})
+	if len(first.Lessons) != 1 {
+		t.Fatalf("lessons %+v, errors %v", first.Lessons, first.Errors)
+	}
+	// The operator reads it on the morning note and deletes it.
+	if err := os.Remove(filepath.Join(f.vault, filepath.FromSlash(first.Lessons[0].Rel))); err != nil {
+		t.Fatal(err)
+	}
+	calls := len(f.prompts)
+	next := f.run(t, Options{StateDir: state, Now: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)})
+	if len(next.Lessons) != 0 || len(f.prompts) != calls {
+		t.Fatalf("the same three trackers were proposed again: %d call(s), lessons %+v", len(f.prompts)-calls, next.Lessons)
+	}
+	if len(next.Skipped) != 1 || !strings.Contains(next.Skipped[0].Reason, "taught a lesson already") {
+		t.Errorf("skipped %+v, want the cluster named as consumed", next.Skipped)
+	}
+}
+
+// A lesson written before the ledger existed names its trackers in
+// `consolidated_from`, and they count as consumed too.
+func TestALessonsOwnSourcesCountAsConsumed(t *testing.T) {
+	f := newFixture(t)
+	f.outcome(t, "agentm", "101-one", "2026-08-01", "lock file")
+	f.outcome(t, "agentm", "102-two", "2026-08-20", "lock file")
+	f.outcome(t, "agentm", "103-three", "2026-09-10", "lock file")
+	lesson := "---\ntitle: Older lesson\nkind: crystallized\ntags: [stale-lock]\nconsolidated_from:\n" +
+		"  - \"[[projects/agentm/tasks/101-one/tracker|101-one]]\"\n" +
+		"  - \"[[projects/agentm/tasks/102-two/tracker|102-two]]\"\n" +
+		"  - \"[[projects/agentm/tasks/103-three/tracker|103-three]]\"\n---\n\nAn older lesson.\n"
+	p := filepath.Join(f.root, filepath.FromSlash(Dir), "agentm-stale-lock.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(lesson), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep := f.run(t, Options{StateDir: t.TempDir()})
+	if len(f.prompts) != 0 || len(rep.Lessons) != 0 {
+		t.Errorf("trackers an existing lesson rests on were proposed again: %d call(s), %+v", len(f.prompts), rep.Lessons)
+	}
+}
+
+// A draft whose sources are mostly an existing lesson's links that lesson
+// rather than minting a second one: the new card names it in `related`.
+func TestAnOverlappingDraftLinksTheLessonRatherThanMintingOne(t *testing.T) {
+	f := newFixture(t)
+	f.outcome(t, "agentm", "101-one", "2026-08-01", "git worktree")
+	f.outcome(t, "agentm", "102-two", "2026-08-20", "git worktree")
+	f.outcome(t, "agentm", "103-three", "2026-09-10", "git worktree")
+	state := t.TempDir()
+	first := f.run(t, Options{StateDir: state})
+	if len(first.Lessons) != 1 {
+		t.Fatalf("lessons %+v", first.Lessons)
+	}
+	stem := strings.TrimSuffix(path.Base(first.Lessons[0].Rel), ".md")
+	// The next week a fresh card names it again, under a word the three
+	// trackers share with it, so the cluster is new and mostly not.
+	for _, task := range []string{"101-one", "102-two", "103-three"} {
+		p := filepath.Join(f.vault, "projects", "agentm", "tasks", task, "tracker.md")
+		b, _ := os.ReadFile(p)
+		if err := os.WriteFile(p, []byte(strings.Replace(string(b), "again,", "again under `stale lock`,", 1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	card := f.card(t, "semantic", "d", "2026-09-20", "sess-4", "stale lock")
+	before := lessonFiles(t, f)
+	next := f.run(t, Options{StateDir: state, Now: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)})
+	if len(next.Lessons) != 0 || len(lessonFiles(t, f)) != len(before) {
+		t.Fatalf("a draft resting mostly on %s's sources minted a lesson: %+v", stem, next.Lessons)
+	}
+	if len(next.Linked) != 1 || next.Linked[0].Lesson != stem {
+		t.Fatalf("linked %+v, want the draft linked to %s", next.Linked, stem)
+	}
+	b, _ := os.ReadFile(card)
+	if !strings.Contains(string(b), "[["+stem+"]]") || strings.Contains(string(b), "consolidated_into") {
+		t.Errorf("the new card does not name %s in related, or was stamped:\n%s", stem, b)
+	}
+}
+
+// The cap bounds the lessons one run writes, by default and when set.
+func TestTheCapBoundsTheLessonsOneRunWrites(t *testing.T) {
+	for _, tc := range []struct {
+		cap, want int
+	}{{0, DefaultCap}, {2, 2}} {
+		f := newFixture(t)
+		n := 0
+		f.answer = func(prompt string) (string, error) {
+			n++
+			return fmt.Sprintf(`{"subject":"lesson-%d","title":"Lesson %d","lesson":"It recurred.","why":"Three tasks.","sources":[1,2,3]}`, n, n), nil
+		}
+		for i := 0; i < DefaultCap+1; i++ {
+			term := fmt.Sprintf("subject%c", 'a'+i)
+			for j, closed := range []string{"2026-08-01", "2026-08-20", "2026-09-10"} {
+				f.outcome(t, "agentm", fmt.Sprintf("%d%d-%s", i, j, term), closed, term)
+			}
+		}
+		rep := f.run(t, Options{Cap: tc.cap})
+		if len(rep.Lessons) != tc.want || len(lessonFiles(t, f)) != tc.want {
+			t.Errorf("cap %d: wrote %d lesson(s) (%d file(s)), want %d", tc.cap, len(rep.Lessons), len(lessonFiles(t, f)), tc.want)
+		}
+	}
+}
+
+// Two drafts the model names alike never share a file: the second is an
+// error, and the first lesson stays as written.
+func TestASecondDraftUnderAnExistingNameDoesNotOverwriteIt(t *testing.T) {
+	f := newFixture(t)
+	for i, term := range []string{"alpha", "bravo"} {
+		for j, closed := range []string{"2026-08-01", "2026-08-20", "2026-09-10"} {
+			f.outcome(t, "agentm", fmt.Sprintf("%d%d-%s", i, j, term), closed, term)
+		}
+	}
+	rep := f.run(t, Options{})
+	if len(rep.Lessons) != 1 || len(lessonFiles(t, f)) != 1 {
+		t.Fatalf("lessons %+v, files %v", rep.Lessons, lessonFiles(t, f))
+	}
+	if len(rep.Errors) != 1 || !strings.Contains(rep.Errors[0], "already") {
+		t.Errorf("errors %v, want the second draft refused for its name", rep.Errors)
 	}
 }

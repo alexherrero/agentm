@@ -43,6 +43,7 @@ type crystallizeRun struct {
 	Lessons      []crystallize.Written   `json:"lessons,omitempty"`
 	Skipped      []crystallize.Skipped   `json:"skipped,omitempty"`
 	NearMisses   []crystallize.Skipped   `json:"near_misses,omitempty"`
+	Linked       []crystallize.Linked    `json:"linked,omitempty"`
 	Errors       []string                `json:"errors,omitempty"`
 	ElapsedSec   float64                 `json:"elapsed_seconds"`
 	DryRun       bool                    `json:"dry_run,omitempty"`
@@ -166,6 +167,8 @@ func cmdCrystallize(args []string) error {
 	rep, err := crystallize.Run(crystallize.Options{
 		Root: crystallizeMemoryRoot(cfg), Vault: cfg.VaultPath, Now: now,
 		Topic: *topic, Cap: *cap, DryRun: *dryRun,
+		// Beside the run record: the ledger of what written lessons consumed.
+		StateDir: enrichStateDir(cfg),
 	}, func(prompt string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), caller.Timeout)
 		defer cancel()
@@ -183,7 +186,7 @@ func cmdCrystallize(args []string) error {
 		ModelCalls: total.Calls, Tokens: total.Added(), TotalCostUSD: total.CostUSD,
 		Usage: meter.ByTier(), ByJob: meter.ByJob(),
 		Lessons: rep.Lessons, Skipped: rep.Skipped, NearMisses: rep.NearMisses,
-		Errors: rep.Errors, ElapsedSec: time.Since(started).Seconds(),
+		Linked: rep.Linked, Errors: rep.Errors, ElapsedSec: time.Since(started).Seconds(),
 		DryRun: rep.DryRun,
 	}
 	// A dry run leaves no record: the file is the night's spend ledger, and a
@@ -214,6 +217,10 @@ func cmdCrystallize(args []string) error {
 	}
 	for _, s := range rep.Skipped {
 		fmt.Printf("  skipped %s (%d sources): %s\n", s.Subject, s.Sources, s.Reason)
+	}
+	for _, lk := range rep.Linked {
+		fmt.Printf("  linked %s to [[%s]] rather than minting it (%d card(s) named it)\n",
+			lk.Subject, lk.Lesson, len(lk.Cards))
 	}
 	for _, e := range rep.Errors {
 		fmt.Printf("  error: %s\n", e)
