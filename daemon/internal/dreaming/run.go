@@ -299,7 +299,15 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	mocs.Intents = append(mocs.Intents, projectMaps.Intents...)
 	// Every project's tracker is generated in the same job from its task
 	// trackers (task 176 step 6), so the checklist cannot disagree with them.
-	projectTrackers, err := PlanProjectTrackers(root, now)
+	// Tonight's activity reading is taken first and rendered in, and the
+	// projects job below writes the same reading, so a tracker is written
+	// once a night rather than rendered here and line-edited there (task 190).
+	projActivity, projSkipped := ProjectActivity(root, note.NewAccessLog(cfg.EngineStateDir, root), now)
+	activityBySlug := map[string]ActivityReading{}
+	for _, a := range projActivity {
+		activityBySlug[a.Slug] = a
+	}
+	projectTrackers, err := PlanProjectTrackers(root, now, activityBySlug)
 	if err != nil {
 		return rep, err
 	}
@@ -420,10 +428,7 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	//
 	// Read before reconcile so a record this pass moved to `completed/` is one
 	// reconcile can pair rather than one it reports as vanished.
-	projects, err := PlanProjects(root, note.NewAccessLog(cfg.EngineStateDir, root), now, opt.Cap)
-	if err != nil {
-		return rep, err
-	}
+	projects := PlanProjectsFrom(root, projActivity, projSkipped)
 	rep.Projects = projects
 	if len(projects.Activity) > 0 {
 		// Written whether or not this is an apply pass: the reading is a

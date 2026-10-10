@@ -1,12 +1,16 @@
 package dreaming
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/config"
 )
 
 // The project trackers (task 176 step 6): generated nightly from the task
@@ -34,7 +38,7 @@ func trackersFixture(t *testing.T) (root, vault string) {
 
 func TestAProjectTrackerIsTheChecklistOfItsTasks(t *testing.T) {
 	root, _ := trackersFixture(t)
-	plan, err := PlanProjectTrackers(root, projectsNow)
+	plan, err := PlanProjectTrackers(root, projectsNow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +73,7 @@ func TestAProjectTrackerIsTheChecklistOfItsTasks(t *testing.T) {
 // it, and the project's map links the task where it now sits.
 func TestAMovedTaskStillCountsAndIsLinkedWhereItSits(t *testing.T) {
 	root, vault := trackersFixture(t)
-	before, err := PlanProjectTrackers(root, projectsNow)
+	before, err := PlanProjectTrackers(root, projectsNow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +85,7 @@ func TestAMovedTaskStillCountsAndIsLinkedWhereItSits(t *testing.T) {
 	if err := os.Rename(from, to); err != nil {
 		t.Fatal(err)
 	}
-	after, err := PlanProjectTrackers(root, projectsNow)
+	after, err := PlanProjectTrackers(root, projectsNow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,11 +108,11 @@ func TestAMovedTaskStillCountsAndIsLinkedWhereItSits(t *testing.T) {
 
 func TestAProjectTrackerOverUnchangedTasksWritesNothing(t *testing.T) {
 	root, _ := trackersFixture(t)
-	plan, _ := PlanProjectTrackers(root, projectsNow)
+	plan, _ := PlanProjectTrackers(root, projectsNow, nil)
 	for _, in := range plan.Intents {
 		writeAt(t, root, in.Rel, string(in.After))
 	}
-	again, _ := PlanProjectTrackers(root, projectsNow.AddDate(0, 0, 5))
+	again, _ := PlanProjectTrackers(root, projectsNow.AddDate(0, 0, 5), nil)
 	if len(again.Intents) != 0 {
 		t.Errorf("unchanged task trackers rewrote a project tracker: %+v", again.Intents)
 	}
@@ -119,13 +123,13 @@ func TestAProjectTrackerOverUnchangedTasksWritesNothing(t *testing.T) {
 // and the two jobs from undoing each other.
 func TestTheProjectsJobsActivityFieldsAreCarried(t *testing.T) {
 	root, _ := trackersFixture(t)
-	plan, _ := PlanProjectTrackers(root, projectsNow)
+	plan, _ := PlanProjectTrackers(root, projectsNow, nil)
 	for _, in := range plan.Intents {
 		text := string(in.After)
 		text = strings.Replace(text, "\n---\n", "\nactivity: 0.7\nlast_worked: 2026-09-12\n---\n", 1)
 		writeAt(t, root, in.Rel, text)
 	}
-	again, _ := PlanProjectTrackers(root, projectsNow.AddDate(0, 0, 1))
+	again, _ := PlanProjectTrackers(root, projectsNow.AddDate(0, 0, 1), nil)
 	if len(again.Intents) != 0 {
 		t.Errorf("carried fields were dropped, so the tracker was rewritten: %s", again.Intents[0].After)
 	}
@@ -155,12 +159,70 @@ func TestAGeneratedTrackerPassesTheTrackerSchema(t *testing.T) {
 	_, here, _, _ := runtime.Caller(0)
 	script := filepath.Join(filepath.Dir(here), "..", "..", "..", "scripts", "tracker.py")
 	root, _ := trackersFixture(t)
-	plan, _ := PlanProjectTrackers(root, projectsNow)
+	plan, _ := PlanProjectTrackers(root, projectsNow, nil)
 	for _, in := range plan.Intents {
 		writeAt(t, root, in.Rel, string(in.After))
 		out, err := exec.Command(py, script, "check", filepath.Join(root, filepath.FromSlash(in.Rel))).CombinedOutput()
 		if err != nil {
 			t.Errorf("tracker.py check refuses %s: %v\n%s\n%s", in.Rel, err, out, in.After)
 		}
+	}
+}
+
+// One write a night for a project's tracker (task 190 step 4). The night
+// rendered the tracker carrying `activity` and `last_worked` from the page as
+// it stood, then the projects job edited those two lines later the same
+// night: two commits of one file. The write-quality audit of 2026-10-07 found
+// each project tracker written twice on 10-05 and 10-06. The reading is now
+// taken first and rendered in, so the projects job finds its values in place.
+func TestANightWritesAProjectTrackerOnceWithItsActivity(t *testing.T) {
+	root, vault := trackersFixture(t)
+	cfg := &config.Config{VaultPath: vault, MemoryRoot: "agent", EngineStateDir: filepath.Join(t.TempDir(), "state")}
+	night := func(now time.Time) Report {
+		t.Helper()
+		rep, err := Run(cfg, Options{Apply: true, Force: true, Now: now})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rep
+	}
+
+	rep := night(projectsNow)
+	if rep.Projects.TrackersWritten != 0 {
+		t.Errorf("the projects job wrote %d tracker(s) after the render; the render should carry its reading",
+			rep.Projects.TrackersWritten)
+	}
+	written := 0
+	for _, p := range rep.Mocs.Pages {
+		if p.Rel == "../projects/demo/tracker.md" && p.Changed {
+			written++
+		}
+	}
+	if written != 1 {
+		t.Errorf("demo's tracker was rendered %d time(s) tonight, want 1", written)
+	}
+	text := mustRead(t, root, "../projects/demo/tracker.md")
+	var reading ActivityReading
+	for _, a := range rep.Projects.Activity {
+		if a.Slug == "demo" {
+			reading = a
+		}
+	}
+	if reading.LastWorked != "2026-09-12" {
+		t.Fatalf("demo's reading is %+v, want last worked 2026-09-12 (its newest task)", reading)
+	}
+	if want := fmt.Sprintf("\nactivity: %.1f\nlast_worked: 2026-09-12\n---\n", reading.Activity); !strings.Contains(text, want) {
+		t.Errorf("the tracker does not carry tonight's reading %q:\n%s", want, text)
+	}
+
+	// The next night, nothing moved: neither job writes it.
+	rep = night(projectsNow.AddDate(0, 0, 1))
+	for _, p := range rep.Mocs.Pages {
+		if p.Rel == "../projects/demo/tracker.md" && p.Changed {
+			t.Errorf("an unchanged project rewrote its tracker")
+		}
+	}
+	if rep.Projects.TrackersWritten != 0 {
+		t.Errorf("an unchanged night's projects job wrote %d tracker(s)", rep.Projects.TrackersWritten)
 	}
 }
