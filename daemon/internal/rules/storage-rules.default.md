@@ -510,6 +510,11 @@ thresholds:
   # record wrote 110, the 30-day median 12 — this sits above every real day
   # and well below what the last flood did. 0 disables the gate.
   daily_write_cap: 200
+  # The write meter's budget (task 190): new memory cards a day, self-probes
+  # aside, before the morning note and the scorecard mark the day as a warning.
+  # Nothing is refused at it; it is a reading. The steady rate on 2026-10-07 was
+  # 6 a day over 22 days and the audited window ran 10. 0 turns the warning off.
+  daily_card_budget: 30
   enrichment_input_chars: 24000
   decay_full_days: 180
   decay_half_days: 365
