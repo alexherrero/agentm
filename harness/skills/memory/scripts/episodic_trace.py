@@ -112,6 +112,9 @@ class Trace:
     project: str = ""
     task: str = ""
     surface: str = ""
+    # Whether the operator took a turn (`has_operator_turn`). A session nobody
+    # was at writes no trace, whatever it touched.
+    attended: bool = True
 
     @property
     def rel(self) -> str:
@@ -253,6 +256,46 @@ def _paths_from_result(tool: str, text: str) -> list:
 # interrupted by user]") and the desktop app's resume notice. Five traces
 # took one as their title before task 186.
 _HOST_LINE = re.compile(r"^\[.*\]$|^The app was quit while you were working\b")
+
+
+# A Desktop scheduled task's opening turn: the wrapper, whose preamble says "The
+# user is not present". The host stamps it as it stamps an operator's turn
+# (`origin.kind: human`, `promptSource: sdk`), so only its content tells.
+_SCHEDULED_TASK = re.compile(r"<scheduled-task\b[^>]*>.*?(?:</scheduled-task>|\Z)", re.S)
+_COMMAND = re.compile(r"<command-name>\s*/\S+\s*</command-name>")
+
+
+def _is_operator_turn(msg: dict) -> bool:
+    """A user message the operator typed (agentm-vault § Capture, the
+    operator's ruling of 2026-10-07).
+
+    reflect's `_operator_text` decides what the operator said, as it does for
+    the miner: a host attribution other than a person, `isMeta`, the injected
+    envelopes, a handoff prompt and a paste past the typing ceiling are not.
+    On top of it, a tool result, a sidechain message, a compaction summary, a
+    line the host wrote, the scheduled-task wrapper and a headless `claude -p`
+    prompt are not either. A slash command typed in the box is: its envelope is
+    nothing to mine, but somebody typed it."""
+    import reflect  # the sidecar's own reading of who said what
+
+    if msg.get("type") != "user" or msg.get("isSidechain") or msg.get("isCompactSummary"):
+        return False
+    if msg.get("entrypoint") == "sdk-cli" and msg.get("promptSource") == "sdk":
+        return False
+    text = _SCHEDULED_TASK.sub(" ", reflect._operator_text(msg))
+    if any(l.strip() and not _HOST_LINE.match(l.strip()) for l in text.splitlines()):
+        return True
+    origin = msg.get("origin")
+    human = not (isinstance(origin, dict) and origin.get("kind") and origin.get("kind") != "human")
+    raw = reflect._extract_text(msg)
+    return (human and not msg.get("isMeta") and bool(_COMMAND.search(raw))
+            and not _SCHEDULED_TASK.search(raw))
+
+
+def has_operator_turn(messages: list) -> bool:
+    """Whether anyone was at the session. One with nobody at it writes no
+    trace; the job's own run records say what it did."""
+    return any(_is_operator_turn(m) for m in messages)
 
 
 def _first_request(messages: list) -> str:
@@ -432,7 +475,8 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
                  captured=[t for t in captured if t in touched], recalled=[t for t in recalled if t in touched],
                  asked=asked[:ASKED_CHARS], outcome=_closing_recap(messages),
                  candidates=list(candidates or [])[:MAX_CANDIDATES],
-                 project=project, task=task, surface=surface)
+                 project=project, task=task, surface=surface,
+                 attended=has_operator_turn(messages))
 
 
 # ── one trace per session ────────────────────────────────────────────────────
@@ -593,7 +637,13 @@ def write_trace(vault_path, trace: Trace) -> str | None:
 
     Candidates count as something to record. The miner files no note below
     HIGH any more, so a session whose only durable output was things said in
-    passing has that material here or nowhere."""
+    passing has that material here or nowhere.
+
+    A session with no operator turn writes nothing (the operator's ruling of
+    2026-10-07): a scheduled poll every three hours wrote nine of the twenty
+    cards in the 2026-10-07 write-quality audit, each one a trace of nobody."""
+    if not trace.attended:
+        return None
     if not trace.touched and not trace.candidates:
         return None
     root = Path(vault_path)
@@ -653,7 +703,7 @@ def main(argv: list | None = None) -> int:
     except Exception as e:  # a hook never blocks session end on a trace
         print(f"episodic_trace: skipped ({e})", file=sys.stderr)
         return 0
-    print(rel or "nothing touched")
+    print(rel or ("nothing touched" if trace.attended else "no operator turn"))
     return 0
 
 

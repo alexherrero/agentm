@@ -374,5 +374,124 @@ class OneTracePerSessionTests(unittest.TestCase):
         et.write_trace(self.vault, self._trace("ship it", recalled=["memory/semantic/a.md"], sid="ffff1111-2222"))
         self.assertEqual(len(self._files()), 2)
 
+
+# The shapes below are the live ones (task 190 step 2, the operator's ruling of
+# 2026-10-07: a session with no operator turn writes no trace). A Desktop
+# scheduled task opens with the wrapper and its preamble, stamped exactly as an
+# operator's turn is (`entrypoint: claude-desktop`, `promptSource: sdk`,
+# `origin.kind: human`), so only its content says nobody was there. Nine of the
+# audit's twenty new cards were traces of one such poll, every three hours.
+_DESKTOP = {"entrypoint": "claude-desktop", "promptSource": "sdk", "origin": {"kind": "human"},
+            "userType": "external", "isSidechain": False}
+_HEADLESS = {"entrypoint": "sdk-cli", "promptSource": "sdk", "userType": "external", "isSidechain": False}
+_SCHEDULED = (
+    '<scheduled-task name="playon-recording-progress" '
+    'file="~/.claude/scheduled-tasks/playon-recording-progress/SKILL.md">\n'
+    "This is an automated run of a scheduled task. The user is not present to answer questions. "
+    "For implementation details, execute autonomously without asking clarifying questions — make "
+    "reasonable choices and note them in your output.\n\n"
+    "You are reporting progress on a long-running PlayOn recording job for the user's "
+    "movies-tv-games project. READ ONLY: do not change anything.\n</scheduled-task>")
+
+
+class TheUnattendedSessionTests(unittest.TestCase):
+    """No trace for a session nobody was at; one the operator joined keeps it."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.vault = self.root / "vault"
+        (self.vault / "memory" / "episodic").mkdir(parents=True)
+        self.transcript = self.root / "session.jsonl"
+        self.history = self.root / "recall-history.jsonl"
+        self.history.write_text("", encoding="utf-8")
+
+    def _write(self, *turns):
+        """A session that recalls two notes after its opening turn, as the poll
+        does, followed by `turns` — each `(stamp, content, **fields)`."""
+        opener, rest = turns[0], turns[1:]
+        rows = [_line("user", [{"type": "text", "text": opener[1]}], "2026-10-06T10:27:00Z", **opener[0])]
+        rows.append(_line("assistant", [{"type": "tool_use", "id": "t1", "name": "mcp__agentmemory__memory_search",
+                                         "input": {"query": "playon"}}], "2026-10-06T10:27:05Z"))
+        rows.append(_line("user", [{"type": "tool_result", "tool_use_id": "t1", "content": json.dumps(
+            {"results": [{"path": "projects/movies-tv-games/charter.md"},
+                         {"path": "projects/movies-tv-games/playon-automation.md"}]})}],
+            "2026-10-06T10:27:06Z", **opener[0]))
+        rows.append(_line("assistant", [{"type": "text", "text": "**The Netflix films are all done.**"}],
+                          "2026-10-06T10:30:00Z"))
+        for i, (fields, text) in enumerate(rest):
+            rows.append(_line("user", [{"type": "text", "text": text}], f"2026-10-06T11:0{i}:00Z", **fields))
+            rows.append(_line("assistant", [{"type": "text", "text": "Done."}], f"2026-10-06T11:0{i}:30Z"))
+        self.transcript.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        trace = et.from_transcript(self.transcript, session_id="44713056-c447", history_path=self.history)
+        return trace, et.write_trace(self.vault, trace)
+
+    def assertNoTrace(self, written):
+        self.assertIsNone(written)
+        self.assertEqual(list((self.vault / "memory" / "episodic").iterdir()), [])
+
+    def test_a_scheduled_run_writes_no_trace(self):
+        trace, written = self._write((_DESKTOP, _SCHEDULED))
+        self.assertTrue(trace.touched, "the run did touch notes; that is not what decides")
+        self.assertNoTrace(written)
+
+    def test_a_scheduled_run_the_operator_replied_to_keeps_its_trace(self):
+        _, written = self._write((_DESKTOP, _SCHEDULED), (_DESKTOP, "Thanks. Check the Hulu queue too."))
+        self.assertIsNotNone(written)
+
+    def test_an_interrupt_the_host_wrote_is_not_a_reply(self):
+        # The live shape of two scheduled agentm runs: the only later user turn
+        # is the host's bracketed notice.
+        host = {"entrypoint": "claude-desktop", "userType": "external", "isSidechain": False}
+        _, written = self._write((_DESKTOP, _SCHEDULED), (host, "[Request interrupted by user for tool use]"))
+        self.assertNoTrace(written)
+
+    def test_a_headless_prompt_writes_no_trace(self):
+        _, written = self._write((_HEADLESS, "Judge this note and return JSON."))
+        self.assertNoTrace(written)
+
+    def test_a_headless_session_resumed_by_the_operator_keeps_its_trace(self):
+        typed = {"entrypoint": "cli", "userType": "external", "isSidechain": False}
+        _, written = self._write((_HEADLESS, "Judge this note and return JSON."), (typed, "Why that verdict?"))
+        self.assertIsNotNone(written)
+
+    def test_tool_results_meta_sidechain_and_notifications_are_not_turns(self):
+        meta = dict(_DESKTOP, isMeta=True)
+        side = dict(_DESKTOP, isSidechain=True)
+        note = dict(_DESKTOP, origin={"kind": "task-notification"})
+        _, written = self._write((_DESKTOP, _SCHEDULED), (meta, "You are running the work phase."),
+                                 (side, "Explore the scripts directory."),
+                                 (note, "<task-notification>CI checks: pass</task-notification>"))
+        self.assertNoTrace(written)
+
+    def test_a_typed_slash_command_is_a_turn(self):
+        # Two live sessions of 293 opened with a typed `/work --name …` and no
+        # other typed word; the operator was there.
+        command = ("<command-message>development-lifecycle:work</command-message>\n"
+                   "<command-name>/development-lifecycle:work</command-name>\n"
+                   "<command-args>--name agentm-vault-10-projects-migration</command-args>")
+        _, written = self._write((_DESKTOP, command))
+        self.assertIsNotNone(written)
+
+    def test_an_ordinary_desktop_session_is_unchanged(self):
+        # Stamped exactly as the scheduled run is; only the words differ.
+        trace, written = self._write((_DESKTOP, "How far has the PlayOn job got?"))
+        self.assertEqual(written, "memory/episodic/2026-10-06-how-far-has-the-playon-job-got-44713056.md")
+        self.assertEqual(trace.title, "How far has the PlayOn job got?")
+
+    def test_the_cli_reports_an_unattended_session_and_exits_zero(self):
+        import contextlib
+        import io
+        self._write((_DESKTOP, _SCHEDULED))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = et.main([str(self.transcript), "--session", "44713056-c447", "--vault-path", str(self.vault),
+                          "--history", str(self.history)])
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.getvalue().strip(), "no operator turn")
+        self.assertEqual(list((self.vault / "memory" / "episodic").iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()
