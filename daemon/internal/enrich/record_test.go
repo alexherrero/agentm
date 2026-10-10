@@ -89,7 +89,7 @@ func recordStamp() Stamp {
 	return Stamp{At: time.Date(2026, 9, 14, 3, 0, 0, 0, time.UTC), Version: PassVersion, RulesHash: "abc123"}
 }
 
-func TestADeepPassAddsASectionAndKeepsEveryFieldTheRecordCarried(t *testing.T) {
+func TestADeepPassOnARecordKeepsEveryFieldItCarriedAndAddsNoProse(t *testing.T) {
 	next, err := ComposeRecord(decisionRecord, deepResponse(), recordStamp(), DepthDeep,
 		[]Neighbour{{ID: "wall-note", Rel: "projects/agentm/decisions/wall-note.md"}})
 	if err != nil {
@@ -98,7 +98,7 @@ func TestADeepPassAddsASectionAndKeepsEveryFieldTheRecordCarried(t *testing.T) {
 	for _, line := range []string{"type: reference", "status: active", "created: 2026-07-01",
 		"group: projects", "slug: keep-the-wall", "importance: 8",
 		"tags: [agentm, retrieval, walls]", "aliases: [the wall]", "summary: The wall stays.",
-		`related: ["[[wall-note]]"]`, "importance_proposed: 6", "updated: 2026-09-14"} {
+		`related: ["[[wall-note]]"]`, "importance_proposed: 6", "updated: 2026-07-02"} {
 		if !strings.Contains(next, "\n"+line+"\n") {
 			t.Errorf("missing %q in:\n%s", line, next)
 		}
@@ -106,7 +106,7 @@ func TestADeepPassAddsASectionAndKeepsEveryFieldTheRecordCarried(t *testing.T) {
 	// Keys, in the frontmatter only: the dated section's own prose may say "lifecycle".
 	front, _ := splitNote(next)
 	for _, absent := range []string{"\ntitle:", "\ntype: preference", "\nfiling_confidence:",
-		"\nconfidence:", "\nlifecycle:", "\nupdated: 2026-07-02"} {
+		"\nconfidence:", "\nlifecycle:", "\nupdated: 2026-09-14"} {
 		if strings.Contains(front, absent) {
 			t.Errorf("the record's frontmatter gained %q:\n%s", strings.TrimSpace(absent), front)
 		}
@@ -114,8 +114,15 @@ func TestADeepPassAddsASectionAndKeepsEveryFieldTheRecordCarried(t *testing.T) {
 	if !strings.Contains(next, "\n# Keep the wall\n\nArchived notes stay walled.\n") {
 		t.Errorf("the record's text did not survive:\n%s", next)
 	}
-	if !strings.Contains(next, DreamingHeading+" (2026-09-14)\n\nIt follows from the lifecycle ruling.") {
-		t.Errorf("no dated section:\n%s", next)
+	// A project's record is the operator's document: the deep pass writes its
+	// retrieval fields and stamps and appends no prose to it (task 190). The
+	// write-quality audit found "Added by dreaming" restating seven designs'
+	// own links. `updated` stays the author's date, the age clock's input.
+	if strings.Contains(next, DreamingHeading) || strings.Contains(next, "It follows from the lifecycle ruling.") {
+		t.Errorf("the deep pass appended prose to a project record:\n%s", next)
+	}
+	if _, body := splitNote(next); body != "\n# Keep the wall\n\nArchived notes stay walled.\n" {
+		t.Errorf("the deep pass changed the record's body: %q", body)
 	}
 	if PassDepth(next) != DepthLight {
 		t.Error("the stamps did not land: the record is still owed the deep pass")
@@ -196,5 +203,50 @@ func TestARecordsPeopleGoWhenItsWordsNoLongerNameThem(t *testing.T) {
 	}
 	if !strings.Contains(next, "importance: 8\n") || !strings.Contains(next, "tags: [") {
 		t.Errorf("dropping people took more with it:\n%s", next)
+	}
+}
+
+// A section an earlier pass added stays where it is: the new rule stops the
+// next one, and nothing here deletes what is already on the page.
+func TestADeepPassLeavesAnEarlierSectionOnARecordAsItWas(t *testing.T) {
+	earlier := decisionRecord + "\n" + DreamingHeading + " (2026-10-05)\n\nAn earlier restatement.\n"
+	next, err := ComposeRecord(earlier, deepResponse(), recordStamp(), DepthDeep, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(next, DreamingHeading+" (2026-10-05)\n\nAn earlier restatement.") ||
+		strings.Contains(next, "It follows from the lifecycle ruling.") {
+		t.Errorf("the earlier section did not stay as it was:\n%s", next)
+	}
+}
+
+// Superseded drafts and spent paste-ready prompt packs are not enriched, in
+// the projects space as anywhere (task 190): the audit found them given
+// aliases and a fresh date, so a search for a roadmap id surfaced a dead draft.
+func TestDeadDraftsAndSpentPromptPacksAreRefused(t *testing.T) {
+	g := DefaultEligibility(func(string) bool { return true })
+	g.ProjectRecord = IsProjectRecord
+	check := func(rel, body string) error {
+		return g.Check(context.Background(), Request{Rel: rel, Raw: body}, body)
+	}
+	live := "---\ntitle: A design\nstatus: active\n---\n\nThe design.\n"
+	for name, tc := range map[string]struct {
+		rel, body string
+		refused   bool
+	}{
+		"a live design":               {"projects/agentm/designs/loose-ends/SWEEP-INVENTORY.md", live, false},
+		"a superseded design":         {"projects/agentm/designs/post-ag-frontload/BUDGET-GOVERNOR-DESIGN-DRAFT.md", "---\ntitle: A draft\nstatus: superseded\n---\n\nOld.\n", true},
+		"a draft with superseded_by":  {"projects/agentm/designs/friday/F1-REAUDIT.md", "---\ntitle: A draft\nstatus: active\nsuperseded_by: \"[[F2]]\"\n---\n\nOld.\n", true},
+		"a lifecycle-superseded card": {"agent/memory/semantic/old.md", "---\ntitle: Old\nlifecycle: superseded\n---\n\nOld.\n", true},
+		"a prompt pack":               {"projects/agentm/designs/loose-ends/PROMPTS-LOOSE-ENDS-BUILD.md", live, true},
+		"a completed prompt pack":     {"projects/agentm/completed/mythos-readiness-handoff/PROMPTS-NEXT.md", live, true},
+	} {
+		err := check(tc.rel, tc.body)
+		if tc.refused && !errors.Is(err, ErrNotEligible) {
+			t.Errorf("%s was eligible: %v", name, err)
+		}
+		if !tc.refused && err != nil {
+			t.Errorf("%s was refused: %v", name, err)
+		}
 	}
 }

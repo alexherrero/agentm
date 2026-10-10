@@ -56,6 +56,11 @@ const StampFormat = "2006-01-02T15:04:05Z"
 // belongs in one; this survives losing the cache, and it is what a rebuild reads
 // back.
 type Stamp struct {
+	// Updated is the note's own `updated`, which the render keeps: it is the
+	// author's date and the age clock's input, and enrichment's date is
+	// `enriched_at` (task 190). Empty for a note the pass writes new, which
+	// takes the stamp's moment.
+	Updated string
 	// Version defaults to PassVersion when empty, because every real caller
 	// wants the current pass and a forgotten field should not produce a note
 	// that claims nothing wrote it.
@@ -183,7 +188,11 @@ func RenderFrontmatter(r Response, s Stamp, v FilingVerdict) string {
 	// `updated` takes the stamp's moment when there is one, so the date the note
 	// claims and the timestamp the ledger holds describe the same event rather
 	// than two clock reads a few microseconds apart.
-	writeScalar(&b, "updated", when.UTC().Format("2006-01-02"))
+	updated := when.UTC().Format("2006-01-02")
+	if s.Updated != "" {
+		updated = s.Updated
+	}
+	writeScalar(&b, "updated", updated)
 	version := s.Version
 	if version == "" {
 		version = PassVersion
