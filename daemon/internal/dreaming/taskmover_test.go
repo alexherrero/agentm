@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -538,5 +539,77 @@ func TestThePackagedContractWaitsFourteenDays(t *testing.T) {
 	}
 	if got := TaskCompletedAfterDays(nil); got != DefaultTaskCompletedAfterDays {
 		t.Errorf("no contract reads %v days", got)
+	}
+}
+
+// One writer for an entity page (task 190 step 5). The mover repaired an
+// entity page's links into a moved folder, and the builder rebuilt the same
+// page the next night: the write-quality audit of 2026-10-07 found pages
+// written twice for it. The builder renders the pages from the notes, so the
+// mover leaves them to it.
+func TestTheMoverLeavesEntityPagesToTheBuilder(t *testing.T) {
+	root, space := projectVault(t)
+	vault := filepath.Dir(root)
+	closedTask(t, space, "agentm", "001-done", "done", "2026-08-01")
+	writeAt(t, vault, "agent/memory/entities/issues/alexherrero-agentm-900.md",
+		"---\ntitle: alexherrero/agentm#900\nkind: entity-profile\n---\n\n- [[projects/agentm/tasks/001-done/plan|001-done plan]]\n")
+	writeAt(t, vault, "agent/memory/semantic/a-card.md",
+		"---\ntitle: a\n---\n\nFrom [[projects/agentm/tasks/001-done/plan|the plan]].\n")
+	plan, _ := PlanTaskMoves(root, taskRules(t), taskNow, 0)
+	for _, in := range plan.Intents {
+		if strings.Contains(in.Rel, "memory/entities/") {
+			t.Errorf("the mover planned an edit of the entity page %s:\n%s", in.Rel, in.After)
+		}
+	}
+	if len(plan.Edited) != 1 || !strings.HasSuffix(plan.Edited[0].Path, "memory/semantic/a-card.md") {
+		t.Errorf("edited %+v, want the card alone", plan.Edited)
+	}
+}
+
+// The night builds the entity pages after the mover, so a page lists a task
+// moved tonight where it now sits, the same night — even while the index still
+// names its notes at `tasks/`.
+func TestTheNightBuildsEntityPagesAfterTheMover(t *testing.T) {
+	root, space := projectVault(t)
+	vault := filepath.Dir(root)
+	writeAt(t, space, "agentm/project.yaml", "slug: agentm\nrepositories:\n  - alexherrero/agentm\n")
+	dir := closedTask(t, space, "agentm", "001-done", "done", "2026-08-01")
+	writeAt(t, dir, "plan.md", "# Plan\n\nFixed in #900.\n")
+	writeAt(t, space, "agentm/tasks/002-open/plan.md", "# Plan\n\nBuilds on #900.\n")
+	writeAt(t, space, "agentm/research/why.md", "# Why\n\nWhy #900 mattered.\n")
+	cfg := moverConfig(t, root)
+	cfg.TaskMoverEnabled = true
+	cfg.IndexPath = filepath.Join(t.TempDir(), "index.db")
+	x, err := index.Open(cfg.IndexPath, vault, "agent", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := x.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	x.Close()
+
+	rep, err := Run(cfg, Options{Now: taskNow, Apply: true, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Tasks.Folders) != 1 {
+		t.Fatalf("the mover planned %+v", rep.Tasks.Folders)
+	}
+	if _, err := os.Stat(filepath.Join(space, "agentm", "completed", "tasks", "001-done", "plan.md")); err != nil {
+		t.Fatalf("the task did not move: %v", err)
+	}
+	page, err := os.ReadFile(filepath.Join(root, "memory", "entities", "issues", "alexherrero-agentm-900.md"))
+	if err != nil {
+		t.Fatalf("#900 has three origins and no page: %v (entities %+v)", err, rep.Entities)
+	}
+	if !strings.Contains(string(page), "projects/agentm/completed/tasks/001-done/plan") ||
+		strings.Contains(string(page), "projects/agentm/tasks/001-done/") {
+		t.Errorf("the page built tonight does not list the moved task where it sits:\n%s", page)
+	}
+	for _, e := range rep.Tasks.Edited {
+		if strings.Contains(e.Path, "memory/entities/") {
+			t.Errorf("the mover edited the entity page %s as well; the builder is its one writer", e.Path)
+		}
 	}
 }

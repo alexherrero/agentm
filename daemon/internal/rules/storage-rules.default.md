@@ -537,12 +537,14 @@ thresholds:
   # moves to the project's `completed/tasks/`. The night moves at most
   # `demotion_cap` folders, counted in folders, so a task is never split.
   task_completed_after_days: 14
-  # The entity builder's bars (2026-09-29; sources since 2026-10-03). A repo, a
-  # repo-qualified issue or a release gets a page once this many distinct
-  # sources mention it — a note, or a task's folder, whose notes count once
-  # together; a person, once named in this many distinct pieces of shared work.
-  # A page below its bar is removed through the journal.
+  # The entity builder's bars (2026-09-29; sources since 2026-10-03). A repo
+  # gets a page once this many distinct sources mention it — a note, or a
+  # task's folder, whose notes count once together; a repo-qualified issue or
+  # a release once `entity_min_sources_numbered` do (three, the operator's
+  # ruling of 2026-10-07); a person, once named in this many distinct pieces of
+  # shared work. A page below its bar is removed through the journal.
   entity_min_mentions: 2
+  entity_min_sources_numbered: 3
   person_min_shared_work: 2
   # A note at or below this ranks quietly on an ordinary question. The rubric
   # above calls 1 residue and 2-3 the record of a moment that decides nothing,
@@ -609,11 +611,12 @@ the morning note, because those notes are yours. The move runs only once
 `daemon.task_mover_enabled` is on; until then the night lists what it would
 move.
 
-`entity_min_mentions` and `person_min_shared_work` are the entity builder's
-bars. A repo, a repo-qualified issue or a release gets a page under
-`memory/entities/` once that many distinct sources mention it: a note is one
-source, and a task's folder (open or completed) is one source however many of
-its notes name the entity. Where the repository's clone is on this machine, an
+`entity_min_mentions`, `entity_min_sources_numbered` and
+`person_min_shared_work` are the entity builder's bars. A repo gets a page under
+`memory/entities/` once `entity_min_mentions` distinct sources mention it, and a
+repo-qualified issue or a release once `entity_min_sources_numbered` do: a note
+is one source, and a task's folder (open or completed) is one source however
+many of its notes name the entity. Where the repository's clone is on this machine, an
 issue page also needs a number the clone's commit subjects reach, and a release
 page one of its tags. A person gets one
 once named in that many distinct pieces of shared work: a task's plan,
