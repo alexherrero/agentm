@@ -1226,8 +1226,10 @@ it is reported as a near miss (`the lesson rests on …`) and not written. A
 source that has taught a lesson does not teach another. A card carries
 `consolidated_into`, and a tracker or a trace line, which cannot, is kept in
 `<engine state dir>/crystallize-consumed.json`, together with every lesson's
-own `consolidated_from`. A cluster whose sources have all taught a lesson is
-not proposed, so a lesson you delete is not minted again from the same closed
+own `consolidated_from`, keyed so a tracker keeps its key when its task moves
+to `completed/tasks/` and a trace line is consumed on its own, not its whole
+trace. A cluster whose sources have all taught a lesson is not proposed, an
+arc's synthesis excepted, so a lesson you delete is not minted again from the same closed
 tasks. A draft resting mostly on one lesson's sources is not written either:
 its new cards name that lesson in `related`, and the run record lists it under
 `linked`. A draft the model names like an existing lesson is refused rather than

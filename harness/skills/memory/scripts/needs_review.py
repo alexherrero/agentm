@@ -357,11 +357,12 @@ def read_forward() -> dict:
         plan = report.get("plan") or {}
     except Exception:
         return {}
-    # The run's own moment, from its id (`YYYYMMDD-HHMMSS-<hex>`, UTC): each row's
-    # days are counted from it, so the day the note was last read is fixed
-    # however many nights later the page is rendered.
+    # The run's day, from its id (`YYYYMMDD-HHMMSS-<hex>`, UTC). The binary counts
+    # each row's days from that day's UTC midnight (the lifecycle job's `dayNow`),
+    # so the day the note was last read is fixed however many nights later the
+    # page is rendered, and whatever hour the run started.
     try:
-        at = datetime.strptime(str(report.get("run_id", ""))[:15], "%Y%m%d-%H%M%S").replace(tzinfo=timezone.utc)
+        at = datetime.strptime(str(report.get("run_id", ""))[:8], "%Y%m%d").replace(tzinfo=timezone.utc)
     except ValueError:
         at = None
     out = {}

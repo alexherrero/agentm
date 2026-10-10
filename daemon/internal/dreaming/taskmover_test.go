@@ -613,3 +613,45 @@ func TestTheNightBuildsEntityPagesAfterTheMover(t *testing.T) {
 		}
 	}
 }
+
+// Found by the adversarial review of task 190 steps 3-7.
+//
+// linkEdits now skips every note under `<memRel>/memory/entities/` on the
+// grounds that "the builder renders [entity pages] from the notes after the
+// mover has run". But the builder only renders its own `kind: entity-profile`
+// pages: a hand-written note in the same folders is `handWritten` and goes to
+// plan.Held, never re-rendered. Its links into a moved task folder are now
+// repaired by nobody, so they break the night the task moves.
+func TestTheMoverStillRepairsAHandWrittenNoteUnderEntities(t *testing.T) {
+	root, space := projectVault(t)
+	vault := filepath.Dir(root)
+	closedTask(t, space, "agentm", "001-done", "done", "2026-08-01")
+	hand := "---\ntitle: Alex\ntype: person\n---\n\nLed [[projects/agentm/tasks/001-done/plan|the plan]].\n"
+	writeAt(t, vault, "agent/memory/entities/people/alex.md", hand)
+
+	// The builder would hold this note, not render it.
+	if !handWritten([]byte(hand)) {
+		t.Fatalf("fixture: the note is not hand-written to the builder")
+	}
+
+	plan, err := PlanTaskMoves(root, taskRules(t), taskNow, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Folders) != 1 {
+		t.Fatalf("fixture: the mover planned %+v", plan.Folders)
+	}
+	repaired := false
+	for _, in := range plan.Intents {
+		if strings.HasSuffix(in.Rel, "memory/entities/people/alex.md") &&
+			strings.Contains(string(in.After), "projects/agentm/completed/tasks/001-done/plan") {
+			repaired = true
+		}
+	}
+	if !repaired {
+		b, _ := os.ReadFile(filepath.Join(vault, "agent", "memory", "entities", "people", "alex.md"))
+		t.Errorf("a hand-written note under memory/entities/ links into a task folder the mover is "+
+			"moving tonight, the builder holds it (never re-renders it), and the mover no longer "+
+			"repairs it: the link breaks.\nnote:\n%s\nedited: %+v", b, plan.Edited)
+	}
+}

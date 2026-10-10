@@ -12,6 +12,8 @@ package crystallize
 // before the ledger existed counts too.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -36,12 +38,35 @@ type consumedFile struct {
 
 // sourceKey is how a source is named in `consolidated_from`, without the
 // alias: `projects/x/tasks/y/tracker` for a tracker, a note's stem otherwise.
+// A project's `completed/` segment is dropped, so a tracker keeps its key
+// when the task mover takes its folder to `completed/tasks/`, and a project's
+// when the whole project moves to `projects/completed/`.
 func sourceKey(link string) string {
 	link = strings.TrimSpace(link)
 	if i := strings.Index(link, "|"); i >= 0 {
 		link = link[:i]
 	}
-	return strings.TrimSuffix(link, ".md")
+	link = strings.TrimSuffix(link, ".md")
+	parts := strings.SplitN(link, "/", 4)
+	switch {
+	case len(parts) >= 3 && parts[0] == "projects" && parts[1] == "completed":
+		link = "projects/" + strings.Join(parts[2:], "/")
+	case len(parts) == 4 && parts[0] == "projects" && parts[2] == "completed":
+		link = parts[0] + "/" + parts[1] + "/" + parts[3]
+	}
+	return link
+}
+
+// ledgerKey is the key one source is consumed under. A candidate line is its
+// trace and its own words: a trace is one session's record, and its other
+// lines may teach other lessons.
+func ledgerKey(s Source) string {
+	k := sourceKey(s.Link())
+	if s.Kind == KindCandidate {
+		h := sha256.Sum256([]byte(strings.TrimSpace(s.Text)))
+		k += "#" + hex.EncodeToString(h[:6])
+	}
+	return k
 }
 
 // loadConsumed reads the ledger and every lesson's `consolidated_from`.
@@ -72,7 +97,13 @@ func loadConsumed(root, stateDir string) consumed {
 		stem := strings.TrimSuffix(e.Name(), ".md")
 		for _, item := range fmlist.Items(string(raw), "consolidated_from") {
 			for _, m := range stampLink.FindAllStringSubmatch(item, -1) {
-				out.add(sourceKey(m[1]), stem)
+				key := sourceKey(m[1])
+				// A trace names no line, and its lines are consumed one by one:
+				// only the ledger, which keeps them, can say which.
+				if !strings.Contains(key, "/") && fileExists(filepath.Join(root, "memory", "episodic", key+".md")) {
+					continue
+				}
+				out.add(key, stem)
 			}
 		}
 	}
@@ -92,11 +123,16 @@ func (c consumed) all(cl Cluster) bool {
 		return false
 	}
 	for _, s := range cl.Sources {
-		if len(c[sourceKey(s.Link())]) == 0 {
+		if len(c[ledgerKey(s)]) == 0 {
 			return false
 		}
 	}
 	return true
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // mostly is the lesson that more than half of a draft's sources already
@@ -104,7 +140,7 @@ func (c consumed) all(cl Cluster) bool {
 func (c consumed) mostly(cl Cluster) string {
 	counts := map[string]int{}
 	for _, s := range cl.Sources {
-		for _, l := range c[sourceKey(s.Link())] {
+		for _, l := range c[ledgerKey(s)] {
 			counts[l]++
 		}
 	}
@@ -160,7 +196,7 @@ type Linked struct {
 func link(cl Cluster, lesson string, c consumed) []string {
 	var out []string
 	for _, s := range cl.Sources {
-		if s.Kind != KindCard || s.Path == "" || containsString(c[sourceKey(s.Link())], lesson) {
+		if s.Kind != KindCard || s.Path == "" || containsString(c[ledgerKey(s)], lesson) {
 			continue
 		}
 		raw, err := os.ReadFile(s.Path)

@@ -816,8 +816,10 @@ func Run(opt Options, call Caller) (Report, error) {
 		}
 		// Every source has taught a lesson already: the closed tasks a lesson
 		// rested on cluster again each week, and a lesson the operator deleted
-		// must not come back from them (task 190).
-		if used.all(c) {
+		// must not come back from them (task 190). An arc's synthesis is owed
+		// to its name from the arc's Outcomes whatever else they taught, so the
+		// ledger does not stop it; its name does.
+		if c.Arc == "" && used.all(c) {
 			rep.Skipped = append(rep.Skipped, Skipped{Subject: c.Subject,
 				Sources: len(c.Sources), Reason: "every source has taught a lesson already"})
 			continue
@@ -863,11 +865,11 @@ func Run(opt Options, call Caller) (Report, error) {
 		}
 		// A draft resting mostly on what a lesson already taught restates it:
 		// the lesson is named in the new cards' `related` and none is minted.
-		if prior := used.mostly(covered); prior != "" {
+		if prior := used.mostly(covered); c.Arc == "" && prior != "" {
 			lk := Linked{Subject: c.Subject, Lesson: prior, Cards: link(covered, prior, used)}
 			for _, s := range covered.Sources {
 				lk.Sources = append(lk.Sources, s.Link())
-				used.add(sourceKey(s.Link()), prior)
+				used.add(ledgerKey(s), prior)
 			}
 			rep.Linked = append(rep.Linked, lk)
 			existing[c.Subject] = true
@@ -881,7 +883,7 @@ func Run(opt Options, call Caller) (Report, error) {
 		existing[c.Subject] = true
 		stem := strings.TrimSuffix(path.Base(w.Rel), ".md")
 		for _, s := range covered.Sources {
-			used.add(sourceKey(s.Link()), stem)
+			used.add(ledgerKey(s), stem)
 		}
 		rep.Lessons = append(rep.Lessons, w)
 	}

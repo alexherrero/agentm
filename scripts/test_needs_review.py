@@ -31,6 +31,7 @@ import capture as cap  # noqa: E402
 import corpus_scorecard  # noqa: E402
 import dream  # noqa: E402
 import filing_engine as fe  # noqa: E402
+import engine_state  # noqa: E402
 import needs_review  # noqa: E402
 import save  # noqa: E402
 
@@ -425,6 +426,45 @@ class TheCalendarAloneChangesNothing(_Vault):
         text, _ = self.night("2026-10-06", self.FORWARD_2, None)
         self.assertIn("updated: 2026-10-06", text)
         self.assertIn("[[long-bodies]]", text)
+
+
+# The note was last read 2026-08-01 at 20:00 UTC.
+SINCE_ANCHOR = datetime(2026, 8, 1, 20, 0, tzinfo=timezone.utc)
+
+
+def _since_days(run_at: datetime) -> float:
+    """What the Go lifecycle job writes: elapsed days from the run day's UTC midnight."""
+    day_now = run_at.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (day_now - SINCE_ANCHOR).total_seconds() / 86400
+
+
+class TheSinceDateFollowsTheBinarysDay(unittest.TestCase):
+    """Found by the adversarial review of task 190: the binary counts a row's days
+    from its run day's UTC midnight, so `since` must too, or it reads a day late
+    and moves with the hour the run started."""
+    def setUp(self):
+        self.state = Path(tempfile.mkdtemp())
+        (self.state / "dreaming").mkdir(parents=True)
+
+    def tearDown(self):
+        shutil.rmtree(self.state, ignore_errors=True)
+
+    def _since(self, run_at: datetime) -> str:
+        (self.state / "dreaming" / "last-report.json").write_text(json.dumps({
+            "run_id": run_at.strftime("%Y%m%d-%H%M%S") + "-abcd1234",
+            "plan": {"sinking_within_30_days": [{"rel": "memory/semantic/n.md", "days": _since_days(run_at)}]},
+        }), encoding="utf-8")
+        with mock.patch.object(engine_state, "engine_state_dir", return_value=self.state):
+            return needs_review.read_forward()["sinking_within_30_days"][0]["since"]
+
+    def test_since_is_the_day_the_note_was_last_read(self):
+        self.assertEqual(self._since(datetime(2026, 10, 9, 5, 0, tzinfo=timezone.utc)), "2026-08-01")
+
+    def test_since_does_not_move_with_the_runs_start_time(self):
+        a = self._since(datetime(2026, 10, 9, 5, 0, tzinfo=timezone.utc))
+        b = self._since(datetime(2026, 10, 10, 3, 0, tzinfo=timezone.utc))
+        self.assertEqual(a, b, "the same silent note reads a different since-date on two nights")
+
 
 
 if __name__ == "__main__":

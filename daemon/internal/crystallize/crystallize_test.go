@@ -868,3 +868,114 @@ func TestASecondDraftUnderAnExistingNameDoesNotOverwriteIt(t *testing.T) {
 		t.Errorf("errors %v, want the second draft refused for its name", rep.Errors)
 	}
 }
+
+// Found by the adversarial review of task 190 steps 3-7.
+// 1. The ledger keys a tracker by its full path (Source.Link() for a repeated
+// name), so the key changes when the task mover takes the task directory to
+// `completed/tasks/` two weeks after it closes — and crystallize reads trackers
+// from both homes (taskHomes). A lesson the operator deleted is remembered only
+// in the ledger, under the old `tasks/` key; after the move the cluster no
+// longer reads as consumed and the deleted lesson is minted again: the exact
+// case the ledger exists to stop.
+func TestALedgeredTrackerClusterStaysConsumedAfterTheTaskMoves(t *testing.T) {
+	f := newFixture(t)
+	tasks := []string{"101-one", "102-two", "103-three"}
+	f.outcome(t, "agentm", tasks[0], "2026-08-01", "git worktree")
+	f.outcome(t, "agentm", tasks[1], "2026-08-20", "git worktree")
+	f.outcome(t, "agentm", tasks[2], "2026-09-10", "git worktree")
+	state := t.TempDir()
+	first := f.run(t, Options{StateDir: state})
+	if len(first.Lessons) != 1 {
+		t.Fatalf("lessons %+v, errors %v", first.Lessons, first.Errors)
+	}
+	// The operator deletes the lesson as wrong.
+	if err := os.Remove(filepath.Join(f.vault, filepath.FromSlash(first.Lessons[0].Rel))); err != nil {
+		t.Fatal(err)
+	}
+	// Two weeks after close, the night's task mover moves each directory whole.
+	for _, task := range tasks {
+		from := filepath.Join(f.vault, "projects", "agentm", "tasks", task)
+		to := filepath.Join(f.vault, "projects", "agentm", "completed", "tasks", task)
+		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(from, to); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := len(f.prompts)
+	next := f.run(t, Options{StateDir: state, Now: time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC)})
+	if len(next.Lessons) != 0 || len(f.prompts) != calls {
+		ledger, _ := os.ReadFile(filepath.Join(state, ConsumedName))
+		t.Errorf("the lesson the operator deleted was proposed again once its trackers moved to "+
+			"completed/tasks/: %d call(s), lessons %+v\nledger:\n%s", len(f.prompts)-calls, next.Lessons, ledger)
+	}
+}
+
+// 2. The ledger keys a candidate line by its trace (Link() is the trace's
+// stem), so once one line of a trace teaches a lesson every other line of that
+// trace reads as consumed. sources.go says the opposite on purpose: "a trace
+// is one session's record and several of its lines may teach different
+// lessons". Three sessions that each noted two different things yield one
+// lesson; the second, unrelated cluster is skipped as "every source has
+// taught a lesson already" in the same run.
+func TestTwoLessonsFromDifferentLinesOfTheSameTracesAreBothWritten(t *testing.T) {
+	f := newFixture(t)
+	for i, day := range []string{"2026-08-01", "2026-08-20", "2026-09-10"} {
+		p := filepath.Join(f.root, "memory", "episodic", fmt.Sprintf("%s-session-%d.md", day, i))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "---\ntitle: session " + day + "\nkind: session-trace\ncreated: " + day +
+			"\nsession: sess-" + day + "\n---\n\n## Candidates\n\n" +
+			"- merge-rule — \"the merge stranded the worktree on `alpha-merge`\"\n" +
+			"- lock-rule — \"a stale `bravo-lock` file blocked the build\"\n"
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.answer = func(prompt string) (string, error) {
+		subject := "alpha-merge"
+		if strings.Contains(prompt, "bravo-lock") && !strings.Contains(prompt, "alpha-merge") {
+			subject = "bravo-lock"
+		}
+		return fmt.Sprintf(`{"subject":%q,"title":"Lesson about %s","lesson":"It recurred.",`+
+			`"why":"Three sessions.","sources":[1,2,3]}`, subject, subject), nil
+	}
+	rep := f.run(t, Options{StateDir: t.TempDir()})
+	if rep.Clusters != 2 {
+		t.Fatalf("fixture: %d cluster(s), want alpha-merge and bravo-lock (near misses %+v)", rep.Clusters, rep.NearMisses)
+	}
+	if len(rep.Lessons) != 2 {
+		t.Errorf("two distinct recurrences in three sessions wrote %d lesson(s); skipped %+v, errors %v",
+			len(rep.Lessons), rep.Skipped, rep.Errors)
+	}
+}
+
+// 3. An arc's synthesis is owed to a specific name (`<project>-<arc>`), and
+// its sources are every closed-task Outcome of the project. When those tasks
+// already taught an ordinary recurrence lesson, `used.all` skips the arc
+// cluster outright, so the synthesis the closing session marked is never
+// written.
+func TestAClosedArcIsSynthesisedEvenIfItsTasksTaughtALesson(t *testing.T) {
+	f := newFixture(t)
+	f.outcome(t, "agentm", "101-one", "2026-08-01", "git worktree")
+	f.outcome(t, "agentm", "102-two", "2026-08-20", "git worktree")
+	f.outcome(t, "agentm", "103-three", "2026-09-10", "git worktree")
+	state := t.TempDir()
+	first := f.run(t, Options{StateDir: state})
+	if len(first.Lessons) != 1 {
+		t.Fatalf("lessons %+v, errors %v", first.Lessons, first.Errors)
+	}
+	// The closing session marks the arc on the project's tracker.
+	tracker := filepath.Join(f.vault, "projects", "agentm", "tracker.md")
+	if err := os.WriteFile(tracker, []byte("---\nkind: tracker\ntitle: agentm\nstatus: active\n"+
+		"arc_closed: first-arc\n---\n\n## Objective\n\nthe project\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	next := f.run(t, Options{StateDir: state, Now: time.Date(2026, 9, 25, 9, 0, 0, 0, time.UTC)})
+	if _, err := os.Stat(filepath.Join(f.root, filepath.FromSlash(Dir), "agentm-first-arc.md")); err != nil {
+		t.Errorf("the closed arc's synthesis was not written: lessons %+v, skipped %+v, linked %+v, errors %v",
+			next.Lessons, next.Skipped, next.Linked, next.Errors)
+	}
+}
