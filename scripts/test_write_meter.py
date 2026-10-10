@@ -191,6 +191,7 @@ class CardTests(_Vault):
         self.assertEqual(m["net_notes"], 1)
         self.assertEqual(m["commits"], 2)
 
+    @unittest.skipIf(os.name == "nt", "Windows allows no name git would quote: no quote, backslash or control character")
     def test_a_name_git_quotes_is_still_read(self):
         self.write('agent/memory/episodic/a "quoted" name.md', "# q\n")
         self.commit(INSIDE)
