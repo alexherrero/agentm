@@ -22,6 +22,10 @@ Task 190: the vault gains only the cards that earned their place, and a page is 
 - **Crystallize checks its bar on the lesson's own sources, counted in notes, and a source teaches one lesson (task 190 step 6).** A ledger in the engine's state directory remembers the trackers and trace lines a lesson consumed. A draft restating a lesson links it rather than minting a second. A lesson's file is never written over. Four of the five 10-06 lessons fail the rechecked bar; they are listed for the operator, and none is removed.
 - **Enrichment leaves designs, dead drafts and `updated` alone (task 190 step 7).** A project's records take fields and stamps, never prose. `updated` stays the author's date, the one the age clock reads, and the pass's own date is `enriched_at`. A superseded note and a `PROMPTS-*.md` pack are not enriched.
 
+### Internal
+
+- **The retrieval gate follows three gold questions to their keepers (task 191 step 2).** The memory junk purge deletes rc09's gold card, a duplicate of the MarkTechPost article it is `superseded_by`, and archives the card rc10 and rc12 expect, whose finding lives in the kept aliases card. `_PURGE_REMAPS` in `eval_retrieval_shipped.py` points each question at the note that now answers it, the article in `resources/topics/agent-memory/` (or in `semantic/` until it moves). A row is taken only once the gold card is gone, so the gate scores the same questions before, during and after the purge instead of stopping with exit 4.
+
 ## [10.6.0] - 2026-10-09
 
 Tasks 188 and 189 close: the vault's history keeps being written however git stores it, and a git worktree is kept out of the vault.

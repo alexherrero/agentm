@@ -328,6 +328,34 @@ def _remap_completed_tasks(path: str, vault_root: "Path | None | bool" = False) 
     return moved
 
 
+# The memory junk purge (task 191; the review of 2026-10-09, ruled 2026-10-10).
+# Two gold cards leave memory: rc09's is deleted as a duplicate of the article
+# it is `superseded_by`, and rc10's and rc12's moves to the archive because its
+# finding is inside the kept aliases card. Each row names the note that now
+# answers the question, in the order to look for it: the article moves to
+# `resources/` in the same task, and until it has, it is still in `semantic/`.
+# Taken only once the gold card is gone and an answer is on disk, so the gate
+# reads true before the purge, between its steps and after it.
+_PURGE_REMAPS = (
+    ("agent/memory/semantic/always-on-memory-agent-stack-and-operational-shape.md", (
+        "resources/topics/agent-memory/google-cloud-s-always-on-memory-agent-replaces-rag-and-embeddings-with-continuous-llm-consolidation-on-gemini-3-1-flash-lite-marktechpost-discord.md",
+        "agent/memory/semantic/google-cloud-s-always-on-memory-agent-replaces-rag-and-embeddings-with-continuous-llm-consolidation-on-gemini-3-1-flash-lite-marktechpost-discord.md")),
+    ("agent/memory/semantic/desk-documents-outrank-memory-notes-for-memory-questions.md", (
+        "agent/memory/semantic/aliases-carry-concept-recall-unanticipated-vocabulary-still-misses-entir.md",)),
+)
+
+
+def _remap_purged(path: str, vault_root: "Path | None | bool" = False) -> str:
+    """A gold-set path as the memory junk purge leaves it, when it has run."""
+    root = _vault_root() if vault_root is False else vault_root
+    if root is None:
+        return path
+    answers = dict(_PURGE_REMAPS).get(path)
+    if answers is None or (Path(root) / path).exists():
+        return path
+    return next((a for a in answers if (Path(root) / a).exists()), path)
+
+
 # Expectations whose note left the vault on purpose. These are not drift and
 # they are not repairable by a remap: there is no destination to point at, so
 # the only honest thing the eval can do is drop them from the expected set and
@@ -775,17 +803,17 @@ def resolve_expected(entry: dict) -> tuple:
     """`(live, retired)` for one entry's expectations, through the whole chain.
 
     `_remap_projects` runs after the casing fold, `_remap_desk` after it,
-    `_remap_convergence` next and `_remap_completed_tasks` last, for the reason
-    the score loop's own note gives: a table keyed on the folded path only
-    matches once that fold has happened, and a task a table names may since
-    have closed and moved.
+    `_remap_convergence` next, `_remap_completed_tasks` after that and
+    `_remap_purged` last, for the reason the score loop's own note gives: a
+    table keyed on the folded path only matches once that fold has happened,
+    and a task a table names may since have closed and moved.
     """
     live, retired = [], []
     for p in (entry.get(EXPECTED_FIELD) or []):
         if not p:
             continue
-        r = _remap_completed_tasks(_remap_convergence(_remap_desk(_remap_projects(
-            _remap_casing(_migrated(_remap_trims(_remap_merged(p))))))))
+        r = _remap_purged(_remap_completed_tasks(_remap_convergence(_remap_desk(_remap_projects(
+            _remap_casing(_migrated(_remap_trims(_remap_merged(p)))))))))
         (retired if r in _RETIRED else live).append(r)
     return live, retired
 
