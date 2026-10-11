@@ -25,6 +25,7 @@ Task 190: the vault gains only the cards that earned their place, and a page is 
 ### Internal
 
 - **The retrieval gate follows three gold questions to their keepers (task 191 step 2).** The memory junk purge deletes rc09's gold card, a duplicate of the MarkTechPost article it is `superseded_by`, and archives the card rc10 and rc12 expect, whose finding lives in the kept aliases card. `_PURGE_REMAPS` in `eval_retrieval_shipped.py` points each question at the note that now answers it, the article in `resources/topics/agent-memory/` (or in `semantic/` until it moves). A row is taken only once the gold card is gone, so the gate scores the same questions before, during and after the purge instead of stopping with exit 4.
+- **The hand-run mover takes a list the operator ruled (task 191 step 3).** `agentkv_layout.py listed --moves-file <tsv>` moves exactly the rows given, one `<src><TAB><dst>` each, refusing the whole list on a missing source or a path outside the vault. A memory it moves into `archive/memory/<class>/` is stamped `lifecycle: archived` and journaled as the operator's transition, so the night reads it as archived. Like the night's task mover, it leaves a builder-written entity page to the builder, and tool state in a dot folder (a session's `.harness/` markers) neither blocks a batch nor rides its commit, which now stages only the batch's own paths.
 
 ## [10.6.0] - 2026-10-09
 

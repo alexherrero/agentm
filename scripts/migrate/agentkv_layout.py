@@ -16,6 +16,11 @@ shipped:
   systems     The six homelab notes in `agent/memory/semantic/` to
               `systems/homelab/` — the overview to `system.md`, the rest to
               `components/`.
+  listed      A list the operator ruled row by row (`--moves-file`, one
+              `<src><TAB><dst>` per line, vault-relative), as the memory junk
+              review's moves were (task 191). A memory moved into the memory
+              archive is stamped `lifecycle: archived` and journaled as the
+              operator's transition, as the lifecycle lane's own archive is.
 
 Each batch runs the same way:
 
@@ -45,6 +50,7 @@ read for links nor rewritten, and a link into it resolves by existence alone.
 
   python3 scripts/migrate/agentkv_layout.py root-files
   python3 scripts/migrate/agentkv_layout.py root-files --apply --plan PLAN --confirm-count N
+  python3 scripts/migrate/agentkv_layout.py listed --moves-file MOVES.tsv
   python3 scripts/migrate/agentkv_layout.py --audit --out FILE
   python3 scripts/migrate/agentkv_layout.py --revert RUN_ID
 """
@@ -252,8 +258,38 @@ def plan_movies_cleanup(vault: Path) -> list:
     return moves
 
 
+# A batch the operator ruled row by row (task 191, the memory junk review). The
+# list is the ruling, so it is held to its letter: every source a file on disk,
+# every path inside the vault and out of its dot folders, each source named once.
+MOVES_FILE: Optional[Path] = None
+
+
+def plan_listed(vault: Path) -> list:
+    if MOVES_FILE is None:
+        raise Refused("the listed batch needs --moves-file, the ruled list of moves")
+    moves, seen = [], set()
+    for n, line in enumerate(Path(MOVES_FILE).read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) != 2:
+            raise Refused(f"{MOVES_FILE}:{n}: not a <src><TAB><dst> line")
+        src, dst = (p.strip().replace("\\", "/") for p in parts)
+        for rel in (src, dst):
+            segs = rel.split("/")
+            if not rel or rel.startswith("/") or any(s in ("", "..") or s.startswith(".") for s in segs):
+                raise Refused(f"{MOVES_FILE}:{n}: {rel!r} is not a path inside the vault")
+        if src in seen:
+            raise Refused(f"{MOVES_FILE}:{n}: {src} is named twice")
+        seen.add(src)
+        if not (vault / src).is_file():
+            raise Refused(f"{MOVES_FILE}:{n}: {src} is not on disk")
+        moves.append({"src": src, "dst": dst})
+    return moves
+
+
 PLANNERS = {"root-files": plan_root_files, "resources": plan_resources, "systems": plan_systems,
-            "movies-cleanup": plan_movies_cleanup}
+            "movies-cleanup": plan_movies_cleanup, "listed": plan_listed}
 
 
 def build_plan(vault: Path, batch: str) -> dict:
@@ -529,6 +565,78 @@ def prune_emptied(vault: Path, sources: list) -> list:
     return sorted(pruned)
 
 
+_ENTITY_PAGE = re.compile(r"(?m)^kind:[ \t]*[\"']?entity-profile[\"']?[ \t]*$")
+
+
+def _dirty(vault: Path) -> list:
+    """What `git status` holds that a batch could read, write or commit.
+
+    An untracked file in a dot folder is tool state no batch touches —
+    `vault_files` never lists it and the commit stages only the batch's own
+    paths — so a session's `.harness/` markers do not hold every batch up."""
+    out = []
+    for line in _git(vault, "status", "--porcelain").stdout.splitlines():
+        if line.startswith("??") and any(s.startswith(".") for s in line[3:].strip('"/').split("/")):
+            continue
+        out.append(line)
+    return out
+
+
+def archive_move(src: str, dst: str) -> Optional[tuple]:
+    """`(memory prefix, rel, archived rel)` when a move takes a memory note into
+    the memory archive — `<root>/memory/<class>/…` to `<root>/archive/memory/<class>/…`,
+    both memory-root-relative in the tuple, as the lifecycle journal keys them.
+    None for any other move."""
+    import lifecycle_transitions as lt  # noqa: E402
+    if src.startswith("memory/"):
+        prefix, rel = "", src
+    elif "/memory/" in src:
+        prefix, tail = src.split("/memory/", 1)
+        rel = "memory/" + tail
+    else:
+        return None
+    archived = lt.archive_destination(rel)
+    if dst != (f"{prefix}/{archived}" if prefix else archived):
+        return None
+    return prefix, rel, archived
+
+
+def stamp_archived(vault: Path, mapping: dict, since: str) -> list:
+    """Stamp each memory a batch moved into the archive `lifecycle: archived`,
+    in place, so the night reads it as archived rather than as a live note
+    sitting in the wrong folder. Returns `[{rel, archived, from}]`."""
+    import lifecycle_transitions as lt  # noqa: E402
+    out = []
+    for src, dst in mapping.items():
+        hit = archive_move(src, dst)
+        if hit is None:
+            continue
+        p = vault / dst
+        text = p.read_text(encoding="utf-8", errors="surrogateescape")
+        frm = lt.lifecycle_of(text)
+        new = lt.set_lifecycle_text(text, "archived", since=since)
+        if new != text:
+            # In place: the note keeps the inode the rename gave it.
+            p.write_text(new, encoding="utf-8", errors="surrogateescape")
+        out.append({"rel": hit[1], "archived": hit[2], "from": frm})
+    return out
+
+
+def journal_archived(state_dir: Path, archived: list, ts: str, run_id: str, *, back: bool = False) -> None:
+    """One lifecycle-journal line per archived memory, the operator's, so the
+    night reads the state as set rather than as a hand edit to undo. `back`
+    journals the revert: the note returns to the class and the state it left."""
+    import lifecycle_transitions as lt  # noqa: E402
+    for a in archived:
+        entry = {"ts": ts, "rel": a["rel"], "actor": "operator", "run_id": run_id}
+        if back:
+            entry.update({"from": "archived", "to": a["from"], "reason": f"{STAGE} revert of {run_id}"})
+        else:
+            entry.update({"from": a["from"], "to": "archived", "moved_to": a["archived"],
+                          "reason": f"{STAGE} batch {run_id}"})
+        lt.journal_append(entry, path=state_dir / lt.JOURNAL_NAME)
+
+
 def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
           check_writers=live_writers, now: Optional[datetime] = None) -> dict:
     now = now or datetime.now(timezone.utc)
@@ -543,9 +651,10 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
     writers = check_writers()
     if writers:
         raise Refused("; ".join(writers))
-    if _git(vault, "status", "--porcelain").stdout.strip():
+    if _dirty(vault):
         raise Refused("the vault's git tree is not clean; let it commit first")
     mapping = {m["src"]: m["dst"] for m in moves}
+    run_id = now.strftime("%Y%m%dT%H%M%SZ") + "-" + recorded["batch"]
     walled = _walled(vault)
     # `personal/` is the operator's: no batch edits a note there. A path link
     # from a personal note into a moved file would need that edit, so such a
@@ -565,6 +674,7 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
         (vault / dst).parent.mkdir(parents=True, exist_ok=True)
         _git(vault, "mv", src, dst)
     pruned = prune_emptied(vault, list(mapping))
+    archived = stamp_archived(vault, mapping, now.strftime("%Y-%m-%d"))
     inverse = {v: k for k, v in mapping.items()}
     after = set(vault_files(vault))
     # A move that renamed a note leaves its old name to no file; a basename
@@ -586,6 +696,11 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
             continue
         p = vault / rel
         text = p.read_text(encoding="utf-8", errors="surrogateescape")
+        if _ENTITY_PAGE.search(text.split("\n---", 1)[0]):
+            # The entity builder renders its pages from the notes where they now
+            # sit, and is a page's one writer (task 190), as the night's task
+            # mover leaves them too. A hand-written note there is repaired.
+            continue
         new, n = rewrite_text(text, inverse.get(rel, rel), rel, mapping,
                               lambda r: r in after or (vault / r).exists(), renamed)
         if n:
@@ -593,13 +708,16 @@ def apply(vault: Path, recorded: dict, confirm_count: int, state_dir: Path, *,
             rewritten.append({"path": rel, "links": n})
             links += n
     counts = rekey_sidecars(state_dir, vault, mapping)
-    _git(vault, "add", "-A")
+    # The batch's own paths and nothing else: the renames are staged by `git mv`,
+    # and a stamp or a rewritten link is staged here.
+    _git(vault, "add", "-A", "--", *sorted(set(mapping.values()) | {r["path"] for r in rewritten}))
     msg = f"vault: agentkv layout — {recorded['batch']} ({len(moves)} moved, {links} links rewritten)"
     _git(vault, "commit", "-q", "-m", msg)
     sha = _git(vault, "rev-parse", "HEAD").stdout.strip()
-    run_id = now.strftime("%Y%m%dT%H%M%SZ") + "-" + recorded["batch"]
+    journal_archived(state_dir, archived, now.strftime("%Y-%m-%dT%H:%M:%S+00:00"), run_id)
     record = {"run_id": run_id, "batch": recorded["batch"], "commit": sha, "moves": moves,
-              "rewritten": rewritten, "links": links, "sidecars": counts, "pruned": pruned}
+              "rewritten": rewritten, "links": links, "sidecars": counts, "pruned": pruned,
+              "archived": archived}
     out = state_dir / STAGE / f"run-{run_id}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
@@ -615,7 +733,7 @@ def revert(vault: Path, run_id: str, state_dir: Path, *, check_writers=live_writ
     writers = check_writers()
     if writers:
         raise Refused("; ".join(writers))
-    if _git(vault, "status", "--porcelain").stdout.strip():
+    if _dirty(vault):
         raise Refused("the vault's git tree is not clean")
     r = _git(vault, "revert", "--no-edit", rec["commit"], check=False)
     if r.returncode != 0:
@@ -623,6 +741,8 @@ def revert(vault: Path, run_id: str, state_dir: Path, *, check_writers=live_writ
         raise Refused(f"git revert of {rec['commit']} did not apply cleanly: {r.stderr.strip()}")
     back = {m["dst"]: m["src"] for m in rec["moves"]}
     rekey_sidecars(state_dir, vault, back)
+    journal_archived(state_dir, rec.get("archived") or [],
+                     datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00"), run_id, back=True)
     return _git(vault, "rev-parse", "HEAD").stdout.strip()
 
 
@@ -640,10 +760,14 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--out", help="where --audit writes its JSON")
     ap.add_argument("--revert", metavar="RUN_ID")
     ap.add_argument("--journals", help="movies-cleanup: the movies tool's journal folder")
+    ap.add_argument("--moves-file", help="listed: the ruled list of moves, one <src><TAB><dst> per line")
     args = ap.parse_args(argv)
     if args.journals:
         global MOVIES_JOURNALS
         MOVIES_JOURNALS = Path(args.journals).expanduser()
+    if args.moves_file:
+        global MOVES_FILE
+        MOVES_FILE = Path(args.moves_file).expanduser()
     vault = Path(args.vault) if args.vault else _vault_default()
     state_dir = Path(args.state_dir) if args.state_dir else _state_dir()
     try:

@@ -271,6 +271,118 @@ class TestApply(_Vault):
         self.assertEqual(after, before)
 
 
+class TestListed(_Vault):
+    """Task 191: a list the operator ruled row by row, as the memory junk
+    review's moves were. A memory moved into the archive is archived."""
+
+    CARD = "agent/memory/semantic/stale-card.md"
+    LESSON = "agent/memory/crystallized/a-lesson.md"
+
+    def setUp(self):
+        super().setUp()
+        _w(self.vault, self.CARD, "---\ntitle: Stale card\nlifecycle: active\n---\n\nBody.\n")
+        _w(self.vault, self.LESSON,
+           "---\ntitle: A lesson\nconsolidated_from:\n  - \"[[stale-card]]\"\n---\n\n"
+           "From [[agent/memory/semantic/stale-card|the card]].\n")
+        _git(self.vault, "add", "-A")
+        _git(self.vault, "commit", "-q", "-m", "cards")
+        self.moves = Path(self._tmp.name) / "moves.tsv"
+        self.moves.write_text(
+            "# the ruled moves\n"
+            f"{self.CARD}\tagent/archive/memory/semantic/stale-card.md\n"
+            "agent/memory/semantic/home-server.md\tresources/topics/homelab/home-server.md\n",
+            encoding="utf-8")
+        patch = mock.patch.object(kv, "MOVES_FILE", self.moves)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _journal(self):
+        p = self.state / "lifecycle-journal.jsonl"
+        return [json.loads(l) for l in p.read_text().splitlines()] if p.is_file() else []
+
+    def test_the_plan_is_the_list(self):
+        moves = kv.build_plan(self.vault, "listed")["moves"]
+        self.assertEqual([m["dst"] for m in moves],
+                         ["agent/archive/memory/semantic/stale-card.md",
+                          "resources/topics/homelab/home-server.md"])
+
+    def test_a_row_the_vault_cannot_honour_refuses_the_whole_list(self):
+        for row in ("agent/memory/semantic/gone.md\tagent/archive/memory/semantic/gone.md",
+                    f"{self.CARD}\t../outside.md",
+                    f"{self.CARD}\t.obsidian/x.md",
+                    "agent/memory/semantic/nas-backup.md no tab here"):
+            self.moves.write_text(row + "\n", encoding="utf-8")
+            with self.assertRaises(kv.Refused, msg=row):
+                kv.build_plan(self.vault, "listed")
+
+    def test_the_batch_needs_the_list(self):
+        with mock.patch.object(kv, "MOVES_FILE", None):
+            with self.assertRaises(kv.Refused):
+                kv.build_plan(self.vault, "listed")
+
+    def test_a_move_is_a_rename_and_an_archived_memory_is_stamped_and_journaled(self):
+        ino = (self.vault / self.CARD).stat().st_ino
+        rec = self.run_batch("listed")
+        moved = self.vault / "agent/archive/memory/semantic/stale-card.md"
+        self.assertEqual(moved.stat().st_ino, ino)
+        text = moved.read_text()
+        self.assertIn("lifecycle: archived\n", text)
+        self.assertRegex(text, r"lifecycle_since: \d{4}-\d{2}-\d{2}\n")
+        self.assertTrue(text.endswith("\n\nBody.\n"))
+        # Only the memory that entered the archive is a lifecycle transition.
+        self.assertEqual(rec["archived"], [{"rel": "memory/semantic/stale-card.md",
+                                            "archived": "archive/memory/semantic/stale-card.md",
+                                            "from": "active"}])
+        (line,) = self._journal()
+        self.assertEqual((line["rel"], line["from"], line["to"], line["actor"], line["moved_to"]),
+                         ("memory/semantic/stale-card.md", "active", "archived", "operator",
+                          "archive/memory/semantic/stale-card.md"))
+        self.assertNotIn("lifecycle:", (self.vault / "resources/topics/homelab/home-server.md").read_text())
+
+    def test_a_lessons_path_link_follows_and_its_basename_source_still_resolves(self):
+        self.run_batch("listed")
+        text = (self.vault / self.LESSON).read_text()
+        self.assertIn('  - "[[stale-card]]"\n', text)
+        self.assertIn("[[agent/archive/memory/semantic/stale-card|the card]]", text)
+        self.assertNotIn(["agent/memory/crystallized/a-lesson.md", "stale-card"], kv.audit(self.vault))
+
+    def test_a_builder_entity_page_is_left_to_the_builder_and_a_hand_written_one_is_repaired(self):
+        link = "- [[agent/memory/semantic/stale-card|Stale card]]\n"
+        _w(self.vault, "agent/memory/entities/repos/x-y.md",
+           "---\ntitle: x/y\nkind: entity-profile\n---\n\n" + link)
+        _w(self.vault, "agent/memory/entities/repos/mine.md", "---\ntitle: mine\n---\n\n" + link)
+        _git(self.vault, "add", "-A")
+        _git(self.vault, "commit", "-q", "-m", "pages")
+        rec = self.run_batch("listed")
+        self.assertIn(link, (self.vault / "agent/memory/entities/repos/x-y.md").read_text())
+        self.assertIn("[[agent/archive/memory/semantic/stale-card|Stale card]]",
+                      (self.vault / "agent/memory/entities/repos/mine.md").read_text())
+        self.assertNotIn("agent/memory/entities/repos/x-y.md", [r["path"] for r in rec["rewritten"]])
+
+    def test_tool_state_in_a_dot_folder_neither_blocks_nor_rides_the_commit(self):
+        _w(self.vault, ".harness/session-id-x.reflected", "{}\n")
+        _w(self.vault, "projects/agentm/.harness/session-id-y.start", "{}\n")
+        rec = self.run_batch("listed")
+        committed = _git(self.vault, "show", "--name-only", "--format=", rec["commit"]).split()
+        self.assertFalse([p for p in committed if ".harness" in p])
+        self.assertEqual(_git(self.vault, "status", "--porcelain", "--untracked-files=no"), "")
+
+    def test_an_untracked_note_still_holds_the_batch_up(self):
+        _w(self.vault, "agent/memory/semantic/new-note.md", "not committed yet\n")
+        plan = kv.build_plan(self.vault, "listed")
+        with self.assertRaises(kv.Refused):
+            kv.apply(self.vault, plan, len(plan["moves"]), self.state, check_writers=lambda: [])
+
+    def test_revert_returns_the_memory_and_journals_its_return(self):
+        before = (self.vault / self.CARD).read_bytes()
+        rec = self.run_batch("listed")
+        kv.revert(self.vault, rec["run_id"], self.state, check_writers=lambda: [])
+        self.assertEqual((self.vault / self.CARD).read_bytes(), before)
+        last = self._journal()[-1]
+        self.assertEqual((last["rel"], last["from"], last["to"]),
+                         ("memory/semantic/stale-card.md", "archived", "active"))
+
+
 class TestRefusals(_Vault):
     def test_a_live_writer_refuses(self):
         plan = kv.build_plan(self.vault, "root-files")
