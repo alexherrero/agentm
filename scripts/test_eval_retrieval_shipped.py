@@ -22,6 +22,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "scripts" / "health"))
@@ -915,6 +916,81 @@ class EveryExpectationResolves(unittest.TestCase):
             (ev._VAULT_ROOT, ev._MIGRATION_TABLE, ev._ROOT_SPELLINGS) = (
                 saved_root, saved_table, saved_spell)
         self.assertEqual(census["checked"] + census["retired"], 108)
+
+
+class ThePurgedGoldCardsResolveToTheirKeepers(unittest.TestCase):
+    """Task 191: the memory junk purge removes rc09's gold card and moves rc10's
+    and rc12's to the archive. A row in `_PURGE_REMAPS` points each question at
+    the note that now answers it, so the gate keeps scoring instead of stopping
+    on a missing expectation."""
+
+    ARTICLE = ("google-cloud-s-always-on-memory-agent-replaces-rag-and-embeddings-with-"
+               "continuous-llm-consolidation-on-gemini-3-1-flash-lite-marktechpost-discord.md")
+    ALIASES = "aliases-carry-concept-recall-unanticipated-vocabulary-still-misses-entir.md"
+    STACK = "always-on-memory-agent-stack-and-operational-shape.md"
+    DESK = "desk-documents-outrank-memory-notes-for-memory-questions.md"
+
+    def setUp(self):
+        self._saved = (ev._VAULT_ROOT, ev._MIGRATION_TABLE, ev._ROOT_SPELLINGS)
+        # The corpus migration's own dispositions for the three gold cards, so
+        # the frozen `memory/2026/08/` spelling reaches `semantic/` as it does live.
+        ev._MIGRATION_TABLE = {f"memory/2026/08/{n}": f"memory/semantic/{n}"
+                               for n in (self.STACK, self.DESK, self.ALIASES)}
+        ev._ROOT_SPELLINGS = {}
+        gold = json.loads(ev.GOLD_SET.read_text(encoding="utf-8"))["entries"]
+        self.entries = [e for e in gold if e["id"] in ("rc09", "rc10", "rc12")]
+        self.assertEqual(len(self.entries), 3)
+
+    def tearDown(self):
+        ev._VAULT_ROOT, ev._MIGRATION_TABLE, ev._ROOT_SPELLINGS = self._saved
+
+    def _vault(self, d, *rels):
+        for rel in rels:
+            p = Path(d) / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("x", encoding="utf-8")
+        ev._VAULT_ROOT = Path(d)
+
+    def _live(self):
+        return {e["id"]: ev.resolve_expected(e)[0] for e in self.entries}
+
+    def test_after_the_purge_each_question_reaches_its_keeper(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._vault(d, f"resources/topics/agent-memory/{self.ARTICLE}",
+                        f"agent/memory/semantic/{self.ALIASES}")
+            census = ev.check_expectations(self.entries)
+            live = self._live()
+        self.assertEqual(census["checked"], 4)
+        self.assertEqual(live["rc09"], [f"resources/topics/agent-memory/{self.ARTICLE}"])
+        self.assertEqual(live["rc12"], [f"agent/memory/semantic/{self.ALIASES}"])
+        self.assertEqual(live["rc10"], [f"agent/memory/semantic/{self.ALIASES}"] * 2)
+
+    def test_without_the_rows_the_purge_stops_the_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._vault(d, f"resources/topics/agent-memory/{self.ARTICLE}",
+                        f"agent/memory/semantic/{self.ALIASES}")
+            with mock.patch.object(ev, "_PURGE_REMAPS", ()):
+                with self.assertRaises(ev.Control) as caught:
+                    ev.check_expectations(self.entries)
+        for name in (self.STACK, self.DESK):
+            self.assertIn(name, str(caught.exception))
+
+    def test_before_the_article_moves_rc09_reaches_it_in_semantic(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._vault(d, f"agent/memory/semantic/{self.ARTICLE}",
+                        f"agent/memory/semantic/{self.ALIASES}")
+            ev.check_expectations(self.entries)
+            live = self._live()
+        self.assertEqual(live["rc09"], [f"agent/memory/semantic/{self.ARTICLE}"])
+
+    def test_while_the_gold_cards_stand_they_are_still_the_answer(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._vault(d, f"agent/memory/semantic/{self.STACK}", f"agent/memory/semantic/{self.DESK}",
+                        f"agent/memory/semantic/{self.ALIASES}",
+                        f"resources/topics/agent-memory/{self.ARTICLE}")
+            live = self._live()
+        self.assertEqual(live["rc09"], [f"agent/memory/semantic/{self.STACK}"])
+        self.assertEqual(live["rc12"], [f"agent/memory/semantic/{self.DESK}"])
 
 
 class TheGoldSetIsNeverEdited(unittest.TestCase):
