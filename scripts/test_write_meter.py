@@ -214,12 +214,36 @@ class RewriteTests(_Vault):
 
     def test_a_map_whose_only_change_is_its_date_is_a_date_only_rewrite(self):
         self.seed_map()
-        self.write("agent/memory/mocs/reference.md", MAP.format(updated="2026-10-05", alpha="2026-10-05"))
+        self.write("agent/memory/mocs/reference.md", MAP.format(updated="2026-10-05", alpha="2026-10-01"))
         self.commit(INSIDE)
         m = self.measure()
         self.assertEqual(m["derived"]["maps"], {"rewrites": 1, "date_only": 1, "order_only": 0})
         self.assertEqual(m["no_change_rewrites"], ["agent/memory/mocs/reference.md"])
         self.assertIn("1 derived-page rewrite(s) changed only dates or order", m["warnings"])
+
+    def test_a_members_date_that_moved_is_content(self):
+        # The operator's ruling of 2026-10-13 on task 190 step 8: a date that is
+        # data — a member's date, a project's last_worked, an entity page's
+        # seen-dates — moved because something happened, and is a change.
+        self.seed_map()
+        self.write("agent/memory/mocs/reference.md", MAP.format(updated="2026-10-04", alpha="2026-10-05"))
+        self.commit(INSIDE)
+        m = self.measure()
+        self.assertEqual(m["derived"]["maps"], {"rewrites": 1, "date_only": 0, "order_only": 0})
+        self.assertEqual(m["warnings"], [])
+
+    def test_a_trackers_last_worked_and_an_entitys_seen_dates_are_content(self):
+        tracker = "---\nkind: tracker\nupdated: 2026-10-10\nactivity: 1.0\nlast_worked: {d}\n---\n\n## State\n"
+        page = "---\nkind: entity-profile\nlast_seen: {d}\n---\n\nMentioned in 8 notes, from 2026-05-19 to {d}.\n"
+        self.write("projects/p/tracker.md", tracker.format(d="2026-10-10"))
+        self.write("agent/memory/entities/releases/o-r-v2-0-0.md", page.format(d="2026-06-03"))
+        self.commit(BEFORE + 60)
+        self.write("projects/p/tracker.md", tracker.format(d="2026-10-12"))
+        self.write("agent/memory/entities/releases/o-r-v2-0-0.md", page.format(d="2026-09-28"))
+        self.commit(INSIDE)
+        m = self.measure()
+        self.assertEqual(m["derived"]["trackers"], {"rewrites": 1, "date_only": 0, "order_only": 0})
+        self.assertEqual(m["derived"]["entities"], {"rewrites": 1, "date_only": 0, "order_only": 0})
 
     def test_a_map_whose_lines_only_moved_is_an_order_only_rewrite(self):
         self.seed_map()
@@ -384,12 +408,16 @@ class AbsenceTests(unittest.TestCase):
 
 class ClassifyTests(unittest.TestCase):
 
-    def test_masking_covers_dates_clock_times_and_day_counts(self):
+    def test_masking_covers_the_stamp_the_cycle_date_and_day_counts_only(self):
         self.assertEqual(wm.mask("updated: 2026-10-05"), "updated: <date>")
-        self.assertEqual(wm.mask("at 2026-10-05T07:32:20Z"), "at <date>")
-        self.assertEqual(wm.mask("Written 2026-10-06 02:26Z"), "Written <date>")
-        self.assertEqual(wm.mask("ran at 02:26"), "ran at <time>")
+        self.assertEqual(wm.mask('updated: "2026-10-05"'), "updated: <date>")
+        self.assertEqual(wm.mask("The sections below come from the dream cycle of 2026-10-05."),
+                         "The sections below come from the dream cycle of <date>.")
         self.assertEqual(wm.mask("(1,204 days silent)"), "(<n> days silent)")
+        # Dates that are data stay as they are (the ruling of 2026-10-13).
+        for line in ("last_worked: 2026-10-12", "last_seen: 2026-09-28", "- 2026-09-28 · [[a|A]]",
+                     "unfiled since 2026-10-04 — judged below the floor on 2026-10-10"):
+            self.assertEqual(wm.mask(line), line)
 
     def test_a_count_that_moved_is_content(self):
         self.assertEqual(wm.classify_change(["Mentioned in 6 notes."], ["Mentioned in 7 notes."]), "content")

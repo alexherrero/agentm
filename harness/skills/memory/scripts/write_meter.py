@@ -18,8 +18,9 @@ it sees every write the committer recorded:
   across the whole vault. A move counts as neither.
 - **Derived-page rewrites.** Each commit that modified a map, a project
   tracker, `needs-review` or an entity page, and how many of those changed
-  only dates (`2026-10-06`, `02:26`, `12 days`) or only the order of lines.
-  Either way the page says what it said before.
+  only the calendar (the `updated:` stamp, the dream cycle's date, `12 days`)
+  or only the order of lines. Either way the page says what it said before.
+  A date that is data, such as a project's `last_worked`, is a change.
 - **Enrichment in project docs.** Each commit that restamped `enriched_at`
   in a file under `projects/`, and how many `## Added by dreaming` sections
   it wrote there.
@@ -67,12 +68,15 @@ DERIVED = ("maps", "trackers", "needs-review", "entities")
 PROBE_LINE = re.compile(r"^probe:\s*['\"]?self-probe['\"]?\s*$", re.M)
 DREAMING_HEADING = "## Added by dreaming"
 
-# What masks a line down to what it says. An ISO date with an optional time, a
-# bare clock time, and a count of days ("12 days silent", "1,204 days"): the
-# three ways a page restates the calendar without saying anything new.
-_DATE = re.compile(
-    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?")
-_CLOCK = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?Z?\b")
+# What masks a line down to what it says: the ways a page restates the calendar
+# without saying anything new. The `updated:` stamp, the dream cycle's date on
+# needs-review, and a count of days ("12 days silent", "1,204 days"). Every
+# other date is data, and a page whose `last_worked`, seen-dates or member
+# dates moved changed, because something happened (the operator's ruling of
+# 2026-10-13 on task 190 step 8: the first three nights flagged real
+# `last_worked` moves as date-only, a warning on every day worked).
+_STAMP = re.compile(r"^updated:\s*.*$")
+_CYCLE = re.compile(r"(dream cycle of )\d{4}-\d{2}-\d{2}")
 _DAYS = re.compile(r"\b\d[\d,]*\s+days?\b")
 
 
@@ -95,8 +99,8 @@ def budget(rules=None) -> "int | None":
 
 
 def mask(line: str) -> str:
-    line = _DATE.sub("<date>", line)
-    line = _CLOCK.sub("<time>", line)
+    line = _STAMP.sub("updated: <date>", line)
+    line = _CYCLE.sub(r"\1<date>", line)
     return _DAYS.sub("<n> days", line)
 
 
@@ -104,7 +108,8 @@ def classify_change(removed: list, added: list) -> str:
     """`order-only`, `date-only` or `content`, for one file's diff in one commit.
 
     Order-only: the same lines, rearranged. Date-only: the lines differ, but
-    not once dates, clock times and day counts are masked out. A mix of the two
+    not once the `updated:` stamp, the dream cycle's date and day counts are
+    masked out (`mask`). A mix of the two
     (a date moved and lines reordered) reads as date-only: neither is a change
     in what the page says.
     """
