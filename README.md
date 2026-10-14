@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v10.6.0](https://github.com/alexherrero/agentm/releases/tag/v10.6.0).** The vault keeps its history however git packs it: the daemon heals around packs it couldn't read, takes back a lock its own dead process left, and says within the hour if commits stall. A git worktree is also kept out of the vault, and the daemon survives the config key one leaves behind.
+> **Latest release: [v10.7.0](https://github.com/alexherrero/agentm/releases/tag/v10.7.0).** The vault gains only the cards that earned their place, and a page is rewritten only when what it says changes. Over the first three nights new cards ran one or two a night, against eighteen in two audited days; no unattended session left a trace; no map, tracker or entity page was rewritten for the calendar alone; and enrichment stopped adding prose to designs. A morning-note meter shows each day's writes against a budget.
 
 ---
 
