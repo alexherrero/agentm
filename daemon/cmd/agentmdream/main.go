@@ -395,9 +395,9 @@ func printReport(rep dreaming.Report) {
 	if rep.Mode == "apply" {
 		verb = "sank"
 	}
-	fmt.Printf("%s pass %s (%s): %s — %s %d, revived %d, archived %d, deleted %d, returned %d, touched by hand %d, previews %d, held by cap %d, considered %d",
+	fmt.Printf("%s pass %s (%s): %s — %s %d, revived %d, archived %d, retired %d, deleted %d, returned %d, touched by hand %d, previews %d, held by cap %d, considered %d",
 		rep.Mode, rep.RunID, rep.Outcome, rep.Decision.Reason, verb, len(p.Demoted), len(p.Revived),
-		len(p.Archived), len(p.Deleted), len(p.Returned), len(p.Touched), len(p.Previews), p.Capped, p.Considered)
+		len(p.Archived), len(p.Retired), len(p.Deleted), len(p.Returned), len(p.Touched), len(p.Previews), p.Capped, p.Considered)
 	if rep.Mode == "apply" {
 		fmt.Printf("; applied %d, skipped %d", rep.Applied, rep.Skipped)
 	}
@@ -411,6 +411,9 @@ func printReport(rep dreaming.Report) {
 	for _, m := range p.Archived {
 		fmt.Printf("  archived %s — silent %.0f days, moved to %s\n",
 			m.Rel, m.Days, dreaming.ArchiveDestination(m.Rel))
+	}
+	for _, m := range p.Retired {
+		fmt.Printf("  retired %s — superseded, moved to %s\n", m.Rel, dreaming.ArchiveDestination(m.Rel))
 	}
 	for _, m := range p.Deleted {
 		fmt.Printf("  deleted %s — silent %.0f days\n", m.Rel, m.Days)

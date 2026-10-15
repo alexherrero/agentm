@@ -16,13 +16,17 @@ import (
 // part of the extractor's recorded version, so the next open re-derives every
 // note's rows under the new one.
 
-// repoContext is the projects' repositories and floors, and the signature they
-// were read at.
+// repoContext is the projects' repositories, floors and ceilings, and the
+// signature they were read at. The ceilings (task 191) are each clone's highest
+// cited `#N`, read with the rest; a newer commit raises one without a new
+// signature, and a ceiling read lower than it has become only keeps a
+// reference with the note's own repository, so it is not re-read on its own.
 type repoContext struct {
 	sig      string
 	projects map[string][]string
 	known    map[string]string
 	floors   map[string]int
+	ceilings map[string]int
 }
 
 // entityContextLocked is the extractor's context for one note. Callers hold x.mu.
@@ -30,9 +34,9 @@ func (x *Index) entityContextLocked(rel, label string) extract.Context {
 	if sig := projectbind.Signature(x.vault); x.repos == nil || sig != x.repos.sig {
 		projects := projectbind.Repositories(x.vault)
 		x.repos = &repoContext{sig: sig, projects: projects, known: projectbind.ShortNames(projects),
-			floors: projectbind.IssueFloors(x.vault)}
+			floors: projectbind.IssueFloors(x.vault), ceilings: projectbind.RefCeilings(x.vault)}
 	}
-	ctx := extract.Context{Known: x.repos.known, Floors: x.repos.floors}
+	ctx := extract.Context{Known: x.repos.known, Floors: x.repos.floors, Ceilings: x.repos.ceilings}
 	if repos := x.repos.projects[projectbind.NoteProject(rel, label, x.repos.projects)]; len(repos) == 1 {
 		ctx.Repo = repos[0]
 	}

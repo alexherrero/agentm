@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -520,5 +521,86 @@ func TestAPurgedPathHoldsANewNoteNotAHandEdit(t *testing.T) {
 	}
 	if plan := planAndApply(t, root, engine, now); len(plan.Touched) != 0 || len(plan.Intents) != 0 {
 		t.Errorf("touched %v, %d intents; want nothing", relsOf(plan.Touched), len(plan.Intents))
+	}
+}
+
+// Task 191: the four lessons the memory junk review found each carried
+// `superseded_by` naming the lesson that replaced it, and each still sat in
+// `crystallized/` beside its replacement, a second answer to one question. The
+// night retires such a lesson to the archive, stamped and journaled, once its
+// successor is on disk.
+func TestASupersededLessonRetiresToTheArchive(t *testing.T) {
+	root := t.TempDir()
+	engine := t.TempDir()
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+
+	keep1 := "memory/crystallized/progress-md-is-the-only-thing-that-survives.md"
+	keep2 := "memory/crystallized/reachability-over-inventory-for-security-findings.md"
+	writeNote(t, root, keep1, "pinned", 20, now, "")
+	writeNote(t, root, keep2, "pinned", 20, now, "")
+	by := func(rel string) string { return "superseded_by: " + rel + "\n" }
+	retired := []string{
+		writeNote(t, root, "memory/crystallized/plan-state-written-for-the-next-session.md", "superseded", 20, now, by(keep1)),
+		writeNote(t, root, "memory/crystallized/task-closure-is-a-durable-write.md", "superseded", 20, now, by(keep1)),
+		writeNote(t, root, "memory/crystallized/reachability-over-presence.md", "superseded", 20, now, by(keep2)),
+		// The successor named by its link, as a lesson's own fields name notes.
+		writeNote(t, root, "memory/crystallized/security-findings-need-context-not-more-scanning.md", "superseded", 20, now,
+			"superseded_by: \"[[reachability-over-inventory-for-security-findings]]\"\n"),
+	}
+	// Left where they are: a successor that is not on disk, the operator's pin,
+	// and a copy outside the lessons, which the copies job keeps by design.
+	orphan := writeNote(t, root, "memory/crystallized/its-successor-is-gone.md", "superseded", 20, now,
+		by("memory/crystallized/no-such-lesson.md"))
+	pinned := writeNote(t, root, "memory/crystallized/pinned-anyway.md", "pinned", 20, now, by(keep1))
+	card := writeNote(t, root, "memory/semantic/a-copy.md", "superseded", 20, now, by("memory/semantic/"+filepath.Base(keep1)))
+	writeNote(t, root, "memory/semantic/"+filepath.Base(keep1), "active", 20, now, "")
+
+	plan := planAndApply(t, root, engine, now)
+
+	sort.Strings(retired)
+	if got, want := strings.Join(relsOf(plan.Retired), ","), strings.Join(retired, ","); got != want {
+		t.Errorf("retired = %v\nwant %v", relsOf(plan.Retired), retired)
+	}
+	if len(plan.Archived) != 0 {
+		t.Errorf("a retirement is not a silent note's archive: archived = %v", relsOf(plan.Archived))
+	}
+	for _, rel := range retired {
+		if _, err := os.Stat(filepath.Join(root, rel)); !os.IsNotExist(err) {
+			t.Errorf("%s is still in crystallized/", rel)
+		}
+		raw, err := os.ReadFile(filepath.Join(root, ArchiveDestination(rel)))
+		if err != nil {
+			t.Errorf("%s is not in the archive: %v", rel, err)
+			continue
+		}
+		if !strings.Contains(string(raw), "lifecycle: archived\n") || !strings.Contains(string(raw), "lifecycle_since: 2026-10-15\n") {
+			t.Errorf("%s was not stamped archived:\n%s", rel, raw)
+		}
+		lines := journalLinesFor(t, engine, rel)
+		if len(lines) == 0 || lines[len(lines)-1].To != "archived" || lines[len(lines)-1].From != "superseded" {
+			t.Errorf("%s: journal = %+v, want superseded → archived", rel, lines)
+		}
+	}
+	for _, rel := range []string{orphan, pinned, card, keep1, keep2} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Errorf("%s moved, and it should have stayed: %v", rel, err)
+		}
+	}
+}
+
+// A lesson the cap holds back is retired on a later night, not skipped for good.
+func TestTheCapHoldsRetirementsToo(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	keep := writeNote(t, root, "memory/crystallized/the-keeper.md", "active", 20, now, "")
+	for _, n := range []string{"a", "b", "c"} {
+		writeNote(t, root, "memory/crystallized/dup-"+n+".md", "superseded", 20, now, "superseded_by: "+keep+"\n")
+	}
+	plan, err := PlanLifecycle(root, "", axisContract(t), now, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Retired) != 2 || plan.Capped != 1 {
+		t.Errorf("retired %d, capped %d; want 2 and 1", len(plan.Retired), plan.Capped)
 	}
 }

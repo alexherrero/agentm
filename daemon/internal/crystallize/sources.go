@@ -299,6 +299,7 @@ func cardsAndTraces(root, vault string) (cards, candidates []Source) {
 				Session: sessionOf(fm, rel),
 				At:      dateOf(fm, path, "created", "updated"),
 				Title:   unquote(fm["title"]), Text: body,
+				Origin: sourceOrigin(unquote(fm["source_url"])),
 			}
 			s.Terms = termsOf(tagsOf(text), body)
 			if len(s.Terms) > 0 {
@@ -307,6 +308,21 @@ func cardsAndTraces(root, vault string) (cards, candidates []Source) {
 		}
 	}
 	return cards, candidates
+}
+
+// sourceOrigin is a card's `source_url` folded to the page it names: the
+// scheme, a `www.`, a trailing slash and a fragment do not make two pages.
+func sourceOrigin(u string) string {
+	u = strings.TrimSpace(u)
+	if u == "" {
+		return ""
+	}
+	if i := strings.Index(u, "#"); i >= 0 {
+		u = u[:i]
+	}
+	u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+	u = strings.TrimPrefix(u, "www.")
+	return strings.ToLower(strings.TrimRight(u, "/"))
 }
 
 // sessionOf is the sitting a card belongs to: the session it was captured in

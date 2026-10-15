@@ -351,3 +351,109 @@ func TestAFloorBelongsToItsOwnRepository(t *testing.T) {
 	eq(t, EntitiesIn("crickets #41, and agentm #41.\n", ctx),
 		[]EntityURI{"issue:#41", "issue:alexherrero/agentm#41"})
 }
+
+// --- task 191: the repository a line names ----------------------------------
+
+// The memory junk review found eleven issue pages credited to the wrong
+// repository: in an agentm note, "crickets, PR #157" or a crickets ledger row
+// ending "PR #188" was read as agentm's, and in a crickets note "(agentm main
+// @ ea36223, PR #241)" as crickets'. Each line is the live one behind a page.
+func TestAReferenceTakesTheRepositoryItsLineNames(t *testing.T) {
+	ceilings := map[string]int{"alexherrero/agentm": 892, "alexherrero/crickets": 277}
+	floors := map[string]int{"alexherrero/agentm": 48, "alexherrero/crickets": 48}
+	agentm := Context{Repo: "alexherrero/agentm", Known: known, Floors: floors, Ceilings: ceilings}
+	crickets := Context{Repo: "alexherrero/crickets", Known: known, Floors: floors, Ceilings: ceilings}
+	for _, c := range []struct {
+		ctx  Context
+		line string
+		want []string
+	}{
+		// The repository's name before the explicit word, a comma between or not.
+		{agentm, "| 2026-07-06 | 4 new maintenance primitives (deps-currency) | crickets, PR #157 | AG Wave C |",
+			[]string{"issue:alexherrero/crickets#157"}},
+		{agentm, "| 2026-07-08 | Observability ledger | agentm PR #249 + crickets PR #174 | ⑩V8-13 |",
+			[]string{"issue:alexherrero/agentm#249", "issue:alexherrero/crickets#174"}},
+		{crickets, "closed via agentm PRs #239 and the rest", []string{"issue:alexherrero/agentm#239"}},
+		// A lane label ends in the repository's name.
+		{agentm, "A-crickets #189, A-agentm #291, B-agentm #289, B-crickets #188, C #290.",
+			[]string{"issue:alexherrero/agentm#289", "issue:alexherrero/agentm#290", "issue:alexherrero/agentm#291",
+				"issue:alexherrero/crickets#188", "issue:alexherrero/crickets#189"}},
+		// A cell naming one other repository before an explicit reference.
+		{agentm, "| F31 | F31 | Visitor-facing \"what is crickets\" wording | shipped | `crickets:README.md`; PR #188 | high |",
+			[]string{"issue:alexherrero/crickets#188"}},
+		{agentm, "> **Board:** crickets #5, feature `ag-wave-a` (issue #148) — \"AG Wave A\"",
+			[]string{"issue:alexherrero/crickets#148"}},
+		{agentm, "and v5.0.0 (task 101, PR #259, released) shipped from the crickets v4.0.0 plan",
+			[]string{"issue:alexherrero/agentm#259"}},
+		{agentm, "the crickets landings: crickets v4.0.0 (task 100, PR #257) and v5.0.0 (task 101, PR #259)",
+			[]string{"issue:alexherrero/crickets#257", "issue:alexherrero/crickets#259"}},
+		{crickets, "the grammar agentm's registry design just locked (agentm main @ `ea36223`, PR #241): a key",
+			[]string{"issue:alexherrero/agentm#241"}},
+		// A crickets plugin's name, and a later plugin of agentm's after it.
+		{agentm, "not checkmarks): crickets-maintenance (4 primitives, PR #157) · crickets-developer-safety (coauthor-guard, PR #160) · agentm-personas (activation)",
+			[]string{"issue:alexherrero/crickets#157", "issue:alexherrero/crickets#160"}},
+		// A list keeps the repository its first number named; a name after the number.
+		{agentm, "the five known overclaims (crickets #35, #36, #174; agentm #249, #239) get their fix",
+			[]string{"issue:#35", "issue:#36", "issue:alexherrero/agentm#239", "issue:alexherrero/agentm#249",
+				"issue:alexherrero/crickets#174"}},
+		{agentm, "`observability-ledger` (#249 agentm + #174 crickets), `observability-console`",
+			[]string{"issue:alexherrero/agentm#249", "issue:alexherrero/crickets#174"}},
+	} {
+		var got []string
+		for _, u := range EntitiesIn(c.line, c.ctx) {
+			if strings.HasPrefix(u, "issue:") {
+				got = append(got, u)
+			}
+		}
+		if strings.Join(got, " ") != strings.Join(c.want, " ") {
+			t.Errorf("%q\n got %v\nwant %v", c.line, got, c.want)
+		}
+	}
+}
+
+// What the line rule leaves alone: a number with no PR or issue word, a cell
+// that names the note's own repository too, a number past what the other
+// repository's history reaches, and a context with no ceilings at all.
+func TestTheLineRuleNeedsAnExplicitReferenceUnderTheCeiling(t *testing.T) {
+	ceilings := map[string]int{"alexherrero/agentm": 892, "alexherrero/crickets": 277}
+	agentm := Context{Repo: "alexherrero/agentm", Known: known, Ceilings: ceilings}
+	for line, want := range map[string]string{
+		"crickets Personal-notes capability, the vehicle for #402": "issue:alexherrero/agentm#402",
+		// The live lines of agentm#248 and agentm#231, both agentm's own pull
+		// requests: crickets is named only in a closed parenthetical, or two
+		// clauses back.
+		"`PLAN-relocate-pm-briefing-trigger` → legitimately queued (fresh provenance, pick up in a crickets `/work` session); the PR #248": "issue:alexherrero/agentm#248",
+		"+ crickets OPINION_NAMES fix (Plan 2); V6-11 SQLite metadata (Plan 3); check-personas.py checks + the brain.md rename (PR #231":   "issue:alexherrero/agentm#231",
+		"`harness/x.py`, `crickets:src/y.py`; PR #621":                           "issue:alexherrero/agentm#621",
+		"Shipped as #681. The crickets half followed.":                           "issue:alexherrero/agentm#681",
+		"| crickets row | done | 2026-09-02 | stays in its own cell | PR #205 |": "issue:alexherrero/agentm#205",
+	} {
+		got := EntitiesIn(line, agentm)
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("%q: got %v, want [%s]", line, got, want)
+		}
+	}
+	noClone := Context{Repo: "alexherrero/agentm", Known: known}
+	eq(t, EntitiesIn("`crickets:README.md`; PR #188\n", noClone), []EntityURI{"issue:alexherrero/agentm#188"})
+}
+
+// A badge or a figure is presentation, not a mention: three README badges in
+// captured pages paged a repository no note was about.
+func TestAnImageOnGitHubIsNotAMentionOfItsRepository(t *testing.T) {
+	for _, line := range []string{
+		`<img alt="Homepage" src="https://github.com/deepseek-ai/DeepSeek-V2/blob/main/figures/badge.svg?raw=true"/>`,
+		`![logo](https://github.com/deepseek-ai/DeepSeek-V2/raw/main/figures/logo.png)`,
+		`<img src='https://github.com/acme/widgets/blob/main/docs/arch.jpeg'>`,
+	} {
+		for _, u := range EntitiesIn(line, Context{}) {
+			if strings.HasPrefix(u, "repo:") {
+				t.Errorf("%q paged %s", line, u)
+			}
+		}
+	}
+	// A link to the repository, or to a file in it that is not an image, still is.
+	eq(t, EntitiesIn("Code at https://github.com/deepseek-ai/DeepSeek-V2/blob/main/README.md.\n", Context{}),
+		[]EntityURI{"repo:deepseek-ai/deepseek-v2"})
+	eq(t, EntitiesIn("[repo](https://github.com/deepseek-ai/DeepSeek-V2)\n", Context{}),
+		[]EntityURI{"repo:deepseek-ai/deepseek-v2"})
+}

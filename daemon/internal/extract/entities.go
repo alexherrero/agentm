@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -82,6 +83,12 @@ type Context struct {
 	// same numbers for its roadmap's items. A repository with no floor is
 	// absent.
 	Floors map[string]int
+	// Ceilings maps a repository's `owner/repo` to the highest `#N` its clone's
+	// commit subjects cite (task 191). A reference the line gives to another
+	// repository than the note's moves there only at or under that number: a
+	// number past it is one that repository never had. With no ceiling for a
+	// repository, nothing moves to it on the line's word.
+	Ceilings map[string]int
 }
 
 // releaseWords are the words that may stand right before a version tag that
@@ -185,6 +192,7 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 			linked[m[2]] = repo
 		}
 
+		listRepo, listEnd := "", 0
 		for _, m := range bareIssueRe.FindAllStringSubmatchIndex(line, -1) {
 			if qualified[m[0]] || qualified[m[1]-1] {
 				continue
@@ -192,6 +200,23 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 			num := line[m[4]:m[5]]
 			before := strings.ToLower(wordBefore(line, m[3]))
 			named := ctx.Known[possessive(before)]
+			if named == "" {
+				// "crickets, PR #157", "A-crickets #189" (task 191).
+				named = repoBeforeRef(line, m[3], ctx)
+			}
+			if named == "" {
+				// "(#249 agentm + #174 crickets)" (task 191).
+				named = repoAfterNumber(line, m[5], ctx)
+			}
+			if named == "" && listRepo != "" && listSepRe.MatchString(line[listEnd:m[3]]) {
+				// "crickets #35, #36, #174": a list keeps its repository (task 191).
+				named = listRepo
+			}
+			if named == "" && explicitRef(line, m[3]) {
+				// "`crickets:README.md`; PR #188" in an agentm note (task 191).
+				named = clauseRepo(line[:m[3]], num, ctx)
+			}
+			listRepo, listEnd = named, m[5]
 			switch {
 			case linked[num] != "":
 				add("issue:" + linked[num] + "#" + num)
@@ -216,6 +241,11 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 
 		for _, m := range repoURLRe.FindAllStringSubmatchIndex(line, -1) {
 			if !onGitHubItself(line, m[0]) {
+				continue
+			}
+			if imageOnGitHub(line, m[0], m[1]) {
+				// A badge or a figure shown from the repository is presentation:
+				// it says nothing about what the note is about (task 191).
 				continue
 			}
 			repo := strings.TrimSuffix(line[m[2]:m[3]], ".git")
@@ -424,6 +454,166 @@ func explicitRef(line string, i int) bool {
 	if w == "request" || w == "requests" {
 		prev, _ := wordBeforeAt(line, at)
 		return strings.ToLower(prev) == "pull"
+	}
+	return false
+}
+
+// repoBeforeRef is the repository a known short name names when it stands in
+// front of the explicit word before a number — "crickets PR #157", "crickets,
+// PR #157", "agentm PRs #239", "crickets pull request #12" — or ends the
+// hyphenated label right before it, "A-crickets #189" (task 191). "" otherwise.
+func repoBeforeRef(line string, i int, ctx Context) string {
+	w, at := wordBeforeAt(line, i)
+	lw := strings.ToLower(w)
+	if lw == "request" || lw == "requests" {
+		if w, at = wordBeforeAt(line, at); strings.ToLower(w) != "pull" {
+			return ""
+		}
+		lw = "pull"
+	}
+	if explicitWords[lw] {
+		j := at
+		for j > 0 && (line[j-1] == ',' || line[j-1] == ' ') {
+			j--
+		}
+		prev, _ := wordBeforeAt(line, j)
+		return ctx.Known[possessive(strings.ToLower(prev))]
+	}
+	if k := strings.LastIndex(lw, "-"); k > 0 && k < len(lw)-1 {
+		return ctx.Known[lw[k+1:]]
+	}
+	return ""
+}
+
+// clauseRepo is the repository an explicit reference belongs to when the
+// clause it sits in names another repository than the note's (task 191):
+// "`crickets:README.md`; PR #188" in an agentm ledger, "crickets v4.0.0 (task
+// 100, PR #257" in an agentm plan, "(agentm main @ ea36223, PR #241)" in a
+// crickets one. The nearest repository named before the reference decides, read
+// back to the start of its table cell, its sentence or its `·` item, and no
+// further than one `;` clause; a name inside a parenthetical that has already
+// closed does not count ("(… a crickets /work session); PR #248" is agentm's).
+// The number has to be within that repository's ceiling, so a number only the
+// note's own repository reached stays the note's. "" when nothing moves it.
+func clauseRepo(before, num string, ctx Context) string {
+	if ctx.Repo == "" {
+		return ""
+	}
+	v := outsideClosedParens(before)
+	for _, sep := range []string{"|", " · ", ". "} {
+		if i := strings.LastIndex(v, sep); i >= 0 {
+			v = v[i+len(sep):]
+		}
+	}
+	clauses := strings.Split(v, ";")
+	look := []string{clauses[len(clauses)-1]}
+	if len(clauses) > 1 {
+		look = append(look, clauses[len(clauses)-2])
+	}
+	for _, clause := range look {
+		repo := lastRepoNamed(clause, ctx)
+		if repo == "" {
+			continue
+		}
+		if repo == ctx.Repo {
+			return ""
+		}
+		n, err := strconv.Atoi(num)
+		if ceiling := ctx.Ceilings[repo]; err == nil && ceiling > 0 && n <= ceiling {
+			return repo
+		}
+		return ""
+	}
+	return ""
+}
+
+// outsideClosedParens is s with everything inside a parenthetical that closes
+// before its end blanked out, so only what is still open at the end is read.
+func outsideClosedParens(s string) string {
+	b := []byte(s)
+	depth := 0
+	for i := len(b) - 1; i >= 0; i-- {
+		switch {
+		case b[i] == ')':
+			depth++
+			b[i] = ' '
+		case b[i] == '(' && depth > 0:
+			depth--
+			b[i] = ' '
+		case depth > 0:
+			b[i] = ' '
+		}
+	}
+	return string(b)
+}
+
+// lastRepoNamed is the last known repository the text names: by its short
+// name, possessive or not ("agentm's"), at the head of a path ("crickets:"),
+// or at the head of a hyphenated name ("crickets-maintenance", a crickets
+// plugin). "" when it names none.
+func lastRepoNamed(text string, ctx Context) string {
+	last := ""
+	for _, w := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '\'' || r == '’')
+	}) {
+		w = possessive(w)
+		if repo := ctx.Known[w]; repo != "" {
+			last = repo
+		} else if i := strings.Index(w, "-"); i > 0 && ctx.Known[w[:i]] != "" {
+			last = ctx.Known[w[:i]]
+		}
+	}
+	return last
+}
+
+// repoAfterNumber is the repository a known short name right after the number
+// names: "(#249 agentm + #174 crickets)" (task 191).
+func repoAfterNumber(line string, end int, ctx Context) string {
+	rest := strings.TrimLeft(line[end:], " \t")
+	k := 0
+	for k < len(rest) {
+		c := rest[k]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' {
+			k++
+			continue
+		}
+		break
+	}
+	return ctx.Known[strings.ToLower(rest[:k])]
+}
+
+// listSep reports whether what stands between two references is only a list's
+// joints — "crickets #35, #36, #174", "#239/#240", "#12 and #13" — so the
+// second one is read as the first one's repository's (task 191).
+var listSepRe = regexp.MustCompile(`^[\s,/&]*(?:(?:and|or)\s+)?$`)
+
+// imageOnGitHub reports whether the repository address at line[start:end] is
+// an image shown from it: the source of an `<img>` or a markdown image, or a
+// `blob/` or `raw/` path to an image file.
+func imageOnGitHub(line string, start, end int) bool {
+	head := strings.TrimSuffix(strings.TrimSuffix(line[:start], "www."), "https://")
+	head = strings.TrimSuffix(head, "http://")
+	if strings.HasSuffix(head, `src="`) || strings.HasSuffix(head, `src='`) || strings.HasSuffix(head, "src=") {
+		return true
+	}
+	if strings.HasSuffix(head, "](") {
+		if open := strings.LastIndex(head, "["); open > 0 && head[open-1] == '!' {
+			return true
+		}
+	}
+	rest := line[end:]
+	if !strings.HasPrefix(rest, "/blob/") && !strings.HasPrefix(rest, "/raw/") {
+		return false
+	}
+	if k := strings.IndexAny(rest, " \t\"'()<>"); k >= 0 {
+		rest = rest[:k]
+	}
+	if k := strings.IndexAny(rest, "?#"); k >= 0 {
+		rest = rest[:k]
+	}
+	switch strings.ToLower(path.Ext(rest)) {
+	case ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico":
+		return true
 	}
 	return false
 }

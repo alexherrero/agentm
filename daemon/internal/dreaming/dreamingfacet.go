@@ -147,6 +147,9 @@ func renderDreamingFacet(rep *Report, now time.Time) (string, int) {
 	section("Archived", moves(p.Archived, func(m Move) string {
 		return fmt.Sprintf(" — silent %.0f days, moved to `%s`", m.Days, ArchiveDestination(m.Rel))
 	}))
+	section("Superseded lessons retired", moves(p.Retired, func(m Move) string {
+		return fmt.Sprintf(" — moved to `%s`", ArchiveDestination(m.Rel))
+	}))
 	deleted := moves(p.Deleted, silent)
 	if len(deleted) > 0 && rep.DeletionManifest != "" {
 		deleted = append(deleted, "the manifest that recorded them: `"+rep.DeletionManifest+"`")
