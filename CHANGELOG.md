@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal
+
+- **The hand-run mover takes a list the operator ruled (task 191 step 3).** `agentkv_layout.py listed --moves-file <tsv>` moves exactly the rows given, one `<src><TAB><dst>` each, refusing the whole list on a missing source or a path outside the vault. A memory it moves into `archive/memory/<class>/` is stamped `lifecycle: archived` and journaled as the operator's transition, so the night reads it as archived. Like the night's task mover, it leaves a builder-written entity page to the builder, and tool state in a dot folder (a session's `.harness/` markers) neither blocks a batch nor rides its commit, which now stages only the batch's own paths.
+
 ## [10.7.0] - 2026-10-13
 
 Task 190: the vault gains only the cards that earned their place, and a page is rewritten only when what it says changes. The write-quality audit of 2026-10-07 judged every file the vault wrote on 10-05 and 10-06. It found none of the 18 new memory cards earned: nine were traces of one unattended poll, and four of five crystallized lessons were under their own bar. It also found maps, trackers, `needs-review` and entity pages rewritten with nothing in them changed. A meter now measures that every morning, and each writer is held to it. Over the first three nights after the deploy (2026-10-10 to 10-12), new cards ran 1, 2 and 1 a night against 18 in the audit's two days, no unattended run left a trace, and no map, tracker, `needs-review` or entity page was rewritten with only the calendar or line order moved, against 9 such rewrites in the audit window. Enrichment appended no prose to a project doc, against 7 sections, and the weekly crystallize run wrote no lesson under its bar. This release also carries task 191's step 2 (under Internal), which ships ahead of that task's purge; task 191 releases on its own close-out.
