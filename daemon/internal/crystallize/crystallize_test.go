@@ -979,3 +979,58 @@ func TestAClosedArcIsSynthesisedEvenIfItsTasksTaughtALesson(t *testing.T) {
 			next.Lessons, next.Skipped, next.Linked, next.Errors)
 	}
 }
+
+// Task 191: one scraped article was filed as 19 slice cards, and a lesson
+// counted 14 of them as 14 sources. Notes sharing one `source_url` are one
+// source: the article taught it once, however many cards it was cut into.
+func TestSlicesOfOneArticleAreOneSource(t *testing.T) {
+	f := newFixture(t)
+	const url = "https://www.marktechpost.com/2026/03/07/google-cloud-always-on-memory-agent/"
+	for i := 1; i <= 14; i++ {
+		p := f.card(t, "semantic", fmt.Sprintf("always-on-memory-agent-chunk-%d", i),
+			fmt.Sprintf("2026-08-%02d", i*2), fmt.Sprintf("sess-%d", i), "memory-consolidation")
+		addSourceURL(t, p, url)
+	}
+	rep := f.run(t, Options{})
+	if len(f.prompts) != 0 || rep.Clusters != 0 {
+		t.Fatalf("14 slices of one article reached a model (%d call(s), %d cluster(s))", len(f.prompts), rep.Clusters)
+	}
+	found := false
+	for _, n := range rep.NearMisses {
+		if n.Subject == "memory-consolidation" && strings.Contains(n.Reason, "14 source(s) in 1 note(s)") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the near miss does not say the slices were one source: %+v", rep.NearMisses)
+	}
+}
+
+// Slices still count once beside sources of their own: two slices and two
+// cards of their own are three sources, and that clears the bar.
+func TestSlicesBesideOtherSourcesCountOnce(t *testing.T) {
+	c := Cluster{Subject: "x", Sources: []Source{
+		{Rel: "memory/semantic/a-1.md", Origin: "https://example.com/a", Session: "s1", At: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)},
+		{Rel: "memory/semantic/a-2.md", Origin: "https://example.com/a", Session: "s2", At: time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)},
+		{Rel: "memory/semantic/b.md", Session: "s3", At: time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC)},
+	}}
+	if n := c.Notes(); n != 2 {
+		t.Errorf("notes = %d, want 2 (the slices count once)", n)
+	}
+	c.Sources = append(c.Sources, Source{Rel: "memory/semantic/c.md", Session: "s4", At: time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)})
+	if ok, why := c.Meets(); !ok {
+		t.Errorf("three distinct sources refused: %s", why)
+	}
+}
+
+func addSourceURL(t *testing.T, path, url string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(string(raw), "\nslug: ", "\nsource_url: "+url+"\nslug: ", 1)
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}

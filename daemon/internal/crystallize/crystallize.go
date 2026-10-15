@@ -99,6 +99,10 @@ type Source struct {
 	Text string `json:"text"`
 	// Terms are the subject terms this source carries.
 	Terms []string `json:"terms,omitempty"`
+	// Origin is the outside page a card was captured from, its `source_url`.
+	// Cards that share one are one source (task 191): one scraped article cut
+	// into fourteen cards taught a lesson once, not fourteen times.
+	Origin string `json:"origin,omitempty"`
 }
 
 // repeatedNames are the file names every project and every task carries. A
@@ -147,12 +151,15 @@ type Cluster struct {
 
 // Notes is how many distinct notes the cluster's sources are. A trace's
 // candidate lines share their trace, and two of them are one note: the
-// audit's gh-pr-merge lesson rested on four lines from two traces.
+// audit's gh-pr-merge lesson rested on four lines from two traces. Cards cut
+// from one outside page share its address, and are one note too (task 191).
 func (c Cluster) Notes() int {
 	seen := map[string]bool{}
 	for _, s := range c.Sources {
 		k := s.Rel
-		if k == "" {
+		if s.Origin != "" {
+			k = "origin:" + s.Origin
+		} else if k == "" {
 			k = s.Session
 		}
 		seen[k] = true

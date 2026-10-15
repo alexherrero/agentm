@@ -1,12 +1,11 @@
 package dreaming
 
 import (
-	"os"
-	"os/exec"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/alexherrero/agentm/daemon/internal/projectbind"
 )
 
 // What a repository's own clone says a page may be about (task 186).
@@ -31,9 +30,6 @@ type repoFacts struct {
 	tags map[string]bool
 }
 
-// subjectRefRe is a `#N` a commit subject cites: `(#851)`, "closes #12".
-var subjectRefRe = regexp.MustCompile(`(?:^|[\s(\[])#(\d+)\b`)
-
 // readRepoFacts reads each clone once. A clone git cannot read — no commits
 // yet, a broken checkout — is left out, as if it were not on this machine.
 func readRepoFacts(clones map[string]string) map[string]repoFacts {
@@ -42,35 +38,21 @@ func readRepoFacts(clones map[string]string) map[string]repoFacts {
 		// Every ref, not the checkout's branch: the primary clone sits at the
 		// last deployed commit, and a remote-tracking or worktree branch cites
 		// the newer numbers.
-		subjects, err := gitOutput(dir, "log", "--all", "--format=%s")
+		maxRef, err := projectbind.MaxCitedRef(dir)
 		if err != nil {
 			continue
 		}
-		tagList, err := gitOutput(dir, "tag", "--list")
+		tagList, err := projectbind.GitOutput(dir, "tag", "--list")
 		if err != nil {
 			continue
 		}
-		facts := repoFacts{tags: map[string]bool{}}
-		for _, m := range subjectRefRe.FindAllStringSubmatch(subjects, -1) {
-			if n, err := strconv.Atoi(m[1]); err == nil && n > facts.maxRef {
-				facts.maxRef = n
-			}
-		}
+		facts := repoFacts{maxRef: maxRef, tags: map[string]bool{}}
 		for _, tag := range strings.Fields(tagList) {
 			facts.tags[tag] = true
 		}
 		out[repo] = facts
 	}
 	return out
-}
-
-// gitOutput runs a read-only git command in dir. The machine's system config
-// is not read, and git never prompts.
-func gitOutput(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0")
-	out, err := cmd.Output()
-	return string(out), err
 }
 
 // clonePermits reports whether the repository's clone allows a page for uri:

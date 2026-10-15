@@ -113,7 +113,10 @@ type LifecyclePlan struct {
 	Demoted  []Move   `json:"demoted"`
 	Revived  []Move   `json:"revived"`
 	Archived []Move   `json:"archived"`
-	Deleted  []Move   `json:"deleted"`
+	// Retired is a lesson the crystallizer superseded, moved to the archive
+	// beside the silent ones once its successor is on disk (task 191).
+	Retired []Move `json:"retired_superseded,omitempty"`
+	Deleted []Move `json:"deleted"`
 	// Returned is an archived note the operator moved back into its class. The
 	// night follows the move rather than undoing it: nothing the operator moves
 	// is moved back.
@@ -277,6 +280,36 @@ func LifecycleOf(n note.Note) string {
 	return n.Lifecycle
 }
 
+// supersededBy is the note `superseded_by` names, as written: a memory-root path
+// (`memory/crystallized/x.md`, the copies and restated jobs' form) or a link
+// (`[[x]]`), its brackets and alias dropped. "" when the field is unset.
+func supersededBy(text string) string {
+	fm, _ := ParseFrontmatter(text)
+	v := strings.Trim(strings.TrimSpace(fm["superseded_by"]), `"'`)
+	v = strings.TrimSuffix(strings.TrimPrefix(v, "[["), "]]")
+	if i := strings.IndexAny(v, "|#"); i >= 0 {
+		v = v[:i]
+	}
+	return strings.TrimSpace(v)
+}
+
+// lessonOnDisk reports whether the successor `superseded_by` names is a file: a
+// path is read from the memory root, a bare name as a lesson in `crystallized/`.
+func lessonOnDisk(root, succ string) bool {
+	rel := succ
+	if !strings.Contains(rel, "/") {
+		rel = "memory/crystallized/" + rel
+	}
+	if !strings.HasSuffix(rel, ".md") {
+		rel += ".md"
+	}
+	if strings.Contains(rel, "..") {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+	return err == nil && !info.IsDir()
+}
+
 // SetLifecycle is the byte-exact port of lifecycle_transitions.set_lifecycle_text:
 // the note with `lifecycle: <to>` and `lifecycle_since: <since>` — a
 // line-surgical edit of the frontmatter, the body byte-identical, a note
@@ -395,6 +428,25 @@ func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap i
 				Meta: map[string]string{"from": from, "to": state, "reason": summary, "actor": ActorOperator}})
 			plan.Touched = append(plan.Touched, Move{rel, 0})
 			continue
+		}
+		// A lesson the crystallizer superseded (task 191). Its successor holds
+		// what it taught, and left in `crystallized/` it is a second answer to
+		// the same question, so it goes to the archive, stamped, the way a
+		// silent memory does. Only once the successor is on disk: a pointer to
+		// nothing is the operator's to read, not the night's to act on.
+		if class == "crystallized" && state != "pinned" && state != "archived" && !InArchive(rel) {
+			if succ := supersededBy(text); succ != "" && lessonOnDisk(root, succ) {
+				if len(plan.Retired) >= cap {
+					plan.Capped++
+					continue
+				}
+				summary := "superseded by " + succ + " → archived"
+				plan.Intents = append(plan.Intents, Intent{Job: JobLifecycle, Rel: rel, To: ArchiveDestination(rel),
+					Before: raw, After: []byte(SetLifecycle(text, "archived", since)), Summary: summary,
+					Meta: map[string]string{"from": state, "to": "archived", "reason": summary}})
+				plan.Retired = append(plan.Retired, Move{rel, 0})
+				continue
+			}
 		}
 		if state == "pinned" || state == "superseded" {
 			continue
