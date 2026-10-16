@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [10.8.0] - 2026-10-16
+
 Task 191: memory keeps only the notes that earned their place. The memory junk review of 2026-10-09 judged the 628 notes already in memory. Four judges marked 205, two verifiers argued for keeping each one and overturned 50, and on 2026-10-10 you agreed the rest were junk. 121 curated notes were purged through `purge.py` on your typed count, each listed with its git blob in `agent/diagnostics/migrations/purge/2026-10-14-memory-junk/record.md`. 22 moved by rename with their links repaired, 18 of them cards a lesson cites, into the archive. 6 duplicate lessons were folded into their keepers. Curated memory went from 342 notes to 205: 121 purged, 22 moved, and 6 written since. Every lesson's sources still resolve. The retrieval gate reads 0.635, the same R@5 it read every night from 10-10, before the purge. The three writers that made the junk are fixed, and the entity build, applied under supervision on 2026-10-15 after the deploy, removed 9 of the 12 wrong entity pages through its journal. agentm-148, agentm-150 and agentm-231 stay, because a line cannot place them (#868 keeps them).
 
 ### Changed
