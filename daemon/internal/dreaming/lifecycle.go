@@ -293,9 +293,51 @@ func supersededBy(text string) string {
 	return strings.TrimSpace(v)
 }
 
-// lessonOnDisk reports whether the successor `superseded_by` names is a file: a
-// path is read from the memory root, a bare name as a lesson in `crystallized/`.
-func lessonOnDisk(root, succ string) bool {
+// liveSuccessor is the live lesson that answers instead of the one at rel, or
+// "" when there is none. It follows `superseded_by` from the lesson's own,
+// through `crystallized/` and through the archive (a link retired on an
+// earlier night still points on), to a lesson in `crystallized/` that is not
+// rel and is not itself superseded. A cycle — two lessons naming each other,
+// or one naming itself — a link that is missing, or more than eight steps
+// leave nothing to answer, so nothing retires (#895).
+func liveSuccessor(root, rel, text string) string {
+	seen := map[string]bool{rel: true}
+	succ := supersededBy(text)
+	for step := 0; succ != "" && step < 8; step++ {
+		cur := lessonRel(succ)
+		if cur == "" || seen[cur] {
+			return ""
+		}
+		seen[cur] = true
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(cur)))
+		if err == nil {
+			// CRLF read as LF: a successor written on Windows still shows its
+			// frontmatter, so a cycle through it is still a cycle (#895).
+			text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+			fm, _ := ParseFrontmatter(text)
+			next := supersededBy(text)
+			state := strings.Trim(strings.TrimSpace(fm["lifecycle"]), `"'`)
+			state = strings.ToLower(state)
+			if next == "" && state != "superseded" && state != "archived" {
+				return cur
+			}
+			succ = next
+			continue
+		}
+		raw, err = os.ReadFile(filepath.Join(root, filepath.FromSlash(ArchiveDestination(cur))))
+		if err != nil {
+			return ""
+		}
+		succ = supersededBy(strings.ReplaceAll(string(raw), "\r\n", "\n"))
+	}
+	return ""
+}
+
+// lessonRel is the memory-root path of the lesson `superseded_by` names — a
+// path (`memory/crystallized/x.md`, the copies and restated jobs' form, or its
+// archived form) or a bare name, read as a lesson in `crystallized/`. "" for
+// anything that is not a lesson's path.
+func lessonRel(succ string) string {
 	rel := succ
 	if !strings.Contains(rel, "/") {
 		rel = "memory/crystallized/" + rel
@@ -303,11 +345,13 @@ func lessonOnDisk(root, succ string) bool {
 	if !strings.HasSuffix(rel, ".md") {
 		rel += ".md"
 	}
-	if strings.Contains(rel, "..") {
-		return false
+	if InArchive(rel) {
+		rel = ClassDestination(rel)
 	}
-	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
-	return err == nil && !info.IsDir()
+	if strings.Contains(rel, "..") || !strings.HasPrefix(rel, "memory/crystallized/") {
+		return ""
+	}
+	return rel
 }
 
 // SetLifecycle is the byte-exact port of lifecycle_transitions.set_lifecycle_text:
@@ -374,6 +418,9 @@ func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap i
 	// What the journal last recorded, so the pass can tell its own last move
 	// from the operator's hand.
 	lastJournaled := LastJournaledStates(sidecarDir)
+	// The lessons the operator moved back out of the archive, ever: their
+	// word holds through any later edit of theirs (#895).
+	putBack := OperatorUndidArchive(sidecarDir)
 	since := now.UTC().Format("2006-01-02")
 	// Silence is counted in whole days from midnight, the way the Python
 	// policy counts it (its anchors and its `now` are dates), so the two
@@ -434,8 +481,22 @@ func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap i
 		// the same question, so it goes to the archive, stamped, the way a
 		// silent memory does. Only once the successor is on disk: a pointer to
 		// nothing is the operator's to read, not the night's to act on.
-		if class == "crystallized" && state != "pinned" && state != "archived" && !InArchive(rel) {
-			if succ := supersededBy(text); succ != "" && lessonOnDisk(root, succ) {
+		// The operator's own word on a lesson stands: one they moved back out of
+		// the archive — a journal line of theirs undid an `archived`, and no
+		// copy is left there — is not retired again on any later night,
+		// whatever they edit after. An unrelated edit of theirs, an unpin
+		// months before, does not hold a lesson superseded since, and nor does
+		// a fresh lesson written at a retired one's freed path, which the
+		// hand-edit pass journals the same way but which leaves the retired
+		// copy in the archive (#895).
+		heldBack := false
+		if putBack[rel] {
+			_, err := os.Stat(filepath.Join(root, filepath.FromSlash(ArchiveDestination(rel))))
+			heldBack = os.IsNotExist(err)
+		}
+		if class == "crystallized" && state != "pinned" && state != "archived" &&
+			!InArchive(rel) && !heldBack {
+			if succ := liveSuccessor(root, rel, text); succ != "" {
 				if len(plan.Retired) >= cap {
 					plan.Capped++
 					continue
@@ -792,6 +853,33 @@ func LastJournaledStates(engineStateDir string) map[string]lifecycleLine {
 			continue
 		}
 		out[line.Rel] = line
+	}
+	return out
+}
+
+// OperatorUndidArchive is every note a journal line of the operator's moved out
+// of `archived` — a lesson they put back from the archive. Read once a pass,
+// over the whole journal, because a later edit of theirs replaces the last
+// line and must not lift the hold (#895).
+func OperatorUndidArchive(engineStateDir string) map[string]bool {
+	out := map[string]bool{}
+	if engineStateDir == "" {
+		return out
+	}
+	blob, err := os.ReadFile(filepath.Join(engineStateDir, LifecycleJournalName))
+	if err != nil {
+		return out
+	}
+	for _, raw := range strings.Split(string(blob), "\n") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		var line lifecycleLine
+		if json.Unmarshal([]byte(raw), &line) == nil && line.Rel != "" &&
+			line.Actor == ActorOperator && line.From == "archived" {
+			out[line.Rel] = true
+		}
 	}
 	return out
 }

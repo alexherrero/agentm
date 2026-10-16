@@ -23,7 +23,7 @@ import (
 
 // EntityExtractorVersion names the extractor's rules. Bump it with any change
 // to `extract.EntitiesIn` that should reach notes already indexed.
-const EntityExtractorVersion = "2026-10-15-the-line-names-the-repository"
+const EntityExtractorVersion = "2026-10-16-an-inherited-number-keeps-the-ceiling"
 
 const entityExtractorKey = "entity_extractor_version"
 

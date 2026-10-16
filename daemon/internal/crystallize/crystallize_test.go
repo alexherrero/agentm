@@ -1034,3 +1034,18 @@ func addSourceURL(t *testing.T, path, url string) {
 		t.Fatal(err)
 	}
 }
+
+// Only the host is case-insensitive: two pages whose paths differ in case are
+// two sources (#895).
+func TestAPagesPathKeepsItsCase(t *testing.T) {
+	if a, b := sourceOrigin("https://Example.com/Post/One"), sourceOrigin("https://example.com/Post/One/"); a != b {
+		t.Errorf("one page read as two: %q, %q", a, b)
+	}
+	if a, b := sourceOrigin("https://example.com/Post"), sourceOrigin("https://example.com/post"); a == b {
+		t.Errorf("two pages read as one: %q", a)
+	}
+	// A query right after the host is the page's, not the host's.
+	if a, b := sourceOrigin("https://example.com?id=AbC"), sourceOrigin("https://example.com?id=abc"); a == b {
+		t.Errorf("two queries read as one: %q", a)
+	}
+}

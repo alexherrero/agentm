@@ -457,3 +457,74 @@ func TestAnImageOnGitHubIsNotAMentionOfItsRepository(t *testing.T) {
 	eq(t, EntitiesIn("[repo](https://github.com/deepseek-ai/DeepSeek-V2)\n", Context{}),
 		[]EntityURI{"repo:deepseek-ai/deepseek-v2"})
 }
+
+// The review of #893 (task 191, #895): a number inheriting a list the clause
+// rule started is held to the ceiling that gated the start. The list passed
+// its repository on without the gate, so agentm's own #829 and #681 went to
+// crickets. (A list started by a written name is not held to it; see
+// TestAWrittenListIsNotHeldToTheCeiling.)
+func TestAnInheritedNumberIsHeldToTheCeiling(t *testing.T) {
+	ceilings := map[string]int{"alexherrero/agentm": 892, "alexherrero/crickets": 277}
+	agentm := Context{Repo: "alexherrero/agentm", Known: known, Ceilings: ceilings}
+	for line, want := range map[string][]EntityURI{
+		"crickets-maintenance (PR #157, #829)":   {"issue:alexherrero/agentm#829", "issue:alexherrero/crickets#157"},
+		"`crickets:README.md`; PR #188 and #681": {"issue:alexherrero/agentm#681", "issue:alexherrero/crickets#188"},
+		// Under the ceiling, the list still keeps its repository.
+		"crickets-maintenance (PR #157, #160)": {"issue:alexherrero/crickets#157", "issue:alexherrero/crickets#160"},
+	} {
+		eq(t, EntitiesIn(line, agentm), want)
+	}
+}
+
+// A link to the repository wrapped around an image is a link: the bracket the
+// image check reads is the one that pairs with the link's `](`, not the last
+// one before the address (#895).
+func TestALinkWrappingAnImageStillNamesTheRepository(t *testing.T) {
+	eq(t, EntitiesIn("[![logo](https://example.com/logo.png)](https://github.com/acme/widgets)\n", Context{}),
+		[]EntityURI{"repo:acme/widgets"})
+	eq(t, EntitiesIn("[see [the docs]](https://github.com/acme/widgets)\n", Context{}),
+		[]EntityURI{"repo:acme/widgets"})
+	// The image inside is still an image.
+	eq(t, EntitiesIn("[![logo](https://github.com/acme/widgets/raw/main/logo.png)](https://example.com/)\n", Context{}), nil)
+	// A linked badge: the image pages nothing, and the link around it, to the
+	// repository's own CI page or licence, names the repository as any link
+	// does — the design's rule is the address used as an image (#895).
+	eq(t, EntitiesIn("[![CI](https://github.com/acme/widgets/actions/workflows/ci.yml/badge.svg)](https://github.com/acme/widgets/actions/workflows/ci.yml)\n", Context{}),
+		[]EntityURI{"repo:acme/widgets"})
+	eq(t, EntitiesIn("[![License](https://img.shields.io/github/license/acme/widgets)](https://github.com/acme/widgets/blob/main/LICENSE)\n", Context{}),
+		[]EntityURI{"repo:acme/widgets"})
+}
+
+// The second review (#895): a list started by a name written in the text keeps
+// its repository past a stale ceiling, as the same number written alone does;
+// only a list the clause rule started is held to it.
+func TestAWrittenListIsNotHeldToTheCeiling(t *testing.T) {
+	ceilings := map[string]int{"alexherrero/agentm": 892, "alexherrero/crickets": 277}
+	agentm := Context{Repo: "alexherrero/agentm", Known: known, Ceilings: ceilings}
+	eq(t, EntitiesIn("filed crickets #276, #280\n", agentm),
+		[]EntityURI{"issue:alexherrero/crickets#276", "issue:alexherrero/crickets#280"})
+	eq(t, EntitiesIn("filed crickets #280\n", agentm), []EntityURI{"issue:alexherrero/crickets#280"})
+}
+
+// An escaped bracket in an image's alt text is text, not a bracket (#895).
+func TestAnEscapedBracketDoesNotPairInTheImageCheck(t *testing.T) {
+	eq(t, EntitiesIn("![CI \\]](https://github.com/acme/widgets/actions/workflows/ci.yml/badge.svg)\n", Context{}), nil)
+	eq(t, EntitiesIn("[see \\[x](https://github.com/acme/widgets)\n", Context{}),
+		[]EntityURI{"repo:acme/widgets"})
+}
+
+// The third review (#895): a number the ceiling refuses does not end the list
+// — the list goes on past it — and a backslash that is itself escaped does not
+// escape the bracket after it.
+func TestARefusedNumberDoesNotEndTheList(t *testing.T) {
+	ceilings := map[string]int{"alexherrero/agentm": 892, "alexherrero/crickets": 277}
+	agentm := Context{Repo: "alexherrero/agentm", Known: known, Ceilings: ceilings}
+	eq(t, EntitiesIn("crickets-maintenance (PR #157, #829, #160)\n", agentm),
+		[]EntityURI{"issue:alexherrero/agentm#829", "issue:alexherrero/crickets#157", "issue:alexherrero/crickets#160"})
+}
+
+func TestAnEscapedBackslashLeavesTheBracketReal(t *testing.T) {
+	eq(t, EntitiesIn("[![C:\\\\](https://img.example/x.svg)](https://github.com/acme/widgets)\n", Context{}),
+		[]EntityURI{"repo:acme/widgets"})
+	eq(t, EntitiesIn("![C:\\\\](https://github.com/acme/widgets/actions/workflows/ci.yml/badge.svg)\n", Context{}), nil)
+}
