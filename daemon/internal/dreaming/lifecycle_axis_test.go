@@ -604,3 +604,181 @@ func TestTheCapHoldsRetirementsToo(t *testing.T) {
 		t.Errorf("retired %d, capped %d; want 2 and 1", len(plan.Retired), plan.Capped)
 	}
 }
+
+// The review of #893 (task 191, #895): a lesson retires only when following
+// `superseded_by` reaches a live lesson — one in `crystallized/`, not itself,
+// and not superseded — so a cycle or a pointer to itself retires nothing.
+func TestALessonRetiresOnlyToALiveSuccessor(t *testing.T) {
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	by := func(rel string) string { return "superseded_by: " + rel + "\n" }
+
+	t.Run("two lessons naming each other both stay", func(t *testing.T) {
+		root, engine := t.TempDir(), t.TempDir()
+		writeNote(t, root, "memory/crystallized/a.md", "active", 20, now, by("memory/crystallized/b.md"))
+		writeNote(t, root, "memory/crystallized/b.md", "active", 20, now, by("memory/crystallized/a.md"))
+		if p := planAndApply(t, root, engine, now); len(p.Retired) != 0 {
+			t.Errorf("retired %v from a cycle", relsOf(p.Retired))
+		}
+	})
+	t.Run("a lesson naming itself stays", func(t *testing.T) {
+		root, engine := t.TempDir(), t.TempDir()
+		writeNote(t, root, "memory/crystallized/a.md", "active", 20, now, "superseded_by: \"[[a]]\"\n")
+		if p := planAndApply(t, root, engine, now); len(p.Retired) != 0 {
+			t.Errorf("retired %v as superseded by itself", relsOf(p.Retired))
+		}
+	})
+	t.Run("a chain to a live end retires every link but the end", func(t *testing.T) {
+		root, engine := t.TempDir(), t.TempDir()
+		writeNote(t, root, "memory/crystallized/a.md", "active", 20, now, by("memory/crystallized/b.md"))
+		writeNote(t, root, "memory/crystallized/b.md", "active", 20, now, by("memory/crystallized/c.md"))
+		c := writeNote(t, root, "memory/crystallized/c.md", "active", 20, now, "")
+		p := planAndApply(t, root, engine, now)
+		if got := strings.Join(relsOf(p.Retired), ","); got != "memory/crystallized/a.md,memory/crystallized/b.md" {
+			t.Errorf("retired %s, want a and b", got)
+		}
+		if _, err := os.Stat(filepath.Join(root, c)); err != nil {
+			t.Errorf("the live end moved: %v", err)
+		}
+	})
+	t.Run("a chain through a lesson already archived still reaches its end", func(t *testing.T) {
+		root, engine := t.TempDir(), t.TempDir()
+		writeNote(t, root, "memory/crystallized/a.md", "active", 20, now, by("memory/crystallized/b.md"))
+		writeNote(t, root, "archive/memory/crystallized/b.md", "archived", 20, now,
+			"lifecycle_since: 2026-10-14\n"+by("memory/crystallized/c.md"))
+		writeNote(t, root, "memory/crystallized/c.md", "active", 20, now, "")
+		if p := planAndApply(t, root, engine, now); strings.Join(relsOf(p.Retired), ",") != "memory/crystallized/a.md" {
+			t.Errorf("retired %v, want a", relsOf(p.Retired))
+		}
+	})
+	t.Run("a chain whose end is gone stays", func(t *testing.T) {
+		root, engine := t.TempDir(), t.TempDir()
+		writeNote(t, root, "memory/crystallized/a.md", "active", 20, now, by("memory/crystallized/b.md"))
+		writeNote(t, root, "archive/memory/crystallized/b.md", "archived", 20, now,
+			"lifecycle_since: 2026-10-14\n"+by("memory/crystallized/gone.md"))
+		if p := planAndApply(t, root, engine, now); len(p.Retired) != 0 {
+			t.Errorf("retired %v with no live end", relsOf(p.Retired))
+		}
+	})
+}
+
+// The operator moves a retired lesson back and sets it active. The night that
+// finds the edit journals it as theirs, and no later night retires it again:
+// nothing the operator moves is moved back (#895).
+func TestALessonTheOperatorPutBackStays(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	writeNote(t, root, "memory/crystallized/keep.md", "pinned", 20, now, "")
+	old := writeNote(t, root, "memory/crystallized/old.md", "active", 20, now, "superseded_by: memory/crystallized/keep.md\n")
+	if p := planAndApply(t, root, engine, now); len(p.Retired) != 1 {
+		t.Fatalf("night 1 retired %v", relsOf(p.Retired))
+	}
+	os.Remove(filepath.Join(root, ArchiveDestination(old)))
+	writeNote(t, root, old, "active", 20, now, "superseded_by: memory/crystallized/keep.md\n")
+	n2 := now.AddDate(0, 0, 1)
+	if p := planAndApply(t, root, engine, n2); len(p.Touched) != 1 || len(p.Retired) != 0 {
+		t.Fatalf("night 2: touched %v, retired %v; want the hand edit journaled and nothing retired",
+			relsOf(p.Touched), relsOf(p.Retired))
+	}
+	for night := 3; night <= 4; night++ {
+		if p := planAndApply(t, root, engine, now.AddDate(0, 0, night-1)); len(p.Retired) != 0 {
+			t.Errorf("night %d retired the lesson the operator put back: %v", night, relsOf(p.Retired))
+		}
+	}
+}
+
+// The second review (#895): only the operator's undoing of an archive holds a
+// lesson in place. An unrelated hand edit long before — an unpin — does not
+// stop a lesson superseded later from retiring.
+func TestAnUnrelatedOperatorEditDoesNotHoldALessonBack(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	writeNote(t, root, "memory/crystallized/keep.md", "pinned", 20, now, "")
+	old := writeNote(t, root, "memory/crystallized/old.md", "active", 20, now, "")
+	if err := EnsureLifecycleJournalAs(engine, old, "pinned", "active", "unpinned by hand", "run-0",
+		ActorOperator, now.AddDate(0, -3, 0)); err != nil {
+		t.Fatal(err)
+	}
+	writeNote(t, root, old, "superseded", 20, now, "superseded_by: memory/crystallized/keep.md\n")
+	for night := 0; night < 3; night++ {
+		if p := planAndApply(t, root, engine, now.AddDate(0, 0, night)); len(p.Retired) == 1 {
+			return
+		}
+	}
+	t.Errorf("a superseded lesson with a live successor was never retired")
+}
+
+// A successor written with CRLF line endings is read like any other: its own
+// `superseded_by` closes the cycle (#895).
+func TestACRLFSuccessorStillClosesACycle(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	writeNote(t, root, "memory/crystallized/a.md", "active", 20, now, "superseded_by: memory/crystallized/b.md\n")
+	b := writeNote(t, root, "memory/crystallized/b.md", "superseded", 20, now, "superseded_by: memory/crystallized/a.md\n")
+	raw, _ := os.ReadFile(filepath.Join(root, b))
+	os.WriteFile(filepath.Join(root, b), []byte(strings.ReplaceAll(string(raw), "\n", "\r\n")), 0o644)
+	if p := planAndApply(t, root, engine, now); len(p.Retired) != 0 {
+		t.Errorf("retired %v from a cycle through a CRLF successor", relsOf(p.Retired))
+	}
+}
+
+// The third review (#895): the operator's undoing of an archive holds for good,
+// not only while it is the journal's last line — a pin and an unpin after it do
+// not lift it.
+func TestALessonPutBackStaysThroughLaterEdits(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	writeNote(t, root, "memory/crystallized/keep.md", "pinned", 20, now, "")
+	old := writeNote(t, root, "memory/crystallized/old.md", "active", 20, now, "superseded_by: memory/crystallized/keep.md\n")
+	if p := planAndApply(t, root, engine, now); len(p.Retired) != 1 {
+		t.Fatalf("night 1 retired %v", relsOf(p.Retired))
+	}
+	os.Remove(filepath.Join(root, ArchiveDestination(old)))
+	writeNote(t, root, old, "active", 20, now, "superseded_by: memory/crystallized/keep.md\n")
+	planAndApply(t, root, engine, now.AddDate(0, 0, 1))
+	writeNote(t, root, old, "pinned", 20, now, "superseded_by: memory/crystallized/keep.md\n")
+	planAndApply(t, root, engine, now.AddDate(0, 0, 2))
+	writeNote(t, root, old, "active", 20, now, "superseded_by: memory/crystallized/keep.md\n")
+	planAndApply(t, root, engine, now.AddDate(0, 0, 3))
+	if p := planAndApply(t, root, engine, now.AddDate(0, 0, 4)); len(p.Retired) != 0 {
+		t.Errorf("night 5 retired the lesson the operator put back: %v", relsOf(p.Retired))
+	}
+}
+
+// A successor's `lifecycle` is read case-blind, as every other reader reads it.
+func TestASuccessorSupersededInCapitalsIsNotLive(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	writeNote(t, root, "memory/crystallized/a.md", "active", 20, now, "superseded_by: memory/crystallized/b.md\n")
+	writeNote(t, root, "memory/crystallized/b.md", "Superseded", 20, now, "")
+	if p := planAndApply(t, root, engine, now); len(p.Retired) != 0 {
+		t.Errorf("retired %v to a superseded successor", relsOf(p.Retired))
+	}
+}
+
+// The fourth review (#895): a fresh lesson written at a retired lesson's freed
+// path (an arc's synthesis always lands at the same name) is not one the
+// operator put back. The night's hand-edit pass journals it as theirs, from
+// `archived`, so the hold also asks the disk: a put-back leaves no copy in the
+// archive, and the fresh lesson sits beside the retired one.
+func TestAFreshLessonAtARetiredPathIsNotHeldAsAPutBack(t *testing.T) {
+	root, engine := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	writeNote(t, root, "memory/crystallized/keep.md", "pinned", 20, now, "")
+	arc := writeNote(t, root, "memory/crystallized/agentm-v5.md", "superseded", 20, now,
+		"superseded_by: memory/crystallized/keep.md\n")
+	if p := planAndApply(t, root, engine, now); len(p.Retired) != 1 {
+		t.Fatalf("night 1 retired %v", relsOf(p.Retired))
+	}
+	// The crystallizer writes a new lesson at the freed path; the retired one
+	// stays in the archive.
+	writeNote(t, root, arc, "pinned", 0, now, "")
+	planAndApply(t, root, engine, now.AddDate(0, 0, 1))
+	// Later it is superseded in its turn.
+	writeNote(t, root, arc, "superseded", 0, now, "superseded_by: memory/crystallized/keep.md\n")
+	for night := 2; night < 6; night++ {
+		if p := planAndApply(t, root, engine, now.AddDate(0, 0, night)); len(p.Retired) == 1 {
+			return
+		}
+	}
+	t.Errorf("the fresh lesson was held as a put-back and never retired")
+}

@@ -192,7 +192,7 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 			linked[m[2]] = repo
 		}
 
-		listRepo, listEnd := "", 0
+		listRepo, listEnd, listGated := "", 0, false
 		for _, m := range bareIssueRe.FindAllStringSubmatchIndex(line, -1) {
 			if qualified[m[0]] || qualified[m[1]-1] {
 				continue
@@ -208,15 +208,28 @@ func EntitiesIn(body string, ctx Context) []EntityURI {
 				// "(#249 agentm + #174 crickets)" (task 191).
 				named = repoAfterNumber(line, m[5], ctx)
 			}
-			if named == "" && listRepo != "" && listSepRe.MatchString(line[listEnd:m[3]]) {
-				// "crickets #35, #36, #174": a list keeps its repository (task 191).
-				named = listRepo
+			inherited, gated := false, false
+			inList := listRepo != "" && listSepRe.MatchString(line[listEnd:m[3]])
+			refused := inList && listGated && !underCeiling(ctx, listRepo, num)
+			if named == "" && inList && !refused {
+				// "crickets #35, #36, #174": a list keeps its repository (task
+				// 191). A list the clause rule started keeps it only within the
+				// ceiling that gated the start; one started by a written name
+				// keeps it as that name would alone (#895).
+				named, inherited = listRepo, true
 			}
 			if named == "" && explicitRef(line, m[3]) {
 				// "`crickets:README.md`; PR #188" in an agentm note (task 191).
 				named = clauseRepo(line[:m[3]], num, ctx)
+				gated = named != ""
 			}
-			listRepo, listEnd = named, m[5]
+			if named == "" && refused {
+				// Over the ceiling: this number is the note's own, and the list
+				// goes on past it (#895).
+				listEnd = m[5]
+			} else {
+				listRepo, listEnd, listGated = named, m[5], gated || (inherited && listGated)
+			}
 			switch {
 			case linked[num] != "":
 				add("issue:" + linked[num] + "#" + num)
@@ -518,13 +531,23 @@ func clauseRepo(before, num string, ctx Context) string {
 		if repo == ctx.Repo {
 			return ""
 		}
-		n, err := strconv.Atoi(num)
-		if ceiling := ctx.Ceilings[repo]; err == nil && ceiling > 0 && n <= ceiling {
+		if ctx.Ceilings[repo] > 0 && underCeiling(ctx, repo, num) {
 			return repo
 		}
 		return ""
 	}
 	return ""
+}
+
+// underCeiling reports whether num is within the highest `#N` repo's clone
+// cites. A repository with no ceiling known puts no bound on it.
+func underCeiling(ctx Context, repo, num string) bool {
+	ceiling := ctx.Ceilings[repo]
+	if ceiling == 0 {
+		return true
+	}
+	n, err := strconv.Atoi(num)
+	return err == nil && n <= ceiling
 }
 
 // outsideClosedParens is s with everything inside a parenthetical that closes
@@ -597,7 +620,10 @@ func imageOnGitHub(line string, start, end int) bool {
 		return true
 	}
 	if strings.HasSuffix(head, "](") {
-		if open := strings.LastIndex(head, "["); open > 0 && head[open-1] == '!' {
+		// The `[` that pairs with this `]`, not the last one before it: in
+		// `[![logo](…)](github.com/o/r)` the last `[` is the nested image's, and
+		// the address is the outer link's (#895).
+		if open := pairedBracket(head, len(head)-2); open > 0 && head[open-1] == '!' {
 			return true
 		}
 	}
@@ -616,6 +642,37 @@ func imageOnGitHub(line string, start, end int) bool {
 		return true
 	}
 	return false
+}
+
+// pairedBracket is the index of the `[` that pairs with the `]` at s[close],
+// counting nested pairs; -1 when none does.
+func pairedBracket(s string, close int) int {
+	depth := 0
+	for i := close; i >= 0; i-- {
+		if escaped(s, i) {
+			continue // an escaped bracket is text (#895)
+		}
+		switch s[i] {
+		case ']':
+			depth++
+		case '[':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// escaped reports whether s[i] is escaped: an odd run of backslashes before
+// it. `\\]` is an escaped backslash and a real bracket.
+func escaped(s string, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+		n++
+	}
+	return n%2 == 1
 }
 
 // possessive drops a trailing "'s" or "’s": "agentm's v10.0.0" is agentm's.
