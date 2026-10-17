@@ -150,15 +150,12 @@ func cmdJudgeIdeas(args []string) error {
 		if err != nil {
 			run.Errors = append(run.Errors, err.Error())
 		}
-		ideajudge.MarkApplied(&plan, &st, res.AppliedRels, now)
+		// Only what this run wrote: a verdict written on an earlier night, or a
+		// repeat the card already held, is not tonight's write.
+		run.Written = ideajudge.MarkApplied(&plan, &st, res.AppliedRels, now)
 	}
 	run.Rows = plan.Rows
 	run.Steering, run.Repeats, run.New = plan.Count(ideajudge.Steering), plan.Count(ideajudge.Repeat), plan.Count(ideajudge.New)
-	for _, r := range plan.Rows {
-		if r.Applied && r.Rel != "" && !contains(run.Written, r.Rel) {
-			run.Written = append(run.Written, r.Rel)
-		}
-	}
 
 	if !*dryRun {
 		if err := writeJSON(statePath, st); err != nil {
@@ -197,7 +194,10 @@ func cmdJudgeIdeas(args []string) error {
 	fmt.Printf("  judge: %s on %s — %s\n", route.Tier, route.Model, route.Why)
 	for _, r := range plan.Rows {
 		mark := r.Verdict
-		if r.Applied {
+		switch {
+		case r.Home:
+			mark += " (already on the card)"
+		case r.Applied:
 			mark += " (written)"
 		}
 		line := fmt.Sprintf("  %-20s %s — %q", mark, filepath.Base(r.Trace), clip(r.Remark, 90))
@@ -219,15 +219,6 @@ func cmdJudgeIdeas(args []string) error {
 	}
 	fmt.Println(string(blob))
 	return nil
-}
-
-func contains(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 func clip(s string, n int) string {

@@ -546,6 +546,9 @@ type Judged struct {
 	// Rel is the card the verdict wrote, vault-relative, once it has.
 	Rel       string    `json:"rel,omitempty"`
 	AppliedAt time.Time `json:"applied_at,omitempty"`
+	// Home marks a repeat whose words the card already held: settled, and
+	// nothing was written for it.
+	Home bool `json:"home,omitempty"`
 }
 
 // Row is one remark in a run's report.
@@ -558,8 +561,12 @@ type Row struct {
 	Reason  string `json:"reason,omitempty"`
 	Cached  bool   `json:"cached,omitempty"`
 	// Rel is the card this verdict writes (or wrote), vault-relative.
-	Rel     string `json:"rel,omitempty"`
-	Applied bool   `json:"applied,omitempty"`
+	Rel string `json:"rel,omitempty"`
+	// Applied is a verdict whose write landed, this run or an earlier one.
+	Applied bool `json:"applied,omitempty"`
+	// Home is a repeat whose words the card already held, so nothing was
+	// written for it.
+	Home bool `json:"home,omitempty"`
 }
 
 // Options carry one night's inputs.
@@ -697,10 +704,11 @@ func Decide(opt Options, st *State) (Plan, error) {
 		}
 		if j.Verdict.Verdict != "" {
 			row.Verdict, row.Slug, row.Reason, row.Rel = j.Verdict.Verdict, j.Slug, j.Reason, j.Rel
-			row.Applied = !j.AppliedAt.IsZero()
+			row.Home = j.Home
+			row.Applied = !j.AppliedAt.IsZero() && !j.Home
 		}
 		plan.Rows = append(plan.Rows, row)
-		if (row.Verdict == Repeat || row.Verdict == New) && !row.Applied {
+		if (row.Verdict == Repeat || row.Verdict == New) && !row.Applied && !row.Home {
 			toWrite = append(toWrite, pending{key: key, r: r, v: j})
 		}
 	}
@@ -757,11 +765,11 @@ func Decide(opt Options, st *State) (Plan, error) {
 	for _, rel := range editOrder {
 		e := edits[rel]
 		if e.after == e.before {
-			// The card already holds the words: home already, nothing to write.
+			// The card already holds the words: settled, and nothing is written.
 			for _, k := range e.keys {
-				plan.Rows[rowAt[k]].Applied = true
+				plan.Rows[rowAt[k]].Home = true
 				j := st.Verdicts[k]
-				j.Rel, j.AppliedAt = rel, now
+				j.Rel, j.Home = rel, true
 				st.Verdicts[k] = j
 			}
 			continue
@@ -775,8 +783,9 @@ func Decide(opt Options, st *State) (Plan, error) {
 }
 
 // MarkApplied records the writes that landed: every remark an applied intent
-// carried is home, at the card it wrote.
-func MarkApplied(plan *Plan, st *State, appliedRels []string, now time.Time) {
+// carried is home, at the card it wrote. It returns the cards written, each
+// once, vault-relative.
+func MarkApplied(plan *Plan, st *State, appliedRels []string, now time.Time) []string {
 	landed := map[string]bool{}
 	for _, rel := range appliedRels {
 		landed[rel] = true
@@ -785,15 +794,23 @@ func MarkApplied(plan *Plan, st *State, appliedRels []string, now time.Time) {
 	for i, row := range plan.Rows {
 		rowAt[row.Key] = i
 	}
+	var written []string
+	seen := map[string]bool{}
 	for i, in := range plan.Intents {
 		if !landed[in.Rel] {
 			continue
 		}
 		for _, k := range plan.Writes[i] {
+			rel := plan.Rows[rowAt[k]].Rel
 			j := st.Verdicts[k]
-			j.Rel, j.AppliedAt = plan.Rows[rowAt[k]].Rel, now
+			j.Rel, j.AppliedAt = rel, now
 			st.Verdicts[k] = j
 			plan.Rows[rowAt[k]].Applied = true
+			if !seen[rel] {
+				seen[rel] = true
+				written = append(written, rel)
+			}
 		}
 	}
+	return written
 }

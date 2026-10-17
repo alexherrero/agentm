@@ -308,10 +308,35 @@ func TestAReportingNightsVerdictsAreWrittenWhenTheWritesAreOn(t *testing.T) {
 	if f2.calls != 0 || len(night.Intents) != 1 {
 		t.Fatalf("%d calls, %d writes; want 0 and 1", f2.calls, len(night.Intents))
 	}
-	MarkApplied(&night, st, apply(t, v, night), now)
+	if written := MarkApplied(&night, st, apply(t, v, night), now); len(written) != 1 ||
+		written[0] != "agent/inbox/automate-the-playon-recordings.md" {
+		t.Errorf("MarkApplied returned %v, want the one inbox card", written)
+	}
 	third := decide(t, v, &fake{}, st, 0)
 	if len(third.Intents) != 0 || !third.Rows[0].Applied {
 		t.Errorf("an applied verdict was planned again: %+v", third.Rows)
+	}
+}
+
+// A repeat whose words the card already holds is settled, and nothing is
+// written for it: not an intent, not a write MarkApplied counts, and not a
+// write a later night repeats. The supervised report-only run of 2026-10-16
+// found two such repeats reported as written.
+func TestARepeatTheCardAlreadyHoldsIsHomeNotWritten(t *testing.T) {
+	held := "Stream the everyday catalogue, keep buying 4K discs."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(held, "m1", ""))})
+	f := &fake{replies: map[string]string{"Stream": `{"verdict": "repeat", "slug": "streaming-but-not-4k-bluray-yet"}`}}
+	st := &State{}
+	plan := decide(t, v, f, st, 0)
+	if len(plan.Intents) != 0 || !plan.Rows[0].Home || plan.Rows[0].Applied {
+		t.Fatalf("intents %d, row %+v; want no intent, home, not applied", len(plan.Intents), plan.Rows[0])
+	}
+	if written := MarkApplied(&plan, st, nil, now); len(written) != 0 {
+		t.Errorf("written %v", written)
+	}
+	next := decide(t, v, &fake{}, st, 0)
+	if len(next.Intents) != 0 || !next.Rows[0].Home || next.Rows[0].Applied {
+		t.Errorf("the next night: %+v", next.Rows[0])
 	}
 }
 
