@@ -224,7 +224,7 @@ def _candidate_line(candidate) -> str:
 # the words inside it hold. The dreaming binary's idea judge reads the same
 # shape (`daemon/internal/ideajudge`).
 IDEAS_FENCE = "```jsonl"
-_IDEA_KEYS = ("remark", "rule", "first_request", "transcript", "message", "context")
+_IDEA_KEYS = ("remark", "rule", "first_request", "transcript", "message", "context", "filed_key")
 
 
 def idea_entry(candidate, transcript: str = "") -> dict:
@@ -235,10 +235,17 @@ def idea_entry(candidate, transcript: str = "") -> dict:
         return getattr(candidate, name, default)
 
     remark = " ".join(str(read("remark") or read("title") or "").split())
+    # The key the retired session-end lane would have recorded in the filed
+    # ledger for this remark (`reflect.filed_key`): a remark whose card the
+    # night or the operator removed is dropped by the judge without a call.
+    filed_key = str(read("filed_key") or "")
+    if not filed_key and read("slug"):
+        import reflect
+        filed_key = reflect.filed_key(str(read("slug")), str(read("body") or read("title") or ""))
     return {"remark": remark, "rule": str(read("rationale") or read("rule") or ""),
             "first_request": bool(read("from_first_request", False) or read("first_request", False)),
             "transcript": transcript, "message": str(read("message_id") or read("message") or ""),
-            "context": str(read("context") or "")}
+            "context": str(read("context") or ""), "filed_key": filed_key}
 
 
 def _idea_key(entry: dict) -> tuple:

@@ -588,5 +588,44 @@ class TheIdeasSection(unittest.TestCase):
         self.assertTrue(entry["first_request"])
 
 
+
+class TheIdeasSectionIsTheJudgesShape(unittest.TestCase):
+    """The night's idea judge reads `## Ideas` in Go (daemon/internal/ideajudge).
+    Its tests read testdata/trace.md, and this renders the same trace and holds
+    the two byte-identical, so a change to either side's shape fails here."""
+
+    FIXTURE = Path(__file__).resolve().parent.parent / "daemon" / "internal" / "ideajudge" / "testdata" / "trace.md"
+
+    def test_the_go_fixture_is_what_the_writer_renders(self):
+        ideas = [
+            {"remark": "We should also look into automating the PlayOn recordings, as that's tedious by hand.",
+             "rule": "explicit follow-up suggestion", "first_request": False,
+             "transcript": "~/.claude/projects/-Users-x-home/5b2c8e10-aaaa.jsonl", "message": "u2-0f3c9a7e",
+             "context": "assistant: The Netflix films are done; the Hulu queue has four left.\noperator: One more "
+                        "thing. We should also look into automating the PlayOn recordings, as that's tedious by hand.",
+             "filed_key": "we-should-also-look-into-automating|0123456789abcdef"},
+            {"remark": "idea: a blog post per shipped plan, with the ``` numbers from #676 and [[a-link]].",
+             "rule": "idea declaration", "first_request": True,
+             "transcript": "~/.claude/projects/-Users-x-home/5b2c8e10-aaaa.jsonl", "message": "u1-77aa",
+             "context": "operator: idea: a blog post per shipped plan, with the ``` numbers from #676 and [[a-link]].",
+             "filed_key": ""},
+        ]
+        trace = et.Trace(when=date(2026, 10, 16), session_id="5b2c8e10-aaaa", title="How far has the PlayOn job got?",
+                         asked="How far has the PlayOn job got?", outcome="The Hulu queue has four left.",
+                         candidates=[{"rule": "not filed: a question, not a directive",
+                                      "excerpt": "should we always rebase here?", "count": 1}],
+                         ideas=ideas, project="movies-tv-games")
+        self.assertEqual(trace.render(), self.FIXTURE.read_text(encoding="utf-8"))
+
+    def test_an_entry_carries_the_key_the_retired_lane_recorded(self):
+        import reflect
+        mined = reflect.mine_transcript_messages([
+            {"type": "user", "message": {"role": "user", "content": "Look at the recall gate."}},
+            {"type": "user", "message": {"role": "user", "content": _IDEA}}])
+        [cand] = mined["idea_candidates"]
+        [entry] = et.mined_ideas([], mined=mined)
+        self.assertEqual(entry["filed_key"], reflect.filed_key(cand.slug, cand.body))
+
+
 if __name__ == "__main__":
     unittest.main()

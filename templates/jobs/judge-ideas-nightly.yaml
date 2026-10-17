@@ -1,0 +1,53 @@
+# judge-ideas-nightly.yaml — the night's idea judge (task 192, backlog #676).
+#
+# The sessions record their idea-shaped remarks in their traces and file
+# nothing: each remark is an entry in the trace's `## Ideas`, word for word,
+# with the conversation around it and a pointer back. This job asks the judge
+# what each new remark was. Steering the session is recorded and dropped; a
+# repeat of an idea card is added to that card under a dated `## Added by
+# dreaming` heading; a new idea is carded in `agent/inbox/` for your review. It
+# never creates a card in `personal/ideas/`, and it reads only the vault, never
+# a transcript. A remark whose card you removed is dropped without a call. A
+# verdict is kept against its remark, so a quiet night spends nothing.
+#
+# .harness/jobs/ is gitignored (per-project runtime state), so this templates/
+# copy is the tracked, shipped source. Register it by copying to
+# .harness/jobs/judge-ideas-nightly.yaml in a repo that runs the agentm runner.
+#
+# **Writing is two edits, and they belong together**: `enabled: true` here, and
+# `daemon.idea_judge_enabled true` in the kernel config
+# (`agentm_config.py --idea-judge-enabled true`). With the job on and the switch
+# off, the judge reads, judges and reports every night and writes nothing — the
+# state to leave it in until one judged night has been read.
+schedule: daily
+
+# The same lookback as the enrichment batch: a night the machine slept through
+# is picked up on the next one.
+lookback: 36h
+
+# The night's window. `order: 1`, shared with the enrichment batch: the loader
+# breaks the tie by name, so enrichment runs first and this job second, and
+# both run before the dreaming binary (order 2), whose facet reports the
+# judge's counts and whose `Ideas.md` rebuild lists a card a repeat changed.
+window: "02:00-06:00"
+order: 1
+
+enabled: false
+
+# Runs from `scripts/` as cwd. `-apply` writes only while the switch is on; with
+# it off the command judges and reports. The last line the command prints is a
+# JSON object carrying `total_cost_usd`, which is what the runner's spend line
+# reads. To list the remarks without spending anything:
+#
+#     agentmd judge-ideas -dry-run
+command: $HOME/.local/bin/agentmd judge-ideas -apply
+
+tier: T3
+
+# One call per new remark, capped at 20 a night (`-cap`); what the cap leaves
+# is reported and judged the next night. Sessions make a few idea remarks a
+# day, so most nights spend a handful of calls.
+budget:
+  tokens: 200000
+
+dry_run: false
