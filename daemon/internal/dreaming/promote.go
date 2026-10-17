@@ -23,7 +23,9 @@ import (
 // recurrence: the same thing said three times. It becomes a semantic
 // candidate — `status: unfiled`, no `why`, `derived_from` naming the traces —
 // for the next enrichment batch to judge like any other card. A reply the miner
-// refused to file, or an excerpt it cut mid-sentence, never counts (see
+// refused to file, or an excerpt it cut mid-sentence, never counts, and nor does
+// a sighting that quotes its own trace's `## Asked` or the always-load tier: the
+// three are counted as independent origins, not repeats of one text (see
 // promotable). A `## Captured`
 // link three sessions carry names a card that already exists; it is reported,
 // and nothing is written.
@@ -53,7 +55,101 @@ var (
 	// candidateRe is one `## Candidates` bullet as episodic_trace.py writes
 	// it: `- <rule> (×N) — “<excerpt>”`, the count and the excerpt optional.
 	candidateRe = regexp.MustCompile(`^-\s+(.+?)(?:\s+\(×\d+\))?(?:\s+—\s+[“"](.*)[”"])?\s*$`)
+	// quoteFragmentRe ends a fragment of an excerpt: a sentence, a line, or the
+	// `...` a window was cut at. reflect.py's `_QUOTE_FRAGMENT` is the same.
+	quoteFragmentRe = regexp.MustCompile(`\.\.\.|…|[.!?]\s+|\n+`)
 )
+
+// quoteMinWords is the shortest fragment that can be a quote; a shorter one
+// is a connective ("ok, and"), too short to be anybody's in particular.
+const quoteMinWords = 4
+
+// quotedIn reports whether an excerpt quotes a source already folded with
+// candidateKey: every fragment of four or more words in it appears there, and
+// at least one does. reflect.py's `quoted_in` is the same rule.
+func quotedIn(excerpt, folded string) bool {
+	if folded == "" {
+		return false
+	}
+	found := false
+	for _, frag := range quoteFragmentRe.Split(excerpt, -1) {
+		f := candidateKey(frag)
+		if len(strings.Fields(f)) < quoteMinWords {
+			continue
+		}
+		if !strings.Contains(folded, f) {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
+// tracesAsked is one trace's `## Asked` — the session's first request —
+// folded, outside fenced blocks.
+func tracesAsked(content string) string {
+	var lines []string
+	in, inFence := false, false
+	for _, line := range strings.Split(content, "\n") {
+		if fenceRe.MatchString(strings.TrimSpace(line)) {
+			inFence = !inFence
+			continue
+		}
+		if strings.HasPrefix(line, "## ") || strings.HasPrefix(line, "# ") {
+			in = strings.TrimSpace(strings.TrimPrefix(line, "## ")) == "Asked"
+			continue
+		}
+		if in && !inFence {
+			lines = append(lines, line)
+		}
+	}
+	return candidateKey(strings.Join(lines, "\n"))
+}
+
+// alwaysLoadText is the always-load tier, folded: every `*.md` in the vault's
+// `standards/` (the first of the vault root's and the memory root's that
+// exists) and in the retired `memory/_always-load/` pen, a stem the pen shares
+// with standards read once, generated navigation (`moc-*`) left out —
+// `vault_layout.always_load_files`, the reader the session-start loader and the
+// miner share.
+func alwaysLoadText(root string) string {
+	var dirs []string
+	for _, d := range []string{filepath.Join(vaultRootOf(root), "standards"), filepath.Join(root, "standards")} {
+		if isDir(d) {
+			dirs = append(dirs, d)
+			break
+		}
+	}
+	if pen := filepath.Join(root, "memory", "_always-load"); isDir(pen) {
+		dirs = append(dirs, pen)
+	}
+	seen := map[string]bool{}
+	var parts []string
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+				names = append(names, e.Name())
+			}
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			stem := strings.TrimSuffix(name, ".md")
+			if strings.HasPrefix(stem, "moc-") || seen[stem] {
+				continue
+			}
+			seen[stem] = true
+			if raw, err := os.ReadFile(filepath.Join(d, name)); err == nil {
+				parts = append(parts, candidateKey(string(raw)))
+			}
+		}
+	}
+	return strings.Join(parts, " | ")
+}
 
 // Promotion is one recurring item the pass found.
 type Promotion struct {
@@ -157,12 +253,28 @@ func candidateKey(excerpt string) string {
 // prompts — not the same thing said three times; the first two candidates this
 // job ever wrote (2026-10-04) were two windows of one such paragraph. A window
 // cut only at its end starts where the operator did, and still counts.
-func promotable(rule, excerpt string) bool {
+//
+// And a sighting that is not an independent origin (task 192, locked call 3):
+// an excerpt that quotes `origins` — the trace's own `## Asked`, the session's
+// first request, and the always-load tier, each folded — is the session
+// carrying a text it was given, not saying it. The 2026-10-07 audit found a
+// CLAUDE.md paragraph pasted into three chip briefs promoted as "said in 3
+// sessions"; three copies of one paste would pass any recurrence bar, so
+// MinRecurrence stays 3 and counts origins instead.
+func promotable(rule, excerpt string, origins ...string) bool {
 	if strings.HasPrefix(strings.TrimSpace(rule), "not filed:") {
 		return false
 	}
 	e := strings.TrimSpace(excerpt)
-	return !strings.HasPrefix(e, "...") && !strings.HasPrefix(e, "…")
+	if strings.HasPrefix(e, "...") || strings.HasPrefix(e, "…") {
+		return false
+	}
+	for _, o := range origins {
+		if quotedIn(e, o) {
+			return false
+		}
+	}
+	return true
 }
 
 // candidateSlug is a candidate's filename stem: its first words, hyphenated.
@@ -237,6 +349,7 @@ func PlanPromote(root string, contract *rules.Rules, now time.Time) (PromotePlan
 	captured := map[string]map[string]bool{}
 	candidates := map[string]map[string]bool{}
 	excerpts := map[string]string{}
+	standards := alwaysLoadText(root)
 	for _, rel := range rels {
 		if classOf(rel) != "episodic" {
 			continue
@@ -251,6 +364,7 @@ func PlanPromote(root string, contract *rules.Rules, now time.Time) (PromotePlan
 		}
 		plan.Sources++
 		capLines, candLines := traceSections(string(raw))
+		asked := tracesAsked(string(raw))
 		for _, t := range capturedTargets(capLines) {
 			if captured[t] == nil {
 				captured[t] = map[string]bool{}
@@ -259,7 +373,7 @@ func PlanPromote(root string, contract *rules.Rules, now time.Time) (PromotePlan
 		}
 		for _, l := range candLines {
 			m := candidateRe.FindStringSubmatch(l)
-			if m == nil || strings.TrimSpace(m[2]) == "" || !promotable(m[1], m[2]) {
+			if m == nil || strings.TrimSpace(m[2]) == "" || !promotable(m[1], m[2], asked, standards) {
 				continue
 			}
 			key := candidateKey(m[2])
