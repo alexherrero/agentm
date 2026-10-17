@@ -5,12 +5,14 @@ One note per session under `memory/episodic/`, `kind: session-trace`: the
 session's handoff record, built from the transcript and the recall history
 with no model call, capped, and written at session end by the reflection hook.
 
-Five sections, all of them the session's own words: `## Asked` (the first
+Six sections, all of them the session's own words: `## Asked` (the first
 request), `## Outcome` (the closing recap the session already wrote — free,
 and better than anything a cold model could reconstruct afterwards), `##
-Captured` and `## Recalled` as wikilinks, and `## Candidates` — every line the
+Captured` and `## Recalled` as wikilinks, `## Candidates` — every line the
 miner once filed as a note, kept as a line with the rule that fired, the
-excerpt, and the count. The calendar's day index links the day's traces by
+excerpt, and the count — and `## Ideas`, each idea-shaped remark word for word
+with the conversation around it and a pointer back, for the night's idea judge
+(task 192). The calendar's day index links the day's traces by
 `day:`; the dreaming binary's promotion job reads their links as its
 recurrence signal. A session that left nothing to record — nothing touched
 and nothing said in passing — leaves no trace: "what happened" without "to
@@ -45,6 +47,9 @@ MAX_TOUCHED = 40
 # them below HIGH, so this list is where the material lives — capped for the
 # same reason the links are: past this it is a transcript, not a record.
 MAX_CANDIDATES = 40
+# The idea remarks a session made, for the night's judge (task 192). Each
+# carries up to about 1,200 characters of conversation, so the cap is lower.
+MAX_IDEAS = 20
 TITLE_CHARS = 120
 # What was asked, at more than title length. The title is the handle; `##
 # Asked` is the request, and cutting it to a filename's worth would throw away
@@ -109,6 +114,12 @@ class Trace:
     # the next session's model can promote from it with context a nightly pass
     # over a lone note never has.
     candidates: list = field(default_factory=list)
+    # The idea remarks, for the night's judge (task 192): each a dict with the
+    # remark as it was said, the rule that fired, the conversation around it,
+    # and the pointer back (`transcript`, `message`). `first_request` marks a
+    # remark the session's first request carried. Nothing is filed at session
+    # end; the judge reads these from the vault, never from the transcript.
+    ideas: list = field(default_factory=list)
     project: str = ""
     task: str = ""
     surface: str = ""
@@ -154,8 +165,9 @@ class Trace:
         if self.surface:
             lines.append(f"surface: {_yaml_scalar(self.surface)}")
         lines += ["---", ""]
-        # The five sections of a handoff record: what was asked, what came of
-        # it, what was written, what was read, and what was said in passing.
+        # The six sections of a handoff record: what was asked, what came of
+        # it, what was written, what was read, what was said in passing, and
+        # the idea remarks the night will judge.
         # A section with nothing in it is omitted — a trace is a record, not a
         # form to be filled in.
         asked = (self.asked or self.title).strip()
@@ -169,6 +181,8 @@ class Trace:
             lines += ["## Recalled", ""] + [f"- [[{_link(t)}]]" for t in self.recalled] + [""]
         if self.candidates:
             lines += ["## Candidates", ""] + [_candidate_line(c) for c in self.candidates] + [""]
+        if self.ideas:
+            lines += ["## Ideas", ""] + render_ideas(self.ideas) + [""]
         return "\n".join(lines)
 
 
@@ -199,6 +213,68 @@ def _candidate_line(candidate) -> str:
     if excerpt:
         line += f" — “{excerpt}”"
     return line
+
+
+# ── ## Ideas ─────────────────────────────────────────────────────────────────
+#
+# One JSON object per remark, inside a fenced block. Fenced, because the context
+# is somebody's conversation: an issue number or a link in it is a sample, not a
+# mention, and the link and entity extractors skip fenced text. One object a
+# line, because a line that opens with `{` can never close the fence, whatever
+# the words inside it hold. The dreaming binary's idea judge reads the same
+# shape (`daemon/internal/ideajudge`).
+IDEAS_FENCE = "```jsonl"
+_IDEA_KEYS = ("remark", "rule", "first_request", "transcript", "message", "context")
+
+
+def idea_entry(candidate, transcript: str = "") -> dict:
+    """A miner's idea candidate as the trace keeps it."""
+    def read(name, default=""):
+        if isinstance(candidate, dict):
+            return candidate.get(name, default)
+        return getattr(candidate, name, default)
+
+    remark = " ".join(str(read("remark") or read("title") or "").split())
+    return {"remark": remark, "rule": str(read("rationale") or read("rule") or ""),
+            "first_request": bool(read("from_first_request", False) or read("first_request", False)),
+            "transcript": transcript, "message": str(read("message_id") or read("message") or ""),
+            "context": str(read("context") or "")}
+
+
+def _idea_key(entry: dict) -> tuple:
+    return (entry.get("message") or "", " ".join(str(entry.get("remark") or "").split()))
+
+
+def render_ideas(ideas: list) -> list:
+    out = [IDEAS_FENCE]
+    for e in ideas:
+        out.append(json.dumps({k: e.get(k, "") for k in _IDEA_KEYS}, ensure_ascii=False))
+    return out + ["```"]
+
+
+def parse_ideas(section: str) -> list:
+    """The entries of a `## Ideas` section; a line that is not one is skipped."""
+    out = []
+    for line in (section or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(entry, dict) and str(entry.get("remark") or "").strip():
+            out.append(entry)
+    return out
+
+
+def _transcript_pointer(path) -> str:
+    """The transcript, home-relative when it is under the home directory."""
+    p = Path(path).expanduser()
+    try:
+        return "~/" + p.resolve().relative_to(Path.home().resolve()).as_posix()
+    except (ValueError, OSError):
+        return p.as_posix()
 
 
 def _stem(ref: str) -> str:
@@ -352,7 +428,25 @@ def default_history_path() -> Path:
     return recall_counter.default_history_path()
 
 
-def mined_candidates(messages: list, *, standing: "dict | None" = None) -> list:
+def _mine(messages: list, standing: "dict | None" = None) -> dict:
+    """The miner's reading of a session, or an empty one when the miner fails:
+    a miner failure must never cost the trace — the sections above its lists
+    are the handoff, and the lists are the appendix."""
+    try:
+        import reflect
+        return reflect.mine_transcript_messages(messages, standing=standing)
+    except Exception:
+        return {}
+
+
+def mined_ideas(messages: list, transcript="", *, standing: "dict | None" = None, mined: "dict | None" = None) -> list:
+    """The session's idea remarks as the trace keeps them (`idea_entry`)."""
+    mined = _mine(messages, standing) if mined is None else mined
+    pointer = _transcript_pointer(transcript) if transcript else ""
+    return [idea_entry(c, pointer) for c in mined.get("idea_candidates") or []]
+
+
+def mined_candidates(messages: list, *, standing: "dict | None" = None, mined: "dict | None" = None) -> list:
     """The lines the miner will not file: every candidate below HIGH, as
     `{"rule", "excerpt", "count"}`, and what it dropped and why.
 
@@ -364,13 +458,7 @@ def mined_candidates(messages: list, *, standing: "dict | None" = None) -> list:
     card, and a record that says both would double-count it. `standing` is
     `reflect.load_standing`'s sources, the same the routing pass reads.
     """
-    try:
-        import reflect
-        mined = reflect.mine_transcript_messages(messages, standing=standing)
-    except Exception:
-        # A miner failure must never cost the trace: the sections above it are
-        # the handoff, and this one is the appendix.
-        return []
+    mined = _mine(messages, standing) if mined is None else mined
     out = []
     for c in mined.get("memory_candidates") or []:
         if getattr(c, "confidence", "") == "HIGH":
@@ -409,7 +497,8 @@ def note_stems(memory_root) -> "set[str]":
 
 def from_transcript(transcript_path: Path, *, session_id: str, when: date = None,
                     history_path: Path = None, project: str = "", task: str = "", surface: str = "",
-                    candidates: list = None, known: "set | None" = None, memory_root=None) -> Trace:
+                    candidates: list = None, known: "set | None" = None, memory_root=None,
+                    ideas: list = None) -> Trace:
     """The session's trace. `known` is the vault's note names (`note_stems`):
     when given, a recall-history slug that names no note is not linked. The
     history is the machine's, shared by every surface, and holds names that
@@ -420,9 +509,13 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
     import reflect  # the sidecar's own transcript reader, so both read one shape
 
     messages = reflect.load_messages(Path(transcript_path))
-    if candidates is None:
+    if candidates is None or ideas is None:
         standing = reflect.load_standing(messages, memory_root) if memory_root else None
-        candidates = mined_candidates(messages, standing=standing)
+        mined = _mine(messages, standing)
+        if candidates is None:
+            candidates = mined_candidates(messages, mined=mined)
+        if ideas is None:
+            ideas = mined_ideas(messages, transcript_path, mined=mined)
     pending: dict = {}
     captured: list = []
     recalled: list = []
@@ -451,6 +544,7 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
                  captured=[t for t in captured if t in touched], recalled=[t for t in recalled if t in touched],
                  asked=asked[:ASKED_CHARS], outcome=_closing_recap(messages),
                  candidates=list(candidates or [])[:MAX_CANDIDATES],
+                 ideas=list(ideas or [])[:MAX_IDEAS],
                  project=project, task=task, surface=surface,
                  attended=has_operator_turn(messages))
 
@@ -466,7 +560,7 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
 # stay, what was captured, recalled and said in passing accumulates, and the
 # newest closing recap is the Outcome.
 
-_SECTIONS = ("Asked", "Outcome", "Captured", "Recalled", "Candidates")
+_SECTIONS = ("Asked", "Outcome", "Captured", "Recalled", "Candidates", "Ideas")
 _LIST_SECTIONS = ("Captured", "Recalled", "Candidates")
 
 
@@ -574,6 +668,16 @@ def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcom
         merged = _union_lines(b_sec.get(name, ""), i_sec.get(name, ""), key)
         if merged:
             sections[name] = merged
+    # An idea remark is one entry whatever its words hold, so the union is by
+    # entry (its message and its words), never by line.
+    ideas = parse_ideas(b_sec.get("Ideas", ""))
+    seen = {_idea_key(e) for e in ideas}
+    for e in parse_ideas(i_sec.get("Ideas", "")):
+        if _idea_key(e) not in seen:
+            ideas.append(e)
+            seen.add(_idea_key(e))
+    if ideas:
+        sections["Ideas"] = "\n".join(render_ideas(ideas[:MAX_IDEAS]))
     out = ["---", *fm, "---", ""]
     for name in list(_SECTIONS) + [k for k in sections if k not in _SECTIONS]:
         text = (sections.get(name) or "").strip("\n")
@@ -611,16 +715,16 @@ def write_trace(vault_path, trace: Trace) -> str | None:
     nothing to record. A session that already has a trace is written into it,
     whatever its title says now; only a session with none gets a new name.
 
-    Candidates count as something to record. The miner files no note below
-    HIGH any more, so a session whose only durable output was things said in
-    passing has that material here or nowhere.
+    Candidates and ideas count as something to record. The miner files no note
+    below HIGH and no idea at all, so a session whose only durable output was
+    things said in passing has that material here or nowhere.
 
     A session with no operator turn writes nothing (the operator's ruling of
     2026-10-07): a scheduled poll every three hours wrote nine of the twenty
     cards in the 2026-10-07 write-quality audit, each one a trace of nobody."""
     if not trace.attended:
         return None
-    if not trace.touched and not trace.candidates:
+    if not trace.touched and not trace.candidates and not trace.ideas:
         return None
     root = Path(vault_path)
     existing = find_session_trace(root, trace.session_id)

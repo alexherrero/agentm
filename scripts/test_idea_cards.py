@@ -291,7 +291,12 @@ class AnIdeaAddsToItsCardTests(unittest.TestCase):
         self.assertEqual(len(self._semantic()), 1)
         self.assertNotIn("Added by capture", self.card.read_text(encoding="utf-8"))
 
-    def test_the_route_pass_adds_a_mined_idea_to_its_card(self):
+    def test_a_mined_repeat_reaches_its_card_at_night_not_at_session_end(self):
+        # Task 192: the route pass no longer matches a mined idea to its card.
+        # It records the remark in the trace, and the night's judge, which sees
+        # the conversation around it, appends a repeat under a dated `## Added
+        # by dreaming` heading (daemon/internal/ideajudge, `TestARepeat…`).
+        # Here, at session end, the card and the semantic class stay untouched.
         import io
         import reflect
         cand = reflect.Candidate(category="idea", confidence="LOW", slug="streaming",
@@ -302,7 +307,8 @@ class AnIdeaAddsToItsCardTests(unittest.TestCase):
         stats = reflect.route_candidates([], [cand], vault=self.root, mode=reflect.ROUTE_MODE_AUTO,
                                          session_id="9b9d740e-0000", stdin=io.StringIO(),
                                          stdout=io.StringIO(), stderr=io.StringIO())
-        self.assertEqual((stats["ideas_appended"], stats["ideas_filed"]), (1, 0))
+        self.assertEqual((stats["ideas_appended"], stats["ideas_filed"], stats["ideas_recorded"]), (0, 0, 1))
+        self.assertEqual(self.card.read_text(encoding="utf-8"), self.CARD)
         self.assertEqual(self._semantic(), [])
 
     def test_the_match_line_holds_against_a_long_unrelated_card(self):

@@ -223,6 +223,12 @@ class Candidate:
     # An idea remark the session's first request already carried: kept for the
     # night's judge, which reads the mark (task 192).
     from_first_request: bool = False
+    # What the night's idea judge reads (task 192): the remark as it was said
+    # (the sentence it is in), the conversation around it, and the message it
+    # came from. Set on idea candidates only.
+    remark: str = ""
+    context: str = ""
+    message_id: str = ""
 
 
 def _extract_text(msg: dict) -> str:
@@ -749,6 +755,48 @@ def _sentence_at(text: str, pos: int) -> str:
     return found
 
 
+# ── An idea remark's context ────────────────────────────────────────────────
+#
+# The night's judge reads only the vault, never a transcript, which may be gone
+# by then (task 192). So the trace keeps what the judge needs to tell an idea
+# from steering: the tail of what the assistant last said, and the operator's
+# message around the remark, together at most about this many characters.
+IDEA_CONTEXT_CHARS = 1200
+_ASSISTANT_TAIL_CHARS = 400
+
+
+def _prose(msg: dict) -> str:
+    """An assistant message's prose: its text blocks, without the tool calls."""
+    content = (msg.get("message") or {}).get("content")
+    if isinstance(content, str):
+        return content.strip()
+    return "\n".join((c.get("text") or "") for c in content or []
+                     if isinstance(c, dict) and c.get("type") == "text").strip()
+
+
+def idea_context(prior_said: str, operator_text: str, remark: str) -> str:
+    """`assistant: …<tail>` then `operator: <message>`, bounded. The tail is the
+    end of what the assistant said, cut on a word boundary; the operator's
+    message is whole when it fits, else a window around the remark."""
+    tail = " ".join((prior_said or "").split())
+    if len(tail) > _ASSISTANT_TAIL_CHARS:
+        cut = len(tail) - _ASSISTANT_TAIL_CHARS
+        cut = _snap_forward(tail, cut)
+        tail = "…" + tail[cut:].lstrip()
+    said = " ".join((operator_text or "").split())
+    room = IDEA_CONTEXT_CHARS - (len(tail) + len("assistant: \n") if tail else 0) - len("operator: ")
+    if len(said) > room:
+        at = max(0, said.find(" ".join(remark.split())))
+        radius = max(0, (room - len(remark)) // 2)
+        said = _excerpt_around(said, at, at + len(remark), radius=radius)
+        if said.startswith("..."):
+            said = "…" + said[3:]
+        if said.endswith("..."):
+            said = said[:-3] + "…"
+    lines = ([f"assistant: {tail}"] if tail else []) + [f"operator: {said}"]
+    return "\n".join(lines)
+
+
 def mine_transcript(transcript_path: Path, *, standing: "dict | None" = None) -> dict:
     """Mine a session transcript for memory + idea candidates.
 
@@ -832,9 +880,16 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
         else:
             dropped[key] = {"rule": rule, "excerpt": " ".join(excerpt.split())[:200], "count": 1}
 
+    # The last thing the assistant said in prose, for an idea remark's context.
+    prior_said = ""
+
     for msg in messages:
         role = msg.get("type")
         text = _extract_text(msg)
+        if role == "assistant":
+            said = _prose(msg)
+            if said:
+                prior_said = said
         if not text:
             continue
         if role == "user":
@@ -936,6 +991,9 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
                         rationale=rationale,
                         excerpts=[excerpt],
                         from_first_request=quoted_in(sentence, first),
+                        remark=sentence,
+                        context=idea_context(prior_said, text, sentence),
+                        message_id=str(msg.get("uuid") or ""),
                     )
 
         # ── Fixes apply to both user + assistant messages (either side can
@@ -1241,10 +1299,10 @@ def route_candidates(
             through a conversation, whoever was driving it), so a session tag
             becomes a tag on every entry this call files — a bulk-review pass
             can still batch a machine flood by origin (L1, ruling 8).
-        max_inbox: optional cap on the low-confidence filings this call makes
-            — ideas, now that they are the only ones. Candidates that would
-            exceed the cap are counted in `stats["capped"]` instead of
-            written. None (default) = no cap.
+        max_inbox: accepted for the CLI's stable interface. It capped the
+            low-confidence filings a machine session made, and ideas were the
+            last of them; since task 192 nothing below HIGH is filed at session
+            end, so it bounds nothing and `stats["capped"]` stays 0.
         binding: the session's `session_binding.Binding`. Every card this
             call files carries the bound `project` and `task`
             (agentm-vault plan 09); None stamps neither.
@@ -1253,8 +1311,11 @@ def route_candidates(
         {
             "auto_saved": N,       # HIGH candidates filed as unfiled cards
             "candidates": N,       # everything below HIGH — a trace line, no note
-            "ideas_filed": N,      # idea candidates filed as `type: idea`
-            "capped": N,           # low-confidence filings skipped past max_inbox
+            "ideas_recorded": N,   # idea remarks, each a line in the trace's
+                                   #   `## Ideas` for the night's judge (task 192)
+            "ideas_filed": N,      # 0: ideas are no longer filed at session end
+            "ideas_appended": N,   # 0: a repeat reaches its card at night
+            "capped": N,           # 0: nothing below HIGH files, so nothing is capped
             "deduped": N,          # already on disk from an earlier pass over
                                    #   this transcript — skipped, not written
             "refused": N,          # the volume gate shut the door (daily cap)
@@ -1267,7 +1328,8 @@ def route_candidates(
     """
     stats = {
         "auto_saved": 0, "approved": 0, "rejected": 0,
-        "skipped": 0, "filed_low": 0, "ideas_filed": 0, "ideas_appended": 0, "capped": 0, "errors": 0,
+        "skipped": 0, "filed_low": 0, "ideas_filed": 0, "ideas_appended": 0, "ideas_recorded": 0,
+        "capped": 0, "errors": 0,
         "opinion_supplements": 0, "deduped": 0, "refused": 0, "candidates": 0,
     }
     # One corpus index and one search per pass: every candidate is judged
@@ -1279,7 +1341,6 @@ def route_candidates(
     except Exception as e:  # the engine's own errors surface per candidate below
         print(f"[reflect.route] filing engine unavailable up front: {e}", file=stderr)
         corpus, search = None, None
-    low_filings_so_far = 0
     import session_binding  # same skill dir
     filed_before = filed_keys()
 
@@ -1299,31 +1360,6 @@ def route_candidates(
             record_filed(key, session_id)
             filed_before.add(key)
         return saved
-
-    def _file_capped(c: Candidate, *, type_hint: "str | None" = None) -> bool:
-        """File a low-confidence candidate unless max_inbox (the per-session
-        cap on machine-sourced low-confidence filings, L1) is set and already
-        reached. Returns True if written, False if capped or deduped (never
-        raises)."""
-        nonlocal low_filings_so_far
-        if max_inbox is not None and low_filings_so_far >= max_inbox:
-            stats["capped"] += 1
-            return False
-        saved = _file(c, type_hint=type_hint)
-        if saved is VOLUME_REFUSED:
-            stats["refused"] += 1
-            return False
-        if saved is ALREADY_CAPTURED:
-            # Not a write and not a failure. Counted rather than folded into
-            # either, so a re-mine reads as a re-mine in the transparency line
-            # instead of looking like a session that mined nothing.
-            stats["deduped"] += 1
-            return False
-        if saved:
-            low_filings_so_far += 1
-            return True
-        stats["errors"] += 1
-        return False
 
     def _file_counted(c: Candidate, key: str) -> None:
         saved = _file(c)
@@ -1359,24 +1395,13 @@ def route_candidates(
         # `why`, which files the card judged.
         stats["candidates"] += 1
 
-    # Idea candidates file as `type: idea` at low confidence. The ingest
-    # sweep's idea fold and the ledger read them from the class directory —
-    # the metadata marks them unreviewed, not a staging directory.
-    for c in idea_candidates:
-        # An idea that already has a card adds to it rather than filing a copy
-        # (agentm-vault § Capture, amended 2026-09-28).
-        try:
-            import idea_cards  # same skill dir
-            label = "conversation" + (f" · session {session_id[:8]}" if session_id else "")
-            card = idea_cards.add_to_matching_card(vault, c.body or c.title, title=c.title, source=label)
-        except Exception as e:  # a card that cannot be read is no reason to lose the idea
-            print(f"[reflect.route] idea card match skipped: {e}", file=stderr)
-            card = None
-        if card is not None:
-            stats["ideas_appended"] += 1
-            continue
-        if _file_capped(c, type_hint="idea"):
-            stats["ideas_filed"] += 1
+    # Ideas are not filed at session end (task 192, #676). Each idea remark is a
+    # line in the trace's `## Ideas`, with the conversation around it, and the
+    # night's judge decides: steering, a repeat of an idea card, or a new idea
+    # for the inbox. A match at session end could not tell "we should also add
+    # X" said to steer the session from an idea worth keeping; the context does,
+    # and judging context takes a model call this hook does not make.
+    stats["ideas_recorded"] = len(idea_candidates)
 
     return stats
 
