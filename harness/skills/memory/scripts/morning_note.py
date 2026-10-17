@@ -101,6 +101,10 @@ CRYSTALLIZE_RUNS = "crystallize-runs.jsonl"
 # what it shortlisted, judged and merged. What it merged is the night's act, so
 # it is listed under what ran; what it spent joins the per-job lines.
 RESTATED_RUNS = "restated-runs.jsonl"
+# The idea judge (task 192) keeps its record beside them too: what it judged and
+# what it wrote. A new idea in the inbox is the operator's to read, so the cards
+# it wrote are named; what it spent joins the per-job lines.
+IDEA_JUDGE_RUNS = "idea-judge-runs.jsonl"
 
 # The tier table's job names, in the order the spend section lists them, with
 # the words a reader wants rather than the table's slugs.
@@ -109,6 +113,7 @@ JOB_NAMES = {
     "summarize": "enrichment light",
     "crystallize": "crystallize",
     "fuzzy-merge": "restated rules",
+    "judge-ideas": "idea judge",
 }
 LAST_REPORT = Path("dreaming") / "last-report.json"
 # `dream.CYCLE_REPORT_NAME`; a test holds the two equal.
@@ -218,6 +223,11 @@ def restated_runs(engine_dir: Path) -> list:
     return _runs_file(Path(engine_dir) / RESTATED_RUNS)
 
 
+def idea_judge_runs(engine_dir: Path) -> list:
+    """Every run the idea judge recorded, oldest first, each with `_at`."""
+    return _runs_file(Path(engine_dir) / IDEA_JUDGE_RUNS)
+
+
 def binary_report(engine_dir: Path) -> Optional[dict]:
     """The dreaming binary's last completed pass, with the file's `_mtime`."""
     p = Path(engine_dir) / LAST_REPORT
@@ -296,6 +306,7 @@ class Night:
     crystallize_tonight: list = field(default_factory=list)
     crystallize_week: list = field(default_factory=list)
     restated_tonight: list = field(default_factory=list)
+    idea_judge_tonight: list = field(default_factory=list)
     binary: Optional[dict] = None
     binary_tonight: bool = False
     python: Optional[dict] = None
@@ -385,6 +396,7 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
     # week's lessons on one morning in seven and say nothing on the other six.
     night.crystallize_week = [r for r in cryst if r["_at"] >= now - 7 * 86400]
     night.restated_tonight = [r for r in restated_runs(engine_dir) if r["_at"] >= start]
+    night.idea_judge_tonight = [r for r in idea_judge_runs(engine_dir) if r["_at"] >= start]
     night.binary = binary_report(engine_dir)
     night.binary_tonight = bool(night.binary and night.binary["_mtime"] >= start)
     cycle = python_cycle(engine_dir)
@@ -621,6 +633,24 @@ def _restated_line(runs: list) -> str:
     return line + "."
 
 
+def _idea_judge_line(runs: list) -> str:
+    """What the idea judge did: its verdicts, and every card it wrote by name,
+    since a new idea in the inbox waits for the operator's review."""
+    written = [rel for r in runs for rel in (r.get("written") or [])]
+    reporting = all(r.get("mode") != "apply" for r in runs)
+    line = (f"**Idea judge** — {_sum(runs, 'judged')} remark(s) judged · {_sum(runs, 'steering')} steering · "
+            f"{_sum(runs, 'repeats')} repeat(s) · {_sum(runs, 'new')} new")
+    if _sum(runs, "removed"):
+        line += f" · {_sum(runs, 'removed')} you had removed, dropped without a call"
+    if _sum(runs, "deferred"):
+        line += f" · {_sum(runs, 'deferred')} past the cap, for tonight"
+    if reporting:
+        line += " — reporting only, nothing written"
+    elif written:
+        line += ": " + "; ".join(_link(rel) for rel in written[:5])
+    return line + "."
+
+
 def what_ran(night: Night) -> list:
     lines = []
     if night.tonight_runs:
@@ -643,6 +673,8 @@ def what_ran(night: Night) -> list:
         lines.append(f"- {_python_line(night.python)}")
     if night.restated_tonight:
         lines.append(f"- {_restated_line(night.restated_tonight)}")
+    if night.idea_judge_tonight:
+        lines.append(f"- {_idea_judge_line(night.idea_judge_tonight)}")
     skipped = [f"{label} ({night.reasons[job]})" for job, label in NIGHT_JOBS
                if not night.ran.get(job)]
     if skipped:
@@ -823,7 +855,7 @@ def per_job(night: Night) -> list:
     while the batch is spending on the same nights.
     """
     by = _by_job(night.tonight_runs)
-    for job, u in _by_job(night.crystallize_tonight + night.restated_tonight).items():
+    for job, u in _by_job(night.crystallize_tonight + night.restated_tonight + night.idea_judge_tonight).items():
         cur = by.setdefault(job, {"tokens": 0, "calls": 0, "cost": 0.0})
         cur["tokens"] += u["tokens"]
         cur["calls"] += u["calls"]

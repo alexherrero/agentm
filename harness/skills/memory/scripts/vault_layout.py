@@ -126,6 +126,24 @@ def always_load_dirs(root) -> list[Path]:
     return out
 
 
+def always_load_files(root) -> list[Path]:
+    """Every file the always-load tier injects, in injection order: each tier
+    directory's `*.md`, name-sorted, without generated navigation (`moc-*`,
+    which carries no standing instruction). A stem the pen shares with
+    `standards/` is the pen's stale copy and is left out — standards wins.
+    The session-start loader injects these, and the miner reads them as what a
+    session already carries (task 192)."""
+    out: list[Path] = []
+    seen: set = set()
+    for tier_dir in always_load_dirs(root):
+        for p in sorted(tier_dir.glob("*.md")):
+            if p.stem.startswith("moc-") or p.stem in seen:
+                continue
+            seen.add(p.stem)
+            out.append(p)
+    return out
+
+
 def legacy_pen_dir(root) -> Path:
     """`memory/_always-load/`, the retired pen. Returned whether or not it
     exists; callers that would CREATE it must check first — nothing recreates

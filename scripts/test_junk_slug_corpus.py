@@ -49,8 +49,11 @@ class TestJunkSlugCorpus(unittest.TestCase):
 
     def _mine(self, text: str) -> dict:
         transcript = self.root / "sess.jsonl"
+        # A session opens on its request, and what the first request carries is never
+        # mined (task 192): the fixture's words come after a typed opening turn.
+        opener = json.dumps({"type": "user", "message": {"role": "user", "content": "Pick up the release work."}})
         line = json.dumps({"type": "user", "message": {"role": "user", "content": text}})
-        transcript.write_text(line + "\n", encoding="utf-8")
+        transcript.write_text(opener + "\n" + line + "\n", encoding="utf-8")
         return reflect.mine_transcript(transcript)
 
     def test_junk_corpus_never_auto_saves_high(self) -> None:

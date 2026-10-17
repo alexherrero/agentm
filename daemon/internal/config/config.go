@@ -191,6 +191,13 @@ type Config struct {
 	// once the first judged list has been read, as with the task mover.
 	RestatedMergeEnabled bool
 
+	// IdeaJudgeEnabled lets the nightly idea judge write what it decides
+	// (task 192): a repeat added to its idea card, a new idea carded in the
+	// inbox. Off, the judge reads the night's idea remarks, judges them and
+	// reports what it would write, writing nothing; the operator turns it on
+	// once a judged night has been read, as with the restated-rules merge.
+	IdeaJudgeEnabled bool
+
 	// PeopleEmailEvidenceEnabled lets a mail thread with the operator count as
 	// shared work for each person on it, toward the two a person needs for an
 	// entity page (task 179). Off in the shipped configuration, and nothing
@@ -718,6 +725,9 @@ func Load(opts Options) (*Config, error) {
 	if b, ok := raw["daemon.restated_merge_enabled"].(bool); ok {
 		c.RestatedMergeEnabled = b
 	}
+	if b, ok := raw["daemon.idea_judge_enabled"].(bool); ok {
+		c.IdeaJudgeEnabled = b
+	}
 	if b, ok := raw["daemon.people_email_evidence_enabled"].(bool); ok {
 		c.PeopleEmailEvidenceEnabled = b
 	}
@@ -1037,6 +1047,7 @@ func (c *Config) Switches() map[string]bool {
 		"daemon.crystallize_enabled":           c.CrystallizeEnabled,
 		"daemon.task_mover_enabled":            c.TaskMoverEnabled,
 		"daemon.restated_merge_enabled":        c.RestatedMergeEnabled,
+		"daemon.idea_judge_enabled":            c.IdeaJudgeEnabled,
 		"daemon.people_email_evidence_enabled": c.PeopleEmailEvidenceEnabled,
 	}
 }

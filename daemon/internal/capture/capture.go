@@ -437,6 +437,20 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		}
 	}
 
+	// A new idea lands in the inbox (task 192, #676), not in the class the
+	// contract routes `idea` to: filing an idea into `personal/ideas/` is the
+	// operator's act at the review pass, and `memory/semantic/` is where unread
+	// idea cards piled up. It waits there `unfiled`, whatever its writer knew,
+	// because nothing in the inbox is filed until the operator reads it.
+	if noteType == "idea" {
+		dir = inboxRel(c.cfg.MemoryRoot)
+		if status != "unfiled" {
+			status = "unfiled"
+		}
+		notes = append(notes, "a new idea lands in the inbox for your review; "+
+			"`/memory inbox --file <name> --type idea --area <group>` files it into personal/ideas/")
+	}
+
 	base := slugify(title)
 	if base == "" {
 		base = slugify(text)

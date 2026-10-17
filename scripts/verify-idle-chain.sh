@@ -168,10 +168,13 @@ EOF
 seed_transcripts() {
   local dir="$1/-scratch-proj/session-a"
   mkdir -p "$dir"
+  # A session opens on its request, and what the first request carries is
+  # never mined (task 192): the preference comes after a typed opening turn.
   "$PY" -c "
 import json
 from pathlib import Path
 Path('$dir/transcript.jsonl').write_text(
+    json.dumps({'type': 'user', 'message': {'role': 'user', 'content': 'Pick up the release work.'}}) + '\n' +
     json.dumps({'type': 'user', 'message': {'role': 'user', 'content': '''$OPERATOR_PREF'''}}) + '\n',
     encoding='utf-8')
 "

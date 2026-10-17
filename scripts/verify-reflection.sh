@@ -112,7 +112,9 @@ JUNK_LINES=(
 write_transcript() {  # write_transcript <path> <user-line> [<user-line> ...]
   mkdir -p "$(dirname "$1")"
   : > "$1"
-  for line in "${@:2}"; do
+  # A session opens on its request, and what the first request carries is
+  # never mined (task 192): the fixture's lines come after a typed opening turn.
+  for line in "Pick up the release work." "${@:2}"; do
     "$PY" -c "
 import json
 print(json.dumps({'type':'user','message':{'role':'user','content':'''$line'''}}))

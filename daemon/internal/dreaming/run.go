@@ -74,7 +74,10 @@ type Report struct {
 	Entities EntitiesPlan `json:"entities"`
 	// Ideas is `Ideas.md`, rebuilt with the maps (agentm-vault part 13).
 	Ideas IdeasPlan `json:"ideas"`
-	Dates DatesPlan `json:"dates"`
+	// IdeaJudge is the idea judge's counts for the day, when it ran before this
+	// pass (task 192); the facet reports them.
+	IdeaJudge *IdeaJudgeSummary `json:"idea_judge,omitempty"`
+	Dates     DatesPlan         `json:"dates"`
 	// The report-only checks: nothing below mutates a note.
 	Vocabulary VocabularyReport `json:"vocabulary"`
 	Trends     TrendReport      `json:"trends"`
@@ -459,7 +462,9 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		}
 	}
 
-	// The night's own record of itself, written from what it actually did.
+	// The night's own record of itself, written from what it actually did, and
+	// what the idea judge did before it.
+	rep.IdeaJudge = ReadIdeaJudgeSummary(cfg.EngineStateDir, now)
 	facet := PlanDreamingFacet(root, contract, &rep, now)
 	rep.Facet = facet
 	if opt.Apply && len(facet.Intents) > 0 {

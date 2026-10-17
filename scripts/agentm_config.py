@@ -27,6 +27,8 @@ Operations:
                                             #   completed/tasks/ (daemon.task_mover_enabled)
     agentm_config.py --restated-merge-enabled true  # let the night merge restated rules
                                             #   its judge calls the same (daemon.restated_merge_enabled)
+    agentm_config.py --idea-judge-enabled true  # let the night's idea judge write its
+                                            #   verdicts (daemon.idea_judge_enabled; it spends either way)
     agentm_config.py --people-email-evidence-enabled true  # let a mail thread count as
                                             #   shared work for a people page (daemon.people_email_evidence_enabled)
     agentm_config.py --notify-enabled true # opt in to the daily on-device notification
@@ -98,6 +100,7 @@ _DAEMON_DECAY_ENABLED_KEY = "daemon.decay_enabled"
 _DAEMON_CRYSTALLIZE_ENABLED_KEY = "daemon.crystallize_enabled"
 _DAEMON_TASK_MOVER_ENABLED_KEY = "daemon.task_mover_enabled"
 _DAEMON_RESTATED_MERGE_ENABLED_KEY = "daemon.restated_merge_enabled"
+_DAEMON_IDEA_JUDGE_ENABLED_KEY = "daemon.idea_judge_enabled"
 _DAEMON_PEOPLE_EMAIL_EVIDENCE_KEY = "daemon.people_email_evidence_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
@@ -475,6 +478,36 @@ def cmd_set_restated_merge_enabled(prefix: Path, value: str) -> int:
     return 0
 
 
+def cmd_set_idea_judge_enabled(prefix: Path, value: str) -> int:
+    """Let the night's idea judge write (`daemon.idea_judge_enabled`).
+
+    The sessions record their idea-shaped remarks in their traces and file
+    nothing; `agentmd judge-ideas -apply` asks the judge what each one was —
+    steering, a repeat of an idea card, or a new idea (task 192). Off, it
+    judges and reports what it would write; on, a repeat is added to its card
+    under `## Added by dreaming` and a new idea is carded in the inbox. It
+    never creates a card in `personal/ideas/`. Idempotent: silent no-op when
+    unchanged.
+    """
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        print(
+            f"[agentm_config] refusing to set idea_judge_enabled: {value!r} is "
+            "not 'true' or 'false'",
+            file=sys.stderr,
+        )
+        return 2
+    enabled = normalized == "true"
+    config = _read_config(prefix) or {}
+    if config.get(_DAEMON_IDEA_JUDGE_ENABLED_KEY) == enabled:
+        return 0
+    config[_DAEMON_IDEA_JUDGE_ENABLED_KEY] = enabled
+    written = _write_config(prefix, config)
+    print(f"{_DAEMON_IDEA_JUDGE_ENABLED_KEY} = {enabled}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_set_task_mover_enabled(prefix: Path, value: str) -> int:
     """Let the night move closed tasks (`daemon.task_mover_enabled`).
 
@@ -788,6 +821,9 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--restated-merge-enabled", metavar="{true,false}",
                     help="set daemon.restated_merge_enabled — let the night merge convention, "
                          "preference and workflow pairs its judge calls the same rule restated")
+    op.add_argument("--idea-judge-enabled", metavar="{true,false}",
+                    help="set daemon.idea_judge_enabled — let the night's idea judge add a repeat "
+                         "to its idea card and card a new idea in the inbox (off: it reports only)")
     op.add_argument("--people-email-evidence-enabled", metavar="{true,false}",
                     help="set daemon.people_email_evidence_enabled — let a mail thread with you "
                          "count as shared work for a people page (ships off; nothing reads mail yet)")
@@ -830,6 +866,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_task_mover_enabled(prefix, args.task_mover_enabled)
     if args.restated_merge_enabled is not None:
         return cmd_set_restated_merge_enabled(prefix, args.restated_merge_enabled)
+    if args.idea_judge_enabled is not None:
+        return cmd_set_idea_judge_enabled(prefix, args.idea_judge_enabled)
     if args.people_email_evidence_enabled is not None:
         return cmd_set_people_email_evidence_enabled(prefix, args.people_email_evidence_enabled)
     if args.email_to is not None:

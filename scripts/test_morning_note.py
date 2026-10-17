@@ -274,6 +274,31 @@ class TheSpendLine(_Night):
         self.assertIn("restated rules", text.split("## Spend", 1)[1])
         self.assertIn("46,000 tokens · 2 call(s) · $0.50", text)
 
+    def test_the_idea_judge_names_its_cards_and_its_spend(self):
+        # Task 192: a new idea in the inbox waits for the operator, so the note
+        # names the cards the judge wrote; its spend joins the per-job lines.
+        self.full_night()
+        (self.engine / mn.IDEA_JUDGE_RUNS).write_text(json.dumps({
+            "at": datetime.fromtimestamp(TONIGHT, tz=timezone.utc).isoformat(), "job": "judge-ideas",
+            "mode": "apply", "remarks": 7, "judged": 5, "steering": 3, "repeats": 1, "new": 1, "removed": 1,
+            "deferred": 0, "written": ["agent/inbox/automate-the-playon-recordings.md"],
+            "model_calls": 5, "tokens": 30000, "total_cost_usd": 0.25,
+            "by_job": {"judge-ideas": {"input_tokens": 25000, "cache_creation_input_tokens": 0,
+                                       "cache_read_input_tokens": 0, "output_tokens": 5000,
+                                       "total_cost_usd": 0.25, "calls": 5}}}) + "\n", encoding="utf-8")
+        text, *_ = self.build()
+        self.assertIn("**Idea judge** — 5 remark(s) judged · 3 steering · 1 repeat(s) · 1 new · "
+                      "1 you had removed, dropped without a call: [[automate-the-playon-recordings]].", text)
+        self.assertIn("idea judge", text.split("## Spend", 1)[1])
+
+    def test_a_reporting_idea_judge_says_it_wrote_nothing(self):
+        self.full_night()
+        (self.engine / mn.IDEA_JUDGE_RUNS).write_text(json.dumps({
+            "at": datetime.fromtimestamp(TONIGHT, tz=timezone.utc).isoformat(), "job": "judge-ideas",
+            "mode": "report", "judged": 2, "steering": 1, "new": 1, "deferred": 3}) + "\n", encoding="utf-8")
+        text, *_ = self.build()
+        self.assertIn("3 past the cap, for tonight — reporting only, nothing written.", text)
+
     def test_the_weekly_phase_gets_its_own_line(self):
         self.full_night()
         self.crystallize(_crystallize_run(TONIGHT))

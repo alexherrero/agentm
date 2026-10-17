@@ -34,8 +34,11 @@ import reflect  # noqa: E402
 
 def _write_transcript(path: Path, user_text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # A session opens on its request, and what the first request carries is never
+    # mined (task 192): the fixture's words come after a typed opening turn.
+    opener = json.dumps({"type": "user", "message": {"role": "user", "content": "Pick up the release work."}})
     line = json.dumps({"type": "user", "message": {"role": "user", "content": user_text}})
-    path.write_text(line + "\n", encoding="utf-8")
+    path.write_text(opener + "\n" + line + "\n", encoding="utf-8")
 
 
 class TestDiscoverTranscripts(unittest.TestCase):
