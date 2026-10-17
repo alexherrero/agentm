@@ -118,6 +118,9 @@ class TestMiningEndToEnd(unittest.TestCase):
     def _mine(self, records, tmp: Path):
         import json
         p = tmp / "t.jsonl"
+        # A session opens on its request, and what the first request carries is never
+        # mined (task 192): the fixture's words come after a typed opening turn.
+        records = [_user("Pick up the release work."), *records]
         p.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
         return reflect.mine_transcript(p)
 

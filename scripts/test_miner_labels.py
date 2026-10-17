@@ -43,7 +43,11 @@ class TheLabeledRows(unittest.TestCase):
 
     def _mine_user(self, text):
         p = self.tmp / "t.jsonl"
-        p.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": text}}) + "\n", encoding="utf-8")
+        # A session opens on its request, and what the first request carries is never
+        # mined (task 192): the fixture's words come after a typed opening turn.
+        opener = json.dumps({"type": "user", "message": {"role": "user", "content": "Pick up the release work."}})
+        p.write_text(opener + "\n" + json.dumps({"type": "user", "message": {"role": "user", "content": text}}) + "\n",
+                     encoding="utf-8")
         return reflect.mine_transcript(p)["memory_candidates"]
 
     def test_the_sheet_had_twenty_rows_and_every_row_is_labeled(self):

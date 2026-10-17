@@ -220,6 +220,9 @@ class Candidate:
     rationale: str         # what pattern matched (instrumentation)
     excerpts: list[str] = field(default_factory=list)  # verbatim snippets
     occurrences: int = 1   # match count (instrumentation)
+    # An idea remark the session's first request already carried: kept for the
+    # night's judge, which reads the mark (task 192).
+    from_first_request: bool = False
 
 
 def _extract_text(msg: dict) -> str:
@@ -347,6 +350,189 @@ def _operator_text(msg: dict) -> str:
     if len(text) > MAX_OPERATOR_UTTERANCE_CHARS:
         return ""
     return text
+
+
+# ── Who was at the session ──────────────────────────────────────────────────
+# One reading for the miner and the trace writer (agentm-vault § Capture, the
+# operator's ruling of 2026-10-07): a session nobody typed in writes no trace and
+# mines nothing. It lived in `episodic_trace` until task 192, which left the
+# miner filing cards from sessions the trace writer had already refused.
+
+# Lines the host writes into a user turn, not the operator's words: a
+# bracketed annotation ("[Image: original 2560x1600, …]", "[Request
+# interrupted by user]") and the desktop app's resume notice. Five traces
+# took one as their title before task 186.
+HOST_LINE = re.compile(r"^\[.*\]$|^The app was quit while you were working\b")
+
+# A Desktop scheduled task's opening turn: the wrapper, whose preamble says "The
+# user is not present". The host stamps it as it stamps an operator's turn
+# (`origin.kind: human`, `promptSource: sdk`), so only its content tells.
+_SCHEDULED_TASK = re.compile(r"<scheduled-task\b[^>]*>.*?(?:</scheduled-task>|\Z)", re.S)
+_COMMAND = re.compile(r"<command-name>\s*/\S+\s*</command-name>")
+
+
+def is_operator_turn(msg: dict) -> bool:
+    """A user message the operator typed.
+
+    `_operator_text` decides what the operator said: a host attribution other
+    than a person, `isMeta`, the injected envelopes, a handoff prompt and a
+    paste past the typing ceiling are not. On top of it, a tool result, a
+    sidechain message, a compaction summary, a line the host wrote, the
+    scheduled-task wrapper and a headless `claude -p` prompt are not either. A
+    slash command typed in the box is: its envelope is nothing to mine, but
+    somebody typed it."""
+    if msg.get("type") != "user" or msg.get("isSidechain") or msg.get("isCompactSummary"):
+        return False
+    if msg.get("entrypoint") == "sdk-cli" and msg.get("promptSource") == "sdk":
+        return False
+    text = _SCHEDULED_TASK.sub(" ", _operator_text(msg))
+    if any(l.strip() and not HOST_LINE.match(l.strip()) for l in text.splitlines()):
+        return True
+    origin = msg.get("origin")
+    human = not (isinstance(origin, dict) and origin.get("kind") and origin.get("kind") != "human")
+    raw = _extract_text(msg)
+    return (human and not msg.get("isMeta") and bool(_COMMAND.search(raw))
+            and not _SCHEDULED_TASK.search(raw))
+
+
+def has_operator_turn(messages: list) -> bool:
+    """Whether anyone was at the session."""
+    return any(is_operator_turn(m) for m in messages)
+
+
+# ── A question is not a directive ───────────────────────────────────────────
+#
+# Follow-ups F40, folded into #676 (task 192): "should we always rebase here?"
+# carries a directive word and was mined as a directive. A sentence that ends
+# in a question mark, or opens with an auxiliary before its subject ("should
+# we", "can you", "do we", "would it", "how should we"), yields no preference
+# and no correction. "Do not use X" and "what I want is X" are statements: the
+# auxiliary has to come before a subject.
+_QUESTION_OPENER = re.compile(
+    r"^\W*(?:(?:what|why|how|when|where|which|who)\s+)?"
+    r"(?:should|shall|can|could|would|will|do|does|did|is|are|was|were|have|has|may|might|must)\s+"
+    r"(?:we|i|you|it|they|this|that|there|he|she|these|those)\b", re.IGNORECASE)
+QUESTION_RULE = "not filed: a question, not a directive"
+
+
+def is_question(sentence: str) -> bool:
+    s = (sentence or "").strip()
+    return s.endswith("?") or bool(_QUESTION_OPENER.match(s))
+
+
+# ── Origins, not repeats ────────────────────────────────────────────────────
+#
+# Task 192 (locked call 3, #676). A candidate whose words the session already
+# carried is not the operator saying it: the session's own first request (its
+# brief, typed or pasted), `~/.claude/CLAUDE.md`, the repo's AGENTS.md and the
+# always-load tier (`standards/`). The 2026-10-07 audit found a CLAUDE.md
+# paragraph pasted into three chip briefs promoted as "said in 3 sessions".
+#
+# At mining the unit is the sentence the match is in: it is in the source,
+# folded the way the dreaming binary's `candidateKey` folds (letters and digits,
+# lower-cased, every other run one space), and four words long or more. The
+# window around a match is not the unit, because the operator's own words beside
+# a pasted line ("Remember the house rules.") would hide it.
+#
+# At promotion a trace line carries only that window, so the dreaming binary's
+# `quotedIn` takes it whole: every fragment of four or more words in it appears
+# in the source. A fragment ends at a sentence, a line, or the `...` a window
+# was cut at; a shorter one is a connective ("ok, and"), too short to be anybody's
+# in particular. `quoted_in` is that rule, and a sentence is its one-fragment case.
+QUOTE_MIN_WORDS = 4
+_QUOTE_FRAGMENT = re.compile(r"\.\.\.|…|[.!?]\s+|\n+")
+FIRST_REQUEST = "the session's first request"
+
+
+def fold(text: str) -> str:
+    """Letters and digits, lower-cased; every other run one space."""
+    import unicodedata
+    out: list[str] = []
+    space = False
+    for ch in (text or "").lower():
+        cat = unicodedata.category(ch)
+        if cat.startswith("L") or cat == "Nd":
+            out.append(ch)
+            space = False
+        elif not space and out:
+            out.append(" ")
+            space = True
+    return "".join(out).strip()
+
+
+def quoted_in(excerpt: str, folded_source: str) -> bool:
+    """Whether `excerpt` quotes a source already folded with `fold`."""
+    if not folded_source:
+        return False
+    frags = [fold(f) for f in _QUOTE_FRAGMENT.split(excerpt or "")]
+    frags = [f for f in frags if len(f.split()) >= QUOTE_MIN_WORDS]
+    return bool(frags) and all(f in folded_source for f in frags)
+
+
+_COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+
+
+def first_request_text(messages: list) -> str:
+    """The session's opening ask, whole: the first user message with words in
+    it once the injected envelopes are off, or the arguments of the slash
+    command a session opened on. Unlike `_operator_text` it keeps a paste past
+    the typing ceiling and a handoff prompt, because a brief is exactly what it
+    is looking for. A tool result, a host notice and an injected message are
+    not a request."""
+    for m in messages:
+        if m.get("type") != "user" or m.get("isSidechain") or m.get("isCompactSummary") or m.get("isMeta"):
+            continue
+        origin = m.get("origin")
+        if isinstance(origin, dict) and origin.get("kind") and origin.get("kind") != "human":
+            continue
+        raw = _extract_text(m)
+        text = _strip_envelopes(raw)
+        if any(l.strip() and not HOST_LINE.match(l.strip()) for l in text.splitlines()):
+            return text
+        if _COMMAND.search(raw):
+            args = _COMMAND_ARGS.search(raw)
+            return args.group(1).strip() if args else ""
+    return ""
+
+
+def _agents_md_for(cwd: str) -> "Path | None":
+    """The AGENTS.md of the repo a session ran in: the nearest one at or above
+    its directory, which may be a worktree that is gone by now."""
+    p = Path(cwd) if cwd else None
+    home = Path.home()
+    while p is not None and p != p.parent and p != home:
+        if (p / "AGENTS.md").is_file():
+            return p / "AGENTS.md"
+        p = p.parent
+    return None
+
+
+def load_standing(messages: list, memory_root=None) -> dict:
+    """What a session carries before the operator says a word, by name:
+    `~/.claude/CLAUDE.md`, the repo's AGENTS.md, and each file of the
+    always-load tier when a memory root is known. A source that cannot be read
+    is left out."""
+    out: dict = {}
+
+    def add(label: str, path: Path) -> None:
+        try:
+            out[label] = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+
+    add("~/.claude/CLAUDE.md", Path.home() / ".claude" / "CLAUDE.md")
+    cwd = next((m.get("cwd") for m in messages if isinstance(m.get("cwd"), str) and m.get("cwd")), "")
+    agents = _agents_md_for(cwd)
+    if agents is not None:
+        add("AGENTS.md", agents)
+    if memory_root:
+        try:
+            import vault_layout  # same skill dir
+            for p in vault_layout.always_load_files(memory_root):
+                add(f"standards/{p.name}", p)
+        except Exception:
+            pass
+    return out
 
 
 def _extract_tool_uses(msg: dict) -> list[str]:
@@ -538,21 +724,32 @@ def _scan_patterns(
     patterns: list[tuple[re.Pattern, str]],
     *,
     role: str,
-) -> list[tuple[str, str, str]]:
-    """Run all patterns over text. Returns list of (match_text, rationale, excerpt) tuples.
+) -> list[tuple[str, str, str, int]]:
+    """Run all patterns over text. Returns list of (match_text, rationale,
+    excerpt, start) tuples; `start` is the match's offset in `text`.
 
     `role` is used in the excerpt rationale tagging but doesn't change matching
     behavior (kept here for future per-role pattern tuning).
     """
-    out: list[tuple[str, str, str]] = []
+    out: list[tuple[str, str, str, int]] = []
     for pattern, rationale in patterns:
         for m in pattern.finditer(text):
             excerpt = _excerpt_around(text, m.start(), m.end())
-            out.append((m.group(0), rationale, excerpt))
+            out.append((m.group(0), rationale, excerpt, m.start()))
     return out
 
 
-def mine_transcript(transcript_path: Path) -> dict:
+def _sentence_at(text: str, pos: int) -> str:
+    """The sentence of `text` that offset `pos` falls in."""
+    found = ""
+    for start, s in _sentences(text):
+        if start > pos:
+            break
+        found = s
+    return found
+
+
+def mine_transcript(transcript_path: Path, *, standing: "dict | None" = None) -> dict:
     """Mine a session transcript for memory + idea candidates.
 
     Returns a dict with:
@@ -568,19 +765,43 @@ def mine_transcript(transcript_path: Path) -> dict:
     rather than a note.
 
     The function is deterministic for a given transcript — same input
-    produces same output. No I/O beyond reading the transcript.
+    produces same output. No I/O beyond reading the transcript; `standing` is
+    what `load_standing` read, for a caller that wants it checked.
     """
     return {"transcript_path": str(transcript_path),
-            **mine_transcript_messages(load_messages(transcript_path))}
+            **mine_transcript_messages(load_messages(transcript_path), standing=standing)}
 
 
-def mine_transcript_messages(messages: list) -> dict:
+def _empty_mine(messages: list) -> dict:
+    """What a session nobody was at yields: no candidate of any lane. The tool
+    tally is instrumentation, not a candidate, and is still counted."""
+    tool_counts: dict[str, int] = {}
+    for msg in messages:
+        for tool in _extract_tool_uses(msg):
+            tool_counts[tool] = tool_counts.get(tool, 0) + 1
+    return {"messages_processed": len(messages), "tool_counts": dict(sorted(tool_counts.items())),
+            "memory_candidates": [], "idea_candidates": [], "dropped_replies": [], "dropped": [],
+            "attended": False}
+
+
+def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) -> dict:
     """`mine_transcript` over messages already in hand.
 
     Split out for the episodic trace, which loads the same transcript to build
     its links and would otherwise read and parse the file a second time to
     list what the miner is not filing.
+
+    A session with no operator turn mines nothing (task 192): a scheduled run
+    or a headless prompt is nobody stating a preference. Every candidate the
+    operator's side yields is checked against what the session already carried:
+    its first request, and `standing` (`load_standing`'s sources, by name). A
+    quote is listed in `dropped` with the source it quotes, not mined. The one
+    exception is an idea remark in the first request: a session can open on an
+    idea, so it is kept, marked `from_first_request`, for the night's judge
+    (the operator's ruling of 2026-10-16).
     """
+    if not has_operator_turn(messages):
+        return _empty_mine(messages)
     # (category, slug) → Candidate. Dedupes repeated matches.
     seen_memory: dict[tuple[str, str], Candidate] = {}
     seen_ideas: dict[str, Candidate] = {}
@@ -590,6 +811,26 @@ def mine_transcript_messages(messages: list) -> dict:
     # What the operator said to the agent rather than about the work: dropped
     # before the lanes, and listed here for the trace (`conversational_reply`).
     dropped_replies: list[dict] = []
+    # A question, or a quote of what the session already carried: dropped from
+    # a lane, and listed for the trace with the reason, once per excerpt.
+    dropped: dict[tuple[str, str], dict] = {}
+    first = fold(first_request_text(messages))
+    sources = [(FIRST_REQUEST, first)] + [(label, fold(text)) for label, text in (standing or {}).items()]
+
+    def origin_of(excerpt: str, *, skip_first: bool = False) -> "str | None":
+        for label, folded in sources:
+            if skip_first and label == FIRST_REQUEST:
+                continue
+            if quoted_in(excerpt, folded):
+                return label
+        return None
+
+    def drop(rule: str, excerpt: str) -> None:
+        key = (rule, excerpt)
+        if key in dropped:
+            dropped[key]["count"] += 1
+        else:
+            dropped[key] = {"rule": rule, "excerpt": " ".join(excerpt.split())[:200], "count": 1}
 
     for msg in messages:
         role = msg.get("type")
@@ -612,9 +853,17 @@ def mine_transcript_messages(messages: list) -> dict:
         # User intent is the signal; agent outputs are derivative.
         if role == "user":
             # HIGH-confidence preferences
-            for match, rationale, excerpt in _scan_patterns(
+            for match, rationale, excerpt, at in _scan_patterns(
                 text, _PREFERENCE_PATTERNS, role=role
             ):
+                sentence = _sentence_at(text, at)
+                if is_question(sentence):
+                    drop(QUESTION_RULE, excerpt)
+                    continue
+                origin = origin_of(sentence)
+                if origin:
+                    drop(f"not filed: quotes {origin}", excerpt)
+                    continue
                 slug = _slug_from_text(match)
                 key = ("preferences", slug)
                 if key in seen_memory:
@@ -636,9 +885,17 @@ def mine_transcript_messages(messages: list) -> dict:
                     )
 
             # MEDIUM-confidence corrections
-            for match, rationale, excerpt in _scan_patterns(
+            for match, rationale, excerpt, at in _scan_patterns(
                 text, _CORRECTION_PATTERNS, role=role
             ):
+                sentence = _sentence_at(text, at)
+                if is_question(sentence):
+                    drop(QUESTION_RULE, excerpt)
+                    continue
+                origin = origin_of(sentence)
+                if origin:
+                    drop(f"not filed: quotes {origin}", excerpt)
+                    continue
                 slug = _slug_from_text(match)
                 key = ("preferences", slug)
                 if key in seen_memory:
@@ -655,10 +912,16 @@ def mine_transcript_messages(messages: list) -> dict:
                         excerpts=[excerpt],
                     )
 
-            # Idea candidates
-            for match, rationale, excerpt in _scan_patterns(
+            # Idea candidates. A standing rule is not an idea; the first
+            # request is the night's to judge (the ruling of 2026-10-16).
+            for match, rationale, excerpt, at in _scan_patterns(
                 text, _IDEA_PATTERNS, role=role
             ):
+                sentence = _sentence_at(text, at)
+                origin = origin_of(sentence, skip_first=True)
+                if origin:
+                    drop(f"not filed: quotes {origin}", excerpt)
+                    continue
                 slug = _slug_from_text(excerpt[:60])
                 if slug in seen_ideas:
                     seen_ideas[slug].occurrences += 1
@@ -672,6 +935,7 @@ def mine_transcript_messages(messages: list) -> dict:
                         body=excerpt,
                         rationale=rationale,
                         excerpts=[excerpt],
+                        from_first_request=quoted_in(sentence, first),
                     )
 
         # ── Fixes apply to both user + assistant messages (either side can
@@ -682,6 +946,10 @@ def mine_transcript_messages(messages: list) -> dict:
             slug = _slug_from_text(remedy[:60])
             key = ("fix", slug)
             body = f"{cause} {remedy}" if cause != remedy else remedy
+            origin = origin_of(remedy) if role == "user" else None
+            if origin:
+                drop(f"not filed: quotes {origin}", body)
+                continue
             if key in seen_memory:
                 seen_memory[key].occurrences += 1
                 seen_memory[key].excerpts.append(body)
@@ -739,6 +1007,8 @@ def mine_transcript_messages(messages: list) -> dict:
         "memory_candidates": memory_candidates,
         "idea_candidates": idea_candidates,
         "dropped_replies": dropped_replies,
+        "dropped": list(dropped.values()),
+        "attended": True,
     }
 
 
@@ -1370,7 +1640,9 @@ def reflect_corpus(
     for t_idx, transcript in enumerate(to_process, start=1):
         sid = _session_id_from_path(transcript)
         try:
-            result = mine_transcript(transcript)
+            messages = load_messages(transcript)
+            result = {"transcript_path": str(transcript),
+                      **mine_transcript_messages(messages, standing=load_standing(messages, vault))}
         except (FileNotFoundError, OSError) as e:
             print(f"[reflect.corpus] ERROR mining {sid}: {e}", file=stderr)
             summary["errors"] += 1
@@ -1619,11 +1891,17 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] == "corpus":
         return _main_corpus(argv[1:])
     args = _parse_args(argv)
+    transcript = Path(args.transcript_path).expanduser()
     try:
-        result = mine_transcript(Path(args.transcript_path).expanduser())
+        messages = load_messages(transcript)
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
+    # What the session already carried, read once for the mine (task 192). The
+    # always-load tier needs the memory root, which may be unset when not routing.
+    memory_root = args.vault_path or (os.environ.get("MEMORY_ROOT") or os.environ.get("MEMORY_VAULT_PATH", "")).strip()
+    standing = load_standing(messages, Path(memory_root).expanduser() if memory_root else None)
+    result = {"transcript_path": str(transcript), **mine_transcript_messages(messages, standing=standing)}
 
     if args.summary:
         print(json.dumps({
@@ -1694,6 +1972,10 @@ def main(argv: list[str] | None = None) -> int:
             # Replies to the agent the miner dropped before any lane; each is a
             # line in the session's trace (`conversational_reply`).
             "dropped_replies": len(result.get("dropped_replies") or []),
+            # Questions and quotes of what the session already carried (task
+            # 192), and whether anyone was at the session at all.
+            "dropped": len(result.get("dropped") or []),
+            "attended": bool(result.get("attended", True)),
         }))
     return 0
 

@@ -263,7 +263,10 @@ class TheHandoffRecord(unittest.TestCase):
 
     def test_a_high_candidate_is_not_listed_because_it_becomes_a_card(self):
         import reflect
+        # A session opens on its request, and what the first request carries is never
+        # mined (task 192): the fixture's words come after a typed opening turn.
         messages = [
+            {"type": "user", "message": {"role": "user", "content": "Pick up the release work."}},
             {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text":
                 "I prefer that we always squash-merge on this repo."}]}},
             {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text":

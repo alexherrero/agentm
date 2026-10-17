@@ -60,6 +60,9 @@ class _Mine(unittest.TestCase):
 
     def _mine(self, records):
         p = self.tmp / "t.jsonl"
+        # A session opens on its request, and what the first request carries is never
+        # mined (task 192): the fixture's words come after a typed opening turn.
+        records = [{"type": "user", "message": {"role": "user", "content": "Pick up the release work."}}, *records]
         p.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
         return reflect.mine_transcript(p)
 

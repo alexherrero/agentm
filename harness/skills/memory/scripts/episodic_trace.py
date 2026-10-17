@@ -251,63 +251,33 @@ def _paths_from_result(tool: str, text: str) -> list:
     return out
 
 
-# Lines the host writes into a user turn, not the operator's words: a
-# bracketed annotation ("[Image: original 2560x1600, …]", "[Request
-# interrupted by user]") and the desktop app's resume notice. Five traces
-# took one as their title before task 186.
-_HOST_LINE = re.compile(r"^\[.*\]$|^The app was quit while you were working\b")
-
-
-# A Desktop scheduled task's opening turn: the wrapper, whose preamble says "The
-# user is not present". The host stamps it as it stamps an operator's turn
-# (`origin.kind: human`, `promptSource: sdk`), so only its content tells.
-_SCHEDULED_TASK = re.compile(r"<scheduled-task\b[^>]*>.*?(?:</scheduled-task>|\Z)", re.S)
-_COMMAND = re.compile(r"<command-name>\s*/\S+\s*</command-name>")
-
+# Who was at a session is reflect's reading (task 192 moved it there, so the
+# miner and the trace writer share one): `reflect.is_operator_turn` and
+# `reflect.has_operator_turn`, the host's bracketed lines in `reflect.HOST_LINE`.
 
 def _is_operator_turn(msg: dict) -> bool:
-    """A user message the operator typed (agentm-vault § Capture, the
-    operator's ruling of 2026-10-07).
-
-    reflect's `_operator_text` decides what the operator said, as it does for
-    the miner: a host attribution other than a person, `isMeta`, the injected
-    envelopes, a handoff prompt and a paste past the typing ceiling are not.
-    On top of it, a tool result, a sidechain message, a compaction summary, a
-    line the host wrote, the scheduled-task wrapper and a headless `claude -p`
-    prompt are not either. A slash command typed in the box is: its envelope is
-    nothing to mine, but somebody typed it."""
     import reflect  # the sidecar's own reading of who said what
-
-    if msg.get("type") != "user" or msg.get("isSidechain") or msg.get("isCompactSummary"):
-        return False
-    if msg.get("entrypoint") == "sdk-cli" and msg.get("promptSource") == "sdk":
-        return False
-    text = _SCHEDULED_TASK.sub(" ", reflect._operator_text(msg))
-    if any(l.strip() and not _HOST_LINE.match(l.strip()) for l in text.splitlines()):
-        return True
-    origin = msg.get("origin")
-    human = not (isinstance(origin, dict) and origin.get("kind") and origin.get("kind") != "human")
-    raw = reflect._extract_text(msg)
-    return (human and not msg.get("isMeta") and bool(_COMMAND.search(raw))
-            and not _SCHEDULED_TASK.search(raw))
+    return reflect.is_operator_turn(msg)
 
 
 def has_operator_turn(messages: list) -> bool:
     """Whether anyone was at the session. One with nobody at it writes no
     trace; the job's own run records say what it did."""
-    return any(_is_operator_turn(m) for m in messages)
+    import reflect
+    return reflect.has_operator_turn(messages)
 
 
 def _first_request(messages: list) -> str:
     """The session's opening ask, uncut. The title takes its head; `## Asked`
     takes more of it. A line the host wrote is skipped."""
+    import reflect
     for m in messages:
         if m.get("type") != "user":
             continue
         for b in _blocks(m):
             if b.get("type") == "text":
                 line = next((l.strip() for l in (b.get("text") or "").splitlines()
-                             if l.strip() and not _HOST_LINE.match(l.strip())), "")
+                             if l.strip() and not reflect.HOST_LINE.match(l.strip())), "")
                 if line and not line.startswith("<") and "tool_result" not in line:
                     return line
     return ""
@@ -382,20 +352,21 @@ def default_history_path() -> Path:
     return recall_counter.default_history_path()
 
 
-def mined_candidates(messages: list) -> list:
+def mined_candidates(messages: list, *, standing: "dict | None" = None) -> list:
     """The lines the miner will not file: every candidate below HIGH, as
-    `{"rule", "excerpt", "count"}`.
+    `{"rule", "excerpt", "count"}`, and what it dropped and why.
 
     Mined here rather than handed over from the routing pass, because the two
     run as separate processes from the Stop hook and `mine_transcript` is
     deterministic over the same transcript — reading it twice is cheaper than
     passing a candidate list between them, and it keeps the trace buildable
     from the transcript alone. A HIGH candidate is not listed: it becomes a
-    card, and a record that says both would double-count it.
+    card, and a record that says both would double-count it. `standing` is
+    `reflect.load_standing`'s sources, the same the routing pass reads.
     """
     try:
         import reflect
-        mined = reflect.mine_transcript_messages(messages)
+        mined = reflect.mine_transcript_messages(messages, standing=standing)
     except Exception:
         # A miner failure must never cost the trace: the sections above it are
         # the handoff, and this one is the appendix.
@@ -411,6 +382,8 @@ def mined_candidates(messages: list) -> list:
         })
     # A reply to the agent is never filed; the trace is where it is logged.
     out.extend(mined.get("dropped_replies") or [])
+    # Nor is a question, or a quote of what the session already carried.
+    out.extend(mined.get("dropped") or [])
     return out
 
 
@@ -436,17 +409,20 @@ def note_stems(memory_root) -> "set[str]":
 
 def from_transcript(transcript_path: Path, *, session_id: str, when: date = None,
                     history_path: Path = None, project: str = "", task: str = "", surface: str = "",
-                    candidates: list = None, known: "set | None" = None) -> Trace:
+                    candidates: list = None, known: "set | None" = None, memory_root=None) -> Trace:
     """The session's trace. `known` is the vault's note names (`note_stems`):
     when given, a recall-history slug that names no note is not linked. The
     history is the machine's, shared by every surface, and holds names that
     are no note — a self-probe's note retired the same minute, a test's
-    fixture — and a trace that linked them linked nowhere (task 186)."""
+    fixture — and a trace that linked them linked nowhere (task 186).
+    `memory_root`, when given, lets the miner read the always-load tier as
+    what the session already carried (task 192)."""
     import reflect  # the sidecar's own transcript reader, so both read one shape
 
     messages = reflect.load_messages(Path(transcript_path))
     if candidates is None:
-        candidates = mined_candidates(messages)
+        standing = reflect.load_standing(messages, memory_root) if memory_root else None
+        candidates = mined_candidates(messages, standing=standing)
     pending: dict = {}
     captured: list = []
     recalled: list = []
@@ -698,7 +674,7 @@ def main(argv: list | None = None) -> int:
                                 when=date.fromisoformat(a.day) if a.day else None,
                                 history_path=Path(a.history) if a.history else None,
                                 project=project, task=task, surface=a.surface,
-                                known=note_stems(vault))
+                                known=note_stems(vault), memory_root=vault)
         rel = write_trace(vault, trace)
     except Exception as e:  # a hook never blocks session end on a trace
         print(f"episodic_trace: skipped ({e})", file=sys.stderr)
