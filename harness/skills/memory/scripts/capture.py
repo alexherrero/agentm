@@ -94,6 +94,44 @@ def _slugify(content: str, *, now: datetime) -> str:
     return f"capture-{now.strftime('%Y%m%dT%H%M%S')}"
 
 
+def _idea_into_inbox(vault: Path, content: str, *, title: str, slug: str, transport: str,
+                     tags: "list[str] | None", source_url: "str | None", extra: dict,
+                     lock_timeout: float) -> CaptureResult:
+    """A new idea, as a card in the inbox (task 192, #676): the operator's words
+    verbatim, its source, `unfiled` until the review pass files it into
+    `personal/ideas/` (`inbox_review.file_one_idea`). Not the class the contract
+    routes `idea` to — `memory/semantic/` is where unread idea cards piled up.
+    The card is rendered by the writer's own frontmatter builder, so its shape
+    is the card's; the Go door (`capture.inboxRel`) lands the same card in the
+    same folder. The same words already in the inbox are that card, unchanged."""
+    import hashlib
+    import card_shape  # same skill dir
+    import filing_engine  # same skill dir
+    import inbox_review  # same skill dir
+    import save  # same skill dir
+    from fingerprint import compute_fingerprint  # same skill dir
+    from vault_lock import atomic_write, vault_mutex
+
+    folder = inbox_review.inbox_dir(vault)
+    rel_dir = folder.relative_to(vault).as_posix()
+    words = card_shape.kebab(f"{title} {content}").split("-")
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    field_name, mtype, _note = save._resolve_vocabulary("idea")
+    with vault_mutex(vault, timeout=lock_timeout):
+        dest_rel, _flags = filing_engine._settle_dest(vault, rel_dir, slug, compute_fingerprint(content),
+                                                      words=words, digest=digest)
+        target = vault / dest_rel
+        if target.exists():
+            return CaptureResult(success=True, path=target, slug=target.stem, deduplicated=True)
+        fm = save._build_frontmatter(kind=mtype, vocabulary_field=field_name, group="memory", slug=target.stem,
+                                     tags=list(tags or []), always_load=False, supersedes=None,
+                                     source_url=source_url, lifecycle="active", source=transport,
+                                     filing_confidence="low", status="unfiled",
+                                     extra={k: v for k, v in extra.items() if v}, trust=save._trust_tier(transport))
+        atomic_write(target, fm + "\n" + content.rstrip("\n") + "\n")
+    return CaptureResult(success=True, path=target, slug=target.stem)
+
+
 def capture(
     vault_path: "Path | str",
     content: str,
@@ -190,7 +228,7 @@ def capture(
         title = content.strip().splitlines()[0].strip()[:120]
         if (type_hint or ("idea" if kind == "idea" else None)) == "idea":
             # An idea that already has a card adds to it (agentm-vault § Capture,
-            # amended 2026-09-28); a new idea is filed as before.
+            # amended 2026-09-28); a new idea lands in the inbox (task 192).
             import idea_cards  # same skill dir
             how = transport or ("external-fetch" if source_url else "operator-direct")
             label = " · ".join(x for x in (how, f"via {source}" if source else "", source_url or "") if x)
@@ -199,6 +237,10 @@ def capture(
                                                    lock_timeout=lock_timeout)
             if card is not None:
                 return CaptureResult(success=True, path=card, slug=card.stem, appended=True)
+            extra = {"title": title, "captured": _iso(now), "via": source, "surface": surface,
+                     "instructions": instructions, "why": why, "project": project}
+            return _idea_into_inbox(vault, content, title=title, slug=resolved_slug, transport=how,
+                                    tags=tags, source_url=source_url, extra=extra, lock_timeout=lock_timeout)
         updated = update_same_source(vault, content, title=title, source_id=source_id,
                                      source_url=source_url, why=why, tags=tags, now=now,
                                      lock_timeout=lock_timeout)
