@@ -1112,29 +1112,15 @@ def session_start(
     # `standards/voice/` is on-demand and never in the glob.
     import vault_layout  # noqa: E402 — lazy, mirrors this module's other cross-file imports
 
-    candidates = []
-    for tier_dir in vault_layout.always_load_dirs(vault):
-        # Generated navigation (moc-*) carries no standing instruction and
-        # would spend the token budget on links; skip it.
-        candidates.extend(
-            p for p in sorted(tier_dir.glob("*.md"))
-            if not p.stem.startswith("moc-")
-        )
-
-    # One injection per slug: the same stem on both surfaces means the pen
-    # still holds a copy of something standards/ now owns (the normal
-    # transition state while `save --always-load` targets the pen).
-    # Standards is the surface of record and was appended first — first
-    # occurrence wins, so a stale pen copy never rides along, and the
-    # truncation NOTE's omitted-slug accounting stays truthful.
-    seen_stems: set[str] = set()
-    deduped = []
-    for p in candidates:
-        if p.stem in seen_stems:
-            continue
-        seen_stems.add(p.stem)
-        deduped.append(p)
-    candidates = deduped
+    # Generated navigation (moc-*) carries no standing instruction and would
+    # spend the token budget on links, so it is not read. One injection per
+    # slug: the same stem on both surfaces means the pen still holds a copy of
+    # something standards/ now owns (the normal transition state while `save
+    # --always-load` targets the pen). Standards is the surface of record and
+    # is read first — first occurrence wins, so a stale pen copy never rides
+    # along, and the truncation NOTE's omitted-slug accounting stays truthful.
+    # The reader is `vault_layout.always_load_files`, which the miner shares.
+    candidates = vault_layout.always_load_files(vault)
 
     if not candidates:
         print(

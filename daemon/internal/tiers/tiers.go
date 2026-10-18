@@ -60,6 +60,9 @@ const (
 	EntityRollup Job = "entity-rollup"
 	// SlopBorderline is the slop detector's ambiguous middle band.
 	SlopBorderline Job = "slop-borderline"
+	// JudgeIdeas decides what an idea remark a session recorded was: steering,
+	// a repeat of an idea card, or a new idea for the inbox (task 192).
+	JudgeIdeas Job = "judge-ideas"
 
 	// Crystallize distills a lesson from repetition. Pinned: a bad lesson
 	// enters the decay-exempt layer, where nothing ages it out.
@@ -74,7 +77,7 @@ const (
 
 // Jobs is every job with a tier, in a stable order.
 var Jobs = []Job{
-	ClassifyUnfiled, Summarize, FuzzyMerge, EntityRollup, SlopBorderline,
+	ClassifyUnfiled, Summarize, FuzzyMerge, EntityRollup, SlopBorderline, JudgeIdeas,
 	Crystallize, EntityIdentityMerge, SelfImprovementProposal,
 }
 

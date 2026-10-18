@@ -249,7 +249,7 @@ python3 skills/memory/scripts/capture.py "<content>" \
 | Flag | Use case |
 |---|---|
 | `content` (positional) | The captured text — a thought, or a link plus a note. |
-| `--kind` | `capture` (default — a thought, link, or note) or `idea` (routes toward the ideas ledger once that fold exists). |
+| `--kind` | `capture` (default — a thought, link, or note) or `idea`: an idea that matches a card in `personal/ideas/` is added to it under `## Added by capture`; a new one lands in `agent/inbox/`, `unfiled`, until you file it with `/memory inbox --file <name> --type idea --area <group>` (task 192). |
 | `--slug` | Override the default timestamp-based slug (`capture-YYYYMMDDTHHMMSS`). A collision on either the default or an explicit slug appends a numeric suffix (`-1`, `-2`, …) rather than overwriting — the inbox is a raw-capture surface where a resend landing twice is an accepted, designed-for case. |
 | `--source` | The transport, e.g. `cli`, `clipper`. Defaults to `cli` when invoked from the command line. |
 | `--surface` | The device, e.g. `phone`, `desktop`. |

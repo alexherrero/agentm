@@ -19,6 +19,17 @@ import (
 	"time"
 )
 
+// inboxRel is the drop folder, vault-relative: `inbox/` under the memory root,
+// where a new idea waits for the operator's review (task 192). The Python
+// writers name the same folder (`inbox_review.inbox_dir`).
+func inboxRel(memoryRoot string) string {
+	root := strings.Trim(filepath.ToSlash(strings.TrimSpace(memoryRoot)), "/")
+	if root == "" {
+		return "inbox"
+	}
+	return root + "/inbox"
+}
+
 const (
 	addedByCapture = "## Added by capture"
 	ideasDirRel    = "personal/ideas"

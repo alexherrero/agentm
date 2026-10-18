@@ -78,6 +78,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `enrich` | Run the enrichment pass over the notes owed one. `--sample N --seed S` draws a reproducible random batch, `--dump` writes before/after pairs, `--yes` runs one batch without needing `daemon.enrich_enabled` set. |
 | `crystallize` | Write the lesson a recurrence taught. `--dry-run` finds the recurrences and makes no call, `--topic` narrows the run, `--cap` lowers the five-lesson limit, `--yes` runs one pass without needing `daemon.crystallize_enabled` set. |
 | `restated` | Judge the convention, preference and workflow pairs that may state one rule twice, and merge the ones that do. `-dry-run` shortlists and makes no call, `-line` sets the shortlist's similarity (0.74), `-cap` bounds the pairs judged a run (30), `-apply` merges while `daemon.restated_merge_enabled` is on, `-yes` merges once without it. |
+| `judge-ideas` | Judge the idea remarks the sessions recorded in their traces: steering is dropped, a repeat is added to its idea card, a new idea is carded in the inbox. `-dry-run` lists the remarks and makes no call, `-cap` bounds the remarks judged a run (20), `-report` judges and writes nothing, `-apply` writes while `daemon.idea_judge_enabled` is on, `-yes` writes once without it. See [The idea judge](#the-idea-judge-the-nightly-verdicts). |
 | `ledger` | Ask what dreaming has already done, and what is pending. |
 | `queue` | Show the pending-work queues, or record work owed. |
 | `sources` | Ask whether a source has been mined, and watermark it. |
@@ -211,6 +212,8 @@ Returns `{results, note, matched, archived_hidden, superseded_hidden, staged_hid
 | `source_id` | `str` | — | A mined unit's registry identity, when the memory came from one. |
 | `source_url` | `str` | — | A fetched page's address, when the memory came from one. |
 | `space` | `str` | `memory` | Which configured space to write into. |
+
+A `type: idea` capture is the one exception to the class routing (task 192): an idea that matches a card in `personal/ideas/` by slug, title or body is added to that card under `## Added by capture`; one that matches none lands in `<memory root>/inbox/`, `unfiled` whatever its writer knew, for your review (`inboxRel`, `daemon/internal/capture/ideacard.go`). The Python CLI's `/memory capture --kind idea` writes the same card to the same folder.
 
 `status` is not a published param and cannot be set through this tool. It is derived from what the writer knew: a call that names a `type` and gives a `why` is a card someone judged, and it lands `active`; anything else lands `unfiled`, a candidate the nightly pass judges later (`knowingWriter`, `daemon/internal/capture/capture.go:158`; called from `Do` at `:313-337`). The wire-level `Request.Status` field still exists for callers that haven't moved off it, but a value that disagrees with the derivation is reported back in the response rather than silently obeyed or swallowed.
 
@@ -445,7 +448,10 @@ Filing v2's write path closed that gap. The `Capturer.Do` method
 `routing`. `classDir` is checked before falling back to `daemon.shard` —
 class routing takes priority over the shard setting. A typed note lands
 directly in the class `routing` names for its type: `memory/semantic` for
-an `idea`, alongside `preference` and `convention`.
+a `preference` and a `convention`. An `idea` is the exception since task 192:
+`routing` still names `memory/semantic` for it, but a new idea lands in the
+inbox for review and a matching one adds to its card in `personal/ideas/`
+(see `memory_capture` above).
 
 `classDir` returns empty in exactly three cases:
 
@@ -1321,6 +1327,31 @@ judges each shortlisted pair.
 
 The first judged run (2026-09-29, 25 calls, $6.33) called the known pair the same
 and the other 24 different, each with a reason.
+
+## The idea judge, the nightly verdicts
+
+An idea you mention in passing reaches your ideas list, and nothing else does
+(task 192, backlog #676). At session end the miner files no idea. It records
+each idea-shaped remark in the trace's `## Ideas`: one JSON object a line
+inside a fence, carrying the remark word for word, about 1,200 characters of
+the conversation around it (the assistant's last words and your message), the
+transcript and message it came from, and the key the retired session-end lane
+would have filed it under (`episodic_trace.render_ideas`). Each night this pass
+asks what each new remark was.
+
+| | |
+|---|---|
+| Command | `agentmd judge-ideas` (`daemon/cmd/agentmd/judgeideas.go`; the logic in `daemon/internal/ideajudge`) |
+| Scheduled by | `templates/jobs/judge-ideas-nightly.yaml` — daily, `window: "02:00-06:00"`, `order: 1` (after enrichment, before the dreaming binary, whose facet reports it), `budget: tokens: 200000`, registered and off |
+| Switch | `daemon.idea_judge_enabled` (`agentm_config.py --idea-judge-enabled true`); off, `-apply` judges and reports, writing nothing; `-report` does the same with it on; `-yes` writes once; `-dry-run` needs neither and spends nothing |
+| Reads | every `## Ideas` entry under `memory/episodic/`, the cards in `personal/ideas/` (dismissed ones left out) and the `type: idea` cards waiting in the inbox — the vault only, never a transcript |
+| Judge | the tier table's `judge-ideas` job — strong until an audit qualifies a cheap tier; one call per remark, at most `-cap` (20) a run. A verdict is kept against the remark (its session, message and folded words) in `<engine state dir>/dreaming/idea-judge-state.json`, so a remark is judged once; what the cap leaves is reported as deferred and judged the next night |
+| Steering | dropped; the verdict and its reason are in the run record |
+| Repeat | added to the named card, in `personal/ideas/` or the inbox, under a dated `**<day> · [[<trace>]] · message <id>**` entry at the end of its `## Added by dreaming` section (or a new section at the end of the card); nothing already on the card moves. A repeat of a slug not on the list is kept as a new idea |
+| New | a card at `agent/inbox/<slug>.md`: `type: idea`, `status: unfiled`, `filing_confidence: low`, `source: conversation`, the judge's title and `area:` as a proposal, `derived_from` the trace, your words as the body. `/memory inbox --file <name> --type idea --area <group>` files it. The pass never creates a card in `personal/ideas/` |
+| Removed | a remark whose key is in `<engine state dir>/reflect-filed.jsonl` and whose name no note carries — a card you or the night removed — is dropped without a call |
+| Writes | through the dreaming journal (`dreaming.ApplyIntents`): one run under the pass lock, a creation for each new card and an edit in place for each card a repeat reaches; a card edited since the plan is skipped, and its verdict waits for the next night |
+| Record | `<engine state dir>/idea-judge-runs.jsonl`, beside the restated record; the morning note gives an **Idea judge** line naming each card written and the judge's spend its own per-job line, and `<engine state dir>/dreaming/idea-judge-latest.json` gives the day's counts to the dreaming facet's *Ideas judged* section |
 
 ## The dreaming binary, `agentmdream`
 

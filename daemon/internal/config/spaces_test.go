@@ -290,6 +290,27 @@ func TestTheRestatedMergeIsOffUntilItsSwitchIsSet(t *testing.T) {
 	}
 }
 
+// The idea judge ships reporting (task 192): it writes nothing unless the
+// operator sets the switch, and writes when they do.
+func TestTheIdeaJudgeIsReportOnlyUntilItsSwitchIsSet(t *testing.T) {
+	vault := vaultWithContract(t, "personal")
+	cfg, err := loadWith(t, vault, map[string]any{"plugins.obsidian-vault.memory_root": "agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.IdeaJudgeEnabled || cfg.Switches()["daemon.idea_judge_enabled"] {
+		t.Error("the idea judge writes with no switch set")
+	}
+	cfg, err = loadWith(t, vault, map[string]any{"plugins.obsidian-vault.memory_root": "agent",
+		"daemon.idea_judge_enabled": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.IdeaJudgeEnabled || !cfg.Switches()["daemon.idea_judge_enabled"] {
+		t.Error("daemon.idea_judge_enabled: true did not turn the judge's writes on")
+	}
+}
+
 // The people email-evidence switch ships off (task 179 step 7): off unless the
 // operator sets it, on when they do, and shown with the other switches on the
 // status surface.

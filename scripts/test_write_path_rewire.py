@@ -126,15 +126,16 @@ class TheReflectLanesFileAtClass(_Vault):
         self.assertEqual(fm["source"], "conversation")
         self.assertIn("machine-session", fm.get("tags", ""))
 
-    def test_the_per_session_cap_still_bounds_low_confidence_filings(self):
-        # Ideas are the low-confidence filings that remain, and the cap that
-        # kept a machine session from burying the operator still bounds them.
+    def test_a_machine_session_buries_nothing_because_nothing_below_high_files(self):
+        # The per-session cap kept a machine session from burying the operator
+        # under low-confidence filings, and ideas were the last of them. Since
+        # task 192 no idea files at session end, so four ideas write nothing,
+        # with or without the cap, and each is recorded for the night instead.
         ideas = [_cand(f"What if the digest ran per project, take {i}?",
                        category="idea", slug=f"digest-{i}") for i in range(4)]
         stats = self._route([], ideas=ideas, max_inbox=2)
-        self.assertEqual(stats["ideas_filed"], 2, stats)
-        self.assertEqual(stats["capped"], 2, stats)
-        self.assertEqual(len(self._filed()), 2)
+        self.assertEqual((stats["ideas_filed"], stats["capped"], stats["ideas_recorded"]), (0, 0, 4), stats)
+        self.assertEqual(self._filed(), [])
 
     def test_a_repeat_is_a_noop_that_reinforces_not_a_second_file(self):
         c = _cand("User stated: the build machine has two GPUs.", confidence="HIGH", slug="two-gpus")
@@ -145,14 +146,14 @@ class TheReflectLanesFileAtClass(_Vault):
         self.assertEqual(stats["auto_saved"], 0)
         self.assertEqual(self._filed(), ["memory/semantic/two-gpus.md"])
 
-    def test_an_idea_files_as_type_idea(self):
+    def test_an_idea_writes_no_card_at_session_end(self):
+        # Task 192 step 3: an idea remark is a line in the trace's `## Ideas`
+        # (test_episodic_trace.TheIdeasSection), and the night's judge decides.
+        # No `type: idea` card lands in `memory/semantic/`, low or otherwise.
         idea = _cand("What if the digest ran per project?", category="idea", slug="digest-per-project")
         stats = self._route([], ideas=[idea])
-        self.assertEqual(stats["ideas_filed"], 1, stats)
-        self.assertEqual(self._filed(), ["memory/semantic/digest-per-project.md"])
-        fm = _frontmatter(self.root / "memory/semantic/digest-per-project.md")
-        self.assertEqual(fm["type"], "idea")
-        self.assertEqual(fm["filing_confidence"], "low")
+        self.assertEqual((stats["ideas_filed"], stats["ideas_recorded"]), (0, 1), stats)
+        self.assertEqual(self._filed(), [])
         self._no_staging_dir()
 
 

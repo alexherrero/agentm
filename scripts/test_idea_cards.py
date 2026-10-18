@@ -283,15 +283,44 @@ class AnIdeaAddsToItsCardTests(unittest.TestCase):
         self.assertLess(text.index("First addition."), text.index("Second addition."))
         self.assertIn("## Added by dreaming\n\nThe night's thought.\n", text)
 
-    def test_a_new_idea_is_filed_as_before(self):
+    def test_a_new_idea_lands_in_the_inbox(self):
+        # Task 192 (#676): a new idea waits in `agent/inbox/` for review, the
+        # words verbatim and its source kept, `unfiled`; never `memory/semantic/`.
+        # The Go door's twin is capture.TestANewIdeaLandsInTheInbox.
         import capture
-        res = capture.capture(self.root, "Drip lines on a timer for the tomato beds this spring.", kind="idea")
+        words = "Drip lines on a timer for the tomato beds this spring."
+        res = capture.capture(self.root, words, kind="idea", source="cli")
         self.assertTrue(res.success, res.error)
         self.assertFalse(res.appended)
-        self.assertEqual(len(self._semantic()), 1)
+        self.assertEqual(res.path.parent, self.root / "inbox")
+        self.assertEqual(self._semantic(), [], "nothing is written under memory/")
+        text = res.path.read_text(encoding="utf-8")
+        for line in ("type: idea\n", "status: unfiled\n", "source: operator-direct\n", "via: cli\n"):
+            self.assertIn(line, text)
+        self.assertIn(words, text)
         self.assertNotIn("Added by capture", self.card.read_text(encoding="utf-8"))
+        again = capture.capture(self.root, words, kind="idea", source="cli")
+        self.assertTrue(again.deduplicated, "the same words already in the inbox are that card")
+        self.assertEqual(again.path, res.path)
 
-    def test_the_route_pass_adds_a_mined_idea_to_its_card(self):
+    def test_the_review_pass_files_the_inbox_card_into_personal_ideas_with_its_group(self):
+        import capture
+        import inbox_review
+        res = capture.capture(self.root, "Drip lines on a timer for the tomato beds this spring.", kind="idea")
+        out = inbox_review.file_one_idea(self.root, res.path.name, area="garden")
+        self.assertTrue(out["filed"], out)
+        filed = self.ideas / Path(out["path"]).name
+        self.assertTrue(filed.is_file())
+        self.assertIn("area: garden\n", filed.read_text(encoding="utf-8"))
+        self.assertIn("Drip lines on a timer", filed.read_text(encoding="utf-8"))
+        self.assertFalse(res.path.exists(), "the card left the inbox once it was filed")
+
+    def test_a_mined_repeat_reaches_its_card_at_night_not_at_session_end(self):
+        # Task 192: the route pass no longer matches a mined idea to its card.
+        # It records the remark in the trace, and the night's judge, which sees
+        # the conversation around it, appends a repeat under a dated `## Added
+        # by dreaming` heading (daemon/internal/ideajudge, `TestARepeat…`).
+        # Here, at session end, the card and the semantic class stay untouched.
         import io
         import reflect
         cand = reflect.Candidate(category="idea", confidence="LOW", slug="streaming",
@@ -302,7 +331,8 @@ class AnIdeaAddsToItsCardTests(unittest.TestCase):
         stats = reflect.route_candidates([], [cand], vault=self.root, mode=reflect.ROUTE_MODE_AUTO,
                                          session_id="9b9d740e-0000", stdin=io.StringIO(),
                                          stdout=io.StringIO(), stderr=io.StringIO())
-        self.assertEqual((stats["ideas_appended"], stats["ideas_filed"]), (1, 0))
+        self.assertEqual((stats["ideas_appended"], stats["ideas_filed"], stats["ideas_recorded"]), (0, 0, 1))
+        self.assertEqual(self.card.read_text(encoding="utf-8"), self.CARD)
         self.assertEqual(self._semantic(), [])
 
     def test_the_match_line_holds_against_a_long_unrelated_card(self):

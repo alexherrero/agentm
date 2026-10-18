@@ -216,6 +216,27 @@ func renderDreamingFacet(rep *Report, now time.Time) (string, int) {
 	}
 	section("Followed a move you made", repaired)
 
+	// The idea judge's night (task 192), which ran before this pass: its counts,
+	// and each card it wrote. A night it judged nothing says nothing.
+	var judged []string
+	if j := rep.IdeaJudge; j != nil && (j.Judged+j.Removed+j.Deferred > 0 || len(j.Written) > 0) {
+		line := fmt.Sprintf("%d remark(s) judged: %d steering, %d repeat(s), %d new", j.Judged, j.Steering, j.Repeats, j.New)
+		if j.Removed > 0 {
+			line += fmt.Sprintf("; %d you had removed, dropped without a call", j.Removed)
+		}
+		if j.Deferred > 0 {
+			line += fmt.Sprintf("; %d past the night's cap, for the next night", j.Deferred)
+		}
+		if j.Mode != "apply" {
+			line += " — reporting only, nothing written"
+		}
+		judged = append(judged, line)
+		for _, rel := range j.Written {
+			judged = append(judged, "`"+rel+"`")
+		}
+	}
+	section("Ideas judged", judged)
+
 	if acts == 0 {
 		return "", 0
 	}

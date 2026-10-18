@@ -263,7 +263,10 @@ class TheHandoffRecord(unittest.TestCase):
 
     def test_a_high_candidate_is_not_listed_because_it_becomes_a_card(self):
         import reflect
+        # A session opens on its request, and what the first request carries is never
+        # mined (task 192): the fixture's words come after a typed opening turn.
         messages = [
+            {"type": "user", "message": {"role": "user", "content": "Pick up the release work."}},
             {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text":
                 "I prefer that we always squash-merge on this repo."}]}},
             {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text":
@@ -491,6 +494,137 @@ class TheUnattendedSessionTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out.getvalue().strip(), "no operator turn")
         self.assertEqual(list((self.vault / "memory" / "episodic").iterdir()), [])
+
+
+
+# Task 192 step 3: an idea remark is a line in the trace's `## Ideas`, word for
+# word, with the conversation around it and a pointer back; no card is written
+# at session end. The remark is the 2026-10-03 audit's real idea, as typed.
+_IDEA = "We should also look into automating the PlayOn recordings, as that's tedious by hand."
+
+
+class TheIdeasSection(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.vault = self.root / "vault"
+        (self.vault / "memory" / "episodic").mkdir(parents=True)
+        self.transcript = self.root / "session.jsonl"
+        self.history = self.root / "recall-history.jsonl"
+        self.history.write_text("", encoding="utf-8")
+
+    def _write(self, *turns, sid="5b2c8e10-aaaa"):
+        """A session of `(kind, text, uuid)` turns, traced and written."""
+        rows = [_line(kind, [{"type": "text", "text": text}], f"2026-10-16T10:0{i}:00Z", uuid=uuid)
+                for i, (kind, text, uuid) in enumerate(turns)]
+        self.transcript.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        trace = et.from_transcript(self.transcript, session_id=sid, history_path=self.history)
+        return trace, et.write_trace(self.vault, trace)
+
+    def _ideas(self, rel):
+        _, sections = et._split_trace((self.vault / rel).read_text(encoding="utf-8"))
+        return et.parse_ideas(sections.get("Ideas", ""))
+
+    def test_an_idea_remark_writes_no_card_and_is_in_the_trace_with_its_context_and_pointer(self):
+        import reflect
+        turns = [("user", "How far has the PlayOn job got?", "u1"),
+                 ("assistant", "The Netflix films are done; the Hulu queue has four left.", "a1"),
+                 ("user", "One more thing. " + _IDEA, "u2")]
+        trace, rel = self._write(*turns)
+        mined = reflect.mine_transcript_messages(reflect.load_messages(self.transcript))
+        stats = reflect.route_candidates(mined["memory_candidates"], mined["idea_candidates"], vault=self.vault)
+        self.assertEqual((stats["ideas_filed"], stats["ideas_appended"], stats["ideas_recorded"]), (0, 0, 1))
+        self.assertEqual([p.name for p in (self.vault / "memory").rglob("*.md")], [Path(rel).name],
+                         "the trace is the only note the session wrote")
+        [entry] = self._ideas(rel)
+        self.assertEqual(entry["remark"], _IDEA)
+        self.assertEqual(entry["message"], "u2")
+        self.assertTrue(entry["transcript"].endswith("session.jsonl"))
+        self.assertIn("assistant: The Netflix films are done", entry["context"])
+        self.assertIn("operator: One more thing. " + _IDEA, entry["context"])
+        self.assertFalse(entry["first_request"])
+
+    def test_rerunning_the_hook_on_the_same_session_does_not_repeat_the_line(self):
+        turns = [("user", "How far has the PlayOn job got?", "u1"), ("user", _IDEA, "u2")]
+        _, rel = self._write(*turns)
+        _, again = self._write(*turns)
+        self.assertEqual(again, rel)
+        self.assertEqual(len(self._ideas(rel)), 1)
+
+    def test_a_later_write_adds_its_new_remark_beside_the_first(self):
+        first = [("user", "How far has the PlayOn job got?", "u1"), ("user", _IDEA, "u2")]
+        _, rel = self._write(*first)
+        _, rel2 = self._write(*first, ("user", "We should also add a digest per project later on.", "u3"))
+        self.assertEqual(rel2, rel)
+        self.assertEqual([e["message"] for e in self._ideas(rel)], ["u2", "u3"])
+
+    def test_an_unattended_session_has_no_ideas(self):
+        _, rel = self._write(("user", _SCHEDULED.replace("</scheduled-task>", _IDEA + "\n</scheduled-task>"), "u1"))
+        self.assertIsNone(rel)
+        self.assertEqual(list((self.vault / "memory" / "episodic").iterdir()), [])
+
+    def test_the_context_is_bounded_and_keeps_the_remark(self):
+        long_said = "The queue status, in full. " + "Another row of the queue report. " * 200
+        long_typed = "Some of what I think about this. " * 60 + _IDEA + " And more besides. " * 60
+        _, rel = self._write(("user", "Status?", "u1"), ("assistant", long_said, "a1"), ("user", long_typed, "u2"))
+        [entry] = self._ideas(rel)
+        self.assertLessEqual(len(entry["context"]), 1300, "about 1,200 characters")
+        self.assertIn(_IDEA, entry["context"])
+        self.assertTrue(entry["context"].startswith("assistant: …"), "the assistant's tail, not its head")
+
+    def test_a_fence_or_an_issue_number_in_the_words_cannot_break_the_section(self):
+        tricky = "We should also fix the ``` fence in #676 later, see [[some-note]]."
+        _, rel = self._write(("user", "Look at the miner.", "u1"), ("user", tricky, "u2"))
+        body = (self.vault / rel).read_text(encoding="utf-8")
+        section = body.split("## Ideas", 1)[1]
+        self.assertEqual([l for l in section.splitlines() if l.startswith("```")], ["```jsonl", "```"])
+        self.assertEqual(self._ideas(rel)[0]["remark"], tricky)
+
+    def test_an_idea_in_the_first_request_is_marked_for_the_judge(self):
+        opener = "idea: a blog post per shipped plan, with the numbers from its close-out."
+        _, rel = self._write(("user", opener, "u1"))
+        [entry] = self._ideas(rel)
+        self.assertTrue(entry["first_request"])
+
+
+
+class TheIdeasSectionIsTheJudgesShape(unittest.TestCase):
+    """The night's idea judge reads `## Ideas` in Go (daemon/internal/ideajudge).
+    Its tests read testdata/trace.md, and this renders the same trace and holds
+    the two byte-identical, so a change to either side's shape fails here."""
+
+    FIXTURE = Path(__file__).resolve().parent.parent / "daemon" / "internal" / "ideajudge" / "testdata" / "trace.md"
+
+    def test_the_go_fixture_is_what_the_writer_renders(self):
+        ideas = [
+            {"remark": "We should also look into automating the PlayOn recordings, as that's tedious by hand.",
+             "rule": "explicit follow-up suggestion", "first_request": False,
+             "transcript": "~/.claude/projects/-Users-x-home/5b2c8e10-aaaa.jsonl", "message": "u2-0f3c9a7e",
+             "context": "assistant: The Netflix films are done; the Hulu queue has four left.\noperator: One more "
+                        "thing. We should also look into automating the PlayOn recordings, as that's tedious by hand.",
+             "filed_key": "we-should-also-look-into-automating|0123456789abcdef"},
+            {"remark": "idea: a blog post per shipped plan, with the ``` numbers from #676 and [[a-link]].",
+             "rule": "idea declaration", "first_request": True,
+             "transcript": "~/.claude/projects/-Users-x-home/5b2c8e10-aaaa.jsonl", "message": "u1-77aa",
+             "context": "operator: idea: a blog post per shipped plan, with the ``` numbers from #676 and [[a-link]].",
+             "filed_key": ""},
+        ]
+        trace = et.Trace(when=date(2026, 10, 16), session_id="5b2c8e10-aaaa", title="How far has the PlayOn job got?",
+                         asked="How far has the PlayOn job got?", outcome="The Hulu queue has four left.",
+                         candidates=[{"rule": "not filed: a question, not a directive",
+                                      "excerpt": "should we always rebase here?", "count": 1}],
+                         ideas=ideas, project="movies-tv-games")
+        self.assertEqual(trace.render(), self.FIXTURE.read_text(encoding="utf-8"))
+
+    def test_an_entry_carries_the_key_the_retired_lane_recorded(self):
+        import reflect
+        mined = reflect.mine_transcript_messages([
+            {"type": "user", "message": {"role": "user", "content": "Look at the recall gate."}},
+            {"type": "user", "message": {"role": "user", "content": _IDEA}}])
+        [cand] = mined["idea_candidates"]
+        [entry] = et.mined_ideas([], mined=mined)
+        self.assertEqual(entry["filed_key"], reflect.filed_key(cand.slug, cand.body))
 
 
 if __name__ == "__main__":

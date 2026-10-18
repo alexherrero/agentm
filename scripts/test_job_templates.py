@@ -111,8 +111,13 @@ class JobTemplatesLoad(unittest.TestCase):
         and sorts after it by name: it merges restated rules after the binary's
         lifecycle and copies jobs, and before the Python cycle regenerates the
         needs-review map that lists the pairs it did not merge.
+
+        `judge-ideas-nightly` (task 192) shares `order: 1` with enrichment and
+        sorts after it by name: the idea judge writes its night's counts before
+        the binary runs, so the binary's facet reports them and its `Ideas.md`
+        rebuild lists a card a repeat changed.
         """
-        night = ["enrich-nightly", "dreaming", "restated-nightly", "crystallize-weekly", "dream",
+        night = ["enrich-nightly", "judge-ideas-nightly", "dreaming", "restated-nightly", "crystallize-weekly", "dream",
                  "corpus-scorecard", "morning-note", "observability-email-daily"]
         with tempfile.TemporaryDirectory() as td:
             jobs = Path(td) / "jobs"
@@ -160,6 +165,22 @@ class JobTemplatesLoad(unittest.TestCase):
         self.assertNotIn("--yes", job.command,
                          "--yes in a scheduled command bypasses the switch that "
                          "is the whole point of the switch")
+
+    def test_the_idea_judge_ships_off_reporting_and_declares_its_budget(self):
+        """Task 192: the idea judge spends, so it ships `enabled: false` with a
+        budget, and its command passes `-apply` without `-yes`: with the job on
+        and `daemon.idea_judge_enabled` off it judges and reports, writing
+        nothing, which is the supervised night the plan runs first."""
+        with tempfile.TemporaryDirectory() as td:
+            jobs = Path(td) / "jobs"
+            jobs.mkdir()
+            shutil.copy(TEMPLATES / "judge-ideas-nightly.yaml", jobs / "judge-ideas-nightly.yaml")
+            job = {j.name: j for j in manifest.load_manifests(jobs)}["judge-ideas-nightly"]
+        self.assertFalse(job.enabled, "the idea judge ships armed")
+        self.assertIsNotNone(job.budget_tokens)
+        self.assertEqual(job.schedule, "daily")
+        self.assertIn("agentmd judge-ideas -apply", job.command)
+        self.assertNotIn("-yes", job.command)
 
 
 if __name__ == "__main__":
