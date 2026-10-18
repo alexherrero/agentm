@@ -70,6 +70,13 @@ CLAUDE_MD = (
 PREFERENCE = "From now on I want the gate battery run before every commit."
 
 
+def _home(path) -> dict:
+    """The environment that makes `path` the home directory: `Path.home()`
+    reads HOME on POSIX and USERPROFILE on Windows, so a fake home moves both
+    (the Windows runner found HOME alone leaving the real one in place)."""
+    return {"HOME": str(path), "USERPROFILE": str(path)}
+
+
 def _turn(text, **fields):
     return {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": text}]}, **fields}
 
@@ -120,7 +127,7 @@ class AnUnattendedSessionMinesNothing(unittest.TestCase):
         t = root / "t.jsonl"
         t.write_text(json.dumps(_turn(SCHEDULED, **_DESKTOP)) + "\n", encoding="utf-8")
         out = io.StringIO()
-        with mock.patch.dict(os.environ, {"HOME": str(root)}), contextlib.redirect_stdout(out):
+        with mock.patch.dict(os.environ, _home(root)), contextlib.redirect_stdout(out):
             reflect.main([str(t), "--vault-path", str(root), "--route", "--summary"])
         route = [json.loads(l) for l in out.getvalue().splitlines() if '"pass": "route"' in l][-1]
         self.assertFalse(route["attended"])
@@ -198,7 +205,7 @@ class AQuoteIsNotASighting(unittest.TestCase):
             encoding="utf-8")
         msgs = [_turn("Merge the plan PR."),
                 _turn("Never pass the delete-branch flag to gh pr merge from a worktree.")]
-        with mock.patch.dict(os.environ, {"HOME": str(root)}):
+        with mock.patch.dict(os.environ, _home(root)):
             standing = reflect.load_standing(msgs, root / "agent")
         self.assertIn("standards/user-preferences.md", standing)
         mined = reflect.mine_transcript_messages(msgs, standing=standing)
@@ -215,7 +222,7 @@ class AQuoteIsNotASighting(unittest.TestCase):
         (repo / "AGENTS.md").write_text("Never fan out parallel implementers.\n", encoding="utf-8")
         # The session ran in a worktree that is gone by now.
         msgs = [_turn("Go.", cwd=str(repo / ".claude" / "worktrees" / "gone-slot"))]
-        with mock.patch.dict(os.environ, {"HOME": str(root / "home")}):
+        with mock.patch.dict(os.environ, _home(root / "home")):
             standing = reflect.load_standing(msgs)
         self.assertEqual(sorted(standing), ["AGENTS.md", "~/.claude/CLAUDE.md"])
 
