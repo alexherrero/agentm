@@ -99,11 +99,23 @@ if (-not (Test-Path $Transcript)) {
     exit 0
 }
 
+# Filing v2 remainders task 7: the session's episodic trace — what it captured
+# and recalled, as links under memory/episodic/ — written before the mine so a
+# slow mine never costs the trace. Best-effort: a trace never blocks session end.
+# On every Stop, ahead of the dedup guard below (task 192 step 7b): the trace is
+# a merge into the session's one note and files nothing, and behind the guard
+# it froze at a session's first Stop, losing every later turn's idea remarks.
+$TracePy = ".claude/skills/memory/scripts/episodic_trace.py"
+if (Test-Path $TracePy) {
+    try { & $Py $TracePy $Transcript "--session" $SessionId "--surface" "claude-code" 2>$null | Out-Null } catch { }
+}
+
 # ── Phase-dispatch dedup guard (V4 #23 task 5) ─────────────────────────────
 # If a .reflected marker for this session already exists, the post-/work
 # phase-integration dispatch (orchestration_phase.py) already reflected this
 # transcript. Re-reflecting would double-route (HIGH save errors on a slug
-# collision), so skip — they cooperate via this marker.
+# collision), so skip — they cooperate via this marker. The trace above is
+# written regardless.
 $ReflectedGuard = Join-Path ".harness" "session-id-$SessionId.reflected"
 if (Test-Path $ReflectedGuard) {
     [Console]::Error.WriteLine("[memory-reflect-stop] session $SessionId already reflected (phase dispatch); skipping")
@@ -113,13 +125,6 @@ if (Test-Path $ReflectedGuard) {
 # Invoke reflect.py with --summary + --route. Captured once so we can
 # reuse for transparency line + stdout pass-through (running --route
 # twice would error on slug collision for HIGH saves).
-# Filing v2 remainders task 7: the session's episodic trace — what it captured
-# and recalled, as links under memory/episodic/ — written before the mine so a
-# slow mine never costs the trace. Best-effort: a trace never blocks session end.
-$TracePy = ".claude/skills/memory/scripts/episodic_trace.py"
-if (Test-Path $TracePy) {
-    try { & $Py $TracePy $Transcript "--session" $SessionId "--surface" "claude-code" 2>$null | Out-Null } catch { }
-}
 $ReflectArgs = @($ReflectPy, $Transcript, "--summary", "--route")
 $ReflectOut = & $Py @ReflectArgs 2>&1 | Out-String
 $ReflectExit = $LASTEXITCODE

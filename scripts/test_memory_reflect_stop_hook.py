@@ -196,6 +196,44 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         self.assertNotIn('"pass": "summary"', r.stdout)             # reflect.py not invoked
         self.assertTrue(reflected.is_file())
 
+    def test_a_later_turn_reaches_the_trace_after_the_first_stop(self) -> None:
+        # Task 192 step 7b. The Stop hook fires after every turn, and its first
+        # success renames `.start` to `.reflected`, so every later Stop of the
+        # session meets the dedup guard. The guard keeps the route pass from
+        # filing twice; it must not keep the trace from following the session,
+        # because the trace's `## Ideas` is the only record an idea gets. Before
+        # this, an idea said after a session's first turn in a `.harness/` repo
+        # never reached it (5 of 7 in the 2026-09-16..10-16 window).
+        tp = self.root / "session-s5.jsonl"
+
+        def turn(text, uuid, said):
+            return (json.dumps({"type": "user", "uuid": uuid, "message": {"role": "user", "content": text}}) + "\n"
+                    + json.dumps({"type": "assistant", "message": {"role": "assistant",
+                                                                    "content": [{"type": "text", "text": said}]}}) + "\n")
+
+        tp.write_text(turn("Look at the release branch.", "u1", "It is clean.")
+                      + turn("I want the summary at the top of the report.", "u2", "Done."), encoding="utf-8")
+        (self.proj / ".harness" / "session-id-s5.start").write_text("session_id: s5\n", encoding="utf-8")
+        first = self._run_hook(self._env(), sid="s5", transcript_path=str(tp))
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertTrue((self.proj / ".harness" / "session-id-s5.reflected").is_file())
+        traces = list((self.vault / "memory" / "episodic").glob("*.md"))
+        self.assertEqual(len(traces), 1, "the first Stop writes the session's trace")
+        self.assertNotIn("## Ideas", traces[0].read_text(encoding="utf-8"))
+
+        idea = "We should also automate the PlayOn recordings later, as that's tedious by hand."
+        with tp.open("a", encoding="utf-8") as f:
+            f.write(turn(idea, "u3", "Noted."))
+        second = self._run_hook(self._env(), sid="s5", transcript_path=str(tp))
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn("already reflected", second.stderr, "the route pass still runs once")
+        self.assertNotIn('"pass": "summary"', second.stdout)
+        self.assertEqual(list((self.vault / "memory" / "episodic").glob("*.md")), traces, "still one trace")
+        text = traces[0].read_text(encoding="utf-8")
+        self.assertIn("## Ideas", text)
+        self.assertIn(idea, text)
+        self.assertIn('"message": "u3"', text)
+
     def test_no_vault_graceful_skip_marker_untouched(self) -> None:
         # Repo-local / no-vault mode: reflect --route can't persist → the hook
         # reports + exits 0, and leaves the .start marker for a later pass.
