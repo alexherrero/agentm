@@ -162,6 +162,37 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         self.assertIn("already reflected", r.stderr)
         self.assertNotIn('"pass": "summary"', r.stdout)
 
+    def test_a_later_turn_reaches_the_trace_after_the_first_stop(self) -> None:
+        # Task 192 step 7b, the pwsh twin of the bash test: the dedup guard
+        # keeps the route pass to one run, and the trace still follows every
+        # turn, so an idea said after the first one reaches `## Ideas`.
+        tp = self.root / "session-s5.jsonl"
+
+        def turn(text, uuid, said):
+            return (json.dumps({"type": "user", "uuid": uuid, "message": {"role": "user", "content": text}}) + "\n"
+                    + json.dumps({"type": "assistant", "message": {"role": "assistant",
+                                                                    "content": [{"type": "text", "text": said}]}}) + "\n")
+
+        tp.write_text(turn("Look at the release branch.", "u1", "It is clean.")
+                      + turn("I want the summary at the top of the report.", "u2", "Done."), encoding="utf-8")
+        (self.proj / ".harness" / "session-id-s5.start").write_text("session_id: s5\n", encoding="utf-8")
+        first = self._run_hook(self._env(), sid="s5", transcript_path=str(tp))
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertTrue((self.proj / ".harness" / "session-id-s5.reflected").is_file())
+        traces = list((self.vault / "memory" / "episodic").glob("*.md"))
+        self.assertEqual(len(traces), 1, "the first Stop writes the session's trace")
+
+        idea = "We should also automate the PlayOn recordings later, as that's tedious by hand."
+        with tp.open("a", encoding="utf-8") as f:
+            f.write(turn(idea, "u3", "Noted."))
+        second = self._run_hook(self._env(), sid="s5", transcript_path=str(tp))
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn("already reflected", second.stderr, "the route pass still runs once")
+        self.assertNotIn('"pass": "summary"', second.stdout)
+        text = traces[0].read_text(encoding="utf-8")
+        self.assertIn("## Ideas", text)
+        self.assertIn(idea, text)
+
     def test_no_vault_graceful_skip_marker_untouched(self) -> None:
         self._place_transcript("s3", self.proj)
         start = self.proj / ".harness" / "session-id-s3.start"
