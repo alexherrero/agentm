@@ -614,3 +614,91 @@ func TestAProseBraceAroundTheVerdictDoesNotHideIt(t *testing.T) {
 		t.Errorf("ParseVerdict = %+v, %v; want steering", v, err)
 	}
 }
+
+// The fifth review of the fix found the cases below.
+
+// A deleted card's name is not given to another idea, so the deleted words
+// stay removed.
+func TestADeletedCardsNameIsNotReused(t *testing.T) {
+	w1 := "We should also look into automating the PlayOn recordings, as that's tedious by hand."
+	w2 := "Later we could have PlayOn record the Hulu queue overnight without me starting it."
+	title := `{"verdict": "new", "title": "Automate the PlayOn recordings"}`
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(w1, "m1", ""))})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"PlayOn": title}}, st, 0)
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	if err := os.Remove(filepath.Join(v, "agent/inbox/automate-the-playon-recordings.md")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", entry(w2, "m2", "")))
+	n2 := decide(t, v, &fake{replies: map[string]string{"Hulu": title}}, st, 0)
+	MarkApplied(&n2, st, apply(t, v, n2), now)
+	if n2.Rows[len(n2.Rows)-1].Rel == "agent/inbox/automate-the-playon-recordings.md" {
+		t.Fatalf("the deleted card's name was given to another idea")
+	}
+	write(t, v, "agent/memory/episodic/c.md", trace("s3", entry(w1, "m3", "")))
+	f := &fake{replies: map[string]string{"tedious": `{"verdict": "new", "title": "PlayOn automation"}`}}
+	n3 := decide(t, v, f, st, 0)
+	if n3.Removed != 1 || f.calls != 0 || len(n3.Intents) != 0 {
+		t.Errorf("removed %d, calls %d, %d intents; want the deleted idea dropped without a call", n3.Removed, f.calls, len(n3.Intents))
+	}
+}
+
+// The same words said in two sessions tonight are one question, whatever its
+// answer: a steering verdict is shared, so the second never cards them.
+func TestTheSameWordsTonightShareASteeringVerdict(t *testing.T) {
+	v := vault(t, map[string]string{
+		"a.md": trace("s1", entry(playon, "m1", "")),
+		"b.md": trace("s2", entry(playon, "m9", "")),
+	})
+	n := 0
+	call := func(string) (string, error) {
+		n++
+		if n == 1 {
+			return `{"verdict": "steering", "reason": "it directs the session"}`, nil
+		}
+		return `{"verdict": "new", "title": "Automate the PlayOn recordings"}`, nil
+	}
+	plan, err := Decide(Options{Vault: v, MemoryRoot: "agent", Now: now, Call: call, Ledger: map[string]bool{}}, &State{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || len(plan.Intents) != 0 || plan.Count(Steering) != 2 {
+		t.Errorf("%d calls, %d intents, %d steering; want one question shared by both", n, len(plan.Intents), plan.Count(Steering))
+	}
+}
+
+// A remark of too few words to know it by ("Idea:") is held by no card, so a
+// second such remark carrying a different idea is judged.
+func TestATooShortRemarkIsHeldByNoCard(t *testing.T) {
+	short := func(message, context string) string {
+		return fmt.Sprintf(`{"remark": "Idea:", "rule": "idea declaration", "first_request": false, `+
+			`"transcript": "", "message": %q, "context": %q, "filed_key": ""}`, message, context)
+	}
+	v := vault(t, map[string]string{"a.md": trace("s1", short("m1", "operator: Idea: a dashboard for the PlayOn queue"))})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"Idea": `{"verdict": "new", "title": "PlayOn queue dashboard"}`}}, st, 0)
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", short("m2", "operator: Idea: rip the Blu-ray box sets to the NAS")))
+	f := &fake{replies: map[string]string{"Idea": `{"verdict": "new", "title": "Rip the box sets"}`}}
+	decide(t, v, f, st, 0)
+	if f.calls != 1 {
+		t.Errorf("calls %d; a different idea was settled without being judged", f.calls)
+	}
+}
+
+// A remembered new verdict whose card landed on a run whose record was lost is
+// settled at that card, not carded a second time, and remembered by it.
+func TestARememberedNewWhoseCardLandedIsNotCardedTwice(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(playon, "m1", ""))})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"PlayOn": `{"verdict": "new", "title": "Automate the PlayOn recordings"}`}}, st, 0)
+	apply(t, v, n1) // the card lands; MarkApplied never runs
+	n2 := decide(t, v, &fake{}, st, 0)
+	if len(n2.Intents) != 0 || !n2.Rows[0].Home {
+		t.Fatalf("intents %d, row %+v; want the remark settled at the card that landed", len(n2.Intents), n2.Rows[0])
+	}
+	if st.Filed[fold(playon)] != "agent/inbox/automate-the-playon-recordings.md" {
+		t.Errorf("the card is not remembered by its words: %v", st.Filed)
+	}
+}

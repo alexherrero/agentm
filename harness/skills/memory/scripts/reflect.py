@@ -774,6 +774,22 @@ def _scan_patterns(
     return out
 
 
+def _scan_overlapping(text: str, patterns: list[tuple[re.Pattern, str]]) -> list[tuple[str, str, str, int]]:
+    """`_scan_patterns`, with a match free to start inside an earlier one. An
+    idea pattern runs on past its trigger, so a second trigger close behind
+    the first ("idea:" twice, a line apart) sits inside the first match, and
+    `finditer` would never start a match there: that idea's words were in no
+    remark. A trigger is a word, so each search after a match resumes one
+    character past that match's start."""
+    out: list[tuple[str, str, str, int]] = []
+    for pattern, rationale in patterns:
+        pos = 0
+        while (m := pattern.search(text, pos)) is not None:
+            out.append((m.group(0), rationale, _excerpt_around(text, m.start(), m.end()), m.start()))
+            pos = m.start() + 1
+    return out
+
+
 def _sentence_at(text: str, pos: int) -> str:
     """The sentence of `text` that offset `pos` falls in."""
     return _sentence_placed(text, pos)[1]
@@ -1043,9 +1059,7 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
 
             # Idea candidates. A standing rule is not an idea; the first
             # request is the night's to judge (the ruling of 2026-10-16).
-            for match, rationale, excerpt, at in _scan_patterns(
-                text, _IDEA_PATTERNS, role=role
-            ):
+            for match, rationale, excerpt, at in _scan_overlapping(text, _IDEA_PATTERNS):
                 sentence = _sentence_at(text, at)
                 origin = origin_of(sentence, skip_first=True)
                 if origin:
@@ -1057,8 +1071,13 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
                 # stays the window's, the key the retired lane filed by.
                 slug = _slug_from_text(excerpt[:60])
                 start, _, off = _sentence_placed(text, at)
-                end = off + len(" ".join(match.split()))
-                remark, lo, hi = idea_remark(sentence, off, end)
+                flat = " ".join(match.split())
+                end = off + len(flat)
+                # A match that runs on past its sentence ("Idea:" on a line of
+                # its own, the idea on the next) takes the rest of the match
+                # into its remark, which would otherwise be the trigger alone.
+                said = sentence if end <= len(sentence) else sentence[:off] + flat
+                remark, lo, hi = idea_remark(said, off, end)
                 # A message with no uuid is still its own message.
                 uid = str(msg.get("uuid") or f"@{id(msg)}")
                 words = fold(remark)

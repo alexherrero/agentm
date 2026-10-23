@@ -384,6 +384,12 @@ class EachIdeaInAMessageIsARemark(unittest.TestCase):
                                    "Later we could ship tags for every card please."])
 
 
+    def test_an_idea_on_the_line_after_its_trigger_is_in_the_remark(self):
+        mined = reflect.mine_transcript_messages([_turn("look at the queue", uuid="u0"), _turn(
+            "Idea:\nbuild a dashboard for the PlayOn queue so I can see it at a glance", uuid="u1")])
+        self.assertEqual([c.remark for c in mined["idea_candidates"]],
+                         ["Idea: build a dashboard for the PlayOn queue so I can see it at a glance"])
+
     def test_two_rules_at_one_trigger_at_a_run_ons_start_are_one_remark(self):
         filler = " ".join(["and then the importer walks every folder"] * 30)
         mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"), _said("ok"),
@@ -409,7 +415,7 @@ class EveryIdeaReachesARemark(unittest.TestCase):
             "it reads each file twice", "the cards are fine"]
     TRIGGERS = ["we should also add {t} to the walker", "later we could build {t} for it",
                 "idea: {t} dashboard for the queue", "we could eventually ship {t} with it",
-                "in future it might be worth {t} here"]
+                "in future it might be worth {t} here", "idea:\n{t} for the queue"]
     SEPARATORS = [" ", " ", " ", ". ", "\n", " — ", ", "]
 
     def test_the_properties_hold_over_generated_messages(self):

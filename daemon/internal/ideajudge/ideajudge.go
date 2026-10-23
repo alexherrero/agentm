@@ -229,9 +229,28 @@ func holds(text, remark string) bool {
 	return words != "" && strings.Contains(strings.Join(strings.Fields(text), " "), words)
 }
 
+// minWords is the fewest folded words a remark needs to be known by its words:
+// a quote's floor (`reflect.QUOTE_MIN_WORDS`). A remark of fewer, such as
+// "Idea:", says nothing a card holding it shares, so it is held by no card,
+// shares no verdict and is remembered by no card it made.
+const minWords = 4
+
+// identity is the remark's folded words, or "" when they are too few to know
+// it by.
+func identity(remark string) string {
+	f := fold(remark)
+	if len(strings.Fields(f)) < minWords {
+		return ""
+	}
+	return f
+}
+
 // heldBy is the card that already holds the remark's words: a live card first,
 // then a dismissed one.
 func heldBy(cards []Card, remark string) (Card, bool) {
+	if identity(remark) == "" {
+		return Card{}, false
+	}
 	for _, dismissed := range []bool{false, true} {
 		for _, c := range cards {
 			if c.Dismissed == dismissed && holds(c.text, remark) {
@@ -359,11 +378,12 @@ func WasRemoved(r Remark, ledger, stems map[string]bool) bool {
 // the window around its trigger, so one kept under another name goes to the
 // judge, which can name it.
 func wasRemoved(r Remark, ledger map[string]bool, filed map[string]string, stems map[string]bool, cards []Card) bool {
-	if rel := filed[fold(r.Remark)]; rel != "" && !stems[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))] {
+	if rel := filed[identity(r.Remark)]; identity(r.Remark) != "" && rel != "" &&
+		!stems[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))] {
 		// Gone by its name. Kept, filed or renamed, it still holds the words
 		// whole, letters and digits aside from case and punctuation.
 		for _, c := range cards {
-			if strings.Contains(" "+fold(c.text)+" ", " "+fold(r.Remark)+" ") {
+			if strings.Contains(" "+fold(c.text)+" ", " "+identity(r.Remark)+" ") {
 				return false
 			}
 		}
@@ -839,7 +859,7 @@ func Decide(opt Options, st *State) (Plan, error) {
 		}
 		seen[key] = true
 		row := Row{Key: key, Trace: r.Trace, Remark: r.Remark, Verdict: Unjudged}
-		words := fold(r.Remark)
+		words := identity(r.Remark)
 		j, cached := st.Verdicts[key]
 		if cached && j.Verdict.Verdict == Repeat && j.AppliedAt.IsZero() && !j.Home && !j.Dismissed {
 			if _, ok := bySlug[j.Slug]; !ok {
@@ -851,7 +871,23 @@ func Decide(opt Options, st *State) (Plan, error) {
 		}
 		prior, again := tonight[words]
 		held, isHeld := heldBy(cards, r.Remark)
+		fresh := false
 		switch {
+		case cached && isHeld && (j.Verdict.Verdict == Repeat || j.Verdict.Verdict == New) &&
+			j.AppliedAt.IsZero() && !j.Home && !j.Dismissed:
+			// A remembered write whose words a card already holds: it landed
+			// on a run whose record was lost, or the operator wrote it in.
+			// Settled where it is, and remembered by it.
+			row.Cached = true
+			plan.Cached++
+			j.Rel, j.Home = held.Rel, true
+			st.Verdicts[key] = j
+			if j.Verdict.Verdict == New && held.Inbox {
+				if st.Filed == nil {
+					st.Filed = map[string]string{}
+				}
+				st.Filed[words] = held.Rel
+			}
 		case cached:
 			row.Cached = true
 			plan.Cached++
@@ -870,6 +906,7 @@ func Decide(opt Options, st *State) (Plan, error) {
 		case again && words != "":
 			j = Judged{Verdict: prior.Verdict, JudgedAt: now}
 			st.Verdicts[key] = j
+			fresh = true
 		case opt.Call == nil:
 		case plan.Calls >= cap:
 			plan.Deferred++
@@ -890,6 +927,7 @@ func Decide(opt Options, st *State) (Plan, error) {
 					}
 					j = Judged{Verdict: v, JudgedAt: now}
 					st.Verdicts[key] = j
+					fresh = true
 				}
 			}
 			if err != nil {
@@ -902,11 +940,14 @@ func Decide(opt Options, st *State) (Plan, error) {
 			row.Applied = !j.AppliedAt.IsZero() && !j.Home
 		}
 		plan.Rows = append(plan.Rows, row)
-		if (row.Verdict == Repeat || row.Verdict == New) && !row.Applied && !row.Home && !row.Dismissed {
+		pends := (row.Verdict == Repeat || row.Verdict == New) && !row.Applied && !row.Home && !row.Dismissed
+		if pends {
 			toWrite = append(toWrite, pending{key: key, r: r, v: j})
-			if _, ok := tonight[words]; !ok {
-				tonight[words] = j
-			}
+		}
+		// What tonight decided, or a write still waiting, is what the same
+		// words share; steering included.
+		if _, ok := tonight[words]; !ok && words != "" && (fresh || pends) {
+			tonight[words] = j
 		}
 	}
 
@@ -972,8 +1013,8 @@ func Decide(opt Options, st *State) (Plan, error) {
 				e.keys = append(e.keys, p.key)
 			}
 		case New:
-			words := fold(p.r.Remark)
-			if f := newByWords[words]; f != nil {
+			words := identity(p.r.Remark)
+			if f := newByWords[words]; f != nil && words != "" {
 				f.rs, f.keys = append(f.rs, p.r), append(f.keys, p.key)
 				continue
 			}
@@ -983,11 +1024,17 @@ func Decide(opt Options, st *State) (Plan, error) {
 		}
 	}
 	reserved := map[string]bool{}
+	// A name the judge carded words under stays theirs, deleted or not: given
+	// to another idea, it would make the deleted words look kept.
+	used := map[string]bool{}
+	for _, rel := range st.Filed {
+		used[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))] = true
+	}
 	inbox := InboxRel(opt.MemoryRoot)
 	for _, f := range news {
 		r := f.rs[0]
 		slug := freeSlug(f.v.Title, r.Remark, func(s string) bool {
-			return reserved[s] || stems[s] || bySlug[s].Rel != ""
+			return reserved[s] || stems[s] || bySlug[s].Rel != "" || used[s]
 		})
 		reserved[slug] = true
 		rel := inbox + "/" + slug + ".md"
@@ -1046,8 +1093,8 @@ func MarkApplied(plan *Plan, st *State, appliedRels []string, now time.Time) []s
 			j.Rel, j.AppliedAt = row.Rel, now
 			st.Verdicts[k] = j
 			plan.Rows[rowAt[k]].Applied = true
-			if row.Verdict == New {
-				st.Filed[fold(row.Remark)] = row.Rel
+			if w := identity(row.Remark); row.Verdict == New && w != "" {
+				st.Filed[w] = row.Rel
 			}
 			if !seen[row.Rel] {
 				seen[row.Rel] = true
