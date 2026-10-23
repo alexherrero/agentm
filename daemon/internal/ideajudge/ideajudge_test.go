@@ -536,3 +536,42 @@ func TestAKeptLaneCardHoldingOnlyItsWindowIsNotRemoved(t *testing.T) {
 		t.Errorf("removed %d, calls %d, row %+v; want it judged a repeat of the kept card", plan.Removed, f.calls, plan.Rows[0])
 	}
 }
+
+// A deleted inbox card stays removed, though an unrelated idea card shares a
+// stock phrase with its words (the third review of the fix).
+func TestADeletedCardIsNotRevivedByAStockPhraseInAnotherCard(t *testing.T) {
+	remark := "We should also look into the way we name the inbox cards, it is tedious by hand."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(remark, "m1", ""))})
+	newIdea := `{"verdict": "new", "title": "Name the inbox cards"}`
+	st := &State{}
+	night1 := decide(t, v, &fake{replies: map[string]string{"inbox cards": newIdea}}, st, 0)
+	MarkApplied(&night1, st, apply(t, v, night1), now)
+	if err := os.Remove(filepath.Join(v, "agent/inbox/name-the-inbox-cards.md")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, v, "personal/ideas/plex-backups.md", "---\ntitle: \"Plex backups\"\ntype: idea\n---\n\n"+
+		"We should also look into the way we back up the Plex library.\n")
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", entry(remark, "m7", "")))
+	f := &fake{replies: map[string]string{"inbox cards": newIdea}}
+	night2 := decide(t, v, f, st, 0)
+	if f.calls != 0 || len(night2.Intents) != 0 || night2.Removed != 1 {
+		t.Errorf("calls %d, intents %d, removed %d; want the deleted idea dropped without a call",
+			f.calls, len(night2.Intents), night2.Removed)
+	}
+}
+
+// A reply whose own verdict is none of the three is an error, whatever
+// objects it nests or strings it holds.
+func TestANestedOptionIsNotTheVerdict(t *testing.T) {
+	for _, out := range []string{
+		`{"verdict": "unsure", "options": [{"verdict": "new", "title": "X"}, {"verdict": "steering"}]}`,
+		`{"verdict": "steering", "reason": "it is not {"verdict": "new"} but directs the session"}`,
+	} {
+		if v, err := ParseVerdict(out); err == nil {
+			t.Errorf("ParseVerdict(%q) = %+v; want an error, not a verdict", out, v)
+		}
+	}
+	if v, err := ParseVerdict(`Hmm { let me think. {"verdict": "steering"}`); err != nil || v.Verdict != Steering {
+		t.Errorf("a brace that never closes hid the verdict: %+v %v", v, err)
+	}
+}

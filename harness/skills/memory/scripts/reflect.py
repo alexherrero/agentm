@@ -814,13 +814,39 @@ def _ellipsis(text: str) -> str:
     return text
 
 
+# A later match in a run-on is the remark already taken only when this much of
+# that remark lies after it: an idea's words follow the words that flag it.
+_REMARK_MARGIN = 150
+
+
 def idea_remark(sentence: str, start: int, end: int) -> "tuple[str, int, int]":
     """The remark an idea match at `start:end` of its sentence is, and the
-    span of the sentence it covers: the sentence, or a window of it."""
+    span of the sentence it covers: the sentence, or a window of it widened
+    to whole words, `…` where it cuts."""
     if len(sentence) <= REMARK_CHARS:
         return sentence, 0, len(sentence)
     radius = max(0, (REMARK_CHARS - (end - start)) // 2)
-    return _ellipsis(_excerpt_around(sentence, start, end, radius=radius)), start - radius, end + radius
+    lo, hi = max(0, start - radius), min(len(sentence), end + radius)
+    while lo > 0 and not sentence[lo - 1].isspace():
+        lo -= 1
+    while hi < len(sentence) and not sentence[hi].isspace():
+        hi += 1
+    remark = sentence[lo:hi].strip()
+    return ("…" if lo > 0 else "") + remark + ("…" if hi < len(sentence) else ""), lo, hi
+
+
+def _same_remark(taken: tuple, message: str, start: int, off: int, end: int, words: str, whole: bool) -> bool:
+    """Whether an idea match is a remark already taken from its message: the
+    same words, or a match inside that remark's sentence — anywhere in a whole
+    sentence, and in a run-on's window only with room after it for its words."""
+    t_message, t_start, lo, hi, t_words, t_whole = taken
+    if t_message != message:
+        return False
+    if t_words == words:
+        return True
+    if t_start != start:
+        return False
+    return t_whole or (lo + _REMARK_MARGIN <= off and end + _REMARK_MARGIN <= hi)
 
 
 def _prose(msg: dict) -> str:
@@ -1042,10 +1068,13 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
                 # stays the window's, the key the retired lane filed by.
                 slug = _slug_from_text(excerpt[:60])
                 start, _, off = _sentence_placed(text, at)
-                remark, lo, hi = idea_remark(sentence, off, off + len(" ".join(match.split())))
-                uid = str(msg.get("uuid") or "")
-                key = next((k for k in seen_ideas if k[:2] == (uid, start) and k[2] <= off < k[3]),
-                           (uid, start, lo, hi))
+                end = off + len(" ".join(match.split()))
+                remark, lo, hi = idea_remark(sentence, off, end)
+                # A message with no uuid is still its own message.
+                uid = str(msg.get("uuid") or f"@{id(msg)}")
+                words, whole = fold(remark), len(sentence) <= REMARK_CHARS
+                key = next((k for k in seen_ideas if _same_remark(k, uid, start, off, end, words, whole)),
+                           (uid, start, lo, hi, words, whole))
                 if key in seen_ideas:
                     seen_ideas[key].occurrences += 1
                     seen_ideas[key].excerpts.append(excerpt)

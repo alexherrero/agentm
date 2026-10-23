@@ -358,6 +358,32 @@ class EachIdeaInAMessageIsARemark(unittest.TestCase):
         self.assertIn("we should also eventually support tags on every card", remarks)
 
 
+    def test_a_second_idea_near_the_first_in_a_run_on_keeps_its_words(self):
+        head = " ".join(["and then the importer walks every folder"] * 20)
+        tail = " ".join(["and then the importer walks every folder"] * 30)
+        second = "we should also eventually support tags on every card in the inbox and the ideas folder too"
+        text = head + " so we should also add a cache " + " ".join(["word"] * 63) + " " + second + " " + tail
+        msgs = [_turn("look at the importer", uuid="u0"), _said("ok"), _turn(text, uuid="u1")]
+        remarks = [e["remark"] for e in episodic_trace.mined_ideas(msgs, "")]
+        self.assertTrue(any("support tags on every card" in r for r in remarks), remarks)
+
+    def test_one_sentence_said_twice_in_a_message_is_one_remark(self):
+        text = ("Later we could add a cache for the folder walk. Fix the importer first. "
+                "Later we could add a cache for the folder walk.")
+        mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"), _said("ok"),
+                                                  _turn(text, uuid="u1")])
+        self.assertEqual([(c.remark, c.occurrences) for c in mined["idea_candidates"]],
+                         [("Later we could add a cache for the folder walk.", 2)])
+
+    def test_two_messages_without_a_uuid_keep_their_own_ideas(self):
+        msgs = [_turn("look at the importer"), _said("ok"),
+                _turn("Later we could add a cache for the folder walk."), _said("ok"),
+                _turn("Later we could ship tags for every card please.")]
+        remarks = [c.remark for c in reflect.mine_transcript_messages(msgs)["idea_candidates"]]
+        self.assertEqual(remarks, ["Later we could add a cache for the folder walk.",
+                                   "Later we could ship tags for every card please."])
+
+
 class AnIdeasContextStaysBounded(unittest.TestCase):
     def test_a_run_on_message_keeps_the_context_near_its_bound(self):
         filler = " ".join(["and then the importer walks every folder"] * 40)

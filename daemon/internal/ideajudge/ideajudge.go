@@ -351,16 +351,18 @@ func WasRemoved(r Remark, ledger, stems map[string]bool) bool {
 	return slug != "" && !stems[strings.ToLower(slug)]
 }
 
-// wasRemoved is WasRemoved, or a card the judge itself made for these words on
-// an earlier night (`filed`, by folded words) that no note carries now — unless
-// an idea card still holds a run of the remark's words: a card kept under
-// another name, which may hold only the window the retired lane filed. That
-// one goes to the judge, which can name it.
+// wasRemoved is a remark whose card is gone. Either a card the judge made for
+// these words on an earlier night (`filed`, by folded words) is carried by no
+// note now — that card held the remark whole, so one kept under another name
+// is found by the held check before this — or WasRemoved, unless an idea card
+// holds a long run of the remark's words: the retired lane's card held only
+// the window around its trigger, so one kept under another name goes to the
+// judge, which can name it.
 func wasRemoved(r Remark, ledger map[string]bool, filed map[string]string, stems map[string]bool, cards []Card) bool {
-	rel := filed[fold(r.Remark)]
-	gone := WasRemoved(r, ledger, stems) ||
-		rel != "" && !stems[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))]
-	if !gone {
+	if rel := filed[fold(r.Remark)]; rel != "" && !stems[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))] {
+		return true
+	}
+	if !WasRemoved(r, ledger, stems) {
 		return false
 	}
 	for _, c := range cards {
@@ -372,8 +374,9 @@ func wasRemoved(r Remark, ledger map[string]bool, filed map[string]string, stems
 }
 
 // runWords is how many of a remark's words in a row a card must hold to count
-// as carrying it.
-const runWords = 8
+// as carrying it: past any stock phrase ("we should also look into the way
+// we" is eight), well inside the lane's window of about 160 characters.
+const runWords = 12
 
 // holdsRun reports whether text holds runWords of the remark's words in a row
 // (all of them, when it has fewer), letters and digits only.
@@ -450,31 +453,67 @@ type Verdict struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
-// ParseVerdict reads the judge's JSON object out of its reply: the first
-// object that decodes, from each `{` in turn, so a `[[link]]` or an array
-// around it, or a note after it that holds a brace, does not spoil it.
+// ParseVerdict reads the judge's verdict out of its reply: the first of the
+// reply's top-level JSON objects that is one. A `[[link]]` or an array around
+// it, or a note after it holding a brace, does not spoil it; an object nested
+// in another, or a brace inside a string, is never taken for it.
 func ParseVerdict(out string) (Verdict, error) {
 	err := errors.New("no JSON object in the judge's reply")
-	for i := strings.IndexByte(out, '{'); i >= 0; {
+	for _, obj := range topLevelObjects(out) {
 		var v Verdict
-		if derr := json.NewDecoder(strings.NewReader(out[i:])).Decode(&v); derr != nil {
-			err = derr
-		} else {
-			v.Verdict = strings.ToLower(strings.TrimSpace(v.Verdict))
-			switch v.Verdict {
-			case Steering, Repeat, New:
-				v.Slug, v.Title, v.Area = strings.TrimSpace(v.Slug), strings.TrimSpace(v.Title), strings.TrimSpace(v.Area)
-				return v, nil
-			}
-			err = fmt.Errorf("verdict %q is none of steering, repeat, new", v.Verdict)
+		if uerr := json.Unmarshal([]byte(obj), &v); uerr != nil {
+			err = uerr
+			continue
 		}
-		next := strings.IndexByte(out[i+1:], '{')
-		if next < 0 {
-			break
+		v.Verdict = strings.ToLower(strings.TrimSpace(v.Verdict))
+		switch v.Verdict {
+		case Steering, Repeat, New:
+			v.Slug, v.Title, v.Area = strings.TrimSpace(v.Slug), strings.TrimSpace(v.Title), strings.TrimSpace(v.Area)
+			return v, nil
 		}
-		i += 1 + next
+		err = fmt.Errorf("verdict %q is none of steering, repeat, new", v.Verdict)
 	}
 	return Verdict{}, err
+}
+
+// topLevelObjects is each `{…}` of s that sits outside any other, its braces
+// balanced and its strings respected. Prose between them is skipped; a brace
+// that never closes is skipped and the scan goes on after it.
+func topLevelObjects(s string) []string {
+	var out []string
+	for i := 0; i < len(s); i++ {
+		if s[i] != '{' {
+			continue
+		}
+		depth, inString, escaped, end := 0, false, false, -1
+		for j := i; j < len(s) && end < 0; j++ {
+			c := s[j]
+			switch {
+			case inString && escaped:
+				escaped = false
+			case inString && c == '\\':
+				escaped = true
+			case inString && c == '"':
+				inString = false
+			case inString:
+			case c == '"':
+				inString = true
+			case c == '{':
+				depth++
+			case c == '}':
+				depth--
+				if depth == 0 {
+					end = j
+				}
+			}
+		}
+		if end < 0 {
+			continue
+		}
+		out = append(out, s[i:end+1])
+		i = end
+	}
+	return out
 }
 
 // --- the writes --------------------------------------------------------------
