@@ -26,9 +26,9 @@
 // or the night removed — the retired lane's filed ledger or the judge's own
 // record names a card for these words, and no note carries its name — is
 // dropped without a call. A verdict is remembered against the remark, so each
-// is judged once; the same words said again the same night share it. The cap
-// bounds the calls one night makes, and what it leaves is reported and judged
-// next night.
+// is judged once, on its own conversation; the same words carded as new twice
+// in a night are one card. The cap bounds the calls one night makes, and what
+// it leaves is reported and judged next night.
 package ideajudge
 
 import (
@@ -653,8 +653,23 @@ func InboxCard(r Remark, v Verdict, slug, today string, also ...Remark) string {
 	b.WriteString("derived_from: [" + strings.Join(from, ", ") + "]\n")
 	b.WriteString("slug: " + slug + "\n")
 	b.WriteString("---\n\n")
-	b.WriteString(strings.TrimSpace(r.Remark) + "\n")
+	b.WriteString(cardBody(r) + "\n")
 	return cardshape.Reorder(b.String())
+}
+
+// cardBody is a new card's words: the remark as it was said, or, when the
+// remark is too short to say anything ("Idea:" on a line of its own, its idea
+// on the next), the operator's words around it from the context.
+func cardBody(r Remark) string {
+	if identity(r.Remark) != "" {
+		return strings.TrimSpace(r.Remark)
+	}
+	for _, line := range strings.Split(r.Context, "\n") {
+		if said, ok := strings.CutPrefix(line, "operator: "); ok && strings.TrimSpace(said) != "" {
+			return strings.TrimSpace(said)
+		}
+	}
+	return strings.TrimSpace(r.Remark)
 }
 
 // freeSlug is a name for a new inbox card no note in the inbox or the ideas
@@ -842,10 +857,6 @@ func Decide(opt Options, st *State) (Plan, error) {
 	plan.Remarks = len(remarks)
 
 	seen := map[string]bool{}
-	// tonight is the verdict an earlier remark of the same words holds this run,
-	// judged now or remembered and not yet written: the same words said in two
-	// sessions are one question and one card.
-	tonight := map[string]Judged{}
 	type pending struct {
 		key string
 		r   Remark
@@ -869,9 +880,7 @@ func Decide(opt Options, st *State) (Plan, error) {
 				j, cached = Judged{}, false
 			}
 		}
-		prior, again := tonight[words]
 		held, isHeld := heldBy(cards, r.Remark)
-		fresh := false
 		switch {
 		case cached && isHeld && (j.Verdict.Verdict == Repeat || j.Verdict.Verdict == New) &&
 			j.AppliedAt.IsZero() && !j.Home && !j.Dismissed:
@@ -903,10 +912,6 @@ func Decide(opt Options, st *State) (Plan, error) {
 				Reason: "a card filed for these words was removed; not filed again"}, JudgedAt: now}
 			st.Verdicts[key] = j
 			plan.Removed++
-		case again && words != "":
-			j = Judged{Verdict: prior.Verdict, JudgedAt: now}
-			st.Verdicts[key] = j
-			fresh = true
 		case opt.Call == nil:
 		case plan.Calls >= cap:
 			plan.Deferred++
@@ -927,7 +932,6 @@ func Decide(opt Options, st *State) (Plan, error) {
 					}
 					j = Judged{Verdict: v, JudgedAt: now}
 					st.Verdicts[key] = j
-					fresh = true
 				}
 			}
 			if err != nil {
@@ -940,14 +944,8 @@ func Decide(opt Options, st *State) (Plan, error) {
 			row.Applied = !j.AppliedAt.IsZero() && !j.Home
 		}
 		plan.Rows = append(plan.Rows, row)
-		pends := (row.Verdict == Repeat || row.Verdict == New) && !row.Applied && !row.Home && !row.Dismissed
-		if pends {
+		if (row.Verdict == Repeat || row.Verdict == New) && !row.Applied && !row.Home && !row.Dismissed {
 			toWrite = append(toWrite, pending{key: key, r: r, v: j})
-		}
-		// What tonight decided, or a write still waiting, is what the same
-		// words share; steering included.
-		if _, ok := tonight[words]; !ok && words != "" && (fresh || pends) {
-			tonight[words] = j
 		}
 	}
 

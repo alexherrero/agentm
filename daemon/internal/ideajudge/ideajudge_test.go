@@ -491,7 +491,7 @@ func TestADismissedIdeaIsNeverCardedAgain(t *testing.T) {
 }
 
 // One new idea said in the same words in two sessions the same night is one
-// question and one inbox card, derived from both traces.
+// inbox card, derived from both traces.
 func TestOneNewIdeaInTwoSessionsTheSameNightIsOneCard(t *testing.T) {
 	v := vault(t, map[string]string{
 		"a.md": trace("s1", entry(playon, "m1", "")),
@@ -500,8 +500,8 @@ func TestOneNewIdeaInTwoSessionsTheSameNightIsOneCard(t *testing.T) {
 	f := &fake{replies: map[string]string{"PlayOn": `{"verdict": "new", "title": "Automate the PlayOn recordings"}`}}
 	st := &State{}
 	plan := decide(t, v, f, st, 0)
-	if f.calls != 1 || len(plan.Intents) != 1 {
-		t.Fatalf("%d calls, %d intents; want one of each", f.calls, len(plan.Intents))
+	if len(plan.Intents) != 1 {
+		t.Fatalf("%d intents; want one card", len(plan.Intents))
 	}
 	if card := string(plan.Intents[0].After); !strings.Contains(card, `derived_from: ["[[a]]", "[[b]]"]`) {
 		t.Errorf("the card does not name both traces:\n%s", card)
@@ -644,9 +644,10 @@ func TestADeletedCardsNameIsNotReused(t *testing.T) {
 	}
 }
 
-// The same words said in two sessions tonight are one question, whatever its
-// answer: a steering verdict is shared, so the second never cards them.
-func TestTheSameWordsTonightShareASteeringVerdict(t *testing.T) {
+// Each remark is judged on its own conversation: the same words steering one
+// session (restating its brief) can be another's own idea, so a verdict is
+// never lent from one session to another (the sixth review of the fix).
+func TestEachRemarkIsJudgedOnItsOwnConversation(t *testing.T) {
 	v := vault(t, map[string]string{
 		"a.md": trace("s1", entry(playon, "m1", "")),
 		"b.md": trace("s2", entry(playon, "m9", "")),
@@ -663,8 +664,9 @@ func TestTheSameWordsTonightShareASteeringVerdict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 || len(plan.Intents) != 0 || plan.Count(Steering) != 2 {
-		t.Errorf("%d calls, %d intents, %d steering; want one question shared by both", n, len(plan.Intents), plan.Count(Steering))
+	if n != 2 || len(plan.Intents) != 1 || plan.Count(Steering) != 1 || plan.Count(New) != 1 {
+		t.Errorf("%d calls, %d intents, %d steering, %d new; want each judged on its own", n, len(plan.Intents),
+			plan.Count(Steering), plan.Count(New))
 	}
 }
 
@@ -684,6 +686,10 @@ func TestATooShortRemarkIsHeldByNoCard(t *testing.T) {
 	decide(t, v, f, st, 0)
 	if f.calls != 1 {
 		t.Errorf("calls %d; a different idea was settled without being judged", f.calls)
+	}
+	// The card it made says the idea, in the operator's words from the context.
+	if card := string(n1.Intents[0].After); !strings.Contains(card, "\n\nIdea: a dashboard for the PlayOn queue\n") {
+		t.Errorf("the card does not carry the operator's words:\n%s", card)
 	}
 }
 

@@ -777,10 +777,9 @@ def _scan_patterns(
 def _scan_overlapping(text: str, patterns: list[tuple[re.Pattern, str]]) -> list[tuple[str, str, str, int]]:
     """`_scan_patterns`, with a match free to start inside an earlier one. An
     idea pattern runs on past its trigger, so a second trigger close behind
-    the first ("idea:" twice, a line apart) sits inside the first match, and
-    `finditer` would never start a match there: that idea's words were in no
-    remark. A trigger is a word, so each search after a match resumes one
-    character past that match's start."""
+    the first ("idea: X idea:" then the next idea on the line below) sits
+    inside the first match, where `finditer` never starts one. A trigger is a
+    word, so each search resumes one character past the last match's start."""
     out: list[tuple[str, str, str, int]] = []
     for pattern, rationale in patterns:
         pos = 0
@@ -1060,7 +1059,15 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
             # Idea candidates. A standing rule is not an idea; the first
             # request is the night's to judge (the ruling of 2026-10-16).
             for match, rationale, excerpt, at in _scan_overlapping(text, _IDEA_PATTERNS):
-                sentence = _sentence_at(text, at)
+                start, sentence, off = _sentence_placed(text, at)
+                end = off + len(" ".join(match.split()))
+                if end > len(sentence):
+                    # The trigger ends its line ("Idea:"), the idea is on the
+                    # next: the remark is the sentence the match runs on into,
+                    # whole, so it carries the idea and is the remark any other
+                    # trigger on that line makes. The trigger's line is context.
+                    start, sentence, end = _sentence_placed(text, at + len(match.rstrip()) - 1)
+                    off, end = 0, end + 1
                 origin = origin_of(sentence, skip_first=True)
                 if origin:
                     drop(f"not filed: quotes {origin}", excerpt)
@@ -1070,14 +1077,7 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
                 # inside a remark already taken is that remark again. The slug
                 # stays the window's, the key the retired lane filed by.
                 slug = _slug_from_text(excerpt[:60])
-                start, _, off = _sentence_placed(text, at)
-                flat = " ".join(match.split())
-                end = off + len(flat)
-                # A match that runs on past its sentence ("Idea:" on a line of
-                # its own, the idea on the next) takes the rest of the match
-                # into its remark, which would otherwise be the trigger alone.
-                said = sentence if end <= len(sentence) else sentence[:off] + flat
-                remark, lo, hi = idea_remark(said, off, end)
+                remark, lo, hi = idea_remark(sentence, off, end)
                 # A message with no uuid is still its own message.
                 uid = str(msg.get("uuid") or f"@{id(msg)}")
                 words = fold(remark)

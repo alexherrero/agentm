@@ -384,11 +384,27 @@ class EachIdeaInAMessageIsARemark(unittest.TestCase):
                                    "Later we could ship tags for every card please."])
 
 
-    def test_an_idea_on_the_line_after_its_trigger_is_in_the_remark(self):
-        mined = reflect.mine_transcript_messages([_turn("look at the queue", uuid="u0"), _turn(
-            "Idea:\nbuild a dashboard for the PlayOn queue so I can see it at a glance", uuid="u1")])
-        self.assertEqual([c.remark for c in mined["idea_candidates"]],
-                         ["Idea: build a dashboard for the PlayOn queue so I can see it at a glance"])
+    # "Idea:" alone on its line, the idea on the next (the sixth review of the fix).
+    def _remarks(self, text):
+        msgs = [_turn("look at the sync job", uuid="u0"), _said("ok"), _turn(text, uuid="u1")]
+        return [e["remark"] for e in episodic_trace.mined_ideas(msgs, "")]
+
+    def test_a_trigger_alone_on_its_line_takes_the_next_line_whole(self):
+        idea = ("build a dashboard for the PlayOn queue that shows each recording's progress, its channel and its "
+                "start time, and flags any recording that stalled for more than ten minutes")
+        self.assertEqual(self._remarks("Idea:\n" + idea), [idea])
+
+    def test_a_second_trigger_on_the_idea_line_is_the_same_remark(self):
+        self.assertEqual(self._remarks("Idea:\nwe should also add a retry to the vault sync job"),
+                         ["we should also add a retry to the vault sync job"])
+
+    def test_the_same_trigger_a_line_apart_is_the_same_remark(self):
+        self.assertEqual(len(self._remarks("Idea:\nthe sync job, idea: retry it when the vault is locked")), 1)
+
+    def test_an_idea_on_the_line_after_its_trigger_in_the_first_request_is_marked(self):
+        brief = "Run task 12.\nIdea:\nbuild a dashboard for the PlayOn queue so I can see it at a glance"
+        (e,) = episodic_trace.mined_ideas([_turn(brief, uuid="u0"), _said("ok"), _turn("go on", uuid="u1")], "")
+        self.assertTrue(e["first_request"], e)
 
     def test_two_rules_at_one_trigger_at_a_run_ons_start_are_one_remark(self):
         filler = " ".join(["and then the importer walks every folder"] * 30)
