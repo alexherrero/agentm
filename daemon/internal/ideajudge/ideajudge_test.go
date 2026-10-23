@@ -432,12 +432,20 @@ func TestAHeldRepeatBesideAWrittenOneIsHome(t *testing.T) {
 	}
 }
 
-// A verdict followed by a note that holds a brace still parses.
-func TestAVerdictFollowedByANoteWithABraceParses(t *testing.T) {
-	out := "{\"verdict\": \"steering\", \"reason\": \"directs the session\"}\n\n" +
-		"(If it comes up again it could become an idea, e.g. {automate-playon}.)"
-	if v, err := ParseVerdict(out); err != nil || v.Verdict != Steering {
-		t.Errorf("%+v %v", v, err)
+// A verdict parses whatever is around it: a note after it that holds a
+// brace, a `[[link]]` before it, or an array around it (the second review of
+// the fix found the last two broken by the first fix).
+func TestAVerdictParsesWhateverIsAroundIt(t *testing.T) {
+	for _, out := range []string{
+		"{\"verdict\": \"steering\", \"reason\": \"directs the session\"}\n\n" +
+			"(If it comes up again it could become an idea, e.g. {automate-playon}.)",
+		"Repeat of [[streaming-but-not-4k-bluray-yet]]:\n{\"verdict\": \"steering\", \"reason\": \"x\"}",
+		"[{\"verdict\": \"steering\", \"reason\": \"directs the session\"}]",
+		"Thinking {aloud}. {\"verdict\": \"steering\"}",
+	} {
+		if v, err := ParseVerdict(out); err != nil || v.Verdict != Steering {
+			t.Errorf("ParseVerdict(%q) = %+v, %v", out, v, err)
+		}
 	}
 }
 
@@ -505,5 +513,26 @@ func TestOneNewIdeaInTwoSessionsTheSameNightIsOneCard(t *testing.T) {
 		if !r.Applied || r.Rel != "agent/inbox/automate-the-playon-recordings.md" {
 			t.Errorf("row %+v", r)
 		}
+	}
+}
+
+// A card the retired lane filed holds the window around its trigger, not the
+// whole sentence. Kept under another name, it still holds a run of the
+// remark's words, so the remark goes to the judge, not dropped as removed.
+func TestAKeptLaneCardHoldingOnlyItsWindowIsNotRemoved(t *testing.T) {
+	remark := "Once the Netflix films are done and the Hulu queue is down to its last four episodes this week, " +
+		"we should also look into automating the PlayOn recordings."
+	body := "...Netflix films are done and the Hulu queue is down to its last four episodes this week, " +
+		"we should also look into automating the PlayOn recordings."
+	fk := "netflix-films-are-done-and-the|f8f6603e476a4185"
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(remark, "m1", fk))})
+	write(t, v, "personal/ideas/playon-automation.md", "---\ntitle: \"PlayOn automation\"\ntype: idea\n---\n\n"+body+"\n")
+	f := &fake{replies: map[string]string{"PlayOn": `{"verdict": "repeat", "slug": "playon-automation"}`}}
+	plan, err := Decide(Options{Vault: v, MemoryRoot: "agent", Now: now, Call: f.call, Ledger: map[string]bool{fk: true}}, &State{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Removed != 0 || f.calls != 1 || plan.Rows[0].Slug != "playon-automation" {
+		t.Errorf("removed %d, calls %d, row %+v; want it judged a repeat of the kept card", plan.Removed, f.calls, plan.Rows[0])
 	}
 }

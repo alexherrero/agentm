@@ -689,12 +689,13 @@ _COUNT = re.compile(r" \(×\d+\)(?= — |$)")
 def _merge_candidates(base: str, incoming: str) -> str:
     """`## Candidates` from two writes of a session: one line per rule and
     excerpt, at its newest count — the count is how often it fired, not part
-    of what fired — and no more than a trace holds."""
+    of what fired. Uncapped, as the union always was: a later turn's
+    candidate is a sighting promotion counts, however long the session ran."""
     lines: dict = {}
     for ln in base.split("\n") + incoming.split("\n"):
         if ln.strip():
             lines[_COUNT.sub("", ln.strip())] = ln
-    return "\n".join(list(lines.values())[:MAX_CANDIDATES])
+    return "\n".join(lines.values())
 
 
 def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcome: bool = True) -> str:

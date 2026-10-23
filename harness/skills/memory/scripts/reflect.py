@@ -776,12 +776,20 @@ def _scan_patterns(
 
 def _sentence_at(text: str, pos: int) -> str:
     """The sentence of `text` that offset `pos` falls in."""
-    found = ""
+    return _sentence_placed(text, pos)[1]
+
+
+def _sentence_placed(text: str, pos: int) -> "tuple[int, str, int]":
+    """The sentence `pos` falls in: its start in `text`, its flattened words,
+    and where `pos` falls in those words."""
+    found = (0, "")
     for start, s in _sentences(text):
         if start > pos:
             break
-        found = s
-    return found
+        found = (start, s)
+    start, sentence = found
+    at = len(re.sub(r"\s+", " ", text[start:pos]).lstrip())
+    return start, sentence, min(at, len(sentence))
 
 
 # ── An idea remark's context ────────────────────────────────────────────────
@@ -806,13 +814,13 @@ def _ellipsis(text: str) -> str:
     return text
 
 
-def idea_remark(sentence: str, match: str) -> str:
-    """The remark an idea match is: its sentence, or a window of it."""
+def idea_remark(sentence: str, start: int, end: int) -> "tuple[str, int, int]":
+    """The remark an idea match at `start:end` of its sentence is, and the
+    span of the sentence it covers: the sentence, or a window of it."""
     if len(sentence) <= REMARK_CHARS:
-        return sentence
-    at = max(0, sentence.find(match.strip()))
-    end = at + len(match.strip())
-    return _ellipsis(_excerpt_around(sentence, at, end, radius=max(0, (REMARK_CHARS - (end - at)) // 2)))
+        return sentence, 0, len(sentence)
+    radius = max(0, (REMARK_CHARS - (end - start)) // 2)
+    return _ellipsis(_excerpt_around(sentence, start, end, radius=radius)), start - radius, end + radius
 
 
 def _prose(msg: dict) -> str:
@@ -836,9 +844,12 @@ def idea_context(prior_said: str, operator_text: str, remark: str) -> str:
     said = " ".join((operator_text or "").split())
     room = IDEA_CONTEXT_CHARS - (len(tail) + len("assistant: \n") if tail else 0) - len("operator: ")
     if len(said) > room:
-        at = max(0, said.find(" ".join(remark.split())))
-        radius = max(0, (room - len(remark)) // 2)
-        said = _ellipsis(_excerpt_around(said, at, at + len(remark), radius=radius))
+        # A windowed remark carries `…` at its cut edges; the words between are
+        # what the message holds.
+        core = " ".join(remark.strip().strip("…").split())
+        at = max(0, said.find(core))
+        radius = max(0, (room - len(core)) // 2)
+        said = _ellipsis(_excerpt_around(said, at, at + len(core), radius=radius))
     if len(said) > room:
         said = said[:max(0, room - 1)].rstrip() + "…"
     lines = ([f"assistant: {tail}"] if tail else []) + [f"operator: {said}"]
@@ -1025,12 +1036,16 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
                 if origin:
                     drop(f"not filed: quotes {origin}", excerpt)
                     continue
-                # One remark per sentence of a message: two ideas in one message
-                # are two remarks, and a sentence two patterns fire on is one.
-                # The slug stays the window's, the key the retired lane filed by.
+                # One remark per sentence of a message, or per window of a
+                # run-on: two ideas in one message are two remarks, and a match
+                # inside a remark already taken is that remark again. The slug
+                # stays the window's, the key the retired lane filed by.
                 slug = _slug_from_text(excerpt[:60])
-                remark = idea_remark(sentence, match)
-                key = (str(msg.get("uuid") or ""), fold(sentence))
+                start, _, off = _sentence_placed(text, at)
+                remark, lo, hi = idea_remark(sentence, off, off + len(" ".join(match.split())))
+                uid = str(msg.get("uuid") or "")
+                key = next((k for k in seen_ideas if k[:2] == (uid, start) and k[2] <= off < k[3]),
+                           (uid, start, lo, hi))
                 if key in seen_ideas:
                     seen_ideas[key].occurrences += 1
                     seen_ideas[key].excerpts.append(excerpt)

@@ -348,6 +348,15 @@ class EachIdeaInAMessageIsARemark(unittest.TestCase):
         self.assertIn("Later, we could add a dashboard for this.", remarks)
         self.assertIn("We should also eventually support tags.", remarks)
 
+    def test_two_ideas_in_one_run_on_message_are_two_remarks(self):
+        filler = " ".join(["and then the importer walks every folder"] * 30)
+        text = ("so later we could add a cache for the folder walk " + filler +
+                " and we should also eventually support tags on every card " + filler)
+        msgs = [_turn("look at the importer", uuid="u0"), _said("ok"), _turn(text, uuid="u1")]
+        remarks = " | ".join(e["remark"] for e in episodic_trace.mined_ideas(msgs, ""))
+        self.assertIn("later we could add a cache for the folder walk", remarks)
+        self.assertIn("we should also eventually support tags on every card", remarks)
+
 
 class AnIdeasContextStaysBounded(unittest.TestCase):
     def test_a_run_on_message_keeps_the_context_near_its_bound(self):
@@ -360,6 +369,8 @@ class AnIdeasContextStaysBounded(unittest.TestCase):
         # About REMARK_CHARS: the window widens to whole words at each end.
         self.assertLessEqual(len(entries[0]["remark"]), reflect.REMARK_CHARS + 40)
         self.assertIn("later we could add a cache for the folder walk", entries[0]["remark"])
+        self.assertIn("later we could add a cache for the folder walk", entries[0]["context"],
+                      "the context is the window around the remark, not the head of the message")
 
 
 if __name__ == "__main__":

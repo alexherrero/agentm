@@ -49,7 +49,6 @@ import (
 
 	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 	"github.com/alexherrero/agentm/daemon/internal/dreaming"
-	"github.com/alexherrero/agentm/daemon/internal/enrich"
 )
 
 const (
@@ -353,13 +352,47 @@ func WasRemoved(r Remark, ledger, stems map[string]bool) bool {
 }
 
 // wasRemoved is WasRemoved, or a card the judge itself made for these words on
-// an earlier night (`filed`, by folded words) that no note carries now.
-func wasRemoved(r Remark, ledger map[string]bool, filed map[string]string, stems map[string]bool) bool {
-	if WasRemoved(r, ledger, stems) {
-		return true
-	}
+// an earlier night (`filed`, by folded words) that no note carries now — unless
+// an idea card still holds a run of the remark's words: a card kept under
+// another name, which may hold only the window the retired lane filed. That
+// one goes to the judge, which can name it.
+func wasRemoved(r Remark, ledger map[string]bool, filed map[string]string, stems map[string]bool, cards []Card) bool {
 	rel := filed[fold(r.Remark)]
-	return rel != "" && !stems[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))]
+	gone := WasRemoved(r, ledger, stems) ||
+		rel != "" && !stems[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))]
+	if !gone {
+		return false
+	}
+	for _, c := range cards {
+		if holdsRun(c.text, r.Remark) {
+			return false
+		}
+	}
+	return true
+}
+
+// runWords is how many of a remark's words in a row a card must hold to count
+// as carrying it.
+const runWords = 8
+
+// holdsRun reports whether text holds runWords of the remark's words in a row
+// (all of them, when it has fewer), letters and digits only.
+func holdsRun(text, remark string) bool {
+	words := strings.Fields(fold(remark))
+	if len(words) == 0 {
+		return false
+	}
+	have := " " + fold(text) + " "
+	n := runWords
+	if len(words) < n {
+		n = len(words)
+	}
+	for i := 0; i+n <= len(words); i++ {
+		if strings.Contains(have, " "+strings.Join(words[i:i+n], " ")+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // --- the question ------------------------------------------------------------
@@ -418,24 +451,30 @@ type Verdict struct {
 }
 
 // ParseVerdict reads the judge's JSON object out of its reply: the first
-// balanced object, so a note after it that holds a brace does not spoil it.
+// object that decodes, from each `{` in turn, so a `[[link]]` or an array
+// around it, or a note after it that holds a brace, does not spoil it.
 func ParseVerdict(out string) (Verdict, error) {
-	obj, err := enrich.ExtractJSON(out)
-	if err != nil {
-		return Verdict{}, fmt.Errorf("no JSON object in the judge's reply: %w", err)
+	err := errors.New("no JSON object in the judge's reply")
+	for i := strings.IndexByte(out, '{'); i >= 0; {
+		var v Verdict
+		if derr := json.NewDecoder(strings.NewReader(out[i:])).Decode(&v); derr != nil {
+			err = derr
+		} else {
+			v.Verdict = strings.ToLower(strings.TrimSpace(v.Verdict))
+			switch v.Verdict {
+			case Steering, Repeat, New:
+				v.Slug, v.Title, v.Area = strings.TrimSpace(v.Slug), strings.TrimSpace(v.Title), strings.TrimSpace(v.Area)
+				return v, nil
+			}
+			err = fmt.Errorf("verdict %q is none of steering, repeat, new", v.Verdict)
+		}
+		next := strings.IndexByte(out[i+1:], '{')
+		if next < 0 {
+			break
+		}
+		i += 1 + next
 	}
-	var v Verdict
-	if err := json.Unmarshal([]byte(obj), &v); err != nil {
-		return Verdict{}, err
-	}
-	v.Verdict = strings.ToLower(strings.TrimSpace(v.Verdict))
-	switch v.Verdict {
-	case Steering, Repeat, New:
-	default:
-		return Verdict{}, fmt.Errorf("verdict %q is none of steering, repeat, new", v.Verdict)
-	}
-	v.Slug, v.Title, v.Area = strings.TrimSpace(v.Slug), strings.TrimSpace(v.Title), strings.TrimSpace(v.Area)
-	return v, nil
+	return Verdict{}, err
 }
 
 // --- the writes --------------------------------------------------------------
@@ -755,7 +794,7 @@ func Decide(opt Options, st *State) (Plan, error) {
 				Reason: "the card already holds these words"}, JudgedAt: now, Rel: held.Rel, Home: true,
 				Dismissed: held.Dismissed}
 			st.Verdicts[key] = j
-		case wasRemoved(r, opt.Ledger, st.Filed, stems):
+		case wasRemoved(r, opt.Ledger, st.Filed, stems, cards):
 			j = Judged{Verdict: Verdict{Verdict: Removed,
 				Reason: "a card filed for these words was removed; not filed again"}, JudgedAt: now}
 			st.Verdicts[key] = j

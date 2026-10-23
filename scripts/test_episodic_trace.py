@@ -665,6 +665,16 @@ class ARewriteKeepsWhatTheTraceHolds(unittest.TestCase):
         self.assertEqual(len(lines), 1, lines)
         self.assertIn("(×3)", lines[0])
 
+    def test_a_candidate_said_late_in_a_long_session_is_kept(self):
+        replies = [{"rule": "not filed: a reply", "excerpt": f"ok, carry on with part {i}", "count": 1}
+                   for i in range(40)]
+        base = et.Trace(when=date(2026, 10, 20), session_id="s1", title="t", candidates=replies).render()
+        pref = {"rule": "explicit preference statement", "excerpt": "always use rebase from now on", "count": 1}
+        incoming = et.Trace(when=date(2026, 10, 20), session_id="s1", title="t",
+                            candidates=[pref] + replies[:39]).render()
+        _, sections = et._split_trace(et.merge_trace_text(base, incoming, "s1"))
+        self.assertIn("always use rebase from now on", sections.get("Candidates", ""))
+
     def test_a_remark_the_operator_corrected_is_not_added_again(self):
         turns = [("user", "tidy up the importer module please", "u0"), ("assistant", "Done.", "a0"),
                  ("user", "Later we could add a cahce for the folder walk.", "u1"), ("assistant", "Noted.", "a1")]
