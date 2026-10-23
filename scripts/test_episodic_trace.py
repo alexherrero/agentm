@@ -627,5 +627,112 @@ class TheIdeasSectionIsTheJudgesShape(unittest.TestCase):
         self.assertEqual(entry["filed_key"], reflect.filed_key(cand.slug, cand.body))
 
 
+class ARewriteKeepsWhatTheTraceHolds(unittest.TestCase):
+    """The trace is rewritten at every Stop (task 192 step 7b). The release
+    review of 2026-10-22 (step 9) found what a rewrite lost or repeated; each
+    case failed before its fix."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.vault = self.root / "vault"
+        (self.vault / "memory" / "episodic").mkdir(parents=True)
+        self.transcript = self.root / "session.jsonl"
+        self.history = self.root / "recall-history.jsonl"
+        self.history.write_text("", encoding="utf-8")
+
+    def _stop(self, turns):
+        """One Stop: the session so far, `(kind, text, uuid)` turns, traced and written."""
+        rows = [_line(kind, [{"type": "text", "text": text}], f"2026-10-16T10:{i:02d}:00Z", uuid=uuid)
+                for i, (kind, text, uuid) in enumerate(turns)]
+        self.transcript.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        trace = et.from_transcript(self.transcript, session_id="5b2c8e10-aaaa", history_path=self.history)
+        return et.write_trace(self.vault, trace)
+
+    def _section(self, rel, name):
+        _, sections = et._split_trace((self.vault / rel).read_text(encoding="utf-8"))
+        return sections.get(name, "")
+
+    def test_a_repeated_candidate_is_one_line_however_many_stops(self):
+        turns = [("user", "tidy up the importer module please", "u0"), ("assistant", "Done.", "a0"),
+                 ("user", "Should we always rebase here?", "u1"), ("assistant", "Noted.", "a1")]
+        rel = self._stop(turns)
+        for i in (2, 3):
+            turns += [("user", "Should we always rebase here?", f"u{i}"), ("assistant", "Yes.", f"a{i}")]
+            self._stop(turns)
+        lines = [l for l in self._section(rel, "Candidates").splitlines() if "Should we always rebase here?" in l]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("(×3)", lines[0])
+
+    def test_a_candidate_said_late_in_a_long_session_is_kept(self):
+        replies = [{"rule": "not filed: a reply", "excerpt": f"ok, carry on with part {i}", "count": 1}
+                   for i in range(40)]
+        base = et.Trace(when=date(2026, 10, 20), session_id="s1", title="t", candidates=replies).render()
+        pref = {"rule": "explicit preference statement", "excerpt": "always use rebase from now on", "count": 1}
+        incoming = et.Trace(when=date(2026, 10, 20), session_id="s1", title="t",
+                            candidates=[pref] + replies[:39]).render()
+        _, sections = et._split_trace(et.merge_trace_text(base, incoming, "s1"))
+        self.assertIn("always use rebase from now on", sections.get("Candidates", ""))
+
+    def test_a_remark_the_operator_corrected_is_not_added_again(self):
+        turns = [("user", "tidy up the importer module please", "u0"), ("assistant", "Done.", "a0"),
+                 ("user", "Later we could add a cahce for the folder walk.", "u1"), ("assistant", "Noted.", "a1")]
+        rel = self._stop(turns)
+        p = self.vault / rel
+        p.write_text(p.read_text(encoding="utf-8").replace("add a cahce", "add a cache", 1), encoding="utf-8")
+        self._stop(turns + [("user", "thanks, carry on", "u2"), ("assistant", "Done.", "a2")])
+        entries = et.parse_ideas(self._section(rel, "Ideas"))
+        self.assertEqual([e["remark"] for e in entries if e["message"] == "u1"],
+                         ["Later we could add a cache for the folder walk."])
+
+    def test_a_note_written_under_ideas_is_kept(self):
+        turns = [("user", "tidy up the importer module please", "u0"), ("assistant", "Done.", "a0"),
+                 ("user", "Later we could add a cache for the folder walk.", "u1"), ("assistant", "Noted.", "a1")]
+        rel = self._stop(turns)
+        p = self.vault / rel
+        p.write_text(p.read_text(encoding="utf-8").rstrip("\n") + "\n\nKeep this one for the importer plan.\n",
+                     encoding="utf-8")
+        self._stop(turns + [("user", "thanks, carry on", "u2"), ("assistant", "Done.", "a2")])
+        self.assertIn("Keep this one for the importer plan.", self._section(rel, "Ideas"))
+
+
+class TheIdeasFenceIsNeverInsideOut(unittest.TestCase):
+    """`## Ideas` is fenced so the operator's `#676` and `[[note]]` are samples,
+    not mentions. A code block left open above it turned the fence inside out
+    (the release review of 2026-10-22)."""
+
+    def _entries_inside_a_fence(self, msgs):
+        t = et.Trace(when=date(2026, 10, 20), session_id="s1", title="t", asked=et._first_request(msgs),
+                     outcome=et._closing_recap(msgs), ideas=et.mined_ideas(msgs, "~/t.jsonl"))
+        inside, out = False, []
+        for line in t.render().splitlines():
+            if line.strip().startswith("```"):
+                inside = not inside
+            elif line.startswith("{"):
+                out.append(inside)
+        return out
+
+    @staticmethod
+    def _msg(kind, text, uuid):
+        return {"type": kind, "uuid": uuid, "message": {"role": kind, "content": [{"type": "text", "text": text}]}}
+
+    def test_a_recap_cut_inside_a_code_block(self):
+        recap = ("All done.\n\n" + "- a line of the status report\n" * 30 + "Run it with:\n\n```bash\n"
+                 + "\n".join(f"python3 scripts/thing_{i}.py --flag" for i in range(40)) + "\n```\n")
+        msgs = [self._msg("user", "tidy the importer", "u0"), self._msg("assistant", "ok", "a0"),
+                self._msg("user", "Later we could add a cache, see #676 and [[some-note]].", "u1"),
+                self._msg("assistant", recap, "a1")]
+        self.assertEqual(self._entries_inside_a_fence(msgs), [True])
+
+    def test_a_first_request_that_opens_on_a_code_block(self):
+        msgs = [self._msg("user", "```\nTraceback (most recent call last):\n  boom\n```\nwhy does this fail", "u0"),
+                self._msg("assistant", "ok", "a0"),
+                self._msg("user", "Later we could add a cache, see #676 and [[some-note]].", "u1"),
+                self._msg("assistant", "Done.", "a1")]
+        self.assertEqual(self._entries_inside_a_fence(msgs), [True])
+        self.assertEqual(et._first_request(msgs), "why does this fail")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,7 @@ AgentM gives your coding agent a permanent memory. It writes what it learns — 
 
 A note moves through six stages between the moment it's noticed and the moment it's quietly retired:
 
-1. **Capture** — reflection notices something durable in a session. A confident, clear-cut signal saves straight to a curated note; a hunch lands in an inbox for you to confirm or drop. See [Experience & Dreaming](agentm-experience-and-dreaming).
+1. **Capture** — reflection notices something durable in a session you took part in. A clear signal you typed, such as "from now on…", becomes a card for the night to judge; anything weaker stays a line in the session's trace. An idea you mention in passing is recorded word for word in that trace, and the night's judge drops it if it was only steering the session, adds it to the card of an idea you already have, or puts a new idea in your inbox for you to file or drop. See [Experience & Dreaming](agentm-experience-and-dreaming).
 2. **Index** — the note is embedded into the vector index and linked to its neighbors by typed edges (`uses`, `fixed`, `supersedes`, and six more), so recall can follow a relationship, not just match text. See [Memory index](agentm-memory-index).
 3. **Recall** — every prompt searches the vault by meaning and by keyword, on top of a small always-load floor of standing rules that never has to be searched for.
 4. **Heat** — notes that keep getting used float up toward that always-load floor; notes nobody's touched cool back down. Forgetting is a managed policy here, not an accident.

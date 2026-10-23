@@ -1,9 +1,11 @@
 package ideajudge
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -91,9 +93,21 @@ func (f *fake) call(prompt string) (string, error) {
 	f.calls++
 	f.prompts = append(f.prompts, prompt)
 	remark := strings.SplitN(strings.TrimPrefix(prompt, "## The remark\n\n"), "\n", 2)[0]
-	for k, v := range f.replies {
+	// The longest key first, then by name: a remark holding two keys gets the
+	// same reply on every run, whatever order the map gives.
+	keys := make([]string, 0, len(f.replies))
+	for k := range f.replies {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) != len(keys[j]) {
+			return len(keys[i]) > len(keys[j])
+		}
+		return keys[i] < keys[j]
+	})
+	for _, k := range keys {
 		if strings.Contains(remark, k) {
-			return v, nil
+			return f.replies[k], nil
 		}
 	}
 	return `{"verdict": "steering", "reason": "it directs the session"}`, nil
@@ -357,5 +371,506 @@ func TestAVerdictThatIsNoneOfTheThreeIsAnError(t *testing.T) {
 	}
 	if v, err := ParseVerdict("Here you go: {\"verdict\": \"New\", \"title\": \" X \"}"); err != nil || v.Verdict != New || v.Title != "X" {
 		t.Errorf("%+v %v", v, err)
+	}
+}
+
+// The release review of 2026-10-22 (task 192 step 9) found the cases below,
+// each failing before its fix.
+
+// A remembered repeat whose card was renamed before the writes went on is
+// judged again against today's list, and lands on the card under its new
+// name; it never errors night after night, unwritten.
+func TestARememberedRepeatWhoseCardIsGoneIsJudgedAgain(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", entry("Stream it, but revisit Dolby Vision later.", "m1", ""))})
+	st := &State{}
+	decide(t, v, &fake{replies: map[string]string{"Dolby": `{"verdict": "repeat", "slug": "streaming-but-not-4k-bluray-yet"}`}}, st, 0)
+	if err := os.Rename(filepath.Join(v, "personal/ideas/streaming-but-not-4k-bluray-yet.md"),
+		filepath.Join(v, "personal/ideas/streaming-4k.md")); err != nil {
+		t.Fatal(err)
+	}
+	f := &fake{replies: map[string]string{"Dolby": `{"verdict": "repeat", "slug": "streaming-4k"}`}}
+	plan := decide(t, v, f, st, 0)
+	if len(plan.Errors) != 0 || f.calls != 1 || len(plan.Intents) != 1 ||
+		plan.Intents[0].Rel != "../personal/ideas/streaming-4k.md" {
+		t.Fatalf("errors %v, calls %d, intents %+v; want one call and the repeat on the renamed card", plan.Errors, f.calls, plan.Intents)
+	}
+	if again := decide(t, v, &fake{}, st, 0); len(again.Errors) != 0 || len(again.Intents) != 1 {
+		t.Errorf("the next night: errors %v, %d intents", again.Errors, len(again.Intents))
+	}
+}
+
+// An inbox card the judge made and the operator deleted at review is not
+// carded again when the same words come up in another session: no call, no
+// card.
+func TestAnInboxCardTheOperatorDeletedIsNotCardedAgain(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(playon, "m1", ""))})
+	newIdea := `{"verdict": "new", "title": "Automate the PlayOn recordings"}`
+	st := &State{}
+	night1 := decide(t, v, &fake{replies: map[string]string{"PlayOn": newIdea}}, st, 0)
+	MarkApplied(&night1, st, apply(t, v, night1), now)
+	if err := os.Remove(filepath.Join(v, "agent/inbox/automate-the-playon-recordings.md")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", entry(playon, "m7", "")))
+	f := &fake{replies: map[string]string{"PlayOn": newIdea}}
+	night2 := decide(t, v, f, st, 0)
+	if f.calls != 0 || len(night2.Intents) != 0 || night2.Removed != 1 {
+		t.Errorf("calls %d, intents %+v, removed %d; want the deleted idea dropped without a call", f.calls, night2.Intents, night2.Removed)
+	}
+}
+
+// A repeat its card came to hold after it was judged is home, even beside a
+// second repeat of the same card that is written: the held one is not
+// reported as written.
+func TestAHeldRepeatBesideAWrittenOneIsHome(t *testing.T) {
+	held := "Keep a shelf of the 4K discs worth the upgrade."
+	fresh := "Stream it, but revisit Dolby Vision later."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(held, "m1", ""))})
+	rep := `{"verdict": "repeat", "slug": "streaming-but-not-4k-bluray-yet"}`
+	st := &State{}
+	decide(t, v, &fake{replies: map[string]string{"shelf": rep}}, st, 0) // a reporting night
+	write(t, v, "personal/ideas/streaming-but-not-4k-bluray-yet.md", streamingCard+"\n"+held+"\n")
+	write(t, v, "agent/memory/episodic/a.md", trace("s1", entry(held, "m1", ""), entry(fresh, "m2", "")))
+	plan := decide(t, v, &fake{replies: map[string]string{"Dolby": rep}}, st, 0)
+	written := MarkApplied(&plan, st, apply(t, v, plan), now)
+	for _, r := range plan.Rows {
+		if r.Remark == held && (r.Applied || !r.Home) {
+			t.Errorf("the held repeat reads as written: applied=%v home=%v", r.Applied, r.Home)
+		}
+		if r.Remark == fresh && !r.Applied {
+			t.Errorf("the fresh repeat was not written")
+		}
+	}
+	if len(written) != 1 {
+		t.Errorf("written %v", written)
+	}
+}
+
+// A verdict parses whatever is around it: a note after it that holds a
+// brace, a `[[link]]` before it, or an array around it (the second review of
+// the fix found the last two broken by the first fix).
+func TestAVerdictParsesWhateverIsAroundIt(t *testing.T) {
+	for _, out := range []string{
+		"{\"verdict\": \"steering\", \"reason\": \"directs the session\"}\n\n" +
+			"(If it comes up again it could become an idea, e.g. {automate-playon}.)",
+		"Repeat of [[streaming-but-not-4k-bluray-yet]]:\n{\"verdict\": \"steering\", \"reason\": \"x\"}",
+		"[{\"verdict\": \"steering\", \"reason\": \"directs the session\"}]",
+		"Thinking {aloud}. {\"verdict\": \"steering\"}",
+	} {
+		if v, err := ParseVerdict(out); err != nil || v.Verdict != Steering {
+			t.Errorf("ParseVerdict(%q) = %+v, %v", out, v, err)
+		}
+	}
+}
+
+// A card the operator kept under another name still holds the words, so its
+// repeats are home, not dropped as removed — and they cost no call.
+func TestAKeptCardUnderAnotherNameIsNotRemoved(t *testing.T) {
+	fk := "we-should-also-look-into-automating|0123456789abcdef"
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(playon, "m1", fk))})
+	write(t, v, "personal/ideas/playon-automation.md", "---\ntitle: \"PlayOn automation\"\ntype: idea\n---\n\n"+playon+"\n")
+	f := &fake{}
+	plan, err := Decide(Options{Vault: v, MemoryRoot: "agent", Now: now, Call: f.call, Ledger: map[string]bool{fk: true}}, &State{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := plan.Rows[0]
+	if plan.Removed != 0 || f.calls != 0 || r.Verdict != Repeat || r.Slug != "playon-automation" || !r.Home {
+		t.Errorf("removed %d, calls %d, row %+v; want a repeat at home on the renamed card", plan.Removed, f.calls, r)
+	}
+}
+
+// An idea the operator dismissed is never carded again: a remark its card
+// holds word for word is settled without a call, and the judge is shown the
+// dismissed card, so a repeat in other words is named and nothing is written.
+func TestADismissedIdeaIsNeverCardedAgain(t *testing.T) {
+	words := "Build a tiny dashboard for the PlayOn queue some day."
+	other := "One day, a little page that shows what PlayOn has queued."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(words, "m1", ""), entry(other, "m2", ""))})
+	write(t, v, "personal/ideas/playon-dashboard.md", "---\ntitle: \"PlayOn dashboard\"\ntype: idea\n"+
+		"dismissed: 2026-10-01\n---\n\n"+words+"\n")
+	f := &fake{replies: map[string]string{"queued": `{"verdict": "repeat", "slug": "playon-dashboard"}`}}
+	plan := decide(t, v, f, &State{}, 0)
+	if f.calls != 1 || !strings.Contains(f.prompts[0], "playon-dashboard") || !strings.Contains(f.prompts[0], "dismissed") {
+		t.Fatalf("calls %d; want one call, showing the dismissed card", f.calls)
+	}
+	if len(plan.Intents) != 0 {
+		t.Errorf("a dismissed idea was written: %s", plan.Intents[0].Rel)
+	}
+	for _, r := range plan.Rows {
+		if !r.Dismissed || r.Rel != "personal/ideas/playon-dashboard.md" {
+			t.Errorf("row %+v; want a repeat of the dismissed card", r)
+		}
+	}
+}
+
+// One new idea said in the same words in two sessions the same night is one
+// inbox card, derived from both traces.
+func TestOneNewIdeaInTwoSessionsTheSameNightIsOneCard(t *testing.T) {
+	v := vault(t, map[string]string{
+		"a.md": trace("s1", entry(playon, "m1", "")),
+		"b.md": trace("s2", entry(playon, "m9", "")),
+	})
+	f := &fake{replies: map[string]string{"PlayOn": `{"verdict": "new", "title": "Automate the PlayOn recordings"}`}}
+	st := &State{}
+	plan := decide(t, v, f, st, 0)
+	if len(plan.Intents) != 1 {
+		t.Fatalf("%d intents; want one card", len(plan.Intents))
+	}
+	if card := string(plan.Intents[0].After); !strings.Contains(card, `derived_from: ["[[a]]", "[[b]]"]`) {
+		t.Errorf("the card does not name both traces:\n%s", card)
+	}
+	if written := MarkApplied(&plan, st, apply(t, v, plan), now); len(written) != 1 {
+		t.Errorf("written %v", written)
+	}
+	for _, r := range plan.Rows {
+		if !r.Applied || r.Rel != "agent/inbox/automate-the-playon-recordings.md" {
+			t.Errorf("row %+v", r)
+		}
+	}
+}
+
+// A card the retired lane filed holds the window around its trigger, not the
+// whole sentence. Kept under another name, it still holds a run of the
+// remark's words, so the remark goes to the judge, not dropped as removed.
+func TestAKeptLaneCardHoldingOnlyItsWindowIsNotRemoved(t *testing.T) {
+	remark := "Once the Netflix films are done and the Hulu queue is down to its last four episodes this week, " +
+		"we should also look into automating the PlayOn recordings."
+	body := "...Netflix films are done and the Hulu queue is down to its last four episodes this week, " +
+		"we should also look into automating the PlayOn recordings."
+	fk := "netflix-films-are-done-and-the|f8f6603e476a4185"
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(remark, "m1", fk))})
+	write(t, v, "personal/ideas/playon-automation.md", "---\ntitle: \"PlayOn automation\"\ntype: idea\n---\n\n"+body+"\n")
+	f := &fake{replies: map[string]string{"PlayOn": `{"verdict": "repeat", "slug": "playon-automation"}`}}
+	plan, err := Decide(Options{Vault: v, MemoryRoot: "agent", Now: now, Call: f.call, Ledger: map[string]bool{fk: true}}, &State{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Removed != 0 || f.calls != 1 || plan.Rows[0].Slug != "playon-automation" {
+		t.Errorf("removed %d, calls %d, row %+v; want it judged a repeat of the kept card", plan.Removed, f.calls, plan.Rows[0])
+	}
+}
+
+// A deleted inbox card stays removed, though an unrelated idea card shares a
+// stock phrase with its words (the third review of the fix).
+func TestADeletedCardIsNotRevivedByAStockPhraseInAnotherCard(t *testing.T) {
+	remark := "We should also look into the way we name the inbox cards, it is tedious by hand."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(remark, "m1", ""))})
+	newIdea := `{"verdict": "new", "title": "Name the inbox cards"}`
+	st := &State{}
+	night1 := decide(t, v, &fake{replies: map[string]string{"inbox cards": newIdea}}, st, 0)
+	MarkApplied(&night1, st, apply(t, v, night1), now)
+	if err := os.Remove(filepath.Join(v, "agent/inbox/name-the-inbox-cards.md")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, v, "personal/ideas/plex-backups.md", "---\ntitle: \"Plex backups\"\ntype: idea\n---\n\n"+
+		"We should also look into the way we back up the Plex library.\n")
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", entry(remark, "m7", "")))
+	f := &fake{replies: map[string]string{"inbox cards": newIdea}}
+	night2 := decide(t, v, f, st, 0)
+	if f.calls != 0 || len(night2.Intents) != 0 || night2.Removed != 1 {
+		t.Errorf("calls %d, intents %d, removed %d; want the deleted idea dropped without a call",
+			f.calls, len(night2.Intents), night2.Removed)
+	}
+}
+
+// A reply whose own verdict is none of the three is an error, whatever
+// objects it nests or strings it holds.
+func TestANestedOptionIsNotTheVerdict(t *testing.T) {
+	for _, out := range []string{
+		`{"verdict": "unsure", "options": [{"verdict": "new", "title": "X"}, {"verdict": "steering"}]}`,
+		`{"verdict": "steering", "reason": "it is not {"verdict": "new"} but directs the session"}`,
+	} {
+		if v, err := ParseVerdict(out); err == nil {
+			t.Errorf("ParseVerdict(%q) = %+v; want an error, not a verdict", out, v)
+		}
+	}
+	if v, err := ParseVerdict(`Hmm { let me think. {"verdict": "steering"}`); err != nil || v.Verdict != Steering {
+		t.Errorf("a brace that never closes hid the verdict: %+v %v", v, err)
+	}
+}
+
+// The judge's card, filed by inbox_review.file_one_idea, keeps its body; its
+// name is no longer than a filed card's may be, so filing keeps it. The same
+// idea said again in other case and punctuation is a repeat of the filed card,
+// not removed (the fourth review of the fix).
+func TestAFiledJudgeCardIsNotRemoved(t *testing.T) {
+	remark := "Later we could reconcile the overnight PlayOn recordings against the streaming catalogue, automatically."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(remark, "m1", ""))})
+	newIdea := `{"verdict": "new", "title": "Automatically reconcile overnight PlayOn recordings against streaming subscription catalogues"}`
+	st := &State{}
+	night1 := decide(t, v, &fake{replies: map[string]string{"PlayOn": newIdea}}, st, 0)
+	MarkApplied(&night1, st, apply(t, v, night1), now)
+	ents, _ := os.ReadDir(filepath.Join(v, "agent/inbox"))
+	if len(ents) != 1 || len(strings.TrimSuffix(ents[0].Name(), ".md")) > 72 {
+		t.Fatalf("inbox %v; want one card named in at most 72 characters", ents)
+	}
+	body := read(t, v, "agent/inbox/"+ents[0].Name())
+	// Filed under another name, the body kept, as file_one_idea files it.
+	write(t, v, "personal/ideas/playon-reconcile.md", body)
+	if err := os.Remove(filepath.Join(v, "agent/inbox", ents[0].Name())); err != nil {
+		t.Fatal(err)
+	}
+	again := "later we could reconcile the overnight PlayOn recordings against the streaming catalogue automatically"
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", entry(again, "m7", "")))
+	f := &fake{replies: map[string]string{"PlayOn": `{"verdict": "repeat", "slug": "playon-reconcile"}`}}
+	night2 := decide(t, v, f, st, 0)
+	if night2.Removed != 0 || f.calls != 1 {
+		t.Errorf("removed %d, calls %d; the operator filed this idea, so it is judged, not removed", night2.Removed, f.calls)
+	}
+}
+
+// A brace in the judge's prose, closed after its verdict, does not hide the
+// verdict (the fourth review of the fix).
+func TestAProseBraceAroundTheVerdictDoesNotHideIt(t *testing.T) {
+	out := "The remark quotes `if cached {` from the loader. {\"verdict\": \"steering\", \"reason\": \"it directs the session\"} (the `}` closing that block is not in the remark)"
+	if v, err := ParseVerdict(out); err != nil || v.Verdict != Steering {
+		t.Errorf("ParseVerdict = %+v, %v; want steering", v, err)
+	}
+}
+
+// The fifth review of the fix found the cases below.
+
+// A deleted card's name is not given to another idea, so the deleted words
+// stay removed.
+func TestADeletedCardsNameIsNotReused(t *testing.T) {
+	w1 := "We should also look into automating the PlayOn recordings, as that's tedious by hand."
+	w2 := "Later we could have PlayOn record the Hulu queue overnight without me starting it."
+	title := `{"verdict": "new", "title": "Automate the PlayOn recordings"}`
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(w1, "m1", ""))})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"PlayOn": title}}, st, 0)
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	if err := os.Remove(filepath.Join(v, "agent/inbox/automate-the-playon-recordings.md")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", entry(w2, "m2", "")))
+	n2 := decide(t, v, &fake{replies: map[string]string{"Hulu": title}}, st, 0)
+	MarkApplied(&n2, st, apply(t, v, n2), now)
+	if n2.Rows[len(n2.Rows)-1].Rel == "agent/inbox/automate-the-playon-recordings.md" {
+		t.Fatalf("the deleted card's name was given to another idea")
+	}
+	write(t, v, "agent/memory/episodic/c.md", trace("s3", entry(w1, "m3", "")))
+	f := &fake{replies: map[string]string{"tedious": `{"verdict": "new", "title": "PlayOn automation"}`}}
+	n3 := decide(t, v, f, st, 0)
+	if n3.Removed != 1 || f.calls != 0 || len(n3.Intents) != 0 {
+		t.Errorf("removed %d, calls %d, %d intents; want the deleted idea dropped without a call", n3.Removed, f.calls, len(n3.Intents))
+	}
+}
+
+// Each remark is judged on its own conversation: the same words steering one
+// session (restating its brief) can be another's own idea, so a verdict is
+// never lent from one session to another (the sixth review of the fix).
+func TestEachRemarkIsJudgedOnItsOwnConversation(t *testing.T) {
+	v := vault(t, map[string]string{
+		"a.md": trace("s1", entry(playon, "m1", "")),
+		"b.md": trace("s2", entry(playon, "m9", "")),
+	})
+	n := 0
+	call := func(string) (string, error) {
+		n++
+		if n == 1 {
+			return `{"verdict": "steering", "reason": "it directs the session"}`, nil
+		}
+		return `{"verdict": "new", "title": "Automate the PlayOn recordings"}`, nil
+	}
+	plan, err := Decide(Options{Vault: v, MemoryRoot: "agent", Now: now, Call: call, Ledger: map[string]bool{}}, &State{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 || len(plan.Intents) != 1 || plan.Count(Steering) != 1 || plan.Count(New) != 1 {
+		t.Errorf("%d calls, %d intents, %d steering, %d new; want each judged on its own", n, len(plan.Intents),
+			plan.Count(Steering), plan.Count(New))
+	}
+}
+
+// A remark of too few words to know it by ("Idea:") is held by no card, so a
+// second such remark carrying a different idea is judged.
+func TestATooShortRemarkIsHeldByNoCard(t *testing.T) {
+	short := func(message, context string) string {
+		return fmt.Sprintf(`{"remark": "Idea:", "rule": "idea declaration", "first_request": false, `+
+			`"transcript": "", "message": %q, "context": %q, "filed_key": ""}`, message, context)
+	}
+	v := vault(t, map[string]string{"a.md": trace("s1", short("m1", "operator: Idea: a dashboard for the PlayOn queue"))})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"Idea": `{"verdict": "new", "title": "PlayOn queue dashboard"}`}}, st, 0)
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", short("m2", "operator: Idea: rip the Blu-ray box sets to the NAS")))
+	f := &fake{replies: map[string]string{"Idea": `{"verdict": "new", "title": "Rip the box sets"}`}}
+	decide(t, v, f, st, 0)
+	if f.calls != 1 {
+		t.Errorf("calls %d; a different idea was settled without being judged", f.calls)
+	}
+}
+
+// A remembered new verdict whose card landed on a run whose record was lost is
+// settled at that card, not carded a second time, and remembered by it.
+func TestARememberedNewWhoseCardLandedIsNotCardedTwice(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(playon, "m1", ""))})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"PlayOn": `{"verdict": "new", "title": "Automate the PlayOn recordings"}`}}, st, 0)
+	apply(t, v, n1) // the card lands; MarkApplied never runs
+	n2 := decide(t, v, &fake{}, st, 0)
+	if len(n2.Intents) != 0 || !n2.Rows[0].Home {
+		t.Fatalf("intents %d, row %+v; want the remark settled at the card that landed", len(n2.Intents), n2.Rows[0])
+	}
+	if st.Filed[fold(playon)] != "agent/inbox/automate-the-playon-recordings.md" {
+		t.Errorf("the card is not remembered by its words: %v", st.Filed)
+	}
+}
+
+// The seventh review of the fix found the cases below.
+
+// Two ideas in one message, as the miner records "Idea: dark mode. Idea: a
+// cache layer for the embeddings in the daemon.": a card made for one never
+// holds the other, so the one the cap or a failed call left is judged the
+// next night.
+const twoIdeasShort = `{"remark": "Idea: dark mode.", "rule": "idea declaration", "first_request": false, "transcript": "", "message": "m1", "context": "assistant: Done, the test is fixed.\noperator: Idea: dark mode. Idea: a cache layer for the embeddings in the daemon.", "filed_key": ""}`
+const twoIdeasSecond = `{"remark": "Idea: a cache layer for the embeddings in the daemon.", "rule": "idea declaration", "first_request": false, "transcript": "", "message": "m1", "context": "assistant: Done, the test is fixed.\noperator: Idea: dark mode. Idea: a cache layer for the embeddings in the daemon.", "filed_key": ""}`
+
+func TestTheIdeaTheCapLeftIsJudgedNextNight(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", twoIdeasShort, twoIdeasSecond)})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"dark mode": `{"verdict": "new", "title": "Dark mode"}`}}, st, 1)
+	if n1.Deferred != 1 {
+		t.Fatalf("night 1: %d deferred; want the cap to leave the second idea", n1.Deferred)
+	}
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	f2 := &fake{replies: map[string]string{"cache layer": `{"verdict": "new", "title": "Cache the embeddings"}`}}
+	n2 := decide(t, v, f2, st, 0)
+	if f2.calls != 1 || len(n2.Intents) != 1 {
+		t.Errorf("night 2: %d calls, %d intents; want the idea the cap left judged and carded", f2.calls, len(n2.Intents))
+	}
+}
+
+func TestAnIdeaWhoseCallFailedIsJudgedNextNight(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", twoIdeasShort, twoIdeasSecond)})
+	st := &State{}
+	call := func(prompt string) (string, error) {
+		if strings.Contains(prompt, "## The remark\n\nIdea: dark mode.") {
+			return `{"verdict": "new", "title": "Dark mode"}`, nil
+		}
+		return "", errors.New("the judge timed out")
+	}
+	n1, err := Decide(Options{Vault: v, MemoryRoot: "agent", Now: now, Ledger: map[string]bool{}, Call: call}, st)
+	if err != nil || len(n1.Errors) != 1 {
+		t.Fatalf("night 1: err %v, errors %v", err, n1.Errors)
+	}
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	f2 := &fake{replies: map[string]string{"cache layer": `{"verdict": "new", "title": "Cache the embeddings"}`}}
+	decide(t, v, f2, st, 0)
+	if f2.calls != 1 {
+		t.Errorf("night 2: %d calls; want the idea whose call failed judged", f2.calls)
+	}
+}
+
+// A short remark's card that landed on a run whose record was lost is found
+// by its trace and its words, and not carded a second time.
+func TestAShortRemarksLandedCardIsNotCardedTwice(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", twoIdeasShort)})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"dark mode": `{"verdict": "new", "title": "Dark mode"}`}}, st, 0)
+	apply(t, v, n1) // the card lands; MarkApplied never runs
+	n2 := decide(t, v, &fake{}, st, 0)
+	if len(n2.Intents) != 0 || !n2.Rows[0].Home {
+		t.Errorf("night 2: %d intents, row %+v; want the remark settled at the card that landed", len(n2.Intents), n2.Rows[0])
+	}
+}
+
+// The eighth review of the fix: a short remark's write is never settled at a
+// card made for another remark of the same session.
+
+func siblingEntry(remark, message, context string) string {
+	return fmt.Sprintf(`{"remark": %q, "rule": "idea declaration", "first_request": false, "transcript": "", `+
+		`"message": %q, "context": %q, "filed_key": ""}`, remark, message, context)
+}
+
+var (
+	siblingRemarkB = siblingEntry("Idea: a CLI flag to skip the embedder in tests.", "m1",
+		"operator: Idea: a CLI flag to skip the embedder in tests.")
+	siblingRemarkA = siblingEntry("Idea: a CLI", "m2",
+		"assistant: The queue is drained.\noperator: Idea: a CLI\nto pause and resume the PlayOn recording queue")
+)
+
+// A, judged new on a reporting night, is never carded once the writes are on:
+// B's card (same trace, holds "Idea: a CLI") settles A's pending write.
+func TestAShortNewFromAReportingNightIsCardedWhenTheWritesTurnOn(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", siblingRemarkB)})
+	st := &State{}
+	// Night 1, writes on: B is judged new, carded, and lands.
+	n1 := decide(t, v, &fake{replies: map[string]string{"embedder": `{"verdict": "new", "title": "Skip the embedder in tests"}`}}, st, 0)
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	// The session goes on; its trace now holds A too.
+	write(t, v, "agent/memory/episodic/a.md", trace("s1", siblingRemarkB, siblingRemarkA))
+	// Night 2, a reporting night: A is judged new, nothing is written.
+	n2 := decide(t, v, &fake{replies: map[string]string{"a CLI": `{"verdict": "new", "title": "A CLI for the PlayOn queue"}`}}, st, 0)
+	if n2.Calls != 1 || n2.Count(New) != 2 {
+		t.Fatalf("night 2: %d calls, %d new", n2.Calls, n2.Count(New))
+	}
+	// Night 3, writes on: A's remembered verdict should be written.
+	n3 := decide(t, v, &fake{}, st, 0)
+	if len(n3.Intents) != 1 {
+		var rows []string
+		for _, r := range n3.Rows {
+			rows = append(rows, fmt.Sprintf("%q home=%v rel=%s", r.Remark, r.Home, r.Rel))
+		}
+		t.Errorf("night 3: %d intents; want A carded. rows: %s; Filed: %v", len(n3.Intents), strings.Join(rows, " | "), st.Filed)
+	}
+}
+
+// The same, through a write that did not land: both are judged new on one
+// night, B's card lands, A's creation is skipped. The next night A is settled
+// at B's card and never carded.
+func TestAShortNewWhoseWriteDidNotLandIsPlannedAgain(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", siblingRemarkB, siblingRemarkA)})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{
+		"embedder": `{"verdict": "new", "title": "Skip the embedder in tests"}`,
+		"a CLI":    `{"verdict": "new", "title": "A CLI for the PlayOn queue"}`,
+	}}, st, 0)
+	if len(n1.Intents) != 2 {
+		t.Fatalf("night 1: %d intents", len(n1.Intents))
+	}
+	// Only B's creation lands (the run stopped, or A's write was skipped).
+	landed := apply(t, v, Plan{Intents: n1.Intents[:1]})
+	MarkApplied(&n1, st, landed, now)
+	n2 := decide(t, v, &fake{}, st, 0)
+	if len(n2.Intents) != 1 {
+		t.Errorf("night 2: %d intents; want A's card retried", len(n2.Intents))
+	}
+}
+
+// A cached repeat of an operator card, whose addition did not land, is settled
+// at an inbox card it never targeted, and the addition is never made.
+func TestAShortRepeatIsNotSettledAtASiblingsCard(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", siblingRemarkB, siblingRemarkA)})
+	write(t, v, "personal/ideas/playon-queue-cli.md", "---\ntitle: \"PlayOn queue CLI\"\ntype: idea\narea: home-tech\n"+
+		"status: active\nslug: playon-queue-cli\n---\n\nA command line to pause and resume the PlayOn recording queue.\n")
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{
+		"embedder": `{"verdict": "new", "title": "Skip the embedder in tests"}`,
+		"a CLI":    `{"verdict": "repeat", "slug": "playon-queue-cli"}`,
+	}}, st, 0)
+	if len(n1.Intents) != 2 {
+		t.Fatalf("night 1: %d intents", len(n1.Intents))
+	}
+	// The operator edits the PlayOn card during the run: the addition is
+	// skipped as a conflict; B's creation lands.
+	write(t, v, "personal/ideas/playon-queue-cli.md", "---\ntitle: \"PlayOn queue CLI\"\ntype: idea\narea: home-tech\n"+
+		"status: active\nslug: playon-queue-cli\n---\n\nA command line to pause and resume the PlayOn recording queue.\n\nAlso: list it.\n")
+	var first []string
+	for _, in := range n1.Intents {
+		if in.Before == nil {
+			first = apply(t, v, Plan{Intents: n1.Intents[:1]})
+		}
+	}
+	MarkApplied(&n1, st, first, now)
+	n2 := decide(t, v, &fake{}, st, 0)
+	if len(n2.Intents) != 1 || !strings.Contains(n2.Intents[0].Rel, "playon-queue-cli") {
+		var rows []string
+		for _, r := range n2.Rows {
+			rows = append(rows, fmt.Sprintf("%q verdict=%s slug=%s home=%v rel=%s", r.Remark, r.Verdict, r.Slug, r.Home, r.Rel))
+		}
+		t.Errorf("night 2: %d intents; want the addition to playon-queue-cli retried. rows: %s", len(n2.Intents), strings.Join(rows, " | "))
 	}
 }

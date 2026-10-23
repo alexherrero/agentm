@@ -86,12 +86,12 @@ Three things decide a capture's shape before it is filed (task 178, 2026-09-28):
 
 - **Its project.** A `project` you pass is stamped as given. Without one, the capture takes the project whose `projects/<slug>/project.yaml` lists the session's folder under `code_paths` — the daemon's door reads it from `cwd`, and the Python writers from the session's own folder — the longest listed path winning. A `convention` or `preference` is stamped with no project unless you pass one, because a rule applies in every project.
 - **Whether the same source is already home.** A capture carrying a `source_id` (a registry identity, `<namespace>:<ref>`, never a session id) or a `source_url`, whose title matches an active card with the same source, updates that card in place: the path, slug and links stay, the body is replaced, `importance` and `created` are kept, and git keeps the old wording. The result says `updated: true`. An exact resend of the same body still reinforces instead.
-- **Whether an idea already has a card.** A `type: idea` capture that matches a card in `personal/ideas/` (the same slug, or a title or body overlap of 0.5 or more) is appended to that card under a dated `## Added by capture` heading with its source, and no note is filed. The result says `appended: true` and names the card.
+- **Whether an idea already has a card.** A `type: idea` capture that matches a card in `personal/ideas/` (the same slug, or a title or body overlap of 0.5 or more) is appended to that card under a dated `## Added by capture` heading with its source, and no note is filed. The result says `appended: true` and names the card. One that matches no card lands in `agent/inbox/`, `unfiled` whatever its writer knew, and waits for your review: `/memory inbox --file <name> --type idea --area <group>` files it into `personal/ideas/`.
 
 | Param | Type | Default | Notes |
 |---|---|---|---|
 | `content` | `str` | required | The captured text |
-| `kind` | `str` | `"capture"` | `"capture"` (a thought, link, or note) or `"idea"` (routes to the ideas ledger) |
+| `kind` | `str` | `"capture"` | `"capture"` (a thought, link, or note) or `"idea"` (an idea: added to its card in `personal/ideas/`, or, when none matches, a new card in the inbox) |
 | `title` | `str \| null` | `null` | When given, becomes the slug base. When omitted, `capture.py` generates a timestamp-based slug (`capture-<UTC timestamp>`) instead of slugging `content` |
 | `tags` | `list[str] \| null` | `null` | Optional labels |
 | `instructions` | `str \| null` | `null` | An operator-typed action to run after the capture is absorbed |

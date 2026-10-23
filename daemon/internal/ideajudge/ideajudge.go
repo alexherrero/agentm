@@ -20,11 +20,15 @@
 //
 // The pass never creates a card in `personal/ideas/`: filing there is the
 // operator's act (`inbox_review.file_one_idea`). It reads only the vault and
-// the engine state, never a transcript, which may be gone by then. A remark
-// whose card the operator or the night removed — its key is in the filed
-// ledger and no note carries its name — is dropped without a call. A verdict
-// is remembered against the remark, so each is judged once; the cap bounds the
-// calls one night makes, and what it leaves is reported and judged next night.
+// the engine state, never a transcript, which may be gone by then. A remark an
+// idea card already holds word for word is settled without a call: a repeat at
+// home, or of an idea the operator dismissed. A remark whose card the operator
+// or the night removed — the retired lane's filed ledger or the judge's own
+// record names a card for these words, and no note carries its name — is
+// dropped without a call. A verdict is remembered against the remark, so each
+// is judged once, on its own conversation; the same words carded as new twice
+// in a night are one card. The cap bounds the calls one night makes, and what
+// it leaves is reported and judged next night.
 package ideajudge
 
 import (
@@ -212,6 +216,64 @@ type Card struct {
 	Area  string `json:"area,omitempty"`
 	// Inbox marks a card waiting for review.
 	Inbox bool `json:"inbox,omitempty"`
+	// Dismissed marks an idea the operator dismissed: still named, so a repeat
+	// of it is known, and never written to.
+	Dismissed bool `json:"dismissed,omitempty"`
+	// text is the card's file, for the words it already holds.
+	text string
+}
+
+// holds reports whether text already carries the remark's words, spacing aside.
+func holds(text, remark string) bool {
+	words := strings.Join(strings.Fields(remark), " ")
+	return words != "" && strings.Contains(strings.Join(strings.Fields(text), " "), words)
+}
+
+// minWords is the fewest folded words a remark needs to be known by its words:
+// a quote's floor (`reflect.QUOTE_MIN_WORDS`). A remark of fewer, such as
+// "Idea:", says nothing a card holding it shares, so it is held by no card,
+// shares no verdict and is remembered by no card it made.
+const minWords = 4
+
+// identity is the remark's folded words, or "" when they are too few to know
+// it by.
+func identity(remark string) string {
+	f := fold(remark)
+	if len(strings.Fields(f)) < minWords {
+		return ""
+	}
+	return f
+}
+
+// landedFrom is the inbox card this remark's own "new" write made: it names
+// the remark's trace, and its body is the remark, as InboxCard writes it.
+// Exact enough for a remark of any length, where heldBy turns a short one
+// away; a sibling remark's card from the same session has its own body.
+func landedFrom(cards []Card, r Remark) (Card, bool) {
+	for _, c := range cards {
+		_, body := dreaming.ParseFrontmatter(c.text)
+		if c.Inbox && strings.Contains(c.text, "[["+r.TraceStem()+"]]") &&
+			strings.TrimSpace(body) == strings.TrimSpace(r.Remark) {
+			return c, true
+		}
+	}
+	return Card{}, false
+}
+
+// heldBy is the card that already holds the remark's words: a live card first,
+// then a dismissed one.
+func heldBy(cards []Card, remark string) (Card, bool) {
+	if identity(remark) == "" {
+		return Card{}, false
+	}
+	for _, dismissed := range []bool{false, true} {
+		for _, c := range cards {
+			if c.Dismissed == dismissed && holds(c.text, remark) {
+				return c, true
+			}
+		}
+	}
+	return Card{}, false
 }
 
 // InboxRel is the drop folder, vault-relative.
@@ -223,8 +285,9 @@ func InboxRel(memoryRoot string) string {
 	return root + "/inbox"
 }
 
-// Cards is every idea card: `personal/ideas/` (dismissed ideas left out), then
-// the inbox's `type: idea` cards.
+// Cards is every idea card: `personal/ideas/` (a dismissed idea marked, so a
+// repeat of it is known and nothing is written), then the inbox's `type: idea`
+// cards.
 func Cards(vault, memoryRoot string) ([]Card, error) {
 	ideas, err := dreaming.ReadIdeaCards(vault)
 	if err != nil {
@@ -232,10 +295,9 @@ func Cards(vault, memoryRoot string) ([]Card, error) {
 	}
 	var out []Card
 	for _, c := range ideas {
-		if c.Dismissed != "" {
-			continue
-		}
-		out = append(out, Card{Rel: c.Rel, Slug: c.Slug, Title: c.Title, Area: c.Area})
+		raw, _ := os.ReadFile(filepath.Join(vault, filepath.FromSlash(c.Rel)))
+		out = append(out, Card{Rel: c.Rel, Slug: c.Slug, Title: c.Title, Area: c.Area,
+			Dismissed: c.Dismissed != "", text: string(raw)})
 	}
 	inbox := InboxRel(memoryRoot)
 	entries, err := os.ReadDir(filepath.Join(vault, filepath.FromSlash(inbox)))
@@ -260,7 +322,8 @@ func Cards(vault, memoryRoot string) ([]Card, error) {
 		if title == "" {
 			title = slug
 		}
-		out = append(out, Card{Rel: inbox + "/" + name, Slug: slug, Title: title, Area: fm["area"], Inbox: true})
+		out = append(out, Card{Rel: inbox + "/" + name, Slug: slug, Title: title, Area: fm["area"], Inbox: true,
+			text: string(raw)})
 	}
 	return out, nil
 }
@@ -322,6 +385,61 @@ func WasRemoved(r Remark, ledger, stems map[string]bool) bool {
 	return slug != "" && !stems[strings.ToLower(slug)]
 }
 
+// wasRemoved is a remark whose card is gone. Either a card the judge made for
+// these words on an earlier night (`filed`, by folded words) is carried by no
+// note now and no card holds the words whole — the card the judge made held
+// them, so one kept under another name still does — or WasRemoved, unless an idea card
+// holds a long run of the remark's words: the retired lane's card held only
+// the window around its trigger, so one kept under another name goes to the
+// judge, which can name it.
+func wasRemoved(r Remark, ledger map[string]bool, filed map[string]string, stems map[string]bool, cards []Card) bool {
+	if rel := filed[identity(r.Remark)]; identity(r.Remark) != "" && rel != "" &&
+		!stems[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))] {
+		// Gone by its name. Kept, filed or renamed, it still holds the words
+		// whole, letters and digits aside from case and punctuation.
+		for _, c := range cards {
+			if strings.Contains(" "+fold(c.text)+" ", " "+identity(r.Remark)+" ") {
+				return false
+			}
+		}
+		return true
+	}
+	if !WasRemoved(r, ledger, stems) {
+		return false
+	}
+	for _, c := range cards {
+		if holdsRun(c.text, r.Remark) {
+			return false
+		}
+	}
+	return true
+}
+
+// runWords is how many of a remark's words in a row a card must hold to count
+// as carrying it: past any stock phrase ("we should also look into the way
+// we" is eight), well inside the lane's window of about 160 characters.
+const runWords = 12
+
+// holdsRun reports whether text holds runWords of the remark's words in a row
+// (all of them, when it has fewer), letters and digits only.
+func holdsRun(text, remark string) bool {
+	words := strings.Fields(fold(remark))
+	if len(words) == 0 {
+		return false
+	}
+	have := " " + fold(text) + " "
+	n := runWords
+	if len(words) < n {
+		n = len(words)
+	}
+	for i := 0; i+n <= len(words); i++ {
+		if strings.Contains(have, " "+strings.Join(words[i:i+n], " ")+" ") {
+			return true
+		}
+	}
+	return false
+}
+
 // --- the question ------------------------------------------------------------
 
 // SystemPrompt frames the judge.
@@ -355,10 +473,13 @@ func Prompt(r Remark, cards []Card) string {
 		if c.Inbox {
 			line += " (waiting for review)"
 		}
+		if c.Dismissed {
+			line += " (dismissed by the operator)"
+		}
 		b.WriteString(line + "\n")
 	}
 	b.WriteString("\nDecide: \"steering\" when the remark directs the work of this session, or restates a brief " +
-		"or a rule; \"repeat\" when it is an idea already on the list (name its slug); \"new\" when it is an idea " +
+		"or a rule; \"repeat\" when it is an idea already on the list, dismissed or not (name its slug); \"new\" when it is an idea " +
 		"worth keeping that is not on the list. Reply with exactly one JSON object: " +
 		`{"verdict": "steering" | "repeat" | "new", "slug": "<the list's slug, for repeat>", ` +
 		`"title": "<a short title, for new>", "area": "<one lower-case word, for new>", "reason": "<one sentence>"}.`)
@@ -374,24 +495,75 @@ type Verdict struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
-// ParseVerdict reads the judge's JSON object out of its reply.
+// ParseVerdict reads the judge's verdict out of its reply: the first of the
+// reply's top-level JSON objects that is one. A `[[link]]` or an array around
+// it, or a note after it holding a brace, does not spoil it; an object nested
+// in another, or a brace inside a string, is never taken for it.
 func ParseVerdict(out string) (Verdict, error) {
-	start, end := strings.Index(out, "{"), strings.LastIndex(out, "}")
-	if start < 0 || end <= start {
-		return Verdict{}, fmt.Errorf("no JSON object in the judge's reply")
+	err := errors.New("no JSON object in the judge's reply")
+	for _, obj := range topLevelObjects(out) {
+		var v Verdict
+		if uerr := json.Unmarshal([]byte(obj), &v); uerr != nil {
+			err = uerr
+			continue
+		}
+		v.Verdict = strings.ToLower(strings.TrimSpace(v.Verdict))
+		switch v.Verdict {
+		case Steering, Repeat, New:
+			v.Slug, v.Title, v.Area = strings.TrimSpace(v.Slug), strings.TrimSpace(v.Title), strings.TrimSpace(v.Area)
+			return v, nil
+		}
+		err = fmt.Errorf("verdict %q is none of steering, repeat, new", v.Verdict)
 	}
-	var v Verdict
-	if err := json.Unmarshal([]byte(out[start:end+1]), &v); err != nil {
-		return Verdict{}, err
+	return Verdict{}, err
+}
+
+// topLevelObjects is each `{…}` of s that sits outside any other, its braces
+// balanced and its strings respected. Only a brace that opens like an object
+// (`{"` or `{}`) starts one, so a brace in prose never swallows the verdict
+// after it; a brace that never closes is skipped and the scan goes on after it.
+func topLevelObjects(s string) []string {
+	var out []string
+	for i := 0; i < len(s); i++ {
+		if s[i] != '{' || !opensObject(s[i+1:]) {
+			continue
+		}
+		depth, inString, escaped, end := 0, false, false, -1
+		for j := i; j < len(s) && end < 0; j++ {
+			c := s[j]
+			switch {
+			case inString && escaped:
+				escaped = false
+			case inString && c == '\\':
+				escaped = true
+			case inString && c == '"':
+				inString = false
+			case inString:
+			case c == '"':
+				inString = true
+			case c == '{':
+				depth++
+			case c == '}':
+				depth--
+				if depth == 0 {
+					end = j
+				}
+			}
+		}
+		if end < 0 {
+			continue
+		}
+		out = append(out, s[i:end+1])
+		i = end
 	}
-	v.Verdict = strings.ToLower(strings.TrimSpace(v.Verdict))
-	switch v.Verdict {
-	case Steering, Repeat, New:
-	default:
-		return Verdict{}, fmt.Errorf("verdict %q is none of steering, repeat, new", v.Verdict)
-	}
-	v.Slug, v.Title, v.Area = strings.TrimSpace(v.Slug), strings.TrimSpace(v.Title), strings.TrimSpace(v.Area)
-	return v, nil
+	return out
+}
+
+// opensObject reports whether the text after a `{` begins as a JSON object's
+// body does: a key, or the brace that closes an empty one.
+func opensObject(rest string) bool {
+	rest = strings.TrimLeft(rest, " \t\r\n")
+	return strings.HasPrefix(rest, `"`) || strings.HasPrefix(rest, "}")
 }
 
 // --- the writes --------------------------------------------------------------
@@ -416,8 +588,7 @@ func sourceLine(r Remark, today string) string {
 // as a new section at the end of the card. Nothing already on the card moves or
 // changes. "" when the card already holds the words.
 func WithAddition(current string, r Remark, today string) string {
-	words := strings.Join(strings.Fields(r.Remark), " ")
-	if words == "" || strings.Contains(strings.Join(strings.Fields(current), " "), words) {
+	if strings.TrimSpace(r.Remark) == "" || holds(current, r.Remark) {
 		return ""
 	}
 	entry := sourceLine(r, today) + "\n\n" + strings.TrimSpace(r.Remark) + "\n"
@@ -459,8 +630,9 @@ func slugWords(s string) []string {
 
 // InboxCard is a new idea as a card in the inbox: `type: idea`, `unfiled`, the
 // remark verbatim as its body, the judge's title and area as a proposal, and
-// the trace it came from in `derived_from`.
-func InboxCard(r Remark, v Verdict, slug, today string) string {
+// the trace it came from in `derived_from` — with the traces of `also`, the
+// same words said again in other sessions.
+func InboxCard(r Remark, v Verdict, slug, today string, also ...Remark) string {
 	title := v.Title
 	if title == "" {
 		title = r.Remark
@@ -485,7 +657,15 @@ func InboxCard(r Remark, v Verdict, slug, today string) string {
 	if r.Session != "" {
 		b.WriteString("session: " + yamlQuote(r.Session) + "\n")
 	}
-	b.WriteString("derived_from: [\"[[" + r.TraceStem() + "]]\"]\n")
+	var from []string
+	seen := map[string]bool{}
+	for _, x := range append([]Remark{r}, also...) {
+		if stem := x.TraceStem(); !seen[stem] {
+			seen[stem] = true
+			from = append(from, "\"[["+stem+"]]\"")
+		}
+	}
+	b.WriteString("derived_from: [" + strings.Join(from, ", ") + "]\n")
 	b.WriteString("slug: " + slug + "\n")
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimSpace(r.Remark) + "\n")
@@ -503,7 +683,15 @@ func freeSlug(title, remark string, taken func(string) bool) string {
 	if len(words) > 8 {
 		words = words[:8]
 	}
+	// No longer than a filed card's name may be (`card_shape.SLUG_MAX`), so
+	// filing the card keeps the name the judge remembers it by.
+	for len(words) > 1 && len(strings.Join(words, "-")) > slugMax {
+		words = words[:len(words)-1]
+	}
 	base := strings.Join(words, "-")
+	if len(base) > slugMax {
+		base = base[:slugMax]
+	}
 	if base == "" {
 		base = "idea"
 	}
@@ -521,7 +709,7 @@ func freeSlug(title, remark string, taken func(string) bool) string {
 		}
 		held[w] = true
 		grown += "-" + w
-		if len(grown) > 72 {
+		if len(grown) > slugMax {
 			break
 		}
 		if !taken(grown) {
@@ -529,14 +717,24 @@ func freeSlug(title, remark string, taken func(string) bool) string {
 		}
 	}
 	sum := sha256.Sum256([]byte(remark))
+	if len(base) > slugMax-7 {
+		base = strings.TrimRight(base[:slugMax-7], "-")
+	}
 	return base + "-" + hex.EncodeToString(sum[:3])
 }
+
+// slugMax is the longest name a card is filed under (`card_shape.SLUG_MAX`).
+const slugMax = 72
 
 // --- one night ---------------------------------------------------------------
 
 // State is what the judge remembers between nights, by remark key.
 type State struct {
 	Verdicts map[string]Judged `json:"verdicts"`
+	// Filed is each inbox card the judge made, vault-relative, by the folded
+	// words it holds: when no note carries its name any more, the operator
+	// removed it, and the same words are not carded again.
+	Filed map[string]string `json:"filed,omitempty"`
 }
 
 // Judged is one remark's verdict, and whether its write landed.
@@ -549,6 +747,9 @@ type Judged struct {
 	// Home marks a repeat whose words the card already held: settled, and
 	// nothing was written for it.
 	Home bool `json:"home,omitempty"`
+	// Dismissed marks a repeat of an idea the operator dismissed: settled,
+	// and nothing is written to it.
+	Dismissed bool `json:"dismissed,omitempty"`
 }
 
 // Row is one remark in a run's report.
@@ -567,6 +768,9 @@ type Row struct {
 	// Home is a repeat whose words the card already held, so nothing was
 	// written for it.
 	Home bool `json:"home,omitempty"`
+	// Dismissed is a repeat of an idea the operator dismissed: nothing is
+	// written.
+	Dismissed bool `json:"dismissed,omitempty"`
 }
 
 // Options carry one night's inputs.
@@ -666,14 +870,50 @@ func Decide(opt Options, st *State) (Plan, error) {
 		}
 		seen[key] = true
 		row := Row{Key: key, Trace: r.Trace, Remark: r.Remark, Verdict: Unjudged}
+		words := identity(r.Remark)
 		j, cached := st.Verdicts[key]
+		if cached && j.Verdict.Verdict == Repeat && j.AppliedAt.IsZero() && !j.Home && !j.Dismissed {
+			if _, ok := bySlug[j.Slug]; !ok {
+				// The card a remembered repeat named is gone since — renamed, or
+				// removed — so the remark is judged again against today's list.
+				delete(st.Verdicts, key)
+				j, cached = Judged{}, false
+			}
+		}
+		held, isHeld := heldBy(cards, r.Remark)
+		pendingWrite := cached && (j.Verdict.Verdict == Repeat || j.Verdict.Verdict == New) &&
+			j.AppliedAt.IsZero() && !j.Home && !j.Dismissed
+		if pendingWrite && !isHeld && j.Verdict.Verdict == New {
+			held, isHeld = landedFrom(cards, r)
+		}
 		switch {
+		case pendingWrite && isHeld:
+			// A remembered write whose words a card already holds: it landed
+			// on a run whose record was lost, or the operator wrote it in.
+			// Settled where it is, and remembered by it.
+			row.Cached = true
+			plan.Cached++
+			j.Rel, j.Home = held.Rel, true
+			st.Verdicts[key] = j
+			if j.Verdict.Verdict == New && held.Inbox && words != "" {
+				if st.Filed == nil {
+					st.Filed = map[string]string{}
+				}
+				st.Filed[words] = held.Rel
+			}
 		case cached:
 			row.Cached = true
 			plan.Cached++
-		case WasRemoved(r, opt.Ledger, stems):
+		case isHeld:
+			// A card already holds these words: a repeat at home, settled
+			// without a call. A dismissed card holding them settles it the same.
+			j = Judged{Verdict: Verdict{Verdict: Repeat, Slug: held.Slug,
+				Reason: "the card already holds these words"}, JudgedAt: now, Rel: held.Rel, Home: true,
+				Dismissed: held.Dismissed}
+			st.Verdicts[key] = j
+		case wasRemoved(r, opt.Ledger, st.Filed, stems, cards):
 			j = Judged{Verdict: Verdict{Verdict: Removed,
-				Reason: "a card the lane filed for these words was removed; not filed again"}, JudgedAt: now}
+				Reason: "a card filed for these words was removed; not filed again"}, JudgedAt: now}
 			st.Verdicts[key] = j
 			plan.Removed++
 		case opt.Call == nil:
@@ -704,32 +944,55 @@ func Decide(opt Options, st *State) (Plan, error) {
 		}
 		if j.Verdict.Verdict != "" {
 			row.Verdict, row.Slug, row.Reason, row.Rel = j.Verdict.Verdict, j.Slug, j.Reason, j.Rel
-			row.Home = j.Home
+			row.Home, row.Dismissed = j.Home, j.Dismissed
 			row.Applied = !j.AppliedAt.IsZero() && !j.Home
 		}
 		plan.Rows = append(plan.Rows, row)
-		if (row.Verdict == Repeat || row.Verdict == New) && !row.Applied && !row.Home {
+		if (row.Verdict == Repeat || row.Verdict == New) && !row.Applied && !row.Home && !row.Dismissed {
 			toWrite = append(toWrite, pending{key: key, r: r, v: j})
 		}
 	}
 
 	// The writes. A card several remarks repeat is one intent carrying them
-	// all, in order, so each later addition is planned against the earlier.
+	// all, in order, so each later addition is planned against the earlier;
+	// a new idea several remarks say in the same words is one card.
 	rowAt := map[string]int{}
 	for i, row := range plan.Rows {
 		rowAt[row.Key] = i
 	}
-	edits := map[string]*struct {
+	type edit struct {
 		before, after string
-		keys          []string
-	}{}
+		// keys are the remarks this write adds; home, those the card held.
+		keys, home []string
+	}
+	edits := map[string]*edit{}
 	var editOrder []string
-	reserved := map[string]bool{}
-	inbox := InboxRel(opt.MemoryRoot)
+	type fresh struct {
+		v    Verdict
+		rs   []Remark
+		keys []string
+	}
+	var news []*fresh
+	newByWords := map[string]*fresh{}
 	for _, p := range toWrite {
+		i := rowAt[p.key]
 		switch p.v.Verdict.Verdict {
 		case Repeat:
-			card := bySlug[p.v.Slug]
+			card, ok := bySlug[p.v.Slug]
+			if !ok {
+				plan.Errors = append(plan.Errors, fmt.Sprintf("%s (%s): no card %q", p.r.Trace, p.key, p.v.Slug))
+				continue
+			}
+			plan.Rows[i].Rel = card.Rel
+			if card.Dismissed {
+				// A repeat of an idea the operator dismissed: settled, and the
+				// card is not written to.
+				plan.Rows[i].Dismissed = true
+				j := st.Verdicts[p.key]
+				j.Rel, j.Dismissed = card.Rel, true
+				st.Verdicts[p.key] = j
+				continue
+			}
 			e := edits[card.Rel]
 			if e == nil {
 				raw, err := os.ReadFile(filepath.Join(opt.Vault, filepath.FromSlash(card.Rel)))
@@ -737,41 +1000,64 @@ func Decide(opt Options, st *State) (Plan, error) {
 					plan.Errors = append(plan.Errors, fmt.Sprintf("%s: %v", card.Rel, err))
 					continue
 				}
-				e = &struct {
-					before, after string
-					keys          []string
-				}{before: string(raw), after: string(raw)}
+				e = &edit{before: string(raw), after: string(raw)}
 				edits[card.Rel] = e
 				editOrder = append(editOrder, card.Rel)
 			}
-			if next := WithAddition(e.after, p.r, today); next != "" {
+			switch next := WithAddition(e.after, p.r, today); {
+			case next != "":
 				e.after = next
+				e.keys = append(e.keys, p.key)
+			case holds(e.before, p.r.Remark):
+				e.home = append(e.home, p.key)
+			default:
+				// Words an earlier remark adds tonight: they land with that write.
+				e.keys = append(e.keys, p.key)
 			}
-			e.keys = append(e.keys, p.key)
-			plan.Rows[rowAt[p.key]].Rel = card.Rel
 		case New:
-			slug := freeSlug(p.v.Title, p.r.Remark, func(s string) bool {
-				return reserved[s] || stems[s] || bySlug[s].Rel != ""
-			})
-			reserved[slug] = true
-			rel := inbox + "/" + slug + ".md"
-			plan.Rows[rowAt[p.key]].Rel = rel
-			plan.Intents = append(plan.Intents, dreaming.Intent{Job: Job, Rel: memRel(opt.MemoryRoot, rel),
-				After:   []byte(InboxCard(p.r, p.v.Verdict, slug, today)),
-				Summary: "a new idea for your review, from " + p.r.TraceStem()})
-			plan.Writes = append(plan.Writes, []string{p.key})
+			words := identity(p.r.Remark)
+			if f := newByWords[words]; f != nil && words != "" {
+				f.rs, f.keys = append(f.rs, p.r), append(f.keys, p.key)
+				continue
+			}
+			f := &fresh{v: p.v.Verdict, rs: []Remark{p.r}, keys: []string{p.key}}
+			newByWords[words] = f
+			news = append(news, f)
 		}
+	}
+	reserved := map[string]bool{}
+	// A name the judge carded words under stays theirs, deleted or not: given
+	// to another idea, it would make the deleted words look kept.
+	used := map[string]bool{}
+	for _, rel := range st.Filed {
+		used[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))] = true
+	}
+	inbox := InboxRel(opt.MemoryRoot)
+	for _, f := range news {
+		r := f.rs[0]
+		slug := freeSlug(f.v.Title, r.Remark, func(s string) bool {
+			return reserved[s] || stems[s] || bySlug[s].Rel != "" || used[s]
+		})
+		reserved[slug] = true
+		rel := inbox + "/" + slug + ".md"
+		for _, k := range f.keys {
+			plan.Rows[rowAt[k]].Rel = rel
+		}
+		plan.Intents = append(plan.Intents, dreaming.Intent{Job: Job, Rel: memRel(opt.MemoryRoot, rel),
+			After:   []byte(InboxCard(r, f.v, slug, today, f.rs[1:]...)),
+			Summary: "a new idea for your review, from " + r.TraceStem()})
+		plan.Writes = append(plan.Writes, f.keys)
 	}
 	for _, rel := range editOrder {
 		e := edits[rel]
-		if e.after == e.before {
-			// The card already holds the words: settled, and nothing is written.
-			for _, k := range e.keys {
-				plan.Rows[rowAt[k]].Home = true
-				j := st.Verdicts[k]
-				j.Rel, j.Home = rel, true
-				st.Verdicts[k] = j
-			}
+		// What the card already held is settled, and nothing is written for it.
+		for _, k := range e.home {
+			plan.Rows[rowAt[k]].Home = true
+			j := st.Verdicts[k]
+			j.Rel, j.Home = rel, true
+			st.Verdicts[k] = j
+		}
+		if len(e.keys) == 0 {
 			continue
 		}
 		plan.Intents = append(plan.Intents, dreaming.Intent{Job: Job, Rel: memRel(opt.MemoryRoot, rel),
@@ -783,8 +1069,8 @@ func Decide(opt Options, st *State) (Plan, error) {
 }
 
 // MarkApplied records the writes that landed: every remark an applied intent
-// carried is home, at the card it wrote. It returns the cards written, each
-// once, vault-relative.
+// carried is home, at the card it wrote, and a new card is remembered by the
+// words it holds. It returns the cards written, each once, vault-relative.
 func MarkApplied(plan *Plan, st *State, appliedRels []string, now time.Time) []string {
 	landed := map[string]bool{}
 	for _, rel := range appliedRels {
@@ -794,6 +1080,9 @@ func MarkApplied(plan *Plan, st *State, appliedRels []string, now time.Time) []s
 	for i, row := range plan.Rows {
 		rowAt[row.Key] = i
 	}
+	if st.Filed == nil {
+		st.Filed = map[string]string{}
+	}
 	var written []string
 	seen := map[string]bool{}
 	for i, in := range plan.Intents {
@@ -801,14 +1090,17 @@ func MarkApplied(plan *Plan, st *State, appliedRels []string, now time.Time) []s
 			continue
 		}
 		for _, k := range plan.Writes[i] {
-			rel := plan.Rows[rowAt[k]].Rel
+			row := plan.Rows[rowAt[k]]
 			j := st.Verdicts[k]
-			j.Rel, j.AppliedAt = rel, now
+			j.Rel, j.AppliedAt = row.Rel, now
 			st.Verdicts[k] = j
 			plan.Rows[rowAt[k]].Applied = true
-			if !seen[rel] {
-				seen[rel] = true
-				written = append(written, rel)
+			if w := identity(row.Remark); row.Verdict == New && w != "" {
+				st.Filed[w] = row.Rel
+			}
+			if !seen[row.Rel] {
+				seen[row.Rel] = true
+				written = append(written, row.Rel)
 			}
 		}
 	}

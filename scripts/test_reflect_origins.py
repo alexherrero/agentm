@@ -289,5 +289,203 @@ class TheAlwaysLoadReader(unittest.TestCase):
         self.assertEqual(got, ["standards/a.md", pen.relative_to(root).joinpath("b.md").as_posix()])
 
 
+# The release review of 2026-10-22 (task 192 step 9) found the cases below,
+# each failing before its fix.
+
+def _command(name, args=""):
+    return _turn(f"<command-name>/{name}</command-name>\n<command-message>{name}</command-message>\n"
+                 f"<command-args>{args}</command-args>", uuid="c0")
+
+
+class ACommandTheHostRunsIsNotTheRequest(unittest.TestCase):
+    """`/clear` or `/model opusplan` carries no brief: the request is what is
+    pasted next, and its standing rules are a quote, not a sighting."""
+    BRIEF = ("Work the plan in .harness/PLAN.md. I want every commit to run the full battery first, from now on. "
+             "Use rebase not merge when refreshing a branch, going forward.")
+    STDOUT = _turn("<local-command-stdout>Set model to opusplan</local-command-stdout>", uuid="c1")
+
+    def test_the_request_after_model_is_the_brief(self):
+        self.assertEqual(reflect.first_request_text(
+            [_command("model", "opusplan"), self.STDOUT, _turn(self.BRIEF, uuid="u1")]), self.BRIEF)
+
+    def test_the_request_after_clear_is_the_brief(self):
+        self.assertEqual(reflect.first_request_text([_command("clear"), _turn(self.BRIEF, uuid="u1")]), self.BRIEF)
+
+    def test_a_command_answered_by_the_host_is_skipped_whatever_its_name(self):
+        stdout = _turn("<local-command-stdout>Done</local-command-stdout>", uuid="c1")
+        self.assertEqual(reflect.first_request_text(
+            [_command("some-new-builtin"), stdout, _turn(self.BRIEF, uuid="u1")]), self.BRIEF)
+
+    def test_a_brief_pasted_after_model_files_no_high_card(self):
+        mined = reflect.mine_transcript_messages([_command("model", "opusplan"), self.STDOUT, _turn(self.BRIEF, uuid="u1")])
+        self.assertEqual([c.title for c in mined["memory_candidates"] if c.confidence == "HIGH"], [])
+
+
+class TheQuestionGuardReadsContractionsAndOrders(unittest.TestCase):
+    def test_a_negated_auxiliary_before_its_subject_is_a_question(self):
+        for s in ("Shouldn't we use rebase instead of merge going forward",
+                  "Can't you use rebase instead of merge from now on",
+                  "Don't you think we should always rebase"):
+            self.assertTrue(reflect.is_question(s), s)
+
+    def test_do_it_and_have_it_are_orders(self):
+        for s in ("Do it with rebase instead of merge from now on.",
+                  "Have it use rebase instead of merge from now on.",
+                  "Do this with rebase from now on.",
+                  "Don't use merge here, from now on."):
+            self.assertFalse(reflect.is_question(s), s)
+
+    def test_the_questions_it_already_read_still_are(self):
+        for s in ("Do we always rebase here", "Have you run the battery", "Does it need a rebase", "Is it worth it"):
+            self.assertTrue(reflect.is_question(s), s)
+
+
+class EachIdeaInAMessageIsARemark(unittest.TestCase):
+    def test_two_ideas_in_one_message_are_two_remarks(self):
+        msgs = [_turn("hello, let's look at the search ranking code", uuid="u0"), _said("Sure."),
+                _turn("Later, we could add a dashboard for this. We should also eventually support tags.", uuid="u1")]
+        remarks = [e["remark"] for e in episodic_trace.mined_ideas(msgs, "")]
+        self.assertIn("Later, we could add a dashboard for this.", remarks)
+        self.assertIn("We should also eventually support tags.", remarks)
+
+    def test_two_ideas_in_one_run_on_message_are_two_remarks(self):
+        filler = " ".join(["and then the importer walks every folder"] * 30)
+        text = ("so later we could add a cache for the folder walk " + filler +
+                " and we should also eventually support tags on every card " + filler)
+        msgs = [_turn("look at the importer", uuid="u0"), _said("ok"), _turn(text, uuid="u1")]
+        remarks = " | ".join(e["remark"] for e in episodic_trace.mined_ideas(msgs, ""))
+        self.assertIn("later we could add a cache for the folder walk", remarks)
+        self.assertIn("we should also eventually support tags on every card", remarks)
+
+
+    def test_a_second_idea_near_the_first_in_a_run_on_keeps_its_words(self):
+        head = " ".join(["and then the importer walks every folder"] * 20)
+        tail = " ".join(["and then the importer walks every folder"] * 30)
+        second = "we should also eventually support tags on every card in the inbox and the ideas folder too"
+        text = head + " so we should also add a cache " + " ".join(["word"] * 63) + " " + second + " " + tail
+        msgs = [_turn("look at the importer", uuid="u0"), _said("ok"), _turn(text, uuid="u1")]
+        remarks = [e["remark"] for e in episodic_trace.mined_ideas(msgs, "")]
+        self.assertTrue(any("support tags on every card" in r for r in remarks), remarks)
+
+    def test_one_sentence_said_twice_in_a_message_is_one_remark(self):
+        text = ("Later we could add a cache for the folder walk. Fix the importer first. "
+                "Later we could add a cache for the folder walk.")
+        mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"), _said("ok"),
+                                                  _turn(text, uuid="u1")])
+        self.assertEqual([(c.remark, c.occurrences) for c in mined["idea_candidates"]],
+                         [("Later we could add a cache for the folder walk.", 2)])
+
+    def test_two_messages_without_a_uuid_keep_their_own_ideas(self):
+        msgs = [_turn("look at the importer"), _said("ok"),
+                _turn("Later we could add a cache for the folder walk."), _said("ok"),
+                _turn("Later we could ship tags for every card please.")]
+        remarks = [c.remark for c in reflect.mine_transcript_messages(msgs)["idea_candidates"]]
+        self.assertEqual(remarks, ["Later we could add a cache for the folder walk.",
+                                   "Later we could ship tags for every card please."])
+
+
+    # "Idea:" alone on its line, the idea on the next (the sixth review of the fix).
+    def _remarks(self, text):
+        msgs = [_turn("look at the sync job", uuid="u0"), _said("ok"), _turn(text, uuid="u1")]
+        return [e["remark"] for e in episodic_trace.mined_ideas(msgs, "")]
+
+    def test_a_trigger_alone_on_its_line_takes_the_next_line_whole(self):
+        idea = ("build a dashboard for the PlayOn queue that shows each recording's progress, its channel and its "
+                "start time, and flags any recording that stalled for more than ten minutes")
+        self.assertEqual(self._remarks("Idea:\n" + idea), [idea])
+
+    def test_a_second_trigger_on_the_idea_line_is_the_same_remark(self):
+        self.assertEqual(self._remarks("Idea:\nwe should also add a retry to the vault sync job"),
+                         ["we should also add a retry to the vault sync job"])
+
+    def test_the_same_trigger_a_line_apart_is_the_same_remark(self):
+        self.assertEqual(len(self._remarks("Idea:\nthe sync job, idea: retry it when the vault is locked")), 1)
+
+    def test_an_idea_on_the_line_after_its_trigger_in_the_first_request_is_marked(self):
+        brief = "Run task 12.\nIdea:\nbuild a dashboard for the PlayOn queue so I can see it at a glance"
+        (e,) = episodic_trace.mined_ideas([_turn(brief, uuid="u0"), _said("ok"), _turn("go on", uuid="u1")], "")
+        self.assertTrue(e["first_request"], e)
+
+    def test_two_rules_at_one_trigger_at_a_run_ons_start_are_one_remark(self):
+        filler = " ".join(["and then the importer walks every folder"] * 30)
+        mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"), _said("ok"),
+                                                  _turn("so later we could also add a cache for the folder walk " + filler,
+                                                        uuid="u1")])
+        self.assertEqual(len(mined["idea_candidates"]), 1, [c.remark[:70] for c in mined["idea_candidates"]])
+
+    def test_two_rules_at_one_trigger_at_a_run_ons_end_are_one_remark(self):
+        filler = " ".join(["and then the importer walks every folder"] * 30)
+        mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"), _said("ok"),
+                                                  _turn(filler + " ok so later we could also add a cache for the folder walk",
+                                                        uuid="u1")])
+        self.assertEqual(len(mined["idea_candidates"]), 1, [c.remark[-70:] for c in mined["idea_candidates"]])
+
+
+class EveryIdeaReachesARemark(unittest.TestCase):
+    """Four rounds of review of the dedup each found an edge the last missed,
+    so its properties are checked over generated messages, not only cases:
+    every idea's words reach a remark, no remark repeats another, a remark
+    stays near its bound, and its context holds it."""
+
+    FILL = ["and then the importer walks every folder", "the queue has four left", "so the walk is slow",
+            "it reads each file twice", "the cards are fine"]
+    TRIGGERS = ["we should also add {t} to the walker", "later we could build {t} for it",
+                "idea: {t} dashboard for the queue", "we could eventually ship {t} with it",
+                "in future it might be worth {t} here", "idea:\n{t} for the queue"]
+    SEPARATORS = [" ", " ", " ", ". ", "\n", " — ", ", "]
+
+    def test_the_properties_hold_over_generated_messages(self):
+        import random
+        rng = random.Random(192)
+        bound = reflect.REMARK_CHARS + 2 * reflect._BOUNDARY_SEARCH + 4
+        for n in range(400):
+            text, tokens = "", []
+            for i in range(rng.randint(1, 4)):
+                tokens.append(f"zq{n}x{i}")
+                text += " ".join(rng.choice(self.FILL) for _ in range(rng.randint(0, 40))) + rng.choice(self.SEPARATORS)
+                text += rng.choice(self.TRIGGERS).format(t=tokens[-1]) + rng.choice(self.SEPARATORS)
+                if rng.random() < 0.1:
+                    text += "https://x.example/" + "ab12" * rng.randint(10, 300) + " "
+            if len(text.strip()) > reflect.MAX_OPERATOR_UTTERANCE_CHARS:
+                continue
+            mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"),
+                                                      _said("ok " * rng.randint(0, 400)), _turn(text, uuid="u1")])
+            remarks = [c.remark for c in mined["idea_candidates"]]
+            for tok in tokens:
+                self.assertTrue(any(tok in r for r in remarks), (tok, text))
+            self.assertEqual(len({reflect.fold(r) for r in remarks}), len(remarks), text)
+            for c in mined["idea_candidates"]:
+                self.assertLessEqual(len(c.remark), bound, text)
+                self.assertLessEqual(len(c.context), reflect.IDEA_CONTEXT_CHARS, text)
+                held = [t for t in tokens if t in c.remark]
+                self.assertTrue(all(t in c.context for t in held), (held, c.context))
+
+
+class AnIdeasContextStaysBounded(unittest.TestCase):
+    def test_a_long_token_beside_a_run_on_remark_is_cut_not_swallowed(self):
+        token = "https://bucket.s3.amazonaws.com/exports/dump.json?X-Amz-Signature=" + "a1b2c3d4" * 180
+        text = ("the export at " + token + " is the one that failed and we should also add a retry to the "
+                "uploader so it does not drop the file when the token expires and then "
+                + " ".join(["the importer walks every folder"] * 10))
+        mined = reflect.mine_transcript_messages([_turn("look at the uploader", uuid="u0"), _said("ok"),
+                                                  _turn(text, uuid="u1")])
+        (c,) = mined["idea_candidates"]
+        self.assertLessEqual(len(c.remark), reflect.REMARK_CHARS + 2 * reflect._BOUNDARY_SEARCH + 2)
+        self.assertIn("we should also add a retry", c.context)
+
+    def test_a_run_on_message_keeps_the_context_near_its_bound(self):
+        filler = " ".join(["and then the importer walks every folder"] * 40)
+        text = "so " + filler + " and later we could add a cache for the folder walk " + filler
+        msgs = [_turn("look at the importer", uuid="u0"), _said("x " * 600), _turn(text, uuid="u1")]
+        entries = episodic_trace.mined_ideas(msgs, "")
+        self.assertEqual(len(entries), 1)
+        self.assertLessEqual(len(entries[0]["context"]), reflect.IDEA_CONTEXT_CHARS)
+        # About REMARK_CHARS: the window widens to whole words at each end.
+        self.assertLessEqual(len(entries[0]["remark"]), reflect.REMARK_CHARS + 40)
+        self.assertIn("later we could add a cache for the folder walk", entries[0]["remark"])
+        self.assertIn("later we could add a cache for the folder walk", entries[0]["context"],
+                      "the context is the window around the remark, not the head of the message")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

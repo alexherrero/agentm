@@ -1,6 +1,7 @@
 package dreaming
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,27 +43,38 @@ func TestThreeTracesQuotingTheirOwnBriefDoNotPromote(t *testing.T) {
 // A sighting that quotes the always-load tier is the session carrying a rule it
 // already loads, wherever the session was.
 func TestThreeTracesQuotingAStandingRuleDoNotPromote(t *testing.T) {
-	vault := t.TempDir()
-	root := filepath.Join(vault, "agent")
-	for _, d := range []string{filepath.Join(vault, ".obsidian"), filepath.Join(vault, "standards")} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(vault, "standards", "user-preferences.md"),
-		[]byte("# How I want things done\n\nKeep the plan on disk, never in the conversation.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	line := "- explicit always/never directive — “Keep the plan on disk, never in the conversation.”"
-	for _, s := range []string{"a", "b", "c"} {
-		writeRaw(t, root, "memory/episodic/"+s+".md", briefTrace(s, "work on the vault", line))
-	}
-	plan, err := PlanPromote(root, nil, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Promotions) != 0 {
-		t.Errorf("a standing rule promoted: %+v", plan.Promotions)
+	// With and without an Obsidian folder: the standards beside the memory root
+	// are the vault's either way, as the miner reads them (the release review
+	// of 2026-10-22 found them missed without one).
+	for _, obsidian := range []bool{true, false} {
+		t.Run(fmt.Sprintf("obsidian=%v", obsidian), func(t *testing.T) {
+			vault := t.TempDir()
+			root := filepath.Join(vault, "agent")
+			dirs := []string{filepath.Join(vault, "standards")}
+			if obsidian {
+				dirs = append(dirs, filepath.Join(vault, ".obsidian"))
+			}
+			for _, d := range dirs {
+				if err := os.MkdirAll(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(vault, "standards", "user-preferences.md"),
+				[]byte("# How I want things done\n\nKeep the plan on disk, never in the conversation.\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			line := "- explicit always/never directive — “Keep the plan on disk, never in the conversation.”"
+			for _, s := range []string{"a", "b", "c"} {
+				writeRaw(t, root, "memory/episodic/"+s+".md", briefTrace(s, "work on the vault", line))
+			}
+			plan, err := PlanPromote(root, nil, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Promotions) != 0 {
+				t.Errorf("a standing rule promoted: %+v", plan.Promotions)
+			}
+		})
 	}
 }
 

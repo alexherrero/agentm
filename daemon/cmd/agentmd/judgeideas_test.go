@@ -138,3 +138,23 @@ func TestAnIntentOutsideTheVaultIsRefused(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// The configured vault root bounds the judge's writes, with or without an
+// Obsidian folder at it: the repeat in `personal/ideas/` and the inbox card
+// both land (the release review of 2026-10-22).
+func TestTheWritesAreBoundedByTheConfiguredVault(t *testing.T) {
+	cfg := judgeFixture(t)
+	if err := os.RemoveAll(filepath.Join(cfg.VaultPath, ".obsidian")); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)
+	plan, err := ideajudge.Decide(ideajudge.Options{Vault: cfg.VaultPath, MemoryRoot: "agent", Now: now,
+		Call: judgeAnswers}, &ideajudge.State{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := dreaming.ApplyIntents(cfg, ideajudge.Job, "", plan.Intents, now, 0)
+	if err != nil || res.Applied != 2 {
+		t.Errorf("ApplyIntents: %v, %+v; want both intents applied inside the configured vault", err, res)
+	}
+}

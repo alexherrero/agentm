@@ -411,13 +411,17 @@ def has_operator_turn(messages: list) -> bool:
 # Follow-ups F40, folded into #676 (task 192): "should we always rebase here?"
 # carries a directive word and was mined as a directive. A sentence that ends
 # in a question mark, or opens with an auxiliary before its subject ("should
-# we", "can you", "do we", "would it", "how should we"), yields no preference
-# and no correction. "Do not use X" and "what I want is X" are statements: the
-# auxiliary has to come before a subject.
+# we", "can you", "shouldn't we", "do we", "would it", "how should we"), yields
+# no preference and no correction. "Do not use X" and "what I want is X" are
+# statements: the auxiliary has to come before a subject. "Do it with rebase"
+# and "have it use…" are orders: after a bare "do" or "have", "it", "this" and
+# "that" are the object, not a subject.
+_WH = r"^\W*(?:(?:what|why|how|when|where|which|who)\s+)?"
 _QUESTION_OPENER = re.compile(
-    r"^\W*(?:(?:what|why|how|when|where|which|who)\s+)?"
-    r"(?:should|shall|can|could|would|will|do|does|did|is|are|was|were|have|has|may|might|must)\s+"
-    r"(?:we|i|you|it|they|this|that|there|he|she|these|those)\b", re.IGNORECASE)
+    _WH + r"(?:(?:should|shall|can|could|would|will|does|did|is|are|was|were|has|may|might|must)(?:n['’]t)?"
+    r"|(?:do|have)n['’]t|can['’]t|won['’]t|shan['’]t)\s+"
+    r"(?:we|i|you|it|they|this|that|there|he|she|these|those)\b"
+    r"|" + _WH + r"(?:do|have)\s+(?:we|i|you|they|there|he|she)\b", re.IGNORECASE)
 QUESTION_RULE = "not filed: a question, not a directive"
 
 
@@ -476,6 +480,28 @@ def quoted_in(excerpt: str, folded_source: str) -> bool:
 
 
 _COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+_COMMAND_NAME = re.compile(r"<command-name>\s*/(\S+?)\s*</command-name>")
+# Commands the host runs itself. They carry no brief (`/model opusplan`'s
+# argument is a model's name), so a session that opens on one asks its first
+# request in what comes next. A command answered by `<local-command-stdout>` is
+# one too, whatever its name.
+_LOCAL_COMMANDS = frozenset({
+    "add-dir", "agents", "bug", "clear", "compact", "config", "context", "cost", "doctor", "effort", "exit",
+    "export", "fast", "help", "hooks", "ide", "login", "logout", "mcp", "memory", "model", "output-style",
+    "permissions", "privacy-settings", "quit", "release-notes", "resume", "rewind", "status", "statusline",
+    "terminal-setup", "theme", "upgrade", "usage", "vim",
+})
+
+
+def _local_command(messages: list, i: int, raw: str) -> bool:
+    """Whether the command message at `i` is one the host ran itself."""
+    name = _COMMAND_NAME.search(raw)
+    if name and name.group(1).lower() in _LOCAL_COMMANDS:
+        return True
+    for m in messages[i + 1:]:
+        if m.get("type") == "user":
+            return "<local-command-stdout>" in _extract_text(m)
+    return False
 
 
 def first_request_text(messages: list) -> str:
@@ -484,8 +510,9 @@ def first_request_text(messages: list) -> str:
     command a session opened on. Unlike `_operator_text` it keeps a paste past
     the typing ceiling and a handoff prompt, because a brief is exactly what it
     is looking for. A tool result, a host notice and an injected message are
-    not a request."""
-    for m in messages:
+    not a request, and nor is a command the host runs itself (`/clear`,
+    `/model opusplan`): the request is what follows it."""
+    for i, m in enumerate(messages):
         if m.get("type") != "user" or m.get("isSidechain") or m.get("isCompactSummary") or m.get("isMeta"):
             continue
         origin = m.get("origin")
@@ -496,6 +523,8 @@ def first_request_text(messages: list) -> str:
         if any(l.strip() and not HOST_LINE.match(l.strip()) for l in text.splitlines()):
             return text
         if _COMMAND.search(raw):
+            if _local_command(messages, i, raw):
+                continue
             args = _COMMAND_ARGS.search(raw)
             return args.group(1).strip() if args else ""
     return ""
@@ -745,14 +774,37 @@ def _scan_patterns(
     return out
 
 
+def _scan_overlapping(text: str, patterns: list[tuple[re.Pattern, str]]) -> list[tuple[str, str, str, int]]:
+    """`_scan_patterns`, with a match free to start inside an earlier one. An
+    idea pattern runs on past its trigger, so a second trigger close behind
+    the first ("idea: X idea:" then the next idea on the line below) sits
+    inside the first match, where `finditer` never starts one. A trigger is a
+    word, so each search resumes one character past the last match's start."""
+    out: list[tuple[str, str, str, int]] = []
+    for pattern, rationale in patterns:
+        pos = 0
+        while (m := pattern.search(text, pos)) is not None:
+            out.append((m.group(0), rationale, _excerpt_around(text, m.start(), m.end()), m.start()))
+            pos = m.start() + 1
+    return out
+
+
 def _sentence_at(text: str, pos: int) -> str:
     """The sentence of `text` that offset `pos` falls in."""
-    found = ""
+    return _sentence_placed(text, pos)[1]
+
+
+def _sentence_placed(text: str, pos: int) -> "tuple[int, str, int]":
+    """The sentence `pos` falls in: its start in `text`, its flattened words,
+    and where `pos` falls in those words."""
+    found = (0, "")
     for start, s in _sentences(text):
         if start > pos:
             break
-        found = s
-    return found
+        found = (start, s)
+    start, sentence = found
+    at = len(re.sub(r"\s+", " ", text[start:pos]).lstrip())
+    return start, sentence, min(at, len(sentence))
 
 
 # ── An idea remark's context ────────────────────────────────────────────────
@@ -763,6 +815,42 @@ def _sentence_at(text: str, pos: int) -> str:
 # message around the remark, together at most about this many characters.
 IDEA_CONTEXT_CHARS = 1200
 _ASSISTANT_TAIL_CHARS = 400
+# A remark is its sentence, but a dictated run-on with no full stop is one
+# sentence of thousands of characters: past this, the remark is the window
+# around the words that fired.
+REMARK_CHARS = 600
+
+
+def _ellipsis(text: str) -> str:
+    if text.startswith("..."):
+        text = "…" + text[3:]
+    if text.endswith("..."):
+        text = text[:-3] + "…"
+    return text
+
+
+def idea_remark(sentence: str, start: int, end: int) -> "tuple[str, int, int]":
+    """The remark an idea match at `start:end` of its sentence is, and the
+    span of the sentence it covers: the sentence, or a window of it widened
+    to whole words as `_excerpt_around` widens (a bounded search, so a long
+    token is cut, not swallowed), `…` where it cuts."""
+    if len(sentence) <= REMARK_CHARS:
+        return sentence, 0, len(sentence)
+    radius = max(0, (REMARK_CHARS - (end - start)) // 2)
+    lo = _snap_back(sentence, max(0, start - radius))
+    hi = _snap_forward(sentence, min(len(sentence), end + radius))
+    remark = sentence[lo:hi].strip()
+    return ("…" if lo > 0 else "") + remark + ("…" if hi < len(sentence) else ""), lo, hi
+
+
+def _same_remark(taken: tuple, message: str, start: int, off: int, end: int, words: str) -> bool:
+    """Whether an idea match is a remark already taken from its message: the
+    same words, or a match lying wholly inside that remark — anywhere in a
+    whole sentence, inside the window of a run-on. A pattern's match runs on
+    past the words that flag the idea, so a match inside a remark is an idea
+    whose words the remark already holds."""
+    t_message, t_start, lo, hi, t_words = taken
+    return t_message == message and (t_words == words or (t_start == start and lo <= off and end <= hi))
 
 
 def _prose(msg: dict) -> str:
@@ -786,13 +874,14 @@ def idea_context(prior_said: str, operator_text: str, remark: str) -> str:
     said = " ".join((operator_text or "").split())
     room = IDEA_CONTEXT_CHARS - (len(tail) + len("assistant: \n") if tail else 0) - len("operator: ")
     if len(said) > room:
-        at = max(0, said.find(" ".join(remark.split())))
-        radius = max(0, (room - len(remark)) // 2)
-        said = _excerpt_around(said, at, at + len(remark), radius=radius)
-        if said.startswith("..."):
-            said = "…" + said[3:]
-        if said.endswith("..."):
-            said = said[:-3] + "…"
+        # A windowed remark carries `…` at its cut edges; the words between are
+        # what the message holds.
+        core = " ".join(remark.strip().strip("…").split())
+        at = max(0, said.find(core))
+        radius = max(0, (room - len(core)) // 2)
+        said = _ellipsis(_excerpt_around(said, at, at + len(core), radius=radius))
+    if len(said) > room:
+        said = said[:max(0, room - 1)].rstrip() + "…"
     lines = ([f"assistant: {tail}"] if tail else []) + [f"operator: {said}"]
     return "\n".join(lines)
 
@@ -852,7 +941,7 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
         return _empty_mine(messages)
     # (category, slug) → Candidate. Dedupes repeated matches.
     seen_memory: dict[tuple[str, str], Candidate] = {}
-    seen_ideas: dict[str, Candidate] = {}
+    seen_ideas: dict[tuple, Candidate] = {}
 
     # Tool-use frequency tally for workflow mining
     tool_counts: dict[str, int] = {}
@@ -969,20 +1058,36 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
 
             # Idea candidates. A standing rule is not an idea; the first
             # request is the night's to judge (the ruling of 2026-10-16).
-            for match, rationale, excerpt, at in _scan_patterns(
-                text, _IDEA_PATTERNS, role=role
-            ):
-                sentence = _sentence_at(text, at)
+            for match, rationale, excerpt, at in _scan_overlapping(text, _IDEA_PATTERNS):
+                start, sentence, off = _sentence_placed(text, at)
+                end = off + len(" ".join(match.split()))
+                if end > len(sentence):
+                    # The trigger ends its line ("Idea:"), the idea is on the
+                    # next: the remark is the sentence the match runs on into,
+                    # whole, so it carries the idea and is the remark any other
+                    # trigger on that line makes. The trigger's line is context.
+                    start, sentence, end = _sentence_placed(text, at + len(match.rstrip()) - 1)
+                    off, end = 0, end + 1
                 origin = origin_of(sentence, skip_first=True)
                 if origin:
                     drop(f"not filed: quotes {origin}", excerpt)
                     continue
+                # One remark per sentence of a message, or per window of a
+                # run-on: two ideas in one message are two remarks, and a match
+                # inside a remark already taken is that remark again. The slug
+                # stays the window's, the key the retired lane filed by.
                 slug = _slug_from_text(excerpt[:60])
-                if slug in seen_ideas:
-                    seen_ideas[slug].occurrences += 1
-                    seen_ideas[slug].excerpts.append(excerpt)
+                remark, lo, hi = idea_remark(sentence, off, end)
+                # A message with no uuid is still its own message.
+                uid = str(msg.get("uuid") or f"@{id(msg)}")
+                words = fold(remark)
+                key = next((k for k in seen_ideas if _same_remark(k, uid, start, off, end, words)),
+                           (uid, start, lo, hi, words))
+                if key in seen_ideas:
+                    seen_ideas[key].occurrences += 1
+                    seen_ideas[key].excerpts.append(excerpt)
                 else:
-                    seen_ideas[slug] = Candidate(
+                    seen_ideas[key] = Candidate(
                         category="idea",
                         confidence="MEDIUM",
                         slug=slug,
@@ -991,8 +1096,8 @@ def mine_transcript_messages(messages: list, *, standing: "dict | None" = None) 
                         rationale=rationale,
                         excerpts=[excerpt],
                         from_first_request=quoted_in(sentence, first),
-                        remark=sentence,
-                        context=idea_context(prior_said, text, sentence),
+                        remark=remark,
+                        context=idea_context(prior_said, text, remark),
                         message_id=str(msg.get("uuid") or ""),
                     )
 

@@ -113,9 +113,17 @@ func tracesAsked(content string) string {
 // `vault_layout.always_load_files`, the reader the session-start loader and the
 // miner share.
 func alwaysLoadText(root string) string {
+	// The vault root's two spellings, as `vault_layout.vault_root_candidates`
+	// reads them: the parent when an Obsidian folder or a `standards/` beside
+	// the root witnesses it, then the root itself.
+	bases := []string{root}
+	if parent := filepath.Dir(root); !isDir(filepath.Join(root, ".obsidian")) &&
+		(isDir(filepath.Join(parent, ".obsidian")) || isDir(filepath.Join(parent, "standards"))) {
+		bases = []string{parent, root}
+	}
 	var dirs []string
-	for _, d := range []string{filepath.Join(vaultRootOf(root), "standards"), filepath.Join(root, "standards")} {
-		if isDir(d) {
+	for _, b := range bases {
+		if d := filepath.Join(b, "standards"); isDir(d) {
 			dirs = append(dirs, d)
 			break
 		}
