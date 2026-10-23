@@ -245,12 +245,15 @@ func identity(remark string) string {
 	return f
 }
 
-// landedFrom is the inbox card this remark's own write made: it names the
-// remark's trace and holds its words. Exact enough for a remark of any length,
-// where heldBy turns a short one away.
+// landedFrom is the inbox card this remark's own "new" write made: it names
+// the remark's trace, and its body is the remark, as InboxCard writes it.
+// Exact enough for a remark of any length, where heldBy turns a short one
+// away; a sibling remark's card from the same session has its own body.
 func landedFrom(cards []Card, r Remark) (Card, bool) {
 	for _, c := range cards {
-		if c.Inbox && strings.Contains(c.text, "[["+r.TraceStem()+"]]") && holds(c.text, r.Remark) {
+		_, body := dreaming.ParseFrontmatter(c.text)
+		if c.Inbox && strings.Contains(c.text, "[["+r.TraceStem()+"]]") &&
+			strings.TrimSpace(body) == strings.TrimSpace(r.Remark) {
 			return c, true
 		}
 	}
@@ -878,13 +881,13 @@ func Decide(opt Options, st *State) (Plan, error) {
 			}
 		}
 		held, isHeld := heldBy(cards, r.Remark)
-		landed, isLanded := landedFrom(cards, r)
-		if !isHeld && isLanded {
-			held = landed
+		pendingWrite := cached && (j.Verdict.Verdict == Repeat || j.Verdict.Verdict == New) &&
+			j.AppliedAt.IsZero() && !j.Home && !j.Dismissed
+		if pendingWrite && !isHeld && j.Verdict.Verdict == New {
+			held, isHeld = landedFrom(cards, r)
 		}
 		switch {
-		case cached && (isHeld || isLanded) && (j.Verdict.Verdict == Repeat || j.Verdict.Verdict == New) &&
-			j.AppliedAt.IsZero() && !j.Home && !j.Dismissed:
+		case pendingWrite && isHeld:
 			// A remembered write whose words a card already holds: it landed
 			// on a run whose record was lost, or the operator wrote it in.
 			// Settled where it is, and remembered by it.
@@ -892,7 +895,7 @@ func Decide(opt Options, st *State) (Plan, error) {
 			plan.Cached++
 			j.Rel, j.Home = held.Rel, true
 			st.Verdicts[key] = j
-			if j.Verdict.Verdict == New && held.Inbox {
+			if j.Verdict.Verdict == New && held.Inbox && words != "" {
 				if st.Filed == nil {
 					st.Filed = map[string]string{}
 				}

@@ -763,3 +763,101 @@ func TestAShortRemarksLandedCardIsNotCardedTwice(t *testing.T) {
 		t.Errorf("night 2: %d intents, row %+v; want the remark settled at the card that landed", len(n2.Intents), n2.Rows[0])
 	}
 }
+
+// The eighth review of the fix: a short remark's write is never settled at a
+// card made for another remark of the same session.
+
+func siblingEntry(remark, message, context string) string {
+	return fmt.Sprintf(`{"remark": %q, "rule": "idea declaration", "first_request": false, "transcript": "", `+
+		`"message": %q, "context": %q, "filed_key": ""}`, remark, message, context)
+}
+
+var (
+	siblingRemarkB = siblingEntry("Idea: a CLI flag to skip the embedder in tests.", "m1",
+		"operator: Idea: a CLI flag to skip the embedder in tests.")
+	siblingRemarkA = siblingEntry("Idea: a CLI", "m2",
+		"assistant: The queue is drained.\noperator: Idea: a CLI\nto pause and resume the PlayOn recording queue")
+)
+
+// A, judged new on a reporting night, is never carded once the writes are on:
+// B's card (same trace, holds "Idea: a CLI") settles A's pending write.
+func TestAShortNewFromAReportingNightIsCardedWhenTheWritesTurnOn(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", siblingRemarkB)})
+	st := &State{}
+	// Night 1, writes on: B is judged new, carded, and lands.
+	n1 := decide(t, v, &fake{replies: map[string]string{"embedder": `{"verdict": "new", "title": "Skip the embedder in tests"}`}}, st, 0)
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	// The session goes on; its trace now holds A too.
+	write(t, v, "agent/memory/episodic/a.md", trace("s1", siblingRemarkB, siblingRemarkA))
+	// Night 2, a reporting night: A is judged new, nothing is written.
+	n2 := decide(t, v, &fake{replies: map[string]string{"a CLI": `{"verdict": "new", "title": "A CLI for the PlayOn queue"}`}}, st, 0)
+	if n2.Calls != 1 || n2.Count(New) != 2 {
+		t.Fatalf("night 2: %d calls, %d new", n2.Calls, n2.Count(New))
+	}
+	// Night 3, writes on: A's remembered verdict should be written.
+	n3 := decide(t, v, &fake{}, st, 0)
+	if len(n3.Intents) != 1 {
+		var rows []string
+		for _, r := range n3.Rows {
+			rows = append(rows, fmt.Sprintf("%q home=%v rel=%s", r.Remark, r.Home, r.Rel))
+		}
+		t.Errorf("night 3: %d intents; want A carded. rows: %s; Filed: %v", len(n3.Intents), strings.Join(rows, " | "), st.Filed)
+	}
+}
+
+// The same, through a write that did not land: both are judged new on one
+// night, B's card lands, A's creation is skipped. The next night A is settled
+// at B's card and never carded.
+func TestAShortNewWhoseWriteDidNotLandIsPlannedAgain(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", siblingRemarkB, siblingRemarkA)})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{
+		"embedder": `{"verdict": "new", "title": "Skip the embedder in tests"}`,
+		"a CLI":    `{"verdict": "new", "title": "A CLI for the PlayOn queue"}`,
+	}}, st, 0)
+	if len(n1.Intents) != 2 {
+		t.Fatalf("night 1: %d intents", len(n1.Intents))
+	}
+	// Only B's creation lands (the run stopped, or A's write was skipped).
+	landed := apply(t, v, Plan{Intents: n1.Intents[:1]})
+	MarkApplied(&n1, st, landed, now)
+	n2 := decide(t, v, &fake{}, st, 0)
+	if len(n2.Intents) != 1 {
+		t.Errorf("night 2: %d intents; want A's card retried", len(n2.Intents))
+	}
+}
+
+// A cached repeat of an operator card, whose addition did not land, is settled
+// at an inbox card it never targeted, and the addition is never made.
+func TestAShortRepeatIsNotSettledAtASiblingsCard(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", siblingRemarkB, siblingRemarkA)})
+	write(t, v, "personal/ideas/playon-queue-cli.md", "---\ntitle: \"PlayOn queue CLI\"\ntype: idea\narea: home-tech\n"+
+		"status: active\nslug: playon-queue-cli\n---\n\nA command line to pause and resume the PlayOn recording queue.\n")
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{
+		"embedder": `{"verdict": "new", "title": "Skip the embedder in tests"}`,
+		"a CLI":    `{"verdict": "repeat", "slug": "playon-queue-cli"}`,
+	}}, st, 0)
+	if len(n1.Intents) != 2 {
+		t.Fatalf("night 1: %d intents", len(n1.Intents))
+	}
+	// The operator edits the PlayOn card during the run: the addition is
+	// skipped as a conflict; B's creation lands.
+	write(t, v, "personal/ideas/playon-queue-cli.md", "---\ntitle: \"PlayOn queue CLI\"\ntype: idea\narea: home-tech\n"+
+		"status: active\nslug: playon-queue-cli\n---\n\nA command line to pause and resume the PlayOn recording queue.\n\nAlso: list it.\n")
+	var first []string
+	for _, in := range n1.Intents {
+		if in.Before == nil {
+			first = apply(t, v, Plan{Intents: n1.Intents[:1]})
+		}
+	}
+	MarkApplied(&n1, st, first, now)
+	n2 := decide(t, v, &fake{}, st, 0)
+	if len(n2.Intents) != 1 || !strings.Contains(n2.Intents[0].Rel, "playon-queue-cli") {
+		var rows []string
+		for _, r := range n2.Rows {
+			rows = append(rows, fmt.Sprintf("%q verdict=%s slug=%s home=%v rel=%s", r.Remark, r.Verdict, r.Slug, r.Home, r.Rel))
+		}
+		t.Errorf("night 2: %d intents; want the addition to playon-queue-cli retried. rows: %s", len(n2.Intents), strings.Join(rows, " | "))
+	}
+}
