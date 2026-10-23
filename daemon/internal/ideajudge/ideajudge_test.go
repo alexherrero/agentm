@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -92,9 +93,21 @@ func (f *fake) call(prompt string) (string, error) {
 	f.calls++
 	f.prompts = append(f.prompts, prompt)
 	remark := strings.SplitN(strings.TrimPrefix(prompt, "## The remark\n\n"), "\n", 2)[0]
-	for k, v := range f.replies {
+	// The longest key first, then by name: a remark holding two keys gets the
+	// same reply on every run, whatever order the map gives.
+	keys := make([]string, 0, len(f.replies))
+	for k := range f.replies {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) != len(keys[j]) {
+			return len(keys[i]) > len(keys[j])
+		}
+		return keys[i] < keys[j]
+	})
+	for _, k := range keys {
 		if strings.Contains(remark, k) {
-			return v, nil
+			return f.replies[k], nil
 		}
 	}
 	return `{"verdict": "steering", "reason": "it directs the session"}`, nil
