@@ -1,6 +1,7 @@
 package ideajudge
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -687,10 +688,6 @@ func TestATooShortRemarkIsHeldByNoCard(t *testing.T) {
 	if f.calls != 1 {
 		t.Errorf("calls %d; a different idea was settled without being judged", f.calls)
 	}
-	// The card it made says the idea, in the operator's words from the context.
-	if card := string(n1.Intents[0].After); !strings.Contains(card, "\n\nIdea: a dashboard for the PlayOn queue\n") {
-		t.Errorf("the card does not carry the operator's words:\n%s", card)
-	}
 }
 
 // A remembered new verdict whose card landed on a run whose record was lost is
@@ -706,5 +703,63 @@ func TestARememberedNewWhoseCardLandedIsNotCardedTwice(t *testing.T) {
 	}
 	if st.Filed[fold(playon)] != "agent/inbox/automate-the-playon-recordings.md" {
 		t.Errorf("the card is not remembered by its words: %v", st.Filed)
+	}
+}
+
+// The seventh review of the fix found the cases below.
+
+// Two ideas in one message, as the miner records "Idea: dark mode. Idea: a
+// cache layer for the embeddings in the daemon.": a card made for one never
+// holds the other, so the one the cap or a failed call left is judged the
+// next night.
+const twoIdeasShort = `{"remark": "Idea: dark mode.", "rule": "idea declaration", "first_request": false, "transcript": "", "message": "m1", "context": "assistant: Done, the test is fixed.\noperator: Idea: dark mode. Idea: a cache layer for the embeddings in the daemon.", "filed_key": ""}`
+const twoIdeasSecond = `{"remark": "Idea: a cache layer for the embeddings in the daemon.", "rule": "idea declaration", "first_request": false, "transcript": "", "message": "m1", "context": "assistant: Done, the test is fixed.\noperator: Idea: dark mode. Idea: a cache layer for the embeddings in the daemon.", "filed_key": ""}`
+
+func TestTheIdeaTheCapLeftIsJudgedNextNight(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", twoIdeasShort, twoIdeasSecond)})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"dark mode": `{"verdict": "new", "title": "Dark mode"}`}}, st, 1)
+	if n1.Deferred != 1 {
+		t.Fatalf("night 1: %d deferred; want the cap to leave the second idea", n1.Deferred)
+	}
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	f2 := &fake{replies: map[string]string{"cache layer": `{"verdict": "new", "title": "Cache the embeddings"}`}}
+	n2 := decide(t, v, f2, st, 0)
+	if f2.calls != 1 || len(n2.Intents) != 1 {
+		t.Errorf("night 2: %d calls, %d intents; want the idea the cap left judged and carded", f2.calls, len(n2.Intents))
+	}
+}
+
+func TestAnIdeaWhoseCallFailedIsJudgedNextNight(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", twoIdeasShort, twoIdeasSecond)})
+	st := &State{}
+	call := func(prompt string) (string, error) {
+		if strings.Contains(prompt, "## The remark\n\nIdea: dark mode.") {
+			return `{"verdict": "new", "title": "Dark mode"}`, nil
+		}
+		return "", errors.New("the judge timed out")
+	}
+	n1, err := Decide(Options{Vault: v, MemoryRoot: "agent", Now: now, Ledger: map[string]bool{}, Call: call}, st)
+	if err != nil || len(n1.Errors) != 1 {
+		t.Fatalf("night 1: err %v, errors %v", err, n1.Errors)
+	}
+	MarkApplied(&n1, st, apply(t, v, n1), now)
+	f2 := &fake{replies: map[string]string{"cache layer": `{"verdict": "new", "title": "Cache the embeddings"}`}}
+	decide(t, v, f2, st, 0)
+	if f2.calls != 1 {
+		t.Errorf("night 2: %d calls; want the idea whose call failed judged", f2.calls)
+	}
+}
+
+// A short remark's card that landed on a run whose record was lost is found
+// by its trace and its words, and not carded a second time.
+func TestAShortRemarksLandedCardIsNotCardedTwice(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", twoIdeasShort)})
+	st := &State{}
+	n1 := decide(t, v, &fake{replies: map[string]string{"dark mode": `{"verdict": "new", "title": "Dark mode"}`}}, st, 0)
+	apply(t, v, n1) // the card lands; MarkApplied never runs
+	n2 := decide(t, v, &fake{}, st, 0)
+	if len(n2.Intents) != 0 || !n2.Rows[0].Home {
+		t.Errorf("night 2: %d intents, row %+v; want the remark settled at the card that landed", len(n2.Intents), n2.Rows[0])
 	}
 }

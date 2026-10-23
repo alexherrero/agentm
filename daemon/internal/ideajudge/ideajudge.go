@@ -245,6 +245,18 @@ func identity(remark string) string {
 	return f
 }
 
+// landedFrom is the inbox card this remark's own write made: it names the
+// remark's trace and holds its words. Exact enough for a remark of any length,
+// where heldBy turns a short one away.
+func landedFrom(cards []Card, r Remark) (Card, bool) {
+	for _, c := range cards {
+		if c.Inbox && strings.Contains(c.text, "[["+r.TraceStem()+"]]") && holds(c.text, r.Remark) {
+			return c, true
+		}
+	}
+	return Card{}, false
+}
+
 // heldBy is the card that already holds the remark's words: a live card first,
 // then a dismissed one.
 func heldBy(cards []Card, remark string) (Card, bool) {
@@ -653,23 +665,8 @@ func InboxCard(r Remark, v Verdict, slug, today string, also ...Remark) string {
 	b.WriteString("derived_from: [" + strings.Join(from, ", ") + "]\n")
 	b.WriteString("slug: " + slug + "\n")
 	b.WriteString("---\n\n")
-	b.WriteString(cardBody(r) + "\n")
+	b.WriteString(strings.TrimSpace(r.Remark) + "\n")
 	return cardshape.Reorder(b.String())
-}
-
-// cardBody is a new card's words: the remark as it was said, or, when the
-// remark is too short to say anything ("Idea:" on a line of its own, its idea
-// on the next), the operator's words around it from the context.
-func cardBody(r Remark) string {
-	if identity(r.Remark) != "" {
-		return strings.TrimSpace(r.Remark)
-	}
-	for _, line := range strings.Split(r.Context, "\n") {
-		if said, ok := strings.CutPrefix(line, "operator: "); ok && strings.TrimSpace(said) != "" {
-			return strings.TrimSpace(said)
-		}
-	}
-	return strings.TrimSpace(r.Remark)
 }
 
 // freeSlug is a name for a new inbox card no note in the inbox or the ideas
@@ -881,8 +878,12 @@ func Decide(opt Options, st *State) (Plan, error) {
 			}
 		}
 		held, isHeld := heldBy(cards, r.Remark)
+		landed, isLanded := landedFrom(cards, r)
+		if !isHeld && isLanded {
+			held = landed
+		}
 		switch {
-		case cached && isHeld && (j.Verdict.Verdict == Repeat || j.Verdict.Verdict == New) &&
+		case cached && (isHeld || isLanded) && (j.Verdict.Verdict == Repeat || j.Verdict.Verdict == New) &&
 			j.AppliedAt.IsZero() && !j.Home && !j.Dismissed:
 			// A remembered write whose words a card already holds: it landed
 			// on a run whose record was lost, or the operator wrote it in.

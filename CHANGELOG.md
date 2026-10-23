@@ -27,13 +27,13 @@ Task 192 (backlog #676): an idea you mention in passing reaches your ideas list,
     - A remark an idea card already holds word for word is settled without a call. That also covers a card you kept under another name, which used to read as removed, and an idea you dismissed, which used to come back as new.
     - The judge is shown your dismissed cards, and a repeat of one writes nothing.
     - An inbox card the judge made and you deleted isn't made again.
-    - One idea said in two sessions on the same night is one card.
+    - One idea said in two sessions on the same night is one card. Each remark is still judged on its own conversation, so a verdict is never lent from one session to another.
     - A remembered repeat whose card has since been renamed is judged again, rather than erroring every night.
     - A held repeat batched with a written one is no longer reported as written.
     - A reply with a brace after its JSON parses.
     - The writes, and promotion's reading of `standards/`, find the vault without an `.obsidian/` folder.
   - **The miner:**
-    - A second idea in the same message is its own remark.
+    - A second idea in the same message is its own remark, and an idea on the line after its trigger ("Idea:" ending a line) is recorded whole.
     - A session opened with `/clear` or `/model` takes its first request from the brief that follows.
     - "Shouldn't we…" is a question, and "Do it with…" is an order.
     - A run-on remark stays near its bound.
