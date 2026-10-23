@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v10.8.0](https://github.com/alexherrero/agentm/releases/tag/v10.8.0).** Memory keeps only the notes that earned their place: the memory junk review's 121 purged on your typed count, 22 moved with their links repaired, and 6 duplicate lessons folded into their keepers, taking curated memory from 342 notes to 205 with every lesson's sources still resolving. The writers that made the junk are fixed: an issue reference takes the repository its text names, a page's slices are one source for a lesson, and a superseded lesson retires to the archive once a live successor answers instead. Four adversarial reviews hardened the fixes before the release.
+> **Latest release: [v10.9.0](https://github.com/alexherrero/agentm/releases/tag/v10.9.0).** An idea you mention in passing reaches your ideas list, and nothing else does. The session-end miner no longer files cards: it records each idea remark in the session's trace, word for word with the conversation around it, and a nightly judge decides whether it was steering the session, a repeat of an idea you already have, or a new idea for your inbox. Nothing is mined from a session you never typed in, and pasted text never counts as a sighting. Over its first three nights it filed nothing into memory and mined no unattended session. Eight rounds of adversarial review hardened the miner and the judge before the release.
 
 ---
 
