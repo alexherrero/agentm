@@ -359,3 +359,151 @@ func TestAVerdictThatIsNoneOfTheThreeIsAnError(t *testing.T) {
 		t.Errorf("%+v %v", v, err)
 	}
 }
+
+// The release review of 2026-10-22 (task 192 step 9) found the cases below,
+// each failing before its fix.
+
+// A remembered repeat whose card was renamed before the writes went on is
+// judged again against today's list, and lands on the card under its new
+// name; it never errors night after night, unwritten.
+func TestARememberedRepeatWhoseCardIsGoneIsJudgedAgain(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", entry("Stream it, but revisit Dolby Vision later.", "m1", ""))})
+	st := &State{}
+	decide(t, v, &fake{replies: map[string]string{"Dolby": `{"verdict": "repeat", "slug": "streaming-but-not-4k-bluray-yet"}`}}, st, 0)
+	if err := os.Rename(filepath.Join(v, "personal/ideas/streaming-but-not-4k-bluray-yet.md"),
+		filepath.Join(v, "personal/ideas/streaming-4k.md")); err != nil {
+		t.Fatal(err)
+	}
+	f := &fake{replies: map[string]string{"Dolby": `{"verdict": "repeat", "slug": "streaming-4k"}`}}
+	plan := decide(t, v, f, st, 0)
+	if len(plan.Errors) != 0 || f.calls != 1 || len(plan.Intents) != 1 ||
+		plan.Intents[0].Rel != "../personal/ideas/streaming-4k.md" {
+		t.Fatalf("errors %v, calls %d, intents %+v; want one call and the repeat on the renamed card", plan.Errors, f.calls, plan.Intents)
+	}
+	if again := decide(t, v, &fake{}, st, 0); len(again.Errors) != 0 || len(again.Intents) != 1 {
+		t.Errorf("the next night: errors %v, %d intents", again.Errors, len(again.Intents))
+	}
+}
+
+// An inbox card the judge made and the operator deleted at review is not
+// carded again when the same words come up in another session: no call, no
+// card.
+func TestAnInboxCardTheOperatorDeletedIsNotCardedAgain(t *testing.T) {
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(playon, "m1", ""))})
+	newIdea := `{"verdict": "new", "title": "Automate the PlayOn recordings"}`
+	st := &State{}
+	night1 := decide(t, v, &fake{replies: map[string]string{"PlayOn": newIdea}}, st, 0)
+	MarkApplied(&night1, st, apply(t, v, night1), now)
+	if err := os.Remove(filepath.Join(v, "agent/inbox/automate-the-playon-recordings.md")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", entry(playon, "m7", "")))
+	f := &fake{replies: map[string]string{"PlayOn": newIdea}}
+	night2 := decide(t, v, f, st, 0)
+	if f.calls != 0 || len(night2.Intents) != 0 || night2.Removed != 1 {
+		t.Errorf("calls %d, intents %+v, removed %d; want the deleted idea dropped without a call", f.calls, night2.Intents, night2.Removed)
+	}
+}
+
+// A repeat its card came to hold after it was judged is home, even beside a
+// second repeat of the same card that is written: the held one is not
+// reported as written.
+func TestAHeldRepeatBesideAWrittenOneIsHome(t *testing.T) {
+	held := "Keep a shelf of the 4K discs worth the upgrade."
+	fresh := "Stream it, but revisit Dolby Vision later."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(held, "m1", ""))})
+	rep := `{"verdict": "repeat", "slug": "streaming-but-not-4k-bluray-yet"}`
+	st := &State{}
+	decide(t, v, &fake{replies: map[string]string{"shelf": rep}}, st, 0) // a reporting night
+	write(t, v, "personal/ideas/streaming-but-not-4k-bluray-yet.md", streamingCard+"\n"+held+"\n")
+	write(t, v, "agent/memory/episodic/a.md", trace("s1", entry(held, "m1", ""), entry(fresh, "m2", "")))
+	plan := decide(t, v, &fake{replies: map[string]string{"Dolby": rep}}, st, 0)
+	written := MarkApplied(&plan, st, apply(t, v, plan), now)
+	for _, r := range plan.Rows {
+		if r.Remark == held && (r.Applied || !r.Home) {
+			t.Errorf("the held repeat reads as written: applied=%v home=%v", r.Applied, r.Home)
+		}
+		if r.Remark == fresh && !r.Applied {
+			t.Errorf("the fresh repeat was not written")
+		}
+	}
+	if len(written) != 1 {
+		t.Errorf("written %v", written)
+	}
+}
+
+// A verdict followed by a note that holds a brace still parses.
+func TestAVerdictFollowedByANoteWithABraceParses(t *testing.T) {
+	out := "{\"verdict\": \"steering\", \"reason\": \"directs the session\"}\n\n" +
+		"(If it comes up again it could become an idea, e.g. {automate-playon}.)"
+	if v, err := ParseVerdict(out); err != nil || v.Verdict != Steering {
+		t.Errorf("%+v %v", v, err)
+	}
+}
+
+// A card the operator kept under another name still holds the words, so its
+// repeats are home, not dropped as removed — and they cost no call.
+func TestAKeptCardUnderAnotherNameIsNotRemoved(t *testing.T) {
+	fk := "we-should-also-look-into-automating|0123456789abcdef"
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(playon, "m1", fk))})
+	write(t, v, "personal/ideas/playon-automation.md", "---\ntitle: \"PlayOn automation\"\ntype: idea\n---\n\n"+playon+"\n")
+	f := &fake{}
+	plan, err := Decide(Options{Vault: v, MemoryRoot: "agent", Now: now, Call: f.call, Ledger: map[string]bool{fk: true}}, &State{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := plan.Rows[0]
+	if plan.Removed != 0 || f.calls != 0 || r.Verdict != Repeat || r.Slug != "playon-automation" || !r.Home {
+		t.Errorf("removed %d, calls %d, row %+v; want a repeat at home on the renamed card", plan.Removed, f.calls, r)
+	}
+}
+
+// An idea the operator dismissed is never carded again: a remark its card
+// holds word for word is settled without a call, and the judge is shown the
+// dismissed card, so a repeat in other words is named and nothing is written.
+func TestADismissedIdeaIsNeverCardedAgain(t *testing.T) {
+	words := "Build a tiny dashboard for the PlayOn queue some day."
+	other := "One day, a little page that shows what PlayOn has queued."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(words, "m1", ""), entry(other, "m2", ""))})
+	write(t, v, "personal/ideas/playon-dashboard.md", "---\ntitle: \"PlayOn dashboard\"\ntype: idea\n"+
+		"dismissed: 2026-10-01\n---\n\n"+words+"\n")
+	f := &fake{replies: map[string]string{"queued": `{"verdict": "repeat", "slug": "playon-dashboard"}`}}
+	plan := decide(t, v, f, &State{}, 0)
+	if f.calls != 1 || !strings.Contains(f.prompts[0], "playon-dashboard") || !strings.Contains(f.prompts[0], "dismissed") {
+		t.Fatalf("calls %d; want one call, showing the dismissed card", f.calls)
+	}
+	if len(plan.Intents) != 0 {
+		t.Errorf("a dismissed idea was written: %s", plan.Intents[0].Rel)
+	}
+	for _, r := range plan.Rows {
+		if !r.Dismissed || r.Rel != "personal/ideas/playon-dashboard.md" {
+			t.Errorf("row %+v; want a repeat of the dismissed card", r)
+		}
+	}
+}
+
+// One new idea said in the same words in two sessions the same night is one
+// question and one inbox card, derived from both traces.
+func TestOneNewIdeaInTwoSessionsTheSameNightIsOneCard(t *testing.T) {
+	v := vault(t, map[string]string{
+		"a.md": trace("s1", entry(playon, "m1", "")),
+		"b.md": trace("s2", entry(playon, "m9", "")),
+	})
+	f := &fake{replies: map[string]string{"PlayOn": `{"verdict": "new", "title": "Automate the PlayOn recordings"}`}}
+	st := &State{}
+	plan := decide(t, v, f, st, 0)
+	if f.calls != 1 || len(plan.Intents) != 1 {
+		t.Fatalf("%d calls, %d intents; want one of each", f.calls, len(plan.Intents))
+	}
+	if card := string(plan.Intents[0].After); !strings.Contains(card, `derived_from: ["[[a]]", "[[b]]"]`) {
+		t.Errorf("the card does not name both traces:\n%s", card)
+	}
+	if written := MarkApplied(&plan, st, apply(t, v, plan), now); len(written) != 1 {
+		t.Errorf("written %v", written)
+	}
+	for _, r := range plan.Rows {
+		if !r.Applied || r.Rel != "agent/inbox/automate-the-playon-recordings.md" {
+			t.Errorf("row %+v", r)
+		}
+	}
+}

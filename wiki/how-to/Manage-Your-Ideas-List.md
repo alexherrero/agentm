@@ -25,7 +25,7 @@
 
 2. **Add an idea.** Either path lands it the same way:
 
-   - From a chat surface's inbox card: `python3 harness/skills/memory/scripts/inbox_review.py --file <name> --type idea --area <group>` (see [Drop a card in the inbox](Drop-A-Card-In-The-Inbox)) — `--type` is optional when the card already carries `type: idea`.
+   - From a card in the inbox — one a chat surface dropped, a new idea you captured with `memory_capture`, or one the nightly idea judge found in a session you took part in: `python3 harness/skills/memory/scripts/inbox_review.py --file <name> --type idea --area <group>` (see [Drop a card in the inbox](Drop-A-Card-In-The-Inbox)) — `--type` is optional when the card already carries `type: idea`.
    - Directly: create `personal/ideas/<slug>.md` yourself, with at least `title`, `type: idea`, and `area: <group>` in its frontmatter.
 
    `<group>` is one lower-case word, hyphens allowed — it becomes the card's `area:` and the heading it lands under.
@@ -46,6 +46,7 @@
 
 - **It enriches it.** An idea card joins the same nightly pass as any other card, in its own turn, and may add a summary, tags, related links, `importance_proposed`, and — on a deep pass — its own dated section under `## Added by dreaming`.
 - **It never re-grades it.** `status`, `filing_confidence`, `title` and `type` stay exactly what the card carries. The card never sinks to `dormant`, whatever the pass thinks of it.
+- **It adds a repeat you said.** When a session records a remark that repeats this idea, the nightly idea judge adds it as a dated entry at the end of the card's `## Added by dreaming` section, with its source, and changes nothing else on the card. The night never creates a card in `personal/ideas/`: a new idea waits in the inbox for you.
 - **It never gives the card a lifecycle.** `personal/` has no aging axis, and an idea card is the one kind of card that gets no default `lifecycle` written onto it either.
 - **It never renames the card.** The filename you gave it is the one `Ideas.md` links by.
 

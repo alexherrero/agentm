@@ -26,6 +26,7 @@ way; a hook must never block session end on a trace.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -170,11 +171,11 @@ class Trace:
         # the idea remarks the night will judge.
         # A section with nothing in it is omitted — a trace is a record, not a
         # form to be filled in.
-        asked = (self.asked or self.title).strip()
+        asked = _fences_closed((self.asked or self.title).strip())
         if asked:
             lines += ["## Asked", "", asked, ""]
         if self.outcome.strip():
-            lines += ["## Outcome", "", self.outcome.strip(), ""]
+            lines += ["## Outcome", "", _fences_closed(self.outcome.strip()), ""]
         if self.captured:
             lines += ["## Captured", ""] + [f"- [[{_link(t)}]]" for t in self.captured] + [""]
         if self.recalled:
@@ -184,6 +185,19 @@ class Trace:
         if self.ideas:
             lines += ["## Ideas", ""] + render_ideas(self.ideas) + [""]
         return "\n".join(lines)
+
+
+def _is_fence(line: str) -> bool:
+    return line.strip().startswith("```")
+
+
+def _fences_closed(text: str) -> str:
+    """`text` with a code block it leaves open closed. A recap cut part-way
+    through a block, or a request that opens on one, would otherwise fence
+    every section after it, and turn `## Ideas`' own fence inside out."""
+    if sum(1 for line in text.split("\n") if _is_fence(line)) % 2:
+        return text.rstrip("\n") + "\n```"
+    return text
 
 
 # An excerpt is one line of someone's prose dropped into a bullet. Flattened
@@ -224,7 +238,7 @@ def _candidate_line(candidate) -> str:
 # the words inside it hold. The dreaming binary's idea judge reads the same
 # shape (`daemon/internal/ideajudge`).
 IDEAS_FENCE = "```jsonl"
-_IDEA_KEYS = ("remark", "rule", "first_request", "transcript", "message", "context", "filed_key")
+_IDEA_KEYS = ("remark", "rule", "first_request", "transcript", "message", "context", "filed_key", "key")
 
 
 def idea_entry(candidate, transcript: str = "") -> dict:
@@ -248,15 +262,29 @@ def idea_entry(candidate, transcript: str = "") -> dict:
             "context": str(read("context") or ""), "filed_key": filed_key}
 
 
-def _idea_key(entry: dict) -> tuple:
-    return (entry.get("message") or "", " ".join(str(entry.get("remark") or "").split()))
+def _idea_key(entry: dict) -> str:
+    """An entry's identity in its trace: `key`, set from its message and its
+    words as they were mined. Stored, so an entry whose words the operator
+    corrected is still the one a later write of the session would add again."""
+    if entry.get("key"):
+        return str(entry["key"])
+    import reflect
+    words = reflect.fold(" ".join(str(entry.get("remark") or "").split()))
+    return hashlib.sha256(f"{entry.get('message') or ''}|{words}".encode("utf-8")).hexdigest()[:16]
 
 
-def render_ideas(ideas: list) -> list:
+def render_ideas(ideas: list, notes: "list | None" = None) -> list:
     out = [IDEAS_FENCE]
     for e in ideas:
-        out.append(json.dumps({k: e.get(k, "") for k in _IDEA_KEYS}, ensure_ascii=False))
-    return out + ["```"]
+        out.append(json.dumps({**{k: e.get(k, "") for k in _IDEA_KEYS}, "key": _idea_key(e)}, ensure_ascii=False))
+    return out + ["```"] + list(notes or [])
+
+
+def _idea_notes(section: str) -> list:
+    """What else `## Ideas` holds — a line the operator wrote, outside the
+    entries — kept, after the fence, when the trace is written again."""
+    return [line for line in (section or "").splitlines()
+            if line.strip() and not line.strip().startswith("{") and not _is_fence(line)]
 
 
 def parse_ideas(section: str) -> list:
@@ -352,15 +380,29 @@ def has_operator_turn(messages: list) -> bool:
 
 def _first_request(messages: list) -> str:
     """The session's opening ask, uncut. The title takes its head; `## Asked`
-    takes more of it. A line the host wrote is skipped."""
+    takes more of it. A line the host wrote is skipped, and so is a pasted code
+    block: its fence line is no request, and its first line is a paste, not the
+    ask (the first prose line outside it is, when there is one)."""
     import reflect
     for m in messages:
         if m.get("type") != "user":
             continue
         for b in _blocks(m):
             if b.get("type") == "text":
-                line = next((l.strip() for l in (b.get("text") or "").splitlines()
-                             if l.strip() and not reflect.HOST_LINE.match(l.strip())), "")
+                prose, pasted, inside = "", "", False
+                for raw in (b.get("text") or "").splitlines():
+                    line = raw.strip()
+                    if _is_fence(line):
+                        inside = not inside
+                        continue
+                    if not line or reflect.HOST_LINE.match(line):
+                        continue
+                    if inside:
+                        pasted = pasted or line
+                    else:
+                        prose = line
+                        break
+                line = prose or pasted
                 if line and not line.startswith("<") and "tool_result" not in line:
                     return line
     return ""
@@ -568,7 +610,6 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
 # newest closing recap is the Outcome.
 
 _SECTIONS = ("Asked", "Outcome", "Captured", "Recalled", "Candidates", "Ideas")
-_LIST_SECTIONS = ("Captured", "Recalled", "Candidates")
 
 
 def _split_trace(text: str) -> "tuple[list, dict]":
@@ -642,6 +683,20 @@ def _union_lines(base: str, incoming: str, key) -> str:
     return "\n".join(lines)
 
 
+_COUNT = re.compile(r" \(×\d+\)(?= — |$)")
+
+
+def _merge_candidates(base: str, incoming: str) -> str:
+    """`## Candidates` from two writes of a session: one line per rule and
+    excerpt, at its newest count — the count is how often it fired, not part
+    of what fired — and no more than a trace holds."""
+    lines: dict = {}
+    for ln in base.split("\n") + incoming.split("\n"):
+        if ln.strip():
+            lines[_COUNT.sub("", ln.strip())] = ln
+    return "\n".join(list(lines.values())[:MAX_CANDIDATES])
+
+
 def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcome: bool = True) -> str:
     """One session's trace, from the file it already has (`base`) and a later
     write of it (`incoming`). The base keeps its name, its `created` day and its
@@ -670,13 +725,15 @@ def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcom
     sections = dict(b_sec)
     if i_sec.get("Outcome", "").strip() and (newest_outcome or not b_sec.get("Outcome", "").strip()):
         sections["Outcome"] = i_sec["Outcome"]
-    for name in _LIST_SECTIONS:
-        key = _link_target if name != "Candidates" else (lambda ln: ln.strip())
-        merged = _union_lines(b_sec.get(name, ""), i_sec.get(name, ""), key)
+    for name in ("Captured", "Recalled"):
+        merged = _union_lines(b_sec.get(name, ""), i_sec.get(name, ""), _link_target)
         if merged:
             sections[name] = merged
+    merged = _merge_candidates(b_sec.get("Candidates", ""), i_sec.get("Candidates", ""))
+    if merged:
+        sections["Candidates"] = merged
     # An idea remark is one entry whatever its words hold, so the union is by
-    # entry (its message and its words), never by line.
+    # entry (`_idea_key`), never by line; the base's entry wins, edits and all.
     ideas = parse_ideas(b_sec.get("Ideas", ""))
     seen = {_idea_key(e) for e in ideas}
     for e in parse_ideas(i_sec.get("Ideas", "")):
@@ -684,10 +741,10 @@ def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcom
             ideas.append(e)
             seen.add(_idea_key(e))
     if ideas:
-        sections["Ideas"] = "\n".join(render_ideas(ideas[:MAX_IDEAS]))
+        sections["Ideas"] = "\n".join(render_ideas(ideas[:MAX_IDEAS], _idea_notes(b_sec.get("Ideas", ""))))
     out = ["---", *fm, "---", ""]
     for name in list(_SECTIONS) + [k for k in sections if k not in _SECTIONS]:
-        text = (sections.get(name) or "").strip("\n")
+        text = _fences_closed((sections.get(name) or "").strip("\n"))
         if text.strip():
             out += [f"## {name}", "", text, ""]
     return "\n".join(out)

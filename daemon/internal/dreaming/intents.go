@@ -49,7 +49,12 @@ func ApplyIntents(cfg *config.Config, job, outcome string, intents []Intent, now
 		lockWait = 2 * time.Second
 	}
 	root := filepath.Join(cfg.VaultPath, filepath.FromSlash(cfg.MemoryRoot))
-	vault := filepath.Clean(vaultRootOf(root))
+	// The configured vault root bounds the writes: the root the pass planned
+	// against, whether or not an Obsidian folder marks it.
+	vault := filepath.Clean(cfg.VaultPath)
+	if cfg.VaultPath == "" {
+		vault = filepath.Clean(vaultRootOf(root))
+	}
 	for _, in := range intents {
 		abs := filepath.Clean(filepath.Join(root, filepath.FromSlash(in.Rel)))
 		rel, err := filepath.Rel(vault, abs)

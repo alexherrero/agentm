@@ -5,7 +5,7 @@
 > **Goal:** Keep something durable from claude.ai without it gaining write access to the vault — and from Gemini, which cannot write here, by dropping in the card it prints.
 > **Prereqs:** The vault folder syncing to Google Drive (see [Back the vault with Google Drive](Back-The-Vault-With-Drive)), and the surface's Drive connector allowed to create a file in it.
 
-A chat surface reads the vault and writes in exactly one place: `agent/inbox/`, a folder in your Drive. A card dropped there syncs down to the machine on the next sync, sits untouched by the hourly sweep, is enriched by the night, and waits for you. **Nothing files an inbox card except you, at the review pass.**
+A chat surface reads the vault and writes in exactly one place: `agent/inbox/`, a folder in your Drive. A card dropped there syncs down to the machine on the next sync, sits untouched by the hourly sweep, is enriched by the night, and waits for you. **Nothing files an inbox card except you, at the review pass.** Two other things land there as well: a new idea you capture with `memory_capture`, and a new idea the nightly idea judge finds in a session you took part in. Both are `type: idea` cards, `unfiled`, and step 5 files them.
 
 There is no credential on any device and no inbound connection to the machine. The authentication is Google's: a Drive folder accepts writes only from your own signed-in account, which is the whole reason this replaced the email door it retired.
 

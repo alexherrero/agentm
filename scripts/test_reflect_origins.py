@@ -289,5 +289,78 @@ class TheAlwaysLoadReader(unittest.TestCase):
         self.assertEqual(got, ["standards/a.md", pen.relative_to(root).joinpath("b.md").as_posix()])
 
 
+# The release review of 2026-10-22 (task 192 step 9) found the cases below,
+# each failing before its fix.
+
+def _command(name, args=""):
+    return _turn(f"<command-name>/{name}</command-name>\n<command-message>{name}</command-message>\n"
+                 f"<command-args>{args}</command-args>", uuid="c0")
+
+
+class ACommandTheHostRunsIsNotTheRequest(unittest.TestCase):
+    """`/clear` or `/model opusplan` carries no brief: the request is what is
+    pasted next, and its standing rules are a quote, not a sighting."""
+    BRIEF = ("Work the plan in .harness/PLAN.md. I want every commit to run the full battery first, from now on. "
+             "Use rebase not merge when refreshing a branch, going forward.")
+    STDOUT = _turn("<local-command-stdout>Set model to opusplan</local-command-stdout>", uuid="c1")
+
+    def test_the_request_after_model_is_the_brief(self):
+        self.assertEqual(reflect.first_request_text(
+            [_command("model", "opusplan"), self.STDOUT, _turn(self.BRIEF, uuid="u1")]), self.BRIEF)
+
+    def test_the_request_after_clear_is_the_brief(self):
+        self.assertEqual(reflect.first_request_text([_command("clear"), _turn(self.BRIEF, uuid="u1")]), self.BRIEF)
+
+    def test_a_command_answered_by_the_host_is_skipped_whatever_its_name(self):
+        stdout = _turn("<local-command-stdout>Done</local-command-stdout>", uuid="c1")
+        self.assertEqual(reflect.first_request_text(
+            [_command("some-new-builtin"), stdout, _turn(self.BRIEF, uuid="u1")]), self.BRIEF)
+
+    def test_a_brief_pasted_after_model_files_no_high_card(self):
+        mined = reflect.mine_transcript_messages([_command("model", "opusplan"), self.STDOUT, _turn(self.BRIEF, uuid="u1")])
+        self.assertEqual([c.title for c in mined["memory_candidates"] if c.confidence == "HIGH"], [])
+
+
+class TheQuestionGuardReadsContractionsAndOrders(unittest.TestCase):
+    def test_a_negated_auxiliary_before_its_subject_is_a_question(self):
+        for s in ("Shouldn't we use rebase instead of merge going forward",
+                  "Can't you use rebase instead of merge from now on",
+                  "Don't you think we should always rebase"):
+            self.assertTrue(reflect.is_question(s), s)
+
+    def test_do_it_and_have_it_are_orders(self):
+        for s in ("Do it with rebase instead of merge from now on.",
+                  "Have it use rebase instead of merge from now on.",
+                  "Do this with rebase from now on.",
+                  "Don't use merge here, from now on."):
+            self.assertFalse(reflect.is_question(s), s)
+
+    def test_the_questions_it_already_read_still_are(self):
+        for s in ("Do we always rebase here", "Have you run the battery", "Does it need a rebase", "Is it worth it"):
+            self.assertTrue(reflect.is_question(s), s)
+
+
+class EachIdeaInAMessageIsARemark(unittest.TestCase):
+    def test_two_ideas_in_one_message_are_two_remarks(self):
+        msgs = [_turn("hello, let's look at the search ranking code", uuid="u0"), _said("Sure."),
+                _turn("Later, we could add a dashboard for this. We should also eventually support tags.", uuid="u1")]
+        remarks = [e["remark"] for e in episodic_trace.mined_ideas(msgs, "")]
+        self.assertIn("Later, we could add a dashboard for this.", remarks)
+        self.assertIn("We should also eventually support tags.", remarks)
+
+
+class AnIdeasContextStaysBounded(unittest.TestCase):
+    def test_a_run_on_message_keeps_the_context_near_its_bound(self):
+        filler = " ".join(["and then the importer walks every folder"] * 40)
+        text = "so " + filler + " and later we could add a cache for the folder walk " + filler
+        msgs = [_turn("look at the importer", uuid="u0"), _said("x " * 600), _turn(text, uuid="u1")]
+        entries = episodic_trace.mined_ideas(msgs, "")
+        self.assertEqual(len(entries), 1)
+        self.assertLessEqual(len(entries[0]["context"]), reflect.IDEA_CONTEXT_CHARS)
+        # About REMARK_CHARS: the window widens to whole words at each end.
+        self.assertLessEqual(len(entries[0]["remark"]), reflect.REMARK_CHARS + 40)
+        self.assertIn("later we could add a cache for the folder walk", entries[0]["remark"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -22,6 +22,27 @@ Task 192 (backlog #676): an idea you mention in passing reaches your ideas list,
 
 ### Fixed
 
+- **The release review's 16 cases in the idea judge and the miner (task 192 step 9).** Two adversarial reviews of the shipped code each produced failing tests, and each case is fixed with its test.
+  - **The judge:**
+    - A remark an idea card already holds word for word is settled without a call. That also covers a card you kept under another name, which used to read as removed, and an idea you dismissed, which used to come back as new.
+    - The judge is shown your dismissed cards, and a repeat of one writes nothing.
+    - An inbox card the judge made and you deleted isn't made again.
+    - One idea said in two sessions on the same night is one card.
+    - A remembered repeat whose card has since been renamed is judged again, rather than erroring every night.
+    - A held repeat batched with a written one is no longer reported as written.
+    - A reply with a brace after its JSON parses.
+    - The writes, and promotion's reading of `standards/`, find the vault without an `.obsidian/` folder.
+  - **The miner:**
+    - A second idea in the same message is its own remark.
+    - A session opened with `/clear` or `/model` takes its first request from the brief that follows.
+    - "Shouldn't we…" is a question, and "Do it with…" is an order.
+    - A run-on remark stays near its bound.
+  - **The trace:**
+    - A code block left open above `## Ideas` is closed, so the entries stay fenced.
+    - A request that opens on a pasted code block takes its first line of prose. That also stops a new trace being titled with a bare fence, the cause #905 names; the six traces it lists keep their titles until it's worked.
+    - A remark you corrected isn't added again at the next Stop, and a note you wrote under `## Ideas` is kept.
+    - A `## Candidates` line keeps one entry at its newest count.
+
 - **A session's trace is rewritten after every turn (task 192 step 7b).** The Stop hook's dedup guard, which keeps the route pass from filing a session twice, ran ahead of the trace step. So in a repo with `.harness/`, every Stop after a session's first exited before the trace, and the trace froze at turn 1. Since `## Ideas` is the only record an idea gets, an idea said later in such a session was lost: 5 of the 7 in the 2026-09-16 to 10-16 window. The trace step now runs before the guard in both the bash and the PowerShell hook. The route pass still runs once per session.
 
 ## [10.8.0] - 2026-10-16

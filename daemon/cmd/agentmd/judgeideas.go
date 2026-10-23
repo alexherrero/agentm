@@ -195,6 +195,8 @@ func cmdJudgeIdeas(args []string) error {
 	for _, r := range plan.Rows {
 		mark := r.Verdict
 		switch {
+		case r.Dismissed:
+			mark += " (you dismissed it)"
 		case r.Home:
 			mark += " (already on the card)"
 		case r.Applied:
