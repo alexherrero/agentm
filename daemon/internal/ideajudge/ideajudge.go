@@ -353,13 +353,20 @@ func WasRemoved(r Remark, ledger, stems map[string]bool) bool {
 
 // wasRemoved is a remark whose card is gone. Either a card the judge made for
 // these words on an earlier night (`filed`, by folded words) is carried by no
-// note now — that card held the remark whole, so one kept under another name
-// is found by the held check before this — or WasRemoved, unless an idea card
+// note now and no card holds the words whole — the card the judge made held
+// them, so one kept under another name still does — or WasRemoved, unless an idea card
 // holds a long run of the remark's words: the retired lane's card held only
 // the window around its trigger, so one kept under another name goes to the
 // judge, which can name it.
 func wasRemoved(r Remark, ledger map[string]bool, filed map[string]string, stems map[string]bool, cards []Card) bool {
 	if rel := filed[fold(r.Remark)]; rel != "" && !stems[strings.ToLower(strings.TrimSuffix(path.Base(rel), ".md"))] {
+		// Gone by its name. Kept, filed or renamed, it still holds the words
+		// whole, letters and digits aside from case and punctuation.
+		for _, c := range cards {
+			if strings.Contains(" "+fold(c.text)+" ", " "+fold(r.Remark)+" ") {
+				return false
+			}
+		}
 		return true
 	}
 	if !WasRemoved(r, ledger, stems) {
@@ -477,12 +484,13 @@ func ParseVerdict(out string) (Verdict, error) {
 }
 
 // topLevelObjects is each `{…}` of s that sits outside any other, its braces
-// balanced and its strings respected. Prose between them is skipped; a brace
-// that never closes is skipped and the scan goes on after it.
+// balanced and its strings respected. Only a brace that opens like an object
+// (`{"` or `{}`) starts one, so a brace in prose never swallows the verdict
+// after it; a brace that never closes is skipped and the scan goes on after it.
 func topLevelObjects(s string) []string {
 	var out []string
 	for i := 0; i < len(s); i++ {
-		if s[i] != '{' {
+		if s[i] != '{' || !opensObject(s[i+1:]) {
 			continue
 		}
 		depth, inString, escaped, end := 0, false, false, -1
@@ -514,6 +522,13 @@ func topLevelObjects(s string) []string {
 		i = end
 	}
 	return out
+}
+
+// opensObject reports whether the text after a `{` begins as a JSON object's
+// body does: a key, or the brace that closes an empty one.
+func opensObject(rest string) bool {
+	rest = strings.TrimLeft(rest, " \t\r\n")
+	return strings.HasPrefix(rest, `"`) || strings.HasPrefix(rest, "}")
 }
 
 // --- the writes --------------------------------------------------------------
@@ -633,7 +648,15 @@ func freeSlug(title, remark string, taken func(string) bool) string {
 	if len(words) > 8 {
 		words = words[:8]
 	}
+	// No longer than a filed card's name may be (`card_shape.SLUG_MAX`), so
+	// filing the card keeps the name the judge remembers it by.
+	for len(words) > 1 && len(strings.Join(words, "-")) > slugMax {
+		words = words[:len(words)-1]
+	}
 	base := strings.Join(words, "-")
+	if len(base) > slugMax {
+		base = base[:slugMax]
+	}
 	if base == "" {
 		base = "idea"
 	}
@@ -651,7 +674,7 @@ func freeSlug(title, remark string, taken func(string) bool) string {
 		}
 		held[w] = true
 		grown += "-" + w
-		if len(grown) > 72 {
+		if len(grown) > slugMax {
 			break
 		}
 		if !taken(grown) {
@@ -659,8 +682,14 @@ func freeSlug(title, remark string, taken func(string) bool) string {
 		}
 	}
 	sum := sha256.Sum256([]byte(remark))
+	if len(base) > slugMax-7 {
+		base = strings.TrimRight(base[:slugMax-7], "-")
+	}
 	return base + "-" + hex.EncodeToString(sum[:3])
 }
+
+// slugMax is the longest name a card is filed under (`card_shape.SLUG_MAX`).
+const slugMax = 72
 
 // --- one night ---------------------------------------------------------------
 

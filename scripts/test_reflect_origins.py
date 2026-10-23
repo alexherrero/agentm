@@ -384,7 +384,73 @@ class EachIdeaInAMessageIsARemark(unittest.TestCase):
                                    "Later we could ship tags for every card please."])
 
 
+    def test_two_rules_at_one_trigger_at_a_run_ons_start_are_one_remark(self):
+        filler = " ".join(["and then the importer walks every folder"] * 30)
+        mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"), _said("ok"),
+                                                  _turn("so later we could also add a cache for the folder walk " + filler,
+                                                        uuid="u1")])
+        self.assertEqual(len(mined["idea_candidates"]), 1, [c.remark[:70] for c in mined["idea_candidates"]])
+
+    def test_two_rules_at_one_trigger_at_a_run_ons_end_are_one_remark(self):
+        filler = " ".join(["and then the importer walks every folder"] * 30)
+        mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"), _said("ok"),
+                                                  _turn(filler + " ok so later we could also add a cache for the folder walk",
+                                                        uuid="u1")])
+        self.assertEqual(len(mined["idea_candidates"]), 1, [c.remark[-70:] for c in mined["idea_candidates"]])
+
+
+class EveryIdeaReachesARemark(unittest.TestCase):
+    """Four rounds of review of the dedup each found an edge the last missed,
+    so its properties are checked over generated messages, not only cases:
+    every idea's words reach a remark, no remark repeats another, a remark
+    stays near its bound, and its context holds it."""
+
+    FILL = ["and then the importer walks every folder", "the queue has four left", "so the walk is slow",
+            "it reads each file twice", "the cards are fine"]
+    TRIGGERS = ["we should also add {t} to the walker", "later we could build {t} for it",
+                "idea: {t} dashboard for the queue", "we could eventually ship {t} with it",
+                "in future it might be worth {t} here"]
+    SEPARATORS = [" ", " ", " ", ". ", "\n", " — ", ", "]
+
+    def test_the_properties_hold_over_generated_messages(self):
+        import random
+        rng = random.Random(192)
+        bound = reflect.REMARK_CHARS + 2 * reflect._BOUNDARY_SEARCH + 4
+        for n in range(400):
+            text, tokens = "", []
+            for i in range(rng.randint(1, 4)):
+                tokens.append(f"zq{n}x{i}")
+                text += " ".join(rng.choice(self.FILL) for _ in range(rng.randint(0, 40))) + rng.choice(self.SEPARATORS)
+                text += rng.choice(self.TRIGGERS).format(t=tokens[-1]) + rng.choice(self.SEPARATORS)
+                if rng.random() < 0.1:
+                    text += "https://x.example/" + "ab12" * rng.randint(10, 300) + " "
+            if len(text.strip()) > reflect.MAX_OPERATOR_UTTERANCE_CHARS:
+                continue
+            mined = reflect.mine_transcript_messages([_turn("look at the importer", uuid="u0"),
+                                                      _said("ok " * rng.randint(0, 400)), _turn(text, uuid="u1")])
+            remarks = [c.remark for c in mined["idea_candidates"]]
+            for tok in tokens:
+                self.assertTrue(any(tok in r for r in remarks), (tok, text))
+            self.assertEqual(len({reflect.fold(r) for r in remarks}), len(remarks), text)
+            for c in mined["idea_candidates"]:
+                self.assertLessEqual(len(c.remark), bound, text)
+                self.assertLessEqual(len(c.context), reflect.IDEA_CONTEXT_CHARS, text)
+                held = [t for t in tokens if t in c.remark]
+                self.assertTrue(all(t in c.context for t in held), (held, c.context))
+
+
 class AnIdeasContextStaysBounded(unittest.TestCase):
+    def test_a_long_token_beside_a_run_on_remark_is_cut_not_swallowed(self):
+        token = "https://bucket.s3.amazonaws.com/exports/dump.json?X-Amz-Signature=" + "a1b2c3d4" * 180
+        text = ("the export at " + token + " is the one that failed and we should also add a retry to the "
+                "uploader so it does not drop the file when the token expires and then "
+                + " ".join(["the importer walks every folder"] * 10))
+        mined = reflect.mine_transcript_messages([_turn("look at the uploader", uuid="u0"), _said("ok"),
+                                                  _turn(text, uuid="u1")])
+        (c,) = mined["idea_candidates"]
+        self.assertLessEqual(len(c.remark), reflect.REMARK_CHARS + 2 * reflect._BOUNDARY_SEARCH + 2)
+        self.assertIn("we should also add a retry", c.context)
+
     def test_a_run_on_message_keeps_the_context_near_its_bound(self):
         filler = " ".join(["and then the importer walks every folder"] * 40)
         text = "so " + filler + " and later we could add a cache for the folder walk " + filler

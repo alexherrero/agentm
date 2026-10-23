@@ -575,3 +575,42 @@ func TestANestedOptionIsNotTheVerdict(t *testing.T) {
 		t.Errorf("a brace that never closes hid the verdict: %+v %v", v, err)
 	}
 }
+
+// The judge's card, filed by inbox_review.file_one_idea, keeps its body; its
+// name is no longer than a filed card's may be, so filing keeps it. The same
+// idea said again in other case and punctuation is a repeat of the filed card,
+// not removed (the fourth review of the fix).
+func TestAFiledJudgeCardIsNotRemoved(t *testing.T) {
+	remark := "Later we could reconcile the overnight PlayOn recordings against the streaming catalogue, automatically."
+	v := vault(t, map[string]string{"a.md": trace("s1", entry(remark, "m1", ""))})
+	newIdea := `{"verdict": "new", "title": "Automatically reconcile overnight PlayOn recordings against streaming subscription catalogues"}`
+	st := &State{}
+	night1 := decide(t, v, &fake{replies: map[string]string{"PlayOn": newIdea}}, st, 0)
+	MarkApplied(&night1, st, apply(t, v, night1), now)
+	ents, _ := os.ReadDir(filepath.Join(v, "agent/inbox"))
+	if len(ents) != 1 || len(strings.TrimSuffix(ents[0].Name(), ".md")) > 72 {
+		t.Fatalf("inbox %v; want one card named in at most 72 characters", ents)
+	}
+	body := read(t, v, "agent/inbox/"+ents[0].Name())
+	// Filed under another name, the body kept, as file_one_idea files it.
+	write(t, v, "personal/ideas/playon-reconcile.md", body)
+	if err := os.Remove(filepath.Join(v, "agent/inbox", ents[0].Name())); err != nil {
+		t.Fatal(err)
+	}
+	again := "later we could reconcile the overnight PlayOn recordings against the streaming catalogue automatically"
+	write(t, v, "agent/memory/episodic/b.md", trace("s2", entry(again, "m7", "")))
+	f := &fake{replies: map[string]string{"PlayOn": `{"verdict": "repeat", "slug": "playon-reconcile"}`}}
+	night2 := decide(t, v, f, st, 0)
+	if night2.Removed != 0 || f.calls != 1 {
+		t.Errorf("removed %d, calls %d; the operator filed this idea, so it is judged, not removed", night2.Removed, f.calls)
+	}
+}
+
+// A brace in the judge's prose, closed after its verdict, does not hide the
+// verdict (the fourth review of the fix).
+func TestAProseBraceAroundTheVerdictDoesNotHideIt(t *testing.T) {
+	out := "The remark quotes `if cached {` from the loader. {\"verdict\": \"steering\", \"reason\": \"it directs the session\"} (the `}` closing that block is not in the remark)"
+	if v, err := ParseVerdict(out); err != nil || v.Verdict != Steering {
+		t.Errorf("ParseVerdict = %+v, %v; want steering", v, err)
+	}
+}
