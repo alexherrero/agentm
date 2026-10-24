@@ -17,10 +17,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/buildinfo"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/dreaming"
 )
 
+// version is stamped by scripts/daemon-ldflags.sh, as agentmd's is.
 var version = "0.1.0-dev"
 
 const usage = `agentmdream — the agentm dreaming binary (one pass, then exit)
@@ -67,7 +69,8 @@ func main() {
 	case "entities":
 		err = cmdEntities(os.Args[2:])
 	case "version", "-v", "--version":
-		fmt.Println("agentmdream", version)
+		b := buildinfo.Read()
+		fmt.Printf("agentmdream %s (%s, %s)\n", version, b.Short(), b.Stamp)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
