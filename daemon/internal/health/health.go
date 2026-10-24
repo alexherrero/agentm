@@ -44,6 +44,10 @@ const (
 	// vault has changes waiting. On 2026-10-04 that ran eleven hours with nothing
 	// on any status surface, because each failure was only a log line.
 	AlertCommitStalled = "commit-stalled"
+
+	// AlertBackupStale is the vault backup falling behind: commits on main the
+	// backup remote has lacked for longer than two of the push job's runs.
+	AlertBackupStale = "backup-stale"
 )
 
 // Filing-contract states.
@@ -191,6 +195,10 @@ type Thresholds struct {
 	ProbeStale time.Duration `json:"probe_stale"`
 	// ProbeBudget is how long one round trip may take.
 	ProbeBudget time.Duration `json:"probe_budget"`
+	// BackupStale is how long a commit may wait for the backup push. Two of the
+	// push job's four-hourly runs: one missed run is a machine asleep at the mark,
+	// two is a job that has stopped.
+	BackupStale time.Duration `json:"backup_stale"`
 	// CommitStalled is how long the committer may go on failing before it pages.
 	// A single failed cycle is usually a CLI command holding index.lock for a
 	// moment; half an hour of them is not.
@@ -274,6 +282,47 @@ func (g Git) String() string {
 	return g.State + ": " + g.Detail
 }
 
+// Backup states.
+const (
+	// BackupCurrent: nothing on main the remote lacks has waited past the
+	// threshold.
+	BackupCurrent = "current"
+	// BackupStale: something has.
+	BackupStale = "stale"
+	// BackupNone: no backup remote is configured, as in a scratch vault.
+	BackupNone = "none"
+	// BackupUnknown: the repository could not be read.
+	BackupUnknown = "unknown"
+)
+
+// Backup is the vault backup's standing (#818), read from what the push job
+// leaves in the repository: the remote-tracking ref it moves and that ref's
+// reflog. Local only; nothing here calls the remote.
+type Backup struct {
+	State  string `json:"state"`
+	Remote string `json:"remote,omitempty"`
+	// LastPushAt and LastPushAge are the newest push the reflog records.
+	LastPushAt  string   `json:"last_push_at,omitempty"`
+	LastPushAge Duration `json:"last_push_age,omitempty"`
+	// Pending counts the commits on main the remote lacks, as of the last push
+	// or fetch; OldestPendingAge is how long the oldest has waited. That age is
+	// what goes red: a working job pushes everything it sees.
+	Pending          int      `json:"pending"`
+	OldestPendingAge Duration `json:"oldest_pending_age,omitempty"`
+	Detail           string   `json:"detail,omitempty"`
+}
+
+// BackupInput is vcs.Repo.Backup's reading, passed through.
+type BackupInput struct {
+	Remote        string
+	Configured    bool
+	Tracked       bool
+	LastPush      time.Time
+	Pending       int
+	OldestPending time.Time
+	Err           string
+}
+
 // ProbeState is the last recorded self-probe. It is persisted by the probe
 // package and read here, so a probe that failed at 3am is still the reason the
 // status is red at 9.
@@ -296,6 +345,7 @@ type Report struct {
 	Git        Git        `json:"git"`
 	Embedder   Embedder   `json:"embedder"`
 	Contract   Contract   `json:"contract"`
+	Backup     Backup     `json:"backup"`
 	Probe      ProbeState `json:"probe"`
 	Thresholds Thresholds `json:"thresholds"`
 }
@@ -359,6 +409,9 @@ type Input struct {
 	// of truth about neither.
 	Contract Contract
 
+	// Backup is the backup remote's standing, read from the vault repository.
+	Backup BackupInput
+
 	Probe      ProbeState
 	ProbeAt    time.Time
 	Thresholds Thresholds
@@ -415,6 +468,9 @@ func Evaluate(in Input) Report {
 			}
 		}
 	}
+
+	// --- the backup ---------------------------------------------------------
+	r.Backup = evaluateBackup(in, &r)
 
 	// --- the queue ----------------------------------------------------------
 	//
@@ -520,6 +576,71 @@ func Evaluate(in Input) Report {
 		r.Level = LevelRed
 	}
 	return r
+}
+
+// evaluateBackup grades the backup reading, and raises the alert when a commit
+// has waited past the threshold. A vault with nothing pending is current
+// however old its last push: there was nothing to send.
+func evaluateBackup(in Input, r *Report) Backup {
+	b := in.Backup
+	out := Backup{State: BackupNone, Remote: b.Remote}
+	if !b.Configured {
+		return out
+	}
+	out.State = BackupCurrent
+	if !b.LastPush.IsZero() {
+		out.LastPushAt = b.LastPush.UTC().Format(time.RFC3339)
+		out.LastPushAge = Duration(since(in.Now, b.LastPush))
+	}
+	if b.Err != "" {
+		out.State, out.Detail = BackupUnknown, b.Err
+		return out
+	}
+	out.Pending = b.Pending
+	if b.Pending == 0 || b.OldestPending.IsZero() {
+		return out
+	}
+	age := since(in.Now, b.OldestPending)
+	out.OldestPendingAge = Duration(age)
+	if in.Thresholds.BackupStale <= 0 || age <= in.Thresholds.BackupStale {
+		return out
+	}
+	out.State = BackupStale
+	last := "the remote has never received a push"
+	if !b.LastPush.IsZero() {
+		last = "the last push was " + short(since(in.Now, b.LastPush)) + " ago"
+	}
+	r.add(AlertBackupStale, fmt.Sprintf(
+		"%d commit(s) on main have not reached the backup remote `%s`, the oldest %s old, "+
+			"past the %s threshold — the push job has missed at least two runs, and %s; "+
+			"its log says why",
+		b.Pending, b.Remote, short(age), short(in.Thresholds.BackupStale), last))
+	return out
+}
+
+// String is the status line's one-liner.
+func (b Backup) String() string {
+	if b.State == BackupNone {
+		return "no backup remote configured"
+	}
+	out := b.Remote
+	if b.LastPushAt == "" {
+		out += " · no push recorded"
+	} else {
+		out += " · last push " + b.LastPushAge.String() + " ago"
+	}
+	switch {
+	case b.State == BackupUnknown:
+		out += " · unreadable: " + b.Detail
+	case b.Pending == 0:
+		out += " · nothing waiting"
+	default:
+		out += fmt.Sprintf(" · %d commit(s) waiting, oldest %s", b.Pending, b.OldestPendingAge)
+	}
+	if b.State == BackupStale {
+		out += " · STALE"
+	}
+	return out
 }
 
 func (r *Report) add(code, detail string) {
