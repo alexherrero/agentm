@@ -140,6 +140,13 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 			"reported, not paged about\n",
 			rep.Queue.Inherited, shortDate(rep.Queue.Baseline), rep.Queue.InheritedOldestAge)
 	}
+	// The cards the night cannot judge, on their own line: out of the count and
+	// the age above, because they never leave the queue on their own (#793).
+	if rep.Queue.Refused > 0 {
+		fmt.Fprintf(&b, "  refused  %d standing refused at the current pass (oldest %s) — "+
+			"the night skips each until its text or the pass changes; not paged about\n",
+			rep.Queue.Refused, rep.Queue.RefusedOldestAge)
+	}
 
 	index := fmt.Sprintf("%d documents", rep.Index.Documents)
 	if rep.Index.LastAt == "" {
@@ -196,8 +203,12 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 			"makes it yours to edit\n")
 	}
 
-	fmt.Fprintf(&b, "  backup   %-44s (red past %s)\n",
-		rep.Backup, health.Duration(rep.Thresholds.BackupStale))
+	if rep.Thresholds.BackupStale > 0 {
+		fmt.Fprintf(&b, "  backup   %-44s (red past %s)\n",
+			rep.Backup, health.Duration(rep.Thresholds.BackupStale))
+	} else {
+		fmt.Fprintf(&b, "  backup   %s\n", rep.Backup)
+	}
 
 	fmt.Fprintf(&b, "  probe    %s\n", describeProbe(rep))
 

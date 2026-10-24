@@ -80,3 +80,53 @@ func TestLastPushIgnoresFetchLines(t *testing.T) {
 		t.Fatalf("lastPush = %d, want the newest push line, 1700005000", got.Unix())
 	}
 }
+
+// A config git cannot read is an unknown backup, never "no remote": the
+// second reads as nothing to watch, and never pages.
+func TestBackupWithAnUnreadableConfigIsAnErrorNotNone(t *testing.T) {
+	vault := t.TempDir()
+	backupGit(t, vault, "init", "-q", "-b", "main")
+	backupCommit(t, vault, "a.md")
+	backupGit(t, vault, "remote", "add", "gitea", t.TempDir())
+	r := Open(vault)
+	if err := os.WriteFile(filepath.Join(vault, ".git", "config"), []byte("[core\nbroken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := r.Backup("gitea")
+	if !got.Configured || got.Err == "" {
+		t.Fatalf("got %+v, want configured with an error", got)
+	}
+}
+
+// The oldest pending commit is the earliest commit time, whatever order git
+// log lists them in.
+func TestBackupOldestPendingIsTheEarliestCommitTime(t *testing.T) {
+	vault := t.TempDir()
+	remote := t.TempDir()
+	backupGit(t, remote, "init", "-q", "--bare")
+	backupGit(t, vault, "init", "-q", "-b", "main")
+	backupCommit(t, vault, "a.md")
+	backupGit(t, vault, "remote", "add", "nas", remote)
+	backupGit(t, vault, "push", "-q", "nas", "main")
+	for _, c := range []struct{ rel, date string }{
+		{"b.md", "1700001000 +0000"}, {"c.md", "1700000500 +0000"}, {"d.md", "1700002000 +0000"},
+	} {
+		if err := os.WriteFile(filepath.Join(vault, c.rel), []byte(c.rel), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		backupGit(t, vault, "add", "-A")
+		backupGit(t, vault, "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", c.rel, "--date", c.date)
+		cmd := exec.Command("git", "commit", "--amend", "-q", "--no-edit")
+		cmd.Dir = vault
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com", "GIT_COMMITTER_DATE="+c.date)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("amend: %v\n%s", err, out)
+		}
+	}
+	got := Open(vault).Backup("nas")
+	if got.Pending != 3 || got.OldestPending.Unix() != 1700000500 {
+		t.Fatalf("got %+v (oldest %d), want 3 pending, the oldest 1700000500", got, got.OldestPending.Unix())
+	}
+}

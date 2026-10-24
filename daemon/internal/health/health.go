@@ -235,6 +235,12 @@ type Queue struct {
 	// InheritedOldestAge is the age of the oldest inherited item, so the backlog
 	// stays visible rather than becoming a number nobody sees again.
 	InheritedOldestAge Duration `json:"inherited_oldest_age,omitempty"`
+	// Refused counts the cards that stand refused at the current pass, which
+	// the refusal gate skips every night until their text or the pass changes.
+	// Out of every number above and of what pages, because the night cannot
+	// judge them; reported on their own line so they stay seen (#793).
+	Refused          int      `json:"refused"`
+	RefusedOldestAge Duration `json:"refused_oldest_age,omitempty"`
 }
 
 // Freshness is whether the index still reflects the vault.
@@ -384,6 +390,11 @@ type Input struct {
 	Baseline           time.Time
 	Documents          int
 
+	// Refused and OldestRefused are the cards standing refused at the current
+	// pass. The caller has already taken them out of the four numbers above.
+	Refused       int
+	OldestRefused time.Time
+
 	LastReconcile       time.Time
 	LastReconcileErrors int
 
@@ -484,6 +495,10 @@ func Evaluate(in Input) Report {
 	}
 	if !in.Baseline.IsZero() {
 		r.Queue.Baseline = in.Baseline.UTC().Format(time.RFC3339)
+	}
+	r.Queue.Refused = in.Refused
+	if in.Refused > 0 && !in.OldestRefused.IsZero() {
+		r.Queue.RefusedOldestAge = Duration(since(in.Now, in.OldestRefused))
 	}
 	if !in.OldestUnfiled.IsZero() && r.Queue.Inherited > 0 {
 		r.Queue.InheritedOldestAge = Duration(since(in.Now, in.OldestUnfiled))
@@ -620,7 +635,11 @@ func evaluateBackup(in Input, r *Report) Backup {
 
 // String is the status line's one-liner.
 func (b Backup) String() string {
-	if b.State == BackupNone {
+	switch b.State {
+	case "":
+		// A daemon older than the reading, answering a newer client.
+		return "not reported by the running daemon — it predates the backup reading; restart it"
+	case BackupNone:
 		return "no backup remote configured"
 	}
 	out := b.Remote

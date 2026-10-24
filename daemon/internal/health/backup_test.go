@@ -118,3 +118,12 @@ func TestTheBackupFieldsOnTheWire(t *testing.T) {
 		}
 	}
 }
+
+// A daemon older than the reading sends no backup block; the line says so
+// rather than reading as a healthy backup.
+func TestAnUnreportedBackupDoesNotReadAsHealthy(t *testing.T) {
+	var b Backup
+	if s := b.String(); !strings.Contains(s, "not reported by the running daemon") {
+		t.Fatalf("line = %q", s)
+	}
+}

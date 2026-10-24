@@ -1478,7 +1478,8 @@ def check_backup_push(*, binary: "Path | None" = None, status: "dict | None" = N
                      "last-push row (task 194); rebuild and restart it")
     state = block.get("state")
     remote = block.get("remote") or "the backup remote"
-    last = (f"last push {block['last_push_age']} ago" if block.get("last_push_at")
+    # `last_push_age` is omitted at zero (a push stamped ahead of the clock).
+    last = (f"last push {block.get('last_push_age') or '0s'} ago" if block.get("last_push_at")
             else "no push recorded")
     pending = block.get("pending") or 0
     waiting = (f"{pending} commit(s) waiting, the oldest {block.get('oldest_pending_age')}"
