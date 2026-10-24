@@ -118,6 +118,10 @@ type Contract struct {
 	// quietest symptom of a broken contract, and the one that means a client is
 	// failing every write.
 	RefusedCaptures int64 `json:"refused_captures"`
+	// RefusedByVolume counts captures the daily write cap turned away since
+	// boot (#813). A different fact from a broken contract — a flood being
+	// stopped — so its own number, always present so a zero can be read.
+	RefusedByVolume int64 `json:"refused_by_volume"`
 	// CheckedAt is when the contract was last re-read. A status is about now
 	// only if this is.
 	CheckedAt time.Time `json:"checked_at,omitempty"`

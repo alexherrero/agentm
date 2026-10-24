@@ -203,6 +203,11 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 			"makes it yours to edit\n")
 	}
 
+	// Every refusal the door made since boot, both kinds, zeros included: a
+	// capture the volume gate dropped left no trace anywhere else (#813).
+	fmt.Fprintf(&b, "  captures refused since boot: %d naming a type with no contract · "+
+		"%d over the daily write cap\n", rep.Contract.RefusedCaptures, rep.Contract.RefusedByVolume)
+
 	if rep.Thresholds.BackupStale > 0 {
 		fmt.Fprintf(&b, "  backup   %-44s (red past %s)\n",
 			rep.Backup, health.Duration(rep.Thresholds.BackupStale))
@@ -275,6 +280,7 @@ func contractHealth(cfg *config.Config, cp *capture.Capturer) health.Contract {
 	out := health.Contract{CheckedAt: now}
 	if cp != nil {
 		out.RefusedCaptures = cp.RefusedCaptures()
+		out.RefusedByVolume = cp.RefusedByVolume()
 	}
 	if err != nil {
 		out.State = health.ContractBroken

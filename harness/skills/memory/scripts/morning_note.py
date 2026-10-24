@@ -319,6 +319,7 @@ class Night:
     populations: Optional[dict] = None
     queue: Optional[dict] = None
     queue_missing: str = ""
+    refused_by_volume: int = 0      # captures the daily cap turned away (#813)
     coverage: Optional[dict] = None
     coverage_missing: str = ""
     scorecard: str = ""
@@ -470,6 +471,8 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
     try:
         status = ask(["status"]) or {}
         night.queue = (status.get("health") or {}).get("queue") or {}
+        contract = (status.get("health") or {}).get("contract") or {}
+        night.refused_by_volume = int(contract.get("refused_by_volume") or 0)
     except corpus_scorecard.DaemonUnavailable as exc:
         night.queue_missing = str(exc)
     night.coverage, night.coverage_missing = _coverage(ask, night.populations, pause)
@@ -716,6 +719,10 @@ def needs_you(night: Night) -> list:
     errors = (tasks or {}).get("errors") or [] if isinstance(tasks, dict) else []
     if errors:
         lines.append("- **The task mover reported** " + "; ".join(str(e) for e in errors[:3]) + ".")
+    if night.refused_by_volume > 0:
+        lines.append(f"- **Captures turned away by the daily write cap** ({night.refused_by_volume} "
+                     "since the daemon started): nothing was written for them. The cap is "
+                     "`thresholds.daily_write_cap` in the filing contract.")
     if night.below_floor:
         lines.append(f"- **Unfiled below the floor** ({len(night.below_floor)}): "
                      + _first(night.below_floor, lambda e: f"[[{e.slug}]]"))

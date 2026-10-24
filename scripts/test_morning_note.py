@@ -874,5 +874,28 @@ class TheCloneLine(_Night):
         self.assertNotIn("primary clone", self._note(None))
 
 
+class TheVolumeRefusals(_Night):
+    """Captures the daily write cap turned away, which left no trace an
+    operator could see (#813). Named under what needs you when above zero."""
+
+    def _note(self, refused):
+        def ask(args):
+            if args[0] == "status":
+                return {"health": {"queue": {"unfiled": 0},
+                                   "contract": {"state": "healthy", "refused_by_volume": refused}}}
+            return {"current": 12, "eligible": 181}
+        dated, _, _ = mn.build(self.vault, now=NOW, engine_dir=self.engine,
+                               runner_dir=self.runner, rollup=self.rollup, ask=ask)
+        return dated.read_text(encoding="utf-8")
+
+    def test_refusals_above_zero_are_named(self):
+        text = self._note(3)
+        needs = text.split("## What needs you", 1)[1]
+        self.assertIn("**Captures turned away by the daily write cap** (3 since the daemon started)", needs)
+
+    def test_zero_says_nothing(self):
+        self.assertNotIn("daily write cap", self._note(0))
+
+
 if __name__ == "__main__":
     unittest.main()
