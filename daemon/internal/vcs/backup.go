@@ -3,7 +3,9 @@ package vcs
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -58,7 +60,16 @@ func (r *Repo) Backup(remote string) Backup {
 	if r == nil || r.gitDir == "" || remote == "" {
 		return out
 	}
-	if _, err := r.gitCLI("config", "--get", "remote."+remote+".url"); err != nil {
+	if msg, err := r.gitCLI("config", "--get", "remote."+remote+".url"); err != nil {
+		// Exit 1 is git's "no such key": the remote is not there. Anything
+		// else is git failing to read the config, which must read as
+		// unknown, never as a vault with no backup to watch.
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 {
+			return out
+		}
+		out.Configured = true
+		out.Err = "git could not read the repository's config: " + firstLine(string(msg))
 		return out
 	}
 	out.Configured = true
@@ -78,10 +89,13 @@ func (r *Repo) Backup(remote string) Backup {
 	}
 	lines := strings.Fields(string(times))
 	out.Pending = len(lines)
-	if out.Pending > 0 {
-		// Newest first, so the oldest is last.
-		if sec, err := strconv.ParseInt(lines[len(lines)-1], 10, 64); err == nil {
-			out.OldestPending = time.Unix(sec, 0)
+	// The earliest commit time, not the last line: git log's order is the
+	// graph's, and commit dates need not follow it.
+	for _, l := range lines {
+		if sec, err := strconv.ParseInt(l, 10, 64); err == nil {
+			if t := time.Unix(sec, 0); out.OldestPending.IsZero() || t.Before(out.OldestPending) {
+				out.OldestPending = t
+			}
 		}
 	}
 	return out

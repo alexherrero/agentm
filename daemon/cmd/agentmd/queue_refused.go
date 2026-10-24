@@ -56,6 +56,9 @@ func splitRefused(cfg *config.Config, idx *index.Index, baseline time.Time) (que
 		return queueSplit{}, false
 	}
 	keyer := enrichFingerprint(cfg, nil)
+	// The index compares capture dates at whole seconds (UnfiledSince), and
+	// the persisted baseline carries nanoseconds; split at the same second.
+	from := baseline.UTC().Truncate(time.Second)
 	var out queueSplit
 	for _, w := range waiting {
 		if rows[w.Rel] && standsRefused(cfg, refusals, keyer, w.Rel) {
@@ -65,7 +68,7 @@ func splitRefused(cfg *config.Config, idx *index.Index, baseline time.Time) (que
 		}
 		out.Unfiled++
 		out.Oldest = earlier(out.Oldest, w.Captured)
-		if !w.Captured.Before(baseline) {
+		if !w.Captured.Before(from) {
 			out.Since++
 			out.OldestSince = earlier(out.OldestSince, w.Captured)
 		}

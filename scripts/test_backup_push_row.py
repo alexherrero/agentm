@@ -49,6 +49,13 @@ class TheBackupPushRow(unittest.TestCase):
         self.assertEqual(check.status, "OK")
         self.assertIn("nothing waiting", check.detail)
 
+    def test_a_zero_push_age_omitted_from_the_wire_does_not_raise(self):
+        # Go omits a zero Duration; a push stamped ahead of the clock reads 0.
+        check = doctor_mod.check_backup_push(status=status(
+            state="current", remote="gitea", last_push_at="2026-10-24T02:40:04Z", pending=0))
+        self.assertEqual(check.status, "OK")
+        self.assertIn("last push 0s ago", check.detail)
+
     def test_no_remote_is_unverified(self):
         check = doctor_mod.check_backup_push(status=status(state="none", pending=0))
         self.assertEqual(check.status, "UNVERIFIED")

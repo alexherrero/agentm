@@ -635,7 +635,11 @@ func evaluateBackup(in Input, r *Report) Backup {
 
 // String is the status line's one-liner.
 func (b Backup) String() string {
-	if b.State == BackupNone {
+	switch b.State {
+	case "":
+		// A daemon older than the reading, answering a newer client.
+		return "not reported by the running daemon — it predates the backup reading; restart it"
+	case BackupNone:
 		return "no backup remote configured"
 	}
 	out := b.Remote

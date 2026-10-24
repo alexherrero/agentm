@@ -86,3 +86,31 @@ func TestARefusalUnderAnOlderGateRejoins(t *testing.T) {
 		t.Fatalf("split = %+v (%v), want no refused card", got, ok)
 	}
 }
+
+// The split counts "since" at whole seconds, as the index does: a card
+// captured in the baseline's own second is the daemon's, not inherited, with
+// or without a refused card beside it.
+func TestTheSplitAgreesWithTheIndexAtTheBaselineSecond(t *testing.T) {
+	vault := t.TempDir()
+	cfg := configOverRules(t, vault, "fact")
+	cfg.EngineStateDir = t.TempDir()
+	x := openRecordIndex(t, vault)
+	putNote(t, x, vault, refusedCard, queueCard("2026-08-26T09:00:00Z"))
+	putNote(t, x, vault, waitingCard, queueCard("2026-09-01T00:00:00Z"))
+	raw, _ := os.ReadFile(filepath.Join(vault, refusedCard))
+	refusals, _ := enrich.NewRefusals(enrichStateDir(cfg))
+	keyer := enrichFingerprint(cfg, nil)
+	if err := refusals.Record(enrich.Refusal{Rel: refusedCard, Gate: "faithfulness",
+		Key: keyer.Key(string(raw)), Gates: enrich.GatesVersion}); err != nil {
+		t.Fatal(err)
+	}
+	baseline := time.Date(2026, 9, 1, 0, 0, 0, 500_000_000, time.UTC)
+	q, err := x.UnfiledSince(baseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := splitRefused(cfg, x, baseline)
+	if !ok || got.Since != q.Count || got.Since != 1 {
+		t.Fatalf("split since = %d (ok %v), the index says %d; want both 1", got.Since, ok, q.Count)
+	}
+}

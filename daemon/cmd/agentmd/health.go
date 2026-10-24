@@ -203,8 +203,12 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 			"makes it yours to edit\n")
 	}
 
-	fmt.Fprintf(&b, "  backup   %-44s (red past %s)\n",
-		rep.Backup, health.Duration(rep.Thresholds.BackupStale))
+	if rep.Thresholds.BackupStale > 0 {
+		fmt.Fprintf(&b, "  backup   %-44s (red past %s)\n",
+			rep.Backup, health.Duration(rep.Thresholds.BackupStale))
+	} else {
+		fmt.Fprintf(&b, "  backup   %s\n", rep.Backup)
+	}
 
 	fmt.Fprintf(&b, "  probe    %s\n", describeProbe(rep))
 
