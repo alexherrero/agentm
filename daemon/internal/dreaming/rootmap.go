@@ -96,7 +96,8 @@ func rootAreas(root string, planned []string) []rootArea {
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(calendar)))
 	add("Calendar", calendar) // root-casing: the map's heading, not a path
-	add("Diagnostics", mapsIn(filepath.Join(root, "diagnostics"), "moc-"))
+	diagnostics := filepath.Join(root, DiagnosticsDirName)
+	add("Diagnostics", withPlannedMaps(mapsIn(diagnostics, "moc-"), root, diagnostics, has))
 	vault := vaultRootOf(root)
 	add("Standards", mapsIn(filepath.Join(vault, "standards"), "moc-"))
 	projects := filepath.Join(vault, projectsSpaceName)
