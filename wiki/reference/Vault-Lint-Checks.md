@@ -13,6 +13,7 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 | Where does the schema come from? | `save.py` — the lint imports its validators + `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` so the two can't drift (DC-2). |
 | How do I run a full audit report? | See [Audit the vault](Audit-The-Vault). |
 | How do I also get orphans, contradictions, and a quality score? | `/memory lint` (`harness/skills/memory/scripts/lint.py`) composes this catalog's `supersede-cycle` / `supersede-fork` / `dangling-supersession` / `kind-taxonomy` checks with `graph_snapshot.orphans()` and a per-note quality score, on demand or via the nightly dream cycle — see the memory skill's `/memory lint` section. |
+| How do I count orphans the way Obsidian's graph does? | `python3 scripts/vault_orphan_census.py` — a separate read-only report, not one of these checks and not a gate. See [the orphan census](#the-orphan-census). |
 | Related pages | [Audit the vault](Audit-The-Vault) |
 
 ## Checks
@@ -45,6 +46,36 @@ The bespoke idea-ledger pass that used to run here — `incubator_lint.py`, chec
 `Ideas.md` is generated over the idea cards in `personal/ideas/` by the dreaming binary now, and it holds the file's shape itself, with its own tests (`daemon/internal/dreaming/ideas_test.go`) — this catalog was never going to be the thing that kept checking it. The `_idea-incubator/` research files have no lint pass of their own at the moment; the incubator skeleton and its researcher sub-agent are still there, waiting on their own follow-up.
 
 The idea cards themselves are not walked as entries here either — `personal/` sits outside every scope in the table above. Their shape is held by a gate instead: `check-card-shape`'s second walk reads every card in `personal/ideas/` and names the file and field when a note there is not `type: idea`, has no `area:`, carries `lifecycle` or `lifecycle_since`, carries a `status` other than `active`, or has a `dismissed:` that is not a day. It reports until the ideas move's `--finish` writes `memory/.ideas-surface-complete`, then enforces (see [CI gates reference § check-card-shape](CI-Gates)). One resolution still reaches into the folder: a duplicate note's `superseded_by: personal/ideas/<stem>.md`, pointing at the idea it was folded into, resolves against the folder's filenames (`build_model`, `vault_lint.py:403`) so `supersede-integrity` does not flag it as dangling — added to `model.slugs` only, never linted as an entry in its own right.
+
+## The orphan census
+
+`vault_orphan_census.py` is a read-only report that sits beside the lint. It counts the vault's links the way Obsidian's graph does, then lists the notes with none. The lint checks one entry at a time against the card's schema. The census looks at every note in the vault, whatever its shape, and at how the notes link to each other.
+
+| Question | Answer |
+|---|---|
+| What runs it? | [`scripts/vault_orphan_census.py`](https://github.com/alexherrero/agentm/blob/main/scripts/vault_orphan_census.py). It needs PyYAML and runs on Python 3.9. |
+| How do I see a report? | `python3 scripts/vault_orphan_census.py` prints the summary tables to the terminal and writes nothing. |
+| How do I keep a run? | `--out DIR` writes `census.jsonl` (one record per note) and `census-summary.md` to `DIR`. `DIR` must be outside the vault; a path inside it exits `2` before any note is read. |
+| Which vault does it count? | The one `harness_memory.vault_path()` resolves at run time; `--vault ROOT` counts another. No vault found, or no PyYAML, also exits `2`. |
+| Does it ever write the vault? | No. It reads the notes, the vault's `.obsidian/app.json`, and the vault's git history for each note's first-added date (`git log`, with optional locks off). |
+| Is it a gate? | No. It exits `0` whatever it finds, and no CI gate or `check-all.sh` step runs it against a vault. The operator's own notes and other repositories' records are orphans by choice, so a threshold would only learn to tolerate them. Its unit tests run in the ordinary unit suite, against a small fixture vault. |
+| Is its total the same as `/memory lint`'s orphan count? | No. The census counts by Obsidian's rules (below); `/memory lint` reads the engine's own device-local snapshot, which has rules of its own. |
+| How do I compare two runs? | By note set, not by total. Every record in `census.jsonl` carries a `graph_orphan` flag, so the notes that joined or left the orphans between two runs can be diffed directly. |
+
+### What counts as a link
+
+A graph orphan is a note the ignore filters keep that has no edge left in or out. The rules match how the live vault's `.obsidian/graph.json` was set when the census was written, with unresolved links shown and attachments hidden. The census does not read that file, so a changed setting is not picked up.
+
+| Counts as an edge | Does not count |
+|---|---|
+| Wikilinks, embeds and Markdown links to a local note in the body. | The same links inside fenced code, inline code spans or `%%comments%%`. |
+| A frontmatter value that is a string, or a flat list of strings, containing `[[…]]`. | An unquoted `related: [[x]]` (YAML reads it as a nested list), a wikilink under a nested key, and a frontmatter string with no `[[` that would resolve to a note. The census reports that last kind as `invisible_fm`. |
+| A link to a note that does not exist, which the graph draws as a ghost node. | A link to an attachment such as an image or a PDF. |
+| | A note in a dot-folder (it is not in the vault's notes at all), a note matching a `userIgnoreFilters` entry in `.obsidian/app.json`, and every edge to or from such a note. |
+
+A link that is a vault-relative path names that note, so `[[top]]` is `top.md` at the vault root even when the linking note's folder has a `top.md` too. Otherwise a bare name resolves by file name across the vault and a path by its suffix, case-insensitively. Among several notes of one name, the one in the linking note's own folder wins, then the shortest path.
+
+The summary tables cover the totals and break orphans down by space and folder, `kind`, `type`, `status`, `lifecycle`, writer, week created, and `related` shape. They also list invisible frontmatter links, orphan hygiene, notes hidden by the ignore filters, and a short list to spot-check by hand. The census infers each note's writer from its folder, `kind`, `type`, and `source`. The summary ends with the rule behind each label.
 
 ## Related
 
