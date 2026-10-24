@@ -288,6 +288,11 @@ type Config struct {
 	// than paying a model load per query.
 	RerankerURL string
 
+	// SourceClone is the agentm clone the install runs from
+	// (`source_clones.agentm`), empty for a release install. `agentmd status`
+	// compares the running daemon's build commit with its HEAD.
+	SourceClone string
+
 	// ConfigPath is the file the above was read from, for reporting.
 	ConfigPath string
 }
@@ -842,6 +847,13 @@ func Load(opts Options) (*Config, error) {
 		To:      strings.TrimSpace(strVal(raw, "plugins.autonomy.email_to")),
 		SMTPURL: strings.TrimSpace(strVal(raw, "plugins.autonomy.email_smtp_url")),
 		From:    strings.TrimSpace(strVal(raw, "plugins.autonomy.email_from")),
+	}
+
+	// A nested object, unlike the dotted keys above: the installer writes it.
+	if clones, ok := raw["source_clones"].(map[string]any); ok {
+		if v, ok := clones["agentm"].(string); ok && strings.TrimSpace(v) != "" {
+			c.SourceClone = expandHome(strings.TrimSpace(v))
+		}
 	}
 
 	c.loadRules(time.Now())

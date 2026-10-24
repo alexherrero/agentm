@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/buildinfo"
 	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/embed"
@@ -40,8 +41,9 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/watch"
 )
 
-// version is the daemon's own version, stamped at build time when the release
-// script sets it and honest about being a development build when it does not.
+// version is the daemon's own version: `git describe --tags` of the checkout it
+// was built from, stamped by scripts/daemon-ldflags.sh, and honest about being
+// a development build when nothing stamped it. The commit is buildinfo's.
 var version = "0.1.0-dev"
 
 const usage = `agentmd — the agentm memory daemon
@@ -136,7 +138,8 @@ func main() {
 	case "door":
 		err = cmdDoor(os.Args[2:])
 	case "version", "-v", "--version":
-		fmt.Println("agentmd", version)
+		b := buildinfo.Read()
+		fmt.Printf("agentmd %s (%s, %s)\n", version, b.Short(), b.Stamp)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
@@ -361,6 +364,7 @@ func cmdServe(args []string) error {
 			"shard":        cfg.Shard,
 			"switches":     cfg.Switches(),
 			"uptime":       time.Since(bootedAt).Round(time.Second).String(),
+			"build":        buildinfo.Read(),
 			"health":       report(),
 			"watcher":      w.Status(),
 		}
@@ -840,14 +844,21 @@ func cmdStatus(args []string) error {
 	}
 
 	var payload struct {
-		Version string        `json:"version"`
-		Uptime  string        `json:"uptime"`
-		Health  health.Report `json:"health"`
+		Version string         `json:"version"`
+		Uptime  string         `json:"uptime"`
+		Build   buildinfo.Info `json:"build"`
+		Health  health.Report  `json:"health"`
 	}
 	if err := json.Unmarshal(blob, &payload); err != nil {
 		return fmt.Errorf("the daemon's status was not readable: %w", err)
 	}
 	fmt.Printf("agentmd %s · up %s\n", payload.Version, payload.Uptime)
+	var clone *buildinfo.Clone
+	if cfg.SourceClone != "" {
+		c := buildinfo.CompareClone(cfg.SourceClone, payload.Build.Commit)
+		clone = &c
+	}
+	fmt.Print(renderBuild(describeBuild(payload.Build, buildinfo.Read(), clone)))
 	fmt.Print(renderReport(payload.Health, cfg))
 	if payload.Health.Red() {
 		// Non-zero, so a shell script can ask "is it fine" without parsing the

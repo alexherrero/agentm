@@ -608,7 +608,9 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
   # Build beside the live binary, then swap. A failed build leaves the running
   # daemon untouched; the rename is atomic, and replacing the file does not
   # disturb the running process, which keeps its own inode until reload.
-  if ( cd "$DAEMON_SRC" && CGO_ENABLED=0 go build -o "$DAEMON_BIN.new" ./cmd/agentmd ); then
+  # Stamp the checkout's own commit in (#819); `agentmd status` prints it.
+  DAEMON_LDFLAGS="$("$HARNESS_ROOT/scripts/daemon-ldflags.sh" "$HARNESS_ROOT" 2>/dev/null || true)"
+  if ( cd "$DAEMON_SRC" && CGO_ENABLED=0 go build -ldflags "$DAEMON_LDFLAGS" -o "$DAEMON_BIN.new" ./cmd/agentmd ); then
     mv -f "$DAEMON_BIN.new" "$DAEMON_BIN"
     echo "    built $DAEMON_BIN"
   else
@@ -619,7 +621,7 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
   # runner's job manifest (templates/jobs/dreaming.yaml), never resident — so
   # no launchd entry of its own. Built beside the daemon, swapped the same way.
   DREAMER_BIN="$DAEMON_BIN_DIR/agentmdream"
-  if ( cd "$DAEMON_SRC" && CGO_ENABLED=0 go build -o "$DREAMER_BIN.new" ./cmd/agentmdream ); then
+  if ( cd "$DAEMON_SRC" && CGO_ENABLED=0 go build -ldflags "$DAEMON_LDFLAGS" -o "$DREAMER_BIN.new" ./cmd/agentmdream ); then
     mv -f "$DREAMER_BIN.new" "$DREAMER_BIN"
     echo "    built $DREAMER_BIN"
   else

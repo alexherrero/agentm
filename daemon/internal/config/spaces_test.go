@@ -332,3 +332,26 @@ func TestThePeopleEmailEvidenceSwitchShipsOffAndIsShown(t *testing.T) {
 		t.Error("daemon.people_email_evidence_enabled: true did not turn the switch on")
 	}
 }
+
+// `agentmd status` compares the running daemon's build with the clone the
+// install runs from (#819). The installer writes it as a nested object.
+func TestSourceCloneIsReadFromTheNestedObject(t *testing.T) {
+	vault := vaultWithContract(t)
+	cfg, err := loadWith(t, vault, map[string]any{
+		"source_clones": map[string]any{"agentm": " /src/agentm "},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SourceClone != "/src/agentm" {
+		t.Errorf("SourceClone = %q, want /src/agentm", cfg.SourceClone)
+	}
+
+	cfg, err = loadWith(t, vault, map[string]any{"source_clones": map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SourceClone != "" {
+		t.Errorf("a release install has no clone, got %q", cfg.SourceClone)
+	}
+}

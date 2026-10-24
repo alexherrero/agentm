@@ -45,11 +45,15 @@ if [[ -n "$(git -C "$REPO" status --porcelain -- daemon 2>/dev/null)" ]]; then
   echo "    note: daemon/ has uncommitted changes; they are in this build" >&2
 fi
 
+# The checkout's own commit, stamped in. Go's stamp names the enclosing clone
+# for a worktree build; this one names the tree actually compiled.
+ldflags="$("$REPO/scripts/daemon-ldflags.sh" "$REPO")"
+
 mkdir -p "$BIN_DIR"
 swapped_daemon=0
 for name in "${names[@]}"; do
   live="$BIN_DIR/$name"
-  if ( cd "$REPO/daemon" && CGO_ENABLED=0 go build -o "$live.new" "./cmd/$name" ); then
+  if ( cd "$REPO/daemon" && CGO_ENABLED=0 go build -ldflags "$ldflags" -o "$live.new" "./cmd/$name" ); then
     mv -f "$live.new" "$live"
     echo "    swapped $live"
     [[ "$name" == agentmd ]] && swapped_daemon=1
