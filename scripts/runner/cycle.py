@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -56,12 +57,15 @@ class CycleReport:
     # every job that did load still ran (filing-v2 remainders task 1).
     refused: list = field(default_factory=list)
     loaded: int = 0
+    # How the primary clone stood against the local origin/main when the cycle
+    # started (`clone_drift.Drift.as_dict()`), or None when no clone was named.
+    clone: Optional[dict] = None
 
 
 def report_summary(report: "CycleReport", *, now: Optional[float] = None) -> dict:
     """The cycle as one JSON object: printed by the CLI and left at
     `state.cycle_summary_path()` for the session brief and the doctor."""
-    return {
+    out = {
         "at": now if now is not None else time.time(),
         "loaded": report.loaded,
         "refused": list(report.refused),
@@ -75,6 +79,32 @@ def report_summary(report: "CycleReport", *, now: Optional[float] = None) -> dic
             for o in report.outcomes
         ],
     }
+    if report.clone is not None:
+        out["clone"] = report.clone
+    return out
+
+
+def read_clone(repo: Optional[Path]) -> Optional[dict]:
+    """How the clone at `repo` stands against its local origin/main (#815), or
+    None when no clone is named.
+
+    The operator's ruling of 2026-10-23: a cycle that starts from a clone
+    behind main runs its jobs anyway and says so, in this record, the job
+    records, `agentmd status`, the doctor and the morning note. Local only:
+    the last fetch's origin/main, never a fetch, so a session working
+    mid-branch is never blocked or moved. A reading that fails is recorded as
+    an error and blocks nothing either.
+    """
+    if repo is None:
+        return None
+    skill = Path(__file__).resolve().parents[2] / "harness" / "skills" / "memory" / "scripts"
+    if str(skill) not in sys.path:
+        sys.path.insert(0, str(skill))
+    try:
+        import clone_drift  # noqa: PLC0415  (the memory skill's module)
+        return clone_drift.read(Path(repo)).as_dict()
+    except Exception as exc:  # a reading must never stop the cycle
+        return {"error": f"could not read the clone: {exc}"}
 
 
 def _write_cycle_summary(state_root: Optional[Path], report: "CycleReport", now: float) -> None:
@@ -331,7 +361,8 @@ def _parse_reported_cost(stdout: str) -> float:
 
 
 def _emit_report(report_path: Optional[Path], job: manifest_mod.JobManifest,
-                  outcome: JobOutcome, *, rendered_command: Optional[str] = None) -> None:
+                  outcome: JobOutcome, *, rendered_command: Optional[str] = None,
+                  clone_behind: Optional[int] = None) -> None:
     """Append one JSONL line — the digest (reporting capability) is a
     forward reference, not built yet; this is the interim report surface a
     future digest can consume wholesale rather than re-deriving."""
@@ -347,6 +378,9 @@ def _emit_report(report_path: Optional[Path], job: manifest_mod.JobManifest,
         "rendered_command": rendered_command,
         "ts": time.time(),
     }
+    if clone_behind is not None:
+        # The job ran from a clone missing this many merged commits (#815).
+        record["clone_behind"] = clone_behind
     line = json.dumps(record) + "\n"
     report_path = Path(report_path)
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -387,7 +421,7 @@ def _child_env() -> dict:
 
 
 def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[Path],
-             report_path: Optional[Path]) -> JobOutcome:
+             report_path: Optional[Path], clone_behind: Optional[int] = None) -> JobOutcome:
     if job.tier not in manifest_mod.VALID_TIERS:  # structurally unreachable post-load-validation
         raise manifest_mod.ManifestError(f"{job.name}: tier {job.tier!r} is not job-writable")
 
@@ -396,7 +430,8 @@ def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[
         # nothing else — the operator promotes it by flipping `dry_run: false`
         # in the manifest.
         outcome = JobOutcome(name=job.name, ran=False, dry_run=True)
-        _emit_report(report_path, job, outcome, rendered_command=job.command)
+        _emit_report(report_path, job, outcome, rendered_command=job.command,
+                     clone_behind=clone_behind)
         return outcome
 
     state_mod.mark_start(job.name, now=now, state_root=state_root)
@@ -413,7 +448,7 @@ def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[
     state_mod.mark_done(job.name, now=now, cost_usd=cost, state_root=state_root)
     watchdog_mod.record_outcome(job.name, succeeded=(exit_code == 0), now=now, state_root=state_root)
     outcome = JobOutcome(name=job.name, ran=True, exit_code=exit_code, cost_usd=cost)
-    _emit_report(report_path, job, outcome)
+    _emit_report(report_path, job, outcome, clone_behind=clone_behind)
     return outcome
 
 
@@ -425,14 +460,19 @@ def run_cycle(
     report_path: Optional[Path] = None,
     harness_dir: Optional[Path] = None,
     strict: bool = False,
+    clone_repo: Optional[Path] = None,
 ) -> CycleReport:
     """One idempotent cycle: read manifests, run what's due, advance state,
     return a report. A single job's failure never aborts the cycle — its
     exit code is captured in its own outcome, not propagated. Neither does a
     manifest the loader refuses: it lands on the report's `refused` list and
     the jobs that loaded still run (`strict=True` restores the old all-or-
-    nothing load, raising on the first bad file)."""
+    nothing load, raising on the first bad file). `clone_repo` names the clone
+    the jobs run from; its standing against origin/main is read once, here at
+    the start, and recorded without holding any job back (#815)."""
     now = now if now is not None else time.time()
+    clone = read_clone(clone_repo)
+    behind = clone.get("behind") if clone else None
     if strict:
         jobs = manifest_mod.load_manifests(jobs_dir)
         refused: list = []
@@ -443,7 +483,7 @@ def run_cycle(
     ceiling = _read_daily_ceiling(harness_dir)
     spend = _spend_so_far(state_root, now)
 
-    report = CycleReport(refused=refused, loaded=len(jobs))
+    report = CycleReport(refused=refused, loaded=len(jobs), clone=clone)
     # `order` first, name second: the loader's filename order is what a job
     # without an `order` keeps, and the night's steps run in the order they
     # declare.
@@ -487,7 +527,8 @@ def run_cycle(
                 report.budget_ceiling_hit = True
                 report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason="budget-repeat"))
                 continue
-        outcome = _run_one(job, now=now, state_root=state_root, report_path=report_path)
+        outcome = _run_one(job, now=now, state_root=state_root, report_path=report_path,
+                           clone_behind=behind)
         spend += outcome.cost_usd
         report.outcomes.append(outcome)
     _write_cycle_summary(state_root, report, now)

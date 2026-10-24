@@ -50,7 +50,8 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-import corpus_scorecard  # noqa: E402  (same skill dir)
+import clone_drift  # noqa: E402  (same skill dir)
+import corpus_scorecard  # noqa: E402
 import engine_state  # noqa: E402
 import lifecycle_transitions  # noqa: E402
 import needs_review  # noqa: E402
@@ -323,6 +324,7 @@ class Night:
     scorecard: str = ""
     sessions: Optional[tuple] = None
     worktrees: list = field(default_factory=list)  # signs of a git worktree in the vault
+    clone: Optional[dict] = None    # the primary clone against origin/main (#815)
     writes: Optional[dict] = None   # the write meter over the last 24 hours
     writes_missing: str = ""
 
@@ -382,7 +384,8 @@ def _coverage(ask: Ask, populations: Optional[dict], pause: float) -> tuple:
 
 
 def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
-           rollup: Path, out_dir: Path, ask: Ask, pause: float = COVERAGE_REREAD_PAUSE) -> Night:
+           rollup: Path, out_dir: Path, ask: Ask, pause: float = COVERAGE_REREAD_PAUSE,
+           clone_repo: Optional[Path] = None) -> Night:
     start = night_start(now)
     night = Night(now=now, start=start)
 
@@ -452,6 +455,15 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
             vault_worktrees.inspect(vault_worktrees.vault_root_of(vault)))
     except Exception:  # a check that will not run costs the note one line
         night.worktrees = []
+
+    # The clone every scheduled job ran from, against the origin/main its last
+    # fetch left (#815). The jobs ran anyway, by the operator's ruling; this
+    # is where the morning hears they ran old code.
+    if clone_repo is not None:
+        try:
+            night.clone = clone_drift.read(Path(clone_repo)).as_dict()
+        except Exception:  # a check that will not run costs the note one line
+            night.clone = None
 
     night.populations = corpus_scorecard.class_populations(vault)
     read_writes(night, vault)
@@ -684,6 +696,10 @@ def what_ran(night: Night) -> list:
 
 def needs_you(night: Night) -> list:
     lines = []
+    behind = clone_drift.sentence(clone_drift.Drift(**night.clone)) if night.clone else None
+    if behind:
+        lines.append(f"- **{behind[0].upper() + behind[1:]}.** Every scheduled job ran that "
+                     "older code; the doctor's `install-head` row has the detail.")
     if night.worktrees:
         lines.append(f"- **A git worktree is in the vault** ({len(night.worktrees)}): "
                      + "; ".join(night.worktrees[:FIRST])
@@ -970,7 +986,7 @@ def render(night: Night, *, vault: Path) -> tuple:
 
 def build(vault: Path, *, now: Optional[float] = None, rel: Path = None,
           engine_dir: Path = None, runner_dir: Path = None, rollup: Path = None,
-          ask: Ask = None) -> tuple:
+          ask: Ask = None, clone_repo: Optional[Path] = None) -> tuple:
     """Gather, render and write the dated note and its mirror. Returns
     (dated, stable, headline)."""
     vault = Path(vault)
@@ -982,7 +998,7 @@ def build(vault: Path, *, now: Optional[float] = None, rel: Path = None,
         engine_dir=Path(engine_dir) if engine_dir is not None else engine_state.engine_state_dir(),
         runner_dir=Path(runner_dir) if runner_dir is not None else default_runner_state(),
         rollup=Path(rollup) if rollup is not None else DEFAULT_ROLLUP,
-        out_dir=out_dir, ask=ask or corpus_scorecard._agentmd)
+        out_dir=out_dir, ask=ask or corpus_scorecard._agentmd, clone_repo=clone_repo)
     text, head = render(night, vault=vault)
     dated = out_dir / f"{datetime.fromtimestamp(now).strftime('%Y-%m-%d')}.md"
     stable = out_dir / STABLE_NAME
@@ -1005,7 +1021,9 @@ def main(argv: list = None) -> int:
     # Always the memory root's diagnostics/morning: the session brief and the
     # email read that path without asking the daemon, so the note is written
     # where they look rather than wherever a configured space would put it.
-    dated, stable, head = build(Path(vault))
+    # harness/skills/memory/scripts/ -> the clone this note, and every job the
+    # runner starts, runs from. resolve() follows the installed skill's symlink.
+    dated, stable, head = build(Path(vault), clone_repo=Path(__file__).resolve().parents[4])
     print(f"morning-note: wrote {dated} and {stable.name} — {head}")
     return 0
 
