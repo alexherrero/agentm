@@ -25,7 +25,7 @@ Look up the exact details of the AgentM harness — the install flags, config sc
 | Page | What it covers |
 |---|---|
 | [AgentMemory context payload](AgentMemory-Context-Payload) | The paste-anywhere memory payload, and what's in it. |
-| [Vault lint checks](Vault-Lint-Checks) | The read-only checks the vault audit runs, and what each one looks for. |
+| [Vault lint checks](Vault-Lint-Checks) | The read-only checks the vault audit runs, and what each one looks for. It also covers the orphan census, a read-only count of the notes with no links in or out. |
 | [Note relatedness signals](Note-Relatedness-Signals) | The signals used to suggest links between notes. |
 | [Vault write protocol](Vault-Write-Protocol) | How the vault stays safe when more than one session writes at once, and the habits that help. |
 | [Process seam](Process-Seam) | The small read-only interface another process uses to reach memory, instead of calling the engine directly. |
