@@ -42,6 +42,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 import drive_artifacts  # noqa: E402  (same skill dir)
 import engine_state  # noqa: E402  (same skill dir)
+import stem_links  # noqa: E402  (same skill dir)
 
 from filing_engine import _frontmatter  # noqa: E402  (same skill dir)
 
@@ -210,11 +211,16 @@ _SECTION_TITLES = {
 }
 
 
-def _link(rel: str) -> str:
-    return f"[[{Path(str(rel)).stem}]]"
+def _link(rel: str, links=None, label: "str | None" = None) -> str:
+    """A note's link: by its bare name when `links` (a `stem_links.StemIndex`)
+    finds the name unique in the vault, else by its path (task 193 LD-4). With
+    no index every link is the bare name, as before the rule."""
+    if links is not None:
+        return links.link(rel, label)
+    return f"[[{label or Path(str(rel)).stem}]]"
 
 
-def _proposal_lines(proposals: dict) -> list:
+def _proposal_lines(proposals: dict, links=None) -> list:
     """The three dream sections. Each line names what to do, because the page
     is where the decision gets made."""
     lines = []
@@ -224,15 +230,15 @@ def _proposal_lines(proposals: dict) -> list:
         for t in twins:
             sim = t.get("similarity")
             alike = f"{sim:.0%} alike" if isinstance(sim, (int, float)) else "alike"
-            lines.append(f"- {_link(t.get('a', ''))} and {_link(t.get('b', ''))} — {alike} · "
+            lines.append(f"- {_link(t.get('a', ''), links)} and {_link(t.get('b', ''), links)} — {alike} · "
                          "merge by hand, or write `superseded_by` on the one that should go")
         lines.append("")
     same = proposals.get("same_key") or []
     if same:
         lines += [f"## Shared keys, different bodies ({len(same)})", ""]
         for c in same:
-            links = ", ".join(_link(p) for p in c.get("paths") or [])
-            lines.append(f"- key `{c.get('slug', '?')}`: {links} — two notes claiming to be one "
+            named = ", ".join(_link(p, links) for p in c.get("paths") or [])
+            lines.append(f"- key `{c.get('slug', '?')}`: {named} — two notes claiming to be one "
                          "memory and saying different things")
         lines.append("")
     restated_pairs = proposals.get("restated") or []
@@ -243,7 +249,7 @@ def _proposal_lines(proposals: dict) -> list:
             alike = f"{sim:.0%} alike" if isinstance(sim, (int, float)) else "alike"
             verdict = r.get("verdict") or "unjudged"
             why = f": {r['reason']}" if r.get("reason") else ""
-            lines.append(f"- {_link(r.get('a', ''))} and {_link(r.get('b', ''))} — {alike} · the judge: "
+            lines.append(f"- {_link(r.get('a', ''), links)} and {_link(r.get('b', ''), links)} — {alike} · the judge: "
                          f"{verdict}{why} · merge by hand, or write `superseded_by`, if they are one rule")
         lines.append("")
     facets = proposals.get("facets") or []
@@ -258,7 +264,7 @@ def _proposal_lines(proposals: dict) -> list:
 
 
 def render(entries: list, *, created: str, today: str, proposals: "dict | None" = None,
-           forward: "dict | None" = None) -> str:
+           forward: "dict | None" = None, links=None) -> str:
     proposals = proposals or {}
     lines = [
         "---",
@@ -282,14 +288,14 @@ def render(entries: list, *, created: str, today: str, proposals: "dict | None" 
         "regenerates without it.",
         "",
     ]
-    dream_lines = _proposal_lines(proposals)
+    dream_lines = _proposal_lines(proposals, links)
     for reason in REASON_ORDER:
         group = [e for e in entries if e.primary == reason]
         if not group:
             continue
         lines += [f"## {_SECTION_TITLES[reason]} ({len(group)})", ""]
         for e in group:
-            lines.append(f"- [[{e.slug}]] — {e.title} · {e.phrase()}")
+            lines.append(f"- {_link(e.rel, links, e.slug)} — {e.title} · {e.phrase()}")
         lines.append("")
     if dream_lines:
         at = proposals.get("at")
@@ -408,7 +414,8 @@ def write(vault: "Path | str", *, today: "str | None" = None,
     target.parent.mkdir(parents=True, exist_ok=True)
     text = render(collect(vault), created=created, today=today,
                   proposals=read_proposals() if proposals is None else proposals,
-                  forward=read_forward() if forward is None else forward)
+                  forward=read_forward() if forward is None else forward,
+                  links=stem_links.StemIndex.for_memory_root(vault))
     current = target.read_text(encoding="utf-8") if target.exists() else None
     if current is None or (current != text and _without_calendar(current) != _without_calendar(text)):
         target.write_text(text, encoding="utf-8")

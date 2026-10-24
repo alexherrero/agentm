@@ -72,6 +72,9 @@ type Member struct {
 	Title  string
 	Phrase string
 	Anchor string // YYYY-MM-DD, captured else created; "" when neither
+	// Link is the member's wikilink under the unique-stem rule (task 193
+	// LD-4), set by PlanMocs; empty renders `[[Slug]]`.
+	Link string
 }
 
 // MocPage is one generated page. Sections is how many in-page sections a
@@ -197,7 +200,11 @@ func mocPlural(n int, one, many string) string {
 }
 
 func mocMemberLine(m Member) string {
-	line := fmt.Sprintf("- [[%s]] — %s", m.Slug, m.Title)
+	link := m.Link
+	if link == "" {
+		link = "[[" + m.Slug + "]]"
+	}
+	line := fmt.Sprintf("- %s — %s", link, m.Title)
 	if m.Phrase != "" {
 		line += " · " + m.Phrase
 	}
@@ -251,8 +258,11 @@ func RenderMoc(t string, members []Member, created, newest string, stale bool, s
 
 // RenderMemoryMap renders `moc-memory.md` over every type, in sorted order: a
 // type at or past the floor by its page's link, a type below it with its
-// notes listed in full.
-func RenderMemoryMap(types []string, byType map[string][]Member, minMembers int, created, updated string) string {
+// notes listed in full. `typeLinks` is each type page's link (a type missing
+// from it is `[[type]]`), and `classes` is the lines linking each class's
+// `_index.md`, listed under Classes when there are any.
+func RenderMemoryMap(types []string, byType map[string][]Member, typeLinks map[string]string, classes []string,
+	minMembers int, created, updated string) string {
 	if created == "" {
 		created = updated
 	}
@@ -267,12 +277,22 @@ func RenderMemoryMap(types []string, byType map[string][]Member, minMembers int,
 	lines = append(lines,
 		fmt.Sprintf("%d %s across %d %s, counted from the notes' own frontmatter. A type with at least %d notes has its own map; a smaller one is listed here in full. Generated; not edited by hand.",
 			total, mocPlural(total, "note", "notes"), len(types), mocPlural(len(types), "type", "types"), minMembers),
-		"", "## Types", "")
+		"")
+	if len(classes) > 0 {
+		lines = append(lines, "## Classes", "")
+		lines = append(lines, classes...)
+		lines = append(lines, "")
+	}
+	lines = append(lines, "## Types", "")
 	var below []string
 	for _, t := range types {
 		n := len(byType[t])
 		if n >= minMembers {
-			lines = append(lines, fmt.Sprintf("- [[%s]] — %d %s", t, n, mocPlural(n, "note", "notes")))
+			link := typeLinks[t]
+			if link == "" {
+				link = "[[" + t + "]]"
+			}
+			lines = append(lines, fmt.Sprintf("- %s — %d %s", link, n, mocPlural(n, "note", "notes")))
 			continue
 		}
 		below = append(below, t)
@@ -302,6 +322,34 @@ func PlanMocs(root string, r *rules.Rules, now time.Time) (MocsPlan, error) {
 		types = append(types, t)
 	}
 	sort.Strings(types)
+	// Every link these pages write follows the unique-stem rule (task 193
+	// LD-4): a name another note in the vault shares is linked by its path.
+	vault := vaultRootOf(root)
+	stems := NewStemIndex(vault)
+	vaultRel := func(memRel string) string {
+		return projVaultRel(vault, filepath.Join(root, filepath.FromSlash(memRel)))
+	}
+	for _, t := range types {
+		if len(byType[t]) >= minMembers {
+			stems.Plan(vaultRel(MocRel(t)))
+		}
+	}
+	typeLinks := map[string]string{}
+	for _, t := range types {
+		typeLinks[t] = stems.Link(vaultRel(MocRel(t)), t)
+		for i := range byType[t] {
+			byType[t][i].Link = stems.Link(vaultRel(byType[t][i].Rel), byType[t][i].Slug)
+		}
+	}
+	// Each class's `_index.md` is a directory index no member list holds, so
+	// the memory map links it (task 193 step 3); they share one name, so by path.
+	var classes []string
+	for _, class := range classDirs {
+		rel := "memory/" + class + "/_index.md"
+		if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil && !st.IsDir() {
+			classes = append(classes, "- "+stems.Link(vaultRel(rel), class))
+		}
+	}
 	today := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	newestAll, total := "", 0
 	for _, t := range types {
@@ -378,7 +426,7 @@ func PlanMocs(root string, r *rules.Rules, now time.Time) (MocsPlan, error) {
 	}
 	rel := MocRel(MocMemorySlug)
 	before, created := mocCurrentPage(root, rel)
-	text := RenderMemoryMap(types, byType, minMembers, created, newestAll)
+	text := RenderMemoryMap(types, byType, typeLinks, classes, minMembers, created, newestAll)
 	plan.add(MocPage{Rel: rel, Members: total, Newest: newestAll}, before, text, "the memory map regenerated")
 	return plan, nil
 }

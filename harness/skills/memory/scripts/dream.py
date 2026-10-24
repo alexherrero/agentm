@@ -425,12 +425,17 @@ def _stage_dedup(entries: list, loaded: dict, vault_path: Path) -> list:
 
 def _stage_contradiction_triage(entries: list, loaded: dict, vault_path: Path) -> list:
     """Notes that share a key and differ in body: two notes claiming to be the
-    same memory and saying different things."""
+    same memory and saying different things. A class's `_index.md` is a
+    directory index (`kind: dir-index`), and every class keeps one under the
+    slug `_index`; they are five pages about five folders, not one memory
+    (task 193 LD-4)."""
     by_slug: dict = {}
     for p in entries:
         fm, _, _ = loaded[p]
         slug = fm.get("slug")
         if not slug or not _is_live(fm):
+            continue
+        if str(fm.get("kind") or "").strip().strip("'\"") == "dir-index":
             continue
         by_slug.setdefault(slug, []).append(p)
 
