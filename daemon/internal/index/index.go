@@ -853,6 +853,39 @@ func (x *Index) AwaitingJudgment() (map[string]bool, error) {
 	return out, rows.Err()
 }
 
+// Awaiting is one note awaiting a first judgment, with its capture date.
+type Awaiting struct {
+	Rel      string
+	Captured time.Time
+}
+
+// AwaitingList is every note AwaitingJudgment names, with its capture date:
+// the population the queue-age alert reads before the refusal record takes
+// out the cards the night cannot judge (#793).
+func (x *Index) AwaitingList() ([]Awaiting, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	rows, err := x.db.Query(`SELECT path, captured FROM docmeta
+		  WHERE status IN (`+unfiledPlaceholders+`)`+awaitingJudgment, unfiledArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("listing notes awaiting a judgment: %w", err)
+	}
+	defer rows.Close()
+	var out []Awaiting
+	for rows.Next() {
+		var a Awaiting
+		var captured sql.NullString
+		if err := rows.Scan(&a.Rel, &captured); err != nil {
+			return nil, err
+		}
+		if captured.Valid {
+			a.Captured, _ = parseCaptured(captured.String)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // CapturedSince counts the documents under `prefix` captured at or after
 // `since` — the volume gate's reading of the day so far (filing v2, task 4).
 // The index rather than a counter, so a daemon restart forgets nothing and

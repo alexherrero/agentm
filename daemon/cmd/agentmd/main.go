@@ -343,6 +343,13 @@ func cmdServe(args []string) error {
 		if q, err := idx.UnfiledSince(baseline); err == nil {
 			in.UnfiledSince, in.OldestUnfiledSince = q.Count, q.Oldest
 		}
+		if in.Unfiled > 0 {
+			if q, ok := splitRefused(cfg, idx, baseline); ok {
+				in.Unfiled, in.OldestUnfiled = q.Unfiled, q.Oldest
+				in.UnfiledSince, in.OldestUnfiledSince = q.Since, q.OldestSince
+				in.Refused, in.OldestRefused = q.Refused, q.OldestRefused
+			}
+		}
 		if st, ok := prober.Load(); ok {
 			in.Probe, in.ProbeAt = probe.AsHealth(st, true)
 		}
