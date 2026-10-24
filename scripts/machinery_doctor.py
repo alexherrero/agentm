@@ -1447,6 +1447,54 @@ def check_daemon_commits(*, binary: "Path | None" = None, status: "dict | None" 
     return Check(name, "OK", "the daemon's last commit cycle succeeded (0 failures in a row)")
 
 
+def check_backup_push(*, binary: "Path | None" = None, status: "dict | None" = None) -> Check:
+    """How long ago the vault backup last pushed, and whether it is behind.
+
+    The backup is `vault-backup-push`, run every four hours by the
+    `com.agentm.vault-backup` launchd job, fast-forwarding the vault's git
+    remote on the NAS. With one live backup leg a dead push is zero redundancy,
+    and a stale remote looks just like a current one (#818). The daemon reads
+    the push from the vault repository itself, the remote-tracking ref the
+    push moves and that ref's reflog, and reports it as `health.backup`. This
+    row says what the daemon says: FAIL once a commit has waited past two of
+    the job's runs, OK otherwise, with the last push's age either way.
+
+    Reported, never repaired. The job's own log says why a push failed.
+    """
+    name = "backup-push"
+    if status is None:
+        path = _daemon_binary(binary)
+        if path is None:
+            return Check(name, "UNVERIFIED", "no `agentmd` on PATH or at ~/.local/bin — nothing to ask")
+        status = _daemon_status(path)
+    if status is None:
+        return Check(name, "UNVERIFIED",
+                     "`agentmd status --json` did not answer — the daemon may be down, "
+                     "which the liveness rows own")
+    block = (status.get("health") or {}).get("backup")
+    if not isinstance(block, dict) or "state" not in block:
+        return Check(name, "UNVERIFIED",
+                     "the running daemon does not report the backup — it predates the "
+                     "last-push row (task 194); rebuild and restart it")
+    state = block.get("state")
+    remote = block.get("remote") or "the backup remote"
+    last = (f"last push {block['last_push_age']} ago" if block.get("last_push_at")
+            else "no push recorded")
+    pending = block.get("pending") or 0
+    waiting = (f"{pending} commit(s) waiting, the oldest {block.get('oldest_pending_age')}"
+               if pending else "nothing waiting")
+    if state == "none":
+        return Check(name, "UNVERIFIED", "the vault repository has no backup remote configured")
+    if state == "unknown":
+        return Check(name, "UNVERIFIED",
+                     f"{remote}: {last}; the repository could not be read: {block.get('detail') or 'no detail'}")
+    if state == "stale":
+        return Check(name, "FAIL",
+                     f"{remote}: {last}, {waiting} — past two of the push job's four-hourly "
+                     "runs; the job's log says why")
+    return Check(name, "OK", f"{remote}: {last}, {waiting}")
+
+
 # ── composition ───────────────────────────────────────────────────────────
 def run_inventory(
     repo: Optional[Path] = None, *, state_root: Optional[Path] = None,
@@ -1468,6 +1516,7 @@ def run_inventory(
     checks.append(check_install_head(repo))
     checks.append(check_install_binary(repo))
     checks.append(check_daemon_commits())
+    checks.append(check_backup_push())
     checks.append(check_runner_cycle(state_root=state_root))
     for job_name in job_names(repo):
         checks.append(check_runner_job(repo, job_name, state_root=state_root))

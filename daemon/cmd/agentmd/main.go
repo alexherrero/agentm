@@ -352,6 +352,12 @@ func cmdServe(args []string) error {
 		in.CommitFailures, in.FirstCommitFailure, in.LastCommitError =
 			stall.Failures, stall.FirstAt, stall.LastError
 		in.VaultWorktrees = repo.WorktreeSigns()
+		bk := repo.Backup(cfg.BackupRemote)
+		in.Backup = health.BackupInput{
+			Remote: bk.Remote, Configured: bk.Configured, Tracked: bk.Tracked,
+			LastPush: bk.LastPush, Pending: bk.Pending, OldestPending: bk.OldestPending,
+			Err: bk.Err,
+		}
 		return health.Evaluate(in)
 	}
 

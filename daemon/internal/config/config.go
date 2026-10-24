@@ -288,6 +288,12 @@ type Config struct {
 	// than paying a model load per query.
 	RerankerURL string
 
+	// BackupRemote is the vault repository's backup remote, the one the
+	// four-hourly `vault-backup-push` job pushes to (`daemon.backup_remote`,
+	// default `gitea`, the job's own default). Status reads its last push and
+	// what it lacks; a vault with no such remote reports no backup.
+	BackupRemote string
+
 	// SourceClone is the agentm clone the install runs from
 	// (`source_clones.agentm`), empty for a release install. `agentmd status`
 	// compares the running daemon's build commit with its HEAD.
@@ -849,6 +855,11 @@ func Load(opts Options) (*Config, error) {
 		From:    strings.TrimSpace(strVal(raw, "plugins.autonomy.email_from")),
 	}
 
+	c.BackupRemote = DefaultBackupRemote
+	if v := strings.TrimSpace(strVal(raw, "daemon.backup_remote")); v != "" {
+		c.BackupRemote = v
+	}
+
 	// A nested object, unlike the dotted keys above: the installer writes it.
 	if clones, ok := raw["source_clones"].(map[string]any); ok {
 		if v, ok := clones["agentm"].(string); ok && strings.TrimSpace(v) != "" {
@@ -944,6 +955,9 @@ func (c *Config) IsPhonePath(rel string) bool {
 	}
 	return false
 }
+
+// DefaultBackupRemote is the backup push job's own default remote.
+const DefaultBackupRemote = "gitea"
 
 // DefaultConfigPath is the kernel config the installer writes.
 func DefaultConfigPath() string {

@@ -33,8 +33,16 @@ func thresholds(cfg *config.Config) health.Thresholds {
 		// tick, and half an hour is long enough to outlast any CLI command
 		// holding index.lock and short enough to page well inside the hour.
 		CommitStalled: 30 * time.Minute,
+		// Not configured either: two runs of the backup push job, which launchd
+		// starts every four hours. One missed run is a machine asleep at the
+		// mark; two is a job that has stopped.
+		BackupStale: 2 * backupEvery,
 	}
 }
+
+// backupEvery is the backup push job's schedule (`StartInterval` 14400 in
+// com.agentm.vault-backup.plist).
+const backupEvery = 4 * time.Hour
 
 // watchHealth is the loud half of the loud queue.
 //
@@ -187,6 +195,9 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 		b.WriteString("           `agentmd rules --init <vault>/standards/storage-rules.md` " +
 			"makes it yours to edit\n")
 	}
+
+	fmt.Fprintf(&b, "  backup   %-44s (red past %s)\n",
+		rep.Backup, health.Duration(rep.Thresholds.BackupStale))
 
 	fmt.Fprintf(&b, "  probe    %s\n", describeProbe(rep))
 
