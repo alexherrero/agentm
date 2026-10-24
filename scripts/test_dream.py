@@ -240,6 +240,17 @@ class ContradictionTriageTests(_DreamTestBase):
         self.assertEqual(contra[0].kind, "same-key")
         self.assertEqual(contra[0].detail["slug"], "x")
 
+    def test_class_directory_indexes_are_not_a_contradiction(self) -> None:
+        # Every class keeps an `_index.md` under the slug `_index`: five pages
+        # about five folders, not one memory (task 193 LD-4).
+        self._write("memory/semantic/_index.md", "---\ntitle: semantic\nkind: dir-index\nslug: _index\n---\n# semantic\n")
+        self._write("memory/procedural/_index.md", "---\ntitle: procedural\nkind: dir-index\nslug: _index\n---\n# procedural\n")
+        self._write("a.md", "---\nslug: x\n---\nOption A.\n")
+        self._write("b.md", "---\nslug: x\n---\nOption B.\n")
+        digest = dream.run_dream(self.vault, run_id="run-dir-index")
+        slugs = [p.detail["slug"] for p in digest.proposals if p.kind == "same-key"]
+        self.assertEqual(slugs, ["x"])
+
     def test_same_slug_identical_body_is_not_a_contradiction(self) -> None:
         self._write("a.md", "---\nslug: x\n---\nSame content.\n")
         self._write("b.md", "---\nslug: x\n---\nSame content.\n")

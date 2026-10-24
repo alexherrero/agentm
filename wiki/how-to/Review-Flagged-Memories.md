@@ -48,7 +48,7 @@
 5. **Work the dream cycle's sections.** The nightly `dream.py` run found these pairs and labels. It merges, supersedes and registers nothing itself:
 
    - **Possible twins** are two notes whose bodies are at least 92% alike. Merge them by hand, or supersede the one that should go with `lifecycle: superseded` and `superseded_by:`, as in step 2.
-   - **Shared keys, different bodies** are notes that carry the same `slug:` and say different things. Decide which one is current and supersede the other.
+   - **Shared keys, different bodies** are notes that carry the same `slug:` and say different things. Decide which one is current and supersede the other. The class `_index.md` pages are directory indexes and never appear here. When a note's file name is shared with another note, its link on the page shows the name but points by path, so it opens the right one.
    - **Proposed facets** are diary labels that recurred on three or more days in the last thirty. If one is a facet, register it under `facets:` in `standards/storage-rules.md`. If it isn't, leave it.
 
 6. **Re-run step 1 to confirm the count dropped.** A note entry clears when you re-judge the note it points at:

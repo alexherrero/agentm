@@ -240,6 +240,20 @@ class TheDreamSections(_Vault):
         self.assertIn("- [[port-a]] and [[port-b]] — 94% alike · merge by hand", text)
         self.assertIn("## Shared keys, different bodies (1)", text)
         self.assertIn("- key `editor`: [[editor]], [[editor]]", text)
+
+    def test_a_name_two_notes_share_is_linked_by_path(self):
+        # Task 193 LD-4: Obsidian resolves a bare `[[editor]]` across the
+        # vault, so with both notes on disk each is named by its path; a
+        # unique name stays bare.
+        for rel in ("memory/semantic/editor.md", "memory/procedural/editor.md",
+                    "memory/semantic/port-a.md", "memory/semantic/port-b.md"):
+            (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / rel).write_text("---\ntype: preference\n---\nBody.\n", encoding="utf-8")
+        self._cycle_writes(self._proposals())
+        text = needs_review.write(self.root, today="2026-09-10").read_text(encoding="utf-8")
+        self.assertIn("- key `editor`: [[memory/semantic/editor|editor]], "
+                      "[[memory/procedural/editor|editor]] — two notes", text)
+        self.assertIn("- [[port-a]] and [[port-b]] — 94% alike", text)
         self.assertIn("## Proposed facets (1)", text)
         self.assertIn("- `garden` on 3 days (2026-09-01 … 2026-09-08)", text)
         self.assertIn("from the dream cycle of 2026-09-10", text)
