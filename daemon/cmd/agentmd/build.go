@@ -68,6 +68,24 @@ func buildinfoShort(sha string) string {
 	return buildinfo.Info{Commit: sha}.Short()
 }
 
+// describeMain is the clone line in `agentmd status` (#815): how the primary
+// clone, which every hook, skill and scheduled job runs from, stands against
+// the origin/main its last fetch left. Behind is loud; a branch or commits
+// ahead are said and are not an error, because a session working mid-branch
+// is ordinary. Nothing here fetches.
+func describeMain(m buildinfo.Main) string {
+	switch {
+	case m.Sentence() != "":
+		return "  clone    ! " + m.Sentence() + " — every hook, skill and scheduled job runs that older code\n"
+	case m.Err != "":
+		return "  clone    could not compare with origin/main: " + m.Err + "\n"
+	case m.Note() != "":
+		return "  clone    " + m.Note() + "\n"
+	default:
+		return "  clone    level with main\n"
+	}
+}
+
 // renderBuild indents describeBuild's lines into the status grid.
 func renderBuild(lines []string) string {
 	var b strings.Builder

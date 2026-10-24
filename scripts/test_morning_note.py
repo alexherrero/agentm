@@ -842,5 +842,37 @@ from engine_state_isolation import isolate_module  # noqa: E402
 isolate_module(globals())
 
 
+class TheCloneLine(_Night):
+    """The clone every scheduled job ran from, behind origin/main (#815). The
+    jobs ran anyway, by the operator's ruling; the morning is where it is heard."""
+
+    def _note(self, clone_repo):
+        dated, _, _ = mn.build(self.vault, now=NOW, engine_dir=self.engine,
+                               runner_dir=self.runner, rollup=self.rollup, ask=_ask_fine,
+                               clone_repo=clone_repo)
+        return dated.read_text(encoding="utf-8")
+
+    def test_behind_by_two_is_named_under_what_needs_you(self):
+        from test_clone_drift import clone_pair, commit, git
+        work, other = clone_pair(self.root)
+        commit(other, "b.md")
+        commit(other, "the fix.md")
+        git(other, "push", "-q", "origin", "main")
+        git(work, "fetch", "-q", "origin")
+        text = self._note(work)
+        self.assertIn("**The primary clone is 2 commits behind main; the newest it lacks is ", text)
+        self.assertIn('"the fix.md"', text)
+        needs = text.split("## What needs you", 1)[1]
+        self.assertIn("primary clone is 2 commits behind", needs)
+
+    def test_level_says_nothing(self):
+        from test_clone_drift import clone_pair
+        work, _ = clone_pair(self.root)
+        self.assertNotIn("primary clone", self._note(work))
+
+    def test_no_clone_named_says_nothing(self):
+        self.assertNotIn("primary clone", self._note(None))
+
+
 if __name__ == "__main__":
     unittest.main()

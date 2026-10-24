@@ -1207,9 +1207,14 @@ def check_install_head(repo: Optional[Path] = None) -> Check:
             rc_b, branch = _git_out(repo, "rev-parse", "--abbrev-ref", "HEAD")
             where = (f"`{branch}`" if rc_b == 0 and branch not in ("HEAD", "")
                      else "this checkout")
+            # The newest merged commit it lacks, named the way the runner's
+            # cycle record, `agentmd status` and the morning note name it (#815).
+            rc_m, newest = _git_out(repo, "log", "-1", "--format=%h %s", "HEAD..origin/main")
+            lacks = f"; the newest it lacks is {newest}" if rc_m == 0 and newest else ""
             notes.append(
-                f"{where} is missing {n} commit(s) that are on origin/main — "
-                "every hook, skill and scheduled job is running that older code")
+                f"the primary clone is {n} commit(s) behind main: {where} is missing {n} "
+                f"commit(s) that are on origin/main{lacks} — every hook, skill and "
+                "scheduled job is running that older code")
 
     rc_l, local_main = _git_out(repo, "rev-parse", "--verify", "refs/heads/main")
     if rc_l == 0 and rc_r == 0 and local_main != remote_main:

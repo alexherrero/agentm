@@ -16,6 +16,8 @@ from . import state as state_mod
 from . import watchdog as watchdog_mod
 
 _DEFAULT_JOBS_DIR = Path(".harness") / "jobs"
+# scripts/runner/cli.py -> the clone the runner, and every job it starts, runs from.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _default_report_path() -> Path:
@@ -35,6 +37,9 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--state-root", default=None,
                      help="per-job markers and the cycle summary "
                           "(default ~/.cache/agentm/runner, or $XDG_CACHE_HOME/agentm/runner)")
+    run.add_argument("--clone", default=str(_REPO_ROOT),
+                     help="the clone the jobs run from, compared with its local origin/main "
+                          "at the start of the cycle and recorded (default: this one)")
     run.add_argument("--strict", action="store_true",
                      help="the old all-or-nothing load: exit 3 on the first refused manifest, run nothing")
 
@@ -63,6 +68,7 @@ def main(argv=None) -> int:
                 report_path=Path(ns.report_path),
                 state_root=Path(ns.state_root) if ns.state_root else None,
                 strict=ns.strict,
+                clone_repo=Path(ns.clone) if ns.clone else None,
             )
         except manifest_mod.ManifestError as e:  # --strict only
             print(f"agentm-runner: {e}", file=sys.stderr)

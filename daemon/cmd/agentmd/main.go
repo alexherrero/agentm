@@ -872,6 +872,9 @@ func cmdStatus(args []string) error {
 		clone = &c
 	}
 	fmt.Print(renderBuild(describeBuild(payload.Build, buildinfo.Read(), clone)))
+	if cfg.SourceClone != "" {
+		fmt.Print(describeMain(buildinfo.CompareMain(cfg.SourceClone)))
+	}
 	fmt.Print(renderReport(payload.Health, cfg))
 	if payload.Health.Red() {
 		// Non-zero, so a shell script can ask "is it fine" without parsing the
