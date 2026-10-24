@@ -308,6 +308,14 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	}
 	mocs.Pages = append(mocs.Pages, spaceMaps.Pages...)
 	mocs.Intents = append(mocs.Intents, spaceMaps.Intents...)
+	// So does the diagnostics folder's, which the 2a migration only seeded
+	// (task 193 step 2).
+	diagMap, err := PlanDiagnosticsMap(root, now)
+	if err != nil {
+		return rep, err
+	}
+	mocs.Pages = append(mocs.Pages, diagMap.Pages...)
+	mocs.Intents = append(mocs.Intents, diagMap.Intents...)
 	planned := append([]string(nil), calendar.YearMaps...)
 	for _, p := range mocs.Pages {
 		planned = append(planned, p.Rel)
