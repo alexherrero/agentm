@@ -30,6 +30,8 @@ cd daemon && CGO_ENABLED=0 go build -o ~/.local/bin/agentmd ./cmd/agentmd
 
 To redeploy after a change under `daemon/`, run `scripts/deploy-daemon.sh` from the checkout you want to deploy. It builds both binaries beside the live ones and swaps them in. It then restarts the launchd job and waits for `/health`. Don't swap the binary with a hand-typed `mv`: `mv` is on the global ask list, so a hand swap stops for a permission prompt.
 
+Both `deploy-daemon.sh` and `install.sh` stamp each build with the checkout it came from, through `scripts/daemon-ldflags.sh`: the full commit, whether `daemon/` had uncommitted changes, and `git describe --tags` as the version. `agentmd version` and `agentmdream version` print it, and `/status` carries it as `build`. A plain `go build` falls back to Go's own `vcs.revision`. From a git worktree that names the enclosing clone's HEAD, not the worktree's, so the `stamp` field says which of the two you are reading (`build-script` or `go-vcs`).
+
 `CGO_ENABLED=0` is the point rather than a precaution: it produces a static binary with no system SQLite dependency, which is what lets the same source serve any machine on the home network. Cross-compile by setting `GOOS` and `GOARCH` — `GOOS=linux GOARCH=arm64` builds for a NAS from the laptop.
 
 ## Installing it for good
@@ -239,6 +241,7 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 | `daemon.unfiled_age_red` | `72h` | The oldest unfiled item's age that turns the queue red. |
 | `daemon.unfiled_count_red` | `1000` | Size backstop. Deliberately far above an ordinary day. |
 | `daemon.queue_baseline` | first run | Items captured before this are the inherited backlog. Recorded automatically if unset. |
+| `daemon.backup_remote` | `gitea` | The vault repository's backup remote, the one `vault-backup-push` pushes to. Status reads its last push and what it lacks; a vault with no such remote reports no backup and raises nothing (task 194, #818). |
 | `daemon.health_every` | `15m` | How often thresholds are evaluated and the probe runs if due. |
 | `daemon.probe_every` | `24h` | How often the self-probe runs. |
 | `daemon.probe_budget` | `10s` | How long one round trip may take before it counts as failed. |
@@ -283,19 +286,35 @@ Step 3 already moved the living documents that used to sit at a project root (`f
 
 Filing is asynchronous, so the queue is meant to be busy — what must never happen again is a queue that stops draining and says nothing. The previous system's inbox reached 4,933 items in silence.
 
-`agentmd status` reports five things and exits 3 if any of them is red:
+`agentmd status` reports what follows and exits 3 if any of it is red:
 
 ```
-agentmd 0.1.0-dev · up 14h
+agentmd v10.9.0-2-g5c12292a · up 14h
+  build    running 5c12292a · primary clone 5c12292a
+  clone    level with main
 RED
   vault    /path/to/vault
   queue    4411 awaiting a judgment · oldest 4d1h old (red past 3d old, or 1000 items)
            of which 4349 inherited (captured before 2026-08-10, oldest 28d22h) — reported, not paged about
+  refused  1 standing refused at the current pass (oldest 3d18h) — the night skips each until its text or the pass changes; not paged about
   index    9159 documents · last pass 41s ago        (red past 15m0s)
   git      degraded: not a repository
            no undo for a bad write, and `agentmd gate corpus-write` refuses
+  filing   /path/to/vault/standards/storage-rules.md (3f2a…)
+  captures refused since boot: 0 naming a type with no contract · 0 over the daily write cap
+  backup   gitea · last push 2h0m0s ago · 40 commit(s) waiting, oldest 1h45m0s (red past 8h0m0s)
   probe    ok 3h0m0s ago (round trip 11ms) · memory/2026/08/agentm-self-probe-….md
 ```
+
+**The build line names the commit the running daemon was built from.** It used to print `0.1.0-dev` whatever was built, so a daemon behind main looked current (#819). The line gives the running process's commit beside the primary clone's HEAD (`source_clones.agentm` in the kernel config), and adds `this binary` when the binary on disk differs from the running process. It warns with a `!` line in three cases: a rebuild without a restart, commits in the clone that touch `daemon/` and that the daemon lacks, and a daemon built ahead of the clone. A clone ahead only on commits that don't touch `daemon/`, such as a release commit, is noted as `(N ahead, none touch daemon/)` and isn't a warning.
+
+**The clone line says how the primary clone stands against main.** Every hook, skill and scheduled job runs from that clone (#815). When it lacks merged commits, the line says `the primary clone is N commits behind main` and names the newest one it lacks. A clone on a branch, or ahead of main, is reported and is never an error. The comparison is against the `origin/main` ref the last fetch left, and status never fetches. The runner reads the same thing at the start of each cycle and runs its jobs anyway, by the operator's ruling of 2026-10-23. The cycle record carries a `clone` object and each job record a `clone_behind` count. The doctor's `install-head` row and the morning note name the gap the same way. `harness/skills/memory/scripts/clone_drift.py` is the reading the Python surfaces share, and `buildinfo.CompareMain` is its Go copy.
+
+**A card that stands refused leaves the queue.** The refusal gate skips a card the post-gates refused at the current pass every night, until its text, the filing contract or the gate's wording changes. Such a card awaits a judgment it will never get. Counted in the queue, one card refused on 2026-09-30 held `queue-age` red for 3d18h (#793). Status asks the refusal gate's own question of each queued card that has a refusal row (`splitRefused`, `daemon/cmd/agentmd/queue_refused.go`). The ones that stand refused leave the queue's count and age, and go on the `refused` line with their count and oldest age, never paged about. A card whose text or pass changes no longer matches its refusal, and it rejoins the queue on the next read.
+
+**The backup line gives the vault backup's last push.** The four-hourly `vault-backup-push` job had no surface that went red when it stopped (#818). The daemon reads the push from the vault repository itself, with no record of its own. It reads the newest `update by push` line in the remote-tracking ref's reflog, and the commits on `main` that the remote lacks (`vcs.Repo.Backup`). `backup-stale` goes red once a commit has waited past 8 hours, two of the job's runs. The alert reads the oldest waiting commit, not the last push, because a vault with nothing new to send is backed up however long ago it last pushed. The remote is `daemon.backup_remote` (default `gitea`, the job's own default). A vault with no such remote, a scratch vault for instance, reports no backup and raises nothing. The doctor's `backup-push` row repeats the daemon's reading. The job itself lives in dev-setup (`configs/vault-backup/`), whose installer re-copies its script on every run.
+
+**The captures line counts every refusal the door made since boot.** That covers both kinds, zeros included. A capture the daily write cap turned away used to leave no trace (#813). It is `health.contract.refused_by_volume`, beside `refused_captures`, and the morning note names it under "what needs you" when it is above zero.
 
 **The thresholds are age-dominant.** Under a standing daily ingest, fifty fresh unfiled items every morning is an ordinary Tuesday; the oldest unfiled item being three days old means filing stalled. The count threshold is a backstop at a thousand — at fifty a day it takes twenty dead days to reach, by which point age has been red for seventeen of them, so it fires on its own only when a producer wrote thousands of items at once.
 
@@ -527,8 +546,9 @@ class routing, counting the index's own `CapturedSince`
 after the start of today — against `dailyWriteCap`. Past the cap it
 refuses with a message naming the count, the cap, and the file to edit,
 and counts the refusal on an in-process `capped` counter
-(`Capturer.RefusedByVolume`) that is not yet on `agentmd status` or the
-health surface, unlike its sibling `RefusedCaptures`. On the Python side,
+(`Capturer.RefusedByVolume`). `agentmd status` prints it on its `captures`
+line beside its sibling `RefusedCaptures`, and `/status` carries it as
+`health.contract.refused_by_volume` (task 194, #813). On the Python side,
 `filing_engine.apply()` — the write step behind `capture.py` and
 `reflect.py`'s routing — calls `volume_gate.check()` first, which walks
 the class directories counting each note's `captured` (else `created`)
