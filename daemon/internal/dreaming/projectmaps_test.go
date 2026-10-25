@@ -123,7 +123,9 @@ func TestTheProjectsSpaceGetsAMapPerProjectAMapOfTasksAndAMapOfProjects(t *testi
 			"> - [[projects/demo/tasks/000-start/tracker|Start]] · done · importance 5\n",
 		"## Decisions\n\n- [[projects/demo/decisions/a-ruling|A ruling]] · 2026-09-05\n",
 		"## Designs\n\n- [[projects/demo/designs/the-design|The design]] · 2026-09-03\n",
-		"## Research\n\n- `bundle-a/` — 2 notes\n- 1 loose note in `research/`\n")
+		// A folder of 12 notes or fewer is listed note by note (task 193 LD-2).
+		"## Research\n\n- [[projects/demo/research/loose|Loose]]\n- `bundle-a/`\n"+
+			"  - [[projects/demo/research/bundle-a/notes/two|Two]]\n  - [[projects/demo/research/bundle-a/one|One]]\n")
 	if strings.Contains(demo, "PLAN-flat") || strings.Contains(demo, "tracker-flat") {
 		t.Errorf("a flat pair in a returned retired directory was listed as a task:\n%s", demo)
 	}

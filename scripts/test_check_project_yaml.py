@@ -72,6 +72,20 @@ class TheGate(unittest.TestCase):
                      "unknown key `owner`"):
             self.assertIn(want, text)
 
+    def test_map_folders_are_plain_project_relative_folders(self):
+        # task 193 LD-2: the folders a project's map lists beyond the skeleton's.
+        _project(self.vault, "alpha", GOOD.format(slug="alpha") + "map_folders:\n  - analysis\n  - site/pages\n")
+        _project(self.vault, "beta", GOOD.format(slug="beta") + "map_folders: analysis\n")
+        _project(self.vault, "gamma", GOOD.format(slug="gamma") + "map_folders: [../out, _private, /abs, ok]\n")
+        findings = self.scan()
+        self.assertFalse([f for f in findings if "alpha" in f], findings)
+        for want in ("projects/beta/project.yaml: `map_folders` must be a list",
+                     "projects/gamma/project.yaml: map folder `../out` is not a plain",
+                     "projects/gamma/project.yaml: map folder `_private` is not a plain",
+                     "projects/gamma/project.yaml: map folder `/abs` is not a plain"):
+            self.assertTrue(any(f.startswith(want) for f in findings), (want, findings))
+        self.assertFalse(any("`ok`" in f for f in findings), findings)
+
     def test_former_names_are_a_list_of_repositories_for_a_one_repository_project(self):
         # Task 186: a renamed repository's old names, which the entity builder
         # folds into its page. They need one repository to belong to.

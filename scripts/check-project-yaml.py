@@ -20,8 +20,11 @@ those is a finding:
     `owner/repo`, the names a renamed repository had, for a project that lists
     one repository; task 186) and `bare_issue_floor` (a positive whole number,
     for a project that lists a repository: below it a bare `#NN` in the
-    project's notes is not read as one of its issues; task 187); nothing else
-    is allowed, so a typo in a key name is caught rather than ignored.
+    project's notes is not read as one of its issues; task 187) and
+    `map_folders` (a list of project-relative folders the project's map lists
+    beyond `research/`, `drafts/` and `desk/`, each a plain path with no
+    `..` and no hidden or `_`-prefixed part; task 193); nothing else is
+    allowed, so a typo in a key name is caught rather than ignored.
 
 The template the files are seeded from, `standards/templates/project.yaml`, is
 checked the same way except for the slug, which it does not have.
@@ -53,7 +56,7 @@ for _p in (str(_HERE), str(_TOOLKIT)):
 FILENAME = "project.yaml"
 TEMPLATE_REL = ("standards", "templates", FILENAME)
 REQUIRED = ("slug", "title", "status", "repositories", "code_paths")
-OPTIONAL = ("board", "sensitivity", "former_names", "bare_issue_floor")
+OPTIONAL = ("board", "sensitivity", "former_names", "bare_issue_floor", "map_folders")
 STATUSES = ("queued", "active", "parked", "done", "dropped")
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _WORD = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -127,6 +130,16 @@ def check_mapping(data, rel: str, *, slug: "str | None") -> list:
             out.append(f"{rel}: `bare_issue_floor` must be a positive whole number")
         elif not (isinstance(repos, list) and repos):
             out.append(f"{rel}: `bare_issue_floor` needs a repository to belong to")
+    if "map_folders" in data:
+        folders = data["map_folders"]
+        if not isinstance(folders, list):
+            out.append(f"{rel}: `map_folders` must be a list of project-relative folders")
+        else:
+            for f in folders:
+                parts = f.strip("/").split("/") if isinstance(f, str) else []
+                if not parts or f.startswith(("/", "~")) or any(
+                        p in ("", "..") or p.startswith((".", "_")) for p in parts):
+                    out.append(f"{rel}: map folder `{f}` is not a plain project-relative folder")
     return out
 
 
