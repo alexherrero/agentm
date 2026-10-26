@@ -42,7 +42,7 @@ type yamlFields struct {
 }
 
 // listKeys are the list-valued keys the reader collects.
-var listKeys = map[string]bool{"code_paths": true, "repositories": true, "former_names": true}
+var listKeys = map[string]bool{"code_paths": true, "repositories": true, "former_names": true, "map_folders": true}
 
 func readFields(path string) yamlFields {
 	out := yamlFields{lists: map[string][]string{}}
@@ -89,6 +89,13 @@ func readFields(path string) yamlFields {
 		}
 	}
 	return out
+}
+
+// MapFolders is the folders a project's project.yaml asks its map to list
+// beyond the skeleton's working folders (`map_folders:`, task 193 LD-2), as the
+// file writes them; nil when it names none or has no project.yaml.
+func MapFolders(projectDir string) []string {
+	return readFields(filepath.Join(projectDir, "project.yaml")).lists["map_folders"]
 }
 
 // eachProject calls fn once for every project.yaml, active projects and the
