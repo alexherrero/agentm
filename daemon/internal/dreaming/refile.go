@@ -3,9 +3,11 @@ package dreaming
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -56,9 +58,36 @@ func PlanRefile(root string, r *rules.Rules) (RefilePlan, error) {
 	if err != nil {
 		return plan, err
 	}
-	exists := map[string]bool{}
+	exists, stems := map[string]bool{}, map[string]bool{}
 	for _, rel := range rels {
 		exists[rel] = true
+		stems[strings.TrimSuffix(path.Base(rel), ".md")] = true
+	}
+	vault := vaultRootOf(root)
+	memRel := memoryRootRel(root, vault)
+	// twinGone says the note a near-duplicate flag's `related:` names is not in
+	// the vault. The value is read in every form it is written in (task 193
+	// LD-5): a memory-root path, a vault path in a wikilink, or a bare name,
+	// which capture writes as `["[[stem]]"]` and which is found by its stem.
+	twinGone := func(text string) bool {
+		l, ok := fmlist.First(fmlist.LinksOf(text, "related"))
+		if !ok {
+			return false
+		}
+		if !strings.Contains(l.Target, "/") {
+			return !stems[l.Stem()]
+		}
+		mem := l.MemoryRel(memRel)
+		if exists[mem] {
+			return false
+		}
+		for _, p := range []string{filepath.Join(root, filepath.FromSlash(mem)),
+			filepath.Join(vault, filepath.FromSlash(strings.TrimSuffix(l.Target, ".md")+".md"))} {
+			if _, err := os.Stat(p); !os.IsNotExist(err) {
+				return false
+			}
+		}
+		return true
 	}
 	for _, rel := range rels {
 		// The archive is the lifecycle axis's, not a misfiling: `MemoryNotes`
@@ -89,8 +118,8 @@ func PlanRefile(root string, r *rules.Rules) (RefilePlan, error) {
 					hasNear = true
 				}
 			}
-			if hasNear && related != "" && !exists[related] {
-				if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(related))); os.IsNotExist(err) {
+			if hasNear && related != "" {
+				if twinGone(text) {
 					after := DropFrontmatterKeys(text, "review_flags", "related")
 					item := Refile{Rel: rel, Kind: "unflag",
 						Summary: fmt.Sprintf("%s — flagged near-duplicate of %s, which no longer exists; clear the flag", rel, related)}

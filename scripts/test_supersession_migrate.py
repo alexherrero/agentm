@@ -100,6 +100,17 @@ class MigrationTests(unittest.TestCase):
         self.assertIn("superseded_by: memory/semantic/winner.md\n", t)
         self.assertNotIn(str(self.vault), t, "no absolute path is written into the note")
 
+    def test_a_wikilink_successor_resolves(self):
+        # task 193 LD-5: the successor named as a quoted wikilink, by name, by
+        # vault path or first in a list, is the note a bare path names.
+        self._w("winner.md", "title: w\nstatus: active")
+        self._w("by-name.md", 'title: n\nstatus: superseded\nsuperseded_by: "[[winner]]"')
+        self._w("by-list.md", 'title: l\nstatus: superseded\nsupersedes: ["[[winner|the winner]]"]')
+        self._w("by-path.md", 'title: p\nstatus: superseded\nsuperseded_by: "[[memory/semantic/winner]]"')
+        by = {rel: (action, succ) for rel, action, succ in sm.plan(self.vault)}
+        for rel in ("by-name", "by-list", "by-path"):
+            self.assertEqual(by[f"memory/semantic/{rel}.md"], ("convert", "memory/semantic/winner.md"), rel)
+
     def test_every_note_in_the_vault_is_in_scope(self):
         # The gate scans the whole vault, so the migration walks the same
         # population: a telemetry digest outside the memory classes is in

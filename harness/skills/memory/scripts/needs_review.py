@@ -42,6 +42,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 import drive_artifacts  # noqa: E402  (same skill dir)
 import engine_state  # noqa: E402  (same skill dir)
+import note_links  # noqa: E402  (same skill dir)
 import stem_links  # noqa: E402  (same skill dir)
 
 from filing_engine import _frontmatter  # noqa: E402  (same skill dir)
@@ -84,10 +85,16 @@ class Entry:
     def primary(self) -> str:
         return next(r for r in REASON_ORDER if r in self.reasons)
 
-    def phrase(self) -> str:
-        """Why the note is here, in words a reviewer can act on."""
+    def phrase(self, links=None) -> str:
+        """Why the note is here, in words a reviewer can act on. `related` is
+        read in every form it is written in (task 193 LD-5), and linked under
+        the unique-stem rule when `links` is given."""
         parts = []
-        twin = f"[[{Path(self.related).stem}]]" if self.related else "another note"
+        twin = "another note"
+        named = note_links.first(self.related)
+        if named is not None:
+            target = named.target if named.target.endswith(".md") else named.target + ".md"
+            twin = links.link(target) if links is not None else f"[[{named.stem}]]"
         for reason in REASON_ORDER:
             if reason not in self.reasons:
                 continue
@@ -295,7 +302,7 @@ def render(entries: list, *, created: str, today: str, proposals: "dict | None" 
             continue
         lines += [f"## {_SECTION_TITLES[reason]} ({len(group)})", ""]
         for e in group:
-            lines.append(f"- {_link(e.rel, links, e.slug)} — {e.title} · {e.phrase()}")
+            lines.append(f"- {_link(e.rel, links, e.slug)} — {e.title} · {e.phrase(links)}")
         lines.append("")
     if dream_lines:
         at = proposals.get("at")

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 var (
@@ -243,7 +245,11 @@ func Parse(rel, raw string, modTime time.Time) Note {
 		n.Importance, n.ImportanceSet)
 	n.Source = firstFrontmatterValue(head, sourceIDRe, sourceURLRe, sourceRe)
 	if m := derivedFromRe.FindStringSubmatch(head); m != nil {
-		n.DerivedFrom = parseFlowList(m[1])
+		// Read in every form it is written in (task 193 LD-5): a link's
+		// brackets and label are not part of the entry it names.
+		for _, l := range fmlist.Links(m[1]) {
+			n.DerivedFrom = append(n.DerivedFrom, l.Target)
+		}
 	}
 	if m := sourceHashRe.FindStringSubmatch(head); m != nil {
 		n.SourceHash = strings.Trim(strings.TrimSpace(m[1]), `'"`)
@@ -266,36 +272,6 @@ func Parse(rel, raw string, modTime time.Time) Note {
 		}
 	}
 	return n
-}
-
-// parseFlowList reads a YAML flow sequence, or a bare scalar, into entries.
-//
-// Not a YAML parser: this package reads a regex-matched line, and a real parse
-// of the whole document is a different job with a different failure mode. What
-// it must not do is invent structure — a value it cannot read becomes no
-// entries, and the classifier already reports "no provenance" as its own answer
-// rather than folding it into a verdict.
-func parseFlowList(raw string) []string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	if strings.HasPrefix(raw, "[") && strings.HasSuffix(raw, "]") {
-		raw = raw[1 : len(raw)-1]
-	} else if strings.ContainsAny(raw, "[]") {
-		// A half-open bracket is a line this cannot read — a block list's first
-		// element, or a truncated flow list. Nothing, rather than a guess.
-		return nil
-	} else {
-		return []string{strings.Trim(raw, `'"`)}
-	}
-	var out []string
-	for _, part := range strings.Split(raw, ",") {
-		if v := strings.Trim(strings.TrimSpace(part), `'"`); v != "" {
-			out = append(out, v)
-		}
-	}
-	return out
 }
 
 func parseStatus(head string) string {

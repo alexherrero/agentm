@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/meters"
 	"github.com/alexherrero/agentm/daemon/internal/note"
@@ -148,7 +150,9 @@ func runClusters(ctx context.Context, cfg *config.Config, idx *index.Index,
 		if n.Source != "" {
 			prov = append(prov, n.Source)
 		}
-		prov = append(prov, n.DerivedFrom...)
+		for _, d := range n.DerivedFrom {
+			prov = append(prov, derivedUnit(d, cfg.MemoryRoot))
+		}
 		notes = append(notes, meters.Note{Rel: r.Rel, Vec: r.Vec, Provenance: prov})
 		if r.Vec != nil {
 			rep.Embedded++
@@ -215,4 +219,15 @@ func joinScope(scope []string) string {
 		out += s
 	}
 	return out
+}
+
+// derivedUnit is a `derived_from` entry as one provenance unit. The entry names
+// a note as a memory-root path or as a wikilink's vault path (task 193 LD-5),
+// and both read as the same memory-root path; a bare name stays a name.
+// memRoot is the memory root's directory in the vault.
+func derivedUnit(entry, memRoot string) string {
+	if !strings.Contains(entry, "/") {
+		return entry
+	}
+	return fmlist.Link{Target: entry}.MemoryRel(memRoot)
 }

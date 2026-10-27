@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
@@ -282,15 +283,14 @@ func LifecycleOf(n note.Note) string {
 
 // supersededBy is the note `superseded_by` names, as written: a memory-root path
 // (`memory/crystallized/x.md`, the copies and restated jobs' form) or a link
-// (`[[x]]`), its brackets and alias dropped. "" when the field is unset.
+// (`[[x]]`, `[[agent/memory/crystallized/x|label]]`), its brackets, label and
+// anchor dropped, and the first of a list (task 193 LD-5). A source version
+// names no note. "" when the field is unset.
 func supersededBy(text string) string {
-	fm, _ := ParseFrontmatter(text)
-	v := strings.Trim(strings.TrimSpace(fm["superseded_by"]), `"'`)
-	v = strings.TrimSuffix(strings.TrimPrefix(v, "[["), "]]")
-	if i := strings.IndexAny(v, "|#"); i >= 0 {
-		v = v[:i]
+	if l, ok := fmlist.First(fmlist.LinksOf(text, "superseded_by")); ok {
+		return l.Target
 	}
-	return strings.TrimSpace(v)
+	return ""
 }
 
 // liveSuccessor is the live lesson that answers instead of the one at rel, or
@@ -302,9 +302,10 @@ func supersededBy(text string) string {
 // leave nothing to answer, so nothing retires (#895).
 func liveSuccessor(root, rel, text string) string {
 	seen := map[string]bool{rel: true}
+	memRel := memoryRootRel(root, vaultRootOf(root))
 	succ := supersededBy(text)
 	for step := 0; succ != "" && step < 8; step++ {
-		cur := lessonRel(succ)
+		cur := lessonRel(succ, memRel)
 		if cur == "" || seen[cur] {
 			return ""
 		}
@@ -335,16 +336,15 @@ func liveSuccessor(root, rel, text string) string {
 
 // lessonRel is the memory-root path of the lesson `superseded_by` names — a
 // path (`memory/crystallized/x.md`, the copies and restated jobs' form, or its
-// archived form) or a bare name, read as a lesson in `crystallized/`. "" for
-// anything that is not a lesson's path.
-func lessonRel(succ string) string {
+// archived form), a vault path from a wikilink, which memRel (the memory root
+// in the vault, "" when flat) is taken off, or a bare name, read as a lesson in
+// `crystallized/`. "" for anything that is not a lesson's path.
+func lessonRel(succ, memRel string) string {
 	rel := succ
 	if !strings.Contains(rel, "/") {
 		rel = "memory/crystallized/" + rel
 	}
-	if !strings.HasSuffix(rel, ".md") {
-		rel += ".md"
-	}
+	rel = fmlist.Link{Target: rel}.MemoryRel(memRel)
 	if InArchive(rel) {
 		rel = ClassDestination(rel)
 	}

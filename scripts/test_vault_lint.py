@@ -353,6 +353,19 @@ class TestChecks(unittest.TestCase):
             self.assertTrue(any(f.severity == "warn" for f in sup), [f.message for f in sup])
             self.assertFalse(any(f.severity == "error" for f in sup), [f.message for f in sup])
 
+    def test_supersede_values_are_read_as_wikilinks(self):
+        # task 193 LD-5: a quoted wikilink, a vault-path wikilink and a list of
+        # them name the same entry a bare slug does.
+        with _Vault() as v:
+            _write(v, "memory/_always-load/old.md", _clean("old") + ["lifecycle: superseded",
+                                                                   'superseded_by: "[[agent/memory/_always-load/new4|new]]"'])
+            _write(v, "memory/_always-load/new4.md", _clean("new4") + ['supersedes: ["[[old]]"]'])
+            _write(v, "memory/_always-load/dangling.md", _clean("dangling") + ['supersedes: "[[nowhere]]"'])
+            _, findings = _lint(v)
+            bad = sorted(f.entry_path for f in findings if f.check_id == "supersede-integrity" and f.severity == "error")
+            self.assertEqual(bad, ["memory/_always-load/dangling.md"], [f.message for f in findings])
+            self.assertFalse([f for f in findings if f.check_id == "dangling-supersession"], findings)
+
     def test_supersede_cycle_detected(self):
         with _Vault() as v:
             fm_a = _clean("cycle-a") + ["supersedes: cycle-b"]
