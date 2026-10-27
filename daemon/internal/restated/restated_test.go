@@ -104,7 +104,7 @@ func TestAMergeKeepsTheOlderNoteWithTheNewerWording(t *testing.T) {
 	for _, want := range []string{"title: Tests are sacred\n", "slug: tests-are-sacred\n", "importance: 9\n",
 		"summary: \"A failing test is information: fix the code, never the test.\"\n",
 		"why: \"kept after a weakened assertion slipped through\"\n",
-		"supersedes: memory/semantic/never-edit-or-delete-a-failing-test.md\n", "updated: 2026-09-29\n",
+		`supersedes: "[[agent/memory/semantic/never-edit-or-delete-a-failing-test|never-edit-or-delete-a-failing-test]]"` + "\n", "updated: 2026-09-29\n",
 		"A failing test is information. Read it, then fix the implementation.\n"} {
 		if !strings.Contains(survivor, want) {
 			t.Errorf("survivor lacks %q:\n%s", want, survivor)
@@ -113,7 +113,7 @@ func TestAMergeKeepsTheOlderNoteWithTheNewerWording(t *testing.T) {
 	if strings.Contains(survivor, "Don't dumb them down") || strings.Contains(survivor, "importance: 7") {
 		t.Errorf("survivor kept the older wording or took the newer importance:\n%s", survivor)
 	}
-	for _, want := range []string{"lifecycle: superseded\n", "superseded_by: memory/semantic/tests-are-sacred.md\n",
+	for _, want := range []string{"lifecycle: superseded\n", `superseded_by: "[[agent/memory/semantic/tests-are-sacred|tests-are-sacred]]"` + "\n",
 		"lifecycle_since: 2026-09-29\n", "status: active\n", "Read it, then fix the implementation."} {
 		if !strings.Contains(superseded, want) {
 			t.Errorf("superseded lacks %q:\n%s", want, superseded)

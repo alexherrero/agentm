@@ -35,6 +35,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from vault_lock import vault_mutex  # noqa: E402
+import stem_links  # noqa: E402  (same skill dir; the link-valued keys' form, task 193 LD-5)
 from storage_device_local import DeviceLocalBackend  # noqa: E402
 
 # Validation regexes (must match the skill body's documented contracts).
@@ -383,6 +384,7 @@ def _build_frontmatter(
     status: str = "active",
     extra: dict | None = None,
     trust: str | None = None,
+    vault_path: "Path | str | None" = None,
 ) -> str:
     """Build the frontmatter for a memory entry, in the card's order.
 
@@ -446,12 +448,14 @@ def _build_frontmatter(
         fields["lifecycle"] = "pinned"
     elif lifecycle:
         fields["lifecycle"] = lifecycle
+    # The link-valued keys are written as quoted wikilinks by vault path
+    # (task 193 LD-5), so Obsidian draws the link and every reader resolves it.
     if supersedes:
-        fields["supersedes"] = supersedes
+        fields["supersedes"] = _link_value(supersedes, vault_path)
     if lifecycle_tier:
         fields["lifecycle_tier"] = lifecycle_tier
     if derived_from:
-        fields["derived_from"] = "[" + ", ".join(derived_from) + "]"
+        fields["derived_from"] = _link_value(list(derived_from), vault_path)
     if source:
         fields["source"] = source
     if filing_confidence:
@@ -464,6 +468,11 @@ def _build_frontmatter(
     for key, value in extra.items():
         if value is None or value == "" or value == [] or key in fields:
             continue
+        if key in _LINK_KEYS:
+            text = _link_value(list(value) if isinstance(value, (list, tuple)) else value, vault_path)
+            if text:
+                fields[key] = text
+            continue
         if isinstance(value, (list, tuple)):
             text = "[" + ", ".join(str(v) for v in value) + "]"
         else:
@@ -475,6 +484,23 @@ def _build_frontmatter(
     ordered = sorted(fields, key=lambda k: position.get("kind" if k == "type" else k, len(position)))
     lines = ["---"] + [f"{k}: {fields[k]}" for k in ordered] + ["---"]
     return card_shape.reorder("\n".join(lines) + "\n")
+
+
+# The frontmatter keys whose values name other notes (task 193 LD-5).
+_LINK_KEYS = ("supersedes", "superseded_by", "related", "derived_from")
+
+
+def _link_value(values, vault_path) -> str:
+    """A link-valued key's value: quoted wikilinks by vault path, each path
+    read from the memory root `vault_path`; with no root, a path is linked as
+    written. A value already a wikilink is kept."""
+    if vault_path is not None:
+        return stem_links.link_value_for(values, vault_path)
+    import note_links  # noqa: E402  (same skill dir)
+    if isinstance(values, str):
+        values = [values]
+    return note_links.link_value(*[v if "[[" in v else note_links.path_link(v)
+                                   for v in (str(x).strip().strip("\"'") for x in values or []) if v])
 
 
 def save_entry(
@@ -649,6 +675,7 @@ def save_entry(
         status=status,
         extra=extra,
         trust=trust,
+        vault_path=vault_path,
     )
     # Ensure body ends with single trailing newline.
     body_stripped = body.rstrip("\n")

@@ -227,8 +227,9 @@ class Applying(unittest.TestCase):
         self.assertTrue(written.is_file())
         old = (self.vault / "memory" / "semantic" / "daemon-port.md").read_text(encoding="utf-8")
         self.assertIn("lifecycle: superseded\n", old)
-        self.assertIn("superseded_by: memory/semantic/daemon-port-2.md\n", old)
-        self.assertIn("supersedes: memory/semantic/daemon-port.md", written.read_text(encoding="utf-8"))
+        # Both ends as quoted wikilinks by vault path (task 193 LD-5).
+        self.assertIn('superseded_by: "[[agent/memory/semantic/daemon-port-2|daemon-port-2]]"\n', old)
+        self.assertIn('supersedes: "[[agent/memory/semantic/daemon-port|daemon-port]]"', written.read_text(encoding="utf-8"))
 
     def test_noop_reinforces_and_writes_nothing(self):
         before = sorted(p.name for p in (self.vault / "memory" / "semantic").glob("*.md"))

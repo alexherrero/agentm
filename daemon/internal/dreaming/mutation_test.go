@@ -118,7 +118,7 @@ func TestCopiesCollapseIntoTheEarliestAndLeaveTheSurvivorAlone(t *testing.T) {
 		after := string(in.After)
 		// The contract's shape: the loser names its successor on the axis;
 		// `status` untouched; never a loser-side `supersedes:`.
-		if !strings.Contains(after, "lifecycle: superseded\n") || !strings.Contains(after, "superseded_by: memory/procedural/copy-canon.md\n") ||
+		if !strings.Contains(after, "lifecycle: superseded\n") || !strings.Contains(after, `superseded_by: "[[memory/procedural/copy-canon|copy-canon]]"`+"\n") ||
 			strings.Contains(after, "status: superseded") || strings.Contains(after, "supersedes:") {
 			t.Errorf("%s: after = %q", in.Rel, after)
 		}

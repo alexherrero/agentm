@@ -3,11 +3,13 @@ package dreaming
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/alexherrero/agentm/daemon/internal/cardshape"
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 // Job "copies" — the port of dream.py's `_stage_suffix_backlog_drain`, the
@@ -83,6 +85,7 @@ func PlanCopies(root string, cap int) (CopiesPlan, error) {
 	if cap <= 0 {
 		cap = DefaultCopiesCap
 	}
+	memRel := memoryRootRel(root, vaultRootOf(root))
 	rels, err := MemoryNotes(root)
 	if err != nil {
 		return plan, err
@@ -177,7 +180,10 @@ func PlanCopies(root string, cap int) (CopiesPlan, error) {
 			// Put back in the card's order after the patch: `superseded_by` is a
 			// read field beside `related`, and the patch appends a key it did
 			// not find at the end of the block.
-			after := cardshape.Reorder(PatchFrontmatter(c.raw, []Update{{"lifecycle", "superseded"}, {"superseded_by", canonical.rel}}))
+			// Named as a quoted wikilink by its vault path (task 193 LD-5), so
+			// Obsidian draws the link and every reader resolves it.
+			successor := fmlist.LinkValue(fmlist.PathLink(path.Join(memRel, canonical.rel)))
+			after := cardshape.Reorder(PatchFrontmatter(c.raw, []Update{{"lifecycle", "superseded"}, {"superseded_by", successor}}))
 			from := strings.TrimSpace(ParseFrontmatterValue(c.raw, "lifecycle"))
 			if from == "" {
 				from = lifecycleDefaultState

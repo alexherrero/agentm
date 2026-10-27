@@ -42,6 +42,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import note_links  # noqa: E402  (same skill dir; the link-valued keys' one parser)
+import stem_links  # noqa: E402  (same skill dir; the form a writer gives them)
 
 def _iter_notes(vault: Path):
     """Every markdown note in the vault, dot-directories pruned — the same
@@ -184,7 +185,10 @@ def apply(vault: Path, rows: list, *, today: str, journal=None) -> int:
             continue
         _set(lines, "status", "active")
         _set(lines, "lifecycle", "superseded")
-        _set(lines, "superseded_by", successor)
+        # A note as a quoted wikilink by vault path (task 193 LD-5); a source
+        # version stays as written, since it names no note.
+        named = note_links.first(successor)
+        _set(lines, "superseded_by", stem_links.link_value_for(successor, vault) if named else successor)
         _set(lines, "lifecycle_since", today)
         # The loser-side pointer is the inverted shape; the successor's own
         # `supersedes:` (if any) is the back-link and lives on the other note.

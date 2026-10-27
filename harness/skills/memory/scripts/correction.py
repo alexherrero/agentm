@@ -57,6 +57,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import work_ledger  # noqa: E402
+import stem_links  # noqa: E402  (same skill dir; the link-valued keys' form, task 193 LD-5)
 from vault_lock import atomic_write  # noqa: E402
 
 # ── the numbers, written down before the run ───────────────────────────────
@@ -211,7 +212,8 @@ def build_merge_proposal(vault_path, cluster: dict) -> dict:
             raise SourceUnavailable(
                 f"{rel} cannot be read, so a merge cannot be described: {exc}"
             ) from exc
-        mutations.append([str(path), _mark_superseded(raw, keeper)])
+        # The keeper as a quoted wikilink by vault path (task 193 LD-5).
+        mutations.append([str(path), _mark_superseded(raw, stem_links.link_value_for(keeper, vault_path))])
 
     return {
         "stage": MERGE_STAGE,

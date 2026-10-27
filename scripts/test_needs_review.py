@@ -122,7 +122,8 @@ class TheReading(_Vault):
         written = fe.apply(self.root, decision, body="The vault root sits outside of the checkout tree.")
         fm = _fm(written)
         self.assertEqual(fm["review_flags"], "[near-duplicate]")
-        self.assertEqual(fm["related"], "memory/semantic/vault-root-outside.md")
+        # A quoted wikilink by vault path (task 193 LD-5).
+        self.assertEqual(fm["related"], "[[memory/semantic/vault-root-outside|vault-root-outside]]")
         text = self._moc()
         self.assertIn("## Probable duplicates (1)", text)
         self.assertIn("probable duplicate of [[vault-root-outside]] — filed beside it, never merged", text)

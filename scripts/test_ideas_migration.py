@@ -317,8 +317,9 @@ class TheApply(_Vault):
         self.assertEqual(f["summary"], "Take Doom and give its monsters a local model.")
 
         twin = _fields(self._read("agent/memory/semantic/twin.md"))
-        self.assertEqual((twin["lifecycle"], twin["superseded_by"], twin["lifecycle_since"]),
-                         ("superseded", "personal/ideas/graduate.md", TODAY))
+        # The survivor as a quoted wikilink by vault path (task 193 LD-5).
+        self.assertEqual((twin["lifecycle"], twin["superseded_by"].strip('"'), twin["lifecycle_since"]),
+                         ("superseded", "[[personal/ideas/graduate|graduate]]", TODAY))
         self.assertEqual(twin["type"], "idea", "a duplicate is superseded, not relabelled")
 
         insight = self._read("agent/memory/semantic/insight.md")

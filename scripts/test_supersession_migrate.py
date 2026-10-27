@@ -51,7 +51,7 @@ class MigrationTests(unittest.TestCase):
             t = p.read_text(encoding="utf-8")
             self.assertIn("status: active\n", t)
             self.assertIn("lifecycle: superseded\n", t)
-            self.assertIn("superseded_by: memory/semantic/winner.md\n", t)
+            self.assertIn('superseded_by: "[[memory/semantic/winner|winner]]"\n', t)
             self.assertIn("lifecycle_since: 2026-09-05\n", t)
             self.assertNotIn("supersedes:", t)
             self.assertTrue(t.endswith("\n\nbody\n"), "the body is untouched")
@@ -97,7 +97,7 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(by["memory/semantic/source.md"], ("convert", "github-issues at 2026-09-01"), "a source version is kept verbatim")
         sm.apply(self.vault, sm.plan(self.vault), today="2026-09-05", journal=self.root / "journal.jsonl")
         t = (self.vault / "memory" / "semantic" / "abs.md").read_text(encoding="utf-8")
-        self.assertIn("superseded_by: memory/semantic/winner.md\n", t)
+        self.assertIn('superseded_by: "[[memory/semantic/winner|winner]]"\n', t)
         self.assertNotIn(str(self.vault), t, "no absolute path is written into the note")
 
     def test_a_wikilink_successor_resolves(self):

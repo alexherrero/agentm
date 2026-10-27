@@ -69,3 +69,29 @@ func TestLinkStemMemoryRelAndFirst(t *testing.T) {
 		t.Errorf("First found a note in a source version")
 	}
 }
+
+// A writer's value (task 193 step 7) reads back as the note it names.
+func TestPathLinkAndLinkValueRoundTrip(t *testing.T) {
+	if got := PathLink("agent/memory/semantic/x.md"); got != "[[agent/memory/semantic/x|x]]" {
+		t.Errorf("PathLink = %q", got)
+	}
+	if got := PathLink("personal/Talk [Sept].md"); got != "personal/Talk [Sept].md" {
+		t.Errorf("an unlinkable path = %q, want the bare path", got)
+	}
+	one := LinkValue(PathLink("agent/memory/semantic/x.md"))
+	if one != `"[[agent/memory/semantic/x|x]]"` {
+		t.Errorf("one = %s", one)
+	}
+	two := LinkValue(PathLink("agent/memory/semantic/a.md"), PathLink("agent/memory/semantic/b.md"))
+	if two != `["[[agent/memory/semantic/a|a]]", "[[agent/memory/semantic/b|b]]"]` {
+		t.Errorf("two = %s", two)
+	}
+	if LinkValue() != "" || LinkValue("  ") != "" {
+		t.Errorf("no link should render empty")
+	}
+	text := "---\nsuperseded_by: " + two + "\n---\n"
+	got := LinksOf(text, "superseded_by")
+	if len(got) != 2 || got[0].MemoryRel("agent") != "memory/semantic/a.md" || got[1].MemoryRel("agent") != "memory/semantic/b.md" {
+		t.Errorf("round trip: %+v", got)
+	}
+}
