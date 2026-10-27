@@ -54,11 +54,20 @@ class TestZeroLLMInvariant(unittest.TestCase):
                 imported_names.append(node.module)
 
         allowed_stdlib = {"__future__", "re", "dataclasses", "pathlib"}
+        # note_links, the link-valued keys' one parser (task 193 LD-5), is the
+        # one sibling graph.py may import, and only while it is held to the
+        # same stdlib set, checked here too.
         self.assertTrue(
-            set(imported_names) <= allowed_stdlib,
+            set(imported_names) <= allowed_stdlib | {"note_links"},
             f"graph.py imports beyond the allowed stdlib set: "
-            f"{set(imported_names) - allowed_stdlib}",
+            f"{set(imported_names) - allowed_stdlib - {'note_links'}}",
         )
+        sibling = ast.parse((_SCRIPTS_DIR / "note_links.py").read_text(encoding="utf-8"))
+        sibling_names = {a.name for n in ast.walk(sibling) if isinstance(n, ast.Import) for a in n.names} | {
+            n.module for n in ast.walk(sibling) if isinstance(n, ast.ImportFrom) and n.module}
+        self.assertTrue(sibling_names <= allowed_stdlib,
+                        f"note_links.py imports beyond graph.py's stdlib set: {sibling_names - allowed_stdlib}")
+        imported_names = imported_names + sorted(sibling_names)
         for name in imported_names:
             for forbidden in _FORBIDDEN_IMPORT_SUBSTRINGS:
                 self.assertNotIn(
@@ -188,6 +197,15 @@ class TestFrontmatterSupersedes(unittest.TestCase):
         edges = graph.extract_edges("a.md", content)
         targets = [e.target for e in edges if e.edge_type == "supersedes"]
         self.assertIn("old-note", targets)
+
+    def test_frontmatter_supersede_list_of_quoted_wikilinks(self):
+        # task 193 LD-5: the form writers move to, a quoted flow list, gives an
+        # edge per entry; a source version names no note.
+        content = ('---\nkind: convention\nsupersedes: ["[[old-a]]", "[[agent/memory/semantic/old-b|B]]"]\n'
+                   'superseded_by: "src-1 at v3"\n---\n\nBody.\n')
+        # (Pass 1 also sees the frontmatter's wikilinks, so a target can come twice.)
+        targets = {e.target for e in graph.extract_edges("a.md", content) if e.edge_type == "supersedes"}
+        self.assertEqual(targets, {"old-a", "agent/memory/semantic/old-b"})
 
     def test_no_frontmatter_no_crash(self):
         content = "Just a plain body with [[a-link]], no frontmatter at all.\n"

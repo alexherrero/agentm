@@ -51,6 +51,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+# The link-valued keys' one parser (task 193 LD-5), from this skill's own
+# directory, which every importer of this module already has on its path.
+# Standard library only, like this module: the zero-LLM test checks both.
+import note_links
+
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 _INLINE_CODE_SPAN_RE = re.compile(r"`[^`\n]*`")
 _FENCE_RE = re.compile(r"^```")
@@ -162,12 +167,12 @@ def extract_edges(source_path: str, content: str) -> list[Edge]:
             key, _, value = line.partition(":")
             key = key.strip()
             if key in ("supersedes", "superseded_by"):
-                value = value.strip().strip('"').strip("'")
-                # Strip [[...]] wrapping if present, to get the bare target.
-                wl = _WIKILINK_RE.match(value)
-                target = wl.group(1).strip() if wl else value
-                if target:
-                    edges.append(Edge(source_path=source_path, target=target, edge_type="supersedes"))
+                # Every form the key is written in (task 193 LD-5): a bare
+                # path or name, a quoted wikilink, or a flow list of them. A
+                # source version names no note.
+                for named in note_links.links(value):
+                    if not named.source:
+                        edges.append(Edge(source_path=source_path, target=named.target, edge_type="supersedes"))
 
     return edges
 

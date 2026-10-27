@@ -52,6 +52,7 @@ import save  # noqa: E402  (schema source of truth — same skill dir)
 import arc_registry  # noqa: E402  (2026-07-18 arc-as-metadata convention)
 import kind_registry  # noqa: E402  (the vocabulary registry, read from the storage rules)
 import storage_rules  # noqa: E402  (the filing contract, asked of the daemon)
+import note_links  # noqa: E402  (the link-valued keys' one parser, task 193 LD-5)
 from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task 7 — kind-taxonomy check)
 
 # Directories that are NOT memory-entry trees — skipped during the walk.
@@ -577,6 +578,8 @@ def check_superseded_by(entry: Entry, model: VaultModel) -> list:
     if not by or _is_source_reference(by):
         return []
     target_slug = _supersede_target_slug(by)
+    if not target_slug:
+        return []
     if target_slug not in model.slugs:
         return [Finding(
             "supersede-integrity", "error", entry.rel,
@@ -591,8 +594,10 @@ def check_supersede(entry: Entry, model: VaultModel) -> list:
     sup = entry.frontmatter.get("supersedes", "").strip()
     if not sup:
         return out
-    # `supersedes` may be a path or a slug; resolve by stem/slug.
-    target_slug = Path(sup).stem if ("/" in sup or sup.endswith(".md")) else sup
+    # `supersedes` may be a path, a slug or a wikilink; resolve by stem/slug.
+    target_slug = _supersede_target_slug(sup)
+    if not target_slug:
+        return out
     if target_slug not in model.slugs:
         out.append(Finding(
             "supersede-integrity", "error", entry.rel,
@@ -617,7 +622,11 @@ def check_supersede(entry: Entry, model: VaultModel) -> list:
 
 
 def _supersede_target_slug(sup: str) -> str:
-    return Path(sup).stem if ("/" in sup or sup.endswith(".md")) else sup
+    """The slug a supersede value names, in every form it is written in (task
+    193 LD-5): a path's file name, a bare slug, or a wikilink's target, alone
+    or first in a list. "" when it names no note."""
+    named = note_links.first(sup)
+    return named.stem if named is not None else ""
 
 
 def check_supersede_cycle(entry: Entry, model: VaultModel) -> list:

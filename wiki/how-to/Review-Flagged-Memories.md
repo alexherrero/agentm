@@ -24,7 +24,7 @@
    A same-key entry means two notes assert different values for the same thing. Decide which one is current, then supersede the outdated one:
 
    - Set its `lifecycle: superseded`.
-   - Add its `superseded_by:`, naming the note that replaces it.
+   - Add its `superseded_by:`, naming the note that replaces it. A path, a file name or a `"[[wikilink]]"` all work.
 
    The current note needs no change — its `supersedes:` back-link is optional. See [Memory daemon reference](Memory-Daemon) for both fields.
 

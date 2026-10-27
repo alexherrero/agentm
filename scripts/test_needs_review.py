@@ -241,6 +241,15 @@ class TheDreamSections(_Vault):
         self.assertIn("## Shared keys, different bodies (1)", text)
         self.assertIn("- key `editor`: [[editor]], [[editor]]", text)
 
+    def test_a_related_wikilink_reads_as_the_note_it_names(self):
+        # task 193 LD-5: capture writes `related` as a quoted list of wikilinks.
+        e = needs_review.Entry(rel="memory/semantic/a.md", slug="a", title="a", type="fact",
+                               reasons=["near-duplicate"], related='["[[twin-note]]"]')
+        self.assertIn("probable duplicate of [[twin-note]]", e.phrase())
+        e = needs_review.Entry(rel="memory/semantic/a.md", slug="a", title="a", type="fact",
+                               reasons=["near-duplicate"], related='"[[agent/memory/semantic/twin-note|T]]"')
+        self.assertIn("probable duplicate of [[twin-note]]", e.phrase())
+
     def test_a_name_two_notes_share_is_linked_by_path(self):
         # Task 193 LD-4: Obsidian resolves a bare `[[editor]]` across the
         # vault, so with both notes on disk each is named by its path; a

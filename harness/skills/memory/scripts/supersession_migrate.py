@@ -41,6 +41,8 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+import note_links  # noqa: E402  (same skill dir; the link-valued keys' one parser)
+
 def _iter_notes(vault: Path):
     """Every markdown note in the vault, dot-directories pruned — the same
     population `check-vault-frontmatter` scans, so the gate and the
@@ -86,11 +88,14 @@ def _resolve_successor(vault: Path, value: str):
     """The successor as a vault-relative path, the value itself for a source
     version (`<id> at <version>`), or None when nothing in the vault answers
     to it."""
-    v = value.strip().strip("'\"")
-    if not v:
+    # Read in every form it is written in (task 193 LD-5): a bare path, a
+    # name, or a quoted wikilink, alone or first in a list.
+    named = note_links.links(value)
+    if not named:
         return None
-    if " at " in v:
-        return v
+    if named[0].source:
+        return named[0].target
+    v = named[0].target
     cand = Path(v)
     if cand.is_absolute():
         try:
@@ -101,7 +106,9 @@ def _resolve_successor(vault: Path, value: str):
             return rel.as_posix()
     elif (vault / v).is_file():
         return Path(v).as_posix()
-    stem = cand.stem if ("/" in v or v.endswith(".md")) else v
+    elif (vault / (v + ".md")).is_file():
+        return Path(v + ".md").as_posix()
+    stem = named[0].stem
     by_slug = None
     for p in _iter_notes(vault):
         if p.stem == stem:
