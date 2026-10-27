@@ -491,6 +491,70 @@ class LinksLine(unittest.TestCase):
         self.assertIn("[[projects/agentm/completed/tasks/188-keep-committing/plan|Plan]]",
                       path.read_text(encoding="utf-8"))
 
+    def _artifact(self, rel: str) -> None:
+        p = self.folder / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("x\n", encoding="utf-8")
+
+    def test_the_artifacts_line_links_every_other_note_by_path(self) -> None:
+        # task 193 LD-3: a step's run log and drafts hang off the tracker too.
+        self._touch("plan", "progress")
+        for rel in ("runs/a.md", "bible-drafts/b.md", "runs/plan.md", "notes.txt", ".hidden/c.md",
+                    "Talk [Septembe.md"):
+            self._artifact(rel)
+        self.assertEqual(tk.artifacts_line(self.path, self._t()),
+                         f"Artifacts: [[{self.rel}/bible-drafts/b|b]] · [[{self.rel}/runs/a|a]] · "
+                         f"[[{self.rel}/runs/plan|plan]]")
+        # where no task folder says where it is, there is none
+        self.assertEqual(tk.artifacts_line(self.path, _tracker(task=None)), "")
+        self.assertEqual(tk.artifacts_line(self.path, self._t(project="crickets")), "")
+
+    def test_no_artifacts_line_without_an_artifact(self) -> None:
+        self._touch("plan", "progress")
+        tk.write(self.path, self._t())
+        self.assertEqual(tk.artifacts_line(self.path, self._t()), "")
+        self.assertNotIn("Artifacts:", self.path.read_text(encoding="utf-8"))
+
+    def test_a_write_carries_both_lines_and_renders_the_same_twice(self) -> None:
+        self._touch("plan", "progress")
+        self._artifact("runs/a.md")
+        tk.write(self.path, self._t())
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn(f"---\n\n[[{self.rel}/plan|Plan]] · [[{self.rel}/progress|Progress log]]\n\n"
+                      f"Artifacts: [[{self.rel}/runs/a|a]]\n\n## Objective\n", text)
+        t, digest = tk.read(self.path)
+        self.assertEqual(t, self._t())
+        self.assertEqual(tk.check_text(text), [])
+        tk.write(self.path, t, expected_hash=digest)
+        self.assertEqual(self.path.read_text(encoding="utf-8"), text)
+
+    def test_the_derived_lines_are_the_only_text_before_the_objective(self) -> None:
+        links, art = f"[[{self.rel}/plan|Plan]]", f"Artifacts: [[{self.rel}/runs/a|a]]"
+        for good in (tk.render(self._t(), links, art), tk.render(self._t(), "", art)):
+            self.assertEqual(tk.parse(good), self._t())
+        both = tk.render(self._t(), links, art)
+        for bad in (both.replace(links + "\n\n" + art, art + "\n\n" + links),       # out of order
+                    both.replace(art, "Artifacts: plain text"),
+                    both.replace(art, art + "\n\nmore")):
+            with self.assertRaisesRegex(tk.TrackerError, "text before"):
+                tk.parse(bad)
+
+    def test_relink_writes_the_artifacts_line_and_carries_it_through_a_move(self) -> None:
+        self._touch("plan", "progress")
+        done = self._t(status="done", closed="2026-09-06", outcome="It shipped.")
+        self.path.write_text(tk.render(done, tk.links_line(self.path, done)), encoding="utf-8")
+        self._artifact("runs/a.md")
+        self.assertTrue(tk.relink(self.path))
+        self.assertIn(f"Artifacts: [[{self.rel}/runs/a|a]]\n\n## Objective", self.path.read_text(encoding="utf-8"))
+        self.assertEqual(tk.read(self.path)[0], done)               # no field stamped
+        self.assertFalse(tk.relink(self.path))                      # already right: no write
+        moved = self.vault / "projects" / "agentm" / "completed" / "tasks" / self.TASK
+        moved.parent.mkdir(parents=True)
+        self.folder.rename(moved)
+        self.assertTrue(tk.relink(moved / "tracker.md"))
+        self.assertIn("Artifacts: [[projects/agentm/completed/tasks/188-keep-committing/runs/a|a]]",
+                      (moved / "tracker.md").read_text(encoding="utf-8"))
+
     def test_relink_on_the_command_line(self) -> None:
         self._touch("plan")
         self.path.write_text(tk.render(self._t()), encoding="utf-8")
