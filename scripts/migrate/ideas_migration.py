@@ -70,6 +70,7 @@ for _p in (_REPO / "harness" / "skills" / "memory" / "scripts", _REPO / "scripts
         sys.path.insert(0, str(_p))
 
 import card_shape  # noqa: E402
+import note_links  # noqa: E402  (the link-valued keys' form, task 193 LD-5)
 import idea_cards  # noqa: E402
 
 SEMANTIC = "memory/semantic"
@@ -355,7 +356,8 @@ def with_supersession(text: str, survivor_rel: str, today: str) -> str:
     entries, rest = card_shape.split_note(text)
     entries = card_shape.set_value(entries, "lifecycle", "superseded")
     entries = card_shape.set_value(entries, "lifecycle_since", today)
-    entries = card_shape.set_value(entries, "superseded_by", survivor_rel)
+    # The survivor as a quoted wikilink by vault path (task 193 LD-5).
+    entries = card_shape.set_value(entries, "superseded_by", note_links.link_value(note_links.path_link(survivor_rel)))
     return card_shape.reorder(card_shape.join_note(entries, rest))
 
 

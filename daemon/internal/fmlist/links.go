@@ -123,3 +123,45 @@ func First(links []Link) (Link, bool) {
 	}
 	return Link{}, false
 }
+
+// unlinkable is a character a wikilink's target cannot carry.
+const unlinkable = "[]|#^"
+
+var labelReplacer = strings.NewReplacer("|", "-", "[", "(", "]", ")", "\n", " ")
+
+// PathLink is the wikilink a writer gives a link-valued key for the note at
+// vault-relative rel (task 193 LD-5): its path without `.md`, labelled by its
+// file name, `[[agent/memory/semantic/x|x]]`. A path never names two notes, so
+// it needs no stem index (LD-4 lets a link be bare only where its name is the
+// vault's only one; it never requires the bare form). A path a wikilink cannot
+// carry is returned as the bare path, the form every reader also reads.
+func PathLink(vaultRel string) string {
+	target := strings.TrimSuffix(strings.TrimLeft(vaultRel, "/"), ".md")
+	if target == "" {
+		return ""
+	}
+	if strings.ContainsAny(target, unlinkable) {
+		return vaultRel
+	}
+	label := strings.TrimSpace(labelReplacer.Replace(path.Base(target)))
+	return "[[" + target + "|" + label + "]]"
+}
+
+// LinkValue renders links as a link-valued key's value: one quoted link alone,
+// several as a quoted flow list, "" for none. Quoted because YAML reads an
+// unquoted `[[x]]` as a nested list, which no reader sees as a link.
+func LinkValue(links ...string) string {
+	var quoted []string
+	for _, l := range links {
+		if l = strings.TrimSpace(l); l != "" {
+			quoted = append(quoted, Quote(l))
+		}
+	}
+	switch len(quoted) {
+	case 0:
+		return ""
+	case 1:
+		return quoted[0]
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 // Splits are additive, and "additive" is the whole safety argument.
@@ -107,7 +109,15 @@ func SupersededNote(previous string, plan SplitPlan, fragmentPaths []string,
 	b.WriteString("---\n")
 	writeScalar(&b, "title", frontmatterValue(previous, "title"))
 	writeScalar(&b, "status", "superseded")
-	writeScalar(&b, "superseded_by", strings.Join(fragmentPaths, ", "))
+	// The fragments as a quoted list of wikilinks by vault path (task 193
+	// LD-5): one value naming each, which every reader reads as a list.
+	links := make([]string, 0, len(fragmentPaths))
+	for _, p := range fragmentPaths {
+		links = append(links, fmlist.PathLink(p))
+	}
+	if v := fmlist.LinkValue(links...); v != "" {
+		fmt.Fprintf(&b, "superseded_by: %s\n", v)
+	}
 	if plan.Reason != "" {
 		writeScalar(&b, "superseded_reason", plan.Reason)
 	}
@@ -136,7 +146,7 @@ func RenderFragment(f SplitFragment, parentRel string, stamp Stamp) string {
 	if i < 0 {
 		return out
 	}
-	return out[:i] + "derived_from: " + yamlScalar(parentRel) + "\n" + out[i:]
+	return out[:i] + "derived_from: " + fmlist.LinkValue(fmlist.PathLink(parentRel)) + "\n" + out[i:]
 }
 
 // ApplySplit writes the fragments and supersedes the original.

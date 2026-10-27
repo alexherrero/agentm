@@ -54,7 +54,8 @@ func TestASplitSupersedesRatherThanDeletes(t *testing.T) {
 	}
 	// And it says what replaced it.
 	for _, f := range written {
-		if !strings.Contains(orig, f) {
+		// as a quoted wikilink by vault path (task 193 LD-5)
+		if !strings.Contains(orig, "[["+strings.TrimSuffix(f, ".md")+"|") {
 			t.Errorf("the original does not point at %s:\n%s", f, orig)
 		}
 	}
@@ -75,7 +76,7 @@ func TestEveryFragmentCarriesDerivedFrom(t *testing.T) {
 	}
 	for _, rel := range written {
 		body := v.files[rel]
-		if !strings.Contains(body, "derived_from: "+parent) {
+		if !strings.Contains(body, `derived_from: "[[agent/memory/semantic/blob|blob]]"`+"\n") {
 			t.Errorf("%s does not record its parent:\n%s", rel, body)
 		}
 		// And it stays one frontmatter block — a second `---` would make the

@@ -39,6 +39,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from vault_lock import vault_mutex  # noqa: E402
+import stem_links  # noqa: E402  (same skill dir; the link-valued keys' form, task 193 LD-5)
 from storage_device_local import DeviceLocalBackend  # noqa: E402
 
 try:
@@ -121,8 +122,14 @@ def _dump_frontmatter(fm: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Written already rendered, as quoted wikilinks (task 193 LD-5).
+_LINK_KEYS = ("supersedes", "superseded_by")
+
+
 def _format_field(key: str, value) -> str:
     """Format a single frontmatter field. Inline lists for `tags` etc."""
+    if key in _LINK_KEYS and isinstance(value, str):
+        return f"{key}: {value}"
     if isinstance(value, list):
         if not value:
             return f"{key}: []"
@@ -249,7 +256,7 @@ def evolve_entry(
     # the lifecycle axis; `status` is left as it was.
     archive_fm["lifecycle"] = "superseded"
     new_relative = new_path.relative_to(vault) if new_path.is_absolute() else (vault / new_path).relative_to(vault)
-    archive_fm["superseded_by"] = str(new_relative).replace(os.sep, "/")
+    archive_fm["superseded_by"] = stem_links.link_value_for(str(new_relative).replace(os.sep, "/"), vault)
     archive_fm["superseded_at"] = _now_iso_utc()
     archive_fm["lifecycle_since"] = _now_iso_utc()[:10]
     archive_fm["superseded_reason"] = reason
@@ -264,7 +271,7 @@ def evolve_entry(
         "updated": today,
         "tags": fm.get("tags", []),
         "slug": new_slug if new_slug else fm.get("slug"),
-        "supersedes": str(archive_relative).replace(os.sep, "/"),
+        "supersedes": stem_links.link_value_for(str(archive_relative).replace(os.sep, "/"), vault),
     }
     new_content = _compose_entry(new_fm, new_body)
 

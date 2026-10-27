@@ -123,3 +123,43 @@ def links(value) -> list:
 def first(value):
     """The first note the value names, skipping a source version; None for none."""
     return next((l for l in links(value) if not l.source), None)
+
+
+# --- writing ------------------------------------------------------------------
+
+_UNLINKABLE = "[]|#^"
+_LABEL_TABLE = str.maketrans({"|": "-", "[": "(", "]": ")", "\n": " "})
+
+
+def path_link(vault_rel: str) -> str:
+    """The wikilink a writer gives a link-valued key for the note at
+    vault-relative `vault_rel` (task 193 LD-5): its path without `.md`,
+    labelled by its file name, `[[agent/memory/semantic/x|x]]`. A path never
+    names two notes, so it needs no stem index (LD-4 lets a link be bare only
+    where its name is the vault's only one; it never requires the bare form).
+    A path a wikilink cannot carry comes back as the bare path, which every
+    reader also reads. The Go side is `fmlist.PathLink`."""
+    target = str(vault_rel).replace("\\", "/").lstrip("/")
+    target = target[:-3] if target.endswith(".md") else target
+    if not target:
+        return ""
+    if any(c in target for c in _UNLINKABLE):
+        return str(vault_rel)
+    label = target.rsplit("/", 1)[-1].translate(_LABEL_TABLE).strip()
+    return f"[[{target}|{label}]]"
+
+
+def _quote(s: str) -> str:
+    # YAML's double-quoted form, which JSON's is: backslashes and quotes escaped.
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def link_value(*links: str) -> str:
+    """Links rendered as a link-valued key's value: one quoted link alone,
+    several as a quoted flow list, "" for none. Quoted because YAML reads an
+    unquoted `[[x]]` as a nested list, which no reader sees as a link. The Go
+    side is `fmlist.LinkValue`."""
+    quoted = [_quote(l.strip()) for l in links if l and l.strip()]
+    if not quoted:
+        return ""
+    return quoted[0] if len(quoted) == 1 else "[" + ", ".join(quoted) + "]"

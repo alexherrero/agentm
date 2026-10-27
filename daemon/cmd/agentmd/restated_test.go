@@ -87,13 +87,13 @@ func TestARestatedPairMergesAndADifferentPairStays(t *testing.T) {
 	survivor := read("memory/semantic/tests-are-sacred.md")
 	for _, want := range []string{"title: Tests are sacred\n", "importance: 9\n",
 		"A failing test is information: fix the code, never the test.",
-		"supersedes: memory/semantic/never-edit-a-failing-test.md\n"} {
+		`supersedes: "[[agent/memory/semantic/never-edit-a-failing-test|never-edit-a-failing-test]]"` + "\n"} {
 		if !strings.Contains(survivor, want) {
 			t.Errorf("the survivor lacks %q:\n%s", want, survivor)
 		}
 	}
 	if newer := read("memory/semantic/never-edit-a-failing-test.md"); !strings.Contains(newer, "lifecycle: superseded\n") ||
-		!strings.Contains(newer, "superseded_by: memory/semantic/tests-are-sacred.md\n") {
+		!strings.Contains(newer, `superseded_by: "[[agent/memory/semantic/tests-are-sacred|tests-are-sacred]]"`+"\n") {
 		t.Errorf("the newer note is not superseded:\n%s", newer)
 	}
 	for _, rel := range []string{"memory/semantic/plan-md-shape.md", "memory/semantic/status-report-shape.md"} {

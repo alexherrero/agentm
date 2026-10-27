@@ -56,6 +56,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import drive_artifacts  # noqa: E402  (same skill dir)
+import stem_links  # noqa: E402  (same skill dir; the link-valued keys' form, task 193 LD-5)
 
 import storage_rules  # noqa: E402
 from fingerprint import compute_fingerprint  # noqa: E402
@@ -430,7 +431,8 @@ def _stamp_superseded(vault: Path, rel: str, by_rel: str) -> None:
         k, sep, _ = lines[i].partition(":")
         if sep and lines[i][:1] not in " \t#-":
             seen.setdefault(k.strip(), i)
-    for k, v in (("lifecycle", "superseded"), ("superseded_by", by_rel)):
+    # The successor as a quoted wikilink by vault path (task 193 LD-5).
+    for k, v in (("lifecycle", "superseded"), ("superseded_by", stem_links.link_value_for(by_rel, vault))):
         if k in seen:
             lines[seen[k]] = f"{k}: {v}"
         else:

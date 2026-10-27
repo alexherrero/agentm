@@ -74,7 +74,7 @@ class TheCorrection(_Nested):
         self.assertEqual(self.orig.stat().st_mtime_ns, mtime)
         text = r.path.read_text(encoding="utf-8")
         for line in ("kind: calendar-facet", "day: 2026-09-04", "facet: meetings", "corrects: 2026-09-03",
-                     "supersedes: calendar/2026/2026-09-03-meetings.md", "tags: [calendar, meetings, correction]"):
+                     'supersedes: "[[calendar/2026/2026-09-03-meetings|2026-09-03-meetings]]"', "tags: [calendar, meetings, correction]"):
             self.assertIn(line + "\n", text)
         self.assertTrue(text.endswith("09:30 — The release date is Thursday, not Friday.\n"), text)
 

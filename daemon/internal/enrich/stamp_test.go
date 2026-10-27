@@ -101,7 +101,7 @@ func TestSplitOutputCarriesTheStamp(t *testing.T) {
 
 	frag := RenderFragment(SplitFragment{Slug: "part-one", Response: stampedResponse()},
 		"memory/parent.md", s)
-	for _, want := range []string{"derived_from: memory/parent.md",
+	for _, want := range []string{`derived_from: "[[memory/parent|parent]]"`,
 		"enriched_by: v1", "rules_hash: rh", "enriched_at:"} {
 		if !strings.Contains(frag, want) {
 			t.Errorf("the fragment is missing %q:\n%s", want, frag)

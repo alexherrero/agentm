@@ -53,21 +53,8 @@ class StemIndex:
         return self._counts[stem_key(stem)] <= 1
 
     def vault_rel(self, rel) -> str:
-        """`rel` read from the memory root, else from the vault root (an idea
-        card's path is the vault root's), as a vault-relative path. A path on
-        neither is read from the memory root."""
-        rel = str(rel).replace("\\", "/")
-        for base in (self.memory_root, self.vault_root):
-            p = base / rel
-            if p.is_file():
-                try:
-                    return p.relative_to(self.vault_root).as_posix()
-                except ValueError:
-                    continue
-        try:
-            return (self.memory_root / rel).relative_to(self.vault_root).as_posix()
-        except ValueError:
-            return rel
+        """`rel` as a vault-relative path; see the module's `vault_rel`."""
+        return _vault_rel(rel, self.memory_root, self.vault_root)
 
     def link(self, rel, label: "str | None" = None) -> str:
         """The wikilink to the note at `rel`: `[[stem]]` when its name is the
@@ -80,3 +67,44 @@ class StemIndex:
         if self.unique(stem):
             return f"[[{stem}]]" if label == stem else f"[[{stem}|{label}]]"
         return f"[[{target}|{label}]]"
+
+
+def _vault_rel(rel, memory_root: Path, vault_root: Path) -> str:
+    """`rel` read from the memory root, else from the vault root (an idea
+    card's path is the vault root's), as a vault-relative path. A path on
+    neither is read from the memory root."""
+    rel = str(rel).replace("\\", "/")
+    for base in (memory_root, vault_root):
+        p = base / rel
+        if p.is_file():
+            try:
+                return p.relative_to(vault_root).as_posix()
+            except ValueError:
+                continue
+    try:
+        return (memory_root / rel).relative_to(vault_root).as_posix()
+    except ValueError:
+        return rel
+
+
+def vault_rel(rel, memory_root) -> str:
+    """`rel`, a memory-root or vault-root path, as a vault-relative path."""
+    import idea_cards  # function-local: keeps this module's import graph flat
+    memory_root = Path(memory_root)
+    return _vault_rel(rel, memory_root, Path(idea_cards.vault_root(memory_root)))
+
+
+def link_value_for(values, memory_root) -> str:
+    """A link-valued key's value naming `values` (task 193 LD-5): each a
+    memory-root or vault-root path, written as a quoted wikilink by its vault
+    path; a value already a wikilink is kept as it is. "" for none."""
+    import note_links  # function-local: keeps this module's import graph flat
+    if isinstance(values, str):
+        values = [values]
+    links = []
+    for v in values or []:
+        v = str(v).strip().strip("\"'")
+        if not v:
+            continue
+        links.append(v if "[[" in v else note_links.path_link(vault_rel(v, memory_root)))
+    return note_links.link_value(*links)

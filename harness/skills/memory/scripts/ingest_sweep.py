@@ -75,6 +75,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 import ingest  # noqa: E402  (fetch_url / extract_title_and_text / _slugify / ingest())
 from vault_lock import atomic_write, vault_mutex  # noqa: E402
+import stem_links  # noqa: E402  (same skill dir; the link-valued keys' form, task 193 LD-5)
 
 # The states a candidate waits in before anything has acted on it: `unfiled`
 # is what the write path stamps on a capture filed at its class directory
@@ -430,7 +431,8 @@ def promote_candidate(vault: Path, path: Path, *, now: "float | None" = None) ->
         fresh_raw = path.read_text(encoding="utf-8")
         updates = {
             "status": "ingested",
-            "derived_from": "[" + ", ".join(derived) + "]",
+            # Quoted wikilinks by vault path (task 193 LD-5).
+            "derived_from": stem_links.link_value_for(derived, vault),
             "ingested_at": _utcnow_iso(now),
         }
         patched = _patch_frontmatter(fresh_raw, updates)

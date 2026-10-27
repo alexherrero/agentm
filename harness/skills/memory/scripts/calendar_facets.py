@@ -44,6 +44,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from vault_lock import atomic_write, vault_mutex  # noqa: E402
+import note_links  # noqa: E402  (same skill dir; the link-valued keys' form, task 193 LD-5)
 
 SPACE = "calendar"
 FACET_KIND = "calendar-facet"
@@ -228,7 +229,8 @@ def _correction_frontmatter(today: date, facet: str, corrected: date, now: datet
         f"day: {today.isoformat()}",
         f"facet: {facet}",
         f"corrects: {corrected.isoformat()}",
-        f"supersedes: {facet_rel(corrected, facet)}",
+        # The corrected note as a quoted wikilink by its vault path (task 193 LD-5).
+        f"supersedes: {note_links.link_value(note_links.path_link(facet_rel(corrected, facet)))}",
         "---",
         "",
         f"# {today.isoformat()} — {facet} — corrects {corrected.isoformat()}",

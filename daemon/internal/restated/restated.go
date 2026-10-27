@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/alexherrero/agentm/daemon/internal/cardshape"
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 // RuleTypes are the note types whose restatements merge.
@@ -327,13 +328,15 @@ func Merge(older, newer Note, today string) (survivor, superseded string, err er
 			ob = setLines(ob, "why", why)
 		}
 	}
-	ob = set(ob, "supersedes", newer.MemoryRel)
+	// Each names the other as a quoted wikilink by its vault path (task 193
+	// LD-5), so Obsidian draws the link and every reader resolves it.
+	ob = set(ob, "supersedes", fmlist.LinkValue(fmlist.PathLink(newer.Rel)))
 	ob = set(ob, "updated", today)
 	survivor = cardshape.Reorder(join(ob, newerBody))
 
 	nb = set(nb, "lifecycle", "superseded")
 	nb = set(nb, "lifecycle_since", today)
-	nb = set(nb, "superseded_by", older.MemoryRel)
+	nb = set(nb, "superseded_by", fmlist.LinkValue(fmlist.PathLink(older.Rel)))
 	_, olderBodyOfNewer, _ := splitNote(newer.Raw)
 	superseded = cardshape.Reorder(join(nb, olderBodyOfNewer))
 	return survivor, superseded, nil

@@ -210,7 +210,7 @@ class MergeProposalTests(VaultCase):
                          "three notes merge into one survivor and two superseded")
         for path, content in p["mutations"]:
             self.assertIn("lifecycle: superseded", content)
-            self.assertIn("superseded_by: m/a.md", content,
+            self.assertIn('superseded_by: "[[m/a|a]]"', content,
                           "the survivor is the first by path order")
             self.assertNotIn("supersedes:", content)
             self.assertNotIn("m/a.md", Path(path).name)

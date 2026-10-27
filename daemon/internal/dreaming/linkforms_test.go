@@ -2,6 +2,8 @@ package dreaming
 
 import (
 	"testing"
+
+	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 )
 
 // The readers of link-valued keys read the quoted-wikilink form (task 193
@@ -57,5 +59,22 @@ func TestALessonsSuccessorIsReadInEveryForm(t *testing.T) {
 	// A source version names no lesson.
 	if got := liveSuccessor(root, "memory/crystallized/old.md", "---\nsuperseded_by: \"src-1 at v3\"\n---\n"); got != "" {
 		t.Errorf("a source version answered as successor %q", got)
+	}
+}
+
+// The copies job names the earliest copy as a quoted wikilink by vault path
+// (task 193 step 7), and step 6's parser reads it back as that note.
+func TestACopysSuccessorReadsBackAsTheCanonical(t *testing.T) {
+	root, _ := rootMapVault(t)
+	body := "Run the checks, then push.\n"
+	writeRaw(t, root, "memory/procedural/canon.md", "---\ntitle: canon\nkind: workflow\nstatus: active\ncreated: 2026-01-01\n---\n\n"+body)
+	writeRaw(t, root, "memory/procedural/copy.md", "---\ntitle: copy\nkind: workflow\nstatus: active\ncreated: 2026-02-01\n---\n\n"+body)
+	plan, err := PlanCopies(root, 0)
+	if err != nil || len(plan.Intents) != 1 {
+		t.Fatalf("plan %+v, %v", plan.Intents, err)
+	}
+	l, ok := fmlist.First(fmlist.LinksOf(string(plan.Intents[0].After), "superseded_by"))
+	if !ok || l.Target != "agent/memory/procedural/canon" || l.MemoryRel("agent") != "memory/procedural/canon.md" {
+		t.Errorf("superseded_by reads back as %+v", l)
 	}
 }
