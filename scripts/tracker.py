@@ -19,11 +19,13 @@ State, Next or both and stamps `updated`; it never writes the Outcome or
 
 A task's tracker also opens with one derived line that links its plan and its
 progress log by path, so the map's link to the tracker reaches both and neither
-sits unlinked in the graph. The line is computed from where the tracker sits
-and which of the two files exist, on every write; `parse` reads past it, and
-`relink` writes it alone, never touching anything else. That makes `relink`
-the one writer that may touch a final tracker: the line is a pointer, not the
-record.
+sits unlinked in the graph. A second derived line, `Artifacts: …`, links every
+other note in the task's folder tree the same way, labelled by its file name
+and sorted by path (task 193 LD-3): a run log, a draft, a survey a step wrote
+beside its plan. Both lines are computed from where the tracker sits and what
+the folder holds, on every write; `parse` reads past them, and `relink` writes
+them alone, never touching anything else. That makes `relink` the one writer
+that may touch a final tracker: the lines are pointers, not the record.
 
 This module owns the schema so both plugins write it the same way. agentm
 imports it; crickets shells to its command line rather than re-deriving it.
@@ -97,6 +99,11 @@ _YAML_WORDS = frozenset({"true", "false", "yes", "no", "on", "off", "null", "y",
 # wikilink into a moved folder and keeps its label.
 _LINK = r"\[\[[^\[\]|#^]+\|[^\[\]|]+\]\]"
 _LINKS_LINE = re.compile(rf"{_LINK}(?: · {_LINK})*")
+# The artifacts line: the same links, after a fixed prefix. A line of its own
+# rather than more links on the links line, so that line keeps the shape
+# `_LINKS_LINE` and the task mover's rewrite rely on (task 193 LD-3).
+_ARTIFACTS_PREFIX = "Artifacts: "
+_ARTIFACTS_LINE = re.compile(rf"{_ARTIFACTS_PREFIX}{_LINK}(?: · {_LINK})*")
 _UNLINKABLE = re.compile(r"[\[\]|#^]")
 
 
@@ -179,9 +186,10 @@ def _scalar_in(raw: str, key: str) -> str:
     return v
 
 
-def render(t: Tracker, links: str = "") -> str:
-    """The tracker as text. `links` is the links line `links_line` computes for
-    where the tracker is written; without a path there is none."""
+def render(t: Tracker, links: str = "", artifacts: str = "") -> str:
+    """The tracker as text. `links` and `artifacts` are the lines `links_line`
+    and `artifacts_line` compute for where the tracker is written; without a
+    path there are none."""
     lines = ["---", f"kind: {KIND}", f"title: {_scalar_out(t.title)}",
              f"project: {_scalar_out(t.project)}"]
     if t.task:
@@ -209,8 +217,22 @@ def render(t: Tracker, links: str = "") -> str:
         if text:
             body += ["", text]
         body.append("")
-    head = "\n".join(lines) + "\n\n" + (links + "\n\n" if links else "")
+    head = "\n".join(lines) + "\n\n" + _derived(links, artifacts)
     return head + "\n".join(body).rstrip("\n") + "\n"
+
+
+def _derived(links: str, artifacts: str) -> str:
+    """The derived lines as the text between the frontmatter and `## Objective`."""
+    return "".join(line + "\n\n" for line in (links, artifacts) if line)
+
+
+def _derived_ok(before: str) -> bool:
+    """Whether the text before `## Objective` is the derived lines and nothing
+    else: a links line, an artifacts line, or the two in that order."""
+    paras = [p.strip() for p in re.split(r"\n[ \t]*\n", before) if p.strip()]
+    if len(paras) == 2:
+        return bool(_LINKS_LINE.fullmatch(paras[0]) and _ARTIFACTS_LINE.fullmatch(paras[1]))
+    return len(paras) == 1 and bool(_LINKS_LINE.fullmatch(paras[0]) or _ARTIFACTS_LINE.fullmatch(paras[0]))
 
 
 def _split(text: str) -> tuple[str, str]:
@@ -228,8 +250,8 @@ def _sections(body: str) -> dict:
     if names != list(SECTIONS):
         raise TrackerError(f"the body's sections are {names}, not {list(SECTIONS)} in that order")
     before = body[:found[0][1]].strip()
-    if before and not _LINKS_LINE.fullmatch(before):
-        raise TrackerError("the body has text before `## Objective` other than its links line")
+    if before and not _derived_ok(before):
+        raise TrackerError("the body has text before `## Objective` other than its links and artifacts lines")
     out = {}
     for i, (name, _start, end) in enumerate(found):
         stop = found[i + 1][1] if i + 1 < len(found) else len(body)
@@ -427,14 +449,11 @@ def read(path: Path) -> tuple[Tracker, str]:
     return parse(text), content_hash(text)
 
 
-def links_line(path: Path, t: Tracker) -> str:
-    """The line linking a task's tracker to its plan and progress log, from
-    where the tracker sits: `projects/<project>/…/<task>/tracker.md`, through
-    the vault's `projects/` folder. A file is linked only once it exists, so the
-    line never dangles; the next write adds a progress log opened after the
-    tracker. Empty for a project's own tracker, a tracker outside a task folder
-    under `projects/<project>/`, or a folder name a wikilink cannot carry."""
-    path = Path(path).absolute()
+def _task_folder(path: Path, t: Tracker) -> str:
+    """The task folder a tracker at `path` sits in, as the vault path its links
+    name: `projects/<project>/…/<task>`. Empty for a project's own tracker, a
+    tracker outside a task folder under `projects/<project>/`, or a folder name
+    a wikilink cannot carry."""
     if not t.task or path.name != "tracker.md" or path.parent.name != t.task:
         return ""
     parts = path.parent.parts
@@ -444,10 +463,48 @@ def links_line(path: Path, t: Tracker) -> str:
             break
     else:
         return ""
-    if _UNLINKABLE.search(folder):
+    return "" if _UNLINKABLE.search(folder) else folder
+
+
+def links_line(path: Path, t: Tracker) -> str:
+    """The line linking a task's tracker to its plan and progress log, from
+    where the tracker sits. A file is linked only once it exists, so the line
+    never dangles; the next write adds a progress log opened after the tracker.
+    Empty where `_task_folder` finds no task folder."""
+    path = Path(path).absolute()
+    folder = _task_folder(path, t)
+    if not folder:
         return ""
     return " · ".join(f"[[{folder}/{name}|{label}]]" for name, label in LINKED
                       if (path.parent / f"{name}.md").is_file())
+
+
+def artifacts_line(path: Path, t: Tracker) -> str:
+    """The line linking every other note in a task's folder tree, by path and
+    labelled by its file name, sorted by path (task 193 LD-3): everything but
+    the tracker and what the links line already names, outside hidden folders.
+    A name a wikilink cannot carry is left out, as the links line leaves out
+    such a folder. Empty where there is none, or no task folder."""
+    path = Path(path).absolute()
+    folder = _task_folder(path, t)
+    if not folder:
+        return ""
+    base = path.parent
+    taken = {"tracker.md"} | {f"{name}.md" for name, _label in LINKED}
+    rels = []
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            if not name.endswith(".md") or name.startswith("."):
+                continue
+            rel = (Path(dirpath) / name).relative_to(base).as_posix()
+            if rel in taken or _UNLINKABLE.search(rel):
+                continue
+            rels.append(rel)
+    if not rels:
+        return ""
+    return _ARTIFACTS_PREFIX + " · ".join(
+        f"[[{folder}/{rel[:-3]}|{rel.rsplit('/', 1)[-1][:-3]}]]" for rel in sorted(rels))
 
 
 def _replace(path: Path, text: str) -> None:
@@ -481,12 +538,13 @@ def write(path: Path, t: Tracker, *, expected_hash: Optional[str] = None) -> Pat
         current = content_hash(path.read_text(encoding="utf-8")) if path.exists() else None
         if current != expected_hash:
             raise ChangedError(f"{path} changed since it was read; read it again")
-    _replace(path, render(t, links_line(path, t)))
+    _replace(path, render(t, links_line(path, t), artifacts_line(path, t)))
     return path
 
 
 def relink(path: Path) -> bool:
-    """Write the tracker's links line and nothing else; True when it changed.
+    """Write the tracker's links and artifacts lines and nothing else; True
+    when they changed.
 
     Every byte from `## Objective` on, and the frontmatter, stays as it was:
     no field is stamped, so a final tracker may be relinked and a tracker
@@ -498,8 +556,8 @@ def relink(path: Path) -> bool:
     head_end = text.find("\n---\n", 3) + len("\n---\n")
     body = text[head_end:]
     objective = _HEADING.search(body)
-    line = links_line(path, t)
-    relinked = text[:head_end] + "\n" + (line + "\n\n" if line else "") + body[objective.start():]
+    derived = _derived(links_line(path, t), artifacts_line(path, t))
+    relinked = text[:head_end] + "\n" + derived + body[objective.start():]
     if relinked == text:
         return False
     if path.read_text(encoding="utf-8") != text:
@@ -542,8 +600,9 @@ def _build_parser() -> argparse.ArgumentParser:
     c = sub.add_parser("check", help="report schema findings")
     c.add_argument("paths", nargs="+")
 
-    r = sub.add_parser("relink", help="write each task tracker's links line to its plan and "
-                                      "progress log, changing nothing else; prints what changed")
+    r = sub.add_parser("relink", help="write each task tracker's links line (its plan and progress "
+                                      "log) and artifacts line (every other note in its folder), "
+                                      "changing nothing else; prints what changed")
     r.add_argument("paths", nargs="+")
     return p
 
