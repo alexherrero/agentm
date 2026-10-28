@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -490,7 +491,10 @@ func writeGrouped(b *strings.Builder, ms []mention, h string) {
 	}
 }
 
-// noteLink is an Obsidian link to a note, labelled with its title.
+// noteLink is an Obsidian link to a note, labelled with its title. A note whose
+// path holds a character a wikilink cannot carry (`[`, `]`, `|`, `#`, `^`) is
+// linked by a Markdown link to its percent-encoded vault path instead (task 193
+// LD-6): `[[Talk [Septembe|…]]` would close early and link to nothing.
 func noteLink(m mention) string {
 	target := strings.TrimSuffix(m.Rel, ".md")
 	label := m.Title
@@ -498,7 +502,19 @@ func noteLink(m mention) string {
 		label = path.Base(target)
 	}
 	label = strings.NewReplacer("|", "-", "[", "(", "]", ")", "\n", " ").Replace(label)
+	if strings.ContainsAny(target, "[]|#^") {
+		return "[" + label + "](<" + encodedPath(m.Rel) + ">)"
+	}
 	return "[[" + target + "|" + label + "]]"
+}
+
+// encodedPath percent-encodes each segment of a vault path, keeping the slashes.
+func encodedPath(rel string) string {
+	parts := strings.Split(rel, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
 }
 
 // yamlValue quotes a value when YAML would otherwise read it as something else.
