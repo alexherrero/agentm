@@ -113,6 +113,9 @@ type HeldTask struct {
 	Notes  []string `json:"notes,omitempty"`
 }
 
+// taskLinksWhat names what the mover's link edits point into, for their summary.
+const taskLinksWhat = "moved task folders"
+
 // EditedNote is a note outside the moved folders whose links were rewritten.
 type EditedNote struct {
 	Path  string `json:"path"`
@@ -237,7 +240,7 @@ func PlanTaskMoves(root string, contract *rules.Rules, now time.Time, cap int) (
 		plan.Folders = append(plan.Folders, c.TaskFolder)
 	}
 
-	edits, edited, links := linkEdits(vault, root, notes, from, rw, exists)
+	edits, edited, links := linkEdits(vault, root, notes, from, rw, exists, JobTasks, taskLinksWhat)
 	plan.Intents, plan.Edited = edits, edited
 	plan.Links += links
 	return plan, nil
@@ -340,7 +343,7 @@ func dueTasks(vault, space string, contract *rules.Rules, now time.Time, plan *T
 // the mover has run (task 190: one writer per page). A hand-written note under
 // `memory/entities/` is the builder's to leave alone, so the mover repairs it.
 func linkEdits(vault, root string, notes []string, moving map[string]bool,
-	rw *linkrewrite.Rewriter, exists func(string) bool) ([]Intent, []EditedNote, int) {
+	rw *linkrewrite.Rewriter, exists func(string) bool, job, what string) ([]Intent, []EditedNote, int) {
 	var intents []Intent
 	var edited []EditedNote
 	links := 0
@@ -365,8 +368,8 @@ func linkEdits(vault, root string, notes []string, moving map[string]bool,
 		if err != nil {
 			continue
 		}
-		intents = append(intents, Intent{Job: JobTasks, Rel: noteRel, Before: raw,
-			After: []byte(text), Summary: fmt.Sprintf("%d link(s) into moved task folders rewritten", n)})
+		intents = append(intents, Intent{Job: job, Rel: noteRel, Before: raw,
+			After: []byte(text), Summary: fmt.Sprintf("%d link(s) into %s rewritten", n, what)})
 		edited = append(edited, EditedNote{Path: rel, Links: n})
 		links += n
 	}
@@ -694,7 +697,7 @@ func ApplyTaskMoves(journal *Journal, root, engineStateDir, runID string, plan *
 		func(rel string) bool {
 			_, err := os.Stat(filepath.Join(vault, filepath.FromSlash(rel)))
 			return err == nil
-		})
+		}, JobTasks, taskLinksWhat)
 	plan.Intents, plan.Edited, plan.Links = nil, nil, 0
 	for i, in := range edits {
 		ok, err := commitOne(journal, root, runID, in, now, rep)

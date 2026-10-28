@@ -418,6 +418,9 @@ func printReport(rep dreaming.Report) {
 	for _, m := range p.Retired {
 		fmt.Printf("  retired %s — superseded, moved to %s\n", m.Rel, dreaming.ArchiveDestination(m.Rel))
 	}
+	for _, e := range p.LinkEdits {
+		fmt.Printf("  links in %s — %d pointed into the archive\n", e.Path, e.Links)
+	}
 	for _, m := range p.Deleted {
 		fmt.Printf("  deleted %s — silent %.0f days\n", m.Rel, m.Days)
 	}
@@ -445,6 +448,9 @@ func printReport(rep dreaming.Report) {
 	fmt.Printf("copies: %d famil%s (%d deferred) · refile: %d move(s), %d unflag(s), %d blocked · promote: %d new, %d existing\n",
 		len(rep.Copies.Families), map[bool]string{true: "y", false: "ies"}[len(rep.Copies.Families) == 1], rep.Copies.Deferred,
 		len(rep.Refile.Moves), len(rep.Refile.Unflags), len(rep.Refile.Blocked), len(rep.Promote.Promotions), len(rep.Promote.Existing))
+	for _, e := range rep.Refile.LinkEdits {
+		fmt.Printf("  links in %s — %d pointed at the re-filed note\n", e.Path, e.Links)
+	}
 	if rep.Calendar.Skipped != "" {
 		fmt.Printf("calendar: skipped — %s\n", rep.Calendar.Skipped)
 	} else {
