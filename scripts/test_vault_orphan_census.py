@@ -187,6 +187,21 @@ class TestCountingRules(unittest.TestCase):
         self.assertEqual(self.rec("pair/two.md")["in_md"], ["pair/one.md"])
         self.assertFalse(self.rec("pair/two.md")["graph_orphan"])
 
+    def test_an_entity_pages_markdown_link_reaches_a_bracket_named_note(self) -> None:
+        # The form daemon/internal/dreaming/entities.go writes for a name a
+        # wikilink cannot carry (task 193 LD-6), byte for byte as its test pins it.
+        notes = {
+            "agent/memory/entities/repos/crickets.md":
+                "- 2026-09-21 · [Talk (Septembe](<personal/talks/Talk%20%5BSeptembe.md>)\n",
+            "personal/talks/Talk [Septembe.md": "plain\n",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            ix = voc.VaultIndex(_build_vault(Path(tmp), notes, app_json=None))
+            recs = voc.census(ix, yaml, git_dates={})
+        self.assertEqual(recs["personal/talks/Talk [Septembe.md"]["in_md"],
+                         ["agent/memory/entities/repos/crickets.md"])
+        self.assertFalse(recs["personal/talks/Talk [Septembe.md"]["graph_orphan"])
+
     def test_dot_folders_are_outside_the_universe(self) -> None:
         self.assertNotIn(".trash/gone.md", self.recs)
         self.assertEqual(self.rec("pair/one.md")["in_md"], [])
