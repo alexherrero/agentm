@@ -38,6 +38,10 @@ type RefilePlan struct {
 	// Blocked names a move whose destination basename is taken.
 	Blocked    []Refile `json:"blocked"`
 	Considered int      `json:"considered"`
+	// LinkEdits is every note whose links the moves rewrote, and Links how
+	// many links that was (task 193 LD-7).
+	LinkEdits []EditedNote `json:"link_edits,omitempty"`
+	Links     int          `json:"links,omitempty"`
 }
 
 // classOf is the class segment of `memory/<class>/…`, "" for anything else.
@@ -157,5 +161,8 @@ func PlanRefile(root string, r *rules.Rules) (RefilePlan, error) {
 		plan.Moves = append(plan.Moves, item)
 		plan.Intents = append(plan.Intents, Intent{Job: JobRefile, Rel: rel, To: to, Before: raw, After: raw, Summary: item.Summary})
 	}
+	// The links that name a re-filed note by its path follow it to its class
+	// (task 193 LD-7).
+	plan.Intents, plan.LinkEdits, plan.Links = withMoveLinks(root, r, JobRefile, "re-filed notes", plan.Intents)
 	return plan, nil
 }

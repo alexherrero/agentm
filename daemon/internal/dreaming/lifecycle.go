@@ -114,6 +114,10 @@ type LifecyclePlan struct {
 	Demoted  []Move   `json:"demoted"`
 	Revived  []Move   `json:"revived"`
 	Archived []Move   `json:"archived"`
+	// LinkEdits is every note whose links the archive moves rewrote, and Links
+	// how many links that was (task 193 LD-7).
+	LinkEdits []EditedNote `json:"link_edits,omitempty"`
+	Links     int          `json:"links,omitempty"`
 	// Retired is a lesson the crystallizer superseded, moved to the archive
 	// beside the silent ones once its successor is on disk (task 191).
 	Retired []Move `json:"retired_superseded,omitempty"`
@@ -600,9 +604,9 @@ func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap i
 			plan.Revived = append(plan.Revived, Move{rel, days})
 		// The archive move. It used to be a candidate list this job never acted
 		// on; the note is moved now, to `archive/memory/<class>/`, and stamped.
-		// The class folders hold what is alive and one folder holds what is not
-		// — and Obsidian resolves a link by basename, so every link that named
-		// the note still finds it.
+		// The class folders hold what is alive and one folder holds what is not.
+		// A link by basename still finds the note, and one by its path is
+		// pointed at the archive by withMoveLinks below (task 193 LD-7).
 		case state == "dormant" && days > archiveAfter:
 			plan.Candidates = append(plan.Candidates, Move{rel, days})
 			if len(plan.Archived) >= cap {
@@ -631,6 +635,9 @@ func PlanLifecycle(root, sidecarDir string, r *rules.Rules, now time.Time, cap i
 			plan.ArchivingSoon = append(plan.ArchivingSoon, Move{rel, days})
 		}
 	}
+	// The links that name an archived note by its path follow it into the
+	// archive (task 193 LD-7); a basename link still finds it.
+	plan.Intents, plan.LinkEdits, plan.Links = withMoveLinks(root, r, JobLifecycle, "archived notes", plan.Intents)
 	return plan, nil
 }
 
