@@ -297,6 +297,26 @@ def _command(name, args=""):
                  f"<command-args>{args}</command-args>", uuid="c0")
 
 
+class ARelayedTurnIsNotTheOperators(unittest.TestCase):
+    """#904: the desktop app stamps a turn it delivered with `turnOrigin`, and a
+    chip's background prompt arrives with no `origin` at all, so it read as
+    typed. Only `human`, or no stamp, is the operator."""
+
+    def test_each_relay_stamp_is_not_an_operator_turn(self):
+        for stamp in ("sdk", "peer", "scheduled", "task_notification", "system"):
+            with self.subTest(stamp=stamp):
+                self.assertFalse(reflect.is_operator_turn(_turn("make the traces cheaper", turnOrigin=stamp)))
+
+    def test_a_human_stamp_or_none_is_the_operator(self):
+        self.assertTrue(reflect.is_operator_turn(_turn("make the traces cheaper", turnOrigin="human")))
+        self.assertTrue(reflect.is_operator_turn(_turn("make the traces cheaper")))
+
+    def test_a_relayed_turn_mines_nothing(self):
+        mined = reflect.mine_transcript_messages([_turn(
+            "Always rebase, never merge, from now on.", turnOrigin="sdk", promptSource="sdk", uuid="u1")])
+        self.assertEqual(mined["memory_candidates"], [])
+
+
 class ACommandTheHostRunsIsNotTheRequest(unittest.TestCase):
     """`/clear` or `/model opusplan` carries no brief: the request is what is
     pasted next, and its standing rules are a quote, not a sighting."""

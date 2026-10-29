@@ -380,32 +380,68 @@ def has_operator_turn(messages: list) -> bool:
 
 def _first_request(messages: list) -> str:
     """The session's opening ask, uncut. The title takes its head; `## Asked`
-    takes more of it. A line the host wrote is skipped, and so is a pasted code
-    block: its fence line is no request, and its first line is a paste, not the
-    ask (the first prose line outside it is, when there is one)."""
+    takes more of it. Only a turn the operator typed counts (`reflect.
+    is_operator_turn`): another session's message, a chip's background prompt
+    and a command's expansion are relays, and 26 traces took one as their title
+    (#904). A line the host wrote is skipped, and so is a pasted code block: its
+    fence line is no request, and its first line is a paste, not the ask (the
+    first prose line outside it is, when there is one)."""
     import reflect
     for m in messages:
-        if m.get("type") != "user":
+        if m.get("type") != "user" or not reflect.is_operator_turn(m):
             continue
-        for b in _blocks(m):
-            if b.get("type") == "text":
-                prose, pasted, inside = "", "", False
-                for raw in (b.get("text") or "").splitlines():
-                    line = raw.strip()
-                    if _is_fence(line):
-                        inside = not inside
-                        continue
-                    if not line or reflect.HOST_LINE.match(line):
-                        continue
-                    if inside:
-                        pasted = pasted or line
-                    else:
-                        prose = line
-                        break
-                line = prose or pasted
-                if line and not line.startswith("<") and "tool_result" not in line:
-                    return line
+        prose, pasted, inside = "", "", False
+        for raw in reflect._operator_text(m).splitlines():
+            line = raw.strip()
+            if _is_fence(line):
+                inside = not inside
+                continue
+            if not line or reflect.HOST_LINE.match(line):
+                continue
+            if inside:
+                pasted = pasted or line
+            else:
+                prose = line
+                break
+        line = prose or pasted
+        if line and not line.startswith("<") and "tool_result" not in line:
+            return line
     return ""
+
+
+def _opened_by_relay(messages: list) -> bool:
+    """Whether the session's first readable turn came from somewhere other than
+    the operator: a chip's background prompt, another session's message, a
+    command's expansion or a pasted brief past the typing ceiling."""
+    import reflect
+    for m in messages:
+        if m.get("type") != "user" or m.get("isSidechain") or m.get("isCompactSummary"):
+            continue
+        if not reflect._extract_text(m).strip():
+            continue
+        return not reflect.is_operator_turn(m)
+    return False
+
+
+def _host_title(transcript_path: Path) -> str:
+    """The title the desktop app gave the session (its last `custom-title`
+    record), or "". The app names a chip's session from its task and keeps the
+    name current, which `reflect.load_messages` drops as metadata."""
+    title = ""
+    try:
+        with open(transcript_path, encoding="utf-8") as f:
+            for line in f:
+                if '"custom-title"' not in line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                if r.get("type") == "custom-title" and str(r.get("customTitle") or "").strip():
+                    title = str(r["customTitle"]).strip()
+    except OSError:
+        return ""
+    return title
 
 
 def _closing_recap(messages: list) -> str:
@@ -587,7 +623,14 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
     if when is None:
         when = (start or datetime.now(timezone.utc)).date()
     asked = _first_request(messages)
-    title = asked[:TITLE_CHARS] if asked else fallback_title(session_id)
+    # A session a relay opened is named by the app's title for it: the
+    # operator's first line there answers the relay, not what the session is
+    # for. Otherwise the first thing typed, then the app's title, then the id.
+    host = _host_title(Path(transcript_path))
+    if host and (not asked or _opened_by_relay(messages)):
+        title = host[:TITLE_CHARS]
+    else:
+        title = asked[:TITLE_CHARS] if asked else fallback_title(session_id)
     touched = (captured + recalled)[:MAX_TOUCHED]
     return Trace(when=when, session_id=session_id, title=title, touched=touched,
                  captured=[t for t in captured if t in touched], recalled=[t for t in recalled if t in touched],

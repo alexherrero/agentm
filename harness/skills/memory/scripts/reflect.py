@@ -330,6 +330,18 @@ HANDOFF_MARKER = "<!-- agentm:handoff — agent-authored; not the operator's own
 _HANDOFF_MARKER_KEY = "<!-- agentm:handoff"
 
 
+def _relayed(msg: dict) -> bool:
+    """Whether the host stamped the turn as arriving from somewhere other than
+    the person at the keyboard (#904). The desktop app writes `turnOrigin` on a
+    turn it delivered: `peer` for another session's message, `sdk` for the
+    background prompt a chip or a launching session hands over, `scheduled` and
+    `task_notification` for its own. A typed turn carries `human`, or nothing.
+    Some of these arrive with no `origin` at all, so `origin.kind` alone let a
+    relayed prompt read as the operator's."""
+    turn_origin = msg.get("turnOrigin")
+    return bool(turn_origin) and turn_origin != "human"
+
+
 def _operator_text(msg: dict) -> str:
     """The part of a user message worth mining as operator intent, or "".
 
@@ -343,6 +355,8 @@ def _operator_text(msg: dict) -> str:
     origin = msg.get("origin")
     if isinstance(origin, dict) and origin.get("kind") and origin.get("kind") != "human":
         # The host said someone other than a person sent this. Believe it.
+        return ""
+    if _relayed(msg):
         return ""
     if msg.get("isMeta"):
         return ""
@@ -396,6 +410,7 @@ def is_operator_turn(msg: dict) -> bool:
         return True
     origin = msg.get("origin")
     human = not (isinstance(origin, dict) and origin.get("kind") and origin.get("kind") != "human")
+    human = human and not _relayed(msg)
     raw = _extract_text(msg)
     return (human and not msg.get("isMeta") and bool(_COMMAND.search(raw))
             and not _SCHEDULED_TASK.search(raw))

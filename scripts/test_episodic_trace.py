@@ -734,5 +734,74 @@ class TheIdeasFenceIsNeverInsideOut(unittest.TestCase):
         self.assertEqual(et._first_request(msgs), "why does this fail")
 
 
+class ARelayIsNotTheTitle(unittest.TestCase):
+    """#904: a session opened by another session's message, a chip's background
+    prompt or a command's expansion took that relay as its title (26 traces),
+    and the desktop app's own title for the session went unread."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.transcript = Path(self._tmp.name) / "s.jsonl"
+
+    def _write(self, *rows):
+        self.transcript.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    def _user(self, text, ts, **extra):
+        return _line("user", [{"type": "text", "text": text}], ts, **extra)
+
+    def _title(self, *rows):
+        self._write(*rows)
+        return et.from_transcript(self.transcript, session_id="82d1ca38-aaaa",
+                                  history_path=Path(self._tmp.name) / "none.jsonl").title
+
+    def _host(self, title):
+        return json.dumps({"type": "custom-title", "customTitle": title})
+
+    def test_a_peer_message_is_not_the_title(self):
+        title = self._title(
+            self._user("Another Claude session sent a message:\n<cross-session-message from=\"x\">do it</cross-session-message>",
+                       "2026-10-27T10:00:00Z", turnOrigin="peer", promptSource="system", isMeta=True,
+                       origin={"kind": "peer"}),
+            self._host("Build part 2's art in the view (F14), on the Mac"),
+            self._user("what's next here?", "2026-10-27T10:05:00Z"))
+        self.assertEqual(title, "Build part 2's art in the view (F14), on the Mac")
+
+    def test_a_chips_background_prompt_is_not_the_title(self):
+        title = self._title(
+            self._user("Background (from the session that started this one):\ngbc-doom is a port.",
+                       "2026-10-27T10:00:00Z", turnOrigin="sdk", promptSource="sdk", entrypoint="claude-desktop"),
+            self._host("gbc-doom: game simulation, playable E1M1 (M4)"),
+            self._user("make the blockmap traces cheaper with identical results", "2026-10-27T10:05:00Z"))
+        self.assertEqual(title, "gbc-doom: game simulation, playable E1M1 (M4)")
+
+    def test_a_relay_with_no_host_title_falls_to_the_first_typed_line(self):
+        title = self._title(
+            self._user("Background (from the session that started this one):\nwork task 3",
+                       "2026-10-27T10:00:00Z", turnOrigin="sdk", promptSource="sdk"),
+            self._user("we're moving to 4k", "2026-10-27T10:05:00Z"))
+        self.assertEqual(title, "we're moving to 4k")
+
+    def test_a_command_expansion_is_not_the_title(self):
+        title = self._title(
+            self._user("You are running the **work** phase of the developer-workflows loop.",
+                       "2026-10-27T10:00:00Z", isMeta=True),
+            self._host("Implement task 193"),
+            self._user("go", "2026-10-27T10:01:00Z"))
+        self.assertEqual(title, "Implement task 193")
+
+    def test_a_session_the_operator_opened_keeps_their_words(self):
+        title = self._title(
+            self._host("Vault Perfection"),
+            self._user("Show me a few recent memory cards", "2026-10-27T10:00:00Z", turnOrigin="human"))
+        self.assertEqual(title, "Show me a few recent memory cards")
+
+    def test_nothing_readable_falls_back_to_the_id(self):
+        title = self._title(
+            self._user("Another Claude session sent a message:", "2026-10-27T10:00:00Z",
+                       turnOrigin="peer", isMeta=True, origin={"kind": "peer"}))
+        self.assertEqual(title, "session 82d1ca38")
+
+
 if __name__ == "__main__":
     unittest.main()
