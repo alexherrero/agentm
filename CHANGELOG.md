@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+A session trace is titled by what the session is for, not by the relay that opened it.
+
+### Fixed
+
+- **A relayed turn is no longer the operator's (#904).** The desktop app stamps each turn it delivers with `turnOrigin`: `peer` for another session's message, `sdk` for a chip's background prompt, and `scheduled`, `task_notification` and `system` for its own. Only `human`, or no stamp, is now read as typed. A chip's background prompt arrives with no `origin`, so it had been read as typed and mined.
+- **A session opened by a relay takes the app's title for it.** Twenty-six traces had been titled "Another Claude session sent a message:", "Background (from the session that started this one):" or "You are running the work phase…". The title now comes from the first typed line. When a relay opened the session, or nothing typed can be read, it comes from the desktop app's own `custom-title` for the session, and the session id is the last resort. Existing traces keep their file names, because 463 links point at them.
+
 ## [10.10.0] - 2026-10-27
 
 Task 193: the vault's graph reads true. The report of 2026-10-22 counted 1,271 notes with no link in or out, 210 of them written by agentm itself, and found the keys that name another note written in a form Obsidian does not draw. Now the diagnostics reports, the class indexes, every project's research, desk and draft notes, and every file a task leaves beside its plan are linked from a generated map or the task's tracker. The keys `related`, `supersedes`, `superseded_by` and `derived_from` are read in every form they have ever held and written as quoted wikilinks by vault path, and a generated link uses a note's bare name only when no other note shares it. Entity pages link a note whose name holds a bracket with a Markdown link, and the night's archive and refile moves repair the links into what they move. Measured on the live vault on 2026-10-27, agentm's own orphans fell from 210 to 8, all blog drafts in an archive folder the map skips by rule, and the vault's from 1,272 to 1,166; the retrieval gate held at an exact paired p of 0.5488. Task 194: `agentmd status` tells the truth. It names the commit the running daemon was built from and how long ago the vault backup last pushed, shows the captures the volume cap refused, the queue-age alert counts only cards the night can judge, and a job started from a stale primary clone runs and says so.
