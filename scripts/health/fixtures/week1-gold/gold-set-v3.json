@@ -55,7 +55,8 @@
         "Agent/desk/projects/_archive/experimental/onenote-migration-summary.md"
       ],
       "stratum": "distinctive-token",
-      "source": "transcript"
+      "source": "transcript",
+      "history": true
     },
     {
       "id": "dt03",
@@ -120,7 +121,8 @@
         "Agent/desk/projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md"
       ],
       "stratum": "distinctive-token",
-      "source": "transcript"
+      "source": "transcript",
+      "history": true
     },
     {
       "id": "dt10",
@@ -210,7 +212,8 @@
       ],
       "stratum": "pure-paraphrase",
       "source": "cold",
-      "sharpest_collision": "sherwood (1.4%) — KNOWN EXCEPTION to the 2% bar. Kept deliberately: it is the only term identifying which project, and agentm was rewritten too, so removing it makes the question ambiguous. An ambiguous question is a worse defect than a mild collision. v1 (4.6%) and v2 (3.8%) clear."
+      "sharpest_collision": "sherwood (1.4%) — KNOWN EXCEPTION to the 2% bar. Kept deliberately: it is the only term identifying which project, and agentm was rewritten too, so removing it makes the question ambiguous. An ambiguous question is a worse defect than a mild collision. v1 (4.6%) and v2 (3.8%) clear.",
+      "history": true
     },
     {
       "id": "pp07",
@@ -223,7 +226,8 @@
       "source": "cold",
       "sharpest_collision": "fully (5.3%)",
       "note": "Narrowed by deletion from the operator's original question — the unanswerable trailing clause was cut, no word was added, so source stays cold. The original is parked in $deferred. Broad question, best-available targets: F1-REAUDIT P2 states the as-built capture path contradicts the designed one, and the F0 surface audit is where that was found plus the companion [PENDING-IMPL] accumulate-loop finding. Neither is a full diagnosis; that lives in the repo's rescope designs.",
-      "v3_note": "Truncated tail restored ('...forcing me to do a second re-write when we got to FRIDAY') — dropped at authoring time, along with it the distinctive token FRIDAY that points directly at the two expected designs/friday/ notes. Both $inbox decoys purged from the corpus (they carried this question's original, un-restored text). Expected notes and stratum/source unchanged from v2 -- distinct from the separately-scoped $deferred entry, which targets a repo file this corpus cannot reach."
+      "v3_note": "Truncated tail restored ('...forcing me to do a second re-write when we got to FRIDAY') — dropped at authoring time, along with it the distinctive token FRIDAY that points directly at the two expected designs/friday/ notes. Both $inbox decoys purged from the corpus (they carried this question's original, un-restored text). Expected notes and stratum/source unchanged from v2 -- distinct from the separately-scoped $deferred entry, which targets a repo file this corpus cannot reach.",
+      "history": true
     },
     {
       "id": "pp08",
@@ -234,7 +238,8 @@
       ],
       "stratum": "pure-paraphrase",
       "source": "cold",
-      "sharpest_collision": "primos (1.0%) — KNOWN EXCEPTION, same reasoning as pp06's sherwood: the only term identifying which review. 'conclusion' (0.4%) was swapped for 'decide' (clear) to remove the avoidable rare collision."
+      "sharpest_collision": "primos (1.0%) — KNOWN EXCEPTION, same reasoning as pp06's sherwood: the only term identifying which review. 'conclusion' (0.4%) was swapped for 'decide' (clear) to remove the avoidable rare collision.",
+      "history": true
     },
     {
       "id": "pp09",
@@ -263,7 +268,8 @@
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "place (4.5%)",
-      "v3_note": "Expanded: the operator's own first-person 'why I want this vault' preference notes and the founding design conversation are better answers to 'remind me why I chose a vault' than the formalized convention note alone."
+      "v3_note": "Expanded: the operator's own first-person 'why I want this vault' preference notes and the founding design conversation are better answers to 'remind me why I chose a vault' than the formalized convention note alone.",
+      "history": true
     },
     {
       "id": "pp11",
@@ -368,7 +374,8 @@
       ],
       "stratum": "episodic-temporal",
       "source": "cold",
-      "note": "The primary source — _idea-incubator/home-server-cluster/research-managed-private-vpn.md — is on the retirement list and cannot be labeled. Both targets carry the surviving verdict (Tailscale > NetBird > CF Zero Trust, WireGuard fallback, Headscale disqualified) and are rehomed as reference memories rather than deleted. Moved here from pure-paraphrase: four rare collisions (tunneling 0.1%, vpn 0.2%, hosting 0.6%, services 0.9%) made it unpassable as a paraphrase, and no rewording cleared the bar without becoming a riddle."
+      "note": "The primary source — _idea-incubator/home-server-cluster/research-managed-private-vpn.md — is on the retirement list and cannot be labeled. Both targets carry the surviving verdict (Tailscale > NetBird > CF Zero Trust, WireGuard fallback, Headscale disqualified) and are rehomed as reference memories rather than deleted. Moved here from pure-paraphrase: four rare collisions (tunneling 0.1%, vpn 0.2%, hosting 0.6%, services 0.9%) made it unpassable as a paraphrase, and no rewording cleared the bar without becoming a riddle.",
+      "history": true
     },
     {
       "id": "ep02",
@@ -380,7 +387,8 @@
       ],
       "stratum": "episodic-temporal",
       "source": "cold",
-      "note": "No note states a start or stop date. The answer is only inferable from artifact dating: the decisions doc is named 2026-03-20, auto-sync-worktree.md was created 2026-04-15 and last touched 2026-05-28, _index.md was created 2026-05-19 and still reads status: active. 'When I stopped' resolves to late May; 'when I started' is not recorded — the March decisions doc predates vault capture of this project, so the vault knows when it began watching, not when work began."
+      "note": "No note states a start or stop date. The answer is only inferable from artifact dating: the decisions doc is named 2026-03-20, auto-sync-worktree.md was created 2026-04-15 and last touched 2026-05-28, _index.md was created 2026-05-19 and still reads status: active. 'When I stopped' resolves to late May; 'when I started' is not recorded — the March decisions doc predates vault capture of this project, so the vault knows when it began watching, not when work began.",
+      "history": true
     },
     {
       "id": "ep03",
@@ -391,7 +399,8 @@
       ],
       "stratum": "episodic-temporal",
       "source": "cold",
-      "note": "Answerable, with an ambiguity the vault cannot resolve: posts are backdated via date: frontmatter in drafts/_archive/, so 'last post' reads two ways — by post date it is google-drive-no-undo (2026-06-26), by publish order it is 'Running Agent M all day' (v1.2.13). Both land in the same week of late June. PLAN.md still shows Task 4 ('Grounding Agent M', targeted July) open, confirming the gap is real rather than an unrecorded publish."
+      "note": "Answerable, with an ambiguity the vault cannot resolve: posts are backdated via date: frontmatter in drafts/_archive/, so 'last post' reads two ways — by post date it is google-drive-no-undo (2026-06-26), by publish order it is 'Running Agent M all day' (v1.2.13). Both land in the same week of late June. PLAN.md still shows Task 4 ('Grounding Agent M', targeted July) open, confirming the gap is real rather than an unrecorded publish.",
+      "history": true
     },
     {
       "id": "ep04",
@@ -402,7 +411,8 @@
       ],
       "stratum": "episodic-temporal",
       "source": "cold",
-      "note": "Weak target. No note records the two-step pass being established as a dated decision; these are the closest, carrying the simplify-aggressively rule and later plans that ran the pass."
+      "note": "Weak target. No note records the two-step pass being established as a dated decision; these are the closest, carrying the simplify-aggressively rule and later plans that ran the pass.",
+      "history": true
     },
     {
       "id": "ep05",
@@ -412,7 +422,8 @@
         "Agent/desk/projects/agentm/decisions/2026-03-01-key-decisions.md"
       ],
       "stratum": "episodic-temporal",
-      "source": "cold"
+      "source": "cold",
+      "history": true
     },
     {
       "id": "ep06",
@@ -422,7 +433,8 @@
         "Agent/desk/projects/dev-setup/designs/2026-06-26-ecosystem-reconciliation.md"
       ],
       "stratum": "episodic-temporal",
-      "source": "cold"
+      "source": "cold",
+      "history": true
     },
     {
       "id": "ep07",
@@ -434,7 +446,8 @@
       "stratum": "episodic-temporal",
       "source": "cold",
       "note": "The V4 roadmap's own '## Why a separate V4 roadmap' section is the decision — V4 work 'isn't sequenced linearly behind the non-V4 backlog. It's its own track, and items in this file get planned + executed in their own cadence once V3 is in production.' agent-m-v4/_index.md dates it: deferred to a dedicated roadmap as of plan #14 close, 2026-05-23. Ambiguity worth knowing: 'arc' as a formal label only appears from 2026-06-05, when arc: frontmatter stamping begins — so the first work stream that WAS an arc (V4, May) and the first thing CALLED one (June) are different dates. Both readings resolve inside these two notes.",
-      "v3_note": "Rewritten to disambiguate: the bare question collided with the blog's 'Agent M arc' memoir series (a defensible but unintended reading, returned #1). 'development arc' specifies the intended V4-roadmap reading."
+      "v3_note": "Rewritten to disambiguate: the bare question collided with the blog's 'Agent M arc' memoir series (a defensible but unintended reading, returned #1). 'development arc' specifies the intended V4-roadmap reading.",
+      "history": true
     },
     {
       "id": "ep08",
@@ -447,7 +460,8 @@
       "stratum": "episodic-temporal",
       "source": "cold",
       "note": "Answers the cause half well — macOS File Provider dataless placeholders, eviction re-dehydrating uploaded files, Drive conflict-copies, and the Claude Code EDEADLK issue on dataless CloudStorage reads. The fix half is a recommendation (coordination state on a local path outside the synced folder, lock/re-read/CAS/write-temp/fsync/rename), not a landed fix.",
-      "v3_note": "Expanded: wanted note is pre-hoc concurrency research; the cause-and-fix record of Drive thrash lives in the file-watching reference note and the git-outside-sync note, both returned. 'googel' typo kept in the question — the dense arm handles it and it is a realistic robustness case."
+      "v3_note": "Expanded: wanted note is pre-hoc concurrency research; the cause-and-fix record of Drive thrash lives in the file-watching reference note and the git-outside-sync note, both returned. 'googel' typo kept in the question — the dense arm handles it and it is a realistic robustness case.",
+      "history": true
     },
     {
       "id": "ep09",
@@ -459,7 +473,8 @@
       ],
       "stratum": "episodic-temporal",
       "source": "cold",
-      "note": "PARTIAL. No note calls anything an agentm rewrite. The closest records are the V3->V4 break (agent-m-v4/_index.md: V4 'deliberately breaks V3's folder structure + storage patterns', deferred 2026-05-23) and the V4->V7 through-line in version-summaries.md. rebuild-not-refactor.md dates Agent M's v0 birth to the Sherwood rebuild window (~April 2026) but describes a first build, not a rewrite. Answerable by inference, not by statement."
+      "note": "PARTIAL. No note calls anything an agentm rewrite. The closest records are the V3->V4 break (agent-m-v4/_index.md: V4 'deliberately breaks V3's folder structure + storage patterns', deferred 2026-05-23) and the V4->V7 through-line in version-summaries.md. rebuild-not-refactor.md dates Agent M's v0 birth to the Sherwood rebuild window (~April 2026) but describes a first build, not a rewrite. Answerable by inference, not by statement.",
+      "history": true
     },
     {
       "id": "ep10",
@@ -472,7 +487,8 @@
       "source": "cold",
       "note": "The blog draft carries the narrative and its post date (2026-04-18); the decisions doc dates the v1 tech-debt retro that triggered it (2026-04-27). Shares the decisions doc with pp06, which asks what broke rather than when.",
       "hook_reachable": false,
-      "v3_note": "Group A: retrieval hits (rank 1/2/1 on +question); the hook arm's recall path excludes the subtree every expected note lives in (_archive/ / _inbox / scratch). Excluded from the hook arm's denominator, not counted as a generic miss; reported separately."
+      "v3_note": "Group A: retrieval hits (rank 1/2/1 on +question); the hook arm's recall path excludes the subtree every expected note lives in (_archive/ / _inbox / scratch). Excluded from the hook arm's denominator, not counted as a generic miss; reported separately.",
+      "history": true
     },
     {
       "id": "ep11",
@@ -482,7 +498,8 @@
       ],
       "stratum": "episodic-temporal",
       "source": "cold",
-      "note": "Clean answer with a date in the note itself: created 2026-05-23, 'Learned during plan #14 ... over 3 review iterations where the user heavily edited an initial draft'. The same note's amendment log then dates every later evolution, so it answers both when it started and how it grew. Shares its target with pp03."
+      "note": "Clean answer with a date in the note itself: created 2026-05-23, 'Learned during plan #14 ... over 3 review iterations where the user heavily edited an initial draft'. The same note's amendment log then dates every later evolution, so it answers both when it started and how it grew. Shares its target with pp03.",
+      "history": true
     },
     {
       "id": "ep12",
@@ -495,7 +512,8 @@
       "source": "cold",
       "note": "First half answered precisely: claude-allowance-cut.md (dated 2026-02-04) records working almost entirely in Antigravity until the Claude allowance there was cut below usable, which forced the harness rethink and the lean into Claude — with Antigravity retained for what Gemini is good at. Second half is not recorded: green-squares.md only places first agentic-coding experience 'about eighteen months earlier' than 2026-01-19, and never names Claude as the tool.",
       "hook_reachable": false,
-      "v3_note": "Group A: retrieval hits (rank 1/2/1 on +question); the hook arm's recall path excludes the subtree every expected note lives in (_archive/ / _inbox / scratch). Excluded from the hook arm's denominator, not counted as a generic miss; reported separately."
+      "v3_note": "Group A: retrieval hits (rank 1/2/1 on +question); the hook arm's recall path excludes the subtree every expected note lives in (_archive/ / _inbox / scratch). Excluded from the hook arm's denominator, not counted as a generic miss; reported separately.",
+      "history": true
     },
     {
       "id": "rd01",

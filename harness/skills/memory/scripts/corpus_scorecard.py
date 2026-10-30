@@ -33,6 +33,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +59,10 @@ _TIMEOUT_SECONDS = 300
 DIAGNOSTICS_DIR = Path("diagnostics") / "health"
 STABLE_NAME = "latest_health_scorecard.md"
 COMPLETENESS_RESULT_NAME = "latest_completeness.json"
+
+# The retrieval harness and the baseline it is guarded against, repo-relative.
+EVAL_SCRIPT = "scripts/health/eval_retrieval_shipped.py"
+PINNED_BASELINE = "scripts/health/fixtures/week1-gold/shipped-baseline.json"
 
 
 def _cell(value) -> str:
@@ -521,46 +526,145 @@ def section_meters() -> Section:
     return s
 
 
-def section_retrieval(repo: Path) -> Section:
-    """Whether the memory can still be found.
+class EvalUnavailable(RuntimeError):
+    """The live retrieval run produced no measurement.
 
-    Read from the pinned baseline that `check-retrieval-regression` already
-    guards, rather than re-running the gold set here. One gold-set reader, one
-    number; a second would drift from the first and nobody would know which to
-    believe.
+    Raised for the same reason as DaemonUnavailable, with one temptation more:
+    the pinned baseline sits right there, and printing it in the run's place
+    would look exactly like a measurement.
+    """
+
+
+def live_retrieval(repo: Path) -> dict:
+    """One run of the shipped harness on the live index, as its result.
+
+    Run rather than reimplemented, so the page and the gate read one harness.
+    `--baseline` is only how the harness writes its result: the path here is a
+    scratch file, and the pinned fixture is not touched. Every search it issues
+    carries `-surface measure`, so a run bumps no note's clock. Its own interpreter
+    runs it, because the runner's python3 and a session's are different Pythons.
+    """
+    script = repo / EVAL_SCRIPT
+    if not script.exists():
+        raise EvalUnavailable(f"no eval at {EVAL_SCRIPT}")
+    with tempfile.TemporaryDirectory(prefix="corpus-scorecard-") as scratch:
+        out = Path(scratch) / "live-retrieval.json"
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(script), "--baseline", str(out)],
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=_TIMEOUT_SECONDS)
+        except OSError as exc:
+            raise EvalUnavailable(f"the eval could not start: {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise EvalUnavailable(
+                f"the eval did not finish within {_TIMEOUT_SECONDS}s") from exc
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+            raise EvalUnavailable(
+                detail[-1][:200] if detail
+                else f"the eval exited {proc.returncode} with no reason")
+        try:
+            return json.loads(out.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise EvalUnavailable(f"the eval wrote no result: {exc}") from exc
+
+
+def _pinned_baseline(repo: Path) -> dict:
+    """The baseline the guard compares against, or {"unread": why}."""
+    pinned = repo / PINNED_BASELINE
+    if not pinned.exists():
+        return {"unread": f"no pinned baseline at {pinned.name}"}
+    try:
+        return json.loads(pinned.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"unread": f"pinned baseline unreadable: {exc}"}
+
+
+def _with_pinned_history(pin: dict, run: dict) -> dict:
+    """The pin, with tonight's history group scored on its per-question hits.
+
+    The pin predates the label, so the group is read from the rows it kept. Only
+    questions it scored count, so its figure is never a fraction of a group it
+    did not see.
+    """
+    rows = pin.get("per_question") or {}
+    seen = [rows[q] for q in run.get("history_ids") or []
+            if q in rows and rows[q].get("hit") is not None]
+    if not seen:
+        return pin
+    hits = sum(1 for row in seen if row["hit"])
+    return {**pin, "history_hits": hits, "history_scored": len(seen),
+            "r_at_k_history": round(hits / len(seen), 4)}
+
+
+def _shown(value) -> str:
+    return f"{value:.4f}" if isinstance(value, float) else str(value)
+
+
+def _beside(pin: dict, key: str, figure) -> str:
+    """The pinned figure and its date, for the note beside a number or a dash."""
+    if pin.get("unread"):
+        return pin["unread"]
+    if pin.get(key) is None:
+        return "the pin carries no such figure"
+    when = (pin.get("corpus") or {}).get("pinned") or "an unrecorded date"
+    return f"pinned {figure(pin)} on {when}"
+
+
+def section_retrieval(repo: Path) -> Section:
+    """Whether the memory can still be found, on the index as it is tonight.
+
+    Each row is a live run of the harness `check-retrieval-regression` uses,
+    with the pinned baseline beside it. The rows once reprinted that baseline,
+    so a 2,883-document measurement read as tonight's for six weeks while the
+    index grew past 5,000. The live number and the pin never share a cell: with
+    no run, the number is a dash and the pin stays in the note.
     """
     s = Section("Retrieval", blurb=(
-        "Measured against the frozen gold set. The pinned baseline is what "
+        "Measured on the live index tonight, against the frozen gold set. The "
+        "pinned baseline beside each number is what "
         "`check-retrieval-regression` guards on every commit."))
-    pinned = repo / "scripts/health/fixtures/week1-gold/shipped-baseline.json"
-    if not pinned.exists():
-        s.readings.append(Reading.unavailable(
-            "gold-set R@5", f"no pinned baseline at {pinned.name}"))
-        return s
+    pin = _pinned_baseline(repo)
     try:
-        data = json.loads(pinned.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        s.readings.append(Reading.unavailable("gold-set R@5", str(exc)))
-        return s
+        run, why = live_retrieval(repo), ""
+    except EvalUnavailable as exc:
+        run, why = {}, str(exc)
+    pin = _with_pinned_history(pin, run)
 
-    k = data.get("k", 5)
-    s.readings.append(Reading.measured(
-        f"gold-set R@{k}", data.get("r_at_k"), source=pinned.name,
-        note=f"{data.get('hits')} of {data.get('scored')} scored questions"))
-    if data.get("r_at_1") is not None:
+    k = run.get("k") or pin.get("k") or 5
+    when = (run.get("corpus") or {}).get("pinned")
+    documents = (run.get("corpus") or {}).get("documents")
+    rows = (
+        (f"gold-set R@{k}", "r_at_k",
+         lambda d: f"{_shown(d.get('r_at_k'))} ({d.get('hits')} of {d.get('scored')})",
+         f"{run.get('hits')} of {run.get('scored')} scored questions"),
+        ("gold-set R@1", "r_at_1",
+         lambda d: f"{_shown(d.get('r_at_1'))} ({d.get('hits_at_1')} first-slot hits)",
+         f"{run.get('hits_at_1')} first-slot hits — informational; the "
+         "ordering headroom lives here"),
+        ("average rank of the first hit", "avg_rank_to_first_hit",
+         lambda d: _shown(d.get("avg_rank_to_first_hit")), ""),
+        ("near-miss false positives", "false_positives_hard",
+         lambda d: f"{d.get('false_positives_hard')} of {d.get('negatives_hard')}",
+         f"{run.get('false_positives_hard')} of {run.get('negatives_hard')} "
+         f"near-miss questions had their banned note in the top {k}"),
+        (f"history questions R@{k}", "r_at_k_history",
+         lambda d: (f"{_shown(d.get('r_at_k_history'))} "
+                    f"({d.get('history_hits')} of {d.get('history_scored')})"),
+         f"{run.get('history_hits')} of {run.get('history_scored')} questions "
+         "that ask what happened, when or why"),
+    )
+    for label, key, figure, detail in rows:
+        beside = _beside(pin, key, figure)
+        if run.get(key) is None:
+            s.readings.append(Reading.unavailable(
+                label, f"{why or 'the run reported no such figure'}; {beside}"))
+            continue
+        measured = f"measured {when} on {documents} documents; {beside}"
         s.readings.append(Reading.measured(
-            "gold-set R@1", data.get("r_at_1"), source=pinned.name,
-            note=f"{data.get('hits_at_1')} first-slot hits — informational; "
-                 f"the ordering headroom lives here"))
-    if data.get("avg_rank_to_first_hit") is not None:
-        s.readings.append(Reading.measured(
-            "average rank of the first hit", data["avg_rank_to_first_hit"],
-            source=pinned.name))
-    if data.get("false_positives") is not None:
-        s.readings.append(Reading.measured(
-            "false positives on negatives", data["false_positives"],
-            source=pinned.name,
-            note=f"of {data.get('negatives')} questions that should return nothing"))
+            label, run[key], source=EVAL_SCRIPT,
+            note=f"{detail}; {measured}" if detail else measured))
     return s
 
 

@@ -37,7 +37,7 @@ VAULT_ROOT = resolve_vault_root()
 
 TOUCHED_IDS = {"dt07", "pp09", "pp10", "ep08", "pp16", "ep07", "pp07", "pp17"}
 HOOK_ANNOTATED = {"dt01", "ep10", "ep12"}
-ALLOWED_NEW_FIELDS = {"expected_note_prefixes", "hook_reachable", "layer", "v3_note"}
+ALLOWED_NEW_FIELDS = {"expected_note_prefixes", "hook_reachable", "layer", "history", "v3_note"}
 
 
 def main():

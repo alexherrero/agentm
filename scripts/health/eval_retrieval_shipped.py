@@ -599,7 +599,10 @@ def require_warm_embedder(binary: str) -> str:
     hybrid result is not a weaker measurement, it is a different one — and the
     arm that is missing is the one a paraphrase question depends on.
     """
-    proc = subprocess.run([binary, "status", "--json"], capture_output=True, text=True)
+    try:
+        proc = subprocess.run([binary, "status", "--json"], capture_output=True, text=True)
+    except OSError as exc:
+        raise Setup(f"{binary} could not be run: {exc}") from exc
     if proc.returncode not in (0, 3):
         raise Setup(f"{binary} status failed: {(proc.stderr or '').strip()[:200]}")
     try:
@@ -699,14 +702,27 @@ class Refused(Exception):
     """
 
 
+# Fields that label a question without changing what it asks or what scores it.
+# The hash leaves them out: a label is not a new question paper, so adding one
+# needs no re-pin. Every other change to the file still moves the hash.
+GOLD_LABELS = ("history",)
+
+
 def gold_sha() -> str:
-    """A content hash of the gold set, grouped so no ten-digit run survives.
+    """A content hash of the question paper, grouped so no ten-digit run survives.
 
     Grouped because the PII gate reads a long hex digest's digit runs as a US
     phone number — the third time this arc has hit that, so the format is now
     the habit rather than the retrofit.
     """
-    h = hashlib.sha256(GOLD_SET.read_bytes()).hexdigest()[:12]
+    paper = json.loads(GOLD_SET.read_text(encoding="utf-8"))
+    for entry in paper.get("entries") or []:
+        for label in GOLD_LABELS:
+            entry.pop(label, None)
+    # The file's own format, so a set carrying no label hashes to its bytes and
+    # the pin taken before labels existed still compares.
+    canonical = json.dumps(paper, indent=2, ensure_ascii=False) + "\n"
+    h = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
     return "-".join(h[i:i + 4] for i in range(0, 12, 4))
 
 
@@ -987,6 +1003,8 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
     scored = 0
     rank_sum = 0
     ranked = 0
+    history_ids = []
+    history_hits = 0
     false_positives = 0
     negatives = 0
     negatives_hard = 0
@@ -1050,6 +1068,9 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
                 rank = i
                 via = path if path in stand_ins else None
                 break
+        if e.get("history"):
+            history_ids.append(e["id"])
+            history_hits += rank is not None
         if rank is not None:
             hits += 1
             rank_sum += rank
@@ -1088,6 +1109,14 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
         "hits_at_1": hits_at_1,
         "r_at_1": round(hits_at_1 / scored, 4) if scored else 0.0,
         "avg_rank_to_first_hit": round(rank_sum / ranked, 4) if ranked else None,
+        # The labelled group, on its own line so a ruling on the archive penalty
+        # can be read without a harness. None rather than 0.0 with no marks: a
+        # set that labels nothing has not measured history at zero.
+        "history_ids": history_ids,
+        "history_hits": history_hits,
+        "history_scored": len(history_ids),
+        "r_at_k_history": (round(history_hits / len(history_ids), 4)
+                           if history_ids else None),
         "negatives": negatives,
         "false_positives": false_positives,
         "negatives_hard": negatives_hard,
@@ -1248,6 +1277,9 @@ def render(result: dict, provenance: str, census: dict = None) -> str:
         lines.append(f"  answered by a lesson: {q} via {lesson}")
     if result["avg_rank_to_first_hit"] is not None:
         lines.append(f"  rank to first hit  : {result['avg_rank_to_first_hit']:.2f}")
+    if result.get("r_at_k_history") is not None:
+        lines.append(f"  history questions  : {result['r_at_k_history']:.3f} "
+                     f"({result['history_hits']} of {result['history_scored']})")
     if result.get("negatives_hard"):
         lines.append(
             f"  negatives (easy)   : {result['negatives_easy']}, "

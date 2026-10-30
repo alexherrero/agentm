@@ -91,6 +91,14 @@ A JSON array, or an object with an `entries` array, of:
   stratum, so a stratum name that appears nowhere else silently becomes its own
   one-question bucket.
 - **`source`** — `transcript`, `cold`, or `authored`.
+- **`history`** (`gold-set-v3.json`, optional) — `true` on a question that asks
+  what happened, when, or why a past decision was made, judged from its wording
+  alone and never from whether it hits or where its answer sits. The whole
+  episodic-temporal stratum qualifies, and `dt02`, `dt09`, `pp06`, `pp07`, `pp08`
+  and `pp10` join it. `pp02`, `pp14` and `pp15` do not: each asks what is true now
+  and only happens to have its answer in finished work. The scorecard reports
+  the group's R@5 on its own line. A label changes neither what a question asks
+  nor what scores it, so `gold_sha` leaves it out and the pin still compares.
 
 ## Two labeling constraints from the design
 
