@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-A session trace is titled by what the session is for, not by the relay that opened it.
+A session trace is titled by what the session is for, not by the relay that opened it. Task 195: a vault note is checked when it is saved.
+
+### Added
+
+- **One vault note checked against the three vault gates (task 195 step 1).** `scripts/vault_note_check.py --file PATH` asks one note what `check-vault-frontmatter`, `check-vocabulary-membership` and `check-tracker-schema` ask of the whole vault: does the header parse, is its type registered, and does a tracker hold. It calls the gates' own functions and keeps no rule of its own. The gates gain the pieces it calls: `in_scan`, `kind_registry.in_corpus` and `classify`, and `note_findings` and `in_projects_space`. The tracker gate's walk and the vocabulary audit now call theirs, and tests hold the two scope predicates to the walks they mirror. So a note a gate skips is skipped here, and a retired type passes as it does in the gate. The message names the line and the fix. A header that won't parse gets YAML's own words and a reminder to quote. An unregistered type gets the three nearest registered ones. An unknown tracker status gets the allowed statuses and a note that `tracker.py transition` can't move it, so the line is fixed by hand. A clean note, or a file outside the vault, prints nothing and exits 0. A finding exits 2 with the message on stderr. One note checks in about 80 ms. Without the daemon there is no contract to check a type against, so that check steps aside and the other two still run.
+- **The vault checks every note a Claude Code session saves (task 195 step 2).** `install.sh` and `install.ps1` put `templates/vault-verify.sh` and its PowerShell twin in the vault's `.harness/` as `verify.sh` and `verify.ps1`, through `vault_note_check.py --install`. The machine-wide `verify-dispatch` PostToolUse hook already runs the nearest `.harness/verify.sh` above every file a session writes or edits, so no hook is registered. The script finds the clone in the install config and the interpreter through `resolve-python`, as the memory hooks do, and exports `AGENTMD` when a hook's thin PATH would miss the daemon. A failing save's message reaches the session that saved the note, and the save itself stands. A later install rewrites a script that still carries its `vault-verify (AgentM)` marker and leaves any other alone. The vault's git doesn't track `.harness/` and the daemon's walks skip it.
+- **The morning note names the notes the vault gates fail (task 195 step 3).** Scripts, the daemon and other hosts' sessions write notes no hook sees. Each night the morning note runs `vault_note_check.sweep`, the three gates' whole-vault walks, about 3 seconds over 5,200 notes. It lists each failing note under *what needs you* by path, project and finding, the first five and a count. A clean night says nothing, and a sweep that breaks costs the note that one list. Its first live reading named a temple-coordination schedule check that `check.py` writes at `kind: check`.
+
+### Changed
+
+- **The AgentM Vault design records the save-time check (task 195 step 4).** One amendment, body and log together: a new passage in *Projects and tasks* on how a saved note is checked, and the morning note's new list. The CI-Gates reference gains a row for the save-time check.
 
 ### Fixed
 

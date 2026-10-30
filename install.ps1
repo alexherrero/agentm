@@ -213,6 +213,24 @@ if ($LocalState) {
     }
 }
 
+# Task 195 — the vault's verify script, as install.sh installs it: the nearest
+# `.harness/verify.ps1` above a saved file is what verify-dispatch.ps1 runs, so
+# one at the vault root checks every note saved there. A script there that
+# isn't AgentM's is left alone. No vault, nothing installed.
+if (-not $LocalState) {
+    $env:AGENTM_INSTALL_PREFIX = $UserInstallPrefix
+    try {
+        & $pythonCmd.Source (Join-Path $HarnessRoot 'scripts/vault_note_check.py') '--install' 2>&1 |
+            ForEach-Object { Write-Host "    save-time check: $_" }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "    the vault's save-time check was not installed (continuing)"
+        }
+    } catch {
+        Write-Warning "    the vault's save-time check was not installed (continuing)"
+    }
+    $env:AGENTM_INSTALL_PREFIX = $null
+}
+
 # Antigravity GLOBAL rules (V4 #22 Task 4b) — the user-scope Antigravity
 # channel, parity with ~/.claude/. Merge the AgentMemory vault-usage payload
 # into ~/.gemini/GEMINI.md (Antigravity's global rules file, applied across

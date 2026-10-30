@@ -897,5 +897,48 @@ class TheVolumeRefusals(_Night):
         self.assertNotIn("daily write cap", self._note(0))
 
 
+class TheVaultOffenders(_Night):
+    """Notes the three vault gates fail, written where no save-time check saw
+    them (task 195): a script's report, another host's tracker. Named under
+    what needs you, by path, project and finding; a clean vault says nothing."""
+
+    def _note(self):
+        dated, _, _ = mn.build(self.vault, now=NOW, engine_dir=self.engine,
+                               runner_dir=self.runner, rollup=self.rollup, ask=_ask_fine)
+        return dated.read_text(encoding="utf-8")
+
+    def test_a_planted_offender_is_named_with_its_project(self):
+        # The live layout: `projects/` beside the memory root, in a vault
+        # witnessed by `.obsidian/`.
+        (self.root / ".obsidian").mkdir()
+        report = self.root / "projects" / "temple-coordination" / "reports" / "check.md"
+        report.parent.mkdir(parents=True)
+        report.write_text("---\nkind: check\n---\n\nA report.\n", encoding="utf-8")
+        needs = self._note().split("## What needs you", 1)[1]
+        self.assertIn("**Notes the vault gates fail** (1)", needs)
+        self.assertIn("`projects/temple-coordination/reports/check.md` (temple-coordination): "
+                      "`check` isn't a registered type", needs)
+
+    def test_a_tracker_at_an_unknown_status_is_named(self):
+        (self.root / ".obsidian").mkdir()
+        tracker = self.root / "projects" / "home-tech-next" / "tracker.md"
+        tracker.parent.mkdir(parents=True)
+        tracker.write_text(
+            "---\nkind: tracker\ntitle: Home\nproject: home-tech-next\nstatus: open\n"
+            "opened: 2026-10-20\nupdated: 2026-10-21\nclosed:\n---\n\n## Objective\n\nIt runs.\n\n"
+            "## State\n\nNot started.\n\n## Next\n\nStart.\n\n## Outcome\n", encoding="utf-8")
+        needs = self._note().split("## What needs you", 1)[1]
+        self.assertIn("`projects/home-tech-next/tracker.md` (home-tech-next): `status: open` "
+                      "is not one of", needs)
+
+    def test_a_clean_vault_says_nothing(self):
+        self.full_night()
+        self.assertNotIn("vault gates fail", self._note())
+
+    def test_a_sweep_that_breaks_costs_the_note_one_list(self):
+        with mock.patch.object(mn, "vault_offenders", side_effect=RuntimeError("boom")):
+            self.assertNotIn("vault gates fail", self._note())
+
+
 if __name__ == "__main__":
     unittest.main()
