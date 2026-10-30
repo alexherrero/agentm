@@ -155,6 +155,18 @@ def corpus_notes(vault, vault_root=None) -> list:
     return notes
 
 
+def in_corpus(rel: str) -> bool:
+    """Whether the walk above reads the note at `rel`, its POSIX path from the
+    corpus root. Asked of one note at a time by the save-time check
+    (`vault_note_check.py`), with the same two predicates the walk prunes by,
+    so a note the audit never reads is never checked when it is saved."""
+    parts = rel.split("/")
+    for depth in range(1, len(parts)):
+        if not _walked(parts[depth - 1], "/".join(parts[:depth])):
+            return False
+    return _is_note(parts[-1], rel)
+
+
 def scope_line(spaces: dict) -> str:
     """The top-level directories a walk read, with the notes in each."""
     named = sorted(s for s in spaces if s != TOP_LEVEL)
@@ -203,6 +215,22 @@ def is_retired(kind: str) -> bool:
 def replacement_for(kind: str):
     """The value that replaces a retired one, or None if it is not retired."""
     return storage_rules.rules().resolve_deprecated(kind)
+
+
+def classify(raw: str, known=None, deprecations=None):
+    """The audit's bucket for one vocabulary value: `"malformed"`, `"retired"`,
+    `"unrecognized"`, or None for a registered value. `known` and
+    `deprecations` are the contract's, read here when the caller has not
+    already read them once for a whole walk."""
+    if not is_kebab(raw):
+        return "malformed"
+    if deprecations is None:
+        deprecations = storage_rules.rules().deprecations()
+    if raw in deprecations:
+        return "retired"
+    if known is None:
+        known = storage_rules.known_values()
+    return None if raw in known else "unrecognized"
 
 
 def _frontmatter(content: str) -> dict:
@@ -281,13 +309,14 @@ def audit(vault_path: Path | str, *, vault_root=None, spaces: dict | None = None
         raw = note_kind(content)
         if raw is None:
             continue
-        if not is_kebab(raw):
+        bucket = classify(raw, known, deprecations)
+        if bucket == "malformed":
             malformed.append((rel, raw))
             continue
         by_kind[raw] = by_kind.get(raw, 0) + 1
-        if raw in deprecations:
+        if bucket == "retired":
             retired.append((rel, raw))
-        elif raw not in known:
+        elif bucket == "unrecognized":
             unrecognized.append((rel, raw))
 
     return {

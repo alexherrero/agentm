@@ -12,7 +12,8 @@ Four sections, each left out when it has nothing to say:
   1. **What ran.** Enrichment as judged · filed active · below the floor ·
      sank · calls · tokens · model; the dreaming binary's seven jobs; the
      Python cycle's findings; and which nightly steps did not run, and why.
-  2. **What needs you.** Unfiled notes the batch judged below the floor,
+  2. **What needs you.** Notes the vault gates fail, which no save-time check
+     saw; unfiled notes the batch judged below the floor,
      possible twins, shared keys, proposed facets, the binary's archive
      candidates, and what sank this week — counts and the first five of each,
      with the needs-review map holding the full lists.
@@ -327,6 +328,7 @@ class Night:
     worktrees: list = field(default_factory=list)  # signs of a git worktree in the vault
     clone: Optional[dict] = None    # the primary clone against origin/main (#815)
     writes: Optional[dict] = None   # the write meter over the last 24 hours
+    offenders: list = field(default_factory=list)  # notes the vault gates fail (task 195)
     writes_missing: str = ""
 
 
@@ -466,6 +468,14 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
         except Exception:  # a check that will not run costs the note one line
             night.clone = None
 
+    # A note the vault gates fail. A Claude Code session hears it the moment
+    # it saves; a script, the daemon or another host's session doesn't, so
+    # the morning names what they left (task 195).
+    try:
+        night.offenders = vault_offenders(vault)
+    except Exception:  # a check that will not run costs the note one list
+        night.offenders = []
+
     night.populations = corpus_scorecard.class_populations(vault)
     read_writes(night, vault)
     try:
@@ -484,6 +494,29 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
 
 def _link(rel: str) -> str:
     return f"[[{Path(str(rel)).stem}]]"
+
+
+def vault_offenders(vault: Path) -> list:
+    """The vault gates' sweep, `scripts/vault_note_check.py`'s `sweep`, over
+    the vault root this memory root sits in. Loaded by path from the clone this
+    file sits in, and empty when it isn't there."""
+    import importlib.util
+
+    path = _HERE.parents[3] / "scripts" / "vault_note_check.py"
+    if not path.is_file():
+        return []
+    saved = list(sys.path)
+    try:
+        spec = importlib.util.spec_from_file_location("vault_note_check", path)
+        check = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(check)
+    finally:
+        sys.path[:] = saved
+    try:
+        import yaml
+    except ImportError:
+        yaml = None  # the header check needs PyYAML; the other two don't
+    return check.sweep(check.kind_registry.corpus_root(vault), yaml)
 
 
 def _first(items: list, fmt) -> str:
@@ -703,6 +736,12 @@ def needs_you(night: Night) -> list:
     if behind:
         lines.append(f"- **{behind[0].upper() + behind[1:]}.** Every scheduled job ran that "
                      "older code; the doctor's `install-head` row has the detail.")
+    if night.offenders:
+        lines.append(f"- **Notes the vault gates fail** ({len(night.offenders)}), written where "
+                     "no save-time check saw them: "
+                     + _first(night.offenders,
+                              lambda o: f"`{o['rel']}` ({o['project']}): {o['finding']}")
+                     + ". Fix each by hand; `check-all` names the same notes.")
     if night.worktrees:
         lines.append(f"- **A git worktree is in the vault** ({len(night.worktrees)}): "
                      + "; ".join(night.worktrees[:FIRST])

@@ -454,6 +454,16 @@ else
   _agentm_vault_first_run_prompt "$USER_INSTALL_PREFIX"
 fi
 
+# Task 195 — the vault's verify script. verify-dispatch runs the nearest
+# `.harness/verify.sh` above a saved file, so one at the vault root checks
+# every note a Claude Code session saves there against the three vault gates.
+# Installed from templates/vault-verify.{sh,ps1}; a script there that isn't
+# AgentM's is left alone. No vault, nothing installed.
+if [[ $LOCAL_STATE -eq 0 ]]; then
+  python3 "$HARNESS_ROOT/scripts/vault_note_check.py" --install 2>&1 | sed 's/^/    save-time check: /' \
+    || echo "    WARN: the vault's save-time check was not installed (continuing)" >&2
+fi
+
 # Antigravity GLOBAL rules (V4 #22 Task 4b) — the user-scope Antigravity channel,
 # parity with ~/.claude/ for Claude Code. Merge the AgentMemory vault-usage
 # payload into ~/.gemini/GEMINI.md (Antigravity's global rules file, applied

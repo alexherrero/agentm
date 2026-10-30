@@ -416,6 +416,21 @@ def iter_notes(root: Path, wall=None, root_rel: str = ""):
                 yield Path(dirpath) / name
 
 
+def in_scan(rel: str, wall) -> bool:
+    """Whether `iter_notes` yields the note at `rel`, its POSIX path from the
+    vault root, by the walk's own two predicates. The save-time check
+    (`vault_note_check.py`) asks this of one note at a time, so a note the
+    gate never opens is never checked when it is saved."""
+    import storage_rules  # noqa: E402 - the memory toolkit, on sys.path above
+
+    parts = rel.split("/")
+    for depth in range(1, len(parts)):
+        if parts[depth - 1].startswith(_SKIP_DIR_PREFIXES) or \
+                storage_rules.in_area("/".join(parts[:depth]), wall):
+            return False
+    return rel.endswith(".md") and not storage_rules.in_area(rel, wall)
+
+
 def scan_vault(root: Path, yaml_mod, spaces: dict | None = None,
                wall=None, root_rel: str = "") -> tuple[list[Finding], int]:
     """Scan every note under root. Returns (findings, notes scanned).

@@ -86,6 +86,32 @@ def placement_findings(t: tk.Tracker, slug: str, place: str, task: Optional[str]
     return out
 
 
+def note_findings(path: Path, slug: str, parts: tuple) -> Optional[list]:
+    """What the gate finds in one Markdown file of project `slug`, at `parts`
+    under the project's directory: None when the file is no tracker, else the
+    findings, empty when it holds. The whole-space walk below and the save-time
+    check (`vault_note_check.py`) both ask this, so the two cannot disagree."""
+    placed = placement(parts)
+    if placed is None:
+        if declares_tracker(path):
+            return [f"declares `kind: tracker` outside a tracker's place ({PLACES})"]
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [str(exc)]
+    problems = tk.check_text(text)
+    if not problems:
+        problems = placement_findings(tk.parse(text), slug, *placed)
+    return problems
+
+
+def in_projects_space(slug: str, parts: tuple) -> bool:
+    """Whether the walk below reads a file at `parts` in project `slug`."""
+    return (not slug.startswith((".", "_"))
+            and not any(part.startswith(".") for part in parts))
+
+
 def projects_findings(projects: Path) -> tuple:
     """`(trackers read, findings)` over one projects space."""
     count, findings = 0, []
@@ -93,24 +119,13 @@ def projects_findings(projects: Path) -> tuple:
                           if p.is_dir() and not p.name.startswith((".", "_"))):
         for path in sorted(project.rglob("*.md")):
             parts = path.relative_to(project).parts
-            if any(part.startswith(".") for part in parts):
+            if not in_projects_space(project.name, parts):
                 continue
             rel = "/".join((project.name,) + parts)
-            placed = placement(parts)
-            if placed is None:
-                if declares_tracker(path):
-                    count += 1
-                    findings.append(f"{rel}: declares `kind: tracker` outside a tracker's place ({PLACES})")
+            problems = note_findings(path, project.name, parts)
+            if problems is None:
                 continue
             count += 1
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError as exc:
-                findings.append(f"{rel}: {exc}")
-                continue
-            problems = tk.check_text(text)
-            if not problems:
-                problems = placement_findings(tk.parse(text), project.name, *placed)
             findings += [f"{rel}: {p}" for p in problems]
     return count, findings
 
