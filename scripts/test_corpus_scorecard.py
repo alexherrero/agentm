@@ -66,6 +66,15 @@ HEALTHY = {
 
 
 class ScorecardTests(unittest.TestCase):
+    def setUp(self):
+        # Under the battery $AGENTMD names the real daemon, and `REPO` carries
+        # the real harness: unpatched, every build here would run a live eval.
+        patcher = mock.patch.object(
+            sc, "live_retrieval",
+            side_effect=sc.EvalUnavailable("the live eval is stubbed out"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def build(self, fake, tmp: Path):
         with mock.patch.object(sc, "_agentmd", side_effect=fake):
             return sc.build(tmp, REPO, now=AT, rel=Path("diagnostics/health"))
@@ -524,74 +533,191 @@ class DateTests(unittest.TestCase):
         self.assertIn("2026-08-21", dated.name)
 
 
-class RetrievalTests(unittest.TestCase):
-    """The retrieval row when there is no pinned baseline to read.
+# What one night's `eval_retrieval_shipped.py --baseline` writes, with numbers
+# no pinned fixture below carries, so a row can only have come from the run.
+LIVE_RUN = {
+    "k": 5, "scored": 63, "hits": 38, "r_at_k": 0.6032,
+    "hits_at_1": 23, "r_at_1": 0.3651, "avg_rank_to_first_hit": 1.7105,
+    "negatives": 30, "false_positives": 3,
+    "negatives_hard": 10, "false_positives_hard": 3,
+    "corpus": {"documents": 4062, "embedded_in_scope": 3346,
+               "gold_sha": "aaaa-bbbb-cccc", "pinned": "2026-10-30"},
+}
+PIN = {
+    "k": 5, "scored": 63, "hits": 42, "r_at_k": 0.6667,
+    "hits_at_1": 16, "r_at_1": 0.254, "avg_rank_to_first_hit": 2.0,
+    "negatives": 30, "false_positives": 9,
+    "negatives_hard": 10, "false_positives_hard": 9,
+    "corpus": {"documents": 2883, "pinned": "2026-09-18"},
+}
 
-    This branch never ran, because the checkout has one — so the code that says
-    "no baseline" could have been anything at all.
+
+def row(rendered: str, label: str) -> list:
+    """A table row's cells, by its label."""
+    for line in rendered.splitlines():
+        if line.startswith(f"| {label} |"):
+            return [cell.strip() for cell in line.strip("|").split(" | ")]
+    raise AssertionError(f"no row {label!r} in:\n{rendered}")
+
+
+class RetrievalTests(unittest.TestCase):
+    """The retrieval rows are a night's run, with the pin only ever beside them.
+
+    The section once reprinted the pinned fixture under a heading that said
+    measured, so these read the value cell apart from the note.
     """
 
-    def test_a_missing_baseline_is_a_dash_rather_than_a_zero(self):
-        import tempfile
+    def repo_with(self, d: str, pin) -> Path:
+        repo = Path(d) / "repo"
+        gold = repo / "scripts/health/fixtures/week1-gold"
+        gold.mkdir(parents=True)
+        if pin is not None:
+            (gold / "shipped-baseline.json").write_text(
+                pin if isinstance(pin, str) else json.dumps(pin), encoding="utf-8")
+        return repo
 
+    def section(self, pin, run=None, why="the daemon is down"):
         with tempfile.TemporaryDirectory() as d:
-            empty_repo = Path(d) / "repo"
-            (empty_repo / "scripts/health/fixtures/week1-gold").mkdir(parents=True)
-            section = sc.section_retrieval(empty_repo)
+            repo = self.repo_with(d, pin)
+            if run is None:
+                patched = mock.patch.object(sc, "live_retrieval",
+                                            side_effect=sc.EvalUnavailable(why))
+            else:
+                patched = mock.patch.object(sc, "live_retrieval", return_value=run)
+            with patched:
+                return sc.section_retrieval(repo).render()
 
-        rendered = section.render()
+    def test_the_rows_come_from_the_run_not_the_fixture(self):
+        rendered = self.section(PIN, LIVE_RUN)
+        self.assertEqual(row(rendered, "gold-set R@5")[1], "0.6032")
+        self.assertEqual(row(rendered, "gold-set R@1")[1], "0.3651")
+        self.assertEqual(row(rendered, "average rank of the first hit")[1], "1.7105")
+        self.assertEqual(row(rendered, "near-miss false positives")[1], "3")
+
+    def test_each_row_says_when_it_was_measured_and_shows_the_pin_beside_it(self):
+        rendered = self.section(PIN, LIVE_RUN)
+        note = row(rendered, "gold-set R@5")[2]
+        self.assertIn("38 of 63", note)
+        self.assertIn("measured 2026-10-30 on 4062 documents", note)
+        self.assertIn("pinned 0.6667 (42 of 63) on 2026-09-18", note)
+        self.assertIn("pinned 0.2540 (16 first-slot hits) on 2026-09-18",
+                      row(rendered, "gold-set R@1")[2])
+        self.assertIn("pinned 2.0000 on 2026-09-18",
+                      row(rendered, "average rank of the first hit")[2])
+
+    def test_the_false_positive_row_says_what_it_counts(self):
+        # Printed as "9 of 30 questions that should return nothing", which is
+        # wrong twice: the 20 easy negatives have empty banned lists and cannot
+        # count, and those ten were never meant to return nothing.
+        rendered = self.section(PIN, LIVE_RUN)
+        note = row(rendered, "near-miss false positives")[2]
+        self.assertIn("3 of 10 near-miss questions had their banned note in the top 5",
+                      note)
+        self.assertIn("pinned 9 of 10 on 2026-09-18", note)
+        self.assertNotIn("false positives on negatives", rendered)
+        self.assertNotIn("should return nothing", rendered)
+
+    def test_history_has_its_own_row_with_the_pin_scored_on_the_same_questions(self):
+        run = {**LIVE_RUN, "history_ids": ["h1", "h2", "h3"], "history_hits": 1,
+               "history_scored": 3, "r_at_k_history": 0.3333}
+        pin = {**PIN, "per_question": {"h1": {"hit": True}, "h2": {"hit": True},
+                                       "h3": {"hit": False}, "other": {"hit": True}}}
+        cells = row(self.section(pin, run), "history questions R@5")
+        self.assertEqual(cells[1], "0.3333")
+        self.assertIn("1 of 3 questions", cells[2])
+        self.assertIn("pinned 0.6667 (2 of 3) on 2026-09-18", cells[2])
+
+    def test_no_history_labels_is_a_dash_not_a_zero(self):
+        cells = row(self.section(PIN, {**LIVE_RUN, "r_at_k_history": None}),
+                    "history questions R@5")
+        self.assertEqual(cells[1], "—")
+
+    def test_with_no_run_every_number_is_a_dash_and_the_pin_stays_in_the_note(self):
+        rendered = self.section(PIN, why="the embedder is 'cold'")
+        for label, pinned in (("gold-set R@5", "0.6667"),
+                              ("gold-set R@1", "0.2540"),
+                              ("average rank of the first hit", "2.0000"),
+                              ("near-miss false positives", "9 of 10")):
+            cells = row(rendered, label)
+            self.assertEqual(cells[1], "—", f"{label} printed a number with no run")
+            self.assertIn("not measured: the embedder is 'cold'", cells[2])
+            self.assertIn(pinned, cells[2])
+
+    def test_a_real_run_with_no_daemon_prints_a_dash(self):
+        # The harness itself, with a binary that is not there, so the reason on
+        # the page is the one the eval gave rather than one a stub supplied.
+        with mock.patch.dict("os.environ", {"AGENTMD": "/nonexistent/agentmd"}):
+            rendered = sc.section_retrieval(REPO).render()
+        cells = row(rendered, "gold-set R@5")
+        self.assertEqual(cells[1], "—")
+        self.assertIn("/nonexistent/agentmd could not be run", cells[2])
+
+    def test_it_runs_the_shipped_harness_to_a_scratch_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = self.repo_with(d, PIN)
+            script = repo / sc.EVAL_SCRIPT
+            script.parent.mkdir(parents=True, exist_ok=True)
+            script.write_text("", encoding="utf-8")
+            calls = []
+
+            def fake_run(argv, **_):
+                calls.append(argv)
+                Path(argv[argv.index("--baseline") + 1]).write_text(
+                    json.dumps(LIVE_RUN), encoding="utf-8")
+                return mock.Mock(returncode=0, stdout="", stderr="")
+
+            with mock.patch.object(sc.subprocess, "run", side_effect=fake_run):
+                got = sc.live_retrieval(repo)
+            pin_after = (repo / sc.PINNED_BASELINE).read_text(encoding="utf-8")
+
+        self.assertEqual(got["r_at_k"], 0.6032)
+        self.assertEqual(calls[0][:2], [sys.executable, str(script)])
+        self.assertNotIn(str(repo / sc.PINNED_BASELINE), calls[0],
+                         "the run wrote over the pin")
+        self.assertEqual(json.loads(pin_after), PIN)
+
+    def test_a_failed_run_carries_the_harness_reason(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = self.repo_with(d, PIN)
+            script = repo / sc.EVAL_SCRIPT
+            script.parent.mkdir(parents=True, exist_ok=True)
+            script.write_text("", encoding="utf-8")
+            done = mock.Mock(returncode=4, stdout="",
+                             stderr="\nINSTRUMENT CONTROL FIRED: the canary is gone\n")
+            with mock.patch.object(sc.subprocess, "run", return_value=done):
+                with self.assertRaisesRegex(sc.EvalUnavailable, "canary is gone"):
+                    sc.live_retrieval(repo)
+
+    def test_a_missing_baseline_is_named_beside_the_number_rather_than_a_zero(self):
+        rendered = self.section(None, LIVE_RUN)
+        cells = row(rendered, "gold-set R@5")
+        self.assertEqual(cells[1], "0.6032")
+        self.assertIn("no pinned baseline", cells[2])
+        self.assertNotIn("0.0000", rendered)
+
+    def test_no_run_and_no_baseline_are_both_dashes(self):
+        with tempfile.TemporaryDirectory() as d:
+            rendered = sc.section_retrieval(self.repo_with(d, None)).render()
+
         self.assertIn("not measured:", rendered)
         self.assertIn("no pinned baseline", rendered)
         for forbidden in ("| 0 |", "| 0.0000 |"):
             self.assertNotIn(forbidden, rendered,
                              "a missing baseline produced a number")
 
-    def test_r_at_1_renders_from_the_pinned_baseline(self):
-        import tempfile
+    def test_a_pin_without_a_figure_is_said_rather_than_zeroed(self):
+        # An older pin predates the field. The row stands on the live number,
+        # and nothing fabricates the pin's side of it.
+        pin = {k: v for k, v in PIN.items() if k != "r_at_1"}
+        rendered = self.section(pin, LIVE_RUN)
+        cells = row(rendered, "gold-set R@1")
+        self.assertEqual(cells[1], "0.3651")
+        self.assertIn("the pin carries no such figure", cells[2])
 
-        with tempfile.TemporaryDirectory() as d:
-            repo = Path(d) / "repo"
-            gold = repo / "scripts/health/fixtures/week1-gold"
-            gold.mkdir(parents=True)
-            (gold / "shipped-baseline.json").write_text(json.dumps({
-                "k": 5, "r_at_k": 0.7344, "hits": 47, "scored": 64,
-                "r_at_1": 0.375, "hits_at_1": 24,
-            }), encoding="utf-8")
-            rendered = sc.section_retrieval(repo).render()
-
-        self.assertIn("gold-set R@1", rendered)
-        self.assertIn("0.3750", rendered)
-        self.assertIn("24 first-slot hits", rendered)
-
-    def test_a_baseline_without_r_at_1_omits_the_row_not_the_section(self):
-        # An older pin predates the field; the row must vanish rather than
-        # render a fabricated zero — the file's one rule.
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as d:
-            repo = Path(d) / "repo"
-            gold = repo / "scripts/health/fixtures/week1-gold"
-            gold.mkdir(parents=True)
-            (gold / "shipped-baseline.json").write_text(json.dumps({
-                "k": 5, "r_at_k": 0.7344, "hits": 47, "scored": 64,
-            }), encoding="utf-8")
-            rendered = sc.section_retrieval(repo).render()
-
-        self.assertIn("gold-set R@5", rendered)
-        self.assertNotIn("gold-set R@1", rendered)
-
-    def test_an_unreadable_baseline_is_a_dash_too(self):
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as d:
-            repo = Path(d) / "repo"
-            gold = repo / "scripts/health/fixtures/week1-gold"
-            gold.mkdir(parents=True)
-            (gold / "shipped-baseline.json").write_text(
-                "{ not json", encoding="utf-8")
-            rendered = sc.section_retrieval(repo).render()
-
-        self.assertIn("not measured:", rendered)
+    def test_an_unreadable_baseline_is_named_too(self):
+        rendered = self.section("{ not json", LIVE_RUN)
+        self.assertEqual(row(rendered, "gold-set R@5")[1], "0.6032")
+        self.assertIn("pinned baseline unreadable", rendered)
 
 
 if __name__ == "__main__":

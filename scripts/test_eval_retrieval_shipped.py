@@ -244,6 +244,13 @@ class RefusalToMeasure(unittest.TestCase):
                 ev.require_warm_embedder("agentmd")
         self.assertIn("lexical-only", str(caught.exception))
 
+    def test_a_missing_binary_is_a_setup_skip_not_a_traceback(self):
+        # The scorecard prints the eval's last line as its reason, and a
+        # traceback's last line says nothing a reader can act on.
+        with self.assertRaises(ev.Setup) as caught:
+            ev.require_warm_embedder("/nonexistent/agentmd")
+        self.assertIn("could not be run", str(caught.exception))
+
     def test_too_many_stale_vectors_refuses(self):
         with self._fake_status({"health": {"embedder": {
                 "state": "warm", "vectors": 3934, "in_scope": 15129, "stale": 8361}}}):
@@ -1012,6 +1019,95 @@ class TheGoldSetIsNeverEdited(unittest.TestCase):
         for path, why in ev._RETIRED.items():
             self.assertTrue(why.strip(), f"{path} retires with no reason")
             self.assertGreater(len(why), 40, f"{path}'s reason names no evidence")
+
+
+class TheHistoryGroup(unittest.TestCase):
+    """History questions are a labelled group, measured on their own line.
+
+    The label is a field on the question, so it must not count as a new question
+    paper: the plan that added it also holds the baseline unpinned, and a moved
+    hash makes the gate refuse with no override.
+    """
+
+    ENTRIES = [
+        {"id": "h1", "question": "when did the first thing happen",
+         "stratum": "episodic-temporal", "history": True,
+         "expected_note_paths": ["agent/memory/target.md"]},
+        {"id": "h2", "question": "why did the second thing happen",
+         "stratum": "episodic-temporal", "history": True,
+         "expected_note_paths": ["agent/memory/elsewhere.md"]},
+        {"id": "q3", "question": "what is true right now",
+         "stratum": "pure-paraphrase",
+         "expected_note_paths": ["agent/memory/target.md"]},
+    ]
+
+    def _score(self, entries):
+        rows = [{"path": "agent/memory/target.md", "score": 9.0},
+                {"path": "agent/memory/decoy.md", "score": 5.0}]
+        done = subprocess.CompletedProcess(
+            [], 0, stdout=json.dumps({"results": rows}), stderr="")
+        with mock.patch.object(subprocess, "run", return_value=done):
+            return ev.score("agentmd", entries, 5)
+
+    def test_the_group_counts_its_own_questions_and_no_others(self):
+        got = self._score(self.ENTRIES)
+        self.assertEqual(got["history_ids"], ["h1", "h2"])
+        self.assertEqual((got["history_hits"], got["history_scored"]), (1, 2))
+        self.assertEqual(got["r_at_k_history"], 0.5)
+        self.assertEqual((got["hits"], got["scored"]), (2, 3))
+
+    def test_a_set_with_no_labels_has_no_figure_rather_than_a_zero(self):
+        got = self._score([e for e in self.ENTRIES if not e.get("history")])
+        self.assertIsNone(got["r_at_k_history"])
+
+    def test_the_report_prints_the_line(self):
+        out = ev.render(self._score(self.ENTRIES), "test corpus")
+        self.assertIn("history questions  : 0.500 (1 of 2)", out)
+
+    def _hash_of(self, paper: dict) -> str:
+        with tempfile.TemporaryDirectory() as d:
+            gold = Path(d) / "gold.json"
+            gold.write_text(json.dumps(paper, indent=2, ensure_ascii=False) + "\n",
+                            encoding="utf-8")
+            with mock.patch.object(ev, "GOLD_SET", gold):
+                return ev.gold_sha()
+
+    def test_a_label_does_not_move_the_hash(self):
+        bare = {"entries": [{k: v for k, v in e.items() if k != "history"}
+                            for e in self.ENTRIES]}
+        self.assertEqual(self._hash_of(bare), self._hash_of({"entries": self.ENTRIES}))
+
+    def test_anything_else_moves_it(self):
+        reworded = json.loads(json.dumps(self.ENTRIES))
+        reworded[0]["question"] = "when did some other thing happen"
+        self.assertNotEqual(self._hash_of({"entries": self.ENTRIES}),
+                            self._hash_of({"entries": reworded}))
+        relabelled = json.loads(json.dumps(self.ENTRIES))
+        relabelled[0]["expected_note_paths"] = ["agent/memory/decoy.md"]
+        self.assertNotEqual(self._hash_of({"entries": self.ENTRIES}),
+                            self._hash_of({"entries": relabelled}))
+
+    def test_the_shipped_set_still_hashes_to_its_pin(self):
+        # What keeps the gate comparing with no re-pin. The pin's hash was taken
+        # over the file's bytes before any label existed.
+        baseline = _REPO / "scripts" / "health" / "fixtures" / "week1-gold" / "shipped-baseline.json"
+        if not baseline.is_file():
+            self.skipTest("no pinned baseline in this tree")
+        pinned = json.loads(baseline.read_text(encoding="utf-8"))
+        self.assertEqual(pinned["corpus"]["gold_sha"], ev.gold_sha())
+
+    def test_the_group_was_not_chosen_by_outcome(self):
+        # Labelling only the misses scores 0 by construction and says nothing
+        # about history. The set must hold questions the pin answered too.
+        baseline = _REPO / "scripts" / "health" / "fixtures" / "week1-gold" / "shipped-baseline.json"
+        if not baseline.is_file():
+            self.skipTest("no pinned baseline in this tree")
+        rows = json.loads(baseline.read_text(encoding="utf-8"))["per_question"]
+        gold = json.loads(ev.GOLD_SET.read_text(encoding="utf-8"))
+        marked = [e["id"] for e in gold["entries"] if e.get("history")]
+        self.assertGreater(len(marked), 8)
+        self.assertTrue(any(rows[q]["hit"] for q in marked))
+        self.assertTrue(any(not rows[q]["hit"] for q in marked))
 
 
 class ALessonStandsInForItsCard(unittest.TestCase):
