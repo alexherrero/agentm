@@ -317,4 +317,51 @@ if HOME="$FAKE_HOME" CI=true AGENTM_INSTALL_PREFIX="$PREFIX" \
 fi
 echo "    --scope / --update / --hooks / positional target all rejected"
 
+# ── the memory daemon is registered with agy, but only where it can be used ──
+# Stand-in `agy` and `curl` on PATH: nothing real is touched, and the log shows
+# exactly what the installer asked agy to do. Last in the file because it creates
+# $FAKE_HOME/.gemini, which the earlier "no project-scope leak" checks must not see.
+echo "==> agy gets the memory daemon registered — only when it can be used"
+SHIM="$SCRATCH/shim"
+mkdir -p "$SHIM"
+cat > "$SHIM/agy" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$AGY_LOG"
+SH
+cat > "$SHIM/curl" <<'SH'
+#!/usr/bin/env bash
+exit "${FAKE_CURL_EXIT:-0}"
+SH
+chmod +x "$SHIM/agy" "$SHIM/curl"
+export AGY_LOG="$SCRATCH/agy.log"
+: > "$AGY_LOG"
+
+# 1. No ~/.gemini: the operator does not use Antigravity, so agy is never called.
+PATH="$SHIM:$PATH" run_install >/dev/null 2>&1
+if [[ -s "$AGY_LOG" ]]; then
+  echo "FAIL: agy was called although ~/.gemini does not exist: $(cat "$AGY_LOG")" >&2
+  exit 1
+fi
+
+# 2. ~/.gemini exists but no daemon answers: registering it would leave a dead
+#    server in agy's list, so nothing is registered.
+mkdir -p "$FAKE_HOME/.gemini"
+FAKE_CURL_EXIT=22 PATH="$SHIM:$PATH" run_install >/dev/null 2>&1
+if [[ -s "$AGY_LOG" ]]; then
+  echo "FAIL: agy was called although no daemon answers: $(cat "$AGY_LOG")" >&2
+  exit 1
+fi
+
+# 3. Both true: registered, by name, at the daemon's own address — and a second
+#    install registers it again by the same name (agy updates in place).
+PATH="$SHIM:$PATH" run_install >/dev/null 2>&1
+PATH="$SHIM:$PATH" run_install >/dev/null 2>&1
+want='mcp add agentmemory http://127.0.0.1:7821/mcp'
+if [[ "$(grep -cFx "$want" "$AGY_LOG")" -ne 2 ]]; then
+  echo "FAIL: expected '$want' twice (once per install), agy was asked:" >&2
+  cat "$AGY_LOG" >&2
+  exit 1
+fi
+echo "    skipped without ~/.gemini and without a daemon; registered once per install otherwise"
+
 echo "==> smoke-install-bash: OK"

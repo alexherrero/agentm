@@ -926,6 +926,34 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
     fi
   fi
 fi
+# Antigravity MCP — the memory daemon's two tools, memory_search and
+# memory_capture, registered as a user-level MCP server so `agy` can search and
+# write the vault the way Claude Code does. The GEMINI.md section further up
+# tells the agent the vault exists and names those tools; without this
+# registration the tools are not there to call, and its line that a local agent
+# may write through the capture tool is untrue. `agy mcp add` adds or updates by
+# name, so a re-run is safe and a moved daemon.port is followed.
+#
+# Gated three ways, so nothing is registered that will not work: ~/.gemini/
+# exists and `agy` is on PATH (no config for tools the operator does not use),
+# and the daemon answers /health right now (it is macOS-only, so a Linux box
+# has none, and a dead MCP server in agy's list is worse than none). This sits
+# after the daemon section on purpose: on a fresh install the daemon is only
+# healthy once that section has waited for it. The port is the daemon's own key
+# (daemon.port), read the way the daemon reads it, not 7821 recalled. The
+# PowerShell installer has no counterpart: no daemon, so nothing to register.
+if [[ -d "$HOME/.gemini" ]] && command -v agy >/dev/null 2>&1; then
+  _agy_port="$(python3 "$HARNESS_ROOT/scripts/agentm_config.py" --get daemon.port 2>/dev/null || true)"
+  [[ "$_agy_port" =~ ^[0-9]+$ ]] || _agy_port=7821
+  if curl -fsS -m 2 "http://127.0.0.1:$_agy_port/health" >/dev/null 2>&1; then
+    echo "    Antigravity memory tools → agy mcp (agentmemory at http://127.0.0.1:$_agy_port/mcp)"
+    agy mcp add agentmemory "http://127.0.0.1:$_agy_port/mcp" >/dev/null 2>&1 \
+      || echo "    WARN: could not register the memory daemon with agy (continuing); run: agy mcp add agentmemory http://127.0.0.1:$_agy_port/mcp" >&2
+  else
+    echo "    Antigravity memory tools: skipped — no memory daemon answering on port $_agy_port"
+  fi
+fi
+
 # ── done ────────────────────────────────────────────────────────────────────
 
 echo ""

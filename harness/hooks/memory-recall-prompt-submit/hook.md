@@ -49,7 +49,7 @@ This task ships the **hook scaffold** — the hook installs at its host destinat
 
 ## Antigravity equivalent
 
-Antigravity has no first-class hook surface (per the v0.7.0 installer reality). The equivalent pattern there is a **per-prompt skill auto-invocation** — a skill that triggers on every prompt + queries the recall engine. That skill is **not shipped in this hook directory** — it's a future companion customization tracked under MemoryVault's discovery-mining part.
+agy 1.4 has a file-based hook surface (`SessionStart`, `PreInvocation`, `Stop`), and the crickets plugins use it through a small adapter that translates a Claude-style hook's answer into agy's JSON. This hook is not registered there yet, deliberately: agy has no `UserPromptSubmit`, so the nearest event is `PreInvocation`, which fires before every model call rather than once per message (the crickets adapter handles that), and recall results arrive as injected context whose size limit on agy has not been measured. Until that is done, Antigravity searches on demand through the `memory_search` tool the installer registers with `agy mcp`.
 
 ## See also
 

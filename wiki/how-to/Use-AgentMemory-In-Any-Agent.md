@@ -18,7 +18,7 @@ The text is layout-free on purpose: it names `index.md`, `standards/` and `moc-p
 | Surface | How it reads the vault | What you do |
 |---|---|---|
 | Claude Code | the local path, through the session hooks | nothing |
-| Antigravity | the installed rule, and `~/.gemini/GEMINI.md` | nothing — `install.sh` writes both |
+| Antigravity | the installed rule, `~/.gemini/GEMINI.md`, and the `memory_search` / `memory_capture` tools | nothing — `install.sh` writes the rule and registers the tools with `agy mcp` |
 | claude.ai | the Google Drive connector | paste |
 | Claude Desktop | the Drive connector, until the daemon is registered there | paste |
 | Gemini | the same Drive folder, in a Gem | paste |
@@ -42,7 +42,9 @@ Today it is claude.ai in another window: the Drive connector plus the same paste
 
 `install.sh` merges the rendered payload into `~/.gemini/GEMINI.md` as a managed section, so every workspace picks up the vault with nothing installed per project. Your own content in that file is preserved. The tracked rule at `adapters/antigravity/rules/agentmemory-context.md` is generated from the same render.
 
-Unlike the chat surfaces, Antigravity may write to the vault through the capture tool.
+Unlike the chat surfaces, Antigravity may write to the vault through the capture tool. `install.sh` registers the daemon with `agy mcp add agentmemory http://127.0.0.1:7821/mcp` (at the daemon's own port) when `~/.gemini/` exists, `agy` is on your path and the daemon answers. If you installed before that step existed, or the daemon was down at the time, run that command yourself, or re-run the installer. `agy mcp list` shows whether it is there.
+
+What Antigravity does not get is the automatic recall that Claude Code gets from its hooks: it searches when it decides to, not on every prompt. [Host adapters](Host-Adapters) says why.
 
 ## Check that it took
 

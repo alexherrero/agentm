@@ -54,7 +54,7 @@ transcript: <absolute-path-to-transcript-jsonl>
 
 ## Antigravity equivalent
 
-Antigravity has no first-class hook surface (per the v0.7.0 installer reality). The equivalent pattern there is an **always-on rule** (`kind: rule`) that reads from `MemoryVault/personal-private/_always-load/` at agent boot. That rule is **not shipped in this hook directory** — it's a future companion customization tracked under MemoryVault's discovery-mining part.
+agy 1.4 has a file-based hook surface (`SessionStart`, `PreInvocation`, `Stop`), and the crickets plugins use it through a small adapter that translates a Claude-style hook's answer into agy's JSON. This hook is not registered there yet, deliberately: it writes the crash-recovery marker described above, and the marker names the host's transcript, which the idle hook later reflects on in Claude Code's transcript format. An agy transcript is a different format, so registering this hook there could feed the reflection job a file it cannot read. Until that is settled, Antigravity gets the vault two other ways: the installed always-on rule (`~/.gemini/GEMINI.md`, which names the vault and how to read it) and the `memory_search` / `memory_capture` tools the installer registers with `agy mcp`.
 
 ## See also
 

@@ -2032,6 +2032,12 @@ On the current corpus 8,845 of 8,864 notes carry neither field, so their dates c
 claude mcp add --transport http agentmemory http://127.0.0.1:7821/mcp
 ```
 
+For Antigravity, `install.sh` does the equivalent on its own when `~/.gemini/` exists and `agy` is on your path, and it only registers a daemon that answers `/health`. By hand:
+
+```bash
+agy mcp add agentmemory http://127.0.0.1:7821/mcp
+```
+
 Remove any existing `agentmemory` entry first — before this daemon, that name resolved to the stock filesystem server pointed at the vault's parent directory, which was a coincidence of naming rather than a relationship.
 
 ## Who can reach it
