@@ -84,25 +84,26 @@ class _Base(unittest.TestCase):
 class TwoNotesOneBasename(_Base):
 
     def test_the_clocks_are_separate(self):
-        self.write("projects/agentm/progress.md")
-        self.write("projects/blog/progress.md")
+        # Cleanup logs, which the contract's fade_areas name, so age counts.
+        self.write("projects/agentm/cleanup/progress.md")
+        self.write("projects/blog/cleanup/progress.md")
         fm = {"kind": "note"}
 
         lifecycle.record_recall_access(
-            self.vault, "progress", fm, "projects/agentm/progress.md", today="2026-09-10")
+            self.vault, "progress", fm, "projects/agentm/cleanup/progress.md", today="2026-09-10")
         lifecycle.record_recall_access(
-            self.vault, "progress", fm, "projects/blog/progress.md", today="2026-01-01")
+            self.vault, "progress", fm, "projects/blog/cleanup/progress.md", today="2026-01-01")
 
         entries = self.sidecar(lifecycle.LIFECYCLE_SIDECAR_NAME)["entries"]
-        self.assertEqual(entries["projects/agentm/progress.md"]["last_access"], "2026-09-10")
-        self.assertEqual(entries["projects/blog/progress.md"]["last_access"], "2026-01-01")
+        self.assertEqual(entries["projects/agentm/cleanup/progress.md"]["last_access"], "2026-09-10")
+        self.assertEqual(entries["projects/blog/cleanup/progress.md"]["last_access"], "2026-01-01")
 
         # And the curve reads them apart, which is the point of keeping them
         # apart: one note is fresh and the other is not.
         fresh = lifecycle.compute_decay_score(
-            self.vault, "progress", fm, "projects/agentm/progress.md", now="2026-09-11")
+            self.vault, "progress", fm, "projects/agentm/cleanup/progress.md", now="2026-09-11")
         stale = lifecycle.compute_decay_score(
-            self.vault, "progress", fm, "projects/blog/progress.md", now="2030-01-01")
+            self.vault, "progress", fm, "projects/blog/cleanup/progress.md", now="2030-01-01")
         self.assertEqual(fresh, 1.0)
         self.assertLess(stale, 1.0)
 
