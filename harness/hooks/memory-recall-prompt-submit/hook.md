@@ -2,7 +2,7 @@
 name: memory-recall-prompt-submit
 description: "UserPromptSubmit hook that injects query-relevant MemoryVault entries before the agent processes a prompt. Calls the recall engine for top-K matches, dedups against already-loaded `_always-load` entries, emits a transparency line listing what got loaded. Hard time budget 300ms with degraded-graceful overrun. Plan #7a part 2 of MemoryVault Core (scaffold ships in task 2; engine wires in task 3)."
 kind: hook
-supported_hosts: [claude-code]
+supported_hosts: [claude-code, antigravity]
 version: 0.1.0
 ---
 
@@ -49,7 +49,11 @@ This task ships the **hook scaffold** — the hook installs at its host destinat
 
 ## Antigravity equivalent
 
-agy 1.4 has a file-based hook surface (`SessionStart`, `PreInvocation`, `Stop`), and the crickets plugins use it through a small adapter that translates a Claude-style hook's answer into agy's JSON. This hook is not registered there yet, deliberately: agy has no `UserPromptSubmit`, so the nearest event is `PreInvocation`, which fires before every model call rather than once per message (the crickets adapter handles that), and recall results arrive as injected context whose size limit on agy has not been measured. Until that is done, Antigravity searches on demand through the `memory_search` tool the installer registers with `agy mcp`.
+agy has no `UserPromptSubmit`; the nearest event is `PreInvocation`, which fires before every model call, not once per message. It is registered on `agy` 1.4 by the `agentm` plugin that `install.sh` builds from the installed hooks (`scripts/emit_agy_hooks.py`; this file's `supported_hosts` is what puts it there), gated like the MCP step: `~/.gemini/` exists and `agy` is on the path. The handler runs this same script through the vendored adapter, which maps `lastUserInput` to `prompt` and lets the hook through once per user message (it remembers a hash of the message per conversation and answers `{}` for the repeats; a message identical to the one before it is also skipped). The recall arrives as an `ephemeralMessage`.
+
+**What that costs, measured on `agy` 1.4.12.** An `ephemeralMessage` is shown to the model for one model call, not for the whole user message. In a live run the prompt asked the model to run a shell command and then answer from the recalled entry: `PreInvocation` fired twice, the recall was stored as an `EPHEMERAL_MESSAGE` step before the first call, and the model's answer after the tool call did not have it. So recall reaches the model's first decision on each message, which is where it plans, but not a later step that comes back to it after a tool call. A plain question with no tool call gets all of it. Claude Code keeps the injected text in the conversation, so this is a real difference. A persistent `systemMessage` would match Claude Code, at the price of adding every message's recall to the context for the rest of the session; that needs an adapter option, which belongs upstream in crickets, so it is not done here. The agent can still call `memory_search` for anything it needs later.
+
+The same `RECALL_TOKEN_BUDGET=10000`, `AGENTM_HOST` and `AGENTM_AGY_RECALL=off` apply as for [`memory-recall-session-start`](../memory-recall-session-start/hook.md#antigravity-equivalent).
 
 ## See also
 

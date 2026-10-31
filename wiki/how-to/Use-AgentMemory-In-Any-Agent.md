@@ -18,7 +18,7 @@ The text is layout-free on purpose: it names `index.md`, `standards/` and `moc-p
 | Surface | How it reads the vault | What you do |
 |---|---|---|
 | Claude Code | the local path, through the session hooks | nothing |
-| Antigravity | the installed rule, `~/.gemini/GEMINI.md`, and the `memory_search` / `memory_capture` tools | nothing — `install.sh` writes the rule and registers the tools with `agy mcp` |
+| Antigravity | the installed rule, `~/.gemini/GEMINI.md`, the `memory_search` / `memory_capture` tools, and recall hooks | nothing — `install.sh` writes the rule, registers the tools with `agy mcp` and installs the hooks plugin |
 | claude.ai | the Google Drive connector | paste |
 | Claude Desktop | the Drive connector, until the daemon is registered there | paste |
 | Gemini | the same Drive folder, in a Gem | paste |
@@ -44,7 +44,7 @@ Today it is claude.ai in another window: the Drive connector plus the same paste
 
 Unlike the chat surfaces, Antigravity may write to the vault through the capture tool. `install.sh` registers the daemon with `agy mcp add agentmemory http://127.0.0.1:7821/mcp` (at the daemon's own port) when `~/.gemini/` exists, `agy` is on your path and the daemon answers. If you installed before that step existed, or the daemon was down at the time, run that command yourself, or re-run the installer. `agy mcp list` shows whether it is there.
 
-What Antigravity does not get is the automatic recall that Claude Code gets from its hooks: it searches when it decides to, not on every prompt. [Host adapters](Host-Adapters) says why.
+Antigravity also gets the automatic recall Claude Code gets from its hooks: the same installer builds an `agy` plugin named `agentm` that puts the session-start brief in front of the agent and recalls what matches each message, when `~/.gemini/` exists and `agy` is on your path. `agy plugin list` shows it. To silence it for one run, set `AGENTM_AGY_RECALL=off` in the environment of that `agy` command; to turn it off, run `agy plugin disable agentm`, and a later install leaves it off. What stays Claude Code's is reflection: Antigravity writes to the vault only through the capture tool. [Host adapters](Host-Adapters) has the limits.
 
 ## Check that it took
 

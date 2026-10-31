@@ -45,7 +45,7 @@ Routing **shipped** (plan #7a part 3 task 5): the hook mines AND routes — HIGH
 
 ## Antigravity equivalent
 
-agy 1.4 has a `Stop` event, but this hook is not registered there. It reflects on the session's transcript in Claude Code's format, and an agy transcript is a different one. A capture from an agy session goes through the `memory_capture` tool the installer registers with `agy mcp`.
+Not registered on `agy`, though 1.4 has a `Stop` event. This hook reflects on the session's transcript in Claude Code's format, and an agy transcript is a different one (`transcript_full.jsonl`: rows of `step_index` / `source` / `type` / `status` / `content`). Nothing yet measures what the reflector makes of that file, and `--route` writes to the real vault, so it stays Claude Code's. An agy session also leaves no `.start` marker for it to rename ([`memory-recall-session-start`](../memory-recall-session-start/hook.md#antigravity-equivalent) skips it there). A capture from an agy session goes through the `memory_capture` tool the installer registers with `agy mcp`.
 
 ## See also
 

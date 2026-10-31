@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import random
 import re
@@ -183,9 +184,14 @@ def _call_agy(prompt: str, *, model: str = None, timeout: int = AGY_TIMEOUT_SEC,
     """
     text = f"{system}\n\n{prompt}" if system else prompt
     cmd = ["agy", "-p", text, "--print-timeout", f"{timeout}s"]
+    # The agentm plugin in agy would otherwise run its recall hooks for this call:
+    # the judge would be handed the always-load set and a recall for its own prompt,
+    # which is not what it is being asked to grade, and the recalls would write
+    # recall state. AGENTM_AGY_RECALL=off silences the plugin for this run.
+    env = {**os.environ, "AGENTM_AGY_RECALL": "off"}
     try:
         proc = subprocess.run(cmd, stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True,
+                              capture_output=True, text=True, env=env,
                               timeout=timeout + 30)
     except (OSError, subprocess.TimeoutExpired):
         return {}

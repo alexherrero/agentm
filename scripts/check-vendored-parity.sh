@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-vendored-parity.sh — one parametrized gate over agentm's five
+# check-vendored-parity.sh — one parametrized gate over agentm's six
 # vendored/checksum-manifest parity invariants (CONS-1 merge of what were
 # five separate scripts: check-lib-parity.sh, check-vault-lock-parity.sh,
 # check-storage-seam-vendor-parity.sh, check-hook-config-parity.sh,
@@ -32,6 +32,9 @@
 #   hook-config  — the four memory hooks' `_resolve_vault_path() { ... }`
 #                  function bodies are byte-identical (extracted verbatim,
 #                  diffed against the first hook's copy).
+#   agy-adapter  — adapters/antigravity/hooks/_agy_hook_adapter.py (crickets'
+#                  Antigravity hook adapter, vendored so agentm needs no
+#                  crickets) still hashes to the sha256 its UPSTREAM pin records.
 #
 # Retired with the per-project install: the `wiki-publish-transform` and
 # `workflow` modes both guarded template copies that existed only to be
@@ -51,7 +54,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-MODES=(lib vault-lock corpus-gate storage-seam hook-config)
+MODES=(lib vault-lock corpus-gate storage-seam hook-config agy-adapter)
 
 _sha_cmd() {
   # SHA-256 tool: prefer sha256sum (Linux/coreutils, Git Bash on Windows),
@@ -255,6 +258,47 @@ mode_hook_config() {
   return 0
 }
 
+# ── agy-adapter: the vendored Antigravity hook adapter against its pin ──────
+# adapters/antigravity/hooks/_agy_hook_adapter.py is crickets' scripts/
+# agy_hook_adapter.py, copied byte for byte so agentm installs and runs with no
+# crickets on the machine. The two repos cannot be diffed from one CI job, so the
+# copy is held to a pin instead: UPSTREAM records the crickets commit and the
+# sha256 of the file taken from it. An edit made here (instead of upstream, then
+# re-vendored) changes the hash and fails; taking a newer adapter means
+# replacing the file and the pin in one change.
+mode_agy_adapter() {
+  local dir="$REPO_ROOT/adapters/antigravity/hooks"
+  local file="$dir/_agy_hook_adapter.py" pin="$dir/UPSTREAM"
+  local f
+  for f in "$file" "$pin"; do
+    if [[ ! -f "$f" ]]; then
+      echo "check-vendored-parity[agy-adapter]: missing $f" >&2
+      return 2
+    fi
+  done
+  local SHA_CMD; SHA_CMD="$(_sha_cmd)"
+  if [[ -z "$SHA_CMD" ]]; then
+    echo "check-vendored-parity[agy-adapter]: no SHA-256 tool found (need sha256sum or shasum)" >&2
+    return 2
+  fi
+  local pinned actual
+  pinned="$(sed -n 's/^sha256:[[:space:]]*//p' "$pin" | head -1 | tr -d '[:space:]')"
+  actual="$($SHA_CMD < "$file" | awk '{print $1}')"
+  if [[ -z "$pinned" ]]; then
+    echo "check-vendored-parity[agy-adapter]: $pin has no 'sha256:' line" >&2
+    return 2
+  fi
+  if [[ "$pinned" != "$actual" ]]; then
+    echo "check-vendored-parity[agy-adapter]: DRIFT — $file no longer matches the crickets file it was vendored from" >&2
+    echo "  pinned (UPSTREAM): $pinned" >&2
+    echo "  actual:            $actual" >&2
+    echo "  Fix the adapter in crickets and re-vendor it; update UPSTREAM's commit and sha256 together." >&2
+    return 1
+  fi
+  echo "check-vendored-parity[agy-adapter]: clean (_agy_hook_adapter.py matches its UPSTREAM pin)"
+  return 0
+}
+
 # ── workflow: templated dir vs active dir, wildcard byte-compare ───────────
 
 # ── dispatcher ───────────────────────────────────────────────────────────────
@@ -280,6 +324,7 @@ main() {
       corpus-gate)  mode_corpus_gate ;;
       storage-seam) mode_storage_seam ;;
       hook-config)  mode_hook_config ;;
+      agy-adapter)  mode_agy_adapter ;;
       # A mode named in MODES but missing an arm here reached this point
       # silently and passed, which is how a parity check reports clean on a
       # pair it never compared. Unknown modes are a setup error, not a pass.

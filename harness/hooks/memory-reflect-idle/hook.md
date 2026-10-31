@@ -96,7 +96,7 @@ The idle hook parses the `transcript:` line for the reflection target. Other fie
 
 ## Antigravity equivalent
 
-Antigravity has no first-class hook surface; the equivalent pattern is a background daemon or scheduled task that does orphan recovery. Tracked under MemoryVault's discovery-mining part as a future companion customization.
+Not registered on `agy`, and an agy session cannot give it work: [`memory-recall-session-start`](../memory-recall-session-start/hook.md#antigravity-equivalent) writes no marker there, so the sweep never finds one that names an agy transcript. The sweep runs from Claude Code's `SessionStart` and reflects only on Claude Code's transcripts. Teaching reflection agy's transcript format (`transcript_full.jsonl`) is the change that would let agy sessions join it; it is not done, and nothing yet measures what reflection makes of that file.
 
 ## See also
 

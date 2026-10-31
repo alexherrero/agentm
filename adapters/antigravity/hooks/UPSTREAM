@@ -1,0 +1,9 @@
+# Provenance of _agy_hook_adapter.py (read by scripts/check-vendored-parity.sh, mode agy-adapter)
+#
+# The adapter is vendored, not shared: agentm must install and run on a machine
+# with no crickets, so it carries its own copy, byte for byte. Edit it here and
+# the gate fails. To take a newer adapter, copy crickets' file over this one and
+# put the new commit and sha256 below in the same change.
+source: alexherrero/crickets scripts/agy_hook_adapter.py
+commit: c2d76ff0851110c9cdd1f7e56e129dfd6207b519
+sha256: aa80a6fccc9dfd2b6ee1d13ba61d149ccecc3d2ab348dff09a2378275809a5af
