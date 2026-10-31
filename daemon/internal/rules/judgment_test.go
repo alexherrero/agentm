@@ -19,6 +19,7 @@ var notJudgment = map[string]string{
 	"ContractExemptSpaces": "the shape gates only",
 	"RecallExemptAreas":    "eligibility: the wall",
 	"AlwaysLoadAreas":      "ranking only",
+	"FadeAreas":            "ranking only",
 	"LifecycleOverrides":   "the lifecycle job only",
 	"Retention":            "the night's own diagnostics only",
 	"Warrants":             "the taxonomy growth rule only",

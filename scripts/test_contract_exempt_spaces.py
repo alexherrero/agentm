@@ -164,7 +164,7 @@ class DecayExemption(_Base):
         test above is measuring a decay function that never fires."""
         fm = {"created": "2016-05-28", "updated": "2016-12-11"}
         score = lifecycle.compute_decay_score(
-            self.root, "lesson", fm, "agent/memory/semantic/lesson.md", now="2026-08-20")
+            self.root, "lesson", fm, "agent/memory/episodic/lesson.md", now="2026-08-20")
         self.assertLess(score, 1.0)
 
     def test_the_exemption_is_read_before_the_curve_not_after_it(self):

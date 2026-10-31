@@ -145,10 +145,11 @@ func InAlwaysLoadArea(rel string) bool {
 // Each project's activity, slug to multiplier, written by the night and read
 // here at boot, on every contract re-read, and when the night rewrites it.
 //
-// `projects/` runs on no decay curve — a decision from June is not less true in
-// December — so what ranks a record there is how much its project is being
-// worked. The night computes the reading from ninety days of the project's own
-// evidence; this is the ranking half of it.
+// A project's records leave when the project finishes, so age is no way to rank
+// them, and this was: how much the project is being worked. The night computes
+// the reading from ninety days of the project's own evidence; this is the
+// ranking half of it. The contract's `project_activity_ranks: 0` turns it off
+// (the operator's ruling of 2026-10-30) and every path ranks at 1.0.
 //
 // A project with no reading ranks at 1.0. Absent is not quiet: a project the
 // night has not read yet is one nothing is known about, and the safe direction
@@ -291,6 +292,43 @@ func inDecayExemptSpace(rel string) bool {
 	return inSpaceSet(decayExempt.Load(), rel)
 }
 
+// The areas where age lowers a note's rank, set from the contract's `fade_areas`.
+//
+// The other lists in this file name what a rule reaches; this one names the only
+// place the rule runs. Age is for the notes with no other ending, and everything
+// else leaves some other way: a task closes, a project finishes, a rule is
+// replaced (the operator's ruling of 2026-10-30).
+//
+// Rank only. What the night archives or deletes is a separate decision, read
+// from the lifecycle lines. And read per row at query time rather than stamped
+// at index time, so a change to the list needs no reindex.
+var fadeAreas atomic.Pointer[[]string]
+
+// SetFadeAreas replaces the list. An empty list is no list: a contract that
+// names none ranks as it did before the line existed, and everything fades.
+func SetFadeAreas(areas []string) {
+	if len(areas) == 0 {
+		fadeAreas.Store(nil)
+		return
+	}
+	fadeAreas.Store(normSpaces(areas))
+}
+
+// FadeAreas is what is currently set, for the status surface and for tests.
+func FadeAreas() []string {
+	if p := fadeAreas.Load(); p != nil {
+		return append([]string(nil), *p...)
+	}
+	return nil
+}
+
+// Fades reports whether age may lower this path's rank. The durable exemptions
+// sit on top of it: a pinned note in a fading area still does not fade.
+func Fades(rel string) bool {
+	p := fadeAreas.Load()
+	return p == nil || inSpaceSet(p, rel)
+}
+
 // normSpaces trims, drops empties, and lowercases.
 func normSpaces(spaces []string) *[]string {
 	norm := make([]string, 0, len(spaces))
@@ -306,6 +344,7 @@ func normSpaces(spaces []string) *[]string {
 // inSpaceSet is the shared match: a one-segment entry names a space and is
 // compared against the path's first segment; an entry with a slash names an
 // area and is compared segment by segment against the path's leading segments.
+// A segment of `*` matches any one segment, for a folder in every project.
 //
 // Segment-wise rather than by string prefix, so `personal/Homework` is not read
 // as sitting inside `personal/Home`. A wall with a near-miss in it is worse than
@@ -325,7 +364,7 @@ func inSpaceSet(p *[]string, rel string) bool {
 		}
 		match := true
 		for i, seg := range want {
-			if parts[i] != seg {
+			if seg != "*" && parts[i] != seg {
 				match = false
 				break
 			}

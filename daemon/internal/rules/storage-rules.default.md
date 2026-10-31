@@ -455,6 +455,22 @@ recall_exempt_areas:
 always_load_areas:
   - standards
 
+# Where age lowers a note's rank, and the only places it does. Age is for the
+# notes with no other ending: everything else leaves some other way, because a
+# task closes, a project finishes and a rule is replaced. Ruled by the operator
+# on 2026-10-30, kind by kind. Rank only: what the night archives or deletes is
+# the lifecycle lines' business. A path from the vault root, that directory and
+# everything under it, and `*` is any one segment. Name no list and everything
+# fades, which is how a contract that predates this line ranks.
+fade_areas:
+  - agent/memory/episodic
+  - agent/memory/entities/issues
+  - agent/memory/entities/releases
+  - agent/diagnostics
+  - calendar
+  - resources/briefs
+  - projects/*/cleanup
+
 # Spaces exempt from the memory contract. Their files are documents rather than
 # memories: they carry frontmatter of their own shape, and expecting `type`,
 # `status` or `altitude` there would flag every one of them forever.
@@ -516,12 +532,20 @@ thresholds:
   # 6 a day over 22 days and the audited window ran 10. 0 turns the warning off.
   daily_card_budget: 30
   enrichment_input_chars: 24000
+  # Whether a project's activity reading moves its records' rank. 0 is off (the
+  # operator's ruling of 2026-10-30): the night still writes the readings, and
+  # search reads none of them. Leave the line out for on.
+  project_activity_ranks: 0
   decay_full_days: 180
   decay_half_days: 365
   decay_eighth_days: 1095
   decay_floor_days: 1825
   decay_floor_weight: 0.0625
-  dormant_after_days: 365
+  # Fact cards and how-tos go straight to the archive line (the operator's
+  # ruling of 2026-10-30): sinking at a year was a ×0.30 fade by another name.
+  # The two lines being equal is the point; a trace still sinks on its own line
+  # in `lifecycle_overrides`.
+  dormant_after_days: 1825
   archive_after_days: 1825
   # Days of silence after the archive move before the note is deleted, with a
   # manifest and a journal line written first and the vault's git history behind
@@ -578,7 +602,8 @@ handed. Anything larger is split along its header boundaries first, and the
 fragments are judged. The dispatcher enforces this; the prompt does not request
 it.
 
-The five `decay_*` values are the aging curve. A memory holds full strength
+`fade_areas` says where the curve runs, and it runs nowhere else. The five
+`decay_*` values are the aging curve. A memory holds full strength
 through six months of silence, ranks at half to a year, an eighth to three
 years, and a sixteenth to five — and the sixteenth is a floor, not a waypoint.
 The curve never reaches zero, because a memory nobody has needed in four years
@@ -586,8 +611,13 @@ is cold rather than worthless, and a floorless curve makes it unreachable rather
 than merely unlikely. Only a genuine recall resets the clock; a lint walk, an
 index rebuild or a nightly pass touching a file must never count.
 
+`project_activity_ranks: 0` stops a project's activity reading from moving its
+records' rank; the night keeps writing the reading.
+
 `dormant_after_days` is when a silent memory sinks to `dormant` — automatic,
-journaled, and undone by the next genuine recall. `archive_after_days` is when
+journaled, and undone by the next genuine recall. It equals `archive_after_days`
+on purpose: only a session trace, on its shorter line, sinks long before it is
+archived. `archive_after_days` is when
 a dormant memory is *proposed* for `archived`, which only a confirm applies;
 archived, it stays indexed and answers an explicit archive query. Nothing is
 deleted: a purge is an operator act with a manifest, never a policy outcome.

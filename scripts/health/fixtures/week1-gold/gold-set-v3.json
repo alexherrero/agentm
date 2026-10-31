@@ -87,6 +87,7 @@
     },
     {
       "id": "dt06",
+      "not_counted": "Asks where to file a project while that was undecided, and assumes it stays apart from the operator's own work. It now sits in projects/primos beside that work and the folder the question was written for is gone, so no note answers it as asked.",
       "question": "where should we file primos within the vault — it's not a personal project, it's a review for a nephew's project, so it shouldn't be mixed with my own work?",
       "expected_note_paths": [
         "Agent/external/primos/_index.md"
@@ -195,6 +196,7 @@
     },
     {
       "id": "pp05",
+      "not_counted": "'The house' now names two projects: the home-tech ideas this was written for and the house hunt. The question does not say which, and each holds notes that fairly answer it.",
       "question": "Give me a list of my pending project ideas for the house?",
       "expected_note_paths": [
         "Agent/desk/projects/home-tech-next/_index.md"
@@ -296,6 +298,7 @@
     },
     {
       "id": "pp13",
+      "not_counted": "'House configuration' now reads as the house hunt as much as the home servers, and the question asks for both a configuration and a processor. Its first half has more than one fair answer.",
       "question": "Show me my current house configuration, what processor do i have in the two servers?",
       "expected_note_paths": [
         "Agent/memory/2026/05/nas-unraid.md",

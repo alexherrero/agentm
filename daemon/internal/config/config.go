@@ -382,6 +382,7 @@ func (c *Config) ApplyContractToRanking() {
 		note.SetDampenedSpaces(nil)
 		note.SetDecayExemptSpaces(nil)
 		note.SetAlwaysLoadAreas(nil)
+		note.SetFadeAreas(nil)
 		note.SetDecayBands(0, 0, 0, 0, 0)
 		return
 	}
@@ -389,6 +390,7 @@ func (c *Config) ApplyContractToRanking() {
 	note.SetDecayExemptSpaces(loaded.ContractExemptSpaces)
 	note.SetRecallExemptAreas(loaded.RecallExemptAreas)
 	note.SetAlwaysLoadAreas(loaded.AlwaysLoadAreas)
+	note.SetFadeAreas(loaded.FadeAreas)
 
 	// A curve read half from the contract and half from a constant is the drift
 	// this reads the contract to end, so all five lines are passed together and
@@ -403,11 +405,22 @@ func (c *Config) ApplyContractToRanking() {
 
 	// The night's project-activity readings, which are state rather than
 	// contract — read here because this is the one place the ranking's inputs
-	// are pushed, and a second push point is a second thing to forget.
-	note.SetProjectActivity(projectActivityReadings(c.EngineStateDir))
+	// are pushed, and a second push point is a second thing to forget. A contract
+	// that says `project_activity_ranks: 0` drops the readings and their source,
+	// so every path ranks at 1.0; the night goes on writing them.
+	activityRanks := true
+	if v, ok := loaded.Threshold("project_activity_ranks"); ok && v == 0 {
+		activityRanks = false
+	}
+	if activityRanks {
+		note.SetProjectActivity(projectActivityReadings(c.EngineStateDir))
+	} else {
+		note.SetProjectActivity(nil)
+		note.SetProjectActivitySource(nil, nil)
+	}
 	// And the source a query refreshes from when the night rewrites them, since
 	// the ranker now reads the band at query time (task 182 step 4).
-	if dir := c.EngineStateDir; dir != "" {
+	if dir := c.EngineStateDir; dir != "" && activityRanks {
 		file := filepath.Join(dir, "project-activity.json")
 		note.SetProjectActivitySource(
 			func() map[string]float64 { return projectActivityReadings(dir) },

@@ -492,8 +492,9 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 
 		// Age, folded into the same multiplier. Multiplicative for the reason the
 		// classes are: a note that is both stale and a fragment is demoted twice
-		// and still ranked, and nothing here can zero a score out.
-		if !now.IsZero() && !note.IsDecayExempt(flags) {
+		// and still ranked, and nothing here can zero a score out. Only the
+		// contract's fade areas age at all (note.Fades).
+		if !now.IsZero() && !note.IsDecayExempt(flags) && note.Fades(rows[i].Path) {
 			// The row's path is the clock's key. The slug rides along for a
 			// sidecar still on version 1, where the basename is the only key
 			// there is.

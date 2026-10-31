@@ -225,27 +225,30 @@ class TestTimeWeightedRetrieval(unittest.TestCase):
         # write_bytes (LF-only), not write_text — real "---\n"-delimited
         # frontmatter must survive byte-for-byte on every OS.
         content = "widget subsystem overview and quirks"
-        (self.vault / "memory" / "reference" / "stale-note.md").write_bytes((
+        # Session records: the contract's fade_areas name where age counts.
+        episodic = self.vault / "agent" / "memory" / "episodic"
+        episodic.mkdir(parents=True)
+        (episodic / "stale-note.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2020-01-01\nupdated: 2020-01-01\n"
             "tags: []\ngroup: memory\nslug: stale-note\nalways_load: false\n---\n\n"
             + content + "\n"
         ).encode("utf-8"))
-        (self.vault / "memory" / "reference" / "fresh-note.md").write_bytes((
+        (episodic / "fresh-note.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
             "tags: []\ngroup: memory\nslug: fresh-note\nalways_load: false\n---\n\n"
             + content + "\n"
         ).encode("utf-8"))
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         by_path = {r["path"]: r for r in results}
-        self.assertIn("memory/reference/stale-note.md", by_path)
-        self.assertIn("memory/reference/fresh-note.md", by_path)
+        self.assertIn("agent/memory/episodic/stale-note.md", by_path)
+        self.assertIn("agent/memory/episodic/fresh-note.md", by_path)
         self.assertLess(
-            by_path["memory/reference/stale-note.md"]["decay_score"],
-            by_path["memory/reference/fresh-note.md"]["decay_score"],
+            by_path["agent/memory/episodic/stale-note.md"]["decay_score"],
+            by_path["agent/memory/episodic/fresh-note.md"]["decay_score"],
         )
         self.assertGreater(
-            by_path["memory/reference/fresh-note.md"]["combined"],
-            by_path["memory/reference/stale-note.md"]["combined"],
+            by_path["agent/memory/episodic/fresh-note.md"]["combined"],
+            by_path["agent/memory/episodic/stale-note.md"]["combined"],
         )
 
     def test_durable_entry_ignores_staleness_entirely(self):

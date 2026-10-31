@@ -11,7 +11,9 @@ Aging runs on its own. The nightly `agentmdream` pass sinks, archives and — pa
 
 1. **Know what ages and what does not.** The machinery changes a note's state only where you said it may: the three observational classes (`memory/semantic`, `memory/procedural`, `memory/episodic`), the calendar, and the diagnostics. Everything else is permanent — `projects/`, `personal/`, `standards/`, crystallized lessons and the root notes. They rank and they receive enrichment; no pass demotes, archives or deletes them. You supersede or replace them.
 
-   Inside the three classes, four categories are exempt anyway: `lifecycle: pinned`; `type: preference` and `type: convention`, which decay but never sink — a rule unread for a year is still the rule; and any crystallized lesson.
+   Inside the three classes, four categories are exempt anyway: `lifecycle: pinned`; `type: preference` and `type: convention`, which never sink — a rule unread for a year is still the rule; and any crystallized lesson.
+
+   Fading is a separate list. `fade_areas` in the contract names where age lowers a note's rank, and nothing else fades: session traces, entity issue and release pages, a project's `cleanup/` logs, the diagnostics, the calendar and weekly briefs. To make something fade or stop fading, edit that list. A path from the vault root covers everything under it, and `*` stands for any one folder. The daemon picks it up on its next read of the contract, with no reindex. The list changes rank only.
 
 2. **Read the four numbers.** They live in the contract's `thresholds:` block, at `standards/storage-rules.md` (packaged default in `daemon/internal/rules/storage-rules.default.md`). Both ranking arms read the same block.
 
@@ -21,7 +23,7 @@ Aging runs on its own. The nightly `agentmdream` pass sinks, archives and — pa
    | Half weight through | 365 days | `decay_half_days` |
    | An eighth through | 1,095 days | `decay_eighth_days` |
    | The floor (0.0625), from | 1,825 days | `decay_floor_days`, `decay_floor_weight` |
-   | Sinks to `dormant`, in place, ×0.30 on top of the curve | 365 days | `dormant_after_days` |
+   | Sinks to `dormant`, in place, on its way to the archive | 1,825 days | `dormant_after_days` |
    | Moves to `archive/memory/<class>/`, stamped `archived` | 1,825 days | `archive_after_days` |
    | Deleted, manifest first | 2,555 days **and** the archive wait served | `forget_after_days` |
    | Most notes one pass may sink | 25 | `demotion_cap` |

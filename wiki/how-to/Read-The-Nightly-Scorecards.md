@@ -117,10 +117,12 @@ The `morning-note` job writes it as the last step of the night, order 5 in the `
 **Whether a specific note is good.** Every number here is over a sample or the
 whole corpus. To ask about one note, read it.
 
-**Whether retrieval is working.** That is the pinned evaluation
-(`scripts/check-retrieval-regression.sh`), which scores a frozen gold set and is
-the only thing that speaks to ranking. A healthy-looking corpus scorecard says
-nothing about whether the right note comes back.
+**Whether retrieval has regressed.** That is the pinned evaluation
+(`scripts/check-retrieval-regression.sh`), which scores a frozen gold set against
+a pinned baseline and decides whether a change made search worse. The corpus
+scorecard's Retrieval section runs the same harness on the live index each night
+and prints the pin beside it, so it shows where search stands. With no run, its
+numbers are dashes with the reason, never the pin. It compares nothing.
 
 **Whether the numbers moved because the corpus did.** A meter can move because
 the sample window shifted or because a migration rewrote frontmatter. Before
@@ -132,5 +134,5 @@ reading a change as a trend, check whether anything ran between the two cards.
 - [Memory daemon reference](Memory-Daemon) — the subcommands each section reads from, and what the meters refuse to do.
 - [Enable the daily email](Enable-Email-Digest-Delivery) — get the morning note by mail.
 - [Review flagged memories](Review-Flagged-Memories) — working the needs-review page this scorecard's line counts.
-- [CI gates reference](CI-Gates) — the deterministic checks, including the pinned retrieval evaluation these cards deliberately say nothing about.
+- [CI gates reference](CI-Gates) — the deterministic checks, including the pinned retrieval evaluation that decides a regression.
 - [Audit the vault](Audit-The-Vault) — the per-note lint, which asks the opposite question to a corpus-wide meter.

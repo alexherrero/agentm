@@ -99,6 +99,14 @@ A JSON array, or an object with an `entries` array, of:
   and only happens to have its answer in finished work. The scorecard reports
   the group's R@5 on its own line. A label changes neither what a question asks
   nor what scores it, so `gold_sha` leaves it out and the pin still compares.
+- **`not_counted`** (`gold-set-v3.json`, optional) — the reason, on a question
+  whose answer is ambiguous on the evidence. The question stays in the file, its
+  expectation untouched, and the harness neither runs it nor counts it, so totals
+  are over 60 questions and the paired comparison skips these three. `gold_sha`
+  leaves it out too: the operator's standing deferral holds the pin as it is. A
+  question earns this only for ambiguity, never for missing. Marked 2026-10-30,
+  by the operator's ruling, for task 196: `dt06`, `pp05` and `pp13`. Each carries
+  its reason.
 
 ## Two labeling constraints from the design
 

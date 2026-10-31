@@ -12,7 +12,7 @@ One number with provenance. The eval issues each gold-set question exactly as
 the recall hook does — hybrid mode, term extraction, ×2 over-fetch, the
 admissibility filter, temporal bounds — and scores exact-path membership at
 k=5 against `gold-set-v3.json` (64 scored questions, 20 easy negatives, 10
-near-miss negatives). Baselines embed a corpus fingerprint (document count,
+near-miss negatives; a question carrying `not_counted` is neither run nor scored). Baselines embed a corpus fingerprint (document count,
 embedded-in-scope count, gold-set hash, pin date); `--compare` refuses across
 fingerprints unless `--drifted-ok` says the drift is understood, and a
 gold-set hash mismatch is never overridable. R@5 is the product metric — the
