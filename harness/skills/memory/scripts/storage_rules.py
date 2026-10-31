@@ -151,6 +151,15 @@ class StorageRules:
         """
         return list(self._data.get("dampened_spaces") or [])
 
+    def fade_areas(self) -> list:
+        """Areas where age lowers a note's rank. Nothing outside them fades.
+
+        Age is for the notes with no other ending (the operator's ruling of
+        2026-10-30). Empty means the contract names none, and everything the
+        exemptions leave fades, as it did before the line existed.
+        """
+        return list(self._data.get("fade_areas") or [])
+
     def recall_exempt_areas(self) -> list:
         """Areas never indexed, never embedded, never served to any surface.
 
@@ -503,6 +512,8 @@ def in_area(rel, areas) -> bool:
     `personal/Homework` is not read as sitting inside `personal/Home`: a wall
     with a near-miss in it is worse than no wall, because it reads as one.
 
+    A segment of `*` matches any one segment, for a folder in every project.
+
     `in_space` stays as it is for the lists that genuinely name spaces. The Go
     arm carries the same rule as `rules.InArea`, and the parity test drives one
     table through both.
@@ -516,7 +527,7 @@ def in_area(rel, areas) -> bool:
         want = _area_segments(area)
         if not want or len(want) > len(parts):
             continue
-        if all(a == b for a, b in zip(parts, want)):
+        if all(b == "*" or a == b for a, b in zip(parts, want)):
             return True
     return False
 
@@ -617,6 +628,12 @@ def is_contract_exempt(rel) -> bool:
     """Whether a path's files are documents rather than memories, so a missing
     `type` or `status` there is the expected state rather than a finding."""
     return in_space(rel, rules().contract_exempt_spaces())
+
+
+def fades(rel) -> bool:
+    """Whether age may lower this path's rank. The Go arm's `note.Fades`."""
+    areas = rules().fade_areas()
+    return not areas or in_area(rel, areas)
 
 
 # ── the hash watch ─────────────────────────────────────────────────────────

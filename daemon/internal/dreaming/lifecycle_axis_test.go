@@ -24,14 +24,69 @@ import (
 // deletion. These are the tests of that boundary.
 
 // axisContract is the shipped contract's lines, so the fixture runs on the
-// numbers the operator set rather than on this package's defaults.
+// numbers the operator set rather than on this package's defaults, with the one
+// exception of the sink line. The shipped line is the archive line, which leaves
+// no gap to test what a note does between the two, so the fixture keeps a sink
+// at a year. TestTheShippedLinesTakeACardStraightToTheArchive reads the real one.
 func axisContract(t *testing.T) *rules.Rules {
 	t.Helper()
-	r, err := rules.Load("")
+	raw, err := os.ReadFile(filepath.Join("..", "rules", "storage-rules.default.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(string(raw), "dormant_after_days: 1825", "dormant_after_days: 365", 1)
+	if text == string(raw) {
+		t.Fatal("the shipped contract has no `dormant_after_days: 1825` line to replace")
+	}
+	file := filepath.Join(t.TempDir(), "storage-rules.md")
+	if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := rules.LoadFile(file)
 	if err != nil {
 		t.Fatalf("the shipped contract does not parse: %v", err)
 	}
 	return r
+}
+
+// A fact card or a how-to nobody has needed in a year keeps its rank: sinking
+// was a ×0.30 fade by another name (the operator's ruling of 2026-10-30). It
+// still leaves at the archive line, and a trace still sinks on its own.
+func TestTheShippedLinesTakeACardStraightToTheArchive(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 18, 9, 0, 0, 0, time.UTC)
+	shipped, err := rules.Load("")
+	if err != nil {
+		t.Fatalf("the shipped contract does not parse: %v", err)
+	}
+
+	writeNote(t, root, "memory/semantic/fact-a-year-silent.md", "active", 400, now, "type: reference\n")
+	writeNote(t, root, "memory/procedural/how-to-four-years-silent.md", "active", 1500, now, "")
+	due := writeNote(t, root, "memory/semantic/fact-past-the-line.md", "active", 1900, now, "type: reference\n")
+	trace := writeNote(t, root, "memory/episodic/a-trace.md", "active", 100, now, "")
+
+	plan, err := PlanLifecycle(root, "", shipped, now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := relsOf(plan.Demoted)
+	sort.Strings(got)
+	want := []string{trace, due}
+	sort.Strings(want)
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("sank %v, want only the card past the archive line and the trace %v", got, want)
+	}
+
+	// Sunk at the line, so the very next night moves it: dormant, past the same
+	// line, is the archive move.
+	writeNote(t, root, "memory/semantic/fact-past-the-line.md", "dormant", 1900, now, "type: reference\n")
+	plan, err = PlanLifecycle(root, "", shipped, now, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := relsOf(plan.Archived); len(got) != 1 || got[0] != due {
+		t.Fatalf("archived %v, want %s", got, due)
+	}
 }
 
 func relsOf(ms []Move) []string {

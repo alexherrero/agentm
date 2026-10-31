@@ -117,6 +117,14 @@ type block struct {
 	// marshals this struct, and a contract naming none of these must hash as it
 	// did before the field existed.
 	AlwaysLoadAreas []string `yaml:"always_load_areas" json:"always_load_areas,omitempty"`
+	// FadeAreas are the areas where age lowers a note's rank. Nothing outside
+	// them fades, so the list is the ruling of 2026-10-30 in the contract's own
+	// words: age is for the notes with no other ending. A contract that names
+	// none fades everything the exemptions leave, as it always did.
+	//
+	// `omitempty` for the same reason as the fields above: contentHash marshals
+	// this struct, and a contract naming none must hash as it did.
+	FadeAreas []string `yaml:"fade_areas" json:"fade_areas,omitempty"`
 	// LifecycleOverrides is where a class ages on a different line from the one
 	// `thresholds` sets — `episodic` today, whose traces run 90 · 365 · 1,095.
 	// Keyed by class, then by the threshold's own name.
@@ -692,7 +700,8 @@ func InSpace(rel string, spaces []string) bool {
 // Important Docs` — and it matches that directory and everything under it,
 // segment by segment and without case. Segment-wise rather than by string
 // prefix so `personal/Homework` is not read as being inside `personal/Home`,
-// which is the kind of near-miss a wall must not have.
+// which is the kind of near-miss a wall must not have. A segment of `*` matches
+// any one segment, for a folder that sits in every project.
 //
 // InSpace stays as it is for the two lists that genuinely name spaces: a
 // top-level directory, matched on the first segment alone.
@@ -711,7 +720,7 @@ func InArea(rel string, areas []string) bool {
 		}
 		match := true
 		for i, seg := range want {
-			if !strings.EqualFold(parts[i], seg) {
+			if seg != "*" && !strings.EqualFold(parts[i], seg) {
 				match = false
 				break
 			}

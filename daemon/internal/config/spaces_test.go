@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // The default `memory` space had no test at all, which is how it came to point
@@ -353,5 +357,70 @@ func TestSourceCloneIsReadFromTheNestedObject(t *testing.T) {
 	}
 	if cfg.SourceClone != "" {
 		t.Errorf("a release install has no clone, got %q", cfg.SourceClone)
+	}
+}
+
+// The quiet-project rule is the contract's to turn off, and leaving the line out
+// keeps it on, so a contract that predates the line ranks as it did. The list of
+// what fades reaches the ranker on the same push.
+func TestTheContractSetsTheFadeListAndTheQuietProjectRule(t *testing.T) {
+	t.Cleanup(func() {
+		note.SetProjectActivity(nil)
+		note.SetProjectActivitySource(nil, nil)
+		note.SetFadeAreas(nil)
+	})
+	state := t.TempDir()
+	if err := os.WriteFile(filepath.Join(state, "project-activity.json"),
+		[]byte(`{"activity":{"quiet-one":0.5}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const rel = "projects/quiet-one/designs/a.md"
+
+	for _, tc := range []struct {
+		name  string
+		extra string
+		want  float64
+		fades bool
+	}{
+		{"no line", "", 0.5, true},
+		{"switched off", "project_activity_ranks: 0, ", 1.0, true},
+		{"switched on", "project_activity_ranks: 1, ", 0.5, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vault := vaultWithContract(t)
+			file := filepath.Join(vault, "standards", "storage-rules.md")
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := strings.Replace(string(raw), "thresholds: {", "thresholds: {"+tc.extra, 1)
+			if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c := &Config{EngineStateDir: state, Rules: rules.NewHolder(vault, time.Now())}
+			c.ApplyContractToRanking()
+			if got := note.ProjectActivityOf(rel); got != tc.want {
+				t.Errorf("ProjectActivityOf = %v, want %v", got, tc.want)
+			}
+			if got := note.Fades(rel); got != tc.fades {
+				t.Errorf("with no list, Fades = %v, want %v", got, tc.fades)
+			}
+		})
+	}
+
+	vault := vaultWithContract(t)
+	file := filepath.Join(vault, "standards", "storage-rules.md")
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Replace(string(raw), "warrants: {}", "fade_areas:\n  - calendar\nwarrants: {}", 1)
+	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := &Config{EngineStateDir: state, Rules: rules.NewHolder(vault, time.Now())}
+	c.ApplyContractToRanking()
+	if note.Fades(rel) || !note.Fades("calendar/2026/10/30.md") {
+		t.Errorf("the contract's list did not reach the ranker: %v", note.FadeAreas())
 	}
 }

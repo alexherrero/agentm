@@ -1327,5 +1327,49 @@ class TheExperimentShape(unittest.TestCase):
         self.assertNotIn("latency_ms", result)
 
 
+class TheNotCountedQuestions(unittest.TestCase):
+    """A question ambiguous on the evidence stays in the file and out of the score."""
+
+    ENTRIES = [
+        {"id": "kept", "question": "what is true right now",
+         "stratum": "pure-paraphrase", "expected_note_paths": ["agent/memory/target.md"]},
+        {"id": "unclear", "question": "which of the two did you mean",
+         "stratum": "pure-paraphrase", "not_counted": "two fair answers",
+         "expected_note_paths": ["agent/memory/elsewhere.md"]},
+    ]
+
+    def _score(self):
+        rows = [{"path": "agent/memory/target.md", "score": 9.0}]
+        done = subprocess.CompletedProcess(
+            [], 0, stdout=json.dumps({"results": rows}), stderr="")
+        with mock.patch.object(subprocess, "run", return_value=done) as run:
+            return ev.score("agentmd", self.ENTRIES, 5), run
+
+    def test_it_is_not_asked_and_not_scored(self):
+        got, run = self._score()
+        self.assertEqual((got["hits"], got["scored"]), (1, 1))
+        self.assertEqual(run.call_count, 1)
+        row = got["per_question"]["unclear"]
+        self.assertIsNone(row["hit"])
+        self.assertIn("two fair answers", row["note"])
+
+    def test_the_paired_comparison_skips_it(self):
+        got, _ = self._score()
+        pin = {"r_at_k": 1.0, "per_question": {
+            "kept": {"hit": True, "negative": False},
+            "unclear": {"hit": True, "negative": False}}}
+        cmp = ev.compare(pin, got)
+        self.assertEqual(cmp["compared"], 1)
+        self.assertEqual(cmp["flips_against"], 0)
+
+    def test_the_shipped_set_marks_the_three_and_still_compares_with_the_pin(self):
+        gold = json.loads(ev.GOLD_SET.read_text(encoding="utf-8"))
+        marked = {e["id"]: e["not_counted"] for e in gold["entries"] if e.get("not_counted")}
+        self.assertEqual(sorted(marked), ["dt06", "pp05", "pp13"])
+        self.assertTrue(all(len(why) > 40 for why in marked.values()), marked)
+        pin = json.loads((ev.GOLD_SET.parent / "shipped-baseline.json").read_text(encoding="utf-8"))
+        self.assertEqual(ev.gold_sha(), pin["corpus"]["gold_sha"])
+
+
 if __name__ == "__main__":
     unittest.main()

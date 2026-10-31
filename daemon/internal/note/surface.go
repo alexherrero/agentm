@@ -4,7 +4,7 @@ import "strings"
 
 // Which surface served a recall, and whether that recall moves a note's clock.
 //
-// The clock is the aging axis: a note that nobody has recalled in a year sinks,
+// The clock is the aging axis: a note that nobody has recalled in years sinks,
 // and a genuine recall returns it to day zero. So "did this count as a recall"
 // is a real question with two wrong answers. Say no when it was one and the
 // note ages as if unread; say yes when it was not and the note stays young

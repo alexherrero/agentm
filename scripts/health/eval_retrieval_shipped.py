@@ -705,7 +705,7 @@ class Refused(Exception):
 # Fields that label a question without changing what it asks or what scores it.
 # The hash leaves them out: a label is not a new question paper, so adding one
 # needs no re-pin. Every other change to the file still moves the hash.
-GOLD_LABELS = ("history",)
+GOLD_LABELS = ("history", "not_counted")
 
 
 def gold_sha() -> str:
@@ -1012,6 +1012,13 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
 
     all_scores = []
     for e in entries:
+        # Ambiguous on the evidence, by the operator's ruling, with the reason on
+        # the question. A row with no verdict, so the paired comparison skips it
+        # the way it skips a question with nothing to score.
+        if e.get("not_counted"):
+            per_question[e["id"]] = {"hit": None, "negative": False, "rank": None,
+                                     "note": "not counted: " + e["not_counted"]}
+            continue
         question = e["question"]
         # The whole remap chain, and the retirement split, live in
         # `resolve_expected` so that the control which checks these paths and

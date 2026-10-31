@@ -52,11 +52,16 @@ class _FakeRules:
     def contract_exempt_spaces(self):
         return []
 
+    def fade_areas(self):
+        return list(self._fade_areas)
 
-def _with_contract(test, thresholds):
+
+def _with_contract(test, thresholds, fade_areas=()):
     """Pin the curve to a contract for the duration of one test."""
     original = lifecycle.storage_rules.rules
-    lifecycle.storage_rules.rules = lambda: _FakeRules(thresholds)
+    fake = _FakeRules(thresholds)
+    fake._fade_areas = fade_areas
+    lifecycle.storage_rules.rules = lambda: fake
     test.addCleanup(lambda: setattr(lifecycle.storage_rules, "rules", original))
 
 
@@ -288,6 +293,27 @@ class TestTheDecayCurve(unittest.TestCase):
         score = compute_decay_score(self.vault, "incident-a", fm, rel, now="2035-01-01")
         self.assertEqual(score, 1.0)
 
+    def test_only_the_contracts_fade_areas_age(self):
+        _with_contract(self, _SHIPPED, ("agent/memory/episodic", "projects/*/cleanup"))
+        fm = _fm(created="2020-01-01")
+        for rel, score in (
+            ("agent/memory/episodic/a-trace.md", DECAY_FLOOR),
+            ("projects/movies-tv-games/cleanup/run.md", DECAY_FLOOR),
+            ("agent/memory/semantic/a-fact.md", 1.0),
+            ("projects/agentm/designs/agentm-vault.md", 1.0),
+            ("projects/movies-tv-games/completed/cleanup/x.md", 1.0),
+        ):
+            with self.subTest(rel=rel):
+                self.assertEqual(
+                    compute_decay_score(self.vault, "a-note", fm, rel, now="2035-01-01"), score)
+
+    def test_a_contract_naming_no_fade_areas_ages_everything(self):
+        _with_contract(self, _SHIPPED)
+        fm = _fm(created="2020-01-01")
+        rel = "projects/agentm/designs/agentm-vault.md"
+        self.assertEqual(
+            compute_decay_score(self.vault, "a-note", fm, rel, now="2035-01-01"), DECAY_FLOOR)
+
     def test_no_anchor_defaults_fresh(self):
         _with_contract(self, _SHIPPED)
         fm = {"kind": "insight"}  # no created, no sidecar entry.
@@ -321,6 +347,7 @@ class TestTheDecayCurve(unittest.TestCase):
 class TestAccessDrivenReset(unittest.TestCase):
 
     def setUp(self):
+        _with_contract(self, _SHIPPED)
         self.tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self.tmp.name) / "vault"
         self.vault.mkdir(parents=True)

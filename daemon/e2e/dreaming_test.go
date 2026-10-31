@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // The dreaming binary, driven as the runner will drive it (filing v2 part 6,
@@ -57,11 +59,22 @@ func buildDreamer(t *testing.T) string {
 type dreamerEnv struct {
 	*vaultEnv
 	state string
+	rules string
 }
 
 func newDreamerEnv(t *testing.T) *dreamerEnv {
 	t.Helper()
 	env := &dreamerEnv{vaultEnv: newVault(t), state: filepath.Join(t.TempDir(), "state")}
+	// A sink line short of the archive line, so one run takes a silent note one
+	// step. The shipped lines are equal, and a second run would archive it.
+	text := strings.Replace(rules.Default(), "dormant_after_days: 1825", "dormant_after_days: 365", 1)
+	if text == rules.Default() {
+		t.Fatal("the shipped contract has no `dormant_after_days: 1825` line to replace")
+	}
+	env.rules = filepath.Join(t.TempDir(), "storage-rules.md")
+	if err := os.WriteFile(env.rules, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return env
 }
 
@@ -82,6 +95,7 @@ func (d *dreamerEnv) command(bin string, args ...string) *exec.Cmd {
 	cmd.Env = append(os.Environ(),
 		"AGENTM_STATE_DIR="+d.state,
 		"AGENTM_RECALL_HISTORY="+filepath.Join(d.state, "no-recalls.jsonl"),
+		"AGENTM_STORAGE_RULES="+d.rules,
 		"XDG_CACHE_HOME="+filepath.Join(d.state, "cache"),
 	)
 	return cmd

@@ -126,6 +126,41 @@ func TestAStaleNoteRanksBelowAFreshOneWithTheSameWords(t *testing.T) {
 	}
 }
 
+// With a list in the contract, age reaches the listed areas and nothing else
+// (the operator's ruling of 2026-10-30). Through Search, because the list is
+// read per row at query time.
+func TestOnlyAFadeAreaAges(t *testing.T) {
+	note.SetFadeAreas([]string{"agent/memory/episodic"})
+	t.Cleanup(func() { note.SetFadeAreas(nil) })
+
+	idx := openScratchDecay(t)
+	body := "The staging gate runs before the deployment finishes.\n"
+	old := time.Now().AddDate(-4, 0, 0).Format("2006-01-02")
+	indexDated(t, idx, "agent/memory/episodic/listed.md", "Gate", old, body)
+	indexDated(t, idx, "projects/x/designs/unlisted.md", "Gate", old, body)
+
+	out, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(out.Results) != 2 {
+		t.Fatalf("expected both notes, got %v", resultPaths(out.Results))
+	}
+	for _, r := range out.Results {
+		want := 0.0
+		if strings.HasSuffix(r.Path, "listed.md") && !strings.HasSuffix(r.Path, "unlisted.md") {
+			want = note.DecayFloor
+		}
+		if r.Decay != want {
+			t.Errorf("%s carries decay %v, want %v", r.Path, r.Decay, want)
+		}
+	}
+	if !strings.HasSuffix(out.Results[0].Path, "unlisted.md") {
+		t.Errorf("the note that fades outranked the one that does not: %v",
+			resultPaths(out.Results))
+	}
+}
+
 // Demote, never exclude — the same promise the class penalties make. A memory
 // nobody has needed in four years is cold, not deleted.
 func TestAStaleNoteIsStillTheAnswerWhenItIsTheOnlyOne(t *testing.T) {

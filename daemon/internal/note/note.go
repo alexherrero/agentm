@@ -171,8 +171,7 @@ type Note struct {
 	// whole vault against the handful of notes enrichment has reached.
 	//
 	// It only ever ranks. The lifecycle job does not read it, which is what the
-	// contract means by "a 9 nobody has recalled in a year sinks exactly as a 3
-	// does".
+	// contract means by "a 9 nobody has recalled sinks exactly as a 3 does".
 	Importance    int
 	ImportanceSet bool
 

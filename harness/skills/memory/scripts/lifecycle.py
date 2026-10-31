@@ -424,6 +424,18 @@ def _in_contract_exempt_space(rel_path: str | Path) -> bool:
     return storage_rules.in_space(str(rel_path), exempt)
 
 
+def _outside_fade_areas(vault: Path, rel_path: str | Path) -> bool:
+    """Whether the contract's `fade_areas` leave this note out of the curve.
+
+    A contract that cannot be read leaves it in, like the two lines above: the
+    curve then runs where it always ran rather than stopping everywhere.
+    """
+    try:
+        return not storage_rules.fades(vault_layout.vault_rel(rel_path, vault))
+    except Exception:
+        return False
+
+
 def compute_decay_score(
     vault: Path,
     slug: str,
@@ -435,7 +447,8 @@ def compute_decay_score(
     """Return a decay score in (0.0, 1.0] — 1.0 means fully fresh/no decay.
 
     Decay-exempt entries always score 1.0 (durable tiers ignore access —
-    FABLE R1). Volatile entries decay on the contract's stepped curve from the
+    FABLE R1), and so does anything outside the contract's `fade_areas`.
+    Volatile entries decay on the contract's stepped curve from the
     last genuine recall access (sidecar `last_access`), falling back to
     frontmatter `updated` (then `created`, if `updated` is absent).
 
@@ -455,6 +468,8 @@ def compute_decay_score(
     `now` is injectable for tests (ISO date string YYYY-MM-DD).
     """
     if is_decay_exempt(fm, rel_path) or _in_contract_exempt_space(rel_path):
+        return 1.0
+    if _outside_fade_areas(vault, rel_path):
         return 1.0
     if now is None:
         import datetime

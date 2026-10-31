@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-A session trace is titled by what the session is for, not by the relay that opened it. Task 195: a vault note is checked when it is saved. Task 196: the scorecard's Retrieval rows are measured.
+A session trace is titled by what the session is for, not by the relay that opened it. Task 195: a vault note is checked when it is saved. Task 196: the scorecard's Retrieval rows are measured, and age now lowers rank only for the notes with no other ending.
 
 ### Added
 
@@ -30,6 +30,12 @@ A session trace is titled by what the session is for, not by the relay that open
 
 ### Changed
 
+- **Age lowers rank only where the contract says (task 196 step 3).** Every note ranked on the decay curve unless something exempted it, and that let finished work, designs and reference notes sink for not being used. On the operator's ruling of 2026-10-30, kind by kind, `fade_areas` in `storage-rules.md` now names the only places the curve runs: session traces, entity issue and release pages, a project's `cleanup/` logs, the diagnostics, the calendar and weekly briefs. That is 750 of 4,080 notes. Both ranking arms read the list, per row at query time, so a change needs no reindex, and a contract that names none ranks as it did. The ×0.30 folder rule stays. The list changes rank only.
+  - **Fact cards and how-tos skip the one-year drop.** `dormant_after_days` rises to 1,825, the archive line. Sinking at a year was a ×0.30 fade by another name. They still leave at five years, and a trace keeps its own shorter line.
+  - **The quiet-project rule is off.** `project_activity_ranks: 0` stops a project's activity reading from moving its records' rank, and leaving the line out keeps the rule on. The night keeps writing the reading.
+  - **`*` in an area path** is any one folder, in `rules.InArea`, `note.inSpaceSet` and `storage_rules.in_area`.
+  - **Measured on a scratch build against the live index, 4,080 notes, nobody using a note:** 42 of 63 questions now and 43 at six months, one year and three years, against 38 today and 19 at one year under the old rules. Near-miss false positives stay 3 of 10. The gain comes from the quiet-project rule: five questions for one lost now, one short of the bar of six flips one way, so it is not proven.
+- **Three gold questions are not counted (task 196 step 3).** `dt06`, `pp05` and `pp13` are ambiguous on the evidence. Each stays in `gold-set-v3.json`, expectation untouched, and carries `not_counted` with its reason. The harness neither runs nor counts them, so totals are over 60 questions and the paired comparison skips them. `gold_sha` leaves the field out, so the pin still compares and nothing was re-pinned.
 - **The scorecard's Retrieval rows are measured on the live index (task 196 step 1).** The section reprinted `shipped-baseline.json`, pinned at 2,883 documents, under a heading that said measured. It now runs `eval_retrieval_shipped.py` each night and prints the number with the date and document count, with the pin and its date beside it. With no run, the number is a dash and the reason says why; the pin never takes its place. The false-positive row was labelled "of 30 questions that should return nothing", which was wrong twice: it is now `near-miss false positives`, counting a near-miss question whose banned note is in the top 5. A run adds about 9 seconds to a job of about 84. The pin and `check-retrieval-regression` are unchanged.
 - **The AgentM Vault design records the save-time check (task 195 step 4).** One amendment, body and log together: a new passage in *Projects and tasks* on how a saved note is checked, and the morning note's new list. The CI-Gates reference gains a row for the save-time check.
 
