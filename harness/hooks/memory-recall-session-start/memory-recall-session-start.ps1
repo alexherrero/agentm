@@ -128,7 +128,9 @@ if (-not (Test-Path $RecallPy)) {
 
 # Recall is no longer the terminal step — the pending-state briefing appends
 # after the always-load recall (V4 #23 task 3, DC-3: non-blocking).
-& $Py $RecallPy session-start
+# The payload goes along for its `cwd`: a project's recall_excludes rule follows
+# the session's folder, which on another host need not be this process's.
+$Payload | & $Py $RecallPy session-start --stdin-payload
 
 # ── Pending-state briefing pass (V4 #23 task 3) ────────────────────────────
 # Best-effort, non-blocking: scans the vault for over-threshold pending signals

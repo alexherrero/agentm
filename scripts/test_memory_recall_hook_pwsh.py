@@ -105,6 +105,21 @@ class TestMemoryRecallSessionStartHookPwsh(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(_SENTINEL, r.stdout)
 
+    def test_a_projects_recall_excludes_reaches_the_session_start_hook(self) -> None:
+        """The hook hands recall.py the payload for its `cwd`, as the bash one
+        does, so a stamped entry of an excluded project stays out."""
+        self._seed_always_load()
+        for slug, extra in (("clean", f"code_paths:\n  - {self.proj}\nrecall_excludes:\n  - port\n"),
+                            ("port", "code_paths: []\n")):
+            d = self.vault / "projects" / slug
+            d.mkdir(parents=True)
+            (d / "project.yaml").write_text(f"slug: {slug}\n{extra}", encoding="utf-8")
+        (self.vault / "memory" / "_always-load" / "pin.md").write_text(
+            "---\ntitle: pin\nproject: port\n---\n\nPINNED-PORT-DETAIL\n", encoding="utf-8")
+        r = self._run_hook(self._env())
+        self.assertIn(_SENTINEL, r.stdout)
+        self.assertNotIn("PINNED-PORT-DETAIL", r.stdout)
+
     def test_writes_session_marker_on_sessionstart(self) -> None:
         r = self._run_hook(self._env(), sid="abc123")
         self.assertEqual(r.returncode, 0, r.stderr)

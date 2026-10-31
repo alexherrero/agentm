@@ -20,6 +20,7 @@ Every vault project's root carries a `project.yaml` — the grounding config a s
 | `former_names` | list of `owner/repo` | no | The names a renamed repository used to have, for a project that lists exactly one repository (`:114-123`). The entity builder folds each old name into the current repository's page, so a note that still cites the old name counts toward it (task 186). |
 | `bare_issue_floor` | positive whole number | no | Where the repository's issue numbers start, for a project that lists at least one repository (`:124-129`). A bare `#NN` below it stays unqualified, `issue:#NN`; see [Bare issue floor](#bare-issue-floor) (task 187). |
 | `map_folders` | list of project-relative folders | no | Folders the project's map lists beyond `research/`, `drafts/` and `desk/`, each a plain path with no `..` and no hidden or `_`-prefixed part (`check-project-yaml`). See [Map folders](#map-folders) (task 193). |
+| `recall_excludes` | list of project slugs | no | The projects whose notes this project's sessions must not be served. See [Recall excludes](#recall-excludes). |
 | Where's the template? | — | — | `standards/templates/project.yaml` — seeds every new project's copy, minus `slug`. `standards/templates/` is in `recall_exempt_areas`, so the template is never indexed or served by recall; it's a shape to copy, never content to surface. |
 | What checks it? | — | — | `check-project-yaml` — see [CI gates reference](CI-Gates). |
 | Related pages | — | — | [Memory daemon reference](Memory-Daemon), [CI gates reference](CI-Gates), [Project config reference](Project-Config) (a different file — the *harness's* `.harness/project.json`) |
@@ -45,9 +46,40 @@ former_names:
 bare_issue_floor: 48
 map_folders:
   - analysis
+recall_excludes:
+  - other-project
 ```
 
 `standards/templates/project.yaml` is checked the same way, except it carries no `slug` — the one field a template can't have, since it names the directory the template itself isn't in (`scripts/check-project-yaml.py:79`).
+
+## Recall excludes
+
+`recall_excludes` keeps one project's notes out of another's sessions, for a project that must not see them however relevant a search finds them. Without it, a project's notes only rank a little lower in another project's session. With it, they are not served at all. Everything else stays: the session keeps the rest of its recall.
+
+```yaml
+recall_excludes:
+  - other-project
+```
+
+**Who it applies to.** A session works on the project when its folder is under one of the project's `code_paths`, or under the project's own folder in the vault (`projects/<slug>/`, which `code_paths` doesn't list), or in a linked git worktree of either, wherever that worktree sits. Case doesn't matter. Every project that claims the folder counts, so a worktree inside another project's folder keeps its own project's rule. Every other session sees no change, and no session is walled out of its own project's notes.
+
+**What it keeps out.** A note under `projects/<slug>/` or `projects/completed/<slug>/`, and a note anywhere whose `project:` names the slug. A note elsewhere that only mentions the project's subject is not covered.
+
+**Where it holds.**
+
+| Door | How it knows the folder | If the rule can't be read |
+|---|---|---|
+| The prompt hook | the payload's `cwd`, else its own folder | no recall that prompt; stderr says why |
+| The session-start hook | the payload's `cwd`, else its own folder | entries that carry a project are withheld; the standing rules still load; stderr says why |
+| `/memory search`, `recall.py query`, `/memory search --deep` | the folder it runs in | prints the reason and exits 1 |
+| `agentmd search` | `-cwd`, else the folder it runs in | prints the reason and exits non-zero |
+| `memory_search` over MCP | the `cwd` argument | a tool error naming the reason |
+
+`memory_search` is the odd one. The daemon is one resident process that can't see who is calling, so the tool asks for `cwd`. A call with no `cwd`, or a relative one, is held to every project's rule, because it may be a session the rule covers. That caller gets a note saying so, and passing `cwd` gets the notes back. A command run from a folder that no longer exists is held to every rule the same way.
+
+**What it doesn't stop.** It governs recall, not the filesystem. A session can still open the files with `Read` or `grep` the vault, and `agentmd search` run from a folder outside the project isn't under the rule. Pulling a project's notes out of a session's reach would take moving them, which is a different job. Two narrower gaps: `/memory search --deep` knows a deleted note only by its path, because a deletion manifest records no `project:`, so a deleted note stamped with an excluded project and filed outside its folder still shows; and a linked worktree of a repository made with `--separate-git-dir` doesn't lead back to its checkout, so list that folder in `code_paths`.
+
+**Unreadable means withheld.** The reader takes the two forms in the schema: a block of `- slug` lines, or `[slug, slug]` on the key's own line. Anything else that names the key, a value that isn't a slug, or a slug the vault has no project for, fails closed for that project's sessions. A `project.yaml` that won't read at all fails closed for its own sessions and for any folder no other project claims, since it may be the file that claims it. Sessions of projects that do read are not held up. `check-project-yaml` catches a bad value before a session does: an entry must be a slug, must not be the project itself, and must name a project under `projects/` or `projects/completed/`.
 
 ## Bare issue floor
 

@@ -1159,6 +1159,8 @@ python3 harness/skills/memory/scripts/recall.py query "<query>" -k 5
 
 The same engine the hook uses: a BM25 walk with frontmatter filtering, rank-merged through RRF, deduped, top-5 by default. On a daemon-backed machine the hook asks `agentmd` first and falls back to this engine. `_inbox/` is excluded unless you pass `--include-inbox`; archived notes are excluded unless you pass `--include-archive`, which is the explicit archive query.
 
+A project's `recall_excludes:` rule applies to the folder this runs in, and to `--deep` below, and no flag lifts it. If the rule cannot be read, the command prints the reason and exits 1 rather than search. See [Vault project.yaml reference](../../../wiki/reference/Vault-Project-Yaml.md#recall-excludes).
+
 #### `--deep`
 
 A different question: *where did that note go?* Ordinary search is about what is live. `--deep` looks in the three places a note goes when it stops being live, in order of how much of it is left.

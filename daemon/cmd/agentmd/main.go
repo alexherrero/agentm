@@ -36,6 +36,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/mcpsrv"
 	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/probe"
+	"github.com/alexherrero/agentm/daemon/internal/projectbind"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 	"github.com/alexherrero/agentm/daemon/internal/vcs"
 	"github.com/alexherrero/agentm/daemon/internal/watch"
@@ -463,6 +464,9 @@ func cmdSearch(args []string) error {
 	project := fs.String("project", "",
 		"the session's vault project: a note whose project: names another one, or none, ranks a little "+
 			"lower (agentm-vault, projects and tasks); empty ranks exactly as before")
+	sessionDir := fs.String("cwd", "",
+		"the folder the session works in, which decides whether its project's recall_excludes rule applies; "+
+			"empty means the folder this command runs in")
 	includeArchived := fs.Bool("include-archived", false,
 		"also return notes whose lifecycle is archived or superseded — the contract's explicit archive query; "+
 			"off by default, both have left everyday search while staying on disk (a superseded note comes back demoted beside its successor)")
@@ -488,6 +492,24 @@ func cmdSearch(args []string) error {
 	}
 	defer idx.Close()
 
+	// The rule follows the folder, so a session that shells out to this command
+	// is held to it without anyone passing a flag. An unreadable rule stops the
+	// search: a printed error is the fail-closed answer here. A folder nobody can
+	// name may be a covered session, so it is held to every rule.
+	dir := *sessionDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	var exclude []string
+	if dir == "" {
+		exclude, err = projectbind.EveryExclusion(cfg.VaultPath)
+	} else {
+		exclude, err = projectbind.Exclusions(cfg.VaultPath, dir)
+	}
+	if err != nil {
+		return err
+	}
+
 	// "rerank" is a CLI-level arm, not an index.Query.Mode — see modeRerank's
 	// doc comment. It runs the index's own hybrid mode at the rerank depth
 	// rather than the caller's requested k, since the cross-encoder needs the
@@ -500,7 +522,8 @@ func cmdSearch(args []string) error {
 	}
 
 	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode, Lex3: *lex3,
-		IncludeArchived: *includeArchived, Project: *project, Surface: note.NormalizeSurface(*surface)}
+		IncludeArchived: *includeArchived, Project: *project, ExcludeProjects: exclude,
+		Surface: note.NormalizeSurface(*surface)}
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if innerMode == index.ModeHybrid {
@@ -544,7 +567,7 @@ func cmdSearch(args []string) error {
 		// The cross-encoder reorders what Search returned; the exact-name rule
 		// (task 179) holds over it too, for an unbounded query as in Search.
 		if q.After == "" && q.Before == "" {
-			out.Results = idx.PutNamedEntityFirst(query, out.Results, *k)
+			out.Results = index.WithoutExcluded(idx.PutNamedEntityFirst(query, out.Results, *k), exclude)
 		}
 	}
 	if *asJSON {

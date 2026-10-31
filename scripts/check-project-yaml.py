@@ -23,8 +23,11 @@ those is a finding:
     project's notes is not read as one of its issues; task 187) and
     `map_folders` (a list of project-relative folders the project's map lists
     beyond `research/`, `drafts/` and `desk/`, each a plain path with no
-    `..` and no hidden or `_`-prefixed part; task 193); nothing else is
-    allowed, so a typo in a key name is caught rather than ignored.
+    `..` and no hidden or `_`-prefixed part; task 193) and `recall_excludes`
+    (a list of the projects whose notes this project's sessions must not be
+    served: each a slug, not the project itself, naming a project the vault
+    has); nothing else is allowed, so a typo in a key name is caught rather
+    than ignored.
 
 The template the files are seeded from, `standards/templates/project.yaml`, is
 checked the same way except for the slug, which it does not have.
@@ -56,10 +59,12 @@ for _p in (str(_HERE), str(_TOOLKIT)):
 FILENAME = "project.yaml"
 TEMPLATE_REL = ("standards", "templates", FILENAME)
 REQUIRED = ("slug", "title", "status", "repositories", "code_paths")
-OPTIONAL = ("board", "sensitivity", "former_names", "bare_issue_floor", "map_folders")
+OPTIONAL = ("board", "sensitivity", "former_names", "bare_issue_floor", "map_folders",
+            "recall_excludes")
 STATUSES = ("queued", "active", "parked", "done", "dropped")
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _WORD = re.compile(r"^[a-z][a-z0-9-]*$")
+_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def live_projects(vault: Path) -> list:
@@ -70,9 +75,10 @@ def live_projects(vault: Path) -> list:
                   if p.is_dir() and not p.name.startswith((".", "_")) and p.name != "completed")
 
 
-def check_mapping(data, rel: str, *, slug: "str | None") -> list:
+def check_mapping(data, rel: str, *, slug: "str | None", known: "frozenset | None" = None) -> list:
     """Findings for one parsed file. `slug` is the directory's name, or None
-    for the template, which carries no slug of its own."""
+    for the template, which carries no slug of its own. `known` is every
+    project the vault has, for a rule that names one."""
     out = []
     if not isinstance(data, dict):
         return [f"{rel}: does not parse to a mapping"]
@@ -140,11 +146,26 @@ def check_mapping(data, rel: str, *, slug: "str | None") -> list:
                 if not parts or f.startswith(("/", "~")) or any(
                         p in ("", "..") or p.startswith((".", "_")) for p in parts):
                     out.append(f"{rel}: map folder `{f}` is not a plain project-relative folder")
+    if "recall_excludes" in data:
+        excludes = data["recall_excludes"]
+        if not isinstance(excludes, list):
+            out.append(f"{rel}: `recall_excludes` must be a list of project slugs")
+        else:
+            for name in excludes:
+                if not (isinstance(name, str) and _SLUG.match(name)):
+                    out.append(f"{rel}: `recall_excludes` entry `{name}` is not a project slug")
+                elif name == slug:
+                    out.append(f"{rel}: `recall_excludes` names the project itself")
+                elif known is not None and name not in known:
+                    out.append(f"{rel}: `recall_excludes` names `{name}`, and the vault has no such project")
     return out
 
 
 def scan(vault: Path, yaml) -> tuple:
     findings, checked = [], 0
+    root = vault / "projects"
+    known = frozenset(d.name for parent in (root, root / "completed") if parent.is_dir()
+                      for d in parent.iterdir() if d.is_dir())
     for project in live_projects(vault):
         path = project / FILENAME
         rel = f"projects/{project.name}/{FILENAME}"
@@ -157,7 +178,7 @@ def scan(vault: Path, yaml) -> tuple:
         except Exception as exc:  # yaml.YAMLError and decoding errors alike
             findings.append(f"{rel}: does not parse ({str(exc).splitlines()[0]})")
             continue
-        findings.extend(check_mapping(data, rel, slug=project.name))
+        findings.extend(check_mapping(data, rel, slug=project.name, known=known))
     template = vault.joinpath(*TEMPLATE_REL)
     if template.is_file():
         try:
@@ -190,6 +211,12 @@ def run_self_test(yaml) -> int:
         "zeta": (None, ["missing"]),
         "eta": ("slug: eta\ntitle: E\nstatus: active\nrepositories: [o/eta]\ncode_paths: []\nbare_issue_floor: '48'\n",
                 ["`bare_issue_floor` must be a positive whole number"]),
+        "theta": ("slug: theta\ntitle: T\nstatus: active\nrepositories: []\ncode_paths: []\nrecall_excludes: alpha\n",
+                  ["`recall_excludes` must be a list"]),
+        "iota": ("slug: iota\ntitle: I\nstatus: active\nrepositories: []\ncode_paths: []\n"
+                 "recall_excludes: [iota, nowhere, 'Not A Slug']\n",
+                 ["names the project itself", "`nowhere`", "not a project slug"]),
+        "kappa": ("slug: kappa\ntitle: K\nstatus: active\nrepositories: []\ncode_paths: []\nrecall_excludes: [alpha, old]\n", []),
     }
     with tempfile.TemporaryDirectory() as td:
         vault = Path(td)

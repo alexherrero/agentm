@@ -56,6 +56,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import recall_exclusion  # noqa: E402
+
 # Hard time budgets per locked design call (plan #7a part 2):
 #   SessionStart: 500ms
 #   UserPromptSubmit: 300ms
@@ -137,6 +139,7 @@ DAEMON_BIN = "agentmd"
 DAEMON_SEARCH_MODE = "hybrid"
 # What Go's flag package says to a binary built before `-project` existed.
 _FLAG_UNKNOWN_PROJECT = "flag provided but not defined: -project"
+_FLAG_UNKNOWN_CWD = "flag provided but not defined: -cwd"
 
 # The Go index's own words for "the dense arm was asked for but had nothing to
 # embed with" (daemon/internal/index/search.go, searchHybrid) — matched so a
@@ -1076,6 +1079,7 @@ def session_start(
     vault: Path | None,
     budget_ms: int = SESSION_START_BUDGET_MS,
     token_budget: int = DEFAULT_TOKEN_BUDGET,
+    exclusion: recall_exclusion.Exclusion = recall_exclusion.NONE,
     stdout=sys.stdout,
     stderr=sys.stderr,
 ) -> int:
@@ -1130,6 +1134,13 @@ def session_start(
         )
         return 0
 
+    if exclusion.problem:
+        print(
+            f"[memory-recall-session-start] recall exclusions could not be read "
+            f"({exclusion.problem}): entries that carry a project are withheld",
+            file=stderr,
+        )
+
     # This alphabetical-per-dir order is only the READ order for the
     # time-budget walk below; the order entries are token-budgeted in is
     # priority-first (R0.8 / voice#0) — see the sort after the read loop.
@@ -1170,6 +1181,13 @@ def session_start(
         # moves entries to _archive/, but a stale _always-load/ entry could
         # have been flagged superseded without being moved).
         if _unserved(fm):
+            continue
+        # The tier is the operator's standing rules and carries no project, so
+        # the recall_excludes rule can only ever remove a stamped pen entry. With
+        # the rule unreadable, every stamped entry is one it might have removed.
+        if exclusion.hides(md_path.as_posix(), fm.get("project")) or (
+            exclusion.problem and _project_of(fm)
+        ):
             continue
         parsed_entries.append((md_path.stem, fm, _strip_machine_blocks(body)))
 
@@ -1849,6 +1867,7 @@ def query(
     status: dict | None = None,
     project: str | None = None,
     admit_traces: bool = True,
+    exclusion: recall_exclusion.Exclusion = recall_exclusion.NONE,
     stderr=sys.stderr,
 ) -> list[dict]:
     """Run the in-process recall engine.
@@ -2001,6 +2020,9 @@ def query(
         # Before the sort and the cut below, so a dropped trace leaves a slot
         # for a real hit rather than shortening the injection.
         if not admit_traces and fm.get("kind") == SESSION_TRACE_KIND:
+            continue
+        # The session's recall_excludes rule, here for the same reason.
+        if exclusion.hides(path, fm.get("project")):
             continue
         if lifecycle is not None:
             lifecycle_tier = lifecycle.lifecycle_tier_for(fm, path)
@@ -2650,6 +2672,8 @@ def _daemon_search(
     drops: dict | None = None,
     project: str | None = None,
     admit_traces: bool = True,
+    exclusion: recall_exclusion.Exclusion = recall_exclusion.NONE,
+    session_cwd: str | None = None,
 ) -> list[dict] | None:
     """Ask the agentm daemon for the top-k entries relevant to `query_text`.
 
@@ -2728,6 +2752,12 @@ def _daemon_search(
         # The session's project, which the daemon ranks against (agentm-vault
         # plan 09). Before the terms, because the flag parser stops at the first.
         argv += ["-project", project]
+    if session_cwd:
+        # So the daemon walls the rule's notes before the k are chosen. The
+        # check below is what holds the rule; this keeps a slot from going to a
+        # note it would then throw away. Always sent, because a binary left to
+        # its own folder reads the rule for wherever the host ran this hook.
+        argv += ["-cwd", session_cwd]
     argv.append(search_terms)
 
     started = time.monotonic()
@@ -2757,6 +2787,15 @@ def _daemon_search(
             proc = subprocess.run(retry, capture_output=True, text=True, timeout=budget_ms / 1000.0)
         except (subprocess.TimeoutExpired, OSError) as e:  # noqa: BLE001 — never block the prompt
             return _skip(f"{DAEMON_BIN} could not be asked again without -project ({type(e).__name__})")
+        elapsed_ms = (time.monotonic() - started) * 1000.0
+    if proc.returncode != 0 and _FLAG_UNKNOWN_CWD in (proc.stderr or ""):
+        retry = list(argv)
+        at = retry.index("-cwd")
+        del retry[at:at + 2]
+        try:
+            proc = subprocess.run(retry, capture_output=True, text=True, timeout=budget_ms / 1000.0)
+        except (subprocess.TimeoutExpired, OSError) as e:  # noqa: BLE001 — never block the prompt
+            return _skip(f"{DAEMON_BIN} could not be asked again without -cwd ({type(e).__name__})")
         elapsed_ms = (time.monotonic() - started) * 1000.0
     if proc.returncode != 0:
         detail = (proc.stderr or "").strip().splitlines()
@@ -2810,7 +2849,7 @@ def _daemon_search(
         drops["returned"] += len(raw)
         for _reason in ("malformed", "inadmissible", "unrooted",
                         "out_of_scope", "deduped", "always_load_area",
-                        "session_trace_no_temporal_bound"):
+                        "session_trace_no_temporal_bound", "recall_excluded"):
             drops.setdefault(_reason, 0)
 
     def _drop(reason: str) -> None:
@@ -2859,6 +2898,12 @@ def _daemon_search(
                     continue
                 rel = os.path.relpath(abs_path, vault).replace(os.sep, "/")
                 external = True
+        # Before anything else reads the path: the rule belongs to the session,
+        # not to this binary, which may be older than the rule or asked for a
+        # folder it read differently.
+        if exclusion.hides(rel, item.get("project")):
+            _drop("recall_excluded")
+            continue
         if rel in dedup_paths or rel in seen:
             _drop("deduped")
             continue
@@ -2948,6 +2993,8 @@ def prompt_submit(
     include_inbox: bool = False,
     include_archive: bool = False,
     project: str | None = None,
+    exclusion: recall_exclusion.Exclusion = recall_exclusion.NONE,
+    session_cwd: str | None = None,
     stdout=sys.stdout,
     stderr=sys.stderr,
 ) -> int:
@@ -3006,6 +3053,16 @@ def prompt_submit(
         )
         return 0
 
+    # The recall_excludes rule fails closed. The session cannot be told apart
+    # from one the rule covers, so it goes without recall this turn, and says so.
+    if exclusion.problem:
+        print(
+            f"[memory-recall-prompt-submit] recall exclusions could not be read "
+            f"({exclusion.problem}): no recall run",
+            file=stderr,
+        )
+        return 0
+
     always_load_paths = _collect_always_load_paths(vault)
 
     # The trace rule (agentm-vault § Surfaces). Computed once for the prompt
@@ -3048,6 +3105,8 @@ def prompt_submit(
                     drops=daemon_drops,
                     project=project,
                     admit_traces=admit_traces,
+                    exclusion=exclusion,
+                    session_cwd=session_cwd,
                 )
             except Exception as e:  # noqa: BLE001 — never block the prompt
                 daemon_status.update(
@@ -3076,6 +3135,7 @@ def prompt_submit(
                     status=recall_status,
                     project=project,
                     admit_traces=admit_traces,
+                    exclusion=exclusion,
                     stderr=stderr,
                 )
                 recall_status.setdefault("engine", "in-process")
@@ -3138,6 +3198,10 @@ def prompt_submit(
         # check on the daemon path — a retired entry must not come back just
         # because a faster engine found it.
         if _unserved(fm, include_archive=include_archive):
+            continue
+        # The stamp is in the frontmatter, which only this read has for certain:
+        # a binary older than the rule sends no `project` to check earlier.
+        if exclusion.hides(result["path"], fm.get("project")):
             continue
         raw_blocks.append(_format_recall_result(result, body, fm))
         raw_slugs.append(result["slug"])
@@ -3360,6 +3424,8 @@ def prompt_submit(
         )
     elif blocked:
         transparency += " (partial coverage — " + "; ".join(blocked) + ")"
+    if exclusion.slugs:
+        transparency += f" (recall_excludes: {', '.join(exclusion.slugs)})"
     if overrun:
         transparency += (
             f" (WARNING: {budget_ms}ms time budget exceeded)"
@@ -3418,6 +3484,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             f"per-recall token budget (default: {DEFAULT_TOKEN_BUDGET}; "
             "0 = unlimited). Also read from RECALL_TOKEN_BUDGET env."
+        ),
+    )
+    ss.add_argument(
+        "--stdin-payload",
+        action="store_true",
+        help=(
+            "read the SessionStart JSON from stdin for the session's folder, which "
+            "decides whether its project's recall_excludes rule applies (default: "
+            "the folder this command runs in)"
         ),
     )
 
@@ -3522,17 +3597,23 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     vault = _resolve_vault_path(args.vault_path)
     if args.cmd == "session-start":
+        cwd = _read_prompt_payload()[1] if args.stdin_payload else None
         return session_start(
             vault=vault,
             budget_ms=_resolve_budget_ms(args.budget_ms, SESSION_START_BUDGET_MS),
             token_budget=_resolve_token_budget(args.token_budget),
+            exclusion=recall_exclusion.for_session(
+                cwd or recall_exclusion.current_directory(), vault),
         )
     if args.cmd == "prompt-submit":
         prompt, cwd = _read_prompt_payload()
+        session_cwd = cwd or recall_exclusion.current_directory()
         return prompt_submit(
             vault=vault,
             prompt=prompt,
             project=_session_project(cwd, vault),
+            exclusion=recall_exclusion.for_session(session_cwd, vault),
+            session_cwd=session_cwd,
             budget_ms=_resolve_budget_ms(args.budget_ms, PROMPT_SUBMIT_BUDGET_MS),
             token_budget=_resolve_token_budget(args.token_budget),
         )
@@ -3546,6 +3627,12 @@ def main(argv: list[str] | None = None) -> int:
         if not vault.exists():
             print(f"ERROR: vault path does not exist: {vault}", file=sys.stderr)
             return 1
+        session_cwd = recall_exclusion.current_directory()
+        exclusion = recall_exclusion.for_session(session_cwd, vault)
+        if exclusion.problem:
+            print(f"ERROR: recall exclusions could not be read: {exclusion.problem}",
+                  file=sys.stderr)
+            return 1
         query_text = sys.stdin.read() if args.query_text == "-" else args.query_text
         deadline = time.monotonic() + (args.budget_ms / 1000.0)
         try:
@@ -3557,6 +3644,7 @@ def main(argv: list[str] | None = None) -> int:
                 include_archive=args.include_archive,
                 deadline=deadline,
                 filter_expr=args.filter_expr,
+                exclusion=exclusion,
             )
         except FilterError as e:
             print(f"ERROR: {e}", file=sys.stderr)
@@ -3574,7 +3662,9 @@ def main(argv: list[str] | None = None) -> int:
                 hits = _daemon_search(vault=vault, query_text=query_text,
                                       k=args.k, include_inbox=args.include_inbox,
                                       include_archive=args.include_archive,
-                                      budget_ms=10_000)
+                                      budget_ms=10_000,
+                                      exclusion=exclusion,
+                                      session_cwd=session_cwd)
             except Exception:  # noqa: BLE001 — the fallback is the point
                 hits = None
             # `None` and `[]` are different answers from the daemon and the
