@@ -310,15 +310,16 @@ func TestAnExplicitlyEmptyRuleIsARule(t *testing.T) {
 }
 
 func TestAProjectFolderThatWillNotOpenIsNotAClearSession(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("root reads everything")
-	}
 	vault, code := exclusionVault(t)
 	dir := filepath.Join(vault, "projects", "clean")
 	if err := os.Chmod(dir, 0); err != nil {
 		t.Skip("this filesystem has no such permission")
 	}
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	// Windows ignores the mode, and root reads everything.
+	if _, err := os.ReadDir(dir); err == nil {
+		t.Skip("this user can still open the folder")
+	}
 	if got, err := Exclusions(vault, code); err == nil {
 		t.Fatalf("no error, slugs %v", got)
 	}
