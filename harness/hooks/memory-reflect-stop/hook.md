@@ -45,7 +45,7 @@ Routing **shipped** (plan #7a part 3 task 5): the hook mines AND routes — HIGH
 
 ## Antigravity equivalent
 
-Antigravity has no first-class Stop-event surface (per v0.7.0+ installer reality). The equivalent pattern for Antigravity is a per-conversation-end skill auto-invocation; tracked under MemoryVault's discovery-mining part as a future companion customization.
+agy 1.4 has a `Stop` event, but this hook is not registered there. It reflects on the session's transcript in Claude Code's format, and an agy transcript is a different one. A capture from an agy session goes through the `memory_capture` tool the installer registers with `agy mcp`.
 
 ## See also
 

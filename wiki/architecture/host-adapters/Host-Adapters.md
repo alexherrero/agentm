@@ -25,6 +25,7 @@ Each adapter points back to the canonical spec rather than restating it, so a ph
 ## Host gaps
 
 - **Antigravity authoring gaps.** Scheduling/triggers and multi-agent orchestration have no file-based authoring path on Antigravity, so some automation is Claude-first; the gap is named rather than worked around silently.
+- **Antigravity hooks.** `agy` 1.4 added a file-based hook surface, and the crickets plugins use it. agentm's own recall hooks are not registered there yet, because the session-start hook writes a marker naming the host's transcript and the later reflection job reads Claude Code's transcript format. Antigravity gets the vault through the always-on rule and the `memory_search` / `memory_capture` tools instead.
 - **Vestigial `.gemini/` adapter.** The installer still emits a `.gemini/` tree for the Gemini CLI — a **dropped** host (v2.4.0). It is not a supported surface; it remains pending reconciliation, not active maintenance. (`~/.gemini/GEMINI.md` is unrelated — that's Antigravity 2.0's global rules file, a supported surface.)
 
 ## See also

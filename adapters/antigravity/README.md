@@ -9,6 +9,9 @@ Adapter for running agentm in [Antigravity](https://antigravity.google.com/). Si
 | `CLAUDE.md` pointer | `.agents/rules/harness.md` (`trigger: always_on`) | Always-on operating contract |
 | — | `.agents/rules/agentmemory-context.md` (`trigger: always_on`) | AgentMemory vault context |
 | `.claude/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` | Shared utility skill (doctor) |
+| — | `agy mcp add agentmemory …` (user level, by `install.sh`) | The `memory_search` and `memory_capture` tools |
+
+The MCP registration happens only when `~/.gemini/` exists, `agy` is on the path and the memory daemon answers `/health` (the daemon is macOS-only, so `install.ps1` has no counterpart). It uses the daemon's own `daemon.port`.
 
 The shared skill is delivered to `.agents/skills/` by `install.sh` / `install.ps1` (sourced from `adapters/claude-code/skills/`, the parity-enforced single copy). Antigravity reads that path natively per the Agent Skills standard.
 
@@ -16,7 +19,11 @@ The shared skill is delivered to `.agents/skills/` by `install.sh` / `install.ps
 
 agentm's repositioning in V5 is "storage-agnostic memory OS + plugin host". The phase-gated dev loop that used to live in `adapters/antigravity/workflows/` + `adapters/antigravity/skills/` (the `explorer` / `adversarial-reviewer` / `adversarial-reviewer-cross` review sub-agents) moved to the crickets **development-lifecycle** and **code-review** plugins. A bare agentm install is intentionally unaware of that dev loop: it's optional, provided by crickets when installed, with no pointer and no requirement from agentm's side.
 
-If you want the full plan/work/review/release loop in Antigravity, install the crickets developer plugins alongside agentm — they ship their own `.agents/` workflow + skill surface.
+If you want the full plan/work/review/release loop in Antigravity, install the crickets developer plugins alongside agentm. `agy` plugins have no commands folder, so crickets ships each phase as a skill. A bare `/plan` is agy's own planning mode; type `/development-lifecycle:plan` for the crickets one.
+
+## What Antigravity does not get yet
+
+Claude Code gets automatic recall from agentm's hooks (the session-start brief and the per-prompt recall). Those are not registered on Antigravity. `agy` 1.4 has the events they need, but the session-start hook writes a crash-recovery marker naming the host's transcript, which a later job reflects on in Claude Code's transcript format, and an `agy` transcript is a different one. Until that is settled, Antigravity reads the vault through the always-on rule and searches it with the `memory_search` tool when it decides to.
 
 ## Layout
 
