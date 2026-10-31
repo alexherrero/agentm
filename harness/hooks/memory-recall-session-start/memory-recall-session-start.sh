@@ -256,7 +256,10 @@ AGENTM_PY="$(_resolve_agentm_python)"
 # We no longer `exec` it — the SessionStart pending-state briefing
 # (orchestration_briefing.py) appends after the always-load recall
 # (V4 #23 task 3, DC-3: agentm-native, non-blocking).
-"$AGENTM_PY" "$RECALL_PY" session-start || true
+#
+# The payload goes along for its `cwd`: a project's recall_excludes rule follows
+# the session's folder, which on another host need not be this process's.
+printf '%s' "$PAYLOAD" | "$AGENTM_PY" "$RECALL_PY" session-start --stdin-payload || true
 
 # ── Pending-state briefing pass (V4 #23 task 3) ────────────────────────────
 # Best-effort, non-blocking: scans the vault for over-threshold pending signals

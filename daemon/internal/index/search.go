@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/projectbind"
 )
 
 // Result is one ranked hit: the card's readable head, then its address and the
@@ -149,6 +150,11 @@ type Query struct {
 	// note.ProjectMismatch: a modest lift for the session's own cards. Empty ranks
 	// exactly as before.
 	Project string
+	// ExcludeProjects names the projects whose notes this search must not serve
+	// (projectbind.Exclusions). Every arm walls them before the k are chosen, so
+	// a walled row leaves its slot to a real hit, and nothing a caller sets lifts
+	// it: the rule belongs to the session asking, not to the question.
+	ExcludeProjects []string
 	// Surface is who is asking, and it decides whether this search counts as a
 	// genuine recall — `cli`, `mcp:<client>`, or `measure` for a pass that is
 	// grading the ranker rather than reading memory. Empty means the CLI, the
@@ -190,6 +196,8 @@ type SearchOutcome struct {
 	// hook would spawn `agentmd rules --json` inside the interactive budget on
 	// every prompt where nothing happened to be dropped — which is most of them.
 	AlwaysLoadHidden int `json:"always_load_hidden"`
+	// ExcludedHidden is how many rows the session's recall_excludes rule removed.
+	ExcludedHidden int `json:"excluded_hidden,omitempty"`
 	// StagedHidden is the same wall's count for `status: ingest_staged` — a
 	// unit the ingest sweep fetched and has not promoted. Reported for the
 	// same reason the other two are: an absence nobody can see is an absence
@@ -240,9 +248,9 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 
 	switch q.Mode {
 	case "", ModeAnd:
-		out, err = x.searchAnd(text, k, after, before, q.IncludeArchived, q.Project)
+		out, err = x.searchAnd(text, k, after, before, q.IncludeArchived, q.Project, q.ExcludeProjects)
 	case ModeFusion:
-		out, err = x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived, q.Project)
+		out, err = x.searchFusion(text, k, after, before, q.Lex3, q.IncludeArchived, q.Project, q.ExcludeProjects)
 	case ModeHybrid:
 		out, err = x.searchHybrid(text, k, after, before, q)
 	default:
@@ -260,6 +268,8 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 	if after == "" && before == "" {
 		was := len(out.Results)
 		out.Results = x.PutNamedEntityFirst(text, out.Results, k)
+		// The named page comes from outside the ranking, so past every arm's wall.
+		out.Results = WithoutExcluded(out.Results, q.ExcludeProjects)
 		if was == 0 && len(out.Results) > 0 {
 			out.Note = ""
 		}
@@ -324,8 +334,8 @@ func (x *Index) recordAccess(surface string, rows []Result) {
 // and 1,784ms ranked-with-snippets, because the matched set included notes of
 // 1.0–1.3 MB. Six of 206 benchmark queries cost four to six seconds each. Rank
 // first and the scan is priced for the five rows anyone will read.
-func (x *Index) searchAnd(text string, k int, after, before string, includeArchived bool, project string) (SearchOutcome, error) {
-	out, wonBy, err := x.andRanked(text, k, after, before, includeArchived, project)
+func (x *Index) searchAnd(text string, k int, after, before string, includeArchived bool, project string, exclude []string) (SearchOutcome, error) {
+	out, wonBy, err := x.andRanked(text, k, after, before, includeArchived, project, exclude)
 	if err != nil {
 		return out, err
 	}
@@ -346,7 +356,7 @@ func (x *Index) searchAnd(text string, k int, after, before string, includeArchi
 // The split exists because a snippet is priced per document scanned, not per row
 // returned, so it must never be computed for a row the caller will not see. See
 // fusionRanked, which the same reasoning splits for the same reason.
-func (x *Index) andRanked(text string, k int, after, before string, includeArchived bool, project string) (SearchOutcome, map[string]string, error) {
+func (x *Index) andRanked(text string, k int, after, before string, includeArchived bool, project string, exclude []string) (SearchOutcome, map[string]string, error) {
 	out := SearchOutcome{Results: []Result{}}
 
 	limit := note.Overfetch
@@ -361,10 +371,11 @@ func (x *Index) andRanked(text string, k int, after, before string, includeArchi
 	out.Note = note1
 	out.Matched = len(rows)
 	var w walled
-	rows, w = wallUnserved(rows, includeArchived)
+	rows, w = wallUnserved(rows, includeArchived, exclude)
 	out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = w.archived, w.superseded, w.staged
 	out.RecallWalled = w.recallExempt
 	out.AlwaysLoadHidden = w.alwaysLoad
+	out.ExcludedHidden = w.excluded
 
 	decayLog, decayNow := x.decayClock()
 	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
@@ -570,8 +581,8 @@ func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Ti
 // query — that gap, not a ranking preference, is the mechanism. A query under
 // three terms has no triple regardless of lex3 and falls through unchanged: the
 // bound `l := j + 1; l < len(terms)` is simply never satisfied.
-func (x *Index) searchFusion(text string, k int, after, before string, lex3, includeArchived bool, project string) (SearchOutcome, error) {
-	out, wonBy, err := x.fusionRanked(text, k, after, before, lex3, includeArchived, project)
+func (x *Index) searchFusion(text string, k int, after, before string, lex3, includeArchived bool, project string, exclude []string) (SearchOutcome, error) {
+	out, wonBy, err := x.fusionRanked(text, k, after, before, lex3, includeArchived, project, exclude)
 	if err != nil {
 		return out, err
 	}
@@ -595,12 +606,12 @@ func (x *Index) searchFusion(text string, k int, after, before string, lex3, inc
 // against 26ms of ranking on the operator's corpus. Ranking is flat in k — the
 // over-fetch window is note.Overfetch regardless — so every bit of that was
 // decorative text for rows nobody would see.
-func (x *Index) fusionRanked(text string, k int, after, before string, lex3, includeArchived bool, project string) (SearchOutcome, map[string]string, error) {
+func (x *Index) fusionRanked(text string, k int, after, before string, lex3, includeArchived bool, project string, exclude []string) (SearchOutcome, map[string]string, error) {
 	terms := dedupeTerms(ftsTokenRe.FindAllString(text, -1))
 	if len(terms) < 2 {
 		// One term has no two-term subset, and the fused ranking for it is just
 		// that term's own. Fall back rather than return nothing.
-		return x.andRanked(text, k, after, before, includeArchived, project)
+		return x.andRanked(text, k, after, before, includeArchived, project, exclude)
 	}
 
 	out := SearchOutcome{Results: []Result{}}
@@ -649,10 +660,11 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3, inc
 		wonBy[path] = c.expr
 	}
 	var w walled
-	rows, w = wallUnserved(rows, includeArchived)
+	rows, w = wallUnserved(rows, includeArchived, exclude)
 	out.ArchivedHidden, out.SupersededHidden, out.StagedHidden = w.archived, w.superseded, w.staged
 	out.RecallWalled = w.recallExempt
 	out.AlwaysLoadHidden = w.alwaysLoad
+	out.ExcludedHidden = w.excluded
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
@@ -694,7 +706,7 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// Ranked, not snippeted. This arm is read to rrfDepth for its ranks; the
 	// snippet pass runs once at the end, over the k rows that actually survive
 	// fusion — see fusionRanked for what snippeting all fifty costs.
-	lexical, wonBy, err := x.fusionRanked(text, rrfDepth, after, before, q.Lex3, q.IncludeArchived, project)
+	lexical, wonBy, err := x.fusionRanked(text, rrfDepth, after, before, q.Lex3, q.IncludeArchived, project, q.ExcludeProjects)
 	if err != nil {
 		return lexical, err
 	}
@@ -722,7 +734,7 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// have no effect at all — the penalized note would already have contributed
 	// its rank-1 reciprocal.
 	var denseWalls walled
-	dense, denseWalls = wallUnserved(dense, q.IncludeArchived)
+	dense, denseWalls = wallUnserved(dense, q.IncludeArchived, q.ExcludeProjects)
 	decayLog, decayNow := x.decayClock()
 	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
 		note.QueryWantsArtifact(text), project, x.lessonsOf)
@@ -733,7 +745,8 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 		SupersededHidden: lexical.SupersededHidden + denseWalls.superseded,
 		StagedHidden:     lexical.StagedHidden + denseWalls.staged,
 		RecallWalled:     lexical.RecallWalled + denseWalls.recallExempt,
-		AlwaysLoadHidden: lexical.AlwaysLoadHidden + denseWalls.alwaysLoad}
+		AlwaysLoadHidden: lexical.AlwaysLoadHidden + denseWalls.alwaysLoad,
+		ExcludedHidden:   lexical.ExcludedHidden + denseWalls.excluded}
 	if len(out.Results) > k {
 		out.Results = out.Results[:k]
 	}
@@ -1072,7 +1085,7 @@ func normalizeBound(s string) (string, error) {
 // comes back to any query that sets IncludeArchived (the contract's "explicit
 // archive query"). The counts of what was walled ride on the outcome so the
 // absence is visible in the call log.
-func wallUnserved(rows []Result, include bool) ([]Result, walled) {
+func wallUnserved(rows []Result, include bool, exclude []string) ([]Result, walled) {
 	var w walled
 	// The contract's `recall_exempt_areas`, first and unconditionally. Every
 	// other wall here is a state a caller may lift by asking; this one is a
@@ -1092,8 +1105,15 @@ func wallUnserved(rows []Result, include bool) ([]Result, walled) {
 	// query is a request for cold notes, not a request to be told twice.
 	// Unlike the wall above, the rows are *in* the index on purpose, so this is
 	// the only reader that removes them.
+	//
+	// The session's recall_excludes rule is the same kind of wall as the first:
+	// a rule the caller has no flag for, so `include` does not reach it either.
 	kept := make([]Result, 0, len(rows))
 	for _, r := range rows {
+		if projectbind.NoteExcluded(r.Path, r.project, exclude) {
+			w.excluded++
+			continue
+		}
 		if note.InRecallExemptArea(r.Path) {
 			w.recallExempt++
 			continue
@@ -1138,6 +1158,23 @@ type walled struct {
 	staged       int
 	recallExempt int
 	alwaysLoad   int
+	excluded     int
+}
+
+// WithoutExcluded drops the rows of the projects in `exclude`, for a row that
+// reached the results without passing through wallUnserved: the named-entity
+// page, and a CLI rerank that puts it back.
+func WithoutExcluded(rows []Result, exclude []string) []Result {
+	if len(exclude) == 0 {
+		return rows
+	}
+	kept := make([]Result, 0, len(rows))
+	for _, r := range rows {
+		if !projectbind.NoteExcluded(r.Path, r.project, exclude) {
+			kept = append(kept, r)
+		}
+	}
+	return kept
 }
 
 func hasFlag(flags []string, want string) bool {

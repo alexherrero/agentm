@@ -31,6 +31,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+import recall_exclusion  # noqa: E402
+
 # Where the night writes a manifest before it deletes anything
 # (`dreaming.PurgeManifestDir`). Read, never written, by this module.
 PURGE_DIR = "diagnostics/migrations/purge"
@@ -41,6 +47,7 @@ ARCHIVE_DIR = "archive"
 DEFAULT_K = 10
 
 _TITLE_RE = re.compile(r"(?m)^title:[ \t]*(.+?)[ \t]*$")
+_PROJECT_RE = re.compile(r"(?m)^project:[ \t]*(.+?)[ \t]*$")
 
 
 def _terms(query: str) -> list[str]:
@@ -84,7 +91,8 @@ def _excerpt(text: str, terms: list[str], width: int = 160) -> str:
     return ""
 
 
-def archive_hits(root: Path, query: str, k: int = DEFAULT_K) -> list[dict]:
+def archive_hits(root: Path, query: str, k: int = DEFAULT_K,
+                 exclusion: recall_exclusion.Exclusion = recall_exclusion.NONE) -> list[dict]:
     """Notes in the memory archive that match every term."""
     terms = _terms(query)
     base = Path(root) / ARCHIVE_DIR
@@ -99,13 +107,17 @@ def archive_hits(root: Path, query: str, k: int = DEFAULT_K) -> list[dict]:
         rel = p.relative_to(root).as_posix()
         if not (_matches(text, terms) or _matches(rel, terms)):
             continue
+        stamped = _PROJECT_RE.search(text)
+        if exclusion.hides(rel, stamped.group(1) if stamped else None):
+            continue
         out.append({"rel": rel, "title": _title_of(text), "excerpt": _excerpt(text, terms)})
         if len(out) >= k:
             break
     return out
 
 
-def manifest_rows(root: Path, query: str, k: int = DEFAULT_K) -> list[dict]:
+def manifest_rows(root: Path, query: str, k: int = DEFAULT_K,
+                  exclusion: recall_exclusion.Exclusion = recall_exclusion.NONE) -> list[dict]:
     """Deleted notes the manifests name.
 
     Newest manifest first, because a note deleted twice — moved, restored,
@@ -126,7 +138,7 @@ def manifest_rows(root: Path, query: str, k: int = DEFAULT_K) -> list[dict]:
             if not isinstance(row, dict):
                 continue
             hay = " ".join(str(row.get(f) or "") for f in ("rel", "title"))
-            if not _matches(hay, terms):
+            if not _matches(hay, terms) or exclusion.hides(str(row.get("rel") or "")):
                 continue
             out.append({
                 "rel": row.get("rel", ""),
@@ -184,10 +196,11 @@ def commit_for(vault: Path, rel: str) -> dict:
             "show": f'git -C "{vault}" show "{sha}^:{rel}"'}
 
 
-def search(root: Path, vault: Path, query: str, k: int = DEFAULT_K) -> dict:
+def search(root: Path, vault: Path, query: str, k: int = DEFAULT_K,
+           exclusion: recall_exclusion.Exclusion = recall_exclusion.NONE) -> dict:
     root, vault = Path(root), Path(vault)
-    archived = archive_hits(root, query, k)
-    deleted = manifest_rows(root, query, k)
+    archived = archive_hits(root, query, k, exclusion)
+    deleted = manifest_rows(root, query, k, exclusion)
     for row in deleted:
         row["git"] = commit_for(vault, _vault_rel(root, vault, row["rel"]))
     return {"query": query, "archived": archived, "deleted": deleted}
@@ -246,7 +259,11 @@ def main(argv=None) -> int:
 
     root = Path(args.vault).expanduser()
     vault = Path(args.vault_root).expanduser() if args.vault_root else _vault_root_of(root)
-    report = search(root, vault, args.query, args.k)
+    exclusion = recall_exclusion.for_session(recall_exclusion.current_directory(), root)
+    if exclusion.problem:
+        print(f"ERROR: recall exclusions could not be read: {exclusion.problem}", file=sys.stderr)
+        return 1
+    report = search(root, vault, args.query, args.k, exclusion)
     print(json.dumps(report, indent=2) if args.json else render(report))
     return 0
 

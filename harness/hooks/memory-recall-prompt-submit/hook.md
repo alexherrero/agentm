@@ -29,6 +29,12 @@ A `UserPromptSubmit` event hook that takes the user's prompt as a recall query, 
 
 This task ships the **hook scaffold** — the hook installs at its host destination + the settings-fragment merges + the shell wrappers run cleanly + stdin is parsed + the transparency line is emitted. The **recall engine** (sqlite-vec query + grep+frontmatter parallel + rank-merge) lands in task 3 of this part. Until then, the `prompt-submit` subcommand of `recall.py` returns an empty result set + a placeholder transparency line `[memory-recall-prompt-submit] (scaffold — recall engine lands in task 3)`. The hook contract is stable; only the engine logic is incremental.
 
+## Recall exclusions
+
+A project's `project.yaml` can name other projects under `recall_excludes:`, and a session working on that project gets no hit from them. The folder comes from the payload's `cwd`, or from the hook's own folder when the payload has none, and it counts when it is under one of the project's `code_paths`, under the project's folder in the vault, or in a linked git worktree of either. The hook drops a hit that sits under `projects/<slug>/` or `projects/completed/<slug>/`, or whose `project:` names an excluded project, before the five are chosen, on both engines. The stderr line ends `(recall_excludes: <slugs>)` when the rule applied.
+
+A rule that cannot be read fails closed: no recall runs for that prompt, and stderr says `recall exclusions could not be read`, with the reason. See [Vault project.yaml reference](../../../wiki/reference/Vault-Project-Yaml.md#recall-excludes).
+
 ## What it never does
 
 - **Never blocks the user prompt.** If anything fails (vault missing, Python missing, recall engine errors), the hook exits 0 and the agent processes the prompt as-is.
@@ -44,6 +50,7 @@ This task ships the **hook scaffold** — the hook installs at its host destinat
 - **Stdin not valid JSON or `prompt` field missing:** stderr warning + exit 0 (graceful — the agent still gets the prompt).
 - **Recall engine raises (any reason):** stderr warning + exit 0 with empty injection (degraded-graceful — agent processes prompt without memory context this turn).
 - **Time budget exceeded mid-recall:** stderr warning naming the budget overrun + the blocked streams and their reasons + whatever *complete* streams produced + exit 0. Never a partially-walked ranking.
+- **`recall_excludes` cannot be read:** stderr names the reason + exit 0 with empty injection. This is the one failure that withholds what a healthy search would have found, because the session cannot be told apart from one the rule covers.
 - **Vector index unreachable:** the semantic half is skipped in ~1ms and named on stderr; the lexical half gets the whole budget. Notably this is the steady state on macOS system Python, whose `sqlite3` is built without `enable_load_extension`, so `sqlite-vec` can never load — worth checking before assuming the index is merely unbuilt.
 - **Python unavailable:** the shell wrapper exits 0 silently.
 

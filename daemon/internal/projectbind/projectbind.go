@@ -39,15 +39,21 @@ type yamlFields struct {
 	// that is not a positive whole number (task 187). The gate refuses the
 	// second; the reader just ignores it.
 	floor int
+	// problem is why a reader of this file's `recall_excludes` cannot trust it:
+	// the file would not read, or the key is not a list. Nothing but that rule
+	// looks at it (exclusion.go), because only that rule fails closed.
+	problem string
 }
 
 // listKeys are the list-valued keys the reader collects.
-var listKeys = map[string]bool{"code_paths": true, "repositories": true, "former_names": true, "map_folders": true}
+var listKeys = map[string]bool{"code_paths": true, "repositories": true, "former_names": true, "map_folders": true,
+	"recall_excludes": true}
 
 func readFields(path string) yamlFields {
 	out := yamlFields{lists: map[string][]string{}}
 	raw, err := os.ReadFile(path)
 	if err != nil {
+		out.problem = "could not read it: " + err.Error()
 		return out
 	}
 	inList := ""
@@ -81,6 +87,8 @@ func readFields(path string) yamlFields {
 						out.lists[key] = append(out.lists[key], p)
 					}
 				}
+			case key == "recall_excludes" && value != "":
+				out.problem = "`recall_excludes` is not a list of project slugs"
 			}
 			continue
 		}

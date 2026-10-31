@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -24,6 +25,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/projectbind"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -302,6 +304,10 @@ type searchArgs struct {
 	// natural question (task 3.5) instead of Query. Query keeps driving the
 	// lexical arms unconditionally either way.
 	Question string `json:"question"`
+	// Cwd is the folder the session works in. This server is one resident process
+	// with no idea who is calling, so this is the only way a project's
+	// recall_excludes rule can reach a search made over MCP. See exclusions.
+	Cwd string `json:"cwd"`
 	// Lex3 is accepted on the same unpublished seam as Mode and Question: a
 	// measurement driver can widen the lexical arm from 2-term to 2- and 3-term
 	// subsets (task 4, column `+lex3`) before the ladder has earned it a place
@@ -325,8 +331,12 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 	if a.K > 50 {
 		a.K = 50
 	}
+	exclude, unnamed, err := s.exclusions(a.Cwd)
+	if err != nil {
+		return nil, err
+	}
 	q := index.Query{Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode, Lex3: a.Lex3,
-		IncludeArchived: a.IncludeArchived, Surface: s.surface()}
+		IncludeArchived: a.IncludeArchived, ExcludeProjects: exclude, Surface: s.surface()}
 	if a.Mode == index.ModeHybrid && s.embed != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -336,7 +346,26 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if unnamed && out.ExcludedHidden > 0 {
+		out.Note = strings.TrimSpace(out.Note + " Some notes were withheld because this search named no cwd: " +
+			"pass the absolute path of the folder you are working in.")
+	}
 	return toolOK(out)
+}
+
+// exclusions is the recall_excludes rule for a search over MCP. A caller that
+// names no absolute folder may be a session the rule covers, and the server has
+// no other way to tell, so it is held to every project's rule. That costs a
+// caller who is entitled to those notes one retry with `cwd` set, against a
+// clean-room session being handed them for leaving the argument out. A relative
+// path would resolve against the daemon's own folder, so it counts as none.
+func (s *Server) exclusions(cwd string) (slugs []string, unnamed bool, err error) {
+	if filepath.IsAbs(cwd) {
+		slugs, err = projectbind.Exclusions(s.cfg.VaultPath, cwd)
+		return slugs, false, err
+	}
+	slugs, err = projectbind.EveryExclusion(s.cfg.VaultPath)
+	return slugs, true, err
 }
 
 // rememberClient records the name from an `initialize`, so a recall served over
@@ -489,8 +518,12 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 						"type":        "string",
 						"description": "The full natural-language question, used only when mode is \"hybrid\": the dense arm embeds this instead of query. query keeps driving the exact-term arms unchanged either way.",
 					},
+					"cwd": map[string]any{
+						"type":        "string",
+						"description": "The absolute path of the folder you are working in. A project can keep another project's notes out of its sessions, and this is how the search knows which rule applies; without it, every such rule applies.",
+					},
 				},
-				"required": []string{"query"},
+				"required": []string{"query", "cwd"},
 			},
 		},
 		{

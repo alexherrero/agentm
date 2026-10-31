@@ -72,31 +72,46 @@ def task_slug(raw: str) -> Optional[str]:
 GLOBAL_TYPES = frozenset({"convention", "preference"})
 
 
-def _project_yaml(path: Path) -> "tuple[Optional[str], list]":
-    """`(slug, code_paths)` from a `project.yaml`, read line by line — the file's
-    schema is flat (`check-project-yaml` holds it), and this module stays on the
-    standard library."""
-    slug, paths, in_paths = None, [], False
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
-        return None, []
-    for line in lines:
+class ProjectYaml(NamedTuple):
+    slug: Optional[str]
+    code_paths: list
+    excludes: list
+    excludes_malformed: bool
+
+
+def parse_project_yaml(text: str) -> ProjectYaml:
+    """A `project.yaml`, read line by line — the file's schema is flat
+    (`check-project-yaml` holds it), and this module stays on the standard
+    library."""
+    slug, in_list, malformed = None, None, False
+    lists: dict = {"code_paths": [], "recall_excludes": []}
+    for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         if not line[:1].isspace() and not line.startswith("-"):
             key, _, value = line.partition(":")
             key, value = key.strip(), value.strip()
-            in_paths = key == "code_paths" and value == ""
+            in_list = key if key in lists and value == "" else None
             if key == "slug":
                 slug = _component(value.strip("'\""))
-            elif key == "code_paths" and value.startswith("[") and value.endswith("]"):
-                paths += [v.strip().strip("'\"") for v in value[1:-1].split(",") if v.strip()]
+            elif key in lists and value.startswith("[") and value.endswith("]"):
+                lists[key] += [v.strip().strip("'\"") for v in value[1:-1].split(",") if v.strip()]
+            elif key == "recall_excludes" and value:
+                malformed = True
             continue
         item = line.strip()
-        if in_paths and item.startswith("- "):
-            paths.append(item[2:].strip().strip("'\""))
-    return slug, paths
+        if in_list and item.startswith("- "):
+            lists[in_list].append(item[2:].strip().strip("'\""))
+    return ProjectYaml(slug, lists["code_paths"], lists["recall_excludes"], malformed)
+
+
+def _project_yaml(path: Path) -> "tuple[Optional[str], list]":
+    """`(slug, code_paths)` from a `project.yaml`."""
+    try:
+        parsed = parse_project_yaml(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return None, []
+    return parsed.slug, parsed.code_paths
 
 
 def _real(path: str) -> Optional[Path]:

@@ -38,6 +38,10 @@ transcript: <absolute-path-to-transcript-jsonl>
 - **Writes are idempotent and best-effort.** `SessionStart` re-fires on resume, clear and compact, so an existing marker is left untouched; a failed write never blocks the recall pass.
 - **Written for Claude Code only.** The hook skips the marker (and the briefing below) when `AGENTM_HOST` is set to anything but `claude-code`, or when `transcript_path` is under a `.gemini` directory: the Antigravity registration sets the variable, and an agy transcript is not in the format the idle job reads. See [Antigravity equivalent](#antigravity-equivalent).
 
+## Recall exclusions
+
+The hook hands `recall.py session-start --stdin-payload` the event's JSON, so a project's `recall_excludes:` rule follows the session's folder and not this process's (see [`memory-recall-prompt-submit`](../memory-recall-prompt-submit/hook.md#recall-exclusions)). The tier is the operator's standing rules and carries no project, so the rule can only ever remove a pen entry stamped with an excluded project. If the rule cannot be read, every entry that carries a project is withheld, the standing rules still load, and stderr says `recall exclusions could not be read`.
+
 ## What it never does
 
 - **Never blocks session start.** If anything fails (vault missing, Python missing, entries unreadable), the hook exits 0 and the session proceeds without injected memory.

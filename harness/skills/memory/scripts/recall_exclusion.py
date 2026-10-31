@@ -1,0 +1,197 @@
+"""The recall exclusion rule: which projects' notes a session must not be served.
+
+agentm-vault § Projects and tasks, amended 2026-10-31. A project's
+`project.yaml` can carry `recall_excludes:`, a list of project slugs, and a
+session working on that project gets no recall hit from them. A session works on
+a project when its folder, or the main checkout of the git worktree it is in, is
+under one of the project's `code_paths` or under the project's own folder in the
+vault. The rule is a wall, not a demotion: a project built in a clean room must
+not see the work it may not derive from, however relevant a search finds it.
+
+Everything else that reads a binding degrades to "unbound". This module does
+not. A rule that cannot be read comes back as `problem`, and the caller withholds
+rather than serves, because a session that silently lost its wall looks exactly
+like a session that never had one. A folder no readable project claims is
+unknown only while some `project.yaml` will not read at all, since that file may
+be the one that claims it.
+
+The Go side keeps the same rule in `daemon/internal/projectbind/exclusion.go`.
+Standard library only.
+"""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+from typing import NamedTuple, Optional
+
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+import session_binding  # noqa: E402
+
+_READ_FAILURE = "could not read it"
+
+
+class Exclusion(NamedTuple):
+    slugs: tuple = ()
+    problem: Optional[str] = None
+
+    def hides(self, rel: str, label=None) -> bool:
+        """Whether a note belongs to an excluded project: it sits under
+        `projects/<slug>/` or `projects/completed/<slug>/`, at any depth so a
+        memory root's prefix does not matter, or its `project:` names one."""
+        if not self.slugs:
+            return False
+        want = {s.lower() for s in self.slugs}
+        if isinstance(label, str) and label.strip().strip("\"'").lower() in want:
+            return True
+        parts = str(rel).replace("\\", "/").lower().split("/")
+        for i in range(len(parts) - 2):
+            if parts[i] != "projects":
+                continue
+            if parts[i + 1] in want:
+                return True
+            if parts[i + 1] == "completed" and i + 3 < len(parts) and parts[i + 2] in want:
+                return True
+        return False
+
+
+NONE = Exclusion()
+
+
+class _Rule(NamedTuple):
+    slug: str
+    codes: tuple
+    excludes: tuple
+    problem: Optional[str]
+
+
+def _project_exists(vault_root: Path, slug: str) -> bool:
+    return ((vault_root / "projects" / slug).is_dir()
+            or (vault_root / "projects" / "completed" / slug).is_dir())
+
+
+def _read_rules(vault_root: Path) -> list:
+    rules, seen = [], set()
+    # Live projects first, so a finished copy never shadows the live one.
+    for pattern in ("projects/*/project.yaml", "projects/completed/*/project.yaml"):
+        for path in sorted(vault_root.glob(pattern)):
+            try:
+                parsed = session_binding.parse_project_yaml(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError) as e:
+                slug = path.parent.name
+                if slug not in seen:
+                    seen.add(slug)
+                    rules.append(_Rule(slug, (), (), f"{_READ_FAILURE}: {e}"))
+                continue
+            slug = parsed.slug or path.parent.name
+            if slug in seen:
+                continue
+            seen.add(slug)
+            problem = None
+            if parsed.excludes_malformed:
+                problem = "`recall_excludes` is not a list of project slugs"
+            for name in parsed.excludes:
+                if problem is None and not _project_exists(vault_root, name):
+                    problem = f"`recall_excludes` names {name!r}, and the vault has no such project"
+            codes = tuple(c for c in map(session_binding._real, parsed.code_paths) if c is not None)
+            rules.append(_Rule(slug, codes, tuple(parsed.excludes), problem))
+    return rules
+
+
+def _main_checkout_path(directory: Path) -> Optional[Path]:
+    """`directory`'s twin in the main checkout when it sits in a linked git
+    worktree. A worktree can live anywhere, so its path says nothing about the
+    project; its `.git` file does. A submodule's points at `.git/modules/`, not
+    `.git/worktrees/`, and is left alone."""
+    for top in (directory, *directory.parents):
+        marker = top / ".git"
+        if marker.is_dir():
+            return None
+        if not marker.exists():
+            continue
+        try:
+            line = marker.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError):
+            return None
+        if not line.startswith("gitdir:"):
+            return None
+        gitdir = Path(line[len("gitdir:"):].strip())
+        if not gitdir.is_absolute():
+            gitdir = top / gitdir
+        spelled = gitdir.as_posix()
+        at = spelled.rfind("/.git/worktrees/")
+        if at < 0:
+            return None
+        return Path(spelled[:at]) / directory.relative_to(top)
+    return None
+
+
+def _vault_folder_project(vault_root: Path, directory: Path) -> Optional[str]:
+    try:
+        parts = directory.relative_to(vault_root).parts
+    except ValueError:
+        return None
+    if len(parts) >= 3 and parts[:2] == ("projects", "completed"):
+        return parts[2]
+    if len(parts) >= 2 and parts[0] == "projects" and parts[1] != "completed":
+        return parts[1]
+    return None
+
+
+def _session_rule(rules: list, vault_root: Path, directory: Path) -> Optional[_Rule]:
+    """The rule of the project a session in `directory` works on. A vault folder
+    with no project.yaml is a project with no rule, so it is still found."""
+    for candidate in (directory, _main_checkout_path(directory)):
+        if candidate is None:
+            continue
+        best, best_len = None, -1
+        for rule in rules:
+            for code in rule.codes:
+                if (candidate == code or code in candidate.parents) and len(code.parts) > best_len:
+                    best, best_len = rule, len(code.parts)
+        if best is not None:
+            return best
+        slug = _vault_folder_project(vault_root, candidate)
+        if slug:
+            for rule in rules:
+                if rule.slug == slug:
+                    return rule
+            return _Rule(slug, (), (), None)
+    return None
+
+
+def for_session(directory, memory_root) -> Exclusion:
+    """The exclusion a session in `directory` is under. Never raises: anything
+    that goes wrong reading the rule is a `problem`, which fails closed."""
+    if not memory_root:
+        return NONE
+    if not directory:
+        return Exclusion(problem="the session's folder is unknown")
+    try:
+        vault_root = session_binding._vault_root(memory_root)
+        here = session_binding._real(str(directory))
+        if vault_root is None or here is None:
+            return NONE
+        vault_root = Path(vault_root).resolve()
+        rules = _read_rules(vault_root)
+        rule = _session_rule(rules, vault_root, here)
+        if rule is not None:
+            if rule.problem:
+                return Exclusion(problem=f"project {rule.slug!r}: {rule.problem}")
+            return Exclusion(slugs=rule.excludes)
+        for other in rules:
+            if other.problem and other.problem.startswith(_READ_FAILURE):
+                return Exclusion(problem=f"project {other.slug!r}: {other.problem}")
+        return NONE
+    except Exception as e:  # noqa: BLE001 — a rule nobody could evaluate is not a clear session
+        return Exclusion(problem=f"{type(e).__name__}: {e}")
+
+
+def current_directory() -> Optional[str]:
+    try:
+        return os.getcwd()
+    except OSError:
+        return None

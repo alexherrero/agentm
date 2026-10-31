@@ -65,7 +65,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | Command | What it does |
 |---|---|
 | `serve` | Watch, index, serve MCP, commit. Prints `listening http://…` once the index is caught up. |
-| `search <terms>` | One-shot query against the index. `-k`, `-mode`, `-question`, `--after`, `--before`, `-project`, `--json`. |
+| `search <terms>` | One-shot query against the index. `-k`, `-mode`, `-question`, `--after`, `--before`, `-project`, `-cwd`, `--json`. A project's [`recall_excludes`](Vault-Project-Yaml#recall-excludes) rule applies to the folder it runs in, or to `-cwd`. |
 | `capture <text>` | One-shot capture. Reads stdin when given no argument. |
 | `reindex` | Full reconcile, then the orphan sweep, whose one line says what it removed. `--from-scratch` deletes the index first, proving it rebuilds from the files — which also discards every vector, so prefer the plain form. The enrichment ledger is not in the index: since task 181 it lives in `~/.local/state/agentm/ledger.db`, follows moved notes and survives a reindex, so a reindex is never followed by `agentmd ledger --rebuild`, which would wipe its rows and their input keys. An extractor change needs neither: the index re-derives its entity rows in place (task 186). |
 | `status` | Ask a running daemon for its state. Exits 3 when anything is red. `--json` for the raw document. |
@@ -190,6 +190,7 @@ There is no OR query rewrite. It read as the largest available win on one run; r
 | `after` | `str` | — | Capture date on or after. `YYYY-MM-DD` or RFC3339. |
 | `before` | `str` | — | Capture date before. |
 | `include_archived` | `bool` | `false` | Lifts the archived and superseded wall for this call — the note re-enters the result set, demoted like any other lifecycle class. |
+| `cwd` | `str` | required | The absolute path of the folder the caller works in, which decides whether a project's [`recall_excludes`](Vault-Project-Yaml#recall-excludes) rule applies. The daemon can't see who is calling, so a call that leaves it out or sends a relative path is held to every project's rule and told so in `note`. No argument lifts the rule. |
 
 Two more knobs exist in the code and are deliberately not in this table: a `-lex3` flag (widens `fusion`'s subset search from 2-term to 2- and 3-term) and a `rerank` mode (cross-encoder rerank with a score floor). Neither is in `memory_search`'s published schema and neither is requested by the prompt-submit hook — `lex3` missed its own recall floor by two questions, and `rerank` could not separate true answers from hard negatives at any threshold. Both stay in the tree as tested, working code reachable only from `agentmd search` directly: a refuted rung is still worth keeping when it costs nothing in production. See [AgentM Hybrid Retrieval](agentm-hybrid-retrieval).
 
