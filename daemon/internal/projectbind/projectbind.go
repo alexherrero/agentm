@@ -58,11 +58,13 @@ func readFields(path string) yamlFields {
 	}
 	inList := ""
 	unquote := func(v string) string { return strings.Trim(strings.TrimSpace(v), `"'`) }
+	excludesNamed, excludesEmpty := false, false
 	for _, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
+		excludesNamed = excludesNamed || strings.Contains(trimmed, "recall_excludes")
 		if line[0] != ' ' && line[0] != '\t' && line[0] != '-' {
 			key, value, _ := strings.Cut(line, ":")
 			key, value = strings.TrimSpace(key), strings.TrimSpace(value)
@@ -82,19 +84,23 @@ func readFields(path string) yamlFields {
 					out.floor = n
 				}
 			case listKeys[key] && strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]"):
+				excludesEmpty = excludesEmpty || (key == "recall_excludes" && strings.Trim(value, "[] ") == "")
 				for _, p := range strings.Split(value[1:len(value)-1], ",") {
 					if p = unquote(p); p != "" {
 						out.lists[key] = append(out.lists[key], p)
 					}
 				}
-			case key == "recall_excludes" && value != "":
-				out.problem = "`recall_excludes` is not a list of project slugs"
 			}
 			continue
 		}
 		if inList != "" && strings.HasPrefix(trimmed, "- ") {
 			out.lists[inList] = append(out.lists[inList], unquote(trimmed[2:]))
 		}
+	}
+	// This reader takes the two list forms the schema writes. Anything else that
+	// names the key, valid YAML or not, must not read as "no rule".
+	if excludesNamed && !excludesEmpty && len(out.lists["recall_excludes"]) == 0 {
+		out.problem = "`recall_excludes` is not a list of project slugs"
 	}
 	return out
 }

@@ -2752,11 +2752,11 @@ def _daemon_search(
         # The session's project, which the daemon ranks against (agentm-vault
         # plan 09). Before the terms, because the flag parser stops at the first.
         argv += ["-project", project]
-    if exclusion.slugs and session_cwd:
+    if session_cwd:
         # So the daemon walls the rule's notes before the k are chosen. The
-        # check below is what holds the rule; this is what keeps a slot from
-        # going to a note it would then throw away. Sent only to a session under
-        # a rule, so nobody else pays for a binary that does not know the flag.
+        # check below is what holds the rule; this keeps a slot from going to a
+        # note it would then throw away. Always sent, because a binary left to
+        # its own folder reads the rule for wherever the host ran this hook.
         argv += ["-cwd", session_cwd]
     argv.append(search_terms)
 

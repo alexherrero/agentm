@@ -120,6 +120,46 @@ class TheRuleFollowsTheFolder(_Vault):
         self.assertEqual(self.exclusion(self.code).slugs, ("port", "other"))
 
 
+class EveryClaimCounts(_Vault):
+    def link(self, slot, gitdir):
+        slot.mkdir(parents=True)
+        (slot / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+
+    def test_a_relative_gitdir_as_git_worktree_add_relative_paths_writes_it(self):
+        slot = self.root / "elsewhere" / "slot"
+        self.link(slot, "../../code/clean/.git/worktrees/slot")
+        self.assertEqual(self.exclusion(slot), Exclusion(slugs=("port",)))
+
+    def test_a_worktree_of_a_bare_repository(self):
+        bare = self.root / "code" / "bare.git"
+        self.write("projects/clean/project.yaml",
+                   f"slug: clean\ncode_paths:\n  - {bare}\nrecall_excludes:\n  - port\n")
+        slot = self.root / "wts" / "a"
+        self.link(slot, f"{bare}/worktrees/a")
+        self.assertEqual(self.exclusion(slot), Exclusion(slugs=("port",)))
+
+    def test_a_worktree_inside_another_projects_folder(self):
+        self.write("projects/umbrella/project.yaml",
+                   f"slug: umbrella\ncode_paths:\n  - {self.root}/wts\n")
+        slot = self.root / "wts" / "a"
+        self.link(slot, f"{self.code}/.git/worktrees/a")
+        self.assertEqual(self.exclusion(slot), Exclusion(slugs=("port",)))
+
+    def test_a_folder_two_projects_list(self):
+        self.write("projects/aaa/project.yaml", f"slug: aaa\ncode_paths:\n  - {self.code}\n")
+        self.assertEqual(self.exclusion(self.code), Exclusion(slugs=("port",)))
+
+    def test_a_claiming_project_is_never_excluded_from_itself(self):
+        nested = self.code / "vendor" / "port"
+        nested.mkdir(parents=True)
+        self.write("projects/port/project.yaml", f"slug: port\ncode_paths:\n  - {nested}\n")
+        self.assertEqual(self.exclusion(nested), recall_exclusion.NONE)
+
+    def test_a_folder_spelled_in_another_case(self):
+        self.assertEqual(self.exclusion(str(self.code).upper()), Exclusion(slugs=("port",)))
+        self.assertEqual(self.exclusion(self.vault / "PROJECTS" / "Clean"), Exclusion(slugs=("port",)))
+
+
 class ARuleThatCannotBeReadFailsClosed(_Vault):
     def test_a_rule_that_is_not_a_list(self):
         self.write_rule("recall_excludes: port\n")
@@ -139,8 +179,41 @@ class ARuleThatCannotBeReadFailsClosed(_Vault):
         # A project that still reads is known, so its session is not held up.
         self.assertEqual(self.exclusion(self.other), recall_exclusion.NONE)
 
-    def test_a_folder_nobody_can_name_is_not_a_clear_session(self):
-        self.assertIn("unknown", recall_exclusion.for_session(None, self.memory).problem)
+    def test_a_rule_the_reader_cannot_take_is_never_an_empty_rule(self):
+        for rule in ("recall_excludes:\n  [port]\n", "'recall_excludes': [port]\n",
+                     "recall_excludes:\n", "recall_excludes:\n  port\n",
+                     "recall_excludes:\n  - port/\n", "recall_excludes:\n  - completed/port\n",
+                     "recall_excludes:\n  - ../projects/port\n", 'recall_excludes:\n  - ""\n'):
+            with self.subTest(rule=rule):
+                self.write_rule(rule)
+                self.assertTrue(self.exclusion(self.code).problem, rule)
+
+    def test_an_explicitly_empty_rule_is_a_rule(self):
+        self.write_rule("recall_excludes: []\n# recall_excludes, in a comment\n")
+        self.assertEqual(self.exclusion(self.code), recall_exclusion.NONE)
+
+    def test_a_folder_that_will_not_open(self):
+        folder = self.vault / "projects" / "clean"
+        folder.chmod(0)
+        self.addCleanup(folder.chmod, 0o755)
+        if os.access(folder, os.R_OK):
+            self.skipTest("this user reads everything")
+        self.assertIn("clean", self.exclusion(self.code).problem)
+
+    def test_a_stray_byte_is_not_a_failure_to_read(self):
+        path = self.vault / "projects/other/project.yaml"
+        path.write_bytes(path.read_bytes() + b"title: caf\xe9\n")
+        self.assertEqual(self.exclusion(self.other), recall_exclusion.NONE)
+        self.assertEqual(self.exclusion(self.root), recall_exclusion.NONE)
+
+    def test_a_folder_nobody_can_name_is_held_to_every_rule(self):
+        self.assertEqual(recall_exclusion.for_session(None, self.memory), Exclusion(slugs=("port",)))
+        self.write_rule("recall_excludes: port\n")
+        self.assertTrue(recall_exclusion.for_session(None, self.memory).problem)
+
+    def test_a_folder_nobody_can_name_sees_no_change_where_no_rule_exists(self):
+        self.write_rule("")
+        self.assertEqual(recall_exclusion.for_session(None, self.memory), recall_exclusion.NONE)
 
     def test_a_reader_that_breaks_is_a_problem_rather_than_a_clear_session(self):
         original = recall_exclusion._read_rules
@@ -263,12 +336,6 @@ class ThePromptHook(_Hooks):
         r = self.run_hook(PROMPT_HOOK, self.other, {"prompt": PROMPT, "cwd": str(self.worktree)})
         self.assertWalled(r)
 
-    def test_only_a_session_under_a_rule_sends_the_flag(self):
-        self.prompt(self.other)
-        self.assertNotIn("-cwd", (self.bin / "argv.log").read_text(encoding="utf-8"))
-        self.prompt(self.worktree)
-        self.assertIn(str(self.worktree), (self.bin / "argv.log").read_text(encoding="utf-8"))
-
     def test_an_unreadable_rule_injects_nothing_and_says_so(self):
         self.write_rule("recall_excludes: port\n")
         r = self.prompt(self.worktree)
@@ -336,6 +403,30 @@ class TheInProcessEngine(_Vault):
                              exclusion=Exclusion(slugs=("port",)), stdout=out, stderr=io.StringIO())
         self.assertIn("shared-memory", out.getvalue())
         self.assertNotIn("port-folder", out.getvalue())
+
+
+class TheDaemonIsToldTheFolder(_Hooks):
+    """Through `main`, for the payload's wiring, and in this process, because
+    the hook's 250ms window is a race on a loaded runner."""
+
+    def test_it_gets_the_payloads_folder_whichever_the_process_is_in(self):
+        """Left to its own folder the binary would read the rule for wherever
+        the host happened to run the hook, and wall a session under no rule."""
+        self.addCleanup(setattr, recall, "DAEMON_BIN", recall.DAEMON_BIN)
+        self.addCleanup(setattr, recall, "DAEMON_BUDGET_MS", recall.DAEMON_BUDGET_MS)
+        recall.DAEMON_BIN, recall.DAEMON_BUDGET_MS = str(self.bin / "agentmd"), 30_000
+        here = os.getcwd()
+        self.addCleanup(os.chdir, here)
+        os.chdir(self.worktree)
+        payload = json.dumps({"prompt": PROMPT, "cwd": str(self.other)})
+        read_payload = recall._read_prompt_payload
+        self.addCleanup(setattr, recall, "_read_prompt_payload", read_payload)
+        recall._read_prompt_payload = lambda: read_payload(io.StringIO(payload))
+        submit = recall.prompt_submit
+        self.addCleanup(setattr, recall, "prompt_submit", submit)
+        recall.prompt_submit = lambda **kw: submit(**kw, stdout=io.StringIO(), stderr=io.StringIO())
+        recall.main(["--vault-path", str(self.memory), "prompt-submit", "--budget-ms", "60000"])
+        self.assertIn(f"-cwd {self.other} ", (self.bin / "argv.log").read_text(encoding="utf-8"))
 
 
 class ABinaryOlderThanTheFlag(_Hooks):

@@ -64,6 +64,7 @@ OPTIONAL = ("board", "sensitivity", "former_names", "bare_issue_floor", "map_fol
 STATUSES = ("queued", "active", "parked", "done", "dropped")
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _WORD = re.compile(r"^[a-z][a-z0-9-]*$")
+_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def live_projects(vault: Path) -> list:
@@ -151,7 +152,7 @@ def check_mapping(data, rel: str, *, slug: "str | None", known: "frozenset | Non
             out.append(f"{rel}: `recall_excludes` must be a list of project slugs")
         else:
             for name in excludes:
-                if not (isinstance(name, str) and _WORD.match(name)):
+                if not (isinstance(name, str) and _SLUG.match(name)):
                     out.append(f"{rel}: `recall_excludes` entry `{name}` is not a project slug")
                 elif name == slug:
                     out.append(f"{rel}: `recall_excludes` names the project itself")

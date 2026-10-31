@@ -61,7 +61,7 @@ recall_excludes:
   - other-project
 ```
 
-**Who it applies to.** A session works on the project when its folder is under one of the project's `code_paths`, or under the project's own folder in the vault (`projects/<slug>/`, which `code_paths` doesn't list), or in a linked git worktree of either, wherever that worktree sits. Every other session, and a session working on the excluded project itself, sees no change.
+**Who it applies to.** A session works on the project when its folder is under one of the project's `code_paths`, or under the project's own folder in the vault (`projects/<slug>/`, which `code_paths` doesn't list), or in a linked git worktree of either, wherever that worktree sits. Case doesn't matter. Every project that claims the folder counts, so a worktree inside another project's folder keeps its own project's rule. Every other session sees no change, and no session is walled out of its own project's notes.
 
 **What it keeps out.** A note under `projects/<slug>/` or `projects/completed/<slug>/`, and a note anywhere whose `project:` names the slug. A note elsewhere that only mentions the project's subject is not covered.
 
@@ -75,11 +75,11 @@ recall_excludes:
 | `agentmd search` | `-cwd`, else the folder it runs in | prints the reason and exits non-zero |
 | `memory_search` over MCP | the `cwd` argument | a tool error naming the reason |
 
-`memory_search` is the odd one. The daemon is one resident process that can't see who is calling, so the tool asks for `cwd`. A call with no `cwd`, or a relative one, is held to every project's rule, because it may be a session the rule covers. That caller gets a note saying so, and passing `cwd` gets the notes back.
+`memory_search` is the odd one. The daemon is one resident process that can't see who is calling, so the tool asks for `cwd`. A call with no `cwd`, or a relative one, is held to every project's rule, because it may be a session the rule covers. That caller gets a note saying so, and passing `cwd` gets the notes back. A command run from a folder that no longer exists is held to every rule the same way.
 
-**What it doesn't stop.** It governs recall, not the filesystem. A session can still open the files with `Read` or `grep` the vault, and `agentmd search` run from a folder outside the project isn't under the rule. Pulling a project's notes out of a session's reach would take moving them, which is a different job.
+**What it doesn't stop.** It governs recall, not the filesystem. A session can still open the files with `Read` or `grep` the vault, and `agentmd search` run from a folder outside the project isn't under the rule. Pulling a project's notes out of a session's reach would take moving them, which is a different job. Two narrower gaps: `/memory search --deep` knows a deleted note only by its path, because a deletion manifest records no `project:`, so a deleted note stamped with an excluded project and filed outside its folder still shows; and a linked worktree of a repository made with `--separate-git-dir` doesn't lead back to its checkout, so list that folder in `code_paths`.
 
-**Unreadable means withheld.** A rule that isn't a list, or that names a project the vault doesn't have, fails closed for that project's sessions. A `project.yaml` that won't read at all fails closed for its own sessions and for any folder no other project claims, since it may be the file that claims it. Sessions of projects that do read are not held up. `check-project-yaml` catches the first two before a session does: an entry must be a slug, must not be the project itself, and must name a project under `projects/` or `projects/completed/`.
+**Unreadable means withheld.** The reader takes the two forms in the schema: a block of `- slug` lines, or `[slug, slug]` on the key's own line. Anything else that names the key, a value that isn't a slug, or a slug the vault has no project for, fails closed for that project's sessions. A `project.yaml` that won't read at all fails closed for its own sessions and for any folder no other project claims, since it may be the file that claims it. Sessions of projects that do read are not held up. `check-project-yaml` catches a bad value before a session does: an entry must be a slug, must not be the project itself, and must name a project under `projects/` or `projects/completed/`.
 
 ## Bare issue floor
 

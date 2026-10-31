@@ -168,3 +168,158 @@ func TestNoteExcluded(t *testing.T) {
 		t.Errorf("an empty rule excluded a note")
 	}
 }
+
+// A vault's path is data: a bracket in it must not read as a pattern and lose
+// every rule without a word.
+func TestAVaultPathWithAGlobCharacterStillHasItsRules(t *testing.T) {
+	root, _ := filepath.EvalSymlinks(t.TempDir())
+	vault := filepath.Join(root, "drive[1]", "vault")
+	for slug, body := range map[string]string{"clean": "slug: clean\nrecall_excludes:\n  - port\n", "port": "slug: port\n"} {
+		dir := filepath.Join(vault, "projects", slug)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "project.yaml"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := Exclusions(vault, filepath.Join(vault, "projects", "clean"))
+	if err != nil || !reflect.DeepEqual(got, []string{"port"}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	if got, err := EveryExclusion(vault); err != nil || !reflect.DeepEqual(got, []string{"port"}) {
+		t.Fatalf("every: got %v, %v", got, err)
+	}
+}
+
+func linkWorktree(t *testing.T, slot, gitdir string) {
+	t.Helper()
+	if err := os.MkdirAll(slot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(slot, ".git"), []byte("gitdir: "+gitdir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAWorktreeOfABareRepositoryKnowsItsProject(t *testing.T) {
+	vault, _ := exclusionVault(t)
+	root := filepath.Dir(vault)
+	bare := filepath.Join(root, "code", "bare.git")
+	body := "slug: clean\ncode_paths:\n  - " + bare + "\nrecall_excludes:\n  - port\n"
+	if err := os.WriteFile(filepath.Join(vault, "projects", "clean", "project.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	slot := filepath.Join(root, "wts", "a")
+	linkWorktree(t, slot, filepath.Join(bare, "worktrees", "a"))
+	if got, err := Exclusions(vault, slot); err != nil || !reflect.DeepEqual(got, []string{"port"}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+}
+
+// A worktree's own folder being claimed must not hide the main checkout's claim.
+func TestEveryClaimOnAFolderCounts(t *testing.T) {
+	vault, code := exclusionVault(t)
+	root := filepath.Dir(vault)
+	wts := filepath.Join(root, "wts")
+	umbrella := "slug: umbrella\ncode_paths:\n  - " + wts + "\n"
+	if err := os.MkdirAll(filepath.Join(vault, "projects", "umbrella"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vault, "projects", "umbrella", "project.yaml"), []byte(umbrella), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	slot := filepath.Join(wts, "a")
+	linkWorktree(t, slot, filepath.Join(code, ".git", "worktrees", "a"))
+	if got, err := Exclusions(vault, slot); err != nil || !reflect.DeepEqual(got, []string{"port"}) {
+		t.Fatalf("a worktree in another project's folder: got %v, %v", got, err)
+	}
+	// Two projects listing one folder: the earlier name must not win it.
+	first := "slug: aaa\ncode_paths:\n  - " + code + "\n"
+	if err := os.MkdirAll(filepath.Join(vault, "projects", "aaa"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vault, "projects", "aaa", "project.yaml"), []byte(first), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Exclusions(vault, code); err != nil || !reflect.DeepEqual(got, []string{"port"}) {
+		t.Fatalf("a folder two projects list: got %v, %v", got, err)
+	}
+}
+
+// A project under a broader claim is not walled out of its own notes.
+func TestAClaimingProjectIsNeverExcludedFromItself(t *testing.T) {
+	vault, code := exclusionVault(t)
+	nested := filepath.Join(code, "vendor", "port")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "slug: port\ncode_paths:\n  - " + nested + "\n"
+	if err := os.WriteFile(filepath.Join(vault, "projects", "port", "project.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Exclusions(vault, nested); err != nil || got != nil {
+		t.Fatalf("got %v, %v", got, err)
+	}
+}
+
+func TestAFolderSpelledInAnotherCaseIsTheSameFolder(t *testing.T) {
+	vault, code := exclusionVault(t)
+	if got, err := Exclusions(vault, strings.ToUpper(code)); err != nil || !reflect.DeepEqual(got, []string{"port"}) {
+		t.Fatalf("the clone: got %v, %v", got, err)
+	}
+	dir := filepath.Join(vault, "PROJECTS", "Clean")
+	if got, err := Exclusions(vault, dir); err != nil || !reflect.DeepEqual(got, []string{"port"}) {
+		t.Fatalf("the vault folder: got %v, %v", got, err)
+	}
+}
+
+func TestARuleTheReaderCannotTakeIsNeverAnEmptyRule(t *testing.T) {
+	for name, rule := range map[string]string{
+		"a list on the next line": "recall_excludes:\n  [port]\n",
+		"a quoted key":            "'recall_excludes': [port]\n",
+		"a bare key":              "recall_excludes:\n",
+		"a scalar on the next":    "recall_excludes:\n  port\n",
+		"a trailing slash":        "recall_excludes:\n  - port/\n",
+		"a path":                  "recall_excludes:\n  - completed/port\n",
+		"a climbing path":         "recall_excludes:\n  - ../projects/port\n",
+		"an empty entry":          "recall_excludes:\n  - \"\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			vault, code := exclusionVault(t)
+			body := "slug: clean\ncode_paths:\n  - " + code + "\n" + rule
+			if err := os.WriteFile(filepath.Join(vault, "projects", "clean", "project.yaml"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := Exclusions(vault, code); err == nil {
+				t.Fatalf("no error, slugs %q", got)
+			}
+		})
+	}
+}
+
+func TestAnExplicitlyEmptyRuleIsARule(t *testing.T) {
+	vault, code := exclusionVault(t)
+	body := "slug: clean\ncode_paths:\n  - " + code + "\nrecall_excludes: []\n# recall_excludes, in a comment\n"
+	if err := os.WriteFile(filepath.Join(vault, "projects", "clean", "project.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Exclusions(vault, code); err != nil || len(got) != 0 {
+		t.Fatalf("got %v, %v", got, err)
+	}
+}
+
+func TestAProjectFolderThatWillNotOpenIsNotAClearSession(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads everything")
+	}
+	vault, code := exclusionVault(t)
+	dir := filepath.Join(vault, "projects", "clean")
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Skip("this filesystem has no such permission")
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	if got, err := Exclusions(vault, code); err == nil {
+		t.Fatalf("no error, slugs %v", got)
+	}
+}

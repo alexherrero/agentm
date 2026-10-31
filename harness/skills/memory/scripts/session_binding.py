@@ -83,11 +83,12 @@ def parse_project_yaml(text: str) -> ProjectYaml:
     """A `project.yaml`, read line by line — the file's schema is flat
     (`check-project-yaml` holds it), and this module stays on the standard
     library."""
-    slug, in_list, malformed = None, None, False
+    slug, in_list, named, empty = None, None, False, False
     lists: dict = {"code_paths": [], "recall_excludes": []}
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
+        named = named or "recall_excludes" in line
         if not line[:1].isspace() and not line.startswith("-"):
             key, _, value = line.partition(":")
             key, value = key.strip(), value.strip()
@@ -96,12 +97,14 @@ def parse_project_yaml(text: str) -> ProjectYaml:
                 slug = _component(value.strip("'\""))
             elif key in lists and value.startswith("[") and value.endswith("]"):
                 lists[key] += [v.strip().strip("'\"") for v in value[1:-1].split(",") if v.strip()]
-            elif key == "recall_excludes" and value:
-                malformed = True
+                empty = empty or (key == "recall_excludes" and not value.strip("[] "))
             continue
         item = line.strip()
         if in_list and item.startswith("- "):
             lists[in_list].append(item[2:].strip().strip("'\""))
+    # This reader takes the two list forms the schema writes. Anything else that
+    # names the key, valid YAML or not, must not read as "no rule".
+    malformed = named and not empty and not lists["recall_excludes"]
     return ProjectYaml(slug, lists["code_paths"], lists["recall_excludes"], malformed)
 
 

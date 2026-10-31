@@ -494,14 +494,18 @@ func cmdSearch(args []string) error {
 
 	// The rule follows the folder, so a session that shells out to this command
 	// is held to it without anyone passing a flag. An unreadable rule stops the
-	// search: a printed error is the fail-closed answer here.
+	// search: a printed error is the fail-closed answer here. A folder nobody can
+	// name may be a covered session, so it is held to every rule.
 	dir := *sessionDir
 	if dir == "" {
-		if dir, err = os.Getwd(); err != nil {
-			return fmt.Errorf("recall exclusions need the session's folder: %w", err)
-		}
+		dir, _ = os.Getwd()
 	}
-	exclude, err := projectbind.Exclusions(cfg.VaultPath, dir)
+	var exclude []string
+	if dir == "" {
+		exclude, err = projectbind.EveryExclusion(cfg.VaultPath)
+	} else {
+		exclude, err = projectbind.Exclusions(cfg.VaultPath, dir)
+	}
 	if err != nil {
 		return err
 	}

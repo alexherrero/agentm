@@ -1,11 +1,15 @@
 package projectbind
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 // The recall exclusion rule (agentm-vault § Projects and tasks, amended
@@ -20,6 +24,15 @@ import (
 // that silently loses its wall looks exactly like one that never had it. The
 // Python side keeps the same rule in `recall_exclusion.py`.
 
+// readFailure opens the problem of a project.yaml that would not read, the one
+// kind that may be hiding a claim on a folder.
+const readFailure = "could not read it"
+
+// slugShape is what `check-project-yaml` holds a rule's entries to. It is
+// checked here too because an entry such as `completed/port` names a folder that
+// exists, so the rule would read as sound and match no note.
+var slugShape = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
 // projectRule is what the rule needs of one project.yaml.
 type projectRule struct {
 	slug     string
@@ -28,21 +41,37 @@ type projectRule struct {
 	problem  string
 }
 
+// readRules lists the folders itself rather than globbing, for two reasons: a
+// bracket in the vault's path would be read as a pattern, and a glob drops a
+// folder it cannot open without saying so, which here would lose a rule.
 func readRules(vaultRoot string) []projectRule {
 	var out []projectRule
 	seen := map[string]bool{}
 	// Live projects first, so a finished copy never shadows the live one.
-	for _, pattern := range []string{
-		filepath.Join(vaultRoot, "projects", "*", "project.yaml"),
-		filepath.Join(vaultRoot, "projects", "completed", "*", "project.yaml"),
+	for _, parent := range []string{
+		filepath.Join(vaultRoot, "projects"),
+		filepath.Join(vaultRoot, "projects", "completed"),
 	} {
-		files, _ := filepath.Glob(pattern)
-		sort.Strings(files)
-		for _, f := range files {
-			fields := readFields(f)
+		entries, err := os.ReadDir(parent)
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			continue
+		}
+		if err != nil {
+			out = append(out, projectRule{slug: filepath.Base(parent), problem: readFailure + ": " + err.Error()})
+			continue
+		}
+		for _, e := range entries {
+			if st, err := os.Stat(filepath.Join(parent, e.Name())); err != nil || !st.IsDir() {
+				continue
+			}
+			file := filepath.Join(parent, e.Name(), "project.yaml")
+			if _, err := os.Stat(file); errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			fields := readFields(file)
 			slug := fields.slug
 			if slug == "" {
-				slug = filepath.Base(filepath.Dir(f))
+				slug = e.Name()
 			}
 			if seen[slug] {
 				continue
@@ -55,7 +84,12 @@ func readRules(vaultRoot string) []projectRule {
 				}
 			}
 			for _, name := range rule.excludes {
-				if rule.problem == "" && !projectExists(vaultRoot, name) {
+				if rule.problem != "" {
+					break
+				}
+				if !slugShape.MatchString(name) {
+					rule.problem = fmt.Sprintf("`recall_excludes` entry %q is not a project slug", name)
+				} else if !projectExists(vaultRoot, name) {
 					rule.problem = fmt.Sprintf("`recall_excludes` names %q, and the vault has no such project", name)
 				}
 			}
@@ -79,8 +113,9 @@ func projectExists(vaultRoot, slug string) bool {
 
 // mainCheckoutPath is dir's twin in the main checkout when dir sits in a linked
 // git worktree, else "". A worktree can live anywhere, so its path says nothing
-// about the project; its `.git` file does. A submodule's `.git` file points at
-// `.git/modules/`, not `.git/worktrees/`, and is left alone.
+// about the project; its `.git` file does, as `<common>/worktrees/<name>`. The
+// common directory is `<clone>/.git`, or the repository itself when it is bare.
+// A submodule's `.git` file points elsewhere and is left alone.
 func mainCheckoutPath(dir string) string {
 	for top := dir; ; top = filepath.Dir(top) {
 		marker := filepath.Join(top, ".git")
@@ -100,16 +135,19 @@ func mainCheckoutPath(dir string) string {
 			if !filepath.IsAbs(gitdir) {
 				gitdir = filepath.Join(top, gitdir)
 			}
-			sep := string(filepath.Separator)
-			at := strings.LastIndex(gitdir, sep+".git"+sep+"worktrees"+sep)
-			if at < 0 {
+			gitdir = filepath.Clean(gitdir)
+			if filepath.Base(filepath.Dir(gitdir)) != "worktrees" {
 				return ""
+			}
+			main := filepath.Dir(filepath.Dir(gitdir))
+			if filepath.Base(main) == ".git" {
+				main = filepath.Dir(main)
 			}
 			rel, err := filepath.Rel(top, dir)
 			if err != nil {
 				return ""
 			}
-			return filepath.Join(gitdir[:at], rel)
+			return filepath.Join(main, rel)
 		}
 		if parent := filepath.Dir(top); parent == top {
 			return ""
@@ -117,42 +155,55 @@ func mainCheckoutPath(dir string) string {
 	}
 }
 
-// sessionRule finds the rule of the project a session in dir works on: the
-// longest code_paths match, else the project whose vault folder holds it, for
-// the checkout dir is in and then for the main checkout of a linked worktree.
-// A vault folder with no project.yaml is a project with no rule, so it is
-// reported as found.
-func sessionRule(rules []projectRule, vaultRoot, dir string) (projectRule, bool) {
+// claimingRules is the rule of every project a session in dir works on, for the
+// checkout dir is in and for the main checkout of a linked worktree. Every claim
+// counts, unlike a card's stamp, which wants one project: a worktree inside one
+// project's folder or a path two projects list must not lose a rule to whichever
+// sorted first. A vault folder with no project.yaml is a project with no rule, so
+// it is still a claim. Case is ignored because this filesystem ignores it, and a
+// shell can stand in `~/code/Clean` for `~/code/clean`.
+func claimingRules(rules []projectRule, vaultRoot, dir string) []projectRule {
 	here := realPath(dir)
 	if here == "" {
-		return projectRule{}, false
+		return nil
 	}
-	vault := realPath(vaultRoot)
+	sep := string(filepath.Separator)
+	vault := strings.ToLower(realPath(vaultRoot))
+	var out []projectRule
+	seen := map[string]bool{}
+	claim := func(r projectRule) {
+		if !seen[r.slug] {
+			seen[r.slug] = true
+			out = append(out, r)
+		}
+	}
 	for _, candidate := range []string{here, mainCheckoutPath(here)} {
 		if candidate == "" {
 			continue
 		}
-		best, bestLen := -1, -1
-		for i, r := range rules {
+		candidate = strings.ToLower(candidate)
+		for _, r := range rules {
 			for _, code := range r.codes {
-				if (candidate == code || strings.HasPrefix(candidate, code+string(filepath.Separator))) && len(code) > bestLen {
-					best, bestLen = i, len(code)
+				code = strings.ToLower(code)
+				if candidate == code || strings.HasPrefix(candidate, code+sep) {
+					claim(r)
 				}
 			}
-		}
-		if best >= 0 {
-			return rules[best], true
 		}
 		if slug := vaultFolderProject(vault, candidate); slug != "" {
+			found := false
 			for _, r := range rules {
-				if r.slug == slug {
-					return r, true
+				if strings.EqualFold(r.slug, slug) {
+					claim(r)
+					found = true
 				}
 			}
-			return projectRule{slug: slug}, true
+			if !found {
+				claim(projectRule{slug: slug})
+			}
 		}
 	}
-	return projectRule{}, false
+	return out
 }
 
 // vaultFolderProject is the project whose folder under the vault holds dir, "".
@@ -174,28 +225,48 @@ func vaultFolderProject(vault, dir string) string {
 	return ""
 }
 
-// Exclusions returns the projects a session in dir must not be served. An error
-// means the rule that would say so could not be read, and the session may be
-// one it covers: the caller serves nothing rather than everything. A folder no
-// readable project claims is unknown only while some project.yaml cannot be
-// read, because that file may be the one that claims it.
+// Exclusions returns the projects a session in dir must not be served: what
+// every project claiming dir excludes, less those projects themselves, since a
+// session is never walled out of its own notes. An error means a rule that would
+// say so could not be read, and the caller serves nothing rather than everything.
+//
+// A folder no readable project claims is unknown while some project.yaml will
+// not read, because that file may be the one that claims it. A folder a readable
+// project claims is not held up by another project's unreadable file: that file
+// could only matter by adding a claim inside this one, and stopping every
+// session's recall for one bad file costs more than that rarity is worth.
 func Exclusions(vaultRoot, dir string) ([]string, error) {
 	if vaultRoot == "" || strings.TrimSpace(dir) == "" {
 		return nil, nil
 	}
 	rules := readRules(vaultRoot)
-	if rule, ok := sessionRule(rules, vaultRoot, dir); ok {
-		if rule.problem != "" {
-			return nil, fmt.Errorf("recall exclusions for project %q cannot be read: %s", rule.slug, rule.problem)
+	claims := claimingRules(rules, vaultRoot, dir)
+	if len(claims) == 0 {
+		for _, r := range rules {
+			if strings.HasPrefix(r.problem, readFailure) {
+				return nil, fmt.Errorf("recall exclusions cannot be read for this folder: project %q: %s", r.slug, r.problem)
+			}
 		}
-		return rule.excludes, nil
+		return nil, nil
 	}
-	for _, r := range rules {
-		if strings.HasPrefix(r.problem, "could not read") {
-			return nil, fmt.Errorf("recall exclusions cannot be read for this folder: project %q: %s", r.slug, r.problem)
+	own := map[string]bool{}
+	for _, r := range claims {
+		own[strings.ToLower(r.slug)] = true
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, r := range claims {
+		if r.problem != "" {
+			return nil, fmt.Errorf("recall exclusions for project %q cannot be read: %s", r.slug, r.problem)
+		}
+		for _, name := range r.excludes {
+			if !own[name] && !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
 		}
 	}
-	return nil, nil
+	return out, nil
 }
 
 // EveryExclusion returns the projects any project's rule excludes, for a caller
