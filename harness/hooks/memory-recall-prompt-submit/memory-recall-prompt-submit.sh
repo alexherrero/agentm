@@ -17,7 +17,12 @@ set -uo pipefail  # NOTE: no -e — graceful-skip pattern; hook must never block
 _resolve_memory_script() {  # $1 = script basename
     local script="$1"
     local prefix="${AGENTM_INSTALL_PREFIX:-$HOME/.claude}"
-    if [[ -f ".claude/skills/memory/scripts/$script" ]]; then
+    # The project-scope copy is looked for under the cwd only on Claude Code. On
+    # another host (AGENTM_HOST, set by the Antigravity registration) the cwd is
+    # whatever workspace was opened, and agy does not ask whether to trust a
+    # workspace before it runs a plugin's hooks: a cloned repo shipping its own
+    # .claude/skills/memory/scripts/recall.py would be executed at every session.
+    if [[ "${AGENTM_HOST:-claude-code}" == "claude-code" && -f ".claude/skills/memory/scripts/$script" ]]; then
         printf '%s\n' ".claude/skills/memory/scripts/$script"; return 0
     fi
     if [[ -f "$prefix/skills/memory/scripts/$script" ]]; then

@@ -129,6 +129,42 @@ class TestMemoryRecallSessionStartHookPwsh(unittest.TestCase):
         body = (self.proj / ".harness" / "session-id-p2.start").read_text(encoding="utf-8")
         self.assertIn("source: compact", body)
 
+    # ── the Antigravity registration: no marker, no briefing ────────────────
+    # Parity with the bash twin (scripts/test_agy_recall_hooks.py has the full proof):
+    # a non-Claude host's session must not leave a marker the idle job would read in
+    # Claude Code's format, nor use up the briefing's one showing.
+
+    def _plant_briefing_stub(self) -> Path:
+        calls = self.root / "briefing-calls.log"
+        scripts = self.proj / ".claude" / "skills" / "memory" / "scripts"
+        (scripts / "orchestration_briefing.py").write_text(
+            "open(%r, 'a').write('ran\\n')\nprint('BRIEFING_STUB_RAN')\n" % str(calls),
+            encoding="utf-8")
+        return calls
+
+    def test_a_declared_non_claude_host_writes_no_marker_and_runs_no_briefing(self) -> None:
+        calls = self._plant_briefing_stub()
+        r = self._run_hook(self._env(AGENTM_HOST="antigravity"), sid="agy1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((self.proj / ".harness" / "session-id-agy1.start").exists())
+        self.assertNotIn("BRIEFING_STUB_RAN", r.stdout)
+        self.assertFalse(calls.exists())
+
+    def test_a_transcript_under_gemini_writes_no_marker_even_with_no_host_variable(self) -> None:
+        calls = self._plant_briefing_stub()
+        gemini = str(self.root / "home" / ".gemini" / "antigravity-cli" / "c1" / "transcript_full.jsonl")
+        r = self._run_hook(self._env(), sid="agy2", transcript_path=gemini)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((self.proj / ".harness" / "session-id-agy2.start").exists())
+        self.assertFalse(calls.exists())
+
+    def test_claude_code_still_gets_its_marker_and_its_briefing(self) -> None:
+        calls = self._plant_briefing_stub()
+        r = self._run_hook(self._env(AGENTM_HOST="claude-code"), sid="cc1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.proj / ".harness" / "session-id-cc1.start").is_file())
+        self.assertTrue(calls.exists(), "the stub is unreachable, so the not-run checks above prove nothing")
+
     def test_marker_source_defaults_when_the_payload_omits_it(self) -> None:
         r = self._run_hook(self._env(), sid="p3")
         self.assertEqual(r.returncode, 0, r.stderr)

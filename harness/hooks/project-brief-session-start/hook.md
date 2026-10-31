@@ -2,7 +2,7 @@
 name: project-brief-session-start
 description: SessionStart hook that opens a session on where its bound project and task stand, in under twenty lines — the project tracker's and the task tracker's State and Next, the last three progress lines, the count of open follow-ups and of unfiled captures carrying the project — rendered by `scripts/project_brief.py`. With no tracker it prints today's plan block, rendered by harness-context-session-start itself (`AGENTM_PLAN_BLOCK_ONLY=1`), and once registered that hook leaves its plan block here so nothing prints twice. Kept apart from the always-load hook, whose output the host collapses unread. Never blocks boot. agentm-vault plan 09.
 kind: hook
-supported_hosts: [claude-code]
+supported_hosts: [claude-code, antigravity]
 version: 0.1.0
 ---
 
@@ -43,6 +43,10 @@ The install's hook list merges this directory's settings fragment like every oth
 ln -s ~/Antigravity/agentm/harness/hooks/project-brief-session-start ~/.claude/hooks/project-brief-session-start
 python3 ~/Antigravity/agentm/scripts/merge-settings-fragment.py ~/.claude/settings.json ~/Antigravity/agentm/harness/hooks/project-brief-session-start/settings-fragment-bash.json --command "bash $HOME/.claude/hooks/project-brief-session-start/project-brief-session-start.sh"
 ```
+
+## Antigravity equivalent
+
+It is registered on `agy` 1.4 by the `agentm` plugin that `install.sh` builds from the installed hooks (`scripts/emit_agy_hooks.py`; this file's `supported_hosts` is what puts it there), gated like the MCP step: `~/.gemini/` exists and `agy` is on the path. The handler runs this same script through the vendored adapter, which passes the workspace as `cwd`, and the brief reaches the model as a `systemMessage` at session start. The fallback is the same too: with no tracker, the script runs `harness-context-session-start` as a sibling with `AGENTM_PLAN_BLOCK_ONLY=1`, which is why that hook is installed but not registered on agy by itself (its other output, the observability line, records that it was shown, like the briefing in [`memory-recall-session-start`](../memory-recall-session-start/hook.md#antigravity-equivalent)). The crickets `harness-context` hook also runs on agy and prints the repo-local `.harness/` paths; the two can name the same plan twice in a repo that has both.
 
 ## Related
 

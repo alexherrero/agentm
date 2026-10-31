@@ -22,7 +22,39 @@ set -uo pipefail  # NOTE: no -e — graceful-skip pattern; hook must never block
 # the primary purpose of this hook). If .harness/ doesn't exist or session_id
 # can't be parsed, we skip the marker + continue to recall.
 PAYLOAD="$(cat 2>/dev/null || true)"
-if [[ -n "$PAYLOAD" ]] && [[ -d .harness || -w . ]]; then
+
+# ── Which host fired this? (Antigravity registration, 2026-10-30) ───────────
+# The marker and the briefing below are Claude Code's. The marker names the
+# host's transcript and memory-reflect-idle later mines that file in Claude's
+# JSONL format; an Antigravity transcript is a different format, so a marker
+# written for one would send the idle job a file it cannot read, with --route
+# aimed at the real vault. The briefing records that it was shown, so a session
+# that only injects it into a model (an `agy -p` run nobody reads) would use up
+# the operator's one showing. Neither is wanted from another host.
+#
+# Two independent signals, either of which skips both. The registration for a
+# non-Claude host sets AGENTM_HOST (anything but claude-code, or unset, which is
+# every Claude Code registration that exists). And a transcript under a .gemini
+# directory is never Claude's, whatever the environment says, so a registration
+# that lost the variable still cannot leave a marker behind.
+HOST_IS_CLAUDE=1
+case "${AGENTM_HOST:-claude-code}" in
+    claude-code) ;;
+    *) HOST_IS_CLAUDE=0 ;;
+esac
+if [[ "$HOST_IS_CLAUDE" == 1 && -n "$PAYLOAD" ]]; then
+    case "$(printf '%s' "$PAYLOAD" | python3 -c '
+import json, sys
+try:
+    print((json.loads(sys.stdin.read()) or {}).get("transcript_path") or "")
+except Exception:
+    pass
+' 2>/dev/null)" in
+        */.gemini/*) HOST_IS_CLAUDE=0 ;;
+    esac
+fi
+
+if [[ "$HOST_IS_CLAUDE" == 1 ]] && [[ -n "$PAYLOAD" ]] && [[ -d .harness || -w . ]]; then
     PARSED="$(printf '%s' "$PAYLOAD" | python3 -c '
 import json, sys
 try:
@@ -97,7 +129,12 @@ fi
 _resolve_memory_script() {  # $1 = script basename (e.g. recall.py)
     local script="$1"
     local prefix="${AGENTM_INSTALL_PREFIX:-$HOME/.claude}"
-    if [[ -f ".claude/skills/memory/scripts/$script" ]]; then
+    # The project-scope copy is looked for under the cwd only on Claude Code. On
+    # another host (AGENTM_HOST, set by the Antigravity registration) the cwd is
+    # whatever workspace was opened, and agy does not ask whether to trust a
+    # workspace before it runs a plugin's hooks: a cloned repo shipping its own
+    # .claude/skills/memory/scripts/recall.py would be executed at every session.
+    if [[ "${AGENTM_HOST:-claude-code}" == "claude-code" && -f ".claude/skills/memory/scripts/$script" ]]; then
         printf '%s\n' ".claude/skills/memory/scripts/$script"; return 0
     fi
     if [[ -f "$prefix/skills/memory/scripts/$script" ]]; then
@@ -230,7 +267,7 @@ AGENTM_PY="$(_resolve_agentm_python)"
 # boot. orchestration_briefing.py is a sibling of recall.py in the same memory
 # scripts dir, so the same resolver finds it across install scopes.
 BRIEFING_PY="$(_resolve_memory_script orchestration_briefing.py 2>/dev/null)" || BRIEFING_PY=""
-if [[ -n "$BRIEFING_PY" ]]; then
+if [[ -n "$BRIEFING_PY" && "$HOST_IS_CLAUDE" == 1 ]]; then
     if [[ -n "${MEMORY_ROOT:-}" ]]; then
         "$AGENTM_PY" "$BRIEFING_PY" --vault-path "$MEMORY_ROOT" 2>/dev/null || true
     else

@@ -42,6 +42,10 @@ A `SessionStart` event hook — installed machine-wide, so it fires in every pro
   Read the plan you own (or the .harness/active-plan one) before /work, /review, /release.
   ```
 
+## Antigravity equivalent
+
+Not registered on `agy` by itself. [`project-brief-session-start`](../project-brief-session-start/hook.md#antigravity-equivalent) is, and it runs this hook as its fallback for the plan block. What registering this one would add is the observability line, which records that it was shown, so a session that only injects it into a model would use up the showing the operator is owed.
+
 ## Install
 
 Universal — installs to `~/.claude/hooks/harness-context-session-start/` under `--scope user`; the installer merges `settings-fragment-bash.json` into `~/.claude/settings.json` and absolutizes the command to `bash ~/.claude/hooks/harness-context-session-start/harness-context-session-start.sh` (V4 #39 task 1). Never blocks session boot.

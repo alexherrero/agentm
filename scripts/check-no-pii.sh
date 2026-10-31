@@ -141,6 +141,7 @@ SELF_SKIP_PATHS=(
     'templates/hooks/pre-push'
     'CONTRIBUTING.md'
     'lib/install/.checksums.txt'   # generated SHA256 file; hex substrings false-positive on phone-us regex
+    'adapters/antigravity/hooks/UPSTREAM'   # the vendored adapter's pinned sha256; a 64-hex digest can carry a run of digits that reads as a phone number (same class as the line above)
     'scripts/health/fixtures/v6-eval/edge-fixture-v0.json'   # per-entry source_sha256_12 hex hashes; same false-positive class
 )
 

@@ -699,5 +699,24 @@ class TheCallShape(unittest.TestCase):
         self.assertIn(sc.SYSTEM, seen["cmd"])
 
 
+class TheAgyJudge(unittest.TestCase):
+    def test_the_call_silences_the_agentm_recall_plugin(self):
+        # Without this the judge's own prompt is recalled against, and the vault's
+        # always-load set is put in front of the model that is grading the context.
+        seen = {}
+
+        def fake_run(cmd, **kw):
+            seen["env"] = kw.get("env")
+            return type("P", (), {"returncode": 0, "stdout": "{}"})()
+
+        real = sc.subprocess.run
+        sc.subprocess.run = fake_run
+        try:
+            sc._call_agy("grade this", system=sc.SYSTEM)
+        finally:
+            sc.subprocess.run = real
+        self.assertEqual((seen["env"] or {}).get("AGENTM_AGY_RECALL"), "off")
+
+
 if __name__ == "__main__":
     unittest.main()

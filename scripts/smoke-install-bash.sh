@@ -317,16 +317,22 @@ if HOME="$FAKE_HOME" CI=true AGENTM_INSTALL_PREFIX="$PREFIX" \
 fi
 echo "    --scope / --update / --hooks / positional target all rejected"
 
-# ── the memory daemon is registered with agy, but only where it can be used ──
+# ── agy gets the memory daemon and the recall hooks, but only where they can be used ──
 # Stand-in `agy` and `curl` on PATH: nothing real is touched, and the log shows
 # exactly what the installer asked agy to do. Last in the file because it creates
 # $FAKE_HOME/.gemini, which the earlier "no project-scope leak" checks must not see.
-echo "==> agy gets the memory daemon registered — only when it can be used"
+echo "==> agy gets the memory daemon and the recall hooks — only when they can be used"
 SHIM="$SCRATCH/shim"
 mkdir -p "$SHIM"
+# `agy plugin install <dir>` is logged and the directory copied aside, because the
+# installer deletes its staging directory as soon as agy returns.
 cat > "$SHIM/agy" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$AGY_LOG"
+if [[ "${1:-}" == "plugin" && "${2:-}" == "install" ]]; then
+  n=$(( $(ls "$AGY_PLUGIN_COPIES" 2>/dev/null | wc -l) + 1 ))
+  cp -R "$3" "$AGY_PLUGIN_COPIES/$n"
+fi
 SH
 cat > "$SHIM/curl" <<'SH'
 #!/usr/bin/env bash
@@ -334,6 +340,8 @@ exit "${FAKE_CURL_EXIT:-0}"
 SH
 chmod +x "$SHIM/agy" "$SHIM/curl"
 export AGY_LOG="$SCRATCH/agy.log"
+export AGY_PLUGIN_COPIES="$SCRATCH/agy-plugin-copies"
+mkdir -p "$AGY_PLUGIN_COPIES"
 : > "$AGY_LOG"
 
 # 1. No ~/.gemini: the operator does not use Antigravity, so agy is never called.
@@ -343,14 +351,22 @@ if [[ -s "$AGY_LOG" ]]; then
   exit 1
 fi
 
-# 2. ~/.gemini exists but no daemon answers: registering it would leave a dead
-#    server in agy's list, so nothing is registered.
+# 2. ~/.gemini exists but no daemon answers: registering the daemon would leave a
+#    dead server in agy's list, so no MCP server is added. The recall hooks need no
+#    daemon, so they are still installed.
 mkdir -p "$FAKE_HOME/.gemini"
 FAKE_CURL_EXIT=22 PATH="$SHIM:$PATH" run_install >/dev/null 2>&1
-if [[ -s "$AGY_LOG" ]]; then
-  echo "FAIL: agy was called although no daemon answers: $(cat "$AGY_LOG")" >&2
+if grep -q '^mcp ' "$AGY_LOG"; then
+  echo "FAIL: agy was asked to register the daemon although none answers: $(cat "$AGY_LOG")" >&2
   exit 1
 fi
+if [[ "$(grep -c '^plugin install ' "$AGY_LOG")" -ne 1 ]]; then
+  echo "FAIL: expected one 'plugin install' without a daemon, agy was asked:" >&2
+  cat "$AGY_LOG" >&2
+  exit 1
+fi
+: > "$AGY_LOG"
+rm -rf "$AGY_PLUGIN_COPIES" && mkdir -p "$AGY_PLUGIN_COPIES"
 
 # 3. Both true: registered, by name, at the daemon's own address — and a second
 #    install registers it again by the same name (agy updates in place).
@@ -363,5 +379,34 @@ if [[ "$(grep -cFx "$want" "$AGY_LOG")" -ne 2 ]]; then
   exit 1
 fi
 echo "    skipped without ~/.gemini and without a daemon; registered once per install otherwise"
+
+# 4. The recall hooks: installed once per install, from a plugin that is the one
+#    the generator writes — named agentm, carrying the three recall hooks on agy's
+#    events, each handler running the installed script through the vendored
+#    adapter, and nothing that is Claude Code's alone.
+if [[ "$(grep -c '^plugin install ' "$AGY_LOG")" -ne 2 ]]; then
+  echo "FAIL: expected one 'plugin install' per install (two), agy was asked:" >&2
+  cat "$AGY_LOG" >&2
+  exit 1
+fi
+PLUGIN="$AGY_PLUGIN_COPIES/1"
+python3 - "$PLUGIN" "$PREFIX" <<'PY'
+import json, sys
+from pathlib import Path
+plugin, prefix = Path(sys.argv[1]), sys.argv[2]
+manifest = json.loads((plugin / "plugin.json").read_text())
+assert manifest["name"] == "agentm", manifest
+hooks = json.loads((plugin / "hooks.json").read_text())
+want = {"memory-recall-session-start": "SessionStart", "project-brief-session-start": "SessionStart",
+        "memory-recall-prompt-submit": "PreInvocation"}
+assert set(hooks) == set(want), sorted(hooks)
+for name, event in want.items():
+    (handler,) = hooks[name][event]
+    cmd = handler["command"]
+    assert f"bash {prefix}/hooks/{name}/{name}.sh" in cmd, cmd
+    assert "AGENTM_HOST=antigravity" in cmd and "_agy_hook_adapter.py" in cmd, cmd
+assert (plugin / "hooks" / "_agy_hook_adapter.py").is_file()
+PY
+echo "    recall hooks: the agentm plugin is installed once per install, from the installed hook scripts"
 
 echo "==> smoke-install-bash: OK"

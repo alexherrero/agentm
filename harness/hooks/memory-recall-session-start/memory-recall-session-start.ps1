@@ -49,6 +49,15 @@ $Py = Resolve-AgentmPython
 # and source; write a .harness/session-id-<sid>.start marker so the idle hook's
 # orphan-recovery sweep can detect crashed sessions. Marker write is best-effort.
 $Payload = ($Input | Out-String).Trim()
+
+# Which host fired this? The marker and the briefing below are Claude Code's: the
+# marker names the host's transcript, which memory-reflect-idle later mines in
+# Claude's JSONL format, and the briefing records that it was shown. Another host
+# (the Antigravity registration sets AGENTM_HOST) gets neither. A transcript
+# under a .gemini directory is never Claude's either, whatever the environment
+# says. The bash sibling carries the full account.
+$HostIsClaude = (-not $env:AGENTM_HOST) -or ($env:AGENTM_HOST -ceq 'claude-code')
+
 if ($Payload) {
     $ParseDriver = @"
 import json, sys
@@ -69,6 +78,7 @@ if sid:
         $SessionId = $Parts[0]
         $Cwd = if ($Parts.Length -gt 1 -and $Parts[1]) { $Parts[1] } else { (Get-Location).Path }
         $PayloadTranscript = if ($Parts.Length -gt 2) { $Parts[2] } else { "" }
+        if ($PayloadTranscript -match '[\\/]\.gemini[\\/]') { $HostIsClaude = $false }
         $SessionSource = if ($Parts.Length -gt 3 -and $Parts[3]) { $Parts[3] } else { "unknown" }
         # Transcript path: the payload's own `transcript_path` is authoritative;
         # the computed slug is the fallback for hosts too old to send it. See
@@ -88,11 +98,11 @@ if sid:
         }
         # Ensure .harness/ exists.
         $HarnessDir = ".harness"
-        if (-not (Test-Path $HarnessDir)) {
+        if ($HostIsClaude -and -not (Test-Path $HarnessDir)) {
             New-Item -ItemType Directory -Path $HarnessDir -Force -ErrorAction SilentlyContinue | Out-Null
         }
         $Marker = Join-Path $HarnessDir "session-id-$SessionId.start"
-        if (-not (Test-Path $Marker)) {
+        if ($HostIsClaude -and -not (Test-Path $Marker)) {
             $Now = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
             # `source:` records which SessionStart fired (startup / resume /
             # clear / compact / fork). Nothing reads it; it is there to make an
@@ -127,7 +137,7 @@ if (-not (Test-Path $RecallPy)) {
 # output, so this never blocks session boot. orchestration_briefing.py is a
 # sibling of recall.py in the same memory scripts dir.
 $BriefingPy = ".claude/skills/memory/scripts/orchestration_briefing.py"
-if (Test-Path $BriefingPy) {
+if ($HostIsClaude -and (Test-Path $BriefingPy)) {
     try {
         $VaultEnv = if ($env:MEMORY_ROOT) { $env:MEMORY_ROOT } else { $env:MEMORY_VAULT_PATH }
         if ($VaultEnv) {

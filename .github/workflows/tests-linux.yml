@@ -89,6 +89,8 @@ jobs:
         run: python3 scripts/check-governs-index.py
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         run: bash scripts/check-vendored-parity.sh hook-config
+      - name: check-vendored-parity (agy-adapter mode — the vendored Antigravity hook adapter vs its pin)
+        run: bash scripts/check-vendored-parity.sh agy-adapter
       - name: check-storage-rules (the filing contract parses + the taxonomy growth rule)
         # Runs in full on CI: the packaged default is in the repo, so the parse
         # assertion is real here, and the growth rule diffs the taxonomy against
