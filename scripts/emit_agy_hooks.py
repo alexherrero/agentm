@@ -21,7 +21,7 @@ how a guard goes missing.
 
 Every handler is
     [ "${AGENTM_AGY_RECALL:-}" = off ] && echo '{}' || \
-        RECALL_TOKEN_BUDGET="${RECALL_TOKEN_BUDGET:-10000}" AGENTM_HOST=antigravity \
+        RECALL_TOKEN_BUDGET="${RECALL_TOKEN_BUDGET:-<budget>}" AGENTM_HOST=antigravity \
         python3 ./hooks/_agy_hook_adapter.py <Event> bash <installed hook script>
 
 `RECALL_TOKEN_BUDGET` is the recall engine's own cap on what one injection carries
@@ -30,9 +30,9 @@ message at 49,309 characters whatever it holds, keeping the head and replacing t
 rest with `<truncated N bytes>` (measured on agy 1.4.12 with English text and with
 hex text: the stored message was the same length both times, so it is a character
 cap, not a token cap). Left at 20,000 the engine would hand agy a message it then
-cuts mid-entry; at 10,000 (about 40 KB, which leaves room for the header lines) the
-engine drops whole entries by its own priority order and says which, in a note the
-model reads. Today's real payload is about 25 KB, so nothing is dropped yet. A
+cuts mid-entry. For agy, SessionStart keeps a default of 10,000 (about 40 KB, leaving room
+for header lines) so the ~25 KB always-load payload is not truncated, while PreInvocation
+(per-message prompt recall) defaults to 5,000 to conserve context on prompt turns. A
 `RECALL_TOKEN_BUDGET` already in the environment wins.
 
 `AGENTM_HOST=antigravity` is what tells the hook it is not on Claude Code, so it
@@ -74,7 +74,10 @@ PLUGIN_NAME = "agentm"
 
 # Estimated tokens (the engine counts characters / 4) one agy injection may carry:
 # about 40 KB, under the 49,309-character cut agy makes. See the module docstring.
-AGY_TOKEN_BUDGET = 10_000
+# SessionStart keeps 10,000 so the always-load set (~25 KB) is never truncated.
+# PreInvocation (per-message prompt recall) defaults to 5,000 to conserve context on prompt turns.
+AGY_SESSION_START_TOKEN_BUDGET = 10_000
+AGY_PROMPT_SUBMIT_TOKEN_BUDGET = 5_000
 
 # Claude event -> agy event. Both take a flat list of handlers in hooks.json.
 EVENT_MAP = {"SessionStart": "SessionStart", "UserPromptSubmit": "PreInvocation"}
@@ -103,9 +106,14 @@ def supported_hosts(hook_md: Path) -> list[str]:
 
 def handler_command(event: str, script: Path) -> str:
     """The shell line agy runs for one handler (agy runs it with `sh -c`)."""
+    budget = (
+        AGY_PROMPT_SUBMIT_TOKEN_BUDGET
+        if event == "UserPromptSubmit"
+        else AGY_SESSION_START_TOKEN_BUDGET
+    )
     return (
         '[ "${AGENTM_AGY_RECALL:-}" = off ] && echo \'{}\' || '
-        f'RECALL_TOKEN_BUDGET="${{RECALL_TOKEN_BUDGET:-{AGY_TOKEN_BUDGET}}}" AGENTM_HOST={HOST} '
+        f'RECALL_TOKEN_BUDGET="${{RECALL_TOKEN_BUDGET:-{budget}}}" AGENTM_HOST={HOST} '
         f"python3 ./{ADAPTER_REL} {event} bash {shlex.quote(str(script))}"
     )
 

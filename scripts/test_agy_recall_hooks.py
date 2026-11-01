@@ -115,7 +115,8 @@ class GeneratorTests(unittest.TestCase):
             cmd = h["command"]
             self.assertIn("AGENTM_HOST=antigravity", cmd, name)
             self.assertIn('[ "${AGENTM_AGY_RECALL:-}" = off ]', cmd, name)
-            self.assertIn('RECALL_TOKEN_BUDGET="${RECALL_TOKEN_BUDGET:-10000}"', cmd, name)
+            expected_budget = "5000" if event == "PreInvocation" else "10000"
+            self.assertIn(f'RECALL_TOKEN_BUDGET="${{RECALL_TOKEN_BUDGET:-{expected_budget}}}"', cmd, name)
             self.assertIn("python3 ./hooks/_agy_hook_adapter.py", cmd, name)
 
     def test_handlers_run_the_installed_script_and_keep_the_fragments_timeout(self) -> None:

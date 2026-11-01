@@ -60,7 +60,7 @@ agy has no `UserPromptSubmit`; the nearest event is `PreInvocation`, which fires
 
 **What that costs, measured on `agy` 1.4.12.** An `ephemeralMessage` is shown to the model for one model call, not for the whole user message. In a live run the prompt asked the model to run a shell command and then answer from the recalled entry: `PreInvocation` fired twice, the recall was stored as an `EPHEMERAL_MESSAGE` step before the first call, and the model's answer after the tool call did not have it. So recall reaches the model's first decision on each message, which is where it plans, but not a later step that comes back to it after a tool call. A plain question with no tool call gets all of it. Claude Code keeps the injected text in the conversation, so this is a real difference. A persistent `systemMessage` would match Claude Code, at the price of adding every message's recall to the context for the rest of the session; that needs an adapter option, which belongs upstream in crickets, so it is not done here. The agent can still call `memory_search` for anything it needs later.
 
-The same `RECALL_TOKEN_BUDGET=10000`, `AGENTM_HOST` and `AGENTM_AGY_RECALL=off` apply as for [`memory-recall-session-start`](../memory-recall-session-start/hook.md#antigravity-equivalent).
+The same `AGENTM_HOST=antigravity` and `AGENTM_AGY_RECALL=off` apply as for [`memory-recall-session-start`](../memory-recall-session-start/hook.md#antigravity-equivalent). For `PreInvocation`, the default budget is set to `RECALL_TOKEN_BUDGET=5000` (about 20 KB) to conserve context budget on prompt turns (`memory-recall-session-start` defaults to `10000` so always-load entries are not truncated); an environment override still wins.
 
 ## See also
 
