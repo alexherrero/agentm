@@ -146,6 +146,15 @@ capability the deliberate path's 0.725 already demonstrates. Rejection is the
 LLM gate's job; the fast path's job is to be honest about what it is handing
 over.
 
+**A score floor stays closed, on the near-miss questions too (2026-11-01, task
+197, see the amendment log).** On the live index, all three banned notes came
+back first, with scores in the middle of the real hits. Removing them cost 13
+to 30 of the 42 real hits depending on the signal, and 13 was every signal
+combined in one model, judged on questions it had not seen. A near-miss
+question is real vocabulary plus one unknown word, so the real words honestly
+match a note that sits close to the question without answering it. The decision
+above stands: search labels what it returns, and the reader rejects.
+
 ## LLM judgment stages, cast and placed
 
 | stage | model | where | why |
@@ -370,6 +379,38 @@ it.
   — the cross-system findings this design absorbs and corrects.
 
 ## Amendment log
+- **2026-11-01 · A rejection floor is measured on the near-miss questions, and
+  closed (task 197).** The shipped scorecard script ran read-only against the
+  live daemon, on 4,127 notes, and read 42 of 60 and 3 of 10. Nothing was
+  re-pinned and no ranker changed.
+  - **No cut-off separates them.** All three banned notes rank first. Removing
+    all three costs 30 of the 42 real hits on the fused score, 24 on word match,
+    15 on cosine, 30 on the share of the question's words a note holds and 21
+    on that share weighted by rarity. Every signal combined in a leave-one-out
+    model costs 13. A floor relative to the question's top note does nothing,
+    because each banned note is the top note.
+  - **Why not a rare-word rule.** Requiring the question's rarest word loses 30
+    hits, because real questions carry typos and ordinary words that happen to
+    be rare. Returning nothing when a question holds a word no note holds looks
+    better only on the near-miss set, whose authoring rule requires such a
+    word. On the 20 easy negatives it catches 2, or 10%, and it blanks 2 of the
+    42 hits, or 5%.
+  - **Why not the combined model.** It ranks a hit above a negative 75% of the
+    time on held-out questions, against 51% with shuffled labels, and one lost
+    hit would empty 9 of the 30 negatives. None of those 9 is a banned question.
+    It would need an eight-part model fitted on 72 questions, its cost would sit
+    inside the daily wobble, and it would swap a labelled wrong note the reader
+    can reject for an empty answer the reader cannot recover from.
+  - **What was not re-run.** The cross-encoder, because `-mode rerank` loads a
+    second model and these runs were read-only. Its 2026-08 refutation stands on
+    an older corpus.
+  - **The dial cannot prove a win here.** Three cases give at most three flips,
+    and the exact paired test gives that p 0.25. It takes six to clear p<0.05.
+  - **Re-audit trigger.** A model whose scores mean the same thing from one
+    question to the next, a near-miss set with at least 12 banned cases, or
+    online evidence that wrong notes cost more than empty answers. Any reopening
+    registers its bar first, as banned notes removed against hits lost, on
+    questions no floor was tuned on.
 - **2026-10-04 · Row 7 is measured, and refuted on all three arms (task 184).**
   The rung ran on one frozen snapshot, with one binary and the hook's exact
   query shape. The baseline, R@5 0.635 (40 of 63), reproduced the night's
