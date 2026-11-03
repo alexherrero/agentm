@@ -2,7 +2,7 @@
 kind: reference
 status: active
 created: '2026-09-11'
-updated: '2026-09-11'
+updated: '2026-11-02'
 slug: security-and-secret-governance
 tags: [security, secrets, always-load]
 priority: high
@@ -11,8 +11,9 @@ priority: high
 # Security and secret governance
 
 The standing rules every session works under. They were scattered across a
-brief, the follow-ups file and the repo's CLAUDE.md; this is the one place
-they live now. Drafted by the memory-root trims (agentm-vault plan 05) and
+brief, the follow-ups file and the repo's CLAUDE.md; this is where the vault
+keeps them now. The repos' own AGENTS.md and CLAUDE.md still carry the
+commit-time rules, and say the same thing. Drafted by the memory-root trims (agentm-vault plan 05) and
 read by you; edit it as the rules change.
 
 ## Where secrets live, and the one rule about them
@@ -20,8 +21,9 @@ read by you; edit it as the rules change.
 This document names where a secret is kept. It never holds one, and neither
 does anything else in this vault.
 
-- `~/.claude/.agentm-config.json` holds the nightly digest's SMTP credential
-  under `plugins.autonomy.email_smtp_url`. Never print, quote, echo or
+- `~/.claude/.agentm-config.json` holds the SMTP credential every outgoing
+  mail uses — the daily email, the weekly field brief, the scorecard and the
+  red-status alert — under `plugins.autonomy.email_smtp_url`. Never print, quote, echo or
   reproduce that value — not in a note, a commit, a log line, a chat reply
   or a test fixture. Name the key when you need to point at it. The mail
   door's own four keys are gone with its transport (agentm-vault plan 16);
@@ -36,16 +38,22 @@ does anything else in this vault.
   a hosted remote. Google Drive mirrors the vault folder in place; that is
   file sync, not a git remote, and the no-cloud rule is about the remote.
 
-## What an agent may not do to the vault
+## What an agent may change in the vault, and where
 
 - `standards/` and the root notes are yours. Under plan authority the
   packaged contract's lines are mirrored into the live `storage-rules.md`;
   nothing else is written here without you saying so in the session.
-- `personal/` and `projects/` content is yours. Designs shape policy for
-  those spaces; an agent does not move, rewrite or delete their files.
-- Purge and deletion are yours alone, with a manifest first. Deletion is
-  never a policy outcome — a lifecycle pass demotes and archives, it does
-  not delete.
+- `personal/` and `projects/` hold your documents. In a session an agent
+  edits them as the task in hand asks, within the grants `index.md` sets.
+  Unattended, the night does three things there and nothing else:
+  enrichment writes `summary`, `tags` and `importance_proposed` into a
+  `personal/` note's frontmatter and never its body; a finished task's
+  folder moves whole from `tasks/` to `completed/tasks/` once its tracker
+  has read `done` or `dropped` for `task_completed_after_days`, with every
+  link into it rewritten; and each project's generated map is rebuilt.
+- A pass deletes only what `storage-rules.md` lists under "What the night
+  may delete", and writes a manifest before each deletion. Everywhere else,
+  purge and deletion are yours alone, with a manifest first.
 - A chat surface may write in exactly one place: `agent/inbox/`, the drop
   folder it reaches over the Drive mirror (agentm-vault plan 16). Everywhere
   else it is read-only, whatever tools its environment exposes. A card in the

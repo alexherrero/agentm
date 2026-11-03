@@ -96,6 +96,10 @@ def _remap_merged(path: str) -> str:
 # holds the destination; with no vault (CI) the eval stays pre-trims. Keyed
 # on the paths as the 2b remap leaves them.
 _TRIMS_REMAPS = (
+    # Retired on the operator's ruling of 2026-11-02: crickets' style guide
+    # carries the list now, and the file moved out of the folder the style
+    # tools glob. Ahead of the folder row, because the first prefix wins.
+    ("Projects/_global/wiki-style/2026-06-09-llm-tell-vocabulary.md", "standards/voice/retired/2026-06-09-llm-tell-vocabulary.md"),  # root-casing: the gold set's frozen spelling on the old side
     ("Projects/_global/wiki-style/", "standards/voice/"),  # root-casing: the gold set's frozen spelling on the old side
     ("Agent/memory/skill-discovery-sources.md", "Projects/agentm/skill-discovery-sources.md"),  # root-casing: the gold set's frozen spelling on the old side
     ("Agent/memory/trusted-sources.md", "Projects/agentm/trusted-sources.md"),  # root-casing: the gold set's frozen spelling on the old side
