@@ -3,7 +3,7 @@ title: Storage rules
 kind: reference
 status: active
 created: 2026-08-18
-updated: 2026-08-18
+updated: 2026-11-02
 ---
 
 # Storage rules
@@ -80,9 +80,9 @@ set still cohered. A change that adds a type carries its warrant in the
 existing type, and why that one does not fit — and a gate refuses the change
 without one.
 
-`person` is reserved under this rule and arrives the day email ingest does,
-because "who is X" is exactly such a query class. It is not created before there
-is anything to put in it.
+`person` is not a type. "Who is X" is answered by the entity page the night
+builds under `entities/people/` for anyone the vault keeps mentioning, and the
+names one person goes by are joined in `standards/people/aliases.md`.
 
 ## Records are not memories
 
@@ -137,8 +137,9 @@ Any genuine recall before the archive move returns the note to day zero, and
 after it, serving the note on an explicit archive query or moving it back
 returns it `active` with its clock reset. `pinned` is the one word that
 exempts; `type: preference` and `type: convention` decay but never sink,
-because a rule nobody has needed in a year is still the rule; crystallized
-lessons are exempt entirely.
+because a rule nobody has needed in a year is still the rule; a crystallized
+lesson never sinks, and goes to the archive only once a newer lesson has
+replaced it, and is never deleted.
 
 Every act is capped at `demotion_cap` a night, journaled, and listed the next
 morning in the day's `dreaming` facet — and **every deletion writes its
@@ -148,6 +149,41 @@ Archive is a move, which is what gives the class folders an eyeline: they
 hold what is alive, and one folder holds what is not. Obsidian resolves a
 link by basename, so a moved note is still found by every link that named it.
 `purge.py apply` stays as the hand lane for a manifest you write yourself.
+
+## What the night may delete
+
+Deletion is a policy outcome in exactly these places, and in no others. Each
+one writes its manifest and its journal line first, is capped at
+`demotion_cap` a night, and has the vault's git history behind it.
+
+- **A memory card that has already sat in the archive.** Only the three
+  observational classes, only from `agent/archive/memory/<class>/`, and only
+  when both clocks agree: silent past `forget_after_days` and archived for the
+  gap between the archive and forget lines. A card goes at seven years of
+  silence; a session trace at three years from its `created` day. A pinned
+  note, a preference, a convention, a crystallized lesson or a superseded
+  note is never deleted.
+- **The night's own paper under `agent/diagnostics/`**, on the `retention:`
+  lines: digests, morning notes, lint reports, scorecards and dreaming notes.
+  A file's age is the date in its name; a file whose name has no date is
+  kept. Migration and purge manifests are never pruned.
+- **The calendar's facet files at `calendar_facet_days`.** The year's map and
+  its monthly rollups stay as the record of it.
+- **A derived page the night wrote and no longer needs**: a map of content
+  under its floor, the entity map once there are no entity pages, and an
+  entity page under its bar. Only a page carrying the builder's own mark goes;
+  a hand-written note in those folders is left.
+- **An emptied task folder** after the night has moved its contents to
+  `completed/tasks/`, when nothing but system litter is left in it.
+- **An inbox card you filed**, once its contents are written where you said.
+
+The retention lines and the calendar's wait for your first approval: until
+`diagnostics/migrations/purge/retention-first-deletion.md` reads
+`approved: true`, the sweep lists what it would remove and removes nothing.
+
+Nothing under `projects/`, `personal/`, `standards/`, `resources/` or the root
+notes is ever deleted by a pass. A purge there is yours, with a manifest
+first.
 
 Nothing you move or edit is moved or edited back. Editing `lifecycle`
 yourself is a touch: the night journals it as yours, stamps
@@ -293,18 +329,10 @@ deprecations:
   insight: idea
   gap: idea
 
-# Spaces dampened on an ordinary question. Named by their top-level directory.
-#
-# Everything in the vault is searchable; this is what keeps a space findable
-# without letting it drift into every answer. A strong distinctive match still
-# clears the dampening, and a weak semantic neighbour does not.
-#
-# Which spaces, not by how much. The strength is fixed in the daemon because a
-# 125-point sweep found every value at or below 0.6 ranks identically — a number
-# here would be a setting that provably changes nothing.
 # The aging axis a memory carries in `lifecycle:` — read by ranking as a
-# demotion curve, moved by policy and the operator, never expressed as a file
-# move. `pinned` never decays. `active` is the default every fresh filing
+# demotion curve and moved by policy and the operator. The one state that is
+# also a file move is `archived`, which moves the card to
+# `agent/archive/memory/<class>/`. `pinned` never decays. `active` is the default every fresh filing
 # stamps. `dormant` ranks below its active twin. `archived` leaves everyday
 # search while staying on disk and answering an explicit archive query.
 # `superseded` names its successor (`superseded_by:`), leaves everyday search
@@ -313,8 +341,8 @@ deprecations:
 # `expired` is deliberately not here: it was a data-quality artifact of the
 # retired auto-miner, not a lifecycle state, and the migration maps it away.
 # Demotion along the scale is automatic and logged; entering `archived` is
-# conspicuous; deletion is not on this axis at all — a purge is an operator
-# act with a manifest, never a policy outcome.
+# conspicuous; deletion leaves the axis altogether, and the prose section
+# "What the night may delete" names the only places it happens.
 lifecycle:
   - pinned
   - active
@@ -358,6 +386,16 @@ facets:
   # machinery, in the register beside your own facets.
   - dreaming
 
+# Areas dampened on an ordinary question.
+#
+# Everything in the vault is searchable; this is what keeps an area findable
+# without letting it drift into every answer. A strong distinctive match still
+# clears the dampening, and a weak semantic neighbour does not.
+#
+# Which areas, not by how much. The strength is fixed in the daemon because a
+# 125-point sweep found every value at or below 0.6 ranks identically — a number
+# here would be a setting that provably changes nothing.
+#
 # An area is named by its path from the vault root, and it matches that
 # directory and everything under it. A single segment is a whole space, which
 # is how this list read before areas deeper than a root space joined it.
@@ -497,8 +535,8 @@ lifecycle_overrides:
 
 # What the night keeps of its own paper, in days, and deletes past.
 #
-# The one place besides the memory classes where a pass deletes, and it deletes
-# only what it wrote: a digest of Tuesday is not a memory and not your document.
+# One of the places "What the night may delete" names, and it deletes only
+# what it wrote: a digest of Tuesday is not a memory and not your document.
 # Every deletion still writes its manifest and its journal line first, and the
 # morning note counts what went.
 #
@@ -531,7 +569,6 @@ thresholds:
   # Nothing is refused at it; it is a reading. The steady rate on 2026-10-07 was
   # 6 a day over 22 days and the audited window ran 10. 0 turns the warning off.
   daily_card_budget: 30
-  enrichment_input_chars: 24000
   # Whether a project's activity reading moves its records' rank. 0 is off (the
   # operator's ruling of 2026-10-30): the night still writes the readings, and
   # search reads none of them. Leave the line out for on.
@@ -597,10 +634,10 @@ with its confidence in frontmatter — the review queue is the query over those,
 not a directory. A staging directory excluded from search by default is how the
 majority of captured material became invisible once already.
 
-`enrichment_input_chars` is the ceiling on what a single model call may be
-handed. Anything larger is split along its header boundaries first, and the
-fragments are judged. The dispatcher enforces this; the prompt does not request
-it.
+What a single enrichment call may be handed is fixed in the daemon, not set
+here: a note over 32 KiB is refused whole, with the count of header sections
+it would split into, and left for the splitting pass. A truncated note would be
+enriched from a fragment and claim to be the whole thing.
 
 `fade_areas` says where the curve runs, and it runs nowhere else. The five
 `decay_*` values are the aging curve. A memory holds full strength
@@ -617,10 +654,10 @@ records' rank; the night keeps writing the reading.
 `dormant_after_days` is when a silent memory sinks to `dormant` — automatic,
 journaled, and undone by the next genuine recall. It equals `archive_after_days`
 on purpose: only a session trace, on its shorter line, sinks long before it is
-archived. `archive_after_days` is when
-a dormant memory is *proposed* for `archived`, which only a confirm applies;
-archived, it stays indexed and answers an explicit archive query. Nothing is
-deleted: a purge is an operator act with a manifest, never a policy outcome.
+archived. `archive_after_days` is when the night moves a dormant memory to
+the archive; archived, it stays indexed and answers an explicit archive query.
+`forget_after_days` is when an archived memory is deleted, on the terms
+"What the night may delete" sets out.
 
 The dreaming binary's maintenance jobs read the last five. A memory type
 earns a map of content at `moc_min_members` notes, the map splits into pages
