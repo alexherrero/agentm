@@ -8,7 +8,7 @@ parent: memory-storage-seam.md
 ---
 
 > [!NOTE]
-> **Proposed** (2026-06-28). Full design under the [Memory↔Storage Seam](memory-storage-seam), governing no code yet — the two how-to deliverables are [Back the vault with Google Drive](Back-The-Vault-With-Drive) and [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault).
+> **Proposed** (2026-06-28); **the git transport closed, 2026-11-03** (see the amendment log). Full design under the [Memory↔Storage Seam](memory-storage-seam). The two how-to deliverables are [Back the vault with Google Drive](Back-The-Vault-With-Drive) and [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault). The `vault-git` plugin it planned was never built: the memory daemon keeps the vault in a local git repository itself, and an off-device copy is a push to a remote you choose.
 
 # Vault Storage & Presentation Design
 
@@ -146,6 +146,8 @@ Pilot **git-only on a single machine** before any cross-machine or autosync auto
 Backing out any transport choice is re-pointing sync, not a data operation (see [Migrations](#migrations)) — content is never rewritten, so rollback is always clean. No service SLAs / monitoring / logging apply: this is operator-side transport, not a running service.
 
 ## Amendment log
+
+**2026-11-03 — the git transport closed: not built, and not needed.** The memory daemon's `serve` commits the vault to a git repository in the vault folder as notes change, which gives per-commit history and rollback with no plugin, and `agentmd status` reports the last push to the repository's remote. An off-device copy is a scheduled `git push` to a private remote of the operator's choosing, run outside AgentM; a Drive or other file-sync mirror of the same folder can sit alongside it. *Why not build `vault-git`:* its init, sync and doctor scripts would duplicate what the daemon and one push job already do, and its session-end autosync would add a second committer to a repository the daemon already writes. The git-XOR-Drive call above no longer holds as written: git history is always on, and Drive, if used, mirrors files beside it. *Re-audit* if a second machine needs to write the same vault, which brings back the merge-conflict and multi-writer questions this design worked through.
 
 **2026-06-28 — reviewed + confirmed in the final AG design sweep.** Content-final; kept **`proposed`** (it governs no code until a transport ships, so it stays out of the governing-design resolver). The five pre-lift open calls are all resolved — Drive = how-to, Obsidian = how-to, the one-way read-only mirror cut from v1, the `obsidian-vault`/`vault-obsidian` naming collision dissolved, team-vault noted. The **git-XOR-Drive** transport call + **Obsidian-as-optional-presentation** stand.
 

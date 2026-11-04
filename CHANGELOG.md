@@ -49,6 +49,8 @@ A session trace is titled by what the session is for, not by the relay that open
 - **The scorecard's Retrieval rows are measured on the live index (task 196 step 1).** The section reprinted `shipped-baseline.json`, pinned at 2,883 documents, under a heading that said measured. It now runs `eval_retrieval_shipped.py` each night and prints the number with the date and document count, with the pin and its date beside it. With no run, the number is a dash and the reason says why; the pin never takes its place. The false-positive row was labelled "of 30 questions that should return nothing", which was wrong twice: it is now `near-miss false positives`, counting a near-miss question whose banned note is in the top 5. A run adds about 9 seconds to a job of about 84. The pin and `check-retrieval-regression` are unchanged.
 - **The AgentM Vault design records the save-time check (task 195 step 4).** One amendment, body and log together: a new passage in *Projects and tasks* on how a saved note is checked, and the morning note's new list. The CI-Gates reference gains a row for the save-time check.
 
+- **The vault storage design closes its git transport** (`wiki/designs/agentm-vault-storage-presentation.md`, `wiki/how-to/Back-The-Vault-With-Drive.md`). The planned `vault-git` plugin was never built: the memory daemon already commits the vault to its git repository, and an off-device copy is a scheduled push to a remote you choose. The design's amendment log records why, and the Drive how-to now treats Drive as a file mirror beside the daemon's git history instead of the alternative to it.
+
 ### Fixed
 
 - **The retrieval eval names a missing daemon binary.** `require_warm_embedder` let the `OSError` escape as a traceback; it is now a setup skip that says the binary could not be run, which is the reason the scorecard prints.
@@ -57,7 +59,7 @@ A session trace is titled by what the session is for, not by the relay that open
 
 ### Internal
 
-- **The retrieval eval follows retired project notes into `completed/`.** The content review of 2026-11-02 moved finished designs, plans, handoff packs and overtaken docs into each project's `completed/` folder, and AgentM's roadmap research into `research/`. Five frozen gold-set paths named files that had moved. A new `_RETIRE_REMAPS` table, the chain's last stage, sends each to its new home, and only once the vault holds the moved file and not the old one.
+- **The retrieval eval follows retired project notes into `completed/`.** The content review of 2026-11-02 moved finished designs, plans, handoff packs and overtaken docs into each project's `completed/` folder, and AgentM's roadmap research into `research/`. Five frozen gold-set paths named files that had moved. A new `_RETIRE_REMAPS` table, the chain's last stage, sends each to its new home, and only once the vault holds the moved file and not the old one. A second batch adds fourteen more (AgentM's shipped designs, and primos closed into `projects/completed/`), and `_STUB_REMAPS` follows a note whose old path now holds a pointer stub to the kept original, so dt05 still scores against the draft that answers it.
 
 ## [10.10.0] - 2026-10-27
 
