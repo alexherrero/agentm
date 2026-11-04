@@ -180,6 +180,23 @@ class MigratedPaths(unittest.TestCase):
             self.assertEqual(ev._remap_completed_tasks("projects/agentm/charter.md", vault),
                              "projects/agentm/charter.md")
 
+    def test_a_retired_project_note_follows_it_into_completed(self):
+        """The 2026-11-03 rulings: a finished project note moves to the
+        project's `completed/` folder. A gold path follows it only once the
+        vault holds the moved file and not the old one."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            gold, moved = ev._RETIRE_REMAPS[0]
+            (vault / gold).parent.mkdir(parents=True)
+            (vault / gold).write_text("x", encoding="utf-8")
+            self.assertEqual(ev._remap_retired(gold, vault), gold, "before the move")
+            (vault / moved).parent.mkdir(parents=True)
+            (vault / gold).rename(vault / moved)
+            self.assertEqual(ev._remap_retired(gold, vault), moved)
+            self.assertEqual(ev._remap_retired(gold, None), gold, "no vault, no remap")
+            self.assertEqual(ev._remap_retired("projects/agentm/charter.md", vault),
+                             "projects/agentm/charter.md", "a path with no row stays")
+
     def test_a_projects_remap_target_that_has_since_moved_is_followed(self):
         """A frozen gold path the projects migration remapped to an open task
         still reaches the task once it has closed and moved on."""
