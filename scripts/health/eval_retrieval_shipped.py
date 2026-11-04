@@ -379,14 +379,54 @@ _RETIRE_REMAPS = (
      "projects/agentm/completed/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md"),
     ("projects/crickets/_harness/archive/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
      "projects/crickets/completed/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md"),
+    # The second batch of the same rulings: AgentM's shipped designs, the vault-backing
+    # recast, and primos closed into projects/completed/.
+    ("projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/roadmap-finish/PROMPTS-FIN.md"),
+    ("projects/agentm/_harness/designs/vault-backing/vault-git.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/vault-backing/vault-git.md"),
+    ("projects/primos/_index.md",
+     "projects/completed/primos/charter.md"),
+    ("projects/agentm/_harness/designs/architecture-governance/hld-template.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/architecture-governance/hld-template.md"),
+    ("projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/architecture-governance/PHASE-5B-wiki-transformation.md"),
+    ("projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/consolidation-review/E0-coordinator-log.md"),
+    ("projects/agentm/_harness/designs/v5-10-coordinator-team/design-doc.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/v5-10-coordinator-team/design-doc.md"),
+    ("projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/architecture-governance/abbreviated-design-template.md"),
+    ("projects/agentm/_harness/designs/friday/F1-REAUDIT.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/friday/F1-REAUDIT.md"),
+    ("projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md",  # harness-deprecation: the frozen gold set's spelling, remapped at score time
+     "projects/agentm/completed/designs/roadmap-finish/friday-surface-audit.md"),
+    ("projects/primos/analysis/03-review/verdict.md",
+     "projects/completed/primos/analysis/03-review/verdict.md"),
+    ("projects/primos/decisions/launch-readiness-verdict.md",
+     "projects/completed/primos/decisions/launch-readiness-verdict.md"),
+    ("projects/primos/analysis/_summary.md",
+     "projects/completed/primos/analysis/_summary.md"),
 )
 
+
+# A retired note whose old path now holds a pointer stub, not the answer: the
+# stub exists, so the table above never fires for it. Taken whenever the vault
+# holds the kept original. dt05 asks whether Obsidian is a hard prerequisite;
+# the stub says where the draft went, the draft answers.
+_STUB_REMAPS = {
+    "projects/agentm/designs/vault-backing/vault-drive.md":
+        "projects/agentm/completed/designs/vault-backing/vault-drive.md",
+}
 
 def _remap_retired(path: str, vault_root: "Path | None | bool" = False) -> str:
     """A gold-set path as the retirement of project notes leaves it, when it has run."""
     root = _vault_root() if vault_root is False else vault_root
     if root is None:
         return path
+    stub = _STUB_REMAPS.get(path)
+    if stub is not None and (Path(root) / stub).exists():
+        return stub
     new = dict(_RETIRE_REMAPS).get(path)
     if new is None or (Path(root) / path).exists() or not (Path(root) / new).exists():
         return path

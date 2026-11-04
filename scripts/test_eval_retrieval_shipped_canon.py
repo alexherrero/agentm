@@ -197,6 +197,19 @@ class MigratedPaths(unittest.TestCase):
             self.assertEqual(ev._remap_retired("projects/agentm/charter.md", vault),
                              "projects/agentm/charter.md", "a path with no row stays")
 
+    def test_a_stubbed_note_follows_the_kept_original(self):
+        """A retired note whose old path holds a pointer stub resolves to the
+        kept original even though the stub exists, and only while it does."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            stub, kept = next(iter(ev._STUB_REMAPS.items()))
+            (vault / stub).parent.mkdir(parents=True)
+            (vault / stub).write_text("pointer", encoding="utf-8")
+            self.assertEqual(ev._remap_retired(stub, vault), stub, "no original kept yet")
+            (vault / kept).parent.mkdir(parents=True)
+            (vault / kept).write_text("draft", encoding="utf-8")
+            self.assertEqual(ev._remap_retired(stub, vault), kept)
+
     def test_a_projects_remap_target_that_has_since_moved_is_followed(self):
         """A frozen gold path the projects migration remapped to an open task
         still reaches the task once it has closed and moved on."""
