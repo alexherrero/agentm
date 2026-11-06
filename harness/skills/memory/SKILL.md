@@ -871,7 +871,7 @@ Per-source cache lives under `<vault>/_meta/skill-discovery-cache/`:
 
 #### Idle-hook integration
 
-`memory-reflect-idle` (the existing orphan-recovery hook from plan #7a part 3 task 4) extends to call `discover_skills.py --cadence-check` at the end of its run. Graceful-skip when `MEMORY_ROOT` is unset or `discover_skills.py` is absent. The cadence-check means the hook can fire frequently (every SessionStart) without hammering URLs.
+`memory-reflect-idle` (the SessionStart hook from plan #7a part 3 task 4; since task 199 it mines nothing) extends to call `discover_skills.py --cadence-check` at the end of its run. Graceful-skip when `MEMORY_ROOT` is unset or `discover_skills.py` is absent. The cadence-check means the hook can fire frequently (every SessionStart) without hammering URLs.
 
 #### Failure modes (graceful)
 

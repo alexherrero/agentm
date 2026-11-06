@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """Hook-firing tests for harness/hooks/memory-reflect-idle (Hardening I #45 task 6).
 
-Drives the bash idle/orphan-recovery hook as a subprocess, proving it ACTUALLY
-FIRES (the V4 #39 class of bug): an aged `.start` marker (a crashed session whose
-Stop never fired) is reflected retroactively and renamed `.start → .reflected`; a
-fresh marker is left alone (session may still be active); a `.reflected` marker
-past the GC window is deleted; and it graceful-skips (exit 0) when the memory
-skill is absent or there's no orphan work. It NEVER blocks session start.
+Drives the bash idle hook as a subprocess, proving it ACTUALLY FIRES (the V4
+#39 class of bug). Until task 199 it mined orphaned sessions from `.start`
+markers; mining moved to the night's lesson compile and the markers retired, so
+it now deletes every `.harness/session-id-*.start` and `.reflected` it finds,
+whatever its age, and mines nothing — not even the transcript an aged orphan
+marker names. It touches nothing else in `.harness/` and NEVER blocks session
+start.
 
-Hermetic: a fake `HOME` whose `.claude/.agentm-config.json` resolves reflect.py to
-THIS repo via `source_clones.agentm`. Marker ages are set deterministically via
-os.utime() against the DEFAULT idle (1h) + GC (30d) thresholds — no reliance on
-wall-clock timing.
+Hermetic: a fake `HOME` whose `.claude/.agentm-config.json` resolves the memory
+scripts to THIS repo via `source_clones.agentm`.
 
 Run: python3 scripts/test_memory_reflect_idle_hook.py
 Skipped on non-POSIX (bash hook).
@@ -34,8 +33,8 @@ _REPO = _HERE.parent
 _HOOK = _REPO / "harness" / "hooks" / "memory-reflect-idle" / "memory-reflect-idle.sh"
 
 _TRANSCRIPT = (
-    '{"type":"user","message":{"role":"user","content":"do the thing"}}\n'
-    '{"type":"assistant","message":{"role":"assistant","content":"done"}}\n'
+    '{"type":"user","message":{"role":"user","content":"Always put the summary at the top of the report."}}\n'
+    '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}\n'
 )
 _IDLE = 3600       # default MEMORY_IDLE_THRESHOLD_SEC (1h)
 _GC = 2592000      # default MEMORY_REFLECTED_GC_SEC (30d)
@@ -107,138 +106,61 @@ class TestMemoryReflectIdleHook(unittest.TestCase):
             cwd=str(self.proj), capture_output=True, text=True,
         )
 
-    # ── fires: orphan recovery ────────────────────────────────────────────────
+    # ── retired markers ──────────────────────────────────────────────────────
 
-    def test_orphan_recovery_reflects_aged_marker(self) -> None:
-        m = self._make_marker("orphan1", self._transcript(), ".start", age_sec=_IDLE + 1000)
+    def test_clears_every_retired_marker_whatever_its_age(self) -> None:
+        markers = [
+            self._make_marker("fresh", "x", ".start"),
+            self._make_marker("aged", self._transcript(), ".start", age_sec=_IDLE + 1000),
+            self._make_marker("recent", "x", ".reflected", age_sec=86400),
+            self._make_marker("old", "x", ".reflected", age_sec=_GC + 86400),
+        ]
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse(m.exists(), "aged .start marker not consumed")
-        self.assertTrue((self.hdir / "session-id-orphan1.reflected").is_file(),
-                        "orphan not renamed to .reflected after reflection")
+        for m in markers:
+            self.assertFalse(m.exists(), f"{m.name} not cleared")
+        self.assertIn("cleared 4 retired session markers", r.stderr)
 
-    # ── skips: already reflected, nothing new ─────────────────────────────────
-
-    def _processed(self, r) -> int:
-        m = re.search(r"processed (\d+) orphans", r.stderr)
-        self.assertIsNotNone(m, f"no orphan summary in stderr: {r.stderr!r}")
-        return int(m.group(1))
-
-    def test_already_reflected_and_transcript_unchanged_does_not_re_mine(self) -> None:
-        # The re-mine loop. `SessionStart` rewrites `.start` whenever it is
-        # absent, so a resumed session gets a fresh marker beside the
-        # `.reflected` one an earlier pass left — and this hook used to mine the
-        # whole transcript again on the strength of the `.start` alone, without
-        # ever looking at its sibling. Thirteen passes over one transcript is
-        # how one operator sentence became thirteen inbox files.
-        tp = self._transcript()
-        self._make_marker("done1", tp, ".reflected", age_sec=10)
-        m = self._make_marker("done1", tp, ".start", age_sec=_IDLE + 1000)
-        # Transcript last written before the reflection → nothing new to mine.
-        old = time.time() - 5000
-        os.utime(tp, (old, old))
+    def test_never_mines_an_orphan(self) -> None:
+        # The retired sweep mined the transcript an aged `.start` named and
+        # filed a card for its always-directive. Nothing is mined now.
+        self._make_marker("orphan1", self._transcript(), ".start", age_sec=_IDLE + 1000)
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self._processed(r), 0, "re-mined an already-reflected session")
-        self.assertFalse(m.exists(), "stale .start left behind to fire again next pass")
+        self.assertEqual(list((self.vault / "memory").rglob("*.md")), [])
+        self.assertNotIn("processed", r.stderr)
 
-    def test_already_reflected_but_transcript_grew_still_re_mines(self) -> None:
-        # The other half, and the reason the skip cannot be unconditional: a
-        # resumed session keeps appending turns after its first reflection, and
-        # those turns are exactly what orphan recovery exists to catch. Skipping
-        # on the marker alone would silently drop them.
-        tp = self._transcript()
-        self._make_marker("grew1", tp, ".reflected", age_sec=5000)
-        m = self._make_marker("grew1", tp, ".start", age_sec=_IDLE + 1000)
-        os.utime(tp, None)  # transcript touched now → newer than the reflection
+    def test_leaves_the_rest_of_harness_alone(self) -> None:
+        keep = [self.hdir / "PLAN.md", self.hdir / "progress.md", self.hdir / "session-id-notes.txt"]
+        for k in keep:
+            k.write_text("x", encoding="utf-8")
+        self._make_marker("s", "x", ".start")
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self._processed(r), 1, "new turns after a resume went unmined")
-        self.assertFalse(m.exists())
-
-    def test_rename_stamps_the_reflected_marker_with_the_reflection_time(self) -> None:
-        # `mv` preserves mtime, so before this the `.reflected` marker carried
-        # the time the SESSION STARTED, not the time it was reflected — which
-        # makes it useless as the "have we already done this?" comparison the
-        # two tests above depend on.
-        tp = self._transcript()
-        m = self._make_marker("stamp1", tp, ".start", age_sec=_IDLE + 1000)
-        before = time.time() - 60
-        r = self._run_hook(self._env())
-        self.assertEqual(r.returncode, 0, r.stderr)
-        reflected = self.hdir / "session-id-stamp1.reflected"
-        self.assertTrue(reflected.is_file())
-        self.assertGreater(reflected.stat().st_mtime, before,
-                           "reflected marker still carries the .start mtime")
-
-    def test_fresh_marker_is_left_alone(self) -> None:
-        # Age 0 < 1h threshold → the session may still be active; don't reflect.
-        m = self._make_marker("fresh1", self._transcript(), ".start", age_sec=0)
-        r = self._run_hook(self._env())
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(m.is_file(), "fresh marker wrongly consumed")
-        self.assertFalse((self.hdir / "session-id-fresh1.reflected").exists())
-
-    def test_aged_marker_missing_transcript_is_cleared_as_a_dead_pointer(self) -> None:
-        # Aged past the idle threshold with its transcript gone → nothing can ever
-        # be reflected from this marker, so it is deleted rather than skipped.
-        #
-        # This test previously asserted the opposite (`assertTrue(m.is_file())` —
-        # stays .start). That behavior was the leak: every such marker was skipped
-        # on every session forever, and 200 accumulated in this repo. The contract
-        # changed deliberately, so the assertion tracks it; the same intent is
-        # still being checked — what happens to an aged marker whose transcript is
-        # unresolvable — and the hook stays non-blocking either way.
-        m = self._make_marker("gone1", str(self.root / "absent.jsonl"), ".start",
-                              age_sec=_IDLE + 1000)
-        r = self._run_hook(self._env())
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse(m.exists(), "dead pointer not cleared — the leak is back")
-        self.assertFalse(m.with_suffix(".reflected").exists(),
-                         "an unreflectable marker must not be recorded as reflected")
-        self.assertIn("transcript not found", r.stderr)
-
-    def test_fresh_marker_missing_transcript_is_left_alone(self) -> None:
-        # The guard on the above: a marker still INSIDE the idle threshold may be a
-        # live session whose transcript has not been written yet. Deleting it would
-        # destroy an active session's pending reflection, so the age gate — not the
-        # missing transcript alone — is what licenses the delete.
-        m = self._make_marker("fresh1", str(self.root / "absent.jsonl"), ".start",
-                              age_sec=0)
-        r = self._run_hook(self._env())
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(m.is_file(), "a fresh marker was deleted — active session at risk")
-
-    # ── GC of old .reflected markers ──────────────────────────────────────────
-
-    def test_gc_deletes_old_reflected_marker(self) -> None:
-        old = self._make_marker("done1", "x", ".reflected", age_sec=_GC + 86400)
-        r = self._run_hook(self._env())
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse(old.exists(), "old .reflected marker not GC'd")
-
-    def test_gc_keeps_recent_reflected_marker(self) -> None:
-        recent = self._make_marker("done2", "x", ".reflected", age_sec=86400)  # 1d < 30d
-        r = self._run_hook(self._env())
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(recent.is_file(), "recent .reflected marker wrongly GC'd")
+        for k in keep:
+            self.assertTrue(k.is_file(), k.name)
 
     # ── graceful-skip / non-blocking ─────────────────────────────────────────
 
     def test_no_markers_is_nonblocking(self) -> None:
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("cleared", r.stderr)
 
-    def test_graceful_skip_when_resolver_unavailable(self) -> None:
+    def test_no_harness_dir_is_nonblocking(self) -> None:
+        shutil.rmtree(self.hdir)
+        r = self._run_hook(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_graceful_when_resolver_unavailable(self) -> None:
         bare = self.root / "barehome"
         bare.mkdir()
         env = self._env()
         env["HOME"] = str(bare)
-        # Even an aged orphan can't be processed without the memory skill → skip.
         m = self._make_marker("orphan2", self._transcript(), ".start", age_sec=_IDLE + 1000)
         r = self._run_hook(env)
         self.assertEqual(r.returncode, 0)
-        self.assertTrue(m.is_file(), "marker touched despite unresolvable reflect.py")
+        self.assertFalse(m.exists(), "a retired marker is cleared without the memory skill too")
 
     # ── vector-stack removal (was: vec-index drain wiring) ───────────────────
 

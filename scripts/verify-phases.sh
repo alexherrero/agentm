@@ -224,23 +224,34 @@ run_lifecycle "[local]" "$L_PROJ" "$L_PROJ/.harness" 0 \
 assert_absent "[local] isolation: no registry under device prefix" "$L_PREFIX/_meta/repos.json"
 assert_absent "[local] isolation: no registry under project tree"  "$L_PROJ/_meta/repos.json"
 
-# ── phase-dispatch bridge: session-marker scenarios ─────────────────────────
-# Verifies the concurrency-safe session-discovery that post-work relies on.
+# ── phase-dispatch bridge: session discovery ────────────────────────────────
+# post-work stages the session's new slice for the night's lesson compile
+# (task 199). It finds the session in the host's transcript folder for the
+# project root — never through a `.harness` marker, which retired — and plans a
+# `lesson_compile.py collect`, never a `reflect.py --route`.
 # Relocated from verify-v4.sh (V5-5 task 4 fracture) — Developer-half owner.
-echo "verify-phases: ── bridge: session-marker scenarios ──"
+echo "verify-phases: ── bridge: session discovery ──"
 SM_PROJ="$SCRATCH/sm-proj"; mkdir -p "$SM_PROJ/.harness"
 SM_VAULT="$SCRATCH/sm-vault"; mkdir -p "$SM_VAULT"
-sm_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_ROOT="$SM_VAULT" HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
+SM_CLAUDE="$SCRATCH/sm-claude-projects"; mkdir -p "$SM_CLAUDE"
+sm_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_ROOT="$SM_VAULT" AGENTM_CLAUDE_PROJECTS="$SM_CLAUDE" \
+  HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
 
 PW_SM0="$(sm_hm phase-dispatch post-work --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
-assert_contains "bridge: post-work no marker → no-session"          "$PW_SM0" '"status": "no-session"'
+assert_contains "bridge: post-work no transcript → no-session"      "$PW_SM0" '"status": "no-session"'
 printf 'session_id: s\ntranscript: /tmp/t.jsonl\n' > "$SM_PROJ/.harness/session-id-s.start"
+PW_SMM="$(sm_hm phase-dispatch post-work --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
+assert_contains "bridge: a retired marker names no session"         "$PW_SMM" '"status": "no-session"'
+SM_FOLDER="$SM_CLAUDE/$("$PY" -c "import sys; sys.path.insert(0, '$S'); import session_binding, os; print(session_binding.host_folder_name(os.path.realpath('$SM_PROJ')))")"
+mkdir -p "$SM_FOLDER"; printf '{}\n' > "$SM_FOLDER/s.jsonl"
 PW_SM1="$(sm_hm phase-dispatch post-work --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
-assert_contains "bridge: post-work single marker → dry-run plan"    "$PW_SM1" '"status": "dry-run"'
-assert_contains "bridge: post-work reflect uses --route"            "$PW_SM1" '--route'
-printf 'session_id: s2\ntranscript: /tmp/t2.jsonl\n' > "$SM_PROJ/.harness/session-id-s2.start"
-PW_SM2="$(sm_hm phase-dispatch post-work --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
-assert_contains "bridge: 2 markers → ambiguous-session"             "$PW_SM2" '"status": "ambiguous-session"'
+assert_contains "bridge: post-work transcript → dry-run plan"       "$PW_SM1" '"status": "dry-run"'
+assert_contains "bridge: post-work stages through lesson_compile"   "$PW_SM1" 'lesson_compile.py'
+if printf '%s' "$PW_SM1" | grep -qF -- '--route'; then
+  fail "bridge: post-work never routes" "got: $(printf '%s' "$PW_SM1" | tr '\n' '~' | cut -c1-140)"
+else
+  pass "bridge: post-work never routes"
+fi
 PR_SM="$(sm_hm phase-dispatch post-release --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
 assert_contains "bridge: post-release runs discover-skills"         "$PR_SM"  'discover_skills.py'
 
@@ -249,15 +260,13 @@ assert_contains "bridge: post-release runs discover-skills"         "$PR_SM"  'd
 # post-release retired in agentm-vault plan 04 (52 markers, none ever
 # composed; crystallize is a weekly dreaming phase and an on-request synthesis
 # now, never a session's act). Narrowed to the one thing still worth proving
-# end to end: a real, non-dry-run dispatch with a live session marker stages
-# nothing and reports no crystallization key.
+# end to end: a real, non-dry-run dispatch stages nothing and reports no
+# crystallization key.
 echo "verify-phases: ── crystallization staging (retired) ──"
 CZ_PROJ="$SCRATCH/cz-proj"; mkdir -p "$CZ_PROJ/.harness"
 CZ_VAULT="$SCRATCH/cz-vault"; mkdir -p "$CZ_VAULT"
-cz_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_ROOT="$CZ_VAULT" HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
-CZ_T1="$SCRATCH/cz-transcript-1.jsonl"; : > "$CZ_T1"
-printf 'session_id: cz-s1\nstarted_at: 2026-01-01T00:00:00Z\ntranscript: %s\n' "$CZ_T1" \
-  > "$CZ_PROJ/.harness/session-id-cz-s1.start"
+cz_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_ROOT="$CZ_VAULT" AGENTM_CLAUDE_PROJECTS="$SCRATCH/cz-claude-projects" \
+  HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
 CZ_R1="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
 CZ_R2="$(cz_hm phase-dispatch post-release --project-root "$CZ_PROJ" 2>/dev/null)"
 # Both dispatches really ran (a status came back), so the absences below are

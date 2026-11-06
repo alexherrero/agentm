@@ -66,6 +66,7 @@ _REGISTERED = {
 _CLAUDE_ONLY = (
     "memory-reflect-stop", "memory-reflect-idle", "harness-context-session-start",
     "compaction-marker", "compaction-reanchor", "verify-dispatch", "vault-worktree-guard",
+    "memory-automemory-note",
 )
 
 _ALWAYS_LOAD_SENTINEL = "ALWAYS_LOAD_SENTINEL_BODY"
@@ -446,24 +447,29 @@ class TestMarkerProof(_AgyFixture):
                                self._payload(transcript=elsewhere)))
         self.assertEqual(self._markers(), [])
 
-    def test_control_without_either_guard_the_marker_is_written_and_the_idle_job_mines_it(self) -> None:
-        # What the guards prevent. The same agy payload, the host variable removed
-        # and the transcript somewhere that does not look like agy's: the hook cannot
-        # tell it from Claude Code's, writes the marker, and the idle job hands the
-        # agy file to reflect.py. If this stops holding, the tests above prove nothing.
+    def test_without_either_guard_no_marker_is_written_and_the_idle_job_mines_nothing(self) -> None:
+        # Until task 199 this was the control: the same agy payload with both
+        # guards removed wrote a marker, and the idle job handed the agy file to
+        # reflect.py. The markers retired with Stop-hook mining, so the guards no
+        # longer stand between an agy file and the miner: nothing writes a
+        # marker, and a stale one planted by hand is cleared, not mined.
         elsewhere = self.root / "conversations" / "conv-1" / "log.jsonl"
         elsewhere.parent.mkdir(parents=True)
         elsewhere.write_text("{}\n", encoding="utf-8")
         cmd = self._without(self._command("memory-recall-session-start"), "AGENTM_HOST=antigravity ")
         self._answer(self._run(cmd, self._payload(transcript=elsewhere)))
-        (marker,) = self._markers()
-        self.assertIn(f"transcript: {elsewhere}", marker.read_text(encoding="utf-8"))
-        self._idle_sweep()
-        self.assertEqual(self._reflected(), [str(elsewhere)])
+        self.assertEqual(self._markers(), [])
+        stale = self.ws / ".harness" / "session-id-old.start"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_text(f"session_id: old\ntranscript: {elsewhere}\n", encoding="utf-8")
+        r = self._idle_sweep()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(stale.exists())
+        self.assertEqual(self._reflected(), [])
 
-    def test_claude_code_still_writes_its_marker(self) -> None:
-        # The guard must not cost Claude Code its crash recovery: no host variable,
-        # a Claude-shaped payload straight into the hook.
+    def test_claude_code_writes_no_marker_either(self) -> None:
+        # Claude Code's sessions are found by the night's scan of every
+        # transcript folder now, not by a marker (task 199).
         hook = _HOOKS / "memory-recall-session-start" / "memory-recall-session-start.sh"
         claude_transcript = self.fake_home / ".claude" / "projects" / "-ws" / "sess-9.jsonl"
         r = subprocess.run(
@@ -471,8 +477,7 @@ class TestMarkerProof(_AgyFixture):
             input=json.dumps({"session_id": "sess-9", "cwd": str(self.ws),
                               "transcript_path": str(claude_transcript), "source": "startup"}))
         self.assertEqual(r.returncode, 0, r.stderr)
-        marker = self.ws / ".harness" / "session-id-sess-9.start"
-        self.assertIn(f"transcript: {claude_transcript}", marker.read_text(encoding="utf-8"))
+        self.assertEqual(self._markers(), [])
 
     # ── the other thing Claude's alone: the shown-once briefing ──────────────
 

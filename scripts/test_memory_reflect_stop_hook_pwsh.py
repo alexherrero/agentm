@@ -2,13 +2,14 @@
 """Hook-firing tests for harness/hooks/memory-reflect-stop/memory-reflect-stop.ps1 (GH #72).
 
 pwsh twin of test_memory_reflect_stop_hook.py. Like memory-recall-session-
-start.ps1, this hook resolves reflect.py via a RELATIVE path from cwd
-(.claude/skills/memory/scripts/reflect.py), not the source_clones.agentm
+start.ps1, this hook resolves episodic_trace.py via a RELATIVE path from cwd
+(.claude/skills/memory/scripts/episodic_trace.py), not the source_clones.agentm
 bridge the bash hook uses — the fixture copies the real memory scripts
 tree into place instead of faking HOME for that purpose. HOME is still
 faked here, though: the hook computes its transcript path as
 $HOME/.claude/projects/<cwd-slug>/<sid>.jsonl, so the fixture needs a real
-transcript file there.
+transcript file there. Since task 199 the hook writes the session's trace and
+mines nothing: no card, no marker.
 
 Skipped when pwsh isn't on PATH (runs on macOS CI too, not Windows-only).
 
@@ -31,8 +32,8 @@ _MEMORY_SCRIPTS_SRC = _REPO / "harness" / "skills" / "memory" / "scripts"
 _PWSH = shutil.which("pwsh")
 
 _TRANSCRIPT = (
-    '{"type":"user","message":{"role":"user","content":"do the thing"}}\n'
-    '{"type":"assistant","message":{"role":"assistant","content":"done"}}\n'
+    '{"type":"user","message":{"role":"user","content":"Always put the summary at the top of the report."}}\n'
+    '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}\n'
 )
 
 
@@ -111,16 +112,21 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
             input=raw_payload, env=env, cwd=str(self.proj), capture_output=True, text=True,
         )
 
-    def test_fires_reflect_and_renames_marker(self) -> None:
+    def _traces(self) -> list:
+        return sorted((self.vault / "memory" / "episodic").glob("*.md"))
+
+    def _cards(self) -> list:
+        return [p for p in (self.vault / "memory").rglob("*.md") if "episodic" not in p.parts]
+
+    def test_writes_the_trace_and_mines_nothing(self) -> None:
         # No `transcript_path` on this payload — the computed-fallback branch.
         self._place_transcript("s1", self.proj)
-        start = self.proj / ".harness" / "session-id-s1.start"
-        start.write_text("session_id: s1\ntranscript: x\n", encoding="utf-8")
         r = self._run_hook(self._env(), sid="s1")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn('"pass": "summary"', r.stdout)
-        self.assertFalse(start.exists(), ".start marker not renamed")
-        self.assertTrue((self.proj / ".harness" / "session-id-s1.reflected").is_file())
+        self.assertEqual(len(self._traces()), 1)
+        self.assertEqual(self._cards(), [])
+        self.assertNotIn('"pass"', r.stdout)
+        self.assertEqual(list((self.proj / ".harness").glob("session-id-*")), [])
 
     def test_payload_transcript_path_is_used_verbatim(self) -> None:
         # Outside the fake HOME's projects tree entirely, so no slug — POSIX or
@@ -129,12 +135,9 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         elsewhere = self.root / "elsewhere" / "conversation.jsonl"
         elsewhere.parent.mkdir(parents=True)
         elsewhere.write_text(_TRANSCRIPT, encoding="utf-8")
-        start = self.proj / ".harness" / "session-id-p1.start"
-        start.write_text("session_id: p1\ntranscript: x\n", encoding="utf-8")
         r = self._run_hook(self._env(), sid="p1", transcript_path=str(elsewhere))
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn('"pass": "summary"', r.stdout)
-        self.assertTrue((self.proj / ".harness" / "session-id-p1.reflected").is_file())
+        self.assertEqual(len(self._traces()), 1)
 
     def test_absent_payload_transcript_path_skips_without_guessing(self) -> None:
         # The computed transcript is deliberately present and must stay unmined.
@@ -142,7 +145,7 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         ghost = self.root / "nope" / "gone.jsonl"
         r = self._run_hook(self._env(), sid="p2", transcript_path=str(ghost))
         self.assertEqual(r.returncode, 0)
-        self.assertNotIn('"pass": "summary"', r.stdout)
+        self.assertEqual(self._traces(), [])
 
     def test_graceful_skip_no_stdin(self) -> None:
         r = self._run_hook(self._env(), raw_payload="")
@@ -153,19 +156,17 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertIn("transcript not found", r.stderr)
 
-    def test_dedup_guard_already_reflected(self) -> None:
+    def test_an_old_marker_changes_nothing(self) -> None:
         self._place_transcript("s2", self.proj)
-        reflected = self.proj / ".harness" / "session-id-s2.reflected"
-        reflected.write_text("session_id: s2\n", encoding="utf-8")
+        (self.proj / ".harness" / "session-id-s2.reflected").write_text("session_id: s2\n", encoding="utf-8")
         r = self._run_hook(self._env(), sid="s2")
         self.assertEqual(r.returncode, 0)
-        self.assertIn("already reflected", r.stderr)
-        self.assertNotIn('"pass": "summary"', r.stdout)
+        self.assertNotIn("already reflected", r.stderr)
+        self.assertEqual(len(self._traces()), 1)
 
     def test_a_later_turn_reaches_the_trace_after_the_first_stop(self) -> None:
-        # Task 192 step 7b, the pwsh twin of the bash test: the dedup guard
-        # keeps the route pass to one run, and the trace still follows every
-        # turn, so an idea said after the first one reaches `## Ideas`.
+        # Task 192 step 7b, the pwsh twin of the bash test: the trace follows
+        # every turn, so an idea said after the first one reaches `## Ideas`.
         tp = self.root / "session-s5.jsonl"
 
         def turn(text, uuid, said):
@@ -175,10 +176,8 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
 
         tp.write_text(turn("Look at the release branch.", "u1", "It is clean.")
                       + turn("I want the summary at the top of the report.", "u2", "Done."), encoding="utf-8")
-        (self.proj / ".harness" / "session-id-s5.start").write_text("session_id: s5\n", encoding="utf-8")
         first = self._run_hook(self._env(), sid="s5", transcript_path=str(tp))
         self.assertEqual(first.returncode, 0, first.stderr)
-        self.assertTrue((self.proj / ".harness" / "session-id-s5.reflected").is_file())
         traces = list((self.vault / "memory" / "episodic").glob("*.md"))
         self.assertEqual(len(traces), 1, "the first Stop writes the session's trace")
 
@@ -187,20 +186,15 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
             f.write(turn(idea, "u3", "Noted."))
         second = self._run_hook(self._env(), sid="s5", transcript_path=str(tp))
         self.assertEqual(second.returncode, 0, second.stderr)
-        self.assertIn("already reflected", second.stderr, "the route pass still runs once")
-        self.assertNotIn('"pass": "summary"', second.stdout)
         text = traces[0].read_text(encoding="utf-8")
         self.assertIn("## Ideas", text)
         self.assertIn(idea, text)
 
-    def test_no_vault_graceful_skip_marker_untouched(self) -> None:
+    def test_no_vault_graceful_skip(self) -> None:
         self._place_transcript("s3", self.proj)
-        start = self.proj / ".harness" / "session-id-s3.start"
-        start.write_text("session_id: s3\ntranscript: x\n", encoding="utf-8")
         r = self._run_hook(self._env(with_vault=False), sid="s3")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(start.is_file(), "marker wrongly renamed without a vault")
-        self.assertFalse((self.proj / ".harness" / "session-id-s3.reflected").exists())
+        self.assertEqual(self._traces(), [])
 
 
 if __name__ == "__main__":

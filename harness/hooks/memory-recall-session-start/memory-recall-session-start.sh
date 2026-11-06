@@ -10,33 +10,22 @@
 
 set -uo pipefail  # NOTE: no -e — graceful-skip pattern; hook must never block session boot.
 
-# ── Crash-recovery marker (plan #7a part 3 task 6) ─────────────────────────
-# Parse the SessionStart event's stdin JSON for transcript_path, session_id,
-# cwd and source, then write a `.harness/session-id-<sid>.start` marker. The
-# marker enables the idle hook's orphan-recovery sweep — if Stop never fires
-# (Claude Code crashed, OS killed it, force quit), the marker stays as .start
-# past the idle threshold and the idle hook reflects retroactively on next
-# SessionStart.
-#
-# Marker writes are best-effort: failure here doesn't block recall (which is
-# the primary purpose of this hook). If .harness/ doesn't exist or session_id
-# can't be parsed, we skip the marker + continue to recall.
+# The payload is read once, here. This hook wrote a `.harness/session-id-<sid>.start`
+# marker for the idle hook's orphan sweep until task 199, which moved mining to
+# the night (lesson_compile.py, keyed by a per-session bookmark in the engine's
+# state directory); nothing reads a marker any more, so none is written.
 PAYLOAD="$(cat 2>/dev/null || true)"
 
 # ── Which host fired this? (Antigravity registration, 2026-10-30) ───────────
-# The marker and the briefing below are Claude Code's. The marker names the
-# host's transcript and memory-reflect-idle later mines that file in Claude's
-# JSONL format; an Antigravity transcript is a different format, so a marker
-# written for one would send the idle job a file it cannot read, with --route
-# aimed at the real vault. The briefing records that it was shown, so a session
-# that only injects it into a model (an `agy -p` run nobody reads) would use up
-# the operator's one showing. Neither is wanted from another host.
+# The briefing below is Claude Code's. It records that it was shown, so a
+# session that only injects it into a model (an `agy -p` run nobody reads)
+# would use up the operator's one showing.
 #
-# Two independent signals, either of which skips both. The registration for a
+# Two independent signals, either of which skips it. The registration for a
 # non-Claude host sets AGENTM_HOST (anything but claude-code, or unset, which is
 # every Claude Code registration that exists). And a transcript under a .gemini
 # directory is never Claude's, whatever the environment says, so a registration
-# that lost the variable still cannot leave a marker behind.
+# that lost the variable still cannot use up the showing.
 HOST_IS_CLAUDE=1
 case "${AGENTM_HOST:-claude-code}" in
     claude-code) ;;
@@ -52,70 +41,6 @@ except Exception:
 ' 2>/dev/null)" in
         */.gemini/*) HOST_IS_CLAUDE=0 ;;
     esac
-fi
-
-if [[ "$HOST_IS_CLAUDE" == 1 ]] && [[ -n "$PAYLOAD" ]] && [[ -d .harness || -w . ]]; then
-    PARSED="$(printf '%s' "$PAYLOAD" | python3 -c '
-import json, sys
-try:
-    d = json.loads(sys.stdin.read())
-except Exception:
-    sys.exit(0)
-sid = d.get("session_id") or ""
-cwd = d.get("cwd") or ""
-tp = d.get("transcript_path") or ""
-src = d.get("source") or ""
-if sid:
-    print(f"{sid}\t{cwd}\t{tp}\t{src}")
-' 2>/dev/null)"
-    if [[ -n "$PARSED" ]]; then
-        SESSION_ID="$(printf '%s' "$PARSED" | cut -f1)"
-        SESSION_CWD="$(printf '%s' "$PARSED" | cut -f2)"
-        PAYLOAD_TRANSCRIPT="$(printf '%s' "$PARSED" | cut -f3)"
-        SESSION_SOURCE="$(printf '%s' "$PARSED" | cut -f4)"
-        if [[ -z "$SESSION_CWD" ]]; then
-            SESSION_CWD="$(pwd)"
-        fi
-        # Transcript path: the payload's own `transcript_path` is authoritative
-        # (see memory-reflect-stop.sh for the full rationale — Claude Code sends
-        # it on every event, and the session-id → filename correspondence it
-        # replaces is not guaranteed across resume / compact / fork / `/branch`).
-        # The computed path stays as a fallback for hosts too old to send it.
-        if [[ -n "$PAYLOAD_TRANSCRIPT" ]]; then
-            TRANSCRIPT_PATH="$PAYLOAD_TRANSCRIPT"
-        else
-            # Fallback slug (same formula as memory-reflect-stop.sh): '/' and
-            # '.' both become '-', with NO extra leading '-' — the path is
-            # absolute, so `tr` already supplies the leading one. The old extra
-            # prefix wrote '--Users-...' into every marker, a path matching no
-            # directory Claude Code creates, so no marker was ever resolvable
-            # and the orphan sweeper skipped all of them forever (200
-            # accumulated before this was found).
-            CWD_SLUG="$(printf '%s' "$SESSION_CWD" | tr '/.' '--')"
-            TRANSCRIPT_PATH="$HOME/.claude/projects/${CWD_SLUG}/${SESSION_ID}.jsonl"
-        fi
-        # Ensure .harness/ exists; if not, create it (operator may not have
-        # initialized the harness in this project yet — marker is still useful
-        # to write, even if it gets ignored by other tooling).
-        mkdir -p .harness 2>/dev/null
-        MARKER=".harness/session-id-${SESSION_ID}.start"
-        # Write only if not present already (idempotent; SessionStart fires
-        # multiple times per session in resume/clear/compact scenarios).
-        #
-        # `source:` records which of those fired (startup / resume / clear /
-        # compact / fork). Nothing reads it — the idle hook and
-        # orchestration_phase.py both key on `transcript:` alone — but it is
-        # the one field that makes an odd marker diagnosable instead of
-        # mysterious, and it costs a line.
-        if [[ ! -f "$MARKER" ]]; then
-            cat > "$MARKER" 2>/dev/null << MARKER_EOF || true
-session_id: ${SESSION_ID}
-started_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-source: ${SESSION_SOURCE:-unknown}
-transcript: ${TRANSCRIPT_PATH}
-MARKER_EOF
-        fi
-    fi
 fi
 
 # ── Recall pass ────────────────────────────────────────────────────────────

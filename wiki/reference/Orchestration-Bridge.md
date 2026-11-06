@@ -43,13 +43,15 @@ You fire a named phase chain through the kernel core.
 
 ### `post-work` chain
 
-This chain fires after a `/work` phase session ends. The chain discovers the session's start-marker file (`.harness/session-id-<id>.start`):
+This chain fires after a `/work` phase session ends. It stages the session's new slice for that night's lesson compile (`lesson_compile.py collect --transcript <path>`), through the same per-session bookmark the night reads, and files nothing. It finds the session in the host's transcript folder for the project root:
 
-| Marker state | Result |
+| Session found | Result |
 |---|---|
-| None found | `status: no-session` — graceful no-op. |
-| Multiple found | `status: ambiguous-session` — concurrency-safe no-op. |
-| Exactly one | Runs the reflect chain scoped to that session's transcript (`--route` flag). |
+| None | `status: no-session` — graceful no-op. |
+| `--session-id` given | That session's transcript in the folder, else `no-session`. |
+| No id given | The folder's newest transcript. Staging another session's slice early is harmless, since the night collects every session anyway. |
+
+A successful stage reports `status: staged`; a failed one `stage-failed`, and the cooldown is not consumed. Until task 199 this chain ran `reflect.py --route` against the one `.harness/session-id-<id>.start` marker it found; the markers retired with Stop-hook mining.
 
 ### `post-release` chain
 

@@ -3,17 +3,14 @@
 
 Drives the bash Stop hook as a subprocess with a synthetic Stop event JSON on
 stdin, proving it ACTUALLY FIRES (the V4 #39 class of bug): with a transcript at
-the computed path + a vault it reflects and renames the session marker
-`.start → .reflected`; it graceful-skips (exit 0) on every absent-input path
-(no stdin / no session_id / transcript missing / dedup marker / no resolver /
-no vault); and it NEVER blocks session end.
+the computed path + a vault it writes the session's episodic trace, on every
+Stop; it mines nothing, files no card and touches no `.harness` marker (task
+199 moved mining to the night's lesson compile); it graceful-skips (exit 0) on
+every absent-input path (no stdin / no session_id / transcript missing / no
+resolver / no vault); and it NEVER blocks session end.
 
-Both state modes are covered via the vault axis: vault-present (reflect routes +
-renames the marker) vs no-vault / repo-local (reflect --route can't persist → the
-hook graceful-skips, marker untouched, exit 0).
-
-Hermetic: a fake `HOME` whose `.claude/.agentm-config.json` resolves reflect.py
-to THIS repo via `source_clones.agentm`, and which doubles as the
+Hermetic: a fake `HOME` whose `.claude/.agentm-config.json` resolves the memory
+scripts to THIS repo via `source_clones.agentm`, and which doubles as the
 `~/.claude/projects/<cwd-slug>/<sid>.jsonl` transcript root the hook computes.
 
 Run: python3 scripts/test_memory_reflect_stop_hook.py
@@ -34,8 +31,8 @@ _REPO = _HERE.parent
 _HOOK = _REPO / "harness" / "hooks" / "memory-reflect-stop" / "memory-reflect-stop.sh"
 
 _TRANSCRIPT = (
-    '{"type":"user","message":{"role":"user","content":"do the thing"}}\n'
-    '{"type":"assistant","message":{"role":"assistant","content":"done"}}\n'
+    '{"type":"user","message":{"role":"user","content":"Always put the summary at the top of the report."}}\n'
+    '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}\n'
 )
 
 
@@ -108,21 +105,37 @@ class TestMemoryReflectStopHook(unittest.TestCase):
             cwd=str(cwd), capture_output=True, text=True,
         )
 
+    def _traces(self) -> list:
+        return sorted((self.vault / "memory" / "episodic").glob("*.md"))
+
+    def _cards(self) -> list:
+        return [p for p in (self.vault / "memory").rglob("*.md") if "episodic" not in p.parts]
+
     # ── fires ────────────────────────────────────────────────────────────────
 
-    def test_fires_reflect_and_renames_marker(self) -> None:
+    def test_writes_the_trace_and_mines_nothing(self) -> None:
         # No `transcript_path` on this payload — the computed-fallback branch,
-        # which stays live for hosts too old to send the field.
+        # which stays live for hosts too old to send the field. The transcript
+        # holds an always-directive the retired miner filed as a HIGH card; the
+        # hook now writes the trace and nothing else (task 199).
         self._place_transcript("s1", self.proj)
-        start = self.proj / ".harness" / "session-id-s1.start"
-        start.write_text("session_id: s1\ntranscript: x\n", encoding="utf-8")
         r = self._run_hook(self._env(), sid="s1")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn('"pass": "summary"', r.stdout)                 # reflect.py output passed through
-        self.assertIn("Mined", r.stderr)                            # transparency line
-        # The hook-owned proof that reflection succeeded: .start → .reflected.
-        self.assertFalse(start.exists(), ".start marker not renamed")
-        self.assertTrue((self.proj / ".harness" / "session-id-s1.reflected").is_file())
+        self.assertEqual(len(self._traces()), 1, "the Stop writes the session's trace")
+        self.assertEqual(self._cards(), [], "the Stop hook files no card")
+        self.assertNotIn('"pass"', r.stdout, "reflect.py is not run")
+        self.assertEqual(list((self.proj / ".harness").glob("session-id-*")), [], "no marker")
+
+    def test_an_old_marker_changes_nothing(self) -> None:
+        # A `.reflected` marker from before task 199 once made this hook skip.
+        # Nothing reads one now: the trace is written regardless.
+        self._place_transcript("s2", self.proj)
+        reflected = self.proj / ".harness" / "session-id-s2.reflected"
+        reflected.write_text("session_id: s2\n", encoding="utf-8")
+        r = self._run_hook(self._env(), sid="s2")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self._traces()), 1)
+        self.assertNotIn("already reflected", r.stderr)
 
     # ── transcript_path from the payload (the normal route) ──────────────────
 
@@ -133,13 +146,9 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         elsewhere = self.root / "elsewhere" / "conversation.jsonl"
         elsewhere.parent.mkdir(parents=True)
         elsewhere.write_text(_TRANSCRIPT, encoding="utf-8")
-        start = self.proj / ".harness" / "session-id-p1.start"
-        start.write_text("session_id: p1\ntranscript: x\n", encoding="utf-8")
         r = self._run_hook(self._env(), sid="p1", transcript_path=str(elsewhere))
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn('"pass": "summary"', r.stdout)
-        self.assertIn(f"candidates from {elsewhere}", r.stderr)
-        self.assertTrue((self.proj / ".harness" / "session-id-p1.reflected").is_file())
+        self.assertEqual(len(self._traces()), 1)
 
     def test_payload_transcript_path_wins_over_the_computed_one(self) -> None:
         # Both paths hold a real transcript, and they disagree. The payload's
@@ -148,23 +157,24 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         self._place_transcript("p2", self.proj)
         elsewhere = self.root / "elsewhere2" / "conversation.jsonl"
         elsewhere.parent.mkdir(parents=True)
-        elsewhere.write_text(_TRANSCRIPT, encoding="utf-8")
+        elsewhere.write_text(_TRANSCRIPT.replace("summary at the top", "glossary at the end"), encoding="utf-8")
         r = self._run_hook(self._env(), sid="p2", transcript_path=str(elsewhere))
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn(f"candidates from {elsewhere}", r.stderr)
-        self.assertNotIn(str(self._transcript_path("p2", self.proj)), r.stderr)
+        text = self._traces()[0].read_text(encoding="utf-8")
+        self.assertIn("glossary at the end", text)
+        self.assertNotIn("summary at the top", text)
 
     def test_absent_payload_transcript_path_skips_without_guessing(self) -> None:
         # A payload path that doesn't exist must NOT silently retry the computed
         # one. Falling back there would be guessing at a path again, which is
         # what reading the payload exists to retire — so the computed transcript
-        # is deliberately present here and must still go unmined.
+        # is deliberately present here and must still go unread.
         self._place_transcript("p3", self.proj)
         ghost = self.root / "nope" / "gone.jsonl"
         r = self._run_hook(self._env(), sid="p3", transcript_path=str(ghost))
         self.assertEqual(r.returncode, 0)
         self.assertIn(f"transcript not found: {ghost}", r.stderr)
-        self.assertNotIn('"pass": "summary"', r.stdout)
+        self.assertEqual(self._traces(), [])
 
     # ── graceful-skip / non-blocking ─────────────────────────────────────────
 
@@ -184,26 +194,11 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertIn("transcript not found", r.stderr)
 
-    def test_dedup_guard_already_reflected(self) -> None:
-        # A .reflected marker means the post-/work phase dispatch already mined
-        # this session → the Stop hook must skip (avoid double-route).
-        self._place_transcript("s2", self.proj)
-        reflected = self.proj / ".harness" / "session-id-s2.reflected"
-        reflected.write_text("session_id: s2\n", encoding="utf-8")
-        r = self._run_hook(self._env(), sid="s2")
-        self.assertEqual(r.returncode, 0)
-        self.assertIn("already reflected", r.stderr)
-        self.assertNotIn('"pass": "summary"', r.stdout)             # reflect.py not invoked
-        self.assertTrue(reflected.is_file())
-
     def test_a_later_turn_reaches_the_trace_after_the_first_stop(self) -> None:
-        # Task 192 step 7b. The Stop hook fires after every turn, and its first
-        # success renames `.start` to `.reflected`, so every later Stop of the
-        # session meets the dedup guard. The guard keeps the route pass from
-        # filing twice; it must not keep the trace from following the session,
-        # because the trace's `## Ideas` is the only record an idea gets. Before
-        # this, an idea said after a session's first turn in a `.harness/` repo
-        # never reached it (5 of 7 in the 2026-09-16..10-16 window).
+        # Task 192 step 7b. The Stop hook fires after every turn, and the trace
+        # must follow the session: its `## Ideas` is the only record an idea
+        # gets. An idea said after a session's first turn once never reached it
+        # (5 of 7 in the 2026-09-16..10-16 window).
         tp = self.root / "session-s5.jsonl"
 
         def turn(text, uuid, said):
@@ -213,10 +208,8 @@ class TestMemoryReflectStopHook(unittest.TestCase):
 
         tp.write_text(turn("Look at the release branch.", "u1", "It is clean.")
                       + turn("I want the summary at the top of the report.", "u2", "Done."), encoding="utf-8")
-        (self.proj / ".harness" / "session-id-s5.start").write_text("session_id: s5\n", encoding="utf-8")
         first = self._run_hook(self._env(), sid="s5", transcript_path=str(tp))
         self.assertEqual(first.returncode, 0, first.stderr)
-        self.assertTrue((self.proj / ".harness" / "session-id-s5.reflected").is_file())
         traces = list((self.vault / "memory" / "episodic").glob("*.md"))
         self.assertEqual(len(traces), 1, "the first Stop writes the session's trace")
         self.assertNotIn("## Ideas", traces[0].read_text(encoding="utf-8"))
@@ -226,24 +219,19 @@ class TestMemoryReflectStopHook(unittest.TestCase):
             f.write(turn(idea, "u3", "Noted."))
         second = self._run_hook(self._env(), sid="s5", transcript_path=str(tp))
         self.assertEqual(second.returncode, 0, second.stderr)
-        self.assertIn("already reflected", second.stderr, "the route pass still runs once")
-        self.assertNotIn('"pass": "summary"', second.stdout)
         self.assertEqual(list((self.vault / "memory" / "episodic").glob("*.md")), traces, "still one trace")
         text = traces[0].read_text(encoding="utf-8")
         self.assertIn("## Ideas", text)
         self.assertIn(idea, text)
         self.assertIn('"message": "u3"', text)
 
-    def test_no_vault_graceful_skip_marker_untouched(self) -> None:
-        # Repo-local / no-vault mode: reflect --route can't persist → the hook
-        # reports + exits 0, and leaves the .start marker for a later pass.
+    def test_no_vault_graceful_skip(self) -> None:
+        # No vault resolves: the trace has nowhere to go, and the hook still
+        # exits 0 without blocking session end.
         self._place_transcript("s3", self.proj)
-        start = self.proj / ".harness" / "session-id-s3.start"
-        start.write_text("session_id: s3\ntranscript: x\n", encoding="utf-8")
         r = self._run_hook(self._env(with_vault=False), sid="s3")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(start.is_file(), "marker wrongly renamed without a vault")
-        self.assertFalse((self.proj / ".harness" / "session-id-s3.reflected").exists())
+        self.assertEqual(self._traces(), [])
 
     def test_graceful_skip_when_resolver_unavailable(self) -> None:
         bare = self.root / "barehome"

@@ -2,14 +2,14 @@
 """Hook-firing tests for harness/hooks/memory-reflect-idle/memory-reflect-idle.ps1 (GH #72).
 
 pwsh twin of test_memory_reflect_idle_hook.py. Same relative-path resolution
-divergence as the other three pwsh hooks tested this plan: reflect.py /
-orchestration_idle.py are all resolved relative to cwd
+divergence as the other three pwsh hooks tested this plan: orchestration_idle.py
+is resolved relative to cwd
 (.claude/skills/memory/scripts/...), not the source_clones.agentm bridge the
 bash hook's own fixture uses — so this fixture copies the real memory
 scripts tree into place instead of faking HOME's .agentm-config.json.
 
-Marker ages are set deterministically via os.utime() against the hook's own
-default thresholds (idle 1h, GC 30d) — no reliance on wall-clock timing. The
+Since task 199 the hook mines nothing and deletes every retired
+`.harness/session-id-*.start` / `.reflected` marker, whatever its age. The
 vault's auto-orchestration-config.md disables the detached idle chain so it
 can't race test teardown, matching the bash fixture's own neutralization.
 
@@ -103,7 +103,8 @@ class TestMemoryReflectIdleHookPwsh(unittest.TestCase):
 
     def _transcript(self) -> str:
         tp = self.root / "t.jsonl"
-        tp.write_text('{"type":"user","message":{"role":"user","content":"hi"}}\n', encoding="utf-8")
+        tp.write_text('{"type":"user","message":{"role":"user","content":"Always put the summary at the top."}}\n',
+                      encoding="utf-8")
         return str(tp)
 
     def _run_hook(self, env: dict, cwd: Path | None = None):
@@ -112,55 +113,47 @@ class TestMemoryReflectIdleHookPwsh(unittest.TestCase):
             input="{}", env=env, cwd=str(cwd or self.proj), capture_output=True, text=True,
         )
 
-    def test_orphan_recovery_reflects_aged_marker(self) -> None:
-        m = self._make_marker("orphan1", self._transcript(), ".start", age_sec=_IDLE + 1000)
+    def test_clears_every_retired_marker_whatever_its_age(self) -> None:
+        markers = [
+            self._make_marker("fresh", "x", ".start"),
+            self._make_marker("aged", self._transcript(), ".start", age_sec=_IDLE + 1000),
+            self._make_marker("recent", "x", ".reflected", age_sec=86400),
+            self._make_marker("old", "x", ".reflected", age_sec=_GC + 86400),
+        ]
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse(m.exists(), "aged .start marker not consumed")
-        self.assertTrue((self.hdir / "session-id-orphan1.reflected").is_file(),
-                         "orphan not renamed to .reflected after reflection")
+        for m in markers:
+            self.assertFalse(m.exists(), f"{m.name} not cleared")
+        self.assertIn("cleared 4 retired session markers", r.stderr)
 
-    def test_fresh_marker_is_left_alone(self) -> None:
-        m = self._make_marker("fresh1", self._transcript(), ".start", age_sec=0)
+    def test_never_mines_an_orphan(self) -> None:
+        self._make_marker("orphan1", self._transcript(), ".start", age_sec=_IDLE + 1000)
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(m.is_file(), "fresh marker wrongly consumed")
-        self.assertFalse((self.hdir / "session-id-fresh1.reflected").exists())
+        self.assertEqual(list((self.vault / "memory").rglob("*.md")), [])
 
-    def test_aged_marker_missing_transcript_is_skipped(self) -> None:
-        m = self._make_marker("gone1", str(self.root / "absent.jsonl"), ".start",
-                               age_sec=_IDLE + 1000)
+    def test_leaves_the_rest_of_harness_alone(self) -> None:
+        keep = [self.hdir / "PLAN.md", self.hdir / "session-id-notes.txt"]
+        for k in keep:
+            k.write_text("x", encoding="utf-8")
+        self._make_marker("s", "x", ".start")
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(m.is_file())
-        self.assertIn("transcript not found", r.stderr)
-
-    def test_gc_deletes_old_reflected_marker(self) -> None:
-        old = self._make_marker("done1", "x", ".reflected", age_sec=_GC + 86400)
-        r = self._run_hook(self._env())
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse(old.exists(), "old .reflected marker not GC'd")
-
-    def test_gc_keeps_recent_reflected_marker(self) -> None:
-        recent = self._make_marker("done2", "x", ".reflected", age_sec=86400)  # 1d < 30d
-        r = self._run_hook(self._env())
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(recent.is_file(), "recent .reflected marker wrongly GC'd")
+        for k in keep:
+            self.assertTrue(k.is_file(), k.name)
 
     def test_no_markers_is_nonblocking(self) -> None:
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
 
-    def test_graceful_skip_when_resolver_unavailable(self) -> None:
+    def test_graceful_when_the_memory_skill_is_absent(self) -> None:
         bare_proj = self.root / "bareproj"
         (bare_proj / ".harness").mkdir(parents=True)
         m = bare_proj / ".harness" / "session-id-orphan2.start"
         m.write_text("session_id: orphan2\ntranscript: x\n", encoding="utf-8")
-        t = time.time() - (_IDLE + 1000)
-        os.utime(m, (t, t))
         r = self._run_hook(self._env(), cwd=bare_proj)
         self.assertEqual(r.returncode, 0)
-        self.assertTrue(m.is_file(), "marker touched despite unresolvable reflect.py")
+        self.assertFalse(m.exists(), "a retired marker is cleared without the memory skill too")
 
     def test_hook_does_not_invoke_the_removed_vector_index(self) -> None:
         """Mirrors the bash twin: this pinned the drain's wiring until the

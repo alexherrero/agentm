@@ -80,6 +80,7 @@ try {
         'hooks/compaction-reanchor/compaction-reanchor.ps1'
         'hooks/vault-worktree-guard/vault-worktree-guard.ps1'
         'hooks/vault-worktree-guard/vault_worktree_guard.py'
+        'hooks/memory-automemory-note/memory-automemory-note.ps1'
     )
     foreach ($p in $expected) {
         if (-not (Test-Path -LiteralPath (Join-Path $prefix $p))) {
@@ -197,6 +198,7 @@ try {
         'compaction-marker'
         'compaction-reanchor'
         'vault-worktree-guard'
+        'memory-automemory-note'
     )
     if (Test-Path -LiteralPath $settingsPath) {
         $settings = Get-Content -Raw -LiteralPath $settingsPath | ConvertFrom-Json

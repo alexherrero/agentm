@@ -4,18 +4,21 @@
 
 Covers both dispatches' contract: the enable_phase_integration toggle, the
 phase_reflect cooldown (+ separate phase_release chain), dry-run (plan-only, no
-state), and — for post-work — the dedup cooperation with the memory-reflect-stop
-hook via the `.reflected` session marker (reflect → rename .start→.reflected;
-already-reflected → skip; failed reflect → leave marker for the Stop hook;
-cooldown → leave marker for the Stop hook). The injectable runner is the seam.
+state), and — for post-work — staging the session's new slice for the night's
+lesson compile through `lesson_compile.py collect` (task 199): the session is
+found in the host's transcript folder for the project root, never through a
+`.harness` marker, and nothing is mined or filed. The injectable runner is the
+seam.
 
 Run: python3 scripts/test_orchestration_phase.py
 """
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -52,15 +55,16 @@ def _cfg(**over) -> dict:
     return c
 
 
-def _write_start_marker(project_root: Path, sid: str, transcript: str) -> Path:
-    d = project_root / ".harness"
-    d.mkdir(parents=True, exist_ok=True)
-    m = d / f"session-id-{sid}.start"
-    m.write_text(
-        f"session_id: {sid}\nstarted_at: 2026-06-01T11:00:00Z\ntranscript: {transcript}\n",
-        encoding="utf-8",
-    )
-    return m
+def _transcript(projects: Path, project_root: Path, sid: str, mtime: float | None = None) -> Path:
+    """A transcript where the host files one for a session in `project_root`."""
+    import session_binding
+    folder = projects / session_binding.host_folder_name(str(project_root.resolve()))
+    folder.mkdir(parents=True, exist_ok=True)
+    t = folder / f"{sid}.jsonl"
+    t.write_text('{"type": "user"}\n', encoding="utf-8")
+    if mtime is not None:
+        os.utime(t, (mtime, mtime))
+    return t
 
 
 class TestPostWork(unittest.TestCase):
@@ -69,113 +73,101 @@ class TestPostWork(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.vault = self.root / "vault"
         self.vault.mkdir()
+        self.projects = self.root / "claude-projects"
+        self._env = mock.patch.dict(os.environ, {"AGENTM_CLAUDE_PROJECTS": str(self.projects)})
+        self._env.start()
 
     def tearDown(self) -> None:
+        self._env.stop()
         self.tmp.cleanup()
 
-    def test_reflects_marks_and_records_fire(self) -> None:
-        marker = _write_start_marker(self.root, "sid-1", "/tmp/t.jsonl")
+    def test_stages_the_session_and_records_fire(self) -> None:
+        t = _transcript(self.projects, self.root, "sid-1")
         runner = _FakeRunner()
         out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=runner)
-        self.assertEqual(out["status"], "reflected")
-        # marker renamed .start → .reflected (so the Stop hook skips)
-        self.assertFalse(marker.exists())
-        self.assertTrue((self.root / ".harness" / "session-id-sid-1.reflected").exists())
-        # right reflect argv
+        self.assertEqual(out["status"], "staged")
         name, argv = runner.calls[0]
         self.assertEqual(name, "reflect")
-        self.assertIn("--summary", argv)
-        self.assertIn("--route", argv)
-        self.assertEqual(argv[1], "/tmp/t.jsonl")
-        # fire recorded under the phase_reflect chain
+        self.assertTrue(argv[0].endswith("lesson_compile.py"))
+        self.assertEqual(argv[1:4], ["collect", "--transcript", str(t)])
         self.assertIn("phase_reflect", ao.load_state(self.vault)["last_fire"])
 
+    def test_never_mines_or_files(self) -> None:
+        # Task 199: the regex miner stops filing on its own. The dispatch only
+        # stages a slice; it never runs reflect.py and never routes.
+        _transcript(self.projects, self.root, "sid-1")
+        runner = _FakeRunner()
+        op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=runner)
+        for _, argv in runner.calls:
+            self.assertFalse(any(a.endswith("reflect.py") for a in argv), argv)
+            self.assertNotIn("--route", argv)
+
+    def test_writes_no_marker(self) -> None:
+        _transcript(self.projects, self.root, "sid-1")
+        op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=_FakeRunner())
+        self.assertEqual(list(self.root.glob(".harness/session-id-*")), [])
+
     def test_disabled_is_skip(self) -> None:
-        _write_start_marker(self.root, "sid-1", "/tmp/t.jsonl")
+        _transcript(self.projects, self.root, "sid-1")
         runner = _FakeRunner()
         out = op.post_work_reflect(self.vault, self.root, _cfg(enable_phase_integration=False), _NOW, runner=runner)
         self.assertEqual(out["status"], "disabled")
         self.assertEqual(runner.calls, [])
 
-    def test_no_session_marker(self) -> None:
+    def test_no_session(self) -> None:
         out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=_FakeRunner())
         self.assertEqual(out["status"], "no-session")
 
-    def test_already_reflected_dedup(self) -> None:
-        # Defensive: a `.reflected` sibling coexisting with `.start` → skip.
-        marker = _write_start_marker(self.root, "sid-1", "/tmp/t.jsonl")
-        marker.with_suffix(".reflected").write_text("x", encoding="utf-8")
-        runner = _FakeRunner()
-        out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=runner)
-        self.assertEqual(out["status"], "already-reflected")
-        self.assertEqual(runner.calls, [])
-
-    def test_cooldown_leaves_marker_for_stop_hook(self) -> None:
-        marker = _write_start_marker(self.root, "sid-1", "/tmp/t.jsonl")
+    def test_cooldown_stages_nothing(self) -> None:
+        _transcript(self.projects, self.root, "sid-1")
         op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=_FakeRunner())  # fires
-        # re-marker the (now-reflected) session as a fresh start to simulate a 2nd /work
-        marker2 = _write_start_marker(self.root, "sid-2", "/tmp/t2.jsonl")
         runner = _FakeRunner()
         out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW + timedelta(minutes=10), runner=runner)
         self.assertEqual(out["status"], "cooldown")
         self.assertEqual(runner.calls, [])
-        self.assertTrue(marker2.exists())  # NOT renamed → Stop hook will reflect it
 
-    def test_reflect_failure_leaves_marker_and_no_fire(self) -> None:
-        marker = _write_start_marker(self.root, "sid-1", "/tmp/t.jsonl")
+    def test_stage_failure_does_not_consume_the_cooldown(self) -> None:
+        _transcript(self.projects, self.root, "sid-1")
         runner = _FakeRunner(results={"reflect": {"returncode": 2, "stdout": "", "stderr": "vault?", "timed_out": False}})
         out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=runner)
-        self.assertEqual(out["status"], "reflect-failed")
-        self.assertTrue(marker.exists())  # still .start → Stop hook retries
-        self.assertNotIn("phase_reflect", ao.load_state(self.vault)["last_fire"])  # cooldown not consumed
+        self.assertEqual(out["status"], "stage-failed")
+        self.assertNotIn("phase_reflect", ao.load_state(self.vault)["last_fire"])
 
-    def test_two_markers_is_ambiguous_and_defers(self) -> None:
-        # Adversarial #1 (concurrency): two coexisting .start markers (concurrent
-        # agents in one repo, or an active session beside a recent orphan) must
-        # NOT be guessed by mtime — reflecting the wrong session would burn the
-        # shared cooldown for it. Defer to the session-exact Stop hook instead.
-        m1 = _write_start_marker(self.root, "sid-cur", "/tmp/cur.jsonl")
-        m2 = _write_start_marker(self.root, "sid-other", "/tmp/other.jsonl")
+    def test_newest_transcript_without_a_session_id(self) -> None:
+        _transcript(self.projects, self.root, "sid-old", mtime=1_000_000)
+        new = _transcript(self.projects, self.root, "sid-new", mtime=2_000_000)
         runner = _FakeRunner()
-        out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=runner)
-        self.assertEqual(out["status"], "ambiguous-session")
-        self.assertEqual(runner.calls, [])                      # nothing reflected
-        self.assertTrue(m1.exists() and m2.exists())           # neither renamed
-        self.assertFalse(ao.state_path(self.vault).exists())   # cooldown not burned
+        op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, runner=runner)
+        self.assertEqual(runner.calls[0][1][3], str(new))
 
-    def test_session_id_targets_exact_marker_amid_others(self) -> None:
-        # Even with multiple markers, an explicit session id targets precisely.
-        _write_start_marker(self.root, "sid-cur", "/tmp/cur.jsonl")
-        _write_start_marker(self.root, "sid-other", "/tmp/other.jsonl")
+    def test_session_id_targets_its_own_transcript_amid_others(self) -> None:
+        cur = _transcript(self.projects, self.root, "sid-cur", mtime=1_000_000)
+        _transcript(self.projects, self.root, "sid-other", mtime=2_000_000)
         runner = _FakeRunner()
         out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, session_id="sid-cur", runner=runner)
-        self.assertEqual(out["status"], "reflected")
-        self.assertEqual(runner.calls[0][1][1], "/tmp/cur.jsonl")  # the exact one
-        self.assertTrue((self.root / ".harness" / "session-id-sid-cur.reflected").exists())
-        self.assertTrue((self.root / ".harness" / "session-id-sid-other.start").exists())  # untouched
+        self.assertEqual(out["status"], "staged")
+        self.assertEqual(runner.calls[0][1][3], str(cur))
 
-    def test_session_id_already_reflected(self) -> None:
-        (self.root / ".harness").mkdir(parents=True, exist_ok=True)
-        (self.root / ".harness" / "session-id-sid-x.reflected").write_text("x", encoding="utf-8")
+    def test_unknown_session_id_is_no_session(self) -> None:
+        _transcript(self.projects, self.root, "sid-other")
         runner = _FakeRunner()
         out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, session_id="sid-x", runner=runner)
-        self.assertEqual(out["status"], "already-reflected")
+        self.assertEqual(out["status"], "no-session")
         self.assertEqual(runner.calls, [])
 
-    def test_explicit_transcript_without_marker(self) -> None:
+    def test_explicit_transcript(self) -> None:
         runner = _FakeRunner()
         out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, transcript="/tmp/explicit.jsonl", runner=runner)
-        self.assertEqual(out["status"], "reflected")
-        self.assertEqual(runner.calls[0][1][1], "/tmp/explicit.jsonl")
+        self.assertEqual(out["status"], "staged")
+        self.assertEqual(runner.calls[0][1][3], "/tmp/explicit.jsonl")
 
     def test_dry_run_no_side_effects(self) -> None:
-        marker = _write_start_marker(self.root, "sid-1", "/tmp/t.jsonl")
+        _transcript(self.projects, self.root, "sid-1")
         runner = _FakeRunner()
         out = op.post_work_reflect(self.vault, self.root, _cfg(), _NOW, dry_run=True, runner=runner)
         self.assertEqual(out["status"], "dry-run")
-        self.assertIn("--route", out["argv"])
+        self.assertIn("collect", out["argv"])
         self.assertEqual(runner.calls, [])
-        self.assertTrue(marker.exists())                       # not renamed
         self.assertFalse(ao.state_path(self.vault).exists())   # no state write
 
 
@@ -219,10 +211,9 @@ class TestPostRelease(unittest.TestCase):
         # A phase_reflect fire must NOT block a post-release refresh (separate
         # chains, same cooldown value).
         root = self.vault / "proj"
-        (root / ".harness").mkdir(parents=True)
-        (root / ".harness" / "session-id-s.start").write_text(
-            "session_id: s\ntranscript: /tmp/t.jsonl\n", encoding="utf-8")
-        op.post_work_reflect(self.vault, root, _cfg(), _NOW, runner=_FakeRunner())   # phase_reflect fires
+        root.mkdir(parents=True)
+        op.post_work_reflect(self.vault, root, _cfg(), _NOW, transcript="/tmp/t.jsonl",
+                             runner=_FakeRunner())   # phase_reflect fires
         out = op.post_release_refresh(self.vault, _cfg(), _NOW, runner=_FakeRunner())  # phase_release independent
         self.assertEqual(out["status"], "ran")
 

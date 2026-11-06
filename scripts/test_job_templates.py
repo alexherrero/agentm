@@ -116,8 +116,15 @@ class JobTemplatesLoad(unittest.TestCase):
         sorts after it by name: the idea judge writes its night's counts before
         the binary runs, so the binary's facet reports them and its `Ideas.md`
         rebuild lists a card a repeat changed.
+
+        `dreaming-lessons` (task 199) is the night's first step, at `order: 0`:
+        the operator ruled on 2026-11-06 that the lesson compile is a dreaming
+        step that runs before enrichment, so a lesson it writes or augments is
+        judged the same night, and before the binary, whose promote job then
+        sees the night's lessons on disk. The hourly ingest sweep also sorts at
+        order 0, and before it by name, when both are due in one cycle.
         """
-        night = ["enrich-nightly", "judge-ideas-nightly", "dreaming", "restated-nightly", "crystallize-weekly", "dream",
+        night = ["dreaming-lessons", "enrich-nightly", "judge-ideas-nightly", "dreaming", "restated-nightly", "crystallize-weekly", "dream",
                  "corpus-scorecard", "morning-note", "observability-email-daily"]
         with tempfile.TemporaryDirectory() as td:
             jobs = Path(td) / "jobs"
@@ -138,6 +145,9 @@ class JobTemplatesLoad(unittest.TestCase):
         # night work, and a window on them would stall them all day.
         others = [n for n, j in loaded.items() if j.window and n not in night and n not in evening]
         self.assertEqual(others, [])
+        sweep = loaded["capture-ingest-sweep"]
+        self.assertLess((sweep.order, sweep.name),
+                        (loaded["dreaming-lessons"].order, "dreaming-lessons"))
 
     def test_the_second_spending_job_ships_off_and_declares_its_budget(self):
         """A job that spends is armed by a person, never by an update.

@@ -46,6 +46,11 @@ assert_contains() {
   if printf '%s' "$2" | grep -qF -- "$3"; then pass "$1"
   else fail "$1" "expected substring: '$3'  |  got: $(printf '%s' "$2" | tr '\n' '~' | cut -c1-140)"; fi
 }
+# assert_not_contains <desc> <haystack> <needle>
+assert_not_contains() {
+  if printf '%s' "$2" | grep -qF -- "$3"; then fail "$1" "unexpected substring: '$3'"
+  else pass "$1"; fi
+}
 # assert_equals <desc> <actual> <expected>
 assert_equals() {
   if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "want '[$3]'  got '[$2]'"; fi
@@ -81,9 +86,8 @@ assert_contains "config: defaults parse (idle cooldown=24)"     "$CFG" '"idle_ch
 # render-only so it never mines a transcript.
 IDLE="$("$PY" "$S/orchestration_idle.py" --vault-path "$SV" --dry-run 2>/dev/null)"
 assert_contains "idle: dry-run status"                          "$IDLE" '"status": "dry-run"'
-assert_contains "idle: step 1 reflect-corpus"                   "$IDLE" 'reflect-corpus'
-assert_contains "idle: step 2 discover-skills"                  "$IDLE" 'discover-skills'
-assert_contains "idle: bounded (--max-batches)"                 "$IDLE" '"--max-batches"'
+assert_contains "idle: step 1 discover-skills"                  "$IDLE" 'discover-skills'
+assert_not_contains "idle: no mining step (task 199)"           "$IDLE" 'reflect.py'
 assert_contains "idle: bounded (--limit)"                       "$IDLE" '"--limit"'
 
 # ── G-seed: minimal inbox signal so emit-gating check has content ────────────

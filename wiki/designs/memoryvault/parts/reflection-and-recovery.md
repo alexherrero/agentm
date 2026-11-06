@@ -17,6 +17,9 @@ project:
 
 # Reflection sidecar + crash-recovery markers
 
+> [!NOTE]
+> **Superseded in part (2026-11-06, task 199).** This is the part as it was planned in May. Reflection no longer runs at a session's Stop, and the crash-recovery markers below are retired: SessionStart writes none, the Stop hook keeps only the session's trace, and the idle hook clears any marker left behind. Lessons are compiled at night, once per project per day, from every session's new slice past a per-session bookmark in the engine's state directory. [Experience & Dreaming](../../agentm-experience-and-dreaming.md) § Backward experience describes what runs.
+
 **Parent design:** [MemoryVault](../../memoryvault.md) — see Detailed Design §2 (Reflection sidecar) and §6 (Crash recovery — session-id markers) for full architectural context. These two subsections are bundled because they share the Stop/idle hook scaffolding.
 
 ## Scope

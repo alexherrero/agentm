@@ -21,10 +21,9 @@
 # the vault:
 #   - recall session-start:  always-load entry appears on stdout
 #   - recall prompt-submit:  a matching query surfaces the reference entry
-#   - reflect-stop:          --route succeeds; a real record lands on stdout
-#   - reflect-idle:          a stale orphan marker is renamed .start→.reflected
-#     (MEMORY_IDLE_THRESHOLD_SEC=0 makes a fresh marker instantly "stale" so
-#     the test doesn't need to fake mtimes)
+#   - reflect-stop:          the session's episodic trace lands in the vault
+#     (the hook mines nothing since task 199; the trace is what it writes)
+#   - reflect-idle:          every retired session marker is cleared
 #
 # It also covers transcript-path resolution on both branches: the hooks read
 # `transcript_path` off the payload (checks F + G), and fall back to the
@@ -44,15 +43,13 @@
 # location, but nothing resolving because the reader hadn't been taught to look
 # for it).
 #
-# Six assertions are vault-INDEPENDENT by construction and stay green under
-# fault mode: the three dead-pointer sweeps in section E, the absent-transcript
-# skip in section F, and the two marker-content checks in section G. They assert
-# pointer hygiene — that a marker is cleared, or carries the fields it was
-# handed, or that an unresolvable path is reported rather than guessed around —
-# all true whether or not a vault resolves. That is correct, not a gap: naming
-# it here so a reader running fault mode doesn't read those PASSes as teeth that
-# fell out. (The header previously claimed every assertion fails under fault; it
-# had not been true of section E since those checks landed.)
+# Five assertions are vault-INDEPENDENT by construction and stay green under
+# fault mode: the three retired-marker sweeps in section D, the absent-transcript skip
+# in section F, and the no-marker check in section G. They assert pointer
+# hygiene — that a marker is cleared or never written, or that an unresolvable
+# path is reported rather than guessed around — all true whether or not a vault
+# resolves. That is correct, not a gap: naming it here so a reader running fault
+# mode doesn't read those PASSes as teeth that fell out.
 #
 # Usage:   bash scripts/verify-hook-resolution.sh
 #          VERIFY_HOOK_RESOLUTION_FAULT=1 bash scripts/verify-hook-resolution.sh
@@ -157,7 +154,7 @@ CWD_SLUG="$(printf '%s' "$PROJ" | tr '/.' '--')"
 mkdir -p "$SCRATCH_HOME/.claude/projects/$CWD_SLUG"
 TRANSCRIPT="$SCRATCH_HOME/.claude/projects/$CWD_SLUG/$SESSION_ID.jsonl"
 printf '%s\n%s\n' \
-  '{"type":"user","message":{"role":"user","content":"remember the HOOK-RESOLUTION-CANARY deploy staging gate"}}' \
+  '{"type":"user","message":{"role":"user","content":"Always check the HOOK-RESOLUTION-CANARY deploy staging gate before a release."}}' \
   '{"type":"assistant","message":{"role":"assistant","content":"noted"}}' \
   > "$TRANSCRIPT"
 
@@ -189,57 +186,42 @@ PS_OUT="$(run_hook memory-recall-prompt-submit/memory-recall-prompt-submit.sh \
   '{"hookEventName":"UserPromptSubmit","prompt":"what do you know about the HOOK-RESOLUTION-CANARY deploy staging gate"}')"
 assert_contains "prompt-submit: reference entry resolved from the scratch vault" "$PS_OUT" "hook-resolution-canary-ref"
 
-# ── C. reflect-stop: --route succeeds; a real record lands on stdout ───────
+# ── C. reflect-stop: the session's trace lands in the scratch vault ────────
 # No `transcript_path` on this payload — this is the computed-fallback branch,
-# which stays live for hosts too old to send the field.
-RS_OUT="$(run_hook memory-reflect-stop/memory-reflect-stop.sh \
-  "{\"session_id\":\"$SESSION_ID\",\"cwd\":\"$PROJ\"}")"
-assert_contains "reflect-stop: --route emits a summary pass record (computed fallback)" "$RS_OUT" '"pass": "summary"'
+# which stays live for hosts too old to send the field. The hook mines nothing
+# since task 199; the trace is the vault-derived output that proves it ran.
+run_hook memory-reflect-stop/memory-reflect-stop.sh \
+  "{\"session_id\":\"$SESSION_ID\",\"cwd\":\"$PROJ\"}" >/dev/null
+TRACE_C="$(grep -rl "$SESSION_ID" "$SV/memory/episodic" 2>/dev/null | head -1)"
+if [ -n "$TRACE_C" ]; then TRACE_C_BODY="$(cat "$TRACE_C")"; else TRACE_C_BODY=""; fi
+assert_contains "reflect-stop: the session's trace lands in the vault (computed fallback)" \
+  "$TRACE_C_BODY" "HOOK-RESOLUTION-CANARY"
 
-# ── D. reflect-idle: orphan marker renamed .start→.reflected iff resolvable ─
+# ── D. reflect-idle: every retired session marker is cleared ───────────────
+# Nothing writes or reads a `.harness/session-id-*` marker since task 199; the
+# idle hook deletes whatever an earlier version left, resolvable or dead.
 rm -rf "$PROJ/.harness"; mkdir -p "$PROJ/.harness"
 MARKER="$PROJ/.harness/session-id-$SESSION_ID.start"
-cat > "$MARKER" <<EOF
-session_id: $SESSION_ID
-started_at: 2026-01-01T00:00:00Z
-transcript: $TRANSCRIPT
-EOF
-( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
-    bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
-assert_absent "reflect-idle: orphan marker consumed (.start removed)" "$MARKER"
-assert_exists "reflect-idle: orphan marker reflected (.reflected written)" "${MARKER%.start}.reflected"
-
-# ── E. reflect-idle: dead pointers are cleared, not skipped forever ─────────
-# An unresolvable marker past the idle threshold has nothing left to reflect
-# from. These two branches used to `continue`, which is how 200 markers piled up
-# in this repo — every one unresolvable (the '--' slug bug) and every one skipped
-# rather than cleared, on every session, for 57 days. A marker is a regenerable
-# pointer; the transcript, where one exists, is never touched.
+printf 'session_id: %s\ntranscript: %s\n' "$SESSION_ID" "$TRANSCRIPT" > "$MARKER"
 DEAD_GONE="$PROJ/.harness/session-id-dead-transcript.start"
-cat > "$DEAD_GONE" <<EOF
-session_id: dead-transcript
-started_at: 2026-01-01T00:00:00Z
-transcript: $PROJ/definitely-not-here.jsonl
-EOF
-DEAD_NOLINE="$PROJ/.harness/session-id-dead-noline.start"
-printf 'session_id: dead-noline\nstarted_at: 2026-01-01T00:00:00Z\n' > "$DEAD_NOLINE"
-( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
+printf 'session_id: dead-transcript\ntranscript: %s/definitely-not-here.jsonl\n' "$PROJ" > "$DEAD_GONE"
+OLD_REFLECTED="$PROJ/.harness/session-id-old.reflected"
+printf 'session_id: old\n' > "$OLD_REFLECTED"
+( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX \
     bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
-assert_absent "reflect-idle: dead pointer cleared (transcript missing)" "$DEAD_GONE"
-assert_absent "reflect-idle: dead pointer cleared (no transcript: line)" "$DEAD_NOLINE"
-assert_absent "reflect-idle: dead pointer not resurrected as .reflected" "${DEAD_GONE%.start}.reflected"
+assert_absent "reflect-idle: a resolvable retired marker is cleared, not mined" "$MARKER"
+assert_absent "reflect-idle: a dead retired marker is cleared" "$DEAD_GONE"
+assert_absent "reflect-idle: a .reflected marker is cleared" "$OLD_REFLECTED"
 
 # ── F. reflect-stop: the payload's transcript_path wins over the formula ────
 # The fixture lives outside $SCRATCH_HOME/.claude/projects/ entirely, so a hook
 # that computed the path instead of reading it would miss and skip. Asserted on
-# the success transparency line ("...candidates from <path>"), not merely on the
-# path appearing somewhere in stderr — the route-failed line names the transcript
-# too, so the looser match would go green on a hook that resolved the right file
-# and then failed to mine it, and would survive fault mode.
-RS_PAYLOAD_ERR="$(run_hook_stderr memory-reflect-stop/memory-reflect-stop.sh \
-  "{\"session_id\":\"$PAYLOAD_SESSION_ID\",\"cwd\":\"$PROJ\",\"transcript_path\":\"$PAYLOAD_TRANSCRIPT\"}")"
-assert_contains "reflect-stop: mined the payload-supplied transcript_path" \
-  "$RS_PAYLOAD_ERR" "candidates from $PAYLOAD_TRANSCRIPT"
+# the trace the payload session leaves in the vault, which only a hook that read
+# that file can write.
+run_hook memory-reflect-stop/memory-reflect-stop.sh \
+  "{\"session_id\":\"$PAYLOAD_SESSION_ID\",\"cwd\":\"$PROJ\",\"transcript_path\":\"$PAYLOAD_TRANSCRIPT\"}" >/dev/null
+TRACE_F="$(grep -rl "$PAYLOAD_SESSION_ID" "$SV/memory/episodic" 2>/dev/null | head -1)"
+assert_exists "reflect-stop: traced the payload-supplied transcript_path" "${TRACE_F:-$SV/memory/episodic/<none>}"
 
 # A payload path that does not exist is skipped, never silently retried against
 # the computed one — the whole point is to stop guessing at a path.
@@ -248,22 +230,12 @@ RS_GHOST_ERR="$(run_hook_stderr memory-reflect-stop/memory-reflect-stop.sh \
 assert_contains "reflect-stop: absent payload transcript_path skips (no fallback guess)" \
   "$RS_GHOST_ERR" "transcript not found: $PROJ/no-such-transcript.jsonl"
 
-# ── G. session-start: marker records the payload transcript_path + source ───
+# ── G. session-start: writes no marker ──────────────────────────────────────
 rm -rf "$PROJ/.harness"; mkdir -p "$PROJ/.harness"
 run_hook memory-recall-session-start/memory-recall-session-start.sh \
   "{\"session_id\":\"$PAYLOAD_SESSION_ID\",\"cwd\":\"$PROJ\",\"transcript_path\":\"$PAYLOAD_TRANSCRIPT\",\"source\":\"resume\"}" >/dev/null
-MARKER_G="$PROJ/.harness/session-id-$PAYLOAD_SESSION_ID.start"
-if [ -f "$MARKER_G" ]; then MARKER_G_BODY="$(cat "$MARKER_G")"; else MARKER_G_BODY=""; fi
-assert_contains "session-start: marker carries the payload transcript_path" \
-  "$MARKER_G_BODY" "transcript: $PAYLOAD_TRANSCRIPT"
-assert_contains "session-start: marker records the SessionStart source" "$MARKER_G_BODY" "source: resume"
-
-# The marker the payload wrote must be resolvable by the sweeper that reads it —
-# the round trip that was broken for 57 days, now closed without a formula.
-( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_ROOT -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
-    bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
-assert_exists "reflect-idle: payload-written marker reflects (not cleared as dead)" \
-  "${MARKER_G%.start}.reflected"
+assert_absent "session-start: writes no session marker (retired, task 199)" \
+  "$PROJ/.harness/session-id-$PAYLOAD_SESSION_ID.start"
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo
