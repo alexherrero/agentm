@@ -66,7 +66,8 @@ class FakeRunner:
     records every call."""
 
     def __init__(self, *, candidates=None, actions=None, search=None, cost=0.05, draft_error=False,
-                 digest="The session found that X fails without Y; adding Y fixed it."):
+                 digest="The session found that X fails without Y; adding Y fixed it.", draft_text=None):
+        self.draft_text = draft_text
         self.calls: list = []
         self.candidates = candidates if candidates is not None else []
         self.actions = actions if actions is not None else []
@@ -86,7 +87,7 @@ class FakeRunner:
             if "Draft the durable lessons" in (input_text or ""):
                 if self.draft_error:
                     return 1, "", "Not logged in"
-                result = json.dumps({"candidates": self.candidates})
+                result = self.draft_text if self.draft_text is not None else json.dumps({"candidates": self.candidates})
             else:
                 result = json.dumps({"actions": self.actions})
             return 0, json.dumps({"type": "result", "result": result, "total_cost_usd": self.cost,
@@ -405,6 +406,17 @@ class TestCompile(_Base):
         self.assertIn("-question", argv)
         self.assertNotIn("-project", argv, "the search is not narrowed to the project")
 
+    def test_a_lesson_card_is_not_crowded_out_by_project_files(self) -> None:
+        rows = [{"path": f"projects/alpha/lists/l{i}.md", "title": f"List {i}"} for i in range(12)]
+        rows.append({"path": "memory/procedural/warm.md", "title": "Warm the cache", "type": "workflow",
+                     "lifecycle": "active"})
+        runner = FakeRunner(search={"widget": rows})
+        ns = lc.search_neighbours("widget cache", vault_root=self.vault, memory_root=self.vault, runner=runner)
+        self.assertEqual(len(ns), 6)
+        self.assertEqual(ns[0].rel, "memory/procedural/warm.md")
+        argv = runner.calls[0][0]
+        self.assertGreaterEqual(int(argv[argv.index("-k") + 1]), 24)
+
     def test_at_most_five_writes_a_project(self) -> None:
         self.stage()
         topics = ["Rsync drops xattrs unless asked", "Plex needs a film refresh", "Go caches test results",
@@ -457,6 +469,24 @@ class TestCompile(_Base):
         out = self.compile(FakeRunner(draft_error=True))
         self.assertIn("draft", out["projects"][0]["error"])
         self.assertEqual(len(self.pending("alpha")), 1)
+
+    def test_an_unparseable_draft_is_an_error_not_a_quiet_day(self) -> None:
+        self.stage()
+        out = self.compile(FakeRunner(draft_text="I could not decide; here are some thoughts."))
+        self.assertEqual(out["projects"][0]["error"], "draft: the reply held no JSON")
+        self.assertEqual(len(self.pending("alpha")), 1, "kept for the next night")
+        (kept,) = (lc.state_dir() / "unparsed").glob("*-alpha-draft.txt")
+        self.assertIn("some thoughts", kept.read_text(encoding="utf-8"))
+
+    def test_a_reply_about_shell_code_still_parses(self) -> None:
+        # A raw newline inside a string and a backslash before `$` or `(` are
+        # what strict JSON refuses; a lesson about a shell is full of both.
+        raw = '{"candidates": [{"title": "Quote it", "lesson": "Use \\$HOME and \\(x\\)\nnot a pair: \\\\ ok"}]}'
+        data = lc.parse_json_reply(raw)
+        self.assertEqual(data["candidates"][0]["title"], "Quote it")
+        self.assertIn("\\$HOME", data["candidates"][0]["lesson"])
+        self.assertEqual(lc.parse_json_reply("```json\n{\"candidates\": []}\n```"), {"candidates": []})
+        self.assertIsNone(lc.parse_json_reply("no object at all"))
 
     def test_dry_run_writes_nothing(self) -> None:
         self.stage()
