@@ -455,7 +455,7 @@ def agy_paths(rows: list) -> list:
             args = call.get("args") if isinstance(call, dict) else None
             for key in _AGY_PATH_ARGS if isinstance(args, dict) else ():
                 val = args.get(key)
-                if isinstance(val, str) and val.startswith("/"):
+                if isinstance(val, str) and (val.startswith("/") or Path(val).is_absolute()):
                     out.append(val)
     return out
 

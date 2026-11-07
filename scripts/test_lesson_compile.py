@@ -97,7 +97,7 @@ class FakeRunner:
                            "gemini-3.9-flash-medium\tGemini 3.9 Flash (Medium)\n"
                            "gemini-4-argon-high\tGemini 4 Argon (High)\n"), ""
             return 0, self.digest, ""
-        if head.endswith("agentmd"):
+        if Path(head).stem == "agentmd":
             query = argv[-1]
             for key, rows in self.search.items():
                 if key in query:
@@ -398,7 +398,7 @@ class TestCompile(_Base):
         self.stage()
         runner = FakeRunner(candidates=[_cand()], actions=[])
         self.compile(runner)
-        searches = [argv for argv, _ in runner.calls if argv[0].endswith("agentmd")]
+        searches = [argv for argv, _ in runner.calls if Path(argv[0]).stem == "agentmd"]
         self.assertEqual(len(searches), 1)
         argv = searches[0]
         self.assertIn("hybrid", argv)
