@@ -1,14 +1,11 @@
-# memory-reflect-idle — orphan-recovery + idle reflection sweep (Windows / pwsh).
-# Mirrors memory-reflect-idle.sh.
+# memory-reflect-idle — retire the old session markers and fire the idle chain
+# (Windows / pwsh). Mirrors memory-reflect-idle.sh: mining moved to the night
+# (lesson_compile.py, task 199), so the orphan sweep is gone and any
+# .harness/session-id-* marker left behind is deleted.
 #
 # See hook.md in this directory for full documentation.
 
 # NOTE: no `$ErrorActionPreference = 'Stop'` — graceful-skip pattern.
-
-$ReflectPy = ".claude/skills/memory/scripts/reflect.py"
-if (-not (Test-Path $ReflectPy)) {
-    exit 0
-}
 
 if (-not (Get-Command python3 -ErrorAction SilentlyContinue) -and
     -not (Get-Command python -ErrorAction SilentlyContinue)) {
@@ -32,106 +29,23 @@ function Resolve-AgentmPython {
 }
 $Py = Resolve-AgentmPython
 
-# Thresholds (env overrides + defaults).
-$IdleThresholdSec = if ($env:MEMORY_IDLE_THRESHOLD_SEC) { [int]$env:MEMORY_IDLE_THRESHOLD_SEC } else { 3600 }
-$GcThresholdSec = if ($env:MEMORY_REFLECTED_GC_SEC) { [int]$env:MEMORY_REFLECTED_GC_SEC } else { 2592000 }
-
-$HarnessDir = ".harness"
-if (-not (Test-Path $HarnessDir)) {
-    exit 0
-}
-
-$markers = @(Get-ChildItem -LiteralPath $HarnessDir -Filter 'session-id-*.start' -ErrorAction SilentlyContinue)
-$reflectedMarkers = @(Get-ChildItem -LiteralPath $HarnessDir -Filter 'session-id-*.reflected' -ErrorAction SilentlyContinue)
-
-# Note: removed an early `exit 0` here so the skill-discovery cadence-check
-# (plan #7b task 3) still runs even when there's no orphan work to do.
-
-$now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-$processedCount = 0
-# Stale .start markers cleared this pass: a session already reflected whose
-# transcript has not grown since. SessionStart rewrites .start whenever it is
-# absent, so a resumed session grows one beside the .reflected an earlier pass
-# left behind, and this loop used to mine the whole transcript again on the
-# strength of the .start alone.
-$staleCount = 0
-
-foreach ($marker in $markers) {
-    $mtime = [DateTimeOffset]::new($marker.LastWriteTimeUtc).ToUnixTimeSeconds()
-    $ageSec = $now - $mtime
-    if ($ageSec -lt $IdleThresholdSec) {
-        continue
+# ── Retired markers (task 199) ─────────────────────────────────────────────
+# Nothing writes or reads a session marker any more; a marker was a pointer to a
+# transcript, so deleting one loses nothing.
+if (Test-Path ".harness") {
+    $old = @(Get-ChildItem -LiteralPath ".harness" -Filter 'session-id-*' -ErrorAction SilentlyContinue |
+             Where-Object { $_.Name -match '\.(start|reflected)$' })
+    foreach ($m in $old) {
+        try { Remove-Item -LiteralPath $m.FullName -Force -ErrorAction Stop } catch {}
     }
-
-    # Parse transcript path from marker contents.
-    $markerContents = Get-Content -LiteralPath $marker.FullName -ErrorAction SilentlyContinue
-    $transcript = ($markerContents | Where-Object { $_ -match '^transcript:' } | Select-Object -First 1) -replace '^transcript:\s*', ''
-    if (-not $transcript) {
-        [Console]::Error.WriteLine("[memory-reflect-idle] marker $($marker.Name) missing 'transcript:' line (skipping)")
-        continue
+    if ($old.Count -gt 0) {
+        [Console]::Error.WriteLine("[memory-reflect-idle] cleared $($old.Count) retired session markers")
     }
-    if (-not (Test-Path -LiteralPath $transcript)) {
-        [Console]::Error.WriteLine("[memory-reflect-idle] marker $($marker.Name) transcript not found: $transcript (skipping)")
-        continue
-    }
-
-    # Already reflected, with nothing new since? Then this .start is a
-    # SessionStart re-creation, not pending work, and mining again would
-    # re-derive every candidate the transcript ever produced.
-    #
-    # Compared against the transcript's mtime rather than the marker's mere
-    # existence, because the skip cannot be unconditional: a resumed session
-    # keeps appending turns after its first reflection, and those turns are
-    # exactly what orphan recovery is for. Newer transcript -> mine it.
-    $reflectedSibling = $marker.FullName -replace '\.start$', '.reflected'
-    if (Test-Path -LiteralPath $reflectedSibling) {
-        $reflectedMtime = [DateTimeOffset]::new((Get-Item -LiteralPath $reflectedSibling).LastWriteTimeUtc).ToUnixTimeSeconds()
-        $transcriptMtime = [DateTimeOffset]::new((Get-Item -LiteralPath $transcript).LastWriteTimeUtc).ToUnixTimeSeconds()
-        if ($transcriptMtime -le $reflectedMtime) {
-            Remove-Item -LiteralPath $marker.FullName -Force -ErrorAction SilentlyContinue
-            $staleCount++
-            continue
-        }
-    }
-
-    # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → filed flagged low).
-    & $Py $ReflectPy $transcript "--summary" "--route" 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        $reflectedPath = $marker.FullName -replace '\.start$', '.reflected'
-        try {
-            Move-Item -LiteralPath $marker.FullName -Destination $reflectedPath -Force -ErrorAction Stop
-            # Stamped NOW: Move-Item preserves the .start mtime, which records
-            # when the SESSION STARTED, and the skip above needs the time of the
-            # REFLECTION.
-            (Get-Item -LiteralPath $reflectedPath).LastWriteTimeUtc = [DateTime]::UtcNow
-            $processedCount++
-        } catch {
-            # Rename failed; marker stays for next pass.
-        }
-    }
-}
-
-# GC pass.
-$gcCount = 0
-foreach ($reflected in $reflectedMarkers) {
-    $mtime = [DateTimeOffset]::new($reflected.LastWriteTimeUtc).ToUnixTimeSeconds()
-    $ageSec = $now - $mtime
-    if ($ageSec -gt $GcThresholdSec) {
-        try {
-            Remove-Item -LiteralPath $reflected.FullName -Force -ErrorAction Stop
-            $gcCount++
-        } catch {}
-    }
-}
-
-if ($markers.Count -gt 0 -or $gcCount -gt 0) {
-    [Console]::Error.WriteLine("[memory-reflect-idle] Scanned $($markers.Count) .start + $($reflectedMarkers.Count) .reflected markers; processed $processedCount orphans, skipped $staleCount already-reflected, GC'd $gcCount old markers (idle threshold: ${IdleThresholdSec}s)")
 }
 
 # ── Idle orchestration chain (V4 #23 task 4) ──────────────────────────────
-# Fire the cooldown-gated chain driver: reflect-corpus (≤5 unseen sessions) →
-# discover-skills (cadence-checked) → adapt_skills Pass-1 (≤3 candidates
-# staged). The driver self-gates on the idle_chain cooldown (default 24h) +
+# Fire the cooldown-gated chain driver: discover-skills (cadence-checked) →
+# adapt_skills Pass-1 (≤3 candidates staged). The driver self-gates on the idle_chain cooldown (default 24h) +
 # the enable_idle_chain toggle, so most invocations are a fast no-op; when it
 # DOES fire it can exceed this hook's 30s SessionStart timeout, so we launch
 # it DETACHED (hidden, no -Wait) and return immediately. Results surface on the

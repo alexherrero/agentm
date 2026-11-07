@@ -1,14 +1,14 @@
-# memory-reflect-stop — mine the just-ended session's transcript on Stop (Windows / pwsh).
-# Mirrors memory-reflect-stop.sh.
+# memory-reflect-stop — keep the session's episodic trace current on Stop (Windows / pwsh).
+# Mirrors memory-reflect-stop.sh. It mines nothing: lessons are compiled at
+# night from every session's new slice (lesson_compile.py, task 199).
 #
 # See hook.md in this directory for full documentation.
 
 # NOTE: no `$ErrorActionPreference = 'Stop'` — graceful-skip pattern; hook
 # must never block session end.
 
-$RecallPy = $null  # Unused; kept for symmetry with recall hooks.
-$ReflectPy = ".claude/skills/memory/scripts/reflect.py"
-if (-not (Test-Path $ReflectPy)) {
+$TracePy = ".claude/skills/memory/scripts/episodic_trace.py"
+if (-not (Test-Path $TracePy)) {
     exit 0
 }
 
@@ -100,94 +100,8 @@ if (-not (Test-Path $Transcript)) {
 }
 
 # Filing v2 remainders task 7: the session's episodic trace — what it captured
-# and recalled, as links under memory/episodic/ — written before the mine so a
-# slow mine never costs the trace. Best-effort: a trace never blocks session end.
-# On every Stop, ahead of the dedup guard below (task 192 step 7b): the trace is
-# a merge into the session's one note and files nothing, and behind the guard
-# it froze at a session's first Stop, losing every later turn's idea remarks.
-$TracePy = ".claude/skills/memory/scripts/episodic_trace.py"
-if (Test-Path $TracePy) {
-    try { & $Py $TracePy $Transcript "--session" $SessionId "--surface" "claude-code" 2>$null | Out-Null } catch { }
-}
-
-# ── Phase-dispatch dedup guard (V4 #23 task 5) ─────────────────────────────
-# If a .reflected marker for this session already exists, the post-/work
-# phase-integration dispatch (orchestration_phase.py) already reflected this
-# transcript. Re-reflecting would double-route (HIGH save errors on a slug
-# collision), so skip — they cooperate via this marker. The trace above is
-# written regardless.
-$ReflectedGuard = Join-Path ".harness" "session-id-$SessionId.reflected"
-if (Test-Path $ReflectedGuard) {
-    [Console]::Error.WriteLine("[memory-reflect-stop] session $SessionId already reflected (phase dispatch); skipping")
-    exit 0
-}
-
-# Invoke reflect.py with --summary + --route. Captured once so we can
-# reuse for transparency line + stdout pass-through (running --route
-# twice would error on slug collision for HIGH saves).
-$ReflectArgs = @($ReflectPy, $Transcript, "--summary", "--route")
-$ReflectOut = & $Py @ReflectArgs 2>&1 | Out-String
-$ReflectExit = $LASTEXITCODE
-if ($ReflectExit -ne 0) {
-    [Console]::Error.WriteLine("[memory-reflect-stop] reflect.py --route exited $ReflectExit (MEMORY_ROOT set?); transcript was $Transcript")
-    exit 0
-}
-
-# Parse summary + route lines.
-$SummaryLine = ($ReflectOut -split "`n" | Where-Object { $_ -match '"pass": "summary"' } | Select-Object -First 1)
-$RouteLine = ($ReflectOut -split "`n" | Where-Object { $_ -match '"pass": "route"' } | Select-Object -First 1)
-
-$CountDriver = @"
-import json, sys
-try:
-    d = json.loads(sys.stdin.read())
-    print(d.get('memory_candidate_count', 0))
-    print(d.get('idea_candidate_count', 0))
-except Exception:
-    print(0)
-    print(0)
-"@
-$Counts = if ($SummaryLine) { ($SummaryLine | & $Py -c $CountDriver 2>$null) -split "`n" } else { @('0', '0') }
-$MemCount = if ($Counts.Length -ge 1) { $Counts[0] } else { '0' }
-$IdeaCount = if ($Counts.Length -ge 2) { $Counts[1] } else { '0' }
-
-if ($RouteLine) {
-    $RouteCountDriver = @"
-import json, sys
-try:
-    d = json.loads(sys.stdin.read())
-    print(d.get('auto_saved', 0) + d.get('approved', 0))
-    print(d.get('filed_low', 0) + d.get('ideas_filed', 0))
-except Exception:
-    print(0)
-    print(0)
-"@
-    $RouteCounts = ($RouteLine | & $Py -c $RouteCountDriver 2>$null) -split "`n"
-    $Saved = if ($RouteCounts.Length -ge 1) { $RouteCounts[0] } else { '0' }
-    $Inboxed = if ($RouteCounts.Length -ge 2) { $RouteCounts[1] } else { '0' }
-    [Console]::Error.WriteLine("[memory-reflect-stop] Mined $MemCount memory + $IdeaCount idea candidates from $Transcript; saved $Saved, filed flagged for review $Inboxed")
-} else {
-    [Console]::Error.WriteLine("[memory-reflect-stop] Mined $MemCount memory + $IdeaCount idea candidates from $Transcript (routing skipped)")
-}
-
-# Pass through captured reflect.py output on stdout.
-Write-Output $ReflectOut
-
-# ── Crash-recovery marker rename (plan #7a part 3 task 6) ──────────────────
-# Reflection succeeded → rename .harness/session-id-<sid>.start → .reflected.
-$Marker = Join-Path ".harness" "session-id-$SessionId.start"
-if (Test-Path $Marker) {
-    $ReflectedMarker = $Marker -replace '\.start$', '.reflected'
-    try {
-        Move-Item -LiteralPath $Marker -Destination $ReflectedMarker -Force -ErrorAction SilentlyContinue
-        # Stamped NOW: Move-Item preserves the .start mtime, which records when
-        # the SESSION STARTED. The idle hook compares this marker against the
-        # transcript's mtime to decide whether a re-created .start has anything
-        # new behind it, and that needs the time of the REFLECTION.
-        if (Test-Path -LiteralPath $ReflectedMarker) {
-            (Get-Item -LiteralPath $ReflectedMarker).LastWriteTimeUtc = [DateTime]::UtcNow
-        }
-    } catch {}
-}
+# and recalled, as links under memory/episodic/ — rewritten on every Stop, so
+# every turn reaches it. Best-effort: a trace never blocks session end.
+try { & $Py $TracePy $Transcript "--session" $SessionId "--surface" "claude-code" 2>$null | Out-Null } catch { }
 
 exit 0

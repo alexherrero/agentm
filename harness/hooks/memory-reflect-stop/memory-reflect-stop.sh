@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# memory-reflect-stop — mine the just-ended session's transcript on Stop.
+# memory-reflect-stop — keep the session's episodic trace current on Stop.
 #
 # Fires on Claude Code's Stop event. Parses the stdin JSON payload for
 # transcript_path (authoritative; sent on every hook event) plus session_id and
-# cwd, and invokes reflect.py to mine durable candidates. Hosts too old to send
-# transcript_path fall back to the computed
-# ~/.claude/projects/<cwd-slug>/<session_id>.jsonl. Output on stdout
-# (pass-through from reflect.py); transparency line on stderr.
+# cwd, and rewrites the session's trace with episodic_trace.py. Hosts too old
+# to send transcript_path fall back to the computed
+# ~/.claude/projects/<cwd-slug>/<session_id>.jsonl.
 #
-# Tri-modal routing (HIGH→auto / MEDIUM→interactive / LOW→inbox) lands in
-# plan #7a part 3 task 5; this hook ships the mining-only scaffold.
+# It mines nothing (task 199). Lessons are compiled at night from every
+# session's new slice, keyed by a per-session bookmark in the engine's state
+# directory (lesson_compile.py); this hook used to mine a session once, at its
+# first Stop, and every later turn was never read.
 #
 # See hook.md in this directory for full documentation.
 
@@ -44,8 +45,8 @@ print((d.get("source_clones") or {}).get("agentm") or "")
     return 1
 }
 
-REFLECT_PY="$(_resolve_memory_script reflect.py 2>/dev/null)" || REFLECT_PY=""
-if [[ -z "$REFLECT_PY" ]]; then
+TRACE_PY="$(_resolve_memory_script episodic_trace.py 2>/dev/null)" || TRACE_PY=""
+if [[ -z "$TRACE_PY" ]]; then
     exit 0
 fi
 
@@ -112,7 +113,7 @@ AGENTM_PY="$(_resolve_agentm_python)"
 
 # Stop hook stdin payload (per Claude Code hook spec): JSON carrying session_id,
 # cwd, and transcript_path on every hook event. We read transcript_path directly
-# and keep session_id + cwd for the marker and the fallback below.
+# and keep session_id + cwd for the trace and the fallback below.
 # Read stdin into a variable so we can parse it WITHOUT requiring jq (not
 # universally installed; Python json module is always present alongside python3).
 PAYLOAD="$(cat 2>/dev/null || true)"
@@ -185,100 +186,9 @@ if [[ ! -f "$TRANSCRIPT" ]]; then
 fi
 
 # Filing v2 remainders task 7: the session's episodic trace — what it captured
-# and recalled, as links under memory/episodic/ — written before the mine so a
-# slow mine never costs the trace. Best-effort: a trace never blocks session end.
-#
-# On every Stop, ahead of the dedup guard below (task 192 step 7b). The guard
-# exists so the route pass never files a session twice; the trace is a merge
-# into the session's one note, and mining it files nothing, so rewriting it is
-# safe. Behind the guard it was written only at a session's first Stop in a
-# repo with `.harness/`: every later turn was missing from it, and since the
-# idea lane records ideas there and nowhere else, so was every idea said after
-# the first turn (5 of the 7 in the 2026-09-16..10-16 window).
-TRACE_PY="$(_resolve_memory_script episodic_trace.py 2>/dev/null)" || TRACE_PY=""
-if [[ -n "$TRACE_PY" ]]; then
-    "$AGENTM_PY" "$TRACE_PY" "$TRANSCRIPT" --session "$SESSION_ID" --surface claude-code >/dev/null 2>&1 || true
-fi
-
-# ── Phase-dispatch dedup guard (V4 #23 task 5) ─────────────────────────────
-# If a .reflected marker for this session already exists, the post-/work
-# phase-integration dispatch (orchestration_phase.py) already reflected this
-# transcript and renamed .start → .reflected. Re-reflecting here would
-# double-route (the HIGH save errors on a slug collision), so skip — the work
-# is already done. They cooperate via this marker so the same session is never
-# reflected twice, whichever fires first.
-REFLECTED_MARKER=".harness/session-id-${SESSION_ID}.reflected"
-if [[ -f "$REFLECTED_MARKER" ]]; then
-    echo "[memory-reflect-stop] session ${SESSION_ID} already reflected (phase dispatch); skipping" >&2
-    exit 0
-fi
-
-# Invoke reflect.py with --summary + --route. The routing pass auto-saves
-# every candidate to its class directory: HIGH at high confidence, MEDIUM/LOW
-# + ideas flagged `filing_confidence: low` (the metadata inbox, filing v2).
-# Route-mode defaults to "auto" (hook-safe; never prompts; MEDIUM → filed flagged)
-# unless operator sets MEMORY_REVIEW_MODE=silent (auto-save MEDIUM) or
-# MEMORY_REVIEW_MODE=interactive (which falls back to auto here since hooks
-# have no TTY).
-#
-# We capture output once + reuse for both the transparency line + stdout
-# pass-through. Running reflect.py --route twice would error on slug
-# collision (HIGH save would refuse the second time).
-REFLECT_OUT="$("$AGENTM_PY" "$REFLECT_PY" "$TRANSCRIPT" --summary --route 2>&1)"
-REFLECT_EXIT=$?
-if [[ $REFLECT_EXIT -ne 0 ]]; then
-    # Most common cause: MEMORY_ROOT not set in hook env. Reflection
-    # output is captured but routing failed; emit what we have + stderr note.
-    echo "$REFLECT_OUT" >&2 | head -3
-    echo "[memory-reflect-stop] reflect.py --route exited $REFLECT_EXIT (MEMORY_ROOT set?); transcript was $TRANSCRIPT" >&2
-    exit 0
-fi
-
-# Extract counts from the summary + route records for the transparency line.
-SUMMARY_LINE="$(printf '%s' "$REFLECT_OUT" | grep -m1 '"pass": "summary"')"
-ROUTE_LINE="$(printf '%s' "$REFLECT_OUT" | grep -m1 '"pass": "route"')"
-
-MEM_COUNT="$(printf '%s' "$SUMMARY_LINE" | python3 -c 'import json,sys;
-try:
-    d=json.loads(sys.stdin.read()); print(d.get("memory_candidate_count",0))
-except: print(0)' 2>/dev/null || echo 0)"
-IDEA_COUNT="$(printf '%s' "$SUMMARY_LINE" | python3 -c 'import json,sys;
-try:
-    d=json.loads(sys.stdin.read()); print(d.get("idea_candidate_count",0))
-except: print(0)' 2>/dev/null || echo 0)"
-
-if [[ -n "$ROUTE_LINE" ]]; then
-    SAVED="$(printf '%s' "$ROUTE_LINE" | python3 -c 'import json,sys;
-try:
-    d=json.loads(sys.stdin.read()); print(d.get("auto_saved",0)+d.get("approved",0))
-except: print(0)' 2>/dev/null || echo 0)"
-    INBOXED="$(printf '%s' "$ROUTE_LINE" | python3 -c 'import json,sys;
-try:
-    d=json.loads(sys.stdin.read()); print(d.get("filed_low",0)+d.get("ideas_filed",0))
-except: print(0)' 2>/dev/null || echo 0)"
-    echo "[memory-reflect-stop] Mined ${MEM_COUNT} memory + ${IDEA_COUNT} idea candidates from $TRANSCRIPT; saved $SAVED, filed flagged for review $INBOXED" >&2
-else
-    echo "[memory-reflect-stop] Mined ${MEM_COUNT} memory + ${IDEA_COUNT} idea candidates from $TRANSCRIPT (routing skipped)" >&2
-fi
-
-# Emit captured reflect.py output on stdout (one JSON record per line).
-printf '%s\n' "$REFLECT_OUT"
-
-# ── Crash-recovery marker rename (plan #7a part 3 task 6) ──────────────────
-# Reflection succeeded → rename .harness/session-id-<sid>.start → .reflected.
-# This marks the session as fully reflected; the idle hook's orphan scan
-# (memory-reflect-idle) will GC the .reflected marker after 30 days.
-# If the .start marker doesn't exist (operator never ran SessionStart, or
-# .harness/ wasn't initialized), this is a no-op.
-MARKER=".harness/session-id-${SESSION_ID}.start"
-if [[ -f "$MARKER" ]]; then
-    # Stamped NOW after the rename: mv preserves the .start mtime, which records
-    # when the SESSION STARTED. The idle hook compares this marker against the
-    # transcript's mtime to decide whether a re-created .start has anything new
-    # behind it, and that comparison needs the time of the REFLECTION.
-    if mv "$MARKER" "${MARKER%.start}.reflected" 2>/dev/null; then
-        touch "${MARKER%.start}.reflected" 2>/dev/null || true
-    fi
-fi
+# and recalled, as links under memory/episodic/ — rewritten on every Stop, so
+# every turn reaches it, and with it every idea said after the first turn.
+# Best-effort: a trace never blocks session end.
+"$AGENTM_PY" "$TRACE_PY" "$TRANSCRIPT" --session "$SESSION_ID" --surface claude-code >/dev/null 2>&1 || true
 
 exit 0

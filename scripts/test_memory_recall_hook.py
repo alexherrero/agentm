@@ -3,12 +3,13 @@
 
 Drives the bash hook as a subprocess with a synthetic SessionStart event JSON on
 stdin + a fixture vault, proving it ACTUALLY FIRES (the V4 #39 class of bug — a
-hook that lands but silently no-ops): it must emit the always-load entries, write
-the crash-recovery session marker, graceful-skip (exit 0) when the memory skill /
-vault is absent, and NEVER block session boot.
+hook that lands but silently no-ops): it must emit the always-load entries,
+graceful-skip (exit 0) when the memory skill / vault is absent, and NEVER block
+session boot. It writes no `.harness/session-id-*.start` marker: the markers
+retired with task 199, when mining moved to the night.
 
 Both state modes are covered via the vault axis: vault-present (recall emits) vs
-no-vault / repo-local (recall silent, but the marker is still written + exit 0).
+no-vault / repo-local (recall silent, exit 0).
 
 Hermetic: a fake `HOME` whose `.claude/.agentm-config.json` resolves the memory
 scripts to THIS repo via `source_clones.agentm` (CI has no `~/.claude` nor a
@@ -102,70 +103,30 @@ class TestMemoryRecallSessionStartHook(unittest.TestCase):
         self.assertIn(_SENTINEL, r.stdout)              # recall actually ran (not silently skipped)
         self.assertIn("Loaded 1", r.stderr)             # transparency line
 
-    def test_writes_session_marker_on_sessionstart(self) -> None:
-        r = self._run_hook(self._env(), sid="abc123")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        marker = self.proj / ".harness" / "session-id-abc123.start"
-        self.assertTrue(marker.is_file(), "crash-recovery marker not written")
-        body = marker.read_text(encoding="utf-8")
-        self.assertIn("session_id: abc123", body)
-        self.assertIn("transcript:", body)
-
-    def test_marker_write_is_idempotent(self) -> None:
-        env = self._env()
-        self._run_hook(env, sid="dup")
-        marker = self.proj / ".harness" / "session-id-dup.start"
-        first = marker.read_text(encoding="utf-8")
-        self._run_hook(env, sid="dup")                  # SessionStart re-fires on resume/clear/compact
-        self.assertEqual(marker.read_text(encoding="utf-8"), first)
-
-    # ── transcript_path + source from the payload ────────────────────────────
-
-    def test_marker_records_the_payload_transcript_path(self) -> None:
-        # A path no slug could produce — it isn't under the fake HOME's projects
-        # tree at all — so this can only pass if the hook read the payload.
-        elsewhere = str(self.root / "elsewhere" / "conversation.jsonl")
-        r = self._run_hook(self._env(), sid="p1", transcript_path=elsewhere)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        body = (self.proj / ".harness" / "session-id-p1.start").read_text(encoding="utf-8")
-        self.assertIn(f"transcript: {elsewhere}\n", body)
-
-    def test_marker_falls_back_to_the_computed_path(self) -> None:
-        # No `transcript_path` on the payload (an older host) → the marker still
-        # gets a pointer rather than an empty line, via the computed fallback.
-        r = self._run_hook(self._env(), sid="p2")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        body = (self.proj / ".harness" / "session-id-p2.start").read_text(encoding="utf-8")
-        slug = str(self.proj).replace("/", "-").replace(".", "-")
-        self.assertIn(
-            f"transcript: {self.fake_home}/.claude/projects/{slug}/p2.jsonl\n", body
-        )
-
-    def test_marker_records_the_sessionstart_source(self) -> None:
-        # Which SessionStart fired is the field that makes an odd marker
-        # diagnosable — a resume/compact/fork marker pointing somewhere
-        # surprising reads as an explanation rather than a mystery.
-        r = self._run_hook(self._env(), sid="p3", source="compact")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        body = (self.proj / ".harness" / "session-id-p3.start").read_text(encoding="utf-8")
-        self.assertIn("source: compact\n", body)
-
-    def test_marker_source_defaults_when_the_payload_omits_it(self) -> None:
-        r = self._run_hook(self._env(), sid="p4")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        body = (self.proj / ".harness" / "session-id-p4.start").read_text(encoding="utf-8")
-        self.assertIn("source: unknown\n", body)
+    def test_writes_no_session_marker(self) -> None:
+        # Task 199: nothing reads a session marker any more, so SessionStart
+        # writes none — on startup, resume or compact, with or without a
+        # payload transcript path.
+        for sid, src, tp in (("abc123", None, None), ("p1", "compact", str(self.root / "t.jsonl")),
+                             ("p2", "resume", None)):
+            kwargs = {"sid": sid}
+            if src:
+                kwargs["source"] = src
+            if tp:
+                kwargs["transcript_path"] = tp
+            r = self._run_hook(self._env(), **kwargs)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(list((self.proj / ".harness").glob("session-id-*")), [])
 
     # ── graceful-skip / non-blocking (both modes) ─────────────────────────────
 
-    def test_no_vault_recall_silent_but_marker_written(self) -> None:
-        # Repo-local / no-vault mode: recall has nothing to load, but the hook
-        # still fires (marker written) and never blocks.
+    def test_no_vault_recall_silent(self) -> None:
+        # Repo-local / no-vault mode: recall has nothing to load, and the hook
+        # never blocks.
         self._seed_always_load()  # present, but unreachable without MEMORY_VAULT_PATH
         r = self._run_hook(self._env(with_vault=False))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn(_SENTINEL, r.stdout)           # no vault → nothing emitted
-        self.assertTrue((self.proj / ".harness" / "session-id-sess-1.start").is_file())
 
     def test_graceful_skip_when_resolver_unavailable(self) -> None:
         # Bare HOME (no .agentm-config.json) + project has no .claude/skills/ →
@@ -181,8 +142,7 @@ class TestMemoryRecallSessionStartHook(unittest.TestCase):
     def test_malformed_stdin_is_nonblocking(self) -> None:
         r = self._run_hook(self._env(), raw_payload="this is not json{")
         self.assertEqual(r.returncode, 0, r.stderr)
-        # Unparseable payload → marker skipped, but the hook still exits 0.
-        self.assertFalse(any((self.proj / ".harness").glob("session-id-*.start")))
+        # Unparseable payload → the hook still exits 0.
 
     def test_empty_stdin_is_nonblocking(self) -> None:
         r = self._run_hook(self._env(), raw_payload="")

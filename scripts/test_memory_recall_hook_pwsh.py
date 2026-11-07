@@ -120,34 +120,21 @@ class TestMemoryRecallSessionStartHookPwsh(unittest.TestCase):
         self.assertIn(_SENTINEL, r.stdout)
         self.assertNotIn("PINNED-PORT-DETAIL", r.stdout)
 
-    def test_writes_session_marker_on_sessionstart(self) -> None:
-        r = self._run_hook(self._env(), sid="abc123")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        marker = self.proj / ".harness" / "session-id-abc123.start"
-        self.assertTrue(marker.is_file(), "crash-recovery marker not written")
-        body = marker.read_text(encoding="utf-8")
-        self.assertIn("session_id: abc123", body)
-        self.assertIn("transcript:", body)
+    def test_writes_no_session_marker(self) -> None:
+        # Task 199: the markers retired with Stop-hook mining; nothing reads one.
+        for sid, src, tp in (("abc123", None, None), ("p1", "compact", str(self.root / "t.jsonl"))):
+            kwargs = {"sid": sid}
+            if src:
+                kwargs["source"] = src
+            if tp:
+                kwargs["transcript_path"] = tp
+            r = self._run_hook(self._env(), **kwargs)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(list((self.proj / ".harness").glob("session-id-*")), [])
 
-    def test_marker_records_the_payload_transcript_path(self) -> None:
-        # A path no slug could produce, so this only passes if the hook read the
-        # payload. Parity with the bash twin's test of the same name.
-        elsewhere = str(self.root / "elsewhere" / "conversation.jsonl")
-        r = self._run_hook(self._env(), sid="p1", transcript_path=elsewhere)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        body = (self.proj / ".harness" / "session-id-p1.start").read_text(encoding="utf-8")
-        self.assertIn(f"transcript: {elsewhere}", body)
-
-    def test_marker_records_the_sessionstart_source(self) -> None:
-        r = self._run_hook(self._env(), sid="p2", source="compact")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        body = (self.proj / ".harness" / "session-id-p2.start").read_text(encoding="utf-8")
-        self.assertIn("source: compact", body)
-
-    # ── the Antigravity registration: no marker, no briefing ────────────────
+    # ── the Antigravity registration: no briefing ───────────────────────────
     # Parity with the bash twin (scripts/test_agy_recall_hooks.py has the full proof):
-    # a non-Claude host's session must not leave a marker the idle job would read in
-    # Claude Code's format, nor use up the briefing's one showing.
+    # a non-Claude host's session must not use up the briefing's one showing.
 
     def _plant_briefing_stub(self) -> Path:
         calls = self.root / "briefing-calls.log"
@@ -157,46 +144,35 @@ class TestMemoryRecallSessionStartHookPwsh(unittest.TestCase):
             encoding="utf-8")
         return calls
 
-    def test_a_declared_non_claude_host_writes_no_marker_and_runs_no_briefing(self) -> None:
+    def test_a_declared_non_claude_host_runs_no_briefing(self) -> None:
         calls = self._plant_briefing_stub()
         r = self._run_hook(self._env(AGENTM_HOST="antigravity"), sid="agy1")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse((self.proj / ".harness" / "session-id-agy1.start").exists())
         self.assertNotIn("BRIEFING_STUB_RAN", r.stdout)
         self.assertFalse(calls.exists())
 
-    def test_a_transcript_under_gemini_writes_no_marker_even_with_no_host_variable(self) -> None:
+    def test_a_transcript_under_gemini_runs_no_briefing_even_with_no_host_variable(self) -> None:
         calls = self._plant_briefing_stub()
         gemini = str(self.root / "home" / ".gemini" / "antigravity-cli" / "c1" / "transcript_full.jsonl")
         r = self._run_hook(self._env(), sid="agy2", transcript_path=gemini)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse((self.proj / ".harness" / "session-id-agy2.start").exists())
         self.assertFalse(calls.exists())
 
-    def test_claude_code_still_gets_its_marker_and_its_briefing(self) -> None:
+    def test_claude_code_still_gets_its_briefing(self) -> None:
         calls = self._plant_briefing_stub()
         r = self._run_hook(self._env(AGENTM_HOST="claude-code"), sid="cc1")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue((self.proj / ".harness" / "session-id-cc1.start").is_file())
         self.assertTrue(calls.exists(), "the stub is unreachable, so the not-run checks above prove nothing")
 
-    def test_marker_source_defaults_when_the_payload_omits_it(self) -> None:
-        r = self._run_hook(self._env(), sid="p3")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        body = (self.proj / ".harness" / "session-id-p3.start").read_text(encoding="utf-8")
-        self.assertIn("source: unknown", body)
-
-    def test_no_vault_recall_silent_but_marker_written(self) -> None:
+    def test_no_vault_recall_silent(self) -> None:
         self._seed_always_load()
         r = self._run_hook(self._env(with_vault=False))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn(_SENTINEL, r.stdout)
-        self.assertTrue((self.proj / ".harness" / "session-id-sess-1.start").is_file())
 
     def test_malformed_stdin_is_nonblocking(self) -> None:
         r = self._run_hook(self._env(), raw_payload="this is not json{")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse(any((self.proj / ".harness").glob("session-id-*.start")))
 
     def test_empty_stdin_is_nonblocking(self) -> None:
         r = self._run_hook(self._env(), raw_payload="")

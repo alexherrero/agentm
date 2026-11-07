@@ -1,55 +1,49 @@
 ---
 name: memory-reflect-stop
-description: "Stop-event hook that mines the just-ended session's transcript for durable candidate entries and ROUTES them into the vault: every candidate to its class directory — HIGH at high filing confidence, MEDIUM/LOW/ideas flagged `filing_confidence: low`, the metadata inbox of filing v2 (tri-modal routing via reflect.py --route, default route-mode 'auto'). Emits a transparency line listing candidate counts + what got saved / filed flagged. On success renames the session's .start crash-recovery marker → .reflected. Dedup-guarded against the V4 #23 phase-dispatch (skips if the session was already reflected). Plan #7a part 3 task 3 (scaffold) + task 5 (routing) + V4 #23 (dedup)."
+description: "Stop-event hook that keeps the session's episodic trace current: on every Stop it rewrites the session's one trace under memory/episodic/ from the transcript (episodic_trace.py). It mines nothing and files nothing — since task 199 lessons are compiled at night from every session's new slice, keyed by a per-session bookmark in the engine's state directory (lesson_compile.py). Never blocks session end."
 kind: hook
 supported_hosts: [claude-code]
-version: 0.1.0
+version: 0.2.0
 ---
 
-# memory-reflect-stop — mine the just-ended session's transcript on Stop
+# memory-reflect-stop — keep the session's trace current on Stop
 
-A `Stop` event hook that runs reflection mining (via `skills/memory/scripts/reflect.py`) against the just-ended session's transcript + emits a transparency line summarizing what got mined. The same mining logic also runs via the manual `/memory reflect` skill (plan #7a part 3 task 2) + the idle-time hook (task 4 — covers crashed sessions where this Stop hook didn't fire).
+A `Stop` event hook that rewrites the just-ended turn's session trace (via `skills/memory/scripts/episodic_trace.py`). The trace is the session's handoff record: what it asked, how it came out, what it captured and recalled, the lines the miner noticed in passing (`## Candidates`) and the idea remarks it made (`## Ideas`). The night's idea judge and the dreaming binary's promote job read those sections.
+
+Until task 199 this hook also mined the transcript with `reflect.py --route` and filed what it found. It did so once per session, at the first Stop, and every later turn of a long session went unread. Mining moved to the night: the lesson compile reads every session's new slice since its bookmark and writes at most five lessons per project per day. See [`lesson_compile.py`](../../skills/memory/scripts/lesson_compile.py).
 
 ## How it works
 
-- **Trigger:** Claude Code's `Stop` event (matcher `.*` — fires at the end of every agent turn that ends a session).
+- **Trigger:** Claude Code's `Stop` event (matcher `.*` — fires at the end of every agent turn).
 - **Transcript resolution:** parses the Stop event's stdin JSON payload and reads **`transcript_path`**, which Claude Code sends on every hook event. That value is used verbatim. Claude Code's hook docs direct hooks to use it rather than constructing a path from `session_id`, because the session-id → transcript-filename correspondence is not guaranteed — resume, compact, fork and `/branch` all mint session ids whose transcript may live elsewhere or not exist yet under the computed name.
   - **Fallback:** when the payload carries no `transcript_path` (a Claude Code build predating the field), the path is computed as `~/.claude/projects/<cwd-slug>/<session_id>.jsonl`, where `<cwd-slug>` is `cwd` with both `/` and `.` replaced by `-` and **no** extra leading `-` (an absolute path's own leading `/` supplies it). Pinned against known-good literals by [`scripts/test_transcript_slug.py`](../../../scripts/test_transcript_slug.py).
-  - A `transcript_path` that names a file which doesn't exist is reported and skipped — never quietly retried against the computed path. Falling back there would be guessing at a path again, which is what reading the payload exists to retire.
-- **Dedup guard (V4 #23):** before mining, if `.harness/session-id-<sid>.reflected` already exists, the session was already reflected by the post-`/work` phase-dispatch (`orchestration_phase.py`) — the hook skips (a second `reflect.py --route` would error on a HIGH-save slug collision). The two cooperate via this marker so a session is reflected exactly once.
-- **Mining + routing call:** invokes `python3 .claude/skills/memory/scripts/reflect.py <transcript-path> --summary --route`. The `--route` pass files HIGH candidates at their class at high confidence and MEDIUM/LOW + ideas at their class flagged `filing_confidence: low` (nothing stages in a directory since filing v2). Route-mode defaults to `auto` (hook-safe; never prompts); `MEMORY_REVIEW_MODE=silent` auto-saves MEDIUM too.
-- **Marker rename:** on a successful route, renames `.harness/session-id-<sid>.start` → `.reflected` (the crash-recovery marker the idle hook GCs after 30 days; also what the dedup guard above keys on). No-op if the `.start` marker is absent.
-- **Output:**
-  - **stdout** — passed through from reflect.py (one JSON record per line: the summary + route passes).
-  - **stderr** — one transparency line: `[memory-reflect-stop] Mined N memory + M idea candidates from <transcript>; saved S, filed flagged for review I`.
-- **Exit 0 always** — even on missing transcript, routing errors (e.g. `MEMORY_ROOT` unset), missing python3 (graceful-skip pattern across the layered failure modes).
-
-## Implementation status
-
-Routing **shipped** (plan #7a part 3 task 5): the hook mines AND routes — HIGH → filed at class at high confidence, MEDIUM/LOW/ideas → filed at class flagged low (tri-modal via `reflect.py --route`, default route-mode `auto`; the `_inbox/` staging directory retired with filing v2's write path). V4 #23 added the phase-dispatch **dedup guard** + the `.reflected` marker cooperation. (The original task-3 scaffold mined-but-didn't-save; that's no longer the behavior.)
+  - A `transcript_path` that names a file which doesn't exist is reported and skipped — never quietly retried against the computed path.
+- **The trace:** `episodic_trace.py <transcript> --session <sid> --surface claude-code`, on every Stop. The trace is a merge into the session's one note, found by its `session:` id, so rewriting it is safe and every turn reaches it.
+- **Output:** nothing on stdout; a "transcript not found" or "no session_id" note on stderr when it skips.
+- **Exit 0 always.**
 
 ## What it never does
 
-- **Never blocks session end.** If anything fails (transcript missing, reflect.py missing, python3 missing, mining/routing error), the hook exits 0 silently.
-- **Never double-reflects a session.** The `.reflected` dedup guard makes the hook and the V4 #23 phase-dispatch cooperate — whichever fires first reflects + marks; the other skips.
-- **Never modifies the transcript.** Pure read-only on the transcript itself; writes only to the vault (via routing) + the `.harness/` marker.
-- **Never invokes reflect.py with a non-existent transcript.** If the path doesn't resolve, hook exits 0 with a "transcript not found" stderr note.
+- **Never blocks session end.** If anything fails, the hook exits 0.
+- **Never mines or files a card.** The regex miner's candidates still reach the trace's `## Candidates`, through the trace writer; they reach the vault only through the night's compile.
+- **Never writes a `.harness` marker.** The `.start` / `.reflected` markers retired with task 199; the idle hook clears any left behind.
+- **Never modifies the transcript.**
 
 ## Failure modes (all soft)
 
-- **`MEMORY_ROOT` unset** — `reflect.py --route` exits non-zero (no vault to route into); the hook emits a "reflect.py --route exited N (MEMORY_ROOT set?)" stderr note + exit 0, and leaves the `.start` marker intact so a later pass can retry.
-- **Stdin payload missing `session_id`** — hook reports "no session_id on stdin" + exit 0.
-- **Transcript path doesn't exist** — stderr "transcript not found: <path>" + exit 0.
-- **reflect.py not installed** — exit 0 silently (graceful-skip; matches the recall hooks' pattern).
-- **python3 not on PATH** — shell wrapper exits 0 silently.
+- **No vault resolves** — the trace has nowhere to go; exit 0.
+- **Stdin payload missing `session_id`** — "no session_id on stdin" + exit 0.
+- **Transcript path doesn't exist** — "transcript not found: <path>" + exit 0.
+- **episodic_trace.py not installed, or python3 missing** — exit 0 silently.
 
 ## Antigravity equivalent
 
-Not registered on `agy`, though 1.4 has a `Stop` event. This hook reflects on the session's transcript in Claude Code's format, and an agy transcript is a different one (`transcript_full.jsonl`: rows of `step_index` / `source` / `type` / `status` / `content`). Nothing yet measures what the reflector makes of that file, and `--route` writes to the real vault, so it stays Claude Code's. An agy session also leaves no `.start` marker for it to rename ([`memory-recall-session-start`](../memory-recall-session-start/hook.md#antigravity-equivalent) skips it there). A capture from an agy session goes through the `memory_capture` tool the installer registers with `agy mcp`.
+Not registered on `agy`. The trace writer reads Claude Code's transcript format. An agy session reaches the vault two ways: a capture through the `memory_capture` tool the installer registers with `agy mcp`, and the night's lesson compile, which reads agy's `transcript_full.jsonl` with its own bookmarks and has Flash digest each new slice. Until `lesson_compile.agy_enabled` is true, those digests go to a dry report in the engine's state directory and never reach the vault.
 
 ## See also
 
-- [`memory-reflect-idle`](../memory-reflect-idle/hook.md) — companion idle-time hook (lands in plan #7a part 3 task 4) that catches sessions where Stop didn't fire (crashed Claude Code).
-- [`memory` skill — `/memory reflect`](../../skills/memory/SKILL.md) — manual trigger using the same mining logic.
-- [`reflect.py`](../../skills/memory/scripts/reflect.py) — canonical Python implementation invoked by this hook.
+- [`lesson_compile.py`](../../skills/memory/scripts/lesson_compile.py) — the night's per-project lesson compile, which replaced mining here.
+- [`episodic_trace.py`](../../skills/memory/scripts/episodic_trace.py) — the trace writer this hook calls.
+- [`memory-reflect-idle`](../memory-reflect-idle/hook.md) — clears the retired session markers and fires the idle chain.
+- [`memory` skill — `/memory reflect`](../../skills/memory/SKILL.md) — the operator's own run of the regex miner, still available by hand.
 - [MemoryVault reflection-and-recovery part](../../wiki/explanation/designs/memoryvault/parts/reflection-and-recovery.md) — full architectural context.

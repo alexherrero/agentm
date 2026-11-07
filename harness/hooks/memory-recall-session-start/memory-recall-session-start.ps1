@@ -44,80 +44,27 @@ function Resolve-AgentmPython {
 }
 $Py = Resolve-AgentmPython
 
-# ── Crash-recovery marker (plan #7a part 3 task 6) ─────────────────────────
-# Parse SessionStart event's stdin JSON for transcript_path, session_id, cwd
-# and source; write a .harness/session-id-<sid>.start marker so the idle hook's
-# orphan-recovery sweep can detect crashed sessions. Marker write is best-effort.
+# The payload is read once, here. This hook wrote a .harness/session-id-<sid>.start
+# marker until task 199 moved mining to the night; nothing reads one any more.
 $Payload = ($Input | Out-String).Trim()
 
-# Which host fired this? The marker and the briefing below are Claude Code's: the
-# marker names the host's transcript, which memory-reflect-idle later mines in
-# Claude's JSONL format, and the briefing records that it was shown. Another host
-# (the Antigravity registration sets AGENTM_HOST) gets neither. A transcript
+# Which host fired this? The briefing below is Claude Code's: it records that it
+# was shown. Another host (the Antigravity registration sets AGENTM_HOST) does
+# not get it. A transcript
 # under a .gemini directory is never Claude's either, whatever the environment
 # says. The bash sibling carries the full account.
 $HostIsClaude = (-not $env:AGENTM_HOST) -or ($env:AGENTM_HOST -ceq 'claude-code')
 
 if ($Payload) {
-    $ParseDriver = @"
+    $TpDriver = @"
 import json, sys
 try:
-    d = json.loads(sys.stdin.read())
+    print((json.loads(sys.stdin.read()) or {}).get('transcript_path') or '')
 except Exception:
-    sys.exit(0)
-sid = d.get('session_id') or ''
-cwd = d.get('cwd') or ''
-tp = d.get('transcript_path') or ''
-src = d.get('source') or ''
-if sid:
-    print(f'{sid}\t{cwd}\t{tp}\t{src}')
+    pass
 "@
-    $Parsed = ($Payload | & $Py -c $ParseDriver 2>$null).Trim()
-    if ($Parsed) {
-        $Parts = $Parsed -split "`t"
-        $SessionId = $Parts[0]
-        $Cwd = if ($Parts.Length -gt 1 -and $Parts[1]) { $Parts[1] } else { (Get-Location).Path }
-        $PayloadTranscript = if ($Parts.Length -gt 2) { $Parts[2] } else { "" }
-        if ($PayloadTranscript -match '[\\/]\.gemini[\\/]') { $HostIsClaude = $false }
-        $SessionSource = if ($Parts.Length -gt 3 -and $Parts[3]) { $Parts[3] } else { "unknown" }
-        # Transcript path: the payload's own `transcript_path` is authoritative;
-        # the computed slug is the fallback for hosts too old to send it. See
-        # memory-reflect-stop.ps1 for the rationale, and the bash siblings for
-        # the full account.
-        if ($PayloadTranscript) {
-            $TranscriptPath = $PayloadTranscript
-        } else {
-            # Fallback slug (same formula as memory-reflect-stop.ps1; strip ':' for Windows).
-            $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '')
-            # $HOME (automatic variable) is USERPROFILE-derived on Windows and does
-            # not follow a HOME env var set on the process; $env:HOME is a direct
-            # env-var read on every platform, so prefer it and fall back to $HOME
-            # for real end-user machines that don't set HOME at all.
-            $HomeDir = if ($env:HOME) { $env:HOME } else { $HOME }
-            $TranscriptPath = Join-Path $HomeDir ".claude/projects/$CwdSlug/$SessionId.jsonl"
-        }
-        # Ensure .harness/ exists.
-        $HarnessDir = ".harness"
-        if ($HostIsClaude -and -not (Test-Path $HarnessDir)) {
-            New-Item -ItemType Directory -Path $HarnessDir -Force -ErrorAction SilentlyContinue | Out-Null
-        }
-        $Marker = Join-Path $HarnessDir "session-id-$SessionId.start"
-        if ($HostIsClaude -and -not (Test-Path $Marker)) {
-            $Now = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-            # `source:` records which SessionStart fired (startup / resume /
-            # clear / compact / fork). Nothing reads it; it is there to make an
-            # odd marker diagnosable. Matches the bash sibling's field order.
-            $MarkerContent = @"
-session_id: $SessionId
-started_at: $Now
-source: $SessionSource
-transcript: $TranscriptPath
-"@
-            try {
-                Set-Content -LiteralPath $Marker -Value $MarkerContent -ErrorAction SilentlyContinue
-            } catch {}
-        }
-    }
+    $PayloadTranscript = ($Payload | & $Py -c $TpDriver 2>$null)
+    if ("$PayloadTranscript" -match '[\\/]\.gemini[\\/]') { $HostIsClaude = $false }
 }
 
 # ── Recall pass ────────────────────────────────────────────────────────────

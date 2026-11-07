@@ -6,15 +6,13 @@ duplicating) the V4 #8 auto-context dispatcher (`harness_memory.py`, which owns
 recall / offer-save / plan-done-promotion). Two operator-gated, cooldown-gated,
 config-toggleable dispatches the phase specs call at their tail:
 
-  post-work     After `/work` commits a task, reflect the just-finished session
-                (`reflect.py <transcript> --summary --route`). DEDUP-GUARDED
-                against the `memory-reflect-stop` hook: it cooperates via the
-                per-session `.reflected` marker so the same transcript is never
-                reflected twice (a second --route errors on a HIGH-save slug
-                collision). On Claude Code the Stop hook is the fallback; on a
-                host WITHOUT a Stop hook (Antigravity) this is the only
-                task-completion reflect — that's the cross-host win. (V4 #23
-                DC-1 / Option A, operator call 2026-06-01.)
+  post-work     After `/work` commits a task, stage the just-finished session's
+                new slice for tonight's lesson compile
+                (`lesson_compile.py collect --transcript <path>`), through the
+                same per-session bookmark the night reads, so the slice is
+                staged once whichever gets there first. Nothing is filed here
+                (task 199; until then this ran `reflect.py --route` and
+                cooperated with the Stop hook through `.reflected` markers).
 
   post-release  After `/release`, refresh the skill surfaces to align with what
                 shipped: `index_skills.py` (local skill index) + `discover_skills.py
@@ -84,44 +82,29 @@ def _cooldown_hours(config: dict) -> float:
 
 
 # ── post-work reflect ───────────────────────────────────────────────────────
-def _resolve_session_marker(harness_dir: Path) -> tuple[Path | None, str | None]:
-    """Resolve the current session's `.start` marker — concurrency-safely.
+def _session_transcript(project_root: Path, session_id: "str | None") -> "str | None":
+    """The `/work` session's transcript, found in the host's folder for the
+    project root: the named session's file, else the folder's newest.
 
-    Returns (marker, reason). A marker is only returned when EXACTLY ONE
-    `session-id-*.start` marker exists (an unambiguous single active session,
-    the normal case — one active session per repo). Otherwise we refuse to
-    guess and defer to the session-exact `memory-reflect-stop` hook:
-      - 0 markers           → (None, "no-session")
-      - ≥2 markers          → (None, "ambiguous-session")
-
-    Why no mtime tie-break: a newest-mtime guess can pick the WRONG transcript
-    when two sessions are active in one repo (concurrent agents) or an active
-    session sits beside a not-yet-swept crashed-session orphan — reflecting the
-    wrong session AND burning the shared `phase_reflect` cooldown for it. The
-    Stop hook keys on the exact session_id from its event payload, so deferring
-    to it is always correct; a caller that knows the session id can pass it
-    explicitly (`session_id=`) to target precisely."""
-    if not harness_dir.is_dir():
-        return None, "no-session"
+    The newest is a guess when two sessions share a repo, and since task 199 a
+    harmless one: staging stages only what is new past a session's bookmark,
+    and every session is collected again at night, so the worst a wrong guess
+    does is stage another session's slice early."""
+    import session_binding  # noqa: E402  (same skill dir)
+    import lesson_compile  # noqa: E402
     try:
-        markers = [p for p in harness_dir.glob("session-id-*.start") if p.is_file()]
+        real = project_root.resolve()
     except OSError:
-        return None, "no-session"
-    if not markers:
-        return None, "no-session"
-    if len(markers) > 1:
-        return None, "ambiguous-session"
-    return markers[0], None
-
-
-def _marker_transcript(marker: Path) -> str | None:
+        real = project_root
+    folder = lesson_compile.claude_projects_root() / session_binding.host_folder_name(str(real))
+    if session_id:
+        p = folder / f"{session_id}.jsonl"
+        return str(p) if p.is_file() else None
     try:
-        for line in marker.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.startswith("transcript:"):
-                return line.split(":", 1)[1].strip()
+        files = [f for f in folder.glob("*.jsonl") if f.is_file()]
     except OSError:
         return None
-    return None
+    return str(max(files, key=lambda f: f.stat().st_mtime)) if files else None
 
 
 def post_work_reflect(
@@ -135,14 +118,14 @@ def post_work_reflect(
     dry_run: bool = False,
     runner=None,
 ) -> dict:
-    """Reflect the just-finished `/work` session (dedup-guarded vs the Stop hook).
-    Returns a result dict; never raises. Status: disabled | dry-run | cooldown |
-    no-session | ambiguous-session | already-reflected | reflected |
-    reflect-failed | error.
+    """Stage the just-finished `/work` session's new slice for tonight's lesson
+    compile, through the same per-session bookmark the night uses (task 199).
+    Nothing is filed here. Returns a result dict; never raises. Status:
+    disabled | dry-run | cooldown | no-session | staged | stage-failed | error.
 
     Target resolution (most → least precise): explicit `transcript=` → explicit
-    `session_id=` (`session-id-<sid>.start`) → the single unambiguous `.start`
-    marker in `<project_root>/.harness/` (else defer to the Stop hook)."""
+    `session_id=` in the host's transcript folder for `project_root` → that
+    folder's newest transcript."""
     vault = Path(vault)
     project_root = Path(project_root)
     if now is None:
@@ -157,44 +140,15 @@ def post_work_reflect(
             result["status"] = "disabled"
             return result
 
-        harness_dir = project_root / ".harness"
-        # Resolve the target transcript + the session marker (for dedup/rename).
-        marker = None
-        if transcript:
-            tpath = transcript
-        elif session_id:
-            # Session-exact: target this session's marker precisely.
-            m = harness_dir / f"session-id-{session_id}.start"
-            if (harness_dir / f"session-id-{session_id}.reflected").exists():
-                result["status"] = "already-reflected"
-                return result
-            if not m.is_file():
-                result["status"] = "no-session"
-                return result
-            marker = m
-            tpath = _marker_transcript(m)
-        else:
-            marker, reason = _resolve_session_marker(harness_dir)
-            if marker is None:
-                result["status"] = reason or "no-session"
-                return result
-            tpath = _marker_transcript(marker)
-
+        tpath = transcript or _session_transcript(project_root, session_id)
         if not tpath:
             result["status"] = "no-session"
             return result
         result["transcript"] = tpath
 
-        # Dedup: a `.reflected` sibling means the Stop hook (or a prior dispatch)
-        # already reflected this session — skip to avoid a double --route.
-        reflected_marker = marker.with_suffix(".reflected") if marker else None
-        if reflected_marker is not None and reflected_marker.exists():
-            result["status"] = "already-reflected"
-            return result
-
         state = ao.load_state(vault)
         cooldown_ok = ao.should_fire(state, _REFLECT_CHAIN, now, _cooldown_hours(config))
-        argv = [_script("reflect.py"), tpath, "--summary", "--route", "--vault-path", str(vault)]
+        argv = [_script("lesson_compile.py"), "collect", "--transcript", tpath, "--vault-path", str(vault)]
 
         if dry_run:
             result["status"] = "dry-run"
@@ -203,26 +157,18 @@ def post_work_reflect(
             return result
 
         if not cooldown_ok:
-            # Skip (don't rename the marker) so the Stop hook still reflects it.
             result["status"] = "cooldown"
             return result
 
         r = runner("reflect", argv)
         result["returncode"] = r.get("returncode")
         if r.get("returncode") == 0:
-            # Mark the session reflected so the Stop hook's guard skips it.
-            if marker is not None and reflected_marker is not None:
-                try:
-                    marker.rename(reflected_marker)
-                except OSError:
-                    pass
             ao.record_fire(state, _REFLECT_CHAIN, now)
             ao.save_state(vault, state)
-            result["status"] = "reflected"
+            result["status"] = "staged"
         else:
-            # Leave the `.start` marker so the Stop hook retries — don't consume
-            # the cooldown on a failed reflect.
-            result["status"] = "reflect-failed"
+            # The night collects the session anyway; nothing is lost.
+            result["status"] = "stage-failed"
             result["stderr_tail"] = (r.get("stderr") or "")[-200:]
         return result
     except Exception as e:
@@ -421,9 +367,8 @@ def _main(argv: list[str]) -> int:
     pw.add_argument("--transcript", default=None,
                     help="explicit transcript path (most precise target)")
     pw.add_argument("--session-id", default=None,
-                    help="target this session's marker exactly (session-exact; "
-                         "default: the single unambiguous .start marker, else "
-                         "defer to the Stop hook)")
+                    help="this session's transcript in the host's folder for the "
+                         "project root (default: that folder's newest)")
     sub.add_parser("post-release")
     args = parser.parse_args(argv[1:])
 

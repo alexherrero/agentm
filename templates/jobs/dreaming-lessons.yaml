@@ -1,0 +1,50 @@
+# dreaming-lessons.yaml — the night's lesson compile (task 199), the first
+# step of the dreaming window.
+#
+# One compile per project per day. It reads every session's new slice since its
+# bookmark (Claude Code and, once enabled, Antigravity), the day's commits and
+# merged PRs, the session traces and the auto-memory notes saved that day, and
+# writes at most five lessons per project — a new card through the filing
+# engine, or prose added under an existing card's `## Added by dreaming`
+# section — after searching the whole vault for the lesson first. A quiet day
+# writes nothing. See harness/skills/memory/scripts/lesson_compile.py.
+#
+# .harness/jobs/ is gitignored (per-project runtime state), so this templates/
+# copy is the tracked, shipped source. Register it by copying it to
+# .harness/jobs/dreaming-lessons.yaml in the repo that runs the agentm runner.
+schedule: daily
+lookback: 36h
+
+# Order 0 in the night window, on the operator's ruling of 2026-11-06 that the
+# compile is a dreaming step. The runner sorts by (order, name): this runs
+# after the hourly ingest sweep when both are due (`capture-ingest-sweep` sorts
+# first), before the enrichment batch and the idea judge (order 1), so a new or
+# augmented lesson is judged the same night, and before the dreaming binary
+# (order 2), whose `promote` job then sees tonight's lessons on disk.
+window: "02:00-06:00"
+order: 0
+
+enabled: true
+
+# Runs from `scripts/` as cwd, with MEMORY_ROOT exported by the runner. Sonnet
+# through `claude -p` from a scratch folder, hooks off, no tools; Antigravity
+# slices are digested by the newest Flash through `agy -p` and stay in a dry
+# report until `agentm_config.py --lesson-compile-agy-enabled true`. The last
+# line printed is a JSON object carrying `total_cost_usd`. To see what it would
+# write without writing anything:
+#
+#     python3 ../harness/skills/memory/scripts/lesson_compile.py night --dry-run
+command: python3 ../harness/skills/memory/scripts/lesson_compile.py night
+
+tier: T3
+
+# Declared so the fleet's daily dollar ceiling gates it. The script holds its
+# own lines too: $0.60 per project per day and $4 a night
+# (`lesson_compile.project_cap_usd`, `lesson_compile.night_cap_usd`). A
+# measured compile of one project's day cost about $0.21. Re-audit the fleet
+# ceiling (cycle.py) if the night's real spend passes $4: it runs before the
+# enrichment batch, whose pre-flight check counts it.
+budget:
+  tokens: 1000000
+
+dry_run: false

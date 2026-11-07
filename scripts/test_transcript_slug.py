@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Tests for the transcript-path slug both memory hooks compute as a FALLBACK.
+"""Tests for the transcript-path slug the Stop hook computes as a FALLBACK.
 
-The hooks no longer compute this path on the normal route. Claude Code sends
-`transcript_path` on every hook event, both hooks read it, and its docs say to
+The hook no longer computes this path on the normal route. Claude Code sends
+`transcript_path` on every hook event, the hook reads it, and its docs say to
 use it rather than constructing one from `session_id` — the session-id →
 filename correspondence is not guaranteed. The formula below survives as the
 fallback for hosts too old to send the field, which is why these tests survive
 with it. `scripts/test_memory_reflect_stop_hook.py` and
 `scripts/test_memory_recall_hook.py` cover the payload branch and pin the
 precedence between the two; `verify-hook-resolution.sh` exercises both ends to
-end.
+end. `memory-recall-session-start` computed the same path for the session
+marker it wrote; the markers retired with task 199, so it computes none.
 
 Why this file exists: the slug formula was wrong in production for 57 days and
 CI stayed green the whole time, because `verify-hook-resolution.sh` computed the
@@ -25,8 +26,8 @@ every marker written by `memory-recall-session-start` was unresolvable, and the
 orphan sweeper skipped all of them permanently (200 had accumulated).
 
 So these tests deliberately do NOT re-derive the formula. They pin it against
-hand-written literals and assert both hooks agree — the two failure modes a
-mirror cannot catch. A fallback nothing exercises is a fallback that rots, and a
+hand-written literals and assert the hook and the gate agree — the two failure
+modes a mirror cannot catch. A fallback nothing exercises is a fallback that rots, and a
 host old enough to need it is exactly the one least able to report that it
 broke, so the pinning stays as strict as when this was the only route.
 
@@ -48,7 +49,6 @@ _HERE = Path(__file__).resolve().parent
 _HOOKS = _HERE.parent / "harness" / "hooks"
 
 _STOP_HOOK = _HOOKS / "memory-reflect-stop" / "memory-reflect-stop.sh"
-_START_HOOK = _HOOKS / "memory-recall-session-start" / "memory-recall-session-start.sh"
 _GATE = _HERE / "verify-hook-resolution.sh"
 
 # Known-good pairs: (absolute cwd, the slug Claude Code actually uses).
@@ -118,22 +118,12 @@ class TestTranscriptSlug(unittest.TestCase):
             with self.subTest(cwd=cwd):
                 self.assertEqual(_run_slug(_STOP_HOOK, cwd, "CWD"), expected)
 
-    def test_session_start_hook_matches_known_good_slugs(self) -> None:
-        for cwd, expected in _KNOWN_GOOD:
-            with self.subTest(cwd=cwd):
-                self.assertEqual(
-                    _run_slug(_START_HOOK, cwd, "SESSION_CWD"), expected
-                )
-
-    def test_both_hooks_agree(self) -> None:
-        """A marker written by one hook must be resolvable by the other — the
-        session-start hook records the transcript path the stop hook looks up."""
-        for cwd, _ in _KNOWN_GOOD:
-            with self.subTest(cwd=cwd):
-                self.assertEqual(
-                    _run_slug(_STOP_HOOK, cwd, "CWD"),
-                    _run_slug(_START_HOOK, cwd, "SESSION_CWD"),
-                )
+    def test_session_start_hook_computes_no_path(self) -> None:
+        """Task 199: the session-start hook wrote a marker naming the transcript
+        and so computed the slug too. It writes no marker now, and a second copy
+        of the formula there would be one more to drift."""
+        start = _HOOKS / "memory-recall-session-start" / "memory-recall-session-start.sh"
+        self.assertNotIn("CWD_SLUG", start.read_text(encoding="utf-8"))
 
     def test_gate_agrees_with_the_hooks(self) -> None:
         """`verify-hook-resolution.sh` seeds a transcript at the path it expects.
@@ -144,7 +134,7 @@ class TestTranscriptSlug(unittest.TestCase):
                 self.assertEqual(_run_slug(_GATE, cwd, "PROJ"), expected)
 
     def test_slug_is_only_reached_as_a_fallback(self) -> None:
-        """Each hook must read `transcript_path` off the payload, and the slug
+        """The Stop hook must read `transcript_path` off the payload, and the slug
         must sit on the other side of that branch.
 
         Without this, the two suites drift apart quietly: the payload-precedence
@@ -152,7 +142,7 @@ class TestTranscriptSlug(unittest.TestCase):
         hook that dropped the payload read and went back to computing. Matching
         on the parse expression plus the guard keeps the check about which
         route runs, not about how the branch happens to be written."""
-        for script in (_STOP_HOOK, _START_HOOK):
+        for script in (_STOP_HOOK,):
             with self.subTest(script=script.name):
                 text = script.read_text(encoding="utf-8")
                 self.assertIn(

@@ -4,19 +4,16 @@
 The agentm `memory-reflect-idle` hook fires this driver to run a small, bounded,
 cooldown-gated chain of memory operations during idle time (SessionStart / cron).
 It is the "push surface" counterpart to the SessionStart briefing (task 3): the
-briefing *surfaces* pending state; this chain *produces* it (reflects unseen
-sessions into the inbox, refreshes skill-discovery sources, stages adapt
-candidates) so the next briefing has something to show.
+briefing *surfaces* pending state; this chain *produces* it (refreshes
+skill-discovery sources, stages adapt candidates) so the next briefing has
+something to show.
 
 Chain steps, in order — each underlying script already self-no-ops when its input
 is empty, so the driver just runs them in sequence and records the outcome:
 
-  1. reflect-corpus  : `reflect.py corpus --execute --batch-size 5 --max-batches 1`
-                       — proactively mine ≤5 unseen session transcripts per pass
-                       (bounded; resumes next pass via reflect's seen-state).
-  2. discover-skills : `discover_skills.py --cadence-check`
+  1. discover-skills : `discover_skills.py --cadence-check`
                        — refresh discovery sources, self-throttled to the cadence.
-  3. adapt-pass1     : `adapt_skills.py --limit 3`
+  2. adapt-pass1     : `adapt_skills.py --limit 3`
                        — Pass-1 enrichment + rubric scoring; stages ≤3 candidate
                        JSONs for the adapt-evaluator (Pass-2, agent-side) to judge.
 
@@ -56,15 +53,15 @@ import auto_orchestration as ao
 _CHAIN = "idle_chain"
 
 # Bounds (the plan's locked per-pass caps; constants for v1 — could become
-# config keys if the real-use dogfood shows they need tuning).
-_CORPUS_BATCH_SIZE = 5     # ≤5 unseen sessions per pass
-_CORPUS_MAX_BATCHES = 1    # one batch per pass
+# config keys if the real-use dogfood shows they need tuning). The chain's
+# first step, `reflect-corpus`, mined five unseen transcripts a pass and filed
+# what it found; it retired with task 199, when mining moved to the night's
+# lesson compile and the regex miner stopped filing on its own.
 _ADAPT_LIMIT = 3           # ≤3 newly-evaluated adapt candidates per pass
 
 # Per-step wall-clock budgets (seconds). The driver runs detached from the 30s
 # SessionStart hook timeout, so these bound a real chain run, not session boot.
 _STEP_TIMEOUT_SEC = {
-    "reflect-corpus": 120,
     "discover-skills": 60,
     "adapt-pass1": 90,
 }
@@ -84,13 +81,6 @@ def plan_steps(vault: Path) -> list[tuple[str, list[str]]]:
     dry-run plan and the executed chain share one definition."""
     v = str(vault)
     return [
-        ("reflect-corpus", [
-            _script("reflect.py"), "corpus",
-            "--vault-path", v,
-            "--execute",
-            "--batch-size", str(_CORPUS_BATCH_SIZE),
-            "--max-batches", str(_CORPUS_MAX_BATCHES),
-        ]),
         ("discover-skills", [
             _script("discover_skills.py"),
             "--vault-path", v,
@@ -163,8 +153,6 @@ def _summarize(name: str, r: dict) -> str:
                 return f"evaluated {ev}" if ev else "noop"
             except (ValueError, AttributeError):
                 return "ran" if rc == 0 else f"rc={rc}"
-        if name == "reflect-corpus":
-            return "noop" if "nothing to process" in out else ("ran" if rc == 0 else f"rc={rc}")
         if name == "discover-skills":
             # Read the flag, don't grep for it: discover_skills.py always emits
             # a `"cadence_skipped": <bool>` key, so the old substring probe for

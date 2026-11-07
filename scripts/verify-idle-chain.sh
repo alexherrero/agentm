@@ -10,8 +10,9 @@
 # lands and silently does nothing — and it is exactly what this file closes. The
 # dry-run checks in verify-v4.sh keep their job (cheap plan/ordering assertions);
 # this file drives the same chain WITHOUT --dry-run and asserts the mutations:
-# the memory entry that lands, the seen-state that advances, the candidate JSONs
-# that appear, the cooldown that is recorded and then honored.
+# the candidate JSONs that appear, the cooldown that is recorded and then
+# honored — and, since task 199, that it mines nothing: the chain's first step,
+# `reflect-corpus`, retired when mining moved to the night's lesson compile.
 #
 # Every assertion pins to observed reality — a file that exists, a literal from
 # the fixture, a count from `find`. None of them recompute an expectation with
@@ -20,11 +21,11 @@
 #
 # HERMETIC. Scratch vault + scratch transcript root under one `mktemp -d`, and
 # no network:
-#   • MEMORY_TRANSCRIPT_ROOT points at the fixture tree. The chain invokes
-#     `reflect.py corpus` WITHOUT --projects-root, so this env var is the only
-#     thing standing between the gate and the operator's real ~/.claude/projects.
-#     Scenario A asserts the seen-state names exactly the fixture session, which
-#     is what catches that plumbing breaking.
+#   • MEMORY_TRANSCRIPT_ROOT points at the fixture tree, which holds a session
+#     with a genuine operator preference. The chain no longer reads transcripts
+#     at all; scenario A asserts the preference stays out of the vault and no
+#     corpus seen-state is written, which is what catches a mining step coming
+#     back.
 #   • The discovery whitelist is seeded comments-only (zero URLs) and the cadence
 #     state is seeded fresh, so `discover_skills.py --cadence-check` returns
 #     before it fetches anything. Both are seeded: cadence short-circuits first,
@@ -72,6 +73,11 @@ assert_exists() {
 # assert_absent <desc> <path>
 assert_absent() {
   if [ -e "$2" ]; then fail "$1" "did not expect path: $2"; else pass "$1"; fi
+}
+# assert_not_in_tree <desc> <root> <needle> — no file under <root> contains <needle>
+assert_not_in_tree() {
+  if grep -qrF -- "$3" "$2" 2>/dev/null; then fail "$1" "a file under $2 contains '$3'"
+  else pass "$1"; fi
 }
 # assert_in_tree <desc> <root> <needle> — some file under <root> contains <needle>
 assert_in_tree() {
@@ -133,7 +139,6 @@ DRY_FLAG=()
 # ── fixture literals (hand-written; every assertion below pins to these) ─────
 OPERATOR_PREF="From now on I prefer kebab-case slugs for every memory entry."
 PREF_NEEDLE="kebab-case slugs"
-SESSION_KEY="session-a/transcript"
 
 # seed_vault <vault-dir> — a scratch vault primed for a hermetic chain run.
 seed_vault() {
@@ -164,7 +169,7 @@ EOF
 }
 
 # seed_transcripts <root> — one session carrying a genuine HIGH operator
-# preference, so reflect-corpus has something real to mine and save.
+# preference: what the retired reflect-corpus step would have mined and filed.
 seed_transcripts() {
   local dir="$1/-scratch-proj/session-a"
   mkdir -p "$dir"
@@ -191,22 +196,12 @@ A_OUT="$(env MEMORY_ROOT="$A_VAULT" MEMORY_TRANSCRIPT_ROOT="$A_TR" \
 
 assert_equals "A. chain reports it ran (not a plan)" "$(jfield "$A_OUT" status)" "ran"
 
-# reflect-corpus really mined the fixture and saved the operator's preference.
-assert_in_tree "A. reflect: the operator preference landed in the vault" "$A_VAULT" "$PREF_NEEDLE"
-assert_exists  "A. reflect: seen-state file written" "$(state_for "$A_VAULT")/transcript-reflection-state.json"
-# Hermeticity: MEMORY_TRANSCRIPT_ROOT is honored, so exactly the fixture session
-# was processed. If the env var stopped reaching the subprocess this would be
-# the operator's whole transcript history instead.
-A_SESSIONS="$("$PY" -c "
-import json
-from pathlib import Path
-p = Path('$(state_for "$A_VAULT")/transcript-reflection-state.json')
-try:
-    print(','.join(sorted(json.loads(p.read_text())['sessions'])))
-except Exception:
-    print('ERR')
-" 2>/dev/null)"
-assert_equals "A. reflect: seen-state names exactly the fixture session" "$A_SESSIONS" "$SESSION_KEY"
+# The chain mines nothing (task 199): the operator's preference stays out of
+# the vault, and no corpus seen-state is written. These two pass under the
+# dry-run fault as well, by design: a chain that does nothing also mines
+# nothing.
+assert_not_in_tree "A. no mining: the operator preference stays out of the vault" "$A_VAULT" "$PREF_NEEDLE"
+assert_absent "A. no mining: no corpus seen-state written" "$(state_for "$A_VAULT")/transcript-reflection-state.json"
 
 # discover-skills throttled on the seeded cadence — and said so truthfully.
 assert_equals "A. discover: step reports throttled" "$(step_outcome "$A_OUT" discover-skills)" "throttled"

@@ -29,6 +29,8 @@ Operations:
                                             #   its judge calls the same (daemon.restated_merge_enabled)
     agentm_config.py --idea-judge-enabled true  # let the night's idea judge write its
                                             #   verdicts (daemon.idea_judge_enabled; it spends either way)
+    agentm_config.py --lesson-compile-agy-enabled true  # let the night's lesson compile use
+                                            #   Antigravity sessions (lesson_compile.agy_enabled; dry until then)
     agentm_config.py --people-email-evidence-enabled true  # let a mail thread count as
                                             #   shared work for a people page (daemon.people_email_evidence_enabled)
     agentm_config.py --notify-enabled true # opt in to the daily on-device notification
@@ -102,6 +104,7 @@ _DAEMON_TASK_MOVER_ENABLED_KEY = "daemon.task_mover_enabled"
 _DAEMON_RESTATED_MERGE_ENABLED_KEY = "daemon.restated_merge_enabled"
 _DAEMON_IDEA_JUDGE_ENABLED_KEY = "daemon.idea_judge_enabled"
 _DAEMON_PEOPLE_EMAIL_EVIDENCE_KEY = "daemon.people_email_evidence_enabled"
+_LESSON_COMPILE_AGY_ENABLED_KEY = "lesson_compile.agy_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
 # The mail door's four keys — the mailbox URL, the sender allow-list, the
@@ -508,6 +511,35 @@ def cmd_set_idea_judge_enabled(prefix: Path, value: str) -> int:
     return 0
 
 
+def cmd_set_lesson_compile_agy_enabled(prefix: Path, value: str) -> int:
+    """Let the night's lesson compile read Antigravity sessions
+    (`lesson_compile.agy_enabled`, task 199).
+
+    Off, each agy slice is still digested by Flash, and the digest is written to
+    the dry report in the engine's state directory (`lesson-compile/agy-dry/`)
+    and goes no further. On, the digests join their project's compile. Read the
+    dry report against a few sessions you remember before turning it on.
+    Idempotent: silent no-op when unchanged.
+    """
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        print(
+            f"[agentm_config] refusing to set lesson_compile.agy_enabled: {value!r} is "
+            "not 'true' or 'false'",
+            file=sys.stderr,
+        )
+        return 2
+    enabled = normalized == "true"
+    config = _read_config(prefix) or {}
+    if config.get(_LESSON_COMPILE_AGY_ENABLED_KEY) == enabled:
+        return 0
+    config[_LESSON_COMPILE_AGY_ENABLED_KEY] = enabled
+    written = _write_config(prefix, config)
+    print(f"{_LESSON_COMPILE_AGY_ENABLED_KEY} = {enabled}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_set_task_mover_enabled(prefix: Path, value: str) -> int:
     """Let the night move closed tasks (`daemon.task_mover_enabled`).
 
@@ -824,6 +856,9 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--idea-judge-enabled", metavar="{true,false}",
                     help="set daemon.idea_judge_enabled — let the night's idea judge add a repeat "
                          "to its idea card and card a new idea in the inbox (off: it reports only)")
+    op.add_argument("--lesson-compile-agy-enabled", metavar="{true,false}",
+                    help="set lesson_compile.agy_enabled — let the night's lesson compile use "
+                         "Antigravity sessions (off: their digests go to a dry report only)")
     op.add_argument("--people-email-evidence-enabled", metavar="{true,false}",
                     help="set daemon.people_email_evidence_enabled — let a mail thread with you "
                          "count as shared work for a people page (ships off; nothing reads mail yet)")
@@ -868,6 +903,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_restated_merge_enabled(prefix, args.restated_merge_enabled)
     if args.idea_judge_enabled is not None:
         return cmd_set_idea_judge_enabled(prefix, args.idea_judge_enabled)
+    if args.lesson_compile_agy_enabled is not None:
+        return cmd_set_lesson_compile_agy_enabled(prefix, args.lesson_compile_agy_enabled)
     if args.people_email_evidence_enabled is not None:
         return cmd_set_people_email_evidence_enabled(prefix, args.people_email_evidence_enabled)
     if args.email_to is not None:

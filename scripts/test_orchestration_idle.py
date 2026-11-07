@@ -82,17 +82,13 @@ class TestIdleChain(unittest.TestCase):
         out = oi.run_idle_chain(self.vault, _cfg(), _NOW, dry_run=True, runner=runner)
         self.assertEqual(out["status"], "dry-run")
         self.assertEqual([s["name"] for s in out["steps"]],
-                         ["reflect-corpus", "discover-skills", "adapt-pass1"])
+                         ["discover-skills", "adapt-pass1"])
         self.assertEqual(runner.calls, [])                 # runner never invoked
         self.assertFalse(ao.state_path(self.vault).exists())  # no state write
 
     def test_plan_carries_bounded_flags(self) -> None:
         out = oi.run_idle_chain(self.vault, _cfg(), _NOW, dry_run=True)
         steps = {s["name"]: s["argv"] for s in out["steps"]}
-        corpus = steps["reflect-corpus"]
-        self.assertIn("--execute", corpus)
-        self.assertEqual(corpus[corpus.index("--batch-size") + 1], "5")
-        self.assertEqual(corpus[corpus.index("--max-batches") + 1], "1")
         adapt = steps["adapt-pass1"]
         self.assertEqual(adapt[adapt.index("--limit") + 1], "3")
 
@@ -102,7 +98,7 @@ class TestIdleChain(unittest.TestCase):
         out = oi.run_idle_chain(self.vault, _cfg(), _NOW, runner=runner)
         self.assertEqual(out["status"], "ran")
         self.assertEqual(runner.order,
-                         ["reflect-corpus", "discover-skills", "adapt-pass1"])
+                         ["discover-skills", "adapt-pass1"])
         st = ao.load_state(self.vault)
         self.assertIn("idle_chain", st["last_fire"])
 
@@ -111,8 +107,16 @@ class TestIdleChain(unittest.TestCase):
         oi.run_idle_chain(self.vault, _cfg(), _NOW, runner=runner)
         self.assertIn("--limit", runner.argv_for("adapt-pass1"))
         self.assertEqual(runner.argv_for("adapt-pass1")[-1], "3")
-        corpus = runner.argv_for("reflect-corpus")
-        self.assertEqual(corpus[corpus.index("--max-batches") + 1], "1")
+
+    def test_the_chain_never_mines(self) -> None:
+        # Task 199: the regex miner stops filing on its own, and mining moved
+        # to the night's lesson compile. No step of the idle chain may run
+        # reflect.py, in any mode.
+        runner = _FakeRunner()
+        oi.run_idle_chain(self.vault, _cfg(), _NOW, runner=runner)
+        self.assertTrue(runner.calls)
+        for _, argv in runner.calls:
+            self.assertFalse(any(a.endswith("reflect.py") for a in argv), argv)
 
     # ── toggle ──────────────────────────────────────────────────────────────
     def test_disabled_is_skip(self) -> None:
@@ -155,14 +159,13 @@ class TestIdleChain(unittest.TestCase):
         # due; skip" this fixture used to carry was invented, and inventing it
         # is what hid the label bug below.
         runner = _FakeRunner(results={
-            "reflect-corpus": {"returncode": 0, "stdout": "", "stderr": "[reflect.corpus] nothing to process", "timed_out": False},
             "discover-skills": {"returncode": 0, "stdout": json.dumps({"cadence_skipped": True, "cadence_days": 7, "fetched": 0}), "stderr": "", "timed_out": False},
             "adapt-pass1": {"returncode": 0, "stdout": json.dumps({"evaluated_count": 0}), "stderr": "", "timed_out": False},
         })
         out = oi.run_idle_chain(self.vault, _cfg(), _NOW, runner=runner)
         self.assertEqual(out["status"], "ran")
         self.assertEqual([s["outcome"] for s in out["steps"]],
-                         ["noop", "throttled", "noop"])
+                         ["throttled", "noop"])
 
     def test_discover_outcome_reads_the_flag_not_the_key_name(self) -> None:
         # A discover step that FETCHED must never be labelled "throttled".
@@ -184,12 +187,12 @@ class TestIdleChain(unittest.TestCase):
 
     def test_step_failure_does_not_abort_chain(self) -> None:
         runner = _FakeRunner(results={
-            "reflect-corpus": {"returncode": 2, "stdout": "", "stderr": "boom", "timed_out": False},
+            "discover-skills": {"returncode": 2, "stdout": "", "stderr": "boom", "timed_out": False},
         })
         out = oi.run_idle_chain(self.vault, _cfg(), _NOW, runner=runner)
         self.assertEqual(out["status"], "ran")
         self.assertEqual(runner.order,
-                         ["reflect-corpus", "discover-skills", "adapt-pass1"])
+                         ["discover-skills", "adapt-pass1"])
 
     def test_runner_exception_is_swallowed(self) -> None:
         runner = _FakeRunner(raise_on="discover-skills")

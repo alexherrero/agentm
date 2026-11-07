@@ -497,7 +497,7 @@ class TheStateWritingSuitesRunByHand(unittest.TestCase):
             "TestState.test_save_load_round_trip",
         ),
         "test_orchestration_phase.py": (
-            "TestPostWork.test_reflects_marks_and_records_fire",
+            "TestPostWork.test_stages_the_session_and_records_fire",
             "TestPostRelease.test_runs_index_then_discover_and_records",
         ),
         "test_memory_heat_policy.py": (

@@ -70,6 +70,7 @@ expected=(
   hooks/compaction-reanchor/compaction-reanchor.sh
   hooks/vault-worktree-guard/vault-worktree-guard.sh
   hooks/vault-worktree-guard/vault_worktree_guard.py
+  hooks/memory-automemory-note/memory-automemory-note.sh
 )
 for p in "${expected[@]}"; do
   if [[ ! -e "$PREFIX/$p" ]]; then
@@ -185,6 +186,7 @@ user_hooks=(
   compaction-marker
   compaction-reanchor
   vault-worktree-guard
+  memory-automemory-note
 )
 python3 - "$PREFIX/settings.json" "${user_hooks[@]}" <<'PY' || fail=1
 import json, sys
