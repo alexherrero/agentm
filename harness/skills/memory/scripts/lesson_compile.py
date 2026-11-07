@@ -784,25 +784,58 @@ def digest_agy(text: str, *, model: str, runner) -> CallResult:
     return CallResult(text=out.strip())
 
 
-def parse_json_reply(text: str) -> dict:
-    """The JSON object in a model's reply, fenced or bare."""
+_ESCAPE = re.compile(r'\\(["\\/bfnrtu]?)')
+
+
+def _repair_escapes(raw: str) -> str:
+    """Every backslash that does not start a valid JSON escape, doubled. A
+    valid escape is consumed whole, so `\\\\` stays a pair."""
+    return _ESCAPE.sub(lambda m: m.group(0) if m.group(1) else "\\\\", raw)
+
+
+def parse_json_reply(text: str) -> "dict | None":
+    """The JSON object in a model's reply, fenced or bare; None when there is
+    none. A reply about shell code tends to carry what strict JSON refuses —
+    a raw newline inside a string, a `\\$` or `\\(` escape — so control
+    characters are allowed and an invalid escape is read as a literal
+    backslash before the reply is given up on."""
     m = re.search(r"\{.*\}", text or "", re.S)
     if not m:
-        return {}
+        return None
+    raw = m.group(0)
+    for candidate in (raw, _repair_escapes(raw)):
+        try:
+            data = json.loads(candidate, strict=False)
+        except ValueError:
+            continue
+        return data if isinstance(data, dict) else None
+    return None
+
+
+def _keep_unparsed(project: str, stage: str, text: str) -> None:
+    """A reply that would not parse, kept for the operator to read: it costs
+    money, and an empty result is otherwise indistinguishable from a quiet
+    day."""
     try:
-        data = json.loads(m.group(0))
-    except ValueError:
-        return {}
-    return data if isinstance(data, dict) else {}
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        out = state_dir() / "unparsed" / f"{stamp}-{project}-{stage}.txt"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text or "", encoding="utf-8")
+    except OSError:
+        pass
 
 
 DRAFT_PROMPT = """You are AgentM's nightly lesson compiler for the project `{project}`.
 Below is everything new from its sessions since the last compile: condensed session slices, the regex
 miner's hints, commits and merged PRs, session traces, and notes the agent saved to its own memory.
 
-Draft the durable lessons a future session on any project would be glad to recall: a fix and its cause,
-a tool or system behaviour learned the hard way, a workflow that worked, a convention decided, a
-preference the operator stated. Not a status report, a task log, a plan, or anything only true today.
+Draft the durable lessons a future session would be glad to recall, whether it works on this project or
+another: a fix and its cause, a tool or system behaviour learned the hard way, a fact about how this
+project builds, runs or ships, a workflow that worked, a convention decided, a preference the operator
+stated. Not a status report, a task log, a plan, or anything only true today.
+
+Notes the agent saved to its own memory live in one host's private folder and have never reached the
+shared vault. Their durable content is lesson material like any other: fold related notes into one lesson.
 
 Rules:
 - At most {max_candidates} candidates, and usually far fewer. A quiet day yields none: return an empty list.
@@ -873,7 +906,10 @@ def search_neighbours(query: str, *, vault_root: Path, memory_root: Path, runner
         terms = query
     if not terms.strip():
         return []
-    argv = [binary, "search", "-json", "-surface", "measure", "-mode", "hybrid", "-k", str(k + 4)]
+    # A wide pool, because a project's own lists and plans crowd a lesson card
+    # out of the top few: a card that already holds the lesson ranked 20th
+    # behind six of its project's files in the first live run.
+    argv = [binary, "search", "-json", "-surface", "measure", "-mode", "hybrid", "-k", str(max(k * 4, 24))]
     if question.strip():
         argv += ["-question", question.strip()[:1000]]
     try:
@@ -903,7 +939,12 @@ def search_neighbours(query: str, *, vault_root: Path, memory_root: Path, runner
         out_rows.append(Neighbour(rel, str(row.get("title") or Path(path).stem),
                                   _cut(str(row.get("summary") or row.get("snippet") or ""), 400),
                                   augmentable))
-    return out_rows[:k]
+    # Lesson cards first, in rank order: they are what a candidate may
+    # augment. The best read-only matches fill what is left, so the decision
+    # still sees a design or a list that already says the same thing.
+    cards = [n for n in out_rows if n.augmentable][: max(1, k - 2)]
+    others = [n for n in out_rows if not n.augmentable][: k - len(cards)]
+    return cards + others
 
 
 # ── writing ──────────────────────────────────────────────────────────────────
@@ -1046,7 +1087,12 @@ def compile_project(night: Night, project: str, *, slices: list, automemory: lis
     if draft.error:
         rep["error"] = f"draft: {draft.error}"
         return rep
-    cands = [c for c in parse_json_reply(draft.text).get("candidates") or [] if isinstance(c, dict)
+    drafted = parse_json_reply(draft.text)
+    if drafted is None:
+        _keep_unparsed(project, "draft", draft.text)
+        rep["error"] = "draft: the reply held no JSON"
+        return rep
+    cands = [c for c in drafted.get("candidates") or [] if isinstance(c, dict)
              and str(c.get("lesson") or "").strip()][:MAX_CANDIDATES]
     # The night's own duplicates, before any search: one lesson said twice is one candidate.
     unique: list = []
@@ -1073,8 +1119,13 @@ def compile_project(night: Night, project: str, *, slices: list, automemory: lis
     if decide.error:
         rep["error"] = f"decide: {decide.error}"
         return rep
+    decided = parse_json_reply(decide.text)
+    if decided is None:
+        _keep_unparsed(project, "decide", decide.text)
+        rep["error"] = "decide: the reply held no JSON"
+        return rep
     writes = 0
-    for act in parse_json_reply(decide.text).get("actions") or []:
+    for act in decided.get("actions") or []:
         if not isinstance(act, dict):
             continue
         kind = act.get("action")
