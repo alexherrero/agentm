@@ -441,6 +441,18 @@ def condense_agy(rows: list, *, relayed: bool) -> str:
     return _fit("\n".join(lines))
 
 
+def own_agy_digest(rows: list) -> bool:
+    """Whether an agy conversation is one of the night's own digest calls. agy
+    keeps a transcript of every `agy -p`, so each digest leaves a conversation
+    that the next night would otherwise read as new work and digest again."""
+    first = AGY_DIGEST_PROMPT.splitlines()[0]
+    for r in rows:
+        if r.get("type") == "USER_INPUT":
+            content = r.get("content") if isinstance(r.get("content"), str) else ""
+            return _AGY_REQUEST.sub("", content).lstrip().startswith(first)
+    return False
+
+
 _SCRATCH = re.compile(r"^/(?:private/)?tmp/claude-[^/]+/([^/]+)/")
 _AGY_PATH_ARGS = ("Cwd", "Path", "AbsolutePath", "TargetFile", "File", "DirectoryPath")
 
@@ -555,6 +567,9 @@ def collect(*, memory_root: "Path | None", claude_root: "Path | None" = None, ag
             cwd = session_binding.transcript_cwd(s.path)
             relayed = False
         else:
+            if own_agy_digest(rows):
+                marks[s.key] = new_mark
+                continue
             cwd = agy_cwd(rows)
             project, relayed = project_for_agy(rows, vault_root)
             text, hints = condense_agy(rows, relayed=relayed), []

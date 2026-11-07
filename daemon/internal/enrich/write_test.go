@@ -151,6 +151,36 @@ func TestASlugIsRenamedOnlyWhileNothingLinksToIt(t *testing.T) {
 	}
 }
 
+// A note that names its own slug keeps it in step with the file. The rewrite
+// carries the old slug forward, so a rename that left it would leave a card
+// whose slug is not its file name.
+func TestARenameMovesTheSlugTheNoteCarries(t *testing.T) {
+	v := newVault()
+	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
+
+	dest, err := a.Apply(context.Background(), WriteRequest{
+		Rel:     "agent/memory/semantic/badly-named.md",
+		Next:    "---\ntitle: T\nslug: badly-named\n---\n\nbody\n",
+		NewSlug: "well-named",
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got := rawFrontmatterValue(v.files[dest], "slug"); got != "well-named" {
+		t.Errorf("slug after the rename = %q, want well-named", got)
+	}
+
+	kept, err := a.Apply(context.Background(), WriteRequest{
+		Rel: dest, Next: "---\ntitle: T\nslug: well-named\n---\n\nbody\n",
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got := rawFrontmatterValue(v.files[kept], "slug"); got != "well-named" {
+		t.Errorf("slug without a rename = %q, want well-named", got)
+	}
+}
+
 // The window closes with the first inbound link. There is no redirect
 // mechanism, and deliberately not: a vault of redirects is a vault where no path
 // means what it says.
