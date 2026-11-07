@@ -1265,9 +1265,17 @@ def compile_night(*, memory_root: Path, runner=subprocess_runner, settings: "Set
             agy_digests += 1
             flash = flash or settings.flash_model or newest_flash(runner)
             d = digest_agy(s.get("text") or "", model=flash, runner=runner)
-            if d.error or d.text.strip() == "NOTHING DURABLE":
+            if d.error:
+                # A digest that failed (agy's print timeout, a quota refusal) is
+                # not a verdict on the session: the slice waits for the next
+                # night, until PENDING_MAX_DAYS drops it.
                 agy_dry.append({"session": s["session"], "project": project, "model": flash,
-                                "digest": d.text, "error": d.error})
+                                "digest": d.text, "error": d.error, "retry": True})
+                leftover.setdefault(project, []).append(s)
+                continue
+            if d.text.strip() == "NOTHING DURABLE":
+                agy_dry.append({"session": s["session"], "project": project, "model": flash,
+                                "digest": d.text})
                 continue
             if settings.agy_enabled:
                 slices.append(dict(s, digest=d.text))

@@ -180,7 +180,8 @@ class _Base(unittest.TestCase):
 
     def compile(self, runner, **kw):
         settings = kw.pop("settings", lc.Settings())
-        return lc.compile_night(memory_root=self.vault, runner=runner, settings=settings, now=_NOW, **kw)
+        now = kw.pop("now", _NOW)
+        return lc.compile_night(memory_root=self.vault, runner=runner, settings=settings, now=now, **kw)
 
     def cards(self) -> list:
         return sorted(p for p in (self.vault / "memory").rglob("*.md") if "episodic" not in p.parts)
@@ -693,6 +694,32 @@ class TestAntigravity(_Base):
         with mock.patch.object(lc, "AGY_NIGHT_LIMIT", 2):
             self.compile(FakeRunner(candidates=[]), settings=lc.Settings(agy_enabled=True))
         self.assertEqual(len(self.pending("alpha")), 1, "the third waits for the next night")
+
+    def test_a_failed_digest_waits_for_the_next_night(self) -> None:
+        self.agy_transcript("t1", self.rows(str(self.repo)))
+        self.collect()
+
+        class TimingOut(FakeRunner):
+            def __call__(self, argv, input_text=None, cwd=None, timeout=60, env=None):
+                if argv[:2] == ["agy", "-p"]:
+                    self.calls.append((list(argv), input_text))
+                    return 0, "", "error: print timeout after 3m0s with the turn still in progress"
+                return super().__call__(argv, input_text, cwd, timeout, env)
+
+        self.compile(TimingOut(candidates=[]), settings=lc.Settings(agy_enabled=True))
+        (kept,) = self.pending("alpha")
+        self.assertEqual(kept["session"], "t1")
+        runner = FakeRunner(candidates=[])
+        self.compile(runner, settings=lc.Settings(agy_enabled=True),
+                     now=_NOW + timedelta(days=1))
+        self.assertIn("adding Y fixed it", runner.prompts("Draft the durable lessons")[0])
+        self.assertEqual(self.pending("alpha"), [])
+
+    def test_a_nothing_durable_digest_is_not_retried(self) -> None:
+        self.agy_transcript("t2", self.rows(str(self.repo)))
+        self.collect()
+        self.compile(FakeRunner(candidates=[], digest="NOTHING DURABLE"), settings=lc.Settings(agy_enabled=True))
+        self.assertEqual(self.pending("alpha"), [])
 
     def test_the_digest_call_turns_recall_off(self) -> None:
         seen = {}
