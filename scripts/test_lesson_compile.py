@@ -628,6 +628,18 @@ class TestAntigravity(_Base):
         marks = lc.load_bookmarks()
         self.assertIn(f"{lc.AGY}:a1", marks)
 
+    def test_the_nights_own_digest_calls_are_not_read_back(self) -> None:
+        # Every `agy -p` leaves a transcript. A digest call's conversation is
+        # the night's own output: staging it would digest it again the next
+        # night, and every night after.
+        own = self.rows(str(self.repo))
+        own[0]["content"] = "<USER_REQUEST>\n" + lc.AGY_DIGEST_PROMPT + "REQUESTER: Fix the build.\n</USER_REQUEST>"
+        self.agy_transcript("d1", own)
+        self.agy_transcript("a1", self.rows(str(self.repo)))
+        self.collect()
+        self.assertEqual([r["session"] for r in self.pending("alpha")], ["a1"])
+        self.assertIn(f"{lc.AGY}:d1", lc.load_bookmarks())
+
     def test_a_newer_agy_maps_by_the_paths_it_reads(self) -> None:
         # A newer agy records no Cwd: the workspace shows only in the paths its
         # file tools read and edit. The majority project wins.

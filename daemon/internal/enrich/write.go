@@ -198,10 +198,18 @@ func (w *Applier) Apply(ctx context.Context, req WriteRequest) (string, error) {
 		}
 	}
 
+	next := req.Next
+	if renamed != "" && rawFrontmatterValue(next, "slug") != "" {
+		// A `slug` the note carries names its file, so it moves with the file.
+		// The rewrite carried the old one forward, and a card whose slug is not
+		// its file name fails the card shape.
+		next = replaceFrontmatterValue(next, "slug", req.NewSlug)
+	}
+
 	if w.Journal != nil {
 		if err := w.Journal.Record(ctx, JournalEntry{
 			At: time.Now().UTC(), Rel: dest, Trigger: req.Trigger.String(),
-			Version: req.Version, Previous: req.Previous, Next: req.Next,
+			Version: req.Version, Previous: req.Previous, Next: next,
 			Renamed: renamed,
 		}); err != nil {
 			// An unrecordable write is not performed. The alternative is a change
@@ -217,7 +225,7 @@ func (w *Applier) Apply(ctx context.Context, req WriteRequest) (string, error) {
 			return "", fmt.Errorf("enrich: renaming %s: %w", renamed, err)
 		}
 	}
-	if err := w.Put(ctx, dest, req.Next); err != nil {
+	if err := w.Put(ctx, dest, next); err != nil {
 		return "", fmt.Errorf("enrich: writing %s: %w", dest, err)
 	}
 	return dest, nil
