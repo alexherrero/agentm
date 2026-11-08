@@ -401,11 +401,27 @@ class TestCompile(_Base):
         runner = FakeRunner(candidates=[_cand()], actions=[])
         self.compile(runner)
         searches = [argv for argv, _ in runner.calls if Path(argv[0]).stem == "agentmd"]
-        self.assertEqual(len(searches), 1)
-        argv = searches[0]
-        self.assertIn("hybrid", argv)
-        self.assertIn("-question", argv)
-        self.assertNotIn("-project", argv, "the search is not narrowed to the project")
+        self.assertEqual([argv[-1] for argv in searches], ["widget cold cache", "widgets warm cache"],
+                         "once by the model's query, once by the candidate's title")
+        for argv in searches:
+            self.assertIn("hybrid", argv)
+            self.assertIn("-question", argv)
+            self.assertNotIn("-project", argv, "the search is not narrowed to the project")
+
+    def test_a_card_only_the_title_finds_reaches_the_decision(self) -> None:
+        # The first unattended night refiled lessons the vault already held:
+        # the model's query missed a card that its title finds.
+        self.stage()
+        twin = {"path": "memory/procedural/warm-widgets.md", "title": "Widgets need a warm cache",
+                "type": "fix", "lifecycle": "active"}
+        runner = FakeRunner(candidates=[_cand(query="build failure cold start")],
+                            search={"widgets warm": [twin]}, actions=[])
+        out = self.compile(runner)
+        (decide,) = runner.prompts("You are deciding")
+        self.assertIn("memory/procedural/warm-widgets.md", decide)
+        (searched,) = out["projects"][0]["searched"]
+        self.assertEqual(searched["query"], "build failure cold start")
+        self.assertEqual(searched["neighbours"], ["memory/procedural/warm-widgets.md"])
 
     def test_a_lesson_card_is_not_crowded_out_by_project_files(self) -> None:
         rows = [{"path": f"projects/alpha/lists/l{i}.md", "title": f"List {i}"} for i in range(12)]

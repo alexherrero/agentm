@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import itertools
 import json
 import os
 import re
@@ -962,6 +963,26 @@ def search_neighbours(query: str, *, vault_root: Path, memory_root: Path, runner
     return cards + others
 
 
+def neighbours_for(c: dict, night, k: int = 6) -> list:
+    """A candidate's neighbours, searched twice: by the query the model wrote
+    for it and by its own title. The query alone missed cards that held the
+    same lesson under the same title (the first unattended night refiled three
+    of them), so the two result lists are interleaved, each one's best first,
+    and cut to the usual pool with lesson cards first."""
+    question = f"{c.get('title') or ''}. {c.get('lesson') or ''}"
+    runs = []
+    for terms in dict.fromkeys(t for t in (str(c.get("query") or ""), str(c.get("title") or "")) if t.strip()):
+        runs.append(search_neighbours(terms, vault_root=night.vault_root, memory_root=night.memory_root,
+                                      runner=night.runner, question=question, k=k))
+    merged, seen = [], set()
+    for row in (n for tier in itertools.zip_longest(*runs) for n in tier if n is not None):
+        if row.rel not in seen:
+            seen.add(row.rel)
+            merged.append(row)
+    cards = [n for n in merged if n.augmentable][: max(1, k - 2)]
+    return cards + [n for n in merged if not n.augmentable][: k - len(cards)]
+
+
 # ── writing ──────────────────────────────────────────────────────────────────
 
 def with_addition(current: str, added: str, *, day: str, kind: str) -> "str | None":
@@ -1118,9 +1139,9 @@ def compile_project(night: Night, project: str, *, slices: list, automemory: lis
     rep["candidates"] = len(cands)
     if not cands:
         return rep
-    neighbours = [search_neighbours(str(c.get("query") or c.get("title") or ""), vault_root=night.vault_root,
-                                    memory_root=night.memory_root, runner=night.runner,
-                                    question=f"{c.get('title') or ''}. {c.get('lesson') or ''}") for c in cands]
+    neighbours = [neighbours_for(c, night) for c in cands]
+    rep["searched"] = [{"title": _cut(str(c.get("title") or ""), 120), "query": _cut(str(c.get("query") or ""), 200),
+                        "neighbours": [n.rel for n in ns]} for c, ns in zip(cands, neighbours)]
     if night.left(project_spent) < MIN_CALL_USD:
         rep["error"] = "cost cap reached before the decision"
         return rep
