@@ -908,6 +908,26 @@ def _gh(args: list):
     return json.loads(out.stdout or "null")
 
 
+def wait_for_commit(vault_root: Path, rel: str, *, timeout: float = 300, step: float = 10,
+                    clock: Callable = time.monotonic, sleep: Callable = time.sleep) -> bool:
+    """Wait until the vault's own committer has committed the report. The
+    daemon commits on its own cycle, and a push that runs first leaves the
+    email's links on a 404 until the next push: the first live run on
+    2026-11-08 pushed six seconds before the report was committed."""
+    deadline = clock() + timeout
+    while True:
+        try:
+            out = subprocess.run(["git", "-C", str(vault_root), "status", "--porcelain", "--", rel],
+                                 capture_output=True, text=True, timeout=30)
+            if out.returncode == 0 and not out.stdout.strip():
+                return True
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if clock() >= deadline:
+            return False
+        sleep(step)
+
+
 def push_vault(command: Optional[list]) -> bool:
     """Run the vault's backup push so the report's links resolve. A failure
     is logged and the email goes anyway: the links catch up on the next push."""
@@ -949,6 +969,8 @@ def run_weekly(vault: Path, *, mail: bool = True, push: bool = True, now: Option
     out.write_text(weekly_render.markdown(week), encoding="utf-8")
     print(f"weekly-email: wrote {out} — {VERDICT[week.status]}")
     if push:
+        if config.get("push_command") and not wait_for_commit(src.vault_root, _rel(src.vault_root, out)):
+            print("weekly-email: the report is not committed yet; pushing anyway")
         pushed = push_vault(config.get("push_command"))
         print(f"weekly-email: vault push {'done' if pushed else 'skipped or failed'}")
     if not mail:

@@ -340,6 +340,39 @@ class TheUrgentLane(WeeklyFixture):
         self.assertEqual(len(w.read_jsonl(self.engine / w.URGENT_LOG)), 3)   # two from setUp, one now
 
 
+class ThePush(unittest.TestCase):
+    def setUp(self):
+        self.repo = Path(tempfile.mkdtemp(prefix="weekly-push-"))
+        self.addCleanup(shutil.rmtree, self.repo, ignore_errors=True)
+        env = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+        self.git = lambda *a: __import__("subprocess").run(
+            ["git", "-C", str(self.repo), "-c", "user.email=t@example.com", "-c", "user.name=t", *a],
+            check=True, capture_output=True, env={**__import__("os").environ, **env})
+        self.git("init", "-q")
+        _write(self.repo / "a.md", "x\n")
+        self.git("add", "a.md")
+        self.git("commit", "-qm", "a")
+
+    def test_a_committed_report_is_ready_at_once(self):
+        self.assertTrue(w.wait_for_commit(self.repo, "a.md", timeout=0, sleep=lambda s: None))
+
+    def test_an_uncommitted_report_waits_then_gives_up(self):
+        _write(self.repo / "r.md", "report\n")
+        ticks = iter(range(0, 1000, 10))
+        slept = []
+        ok = w.wait_for_commit(self.repo, "r.md", timeout=30, clock=lambda: next(ticks), sleep=slept.append)
+        self.assertFalse(ok)
+        self.assertEqual(len(slept), 2)   # checks at 10 and 20 sleep; the one at 30 gives up
+
+    def test_a_report_committed_while_waiting_is_seen(self):
+        _write(self.repo / "r.md", "report\n")
+
+        def commit(_s):
+            self.git("add", "r.md")
+            self.git("commit", "-qm", "r")
+        self.assertTrue(w.wait_for_commit(self.repo, "r.md", timeout=60, sleep=commit))
+
+
 class TheMailPath(unittest.TestCase):
     def test_html_rides_as_the_alternative_to_the_text(self):
         with mock.patch("smtplib.SMTP") as smtp_cls:
