@@ -45,8 +45,9 @@ const (
 	// on any status surface, because each failure was only a log line.
 	AlertCommitStalled = "commit-stalled"
 
-	// AlertBackupStale is the vault backup falling behind: commits on main the
-	// backup remote has lacked for longer than two of the push job's runs.
+	// AlertBackupStale is the vault backup falling behind: the push job's last
+	// two runs failed with commits waiting, or a commit has waited past
+	// BackupStale.
 	AlertBackupStale = "backup-stale"
 )
 
@@ -199,10 +200,13 @@ type Thresholds struct {
 	ProbeStale time.Duration `json:"probe_stale"`
 	// ProbeBudget is how long one round trip may take.
 	ProbeBudget time.Duration `json:"probe_budget"`
-	// BackupStale is how long a commit may wait for the backup push. Two of the
-	// push job's four-hourly runs: one missed run is a machine asleep at the mark,
-	// two is a job that has stopped.
+	// BackupStale is how long a commit may wait for the backup push. Three of
+	// the push job's runs, which is two missed: a commit made just after a push
+	// waits one full run on a healthy job, so two runs' wait is one miss.
 	BackupStale time.Duration `json:"backup_stale"`
+	// RunnerInterval is the scheduled-job runner's interval. Its last cycle is
+	// late past one and stopped past two.
+	RunnerInterval time.Duration `json:"runner_interval,omitempty"`
 	// CommitStalled is how long the committer may go on failing before it pages.
 	// A single failed cycle is usually a CLI command holding index.lock for a
 	// moment; half an hour of them is not.
@@ -320,6 +324,14 @@ type Backup struct {
 	Pending          int      `json:"pending"`
 	OldestPendingAge Duration `json:"oldest_pending_age,omitempty"`
 	Detail           string   `json:"detail,omitempty"`
+	// LastRunAt and LastRun are the push job's newest run as its log tells
+	// it, and Failing how many of its newest runs failed in a row (task 198).
+	LastRunAt string `json:"last_run_at,omitempty"`
+	LastRun   string `json:"last_run,omitempty"`
+	Failing   int    `json:"failing,omitempty"`
+	// Reason says why the backup is stale, in the job's own words where its
+	// log has them.
+	Reason string `json:"reason,omitempty"`
 }
 
 // BackupInput is vcs.Repo.Backup's reading, passed through.
@@ -331,6 +343,15 @@ type BackupInput struct {
 	Pending       int
 	OldestPending time.Time
 	Err           string
+
+	// The push job's log, from pulse.ReadBackupLog: whether it exists, its
+	// newest run and how many of the newest runs failed in a row.
+	LogPath     string
+	LogFound    bool
+	LastRun     time.Time
+	LastRunOK   bool
+	LastRunText string
+	Failing     int
 }
 
 // ProbeState is the last recorded self-probe. It is persisted by the probe
@@ -356,6 +377,7 @@ type Report struct {
 	Embedder   Embedder   `json:"embedder"`
 	Contract   Contract   `json:"contract"`
 	Backup     Backup     `json:"backup"`
+	Runner     Runner     `json:"runner"`
 	Probe      ProbeState `json:"probe"`
 	Thresholds Thresholds `json:"thresholds"`
 }
@@ -427,6 +449,9 @@ type Input struct {
 	// Backup is the backup remote's standing, read from the vault repository.
 	Backup BackupInput
 
+	// Runner is the scheduled-job runner's last cycle.
+	Runner RunnerInput
+
 	Probe      ProbeState
 	ProbeAt    time.Time
 	Thresholds Thresholds
@@ -486,6 +511,9 @@ func Evaluate(in Input) Report {
 
 	// --- the backup ---------------------------------------------------------
 	r.Backup = evaluateBackup(in, &r)
+
+	// --- the runner ---------------------------------------------------------
+	r.Runner = evaluateRunner(in, &r)
 
 	// --- the queue ----------------------------------------------------------
 	//
@@ -597,9 +625,15 @@ func Evaluate(in Input) Report {
 	return r
 }
 
-// evaluateBackup grades the backup reading, and raises the alert when a commit
-// has waited past the threshold. A vault with nothing pending is current
-// however old its last push: there was nothing to send.
+// evaluateBackup grades the backup reading, and raises the alert when the push
+// job's last two runs failed with commits waiting, or a commit has waited past
+// the threshold. A vault with nothing pending is current however old its last
+// push: there was nothing to send.
+//
+// The alert says why in the job's own words (task 198). Four backup-stale
+// alerts between 2026-10-24 and 11-01 each said only that "its log says why":
+// one was two runs failing against a refused connection, one a single failed
+// run, and two a Mac asleep while launchd's awake-time interval held the job.
 func evaluateBackup(in Input, r *Report) Backup {
 	b := in.Backup
 	out := Backup{State: BackupNone, Remote: b.Remote}
@@ -611,6 +645,10 @@ func evaluateBackup(in Input, r *Report) Backup {
 		out.LastPushAt = b.LastPush.UTC().Format(time.RFC3339)
 		out.LastPushAge = Duration(since(in.Now, b.LastPush))
 	}
+	if b.LogFound && !b.LastRun.IsZero() {
+		out.LastRunAt = b.LastRun.UTC().Format(time.RFC3339)
+		out.LastRun, out.Failing = b.LastRunText, b.Failing
+	}
 	if b.Err != "" {
 		out.State, out.Detail = BackupUnknown, b.Err
 		return out
@@ -621,7 +659,8 @@ func evaluateBackup(in Input, r *Report) Backup {
 	}
 	age := since(in.Now, b.OldestPending)
 	out.OldestPendingAge = Duration(age)
-	if in.Thresholds.BackupStale <= 0 || age <= in.Thresholds.BackupStale {
+	failing := b.LogFound && b.Failing >= 2
+	if !failing && (in.Thresholds.BackupStale <= 0 || age <= in.Thresholds.BackupStale) {
 		return out
 	}
 	out.State = BackupStale
@@ -629,12 +668,37 @@ func evaluateBackup(in Input, r *Report) Backup {
 	if !b.LastPush.IsZero() {
 		last = "the last push was " + short(since(in.Now, b.LastPush)) + " ago"
 	}
-	r.add(AlertBackupStale, fmt.Sprintf(
-		"%d commit(s) on main have not reached the backup remote `%s`, the oldest %s old, "+
-			"past the %s threshold — the push job has missed at least two runs, and %s; "+
-			"its log says why",
-		b.Pending, b.Remote, short(age), short(in.Thresholds.BackupStale), last))
+	head := fmt.Sprintf("%d commit(s) on main have not reached the backup remote `%s`, the oldest %s old",
+		b.Pending, b.Remote, short(age))
+	if failing {
+		out.Reason = fmt.Sprintf("the push job's last %d runs failed; the latest, %s ago: %s",
+			b.Failing, short(since(in.Now, b.LastRun)), b.LastRunText)
+		r.add(AlertBackupStale, head+", and "+last+" — "+out.Reason)
+		return out
+	}
+	out.Reason = backupWhy(in)
+	r.add(AlertBackupStale, fmt.Sprintf("%s, past the %s threshold, and %s — %s",
+		head, short(in.Thresholds.BackupStale), last, out.Reason))
 	return out
+}
+
+// backupWhy is what the push job's log says about a backup gone stale with no
+// run of two failures to show for it.
+func backupWhy(in Input) string {
+	b := in.Backup
+	switch {
+	case b.LogPath == "":
+		return "no log is configured to say why (`daemon.backup_log`)"
+	case !b.LogFound:
+		return "the job left no log at " + b.LogPath + " to say why"
+	case b.LastRun.IsZero():
+		return "its log at " + b.LogPath + " records no run"
+	case b.Failing == 1:
+		return fmt.Sprintf("its last run failed %s ago: %s", short(since(in.Now, b.LastRun)), b.LastRunText)
+	}
+	return fmt.Sprintf("no run has failed; the job last ran %s ago (%s). launchd counts its interval "+
+		"in awake time, so a machine that slept delays it; if the machine was awake, check that "+
+		"the job is still loaded", short(since(in.Now, b.LastRun)), b.LastRunText)
 }
 
 // String is the status line's one-liner.

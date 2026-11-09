@@ -807,9 +807,51 @@ class RunnerCycleRowTests(unittest.TestCase):
             (root / "last-cycle.json").write_text(_json.dumps({
                 "at": 1000.0, "loaded": 2, "refused": [], "outcomes": [{"job": "dream", "ran": True}, {"job": "x", "ran": False}]}),
                 encoding="utf-8")
-            row = md.check_runner_cycle(state_root=root)
+            row = md.check_runner_cycle(state_root=root, now=1060.0)
             self.assertEqual(row.status, "OK")
             self.assertIn("loaded 2 manifest(s), 1 ran", row.detail)
+
+    def test_the_cycles_age_is_graded(self):
+        """Task 198: a summary that is hours old is a runner that stopped."""
+        import json as _json
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "runner"
+            root.mkdir()
+            (root / "last-cycle.json").write_text(_json.dumps({
+                "at": 1000.0, "loaded": 2, "refused": [], "outcomes": []}), encoding="utf-8")
+            log = Path(td) / "runner.log"
+            log.write_text("Traceback (most recent call last):\n  File x\n"
+                           "runner.manifest.ManifestError: PyYAML not available — cannot parse job manifests\n",
+                           encoding="utf-8")
+            iv = 1800
+            self.assertEqual(md.check_runner_cycle(state_root=root, now=1000.0 + iv, log=log).status, "OK")
+            row = md.check_runner_cycle(state_root=root, now=1000.0 + iv + 60, log=log)
+            self.assertEqual(row.status, "WARN")
+            row = md.check_runner_cycle(state_root=root, now=1000.0 + 2 * iv + 60, log=log)
+            self.assertEqual(row.status, "FAIL")
+            self.assertIn("PyYAML not available", row.detail)
+
+    def test_a_lapsed_login_is_named(self):
+        """Task 198: 2026-11-01's enrichment failed every call on an expired
+        OAuth session, and the night said only "7 failed"."""
+        import json as _json
+        with tempfile.TemporaryDirectory() as td:
+            engine = Path(td)
+            self.assertEqual(md.check_claude_login(engine_dir=engine).status, "UNVERIFIED")
+            runs = engine / "enrich-runs.jsonl"
+            lapsed = "a.md: enrich: claude exited exit status 1: Failed to authenticate: OAuth session expired"
+            runs.write_text(_json.dumps({"at": "2026-10-31T09:14:09Z", "model_calls": 14, "errors": []}) + "\n"
+                            + _json.dumps({"at": "2026-11-01T10:16:49Z", "model_calls": 7,
+                                           "errors": [lapsed] * 7}) + "\n", encoding="utf-8")
+            row = md.check_claude_login(engine_dir=engine)
+            self.assertEqual(row.status, "FAIL")
+            self.assertIn("the Claude login has lapsed — run `claude` then `/login` in a terminal", row.detail)
+            self.assertIn("failed 7 call(s)", row.detail)
+            with runs.open("a", encoding="utf-8") as f:
+                f.write(_json.dumps({"at": "2026-11-02T10:03:26Z", "model_calls": 24, "errors": []}) + "\n")
+            row = md.check_claude_login(engine_dir=engine)
+            self.assertEqual(row.status, "OK")
+            self.assertIsNotNone(row.last_fired)
 
     def test_a_siblings_refusal_is_not_this_jobs_failure(self):
         with tempfile.TemporaryDirectory() as td:

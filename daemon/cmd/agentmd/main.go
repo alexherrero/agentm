@@ -37,6 +37,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/probe"
 	"github.com/alexherrero/agentm/daemon/internal/projectbind"
+	"github.com/alexherrero/agentm/daemon/internal/pulse"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 	"github.com/alexherrero/agentm/daemon/internal/vcs"
 	"github.com/alexherrero/agentm/daemon/internal/watch"
@@ -365,6 +366,18 @@ func cmdServe(args []string) error {
 			Remote: bk.Remote, Configured: bk.Configured, Tracked: bk.Tracked,
 			LastPush: bk.LastPush, Pending: bk.Pending, OldestPending: bk.OldestPending,
 			Err: bk.Err,
+		}
+		if bk.Configured {
+			lg := pulse.ReadBackupLog(cfg.BackupLog)
+			in.Backup.LogPath, in.Backup.LogFound = cfg.BackupLog, lg.Found
+			in.Backup.LastRun, in.Backup.LastRunOK = lg.LastRun, lg.LastRunOK
+			in.Backup.LastRunText, in.Backup.Failing = lg.LastRunText, lg.Failing
+		}
+		rn := pulse.ReadRunner(cfg.RunnerState)
+		in.Runner = health.RunnerInput{
+			Found: rn.Found, LastCycle: rn.LastCycle, Running: rn.Running,
+			RunningSince: rn.RunningSince, StartupError: rn.StartupError, Err: rn.Err,
+			Wake: pulse.LastWake(),
 		}
 		return health.Evaluate(in)
 	}
