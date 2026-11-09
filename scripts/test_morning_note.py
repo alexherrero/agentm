@@ -897,6 +897,59 @@ class TheVolumeRefusals(_Night):
         self.assertNotIn("daily write cap", self._note(0))
 
 
+class TheLessonLine(_Night):
+    """Task 199: the lesson compile gets one line beside the vault's size —
+    lessons per project, the night's spend against its cap, what waits, and
+    a warning for anything the night dropped unread."""
+
+    def lessons(self, *runs):
+        d = self.engine / "lesson-compile"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "runs.jsonl").write_text("".join(json.dumps(r) + "\n" for r in runs), encoding="utf-8")
+
+    def night_run(self, at=TONIGHT, **over):
+        run = {"at": datetime.fromtimestamp(at, tz=timezone.utc).isoformat(), "spent": 0.9644,
+               "night_cap_usd": 4.0, "pending": {"zero-mission-reborn": 1, "general": 2}, "dropped": [],
+               "projects": [
+                   {"project": "agentm", "new": ["a.md", "b.md"], "augmented": ["c.md"], "error": ""},
+                   {"project": "general", "new": [], "augmented": [], "error": ""},
+                   {"project": "pixelton", "new": [], "augmented": [], "error": "draft: claude exited 1"}]}
+        run.update(over)
+        return run
+
+    def test_tonights_run_is_one_line_in_the_corpus_section(self):
+        self.lessons(self.night_run(THREE_DAYS_AGO, spent=9.0), self.night_run())
+        text, *_ = self.build()
+        corpus = text.split("## The corpus", 1)[1].split("## Spend", 1)[0]
+        self.assertIn("- **Lessons:** agentm 2 new, 1 augmented · general nothing kept · "
+                      "pixelton failed (draft: claude exited 1) — $0.96 of the $4.00 cap — "
+                      "3 slice(s) waiting (general 2, zero-mission-reborn 1)\n", corpus)
+
+    def test_a_dropped_slice_is_a_warning_on_the_line(self):
+        self.lessons(self.night_run(dropped=[{"project": "zero-mission-reborn", "session": "0571d1c4-8a34",
+                                              "why": "waited over 3 days"}]))
+        text, *_ = self.build()
+        self.assertIn("— ⚠ dropped zero-mission-reborn 0571d1c4 (waited over 3 days)", text)
+
+    def test_a_night_without_a_compile_says_when_it_last_ran(self):
+        self.lessons(self.night_run(THREE_DAYS_AGO))
+        text, *_ = self.build()
+        self.assertIn("- **Lessons:** the compile did not run last night; it last ran "
+                      + datetime.fromtimestamp(THREE_DAYS_AGO).strftime("%Y-%m-%d %H:%M"), text)
+
+    def test_a_run_record_from_before_the_line_still_reads(self):
+        old = self.night_run()
+        for key in ("night_cap_usd", "pending", "dropped"):
+            old.pop(key)
+        self.lessons(old)
+        text, *_ = self.build()
+        self.assertIn("pixelton failed (draft: claude exited 1) — $0.96\n", text)
+
+    def test_no_compile_ever_leaves_no_line(self):
+        text, *_ = self.build()
+        self.assertNotIn("Lessons:", text)
+
+
 class TheVaultOffenders(_Night):
     """Notes the three vault gates fail, written where no save-time check saw
     them (task 195): a script's report, another host's tracker. Named under

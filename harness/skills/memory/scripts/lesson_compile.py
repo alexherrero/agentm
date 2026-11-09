@@ -111,6 +111,9 @@ PENDING_MAX_DAYS = 3
 # pending queue for the next night. Many agy conversations are another agent's
 # `agy -p` calls, and a night should not spend its quota on a backlog.
 AGY_NIGHT_LIMIT = 30
+# A digest that fails this many nights running is dropped and reported, not
+# retried again.
+AGY_MAX_ATTEMPTS = 3
 # An agy slice shorter than this is a probe ("reply with the single word ok"),
 # not a session: it is dropped without a digest.
 AGY_MIN_SLICE_CHARS = 600
@@ -1285,17 +1288,31 @@ def compile_night(*, memory_root: Path, runner=subprocess_runner, settings: "Set
     reports = []
     done_projects = set()
     leftover: dict = {}
+    dropped: list = []
+    fresh_by: dict = {}
     for project in projects:
-        fresh = [s for s in pending.get(project, [])
-                 if _age_days(s.get("collected"), now) <= PENDING_MAX_DAYS]
+        fresh_by[project] = []
+        for s in pending.get(project, []):
+            if _age_days(s.get("collected"), now) <= PENDING_MAX_DAYS:
+                fresh_by[project].append(s)
+            else:
+                dropped.append(_dropped(project, s, f"waited over {PENDING_MAX_DAYS} days"))
+    # Tonight's digests go to the oldest slices first, whatever their project:
+    # in project order, a busy project's backlog took the whole allowance night
+    # after night and a project later in the alphabet was never digested.
+    agy_queue = sorted((s for p in projects for s in fresh_by[p]
+                        if s.get("host") == AGY and len(s.get("text") or "") >= AGY_MIN_SLICE_CHARS),
+                       key=lambda s: str(s.get("collected") or ""))
+    tonight = {id(s) for s in agy_queue[:AGY_NIGHT_LIMIT]}
+    for project in projects:
         slices = []
-        for s in fresh:
+        for s in fresh_by[project]:
             if s.get("host") != AGY:
                 slices.append(s)
                 continue
             if len(s.get("text") or "") < AGY_MIN_SLICE_CHARS:
                 continue
-            if agy_digests >= AGY_NIGHT_LIMIT:
+            if id(s) not in tonight:
                 leftover.setdefault(project, []).append(s)
                 continue
             agy_digests += 1
@@ -1304,16 +1321,24 @@ def compile_night(*, memory_root: Path, runner=subprocess_runner, settings: "Set
             if d.error:
                 # A digest that failed (agy's print timeout, a quota refusal) is
                 # not a verdict on the session: the slice waits for the next
-                # night, until PENDING_MAX_DAYS drops it.
+                # night, until it has failed AGY_MAX_ATTEMPTS times.
+                attempts = int(s.get("attempts") or 0) + 1
+                retry = attempts < AGY_MAX_ATTEMPTS
                 agy_dry.append({"session": s["session"], "project": project, "model": flash,
-                                "digest": d.text, "error": d.error, "retry": True})
-                leftover.setdefault(project, []).append(s)
+                                "digest": d.text, "error": d.error, "retry": retry, "attempts": attempts})
+                if retry:
+                    leftover.setdefault(project, []).append(dict(s, attempts=attempts))
+                else:
+                    dropped.append(_dropped(project, s, f"digest failed {attempts} times: {d.error[-120:]}"))
                 continue
             if d.text.strip() == "NOTHING DURABLE":
                 agy_dry.append({"session": s["session"], "project": project, "model": flash,
                                 "digest": d.text})
                 continue
             if settings.agy_enabled:
+                # Recorded too, so the report counts every digest the night made.
+                agy_dry.append({"session": s["session"], "project": project, "model": flash,
+                                "digest": d.text, "compiled": True})
                 slices.append(dict(s, digest=d.text))
             else:
                 agy_dry.append({"session": s["session"], "project": project, "model": flash,
@@ -1330,6 +1355,8 @@ def compile_night(*, memory_root: Path, runner=subprocess_runner, settings: "Set
         reports.append(rep)
         if not rep["error"] or rep["error"].startswith("filing"):
             done_projects.add(project)
+    waiting = {p: len(leftover.get(p, []) if p in done_projects else pending.get(p, [])) for p in projects}
+    waiting = {p: n for p, n in waiting.items() if n}
     if not dry_run:
         for project in done_projects:
             _write_lines(pending_dir() / f"{project}.jsonl", leftover.get(project, []))
@@ -1338,14 +1365,23 @@ def compile_night(*, memory_root: Path, runner=subprocess_runner, settings: "Set
         _write_json(spend_path(), spend)
         _write_json(state_dir() / "last-run.json", {"at": now.isoformat(timespec="seconds")})
         _append_jsonl(state_dir() / "runs.jsonl", {"at": now.isoformat(timespec="seconds"),
-                                                   "projects": reports, "spent": round(night.spent, 4)})
+                                                   "projects": reports, "spent": round(night.spent, 4),
+                                                   "night_cap_usd": settings.night_cap_usd,
+                                                   "agy_digests": agy_digests, "pending": waiting,
+                                                   "dropped": dropped})
     if agy_dry:
         out = state_dir() / "agy-dry" / f"{day}.jsonl"
         for rec in agy_dry:
             _append_jsonl(out, rec)
     return {"pass": "compile", "day": day, "dry_run": dry_run, "projects": reports,
-            "agy_digests": len(agy_dry), "agy_enabled": settings.agy_enabled,
+            "agy_digests": agy_digests, "agy_enabled": settings.agy_enabled,
+            "pending": waiting, "dropped": dropped,
             "total_cost_usd": round(sum(r["cost_usd"] for r in reports), 4)}
+
+
+def _dropped(project: str, s: dict, why: str) -> dict:
+    return {"project": project, "host": s.get("host") or "", "session": s.get("session") or "",
+            "collected": s.get("collected") or "", "why": why}
 
 
 def _write_lines(path: Path, recs: list) -> None:
