@@ -22,7 +22,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -160,9 +159,10 @@ class _Base(unittest.TestCase):
         p = d / f"{sid}.jsonl"
         head = [{"type": "system", "cwd": str(cwd)}] if cwd else []
         p.write_text(_lines(head + list(rows)), encoding="utf-8")
-        if age_hours:
-            t = time.time() - age_hours * 3600
-            os.utime(p, (t, t))
+        # Aged from the pinned clock the compile is run at, not the wall clock:
+        # once the wall clock passed _NOW by a day, a 48-hour-old file read as fresh.
+        t = _NOW.timestamp() - age_hours * 3600
+        os.utime(p, (t, t))
         return p
 
     def agy_transcript(self, sid: str, rows) -> Path:
