@@ -11,7 +11,10 @@ appending prose to a design. This reads the vault's git history instead, so
 it sees every write the committer recorded:
 
 - **New memory cards, by class.** A file added under `memory/<class>/` in
-  the window, including one deleted again inside it. The daemon's self-probe
+  the window, including one deleted again inside it. A card is known by its
+  file name across the classes: one whose name a card already had, before
+  the window or earlier in it, was refiled, and counts as moved instead.
+  The daemon's self-probe
   (`probe: self-probe` in the added file) is counted apart: it is written and
   retired daily by design, and it is not a card anyone earned.
 - **The vault's net notes.** Markdown files added less those deleted,
@@ -265,6 +268,18 @@ def _log_diffs(root: Path, since: int, until: int, pathspecs: list) -> list:
     return diffs
 
 
+def _card_names_at(root: Path, at: int, layout: "Layout") -> set:
+    """The file names of every memory card in the last commit before `at`."""
+    rc, out = _git(root, "rev-list", "-1", f"--before=@{at}", "HEAD")
+    sha = out.strip() if rc == 0 else ""
+    if not sha:
+        return set()
+    rc, out = _git(root, "ls-tree", "-r", "-z", "--name-only", sha)
+    if rc != 0:
+        raise RuntimeError(f"git ls-tree failed: {out.strip()[:200]}")
+    return {p.rsplit("/", 1)[-1] for p in out.split("\0") if layout.card_class(p)}
+
+
 def _is_probe(root: Path, sha: str, rel: str) -> bool:
     rc, out = _git(root, "show", f"{sha}:{rel}")
     if rc != 0:
@@ -319,7 +334,13 @@ def measure(memory_root, *, since: "float | None" = None, until: "float | None" 
     cards: Counter = Counter()
     probes = 0
     net = 0
-    for sha, status, path, source in rows:
+    moved = 0
+    # A card is known by its file name across the classes. Enrichment refiles a
+    # card from one class to another by writing the new file in one commit and
+    # deleting the old in the next, which git cannot pair as a rename; counted
+    # as an add, each refile read as a new card (2026-11-07: 27 of 92).
+    known = _card_names_at(root, since, layout)
+    for sha, status, path, source in reversed(rows):
         if status == "D":
             net -= path.endswith(".md")
             continue
@@ -331,6 +352,11 @@ def measure(memory_root, *, since: "float | None" = None, until: "float | None" 
             continue  # a modification, or a move between memory classes
         cls = layout.card_class(path)
         if cls:
+            name = path.rsplit("/", 1)[-1]
+            if name in known:
+                moved += 1
+                continue
+            known.add(name)
             if cls == "semantic" and _is_probe(root, sha, path):
                 probes += 1
             else:
@@ -379,7 +405,7 @@ def measure(memory_root, *, since: "float | None" = None, until: "float | None" 
     return {
         "since": since, "until": until, "vault_root": str(root), "commits": len(commits),
         "new_cards": new_cards, "by_class": {c: cards[c] for c in CLASS_DIRS if cards[c]},
-        "probes": probes, "net_notes": net, "derived": derived,
+        "probes": probes, "moved_cards": moved, "net_notes": net, "derived": derived,
         "no_change_rewrites": sorted(set(date_only_paths)),
         "enrichment": {"project_docs": enrich_docs, "sections": enrich_sections},
         "budget": card_budget, "allowed": allowed, "last_commit": last_commit,
@@ -391,7 +417,8 @@ def describe(m: dict) -> str:
     """The reading in one line, for the scorecard's note and the morning note."""
     classes = " · ".join(f"{c} {n}" for c, n in m["by_class"].items()) or "none"
     parts = [f"{m['new_cards']} new card(s) ({classes})"
-             + (f" + {m['probes']} self-probe(s)" if m["probes"] else "")]
+             + (f" + {m['probes']} self-probe(s)" if m["probes"] else "")
+             + (f", {m['moved_cards']} moved between classes" if m.get("moved_cards") else "")]
     if m["allowed"] is not None:
         parts.append(f"budget {m['allowed']}")
     parts.append(f"vault {m['net_notes']:+d} notes net")

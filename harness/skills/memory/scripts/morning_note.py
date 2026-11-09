@@ -490,7 +490,7 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
         night.offenders = []
 
     night.populations = corpus_scorecard.class_populations(vault)
-    read_writes(night, vault)
+    read_writes(night, vault, since=previous_window_end(out_dir, now))
     read_size(night, vault)
     lessons = lesson_runs(engine_dir)
     tonight = [r for r in lessons if r["_at"] >= start]
@@ -864,11 +864,39 @@ def corpus_line(night: Night) -> list:
     return [" — ".join(parts)] if parts else []
 
 
-def read_writes(night: Night, vault: Path) -> None:
-    """The write meter over the 24 hours before the note (task 190): what
-    the vault wrote, by class, against the card budget."""
+# How far back a window may start when the last note is older than a day: a
+# week of missed mornings is read as one window, a longer gap as the last week.
+WINDOW_MAX_DAYS = 7
+
+
+def previous_window_end(out_dir: Path, now: float) -> Optional[float]:
+    """Where the last note's write window ended, read from its `window_until`.
+    Each window starts there, so two mornings never count one write twice:
+    a fixed 24 hours drifted with the note's own start and overlapped the
+    night before's by minutes (task 199, 2026-11-08). None when no earlier
+    note recorded one; the window is then the last 24 hours."""
+    today = datetime.fromtimestamp(now).strftime("%Y-%m-%d")
+    for p in sorted(Path(out_dir).glob("????-??-??.md"), reverse=True):
+        if p.stem >= today:
+            continue
+        try:
+            head = p.read_text(encoding="utf-8").split("\n---", 1)[0]
+        except OSError:
+            return None
+        m = re.search(r"^window_until: (\d+)$", head, re.M)
+        if not m:
+            return None
+        end = float(m.group(1))
+        return end if now - WINDOW_MAX_DAYS * 86400 <= end < now else None
+    return None
+
+
+def read_writes(night: Night, vault: Path, since: Optional[float] = None) -> None:
+    """The write meter since the last note's window ended, or over the last
+    24 hours (task 190): what the vault wrote, by class, against the card
+    budget."""
     try:
-        night.writes = write_meter.measure(vault, until=night.now)
+        night.writes = write_meter.measure(vault, since=since, until=night.now)
     except RuntimeError as exc:
         night.writes_missing = str(exc)
 
@@ -879,7 +907,9 @@ def writes_line(night: Night) -> list:
     docs. A warning rides on the line itself, so drift shows the morning it
     starts."""
     if night.writes is not None:
-        return [f"- **Writes, the last 24 hours:** {write_meter.describe(night.writes)}"]
+        hours = (night.writes["until"] - night.writes["since"]) / 3600
+        span = "the last 24 hours" if abs(hours - 24) < 0.05 else f"the last {hours:.1f} hours"
+        return [f"- **Writes, {span}:** {write_meter.describe(night.writes)}"]
     if night.writes_missing:
         return [f"- Writes not measured ({night.writes_missing})"]
     return []
@@ -1080,6 +1110,8 @@ def render(night: Night, *, vault: Path) -> tuple:
         # line holds.
         f"headline: {json.dumps(head, ensure_ascii=False)}",
         "generated_by: morning_note.py",
+        # Where this note's write window ended: the next note's starts here.
+        *([f"window_until: {night.writes['until']}"] if night.writes is not None else []),
         "---",
         "",
         f"# Morning — {stamp}",

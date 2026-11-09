@@ -66,6 +66,12 @@ members: 2
 """
 
 
+def _drawable(night):
+    """A night the renderer can draw: every nightly step reported as not run."""
+    night.reasons = {job: "not tonight" for job, _label in morning_note.NIGHT_JOBS}
+    return night
+
+
 class _Rules:
     def __init__(self, **thresholds):
         self._t = thresholds
@@ -166,6 +172,31 @@ class CardTests(_Vault):
         m = self.measure()
         self.assertEqual(m["new_cards"], 0)
         self.assertEqual(m["net_notes"], 0)
+
+    def test_a_refile_split_across_two_commits_is_a_move(self):
+        # 2026-11-07: enrichment re-typed lessons and the daemon wrote each
+        # into procedural/ in one commit and deleted it from semantic/ in the
+        # next, rewritten, so git paired nothing; 27 of the morning's 92 "new
+        # cards" were these.
+        self.write("agent/memory/semantic/lesson.md", "# lesson\n\ntype: insight\n")
+        self.commit(BEFORE + 60)
+        self.write("agent/memory/procedural/lesson.md", "# Lesson, re-typed\n\ntype: workflow\nsteps\n")
+        self.commit(INSIDE)
+        self.remove("agent/memory/semantic/lesson.md")
+        self.commit(LATER)
+        m = self.measure()
+        self.assertEqual((m["new_cards"], m["moved_cards"]), (0, 1))
+        self.assertIn("0 new card(s) (none), 1 moved between classes", wm.describe(m))
+
+    def test_a_card_written_and_refiled_inside_the_window_counts_once_where_it_began(self):
+        self.write("agent/memory/semantic/fresh.md", "# fresh\n")
+        self.commit(INSIDE)
+        self.write("agent/memory/procedural/fresh.md", "# Fresh, as a workflow\n\nsteps\n")
+        self.commit(LATER)
+        self.remove("agent/memory/semantic/fresh.md")
+        self.commit(LATER + 60)
+        m = self.measure()
+        self.assertEqual((m["by_class"], m["moved_cards"]), ({"semantic": 1}, 1))
 
     def test_a_note_filed_into_a_class_from_outside_memory_is_new(self):
         self.write("agent/inbox/capture.md", "# capture\n\n" + "what was said\n" * 20)
@@ -452,6 +483,37 @@ class SeamTests(_Vault):
         lines = morning_note.writes_line(night)
         self.assertEqual(len(lines), 1)
         self.assertTrue(lines[0].startswith("- **Writes, the last 24 hours:** 1 new card(s) (episodic 1)"), lines[0])
+
+    def test_the_morning_note_window_starts_where_the_last_one_ended(self):
+        # 2026-11-08: two mornings 23h56m apart each read back a fixed 24
+        # hours, and the 23 refiles in the four minutes between were counted
+        # on both.
+        out = self.tmp / "morning"
+        out.mkdir()
+        yesterday = time.time() - 86400 + 240
+        (out / datetime.fromtimestamp(yesterday).strftime("%Y-%m-%d.md")).write_text(
+            f"---\ntitle: Morning\nwindow_until: {int(yesterday)}\n---\n\n# Morning\n", encoding="utf-8")
+        self.write("agent/memory/episodic/before.md", "# before\n")
+        self.commit(yesterday - 120)
+        self.write("agent/memory/episodic/after.md", "# after\n")
+        self.commit(time.time() - 600)
+        now = time.time()
+        since = morning_note.previous_window_end(out, now)
+        self.assertEqual(since, float(int(yesterday)))
+        night = morning_note.Night(now=now, start=now - 3600)
+        morning_note.read_writes(night, self.mem, since=since)
+        self.assertEqual(night.writes["by_class"], {"episodic": 1})
+        self.assertTrue(morning_note.writes_line(night)[0].startswith("- **Writes, the last 23.9 hours:** 1 new card(s)"))
+        text, _head = morning_note.render(_drawable(night), vault=self.mem)
+        self.assertIn(f"\nwindow_until: {int(now)}\n", text.split("\n---", 1)[0] + "\n")
+
+    def test_a_note_without_a_recorded_window_end_reads_the_last_24_hours(self):
+        out = self.tmp / "morning"
+        out.mkdir()
+        (out / datetime.fromtimestamp(time.time() - 86400).strftime("%Y-%m-%d.md")).write_text(
+            "---\ntitle: Morning\n---\n", encoding="utf-8")
+        self.assertIsNone(morning_note.previous_window_end(out, time.time()))
+        self.assertIsNone(morning_note.previous_window_end(self.tmp / "none", time.time()))
 
     def test_the_morning_note_says_when_writes_were_not_measured(self):
         night = morning_note.Night(now=time.time(), start=time.time() - 3600)
