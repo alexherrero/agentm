@@ -874,6 +874,50 @@ class TheCloneLine(_Night):
         self.assertNotIn("primary clone", self._note(None))
 
 
+class TheRunnerPulse(_Night):
+    """Task 198: a runner whose last cycle is hours old is named under What
+    needs you; a fresh one says nothing."""
+
+    def _note(self, at):
+        (self.runner / "last-cycle.json").write_text(json.dumps({"at": at, "outcomes": []}),
+                                                     encoding="utf-8")
+        dated, _, _ = mn.build(self.vault, now=NOW, engine_dir=self.engine,
+                               runner_dir=self.runner, rollup=self.rollup, ask=_ask_fine)
+        return dated.read_text(encoding="utf-8")
+
+    def test_a_stopped_runner_is_named(self):
+        needs = self._note(NOW - 5 * 3600).split("## What needs you", 1)[1]
+        self.assertIn("**The runner has stopped:** the last cycle began 5h00m ago", needs)
+
+    def test_a_fresh_runner_says_nothing(self):
+        self.assertNotIn("The runner", self._note(NOW - 600))
+
+
+class TheLoginLapse(_Night):
+    """Task 198: on 2026-11-01 every enrichment call failed on an expired
+    `claude` login and the note said only "7 failed"."""
+
+    def _note(self):
+        dated, _, _ = mn.build(self.vault, now=NOW, engine_dir=self.engine,
+                               runner_dir=self.runner, rollup=self.rollup, ask=_ask_fine)
+        return dated.read_text(encoding="utf-8")
+
+    def test_a_lapsed_login_is_named_with_the_fix(self):
+        err = "a.md: enrich: claude exited exit status 1: Failed to authenticate: OAuth session expired"
+        self.runs(_run(TONIGHT, failed=7, model_calls=7, errors=[err] * 7))
+        text = self._note()
+        self.assertIn("7 failed (7 because the Claude login has lapsed — run `claude` then `/login` "
+                      "in a terminal)", text)
+        needs = text.split("## What needs you", 1)[1]
+        self.assertIn("**The Claude login has lapsed — run `claude` then `/login` in a terminal.**", needs)
+
+    def test_other_failures_say_only_failed(self):
+        self.runs(_run(TONIGHT, failed=1, errors=["a.md: enrich: the model's answer did not parse"]))
+        text = self._note()
+        self.assertIn("· 1 failed.", text)
+        self.assertNotIn("login has lapsed", text)
+
+
 class TheVolumeRefusals(_Night):
     """Captures the daily write cap turned away, which left no trace an
     operator could see (#813). Named under what needs you when above zero."""

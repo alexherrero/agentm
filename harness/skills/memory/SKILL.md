@@ -1013,7 +1013,7 @@ The script, not the model, drives the `last30days` engine (the skill itself cann
 
 #### Failure modes (graceful)
 
-- **The `claude` login has lapsed** → exit 3, "run `claude`, then /login". That fix is yours.
+- **The `claude` login has lapsed** → exit 3, "run `claude` then `/login` in a terminal". That fix is yours.
 - **No mail path is configured** (or this checkout has no `scripts/health/`) → the note is written, the skip is logged on stderr and in the run record, and the exit is 0. **A configured path that fails** → the note is kept and the exit is 8, which the runner's watchdog counts; a re-run sends it.
 - **The audit refuses the run** → exit 4, nothing written, the cost still reported.
 - **The run hits its budget cap** → exit 5. **The reply holds no JSON** → exit 7, and nothing is marked seen.

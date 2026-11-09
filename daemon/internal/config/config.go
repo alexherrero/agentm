@@ -294,6 +294,18 @@ type Config struct {
 	// what it lacks; a vault with no such remote reports no backup.
 	BackupRemote string
 
+	// BackupLog is the push job's own log (`daemon.backup_log`, default
+	// DefaultBackupLog). When the backup goes stale, the alert quotes the
+	// job's last run from it, so a failed run says why and a run that never
+	// started is told apart from one that failed (task 198). Absent, the
+	// alert says there is no log to read.
+	BackupLog string
+
+	// RunnerState is the scheduled-job runner's state directory, where each
+	// cycle leaves `last-cycle.json` (`daemon.runner_state`, default
+	// DefaultRunnerState). Health grades how long ago the last cycle began.
+	RunnerState string
+
 	// SourceClone is the agentm clone the install runs from
 	// (`source_clones.agentm`), empty for a release install. `agentmd status`
 	// compares the running daemon's build commit with its HEAD.
@@ -872,6 +884,14 @@ func Load(opts Options) (*Config, error) {
 	if v := strings.TrimSpace(strVal(raw, "daemon.backup_remote")); v != "" {
 		c.BackupRemote = v
 	}
+	c.BackupLog = DefaultBackupLog()
+	if v := strings.TrimSpace(strVal(raw, "daemon.backup_log")); v != "" {
+		c.BackupLog = expandHome(v)
+	}
+	c.RunnerState = DefaultRunnerState()
+	if v := strings.TrimSpace(strVal(raw, "daemon.runner_state")); v != "" {
+		c.RunnerState = expandHome(v)
+	}
 
 	// A nested object, unlike the dotted keys above: the installer writes it.
 	if clones, ok := raw["source_clones"].(map[string]any); ok {
@@ -971,6 +991,30 @@ func (c *Config) IsPhonePath(rel string) bool {
 
 // DefaultBackupRemote is the backup push job's own default remote.
 const DefaultBackupRemote = "gitea"
+
+// DefaultBackupLog is where the backup push job logs on macOS, where it runs
+// as a launchd agent. Elsewhere there is no default.
+func DefaultBackupLog() string {
+	home, err := os.UserHomeDir()
+	if err != nil || runtime.GOOS != "darwin" {
+		return ""
+	}
+	return filepath.Join(home, "Library", "Logs", "vault-backup.log")
+}
+
+// DefaultRunnerState is the runner's state directory, `~/.cache/agentm/runner`
+// honouring `XDG_CACHE_HOME`: the rule the runner's own
+// `state.default_state_root` follows.
+func DefaultRunnerState() string {
+	if v := os.Getenv("XDG_CACHE_HOME"); v != "" {
+		return filepath.Join(v, "agentm", "runner")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".cache", "agentm", "runner")
+}
 
 // DefaultConfigPath is the kernel config the installer writes.
 func DefaultConfigPath() string {

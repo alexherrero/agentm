@@ -315,11 +315,20 @@ def check_runner_job(repo: Path, job_name: str, *, state_root: Optional[Path] = 
 
 
 # ── job config completeness (installer data-loss regression, 2026-08-02) ────
-def check_runner_cycle(*, state_root: Optional[Path] = None) -> Check:
+def check_runner_cycle(
+    *, state_root: Optional[Path] = None, now: Optional[float] = None,
+    wake: Optional[float] = None, log: Optional[Path] = None,
+) -> Check:
     """The last runner cycle's own account: what loaded, what it refused,
     what ran. One refused manifest used to stop every job with a traceback
     in a launchd log as the only trace (2026-09-05); the cycle leaves this
-    summary now, and the session brief reads the same file."""
+    summary now, and the session brief reads the same file.
+
+    And when it was (task 198). A runner that cannot start leaves the last
+    summary in place, and a summary days old read OK for twelve hours on
+    2026-10-23. `runner_pulse` grades its age: WARN past one of the runner's
+    intervals, FAIL past two, with the log's startup error in the detail. A
+    `now` from a test skips reading the machine's wake time."""
     p = state_mod.cycle_summary_path(state_root)
     if not p.is_file():
         return Check("runner-cycle", "UNVERIFIED", f"no cycle recorded yet at {p}")
@@ -336,7 +345,67 @@ def check_runner_cycle(*, state_root: Optional[Path] = None) -> Check:
                      last_fired=at)
     outcomes = (data.get("outcomes") if isinstance(data, dict) else None) or []
     ran = sum(1 for o in outcomes if isinstance(o, dict) and o.get("ran"))
-    return Check("runner-cycle", "OK", f"loaded {data.get('loaded', 0)} manifest(s), {ran} ran, last cycle", last_fired=at)
+    pulse = _runner_pulse().grade(p.parent, now=now, wake=wake, log=log, read_wake=now is None)
+    return Check("runner-cycle", pulse.level,
+                 f"loaded {data.get('loaded', 0)} manifest(s), {ran} ran; {pulse.detail}", last_fired=at)
+
+
+def check_claude_login(*, engine_dir: Optional[Path] = None) -> Check:
+    """Did the newest enrichment run reach the model, or had the `claude`
+    login lapsed (task 198)?
+
+    Every paid job shells out to `claude -p`, and an expired session fails
+    them all alike at no cost: on 2026-11-01 the night read "7 failed" and the
+    weekly brief before it exited 3, with nothing anywhere saying the login was
+    the cause. The nightly enrichment is the canary, since it runs every night
+    and records each call's error. Reported, never repaired: logging back in
+    is the operator's.
+    """
+    name = "claude-login"
+    _skill_dir()
+    import claude_login  # noqa: PLC0415
+    if engine_dir is None:
+        import engine_state  # noqa: PLC0415
+        engine_dir = engine_state.engine_state_dir()
+    runs = Path(engine_dir) / "enrich-runs.jsonl"
+    last = None
+    try:
+        for line in runs.read_text(encoding="utf-8").splitlines():
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(rec, dict):
+                last = rec
+    except OSError:
+        return Check(name, "UNVERIFIED", f"no enrichment run recorded at {runs}")
+    if last is None:
+        return Check(name, "UNVERIFIED", f"no enrichment run recorded at {runs}")
+    lapsed = claude_login.lapsed(last.get("errors") or [])
+    at = last.get("at")
+    try:
+        fired = datetime.fromisoformat(str(at).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        fired = None
+    if lapsed:
+        return Check(name, "FAIL", f"{claude_login.ADVICE}: the enrichment run at {at} failed "
+                     f"{lapsed} call(s) to authenticate", last_fired=fired)
+    return Check(name, "OK", f"the enrichment run at {at} reached the model "
+                 f"({last.get('model_calls', 0)} call(s))", last_fired=fired)
+
+
+def _skill_dir() -> str:
+    skill = str(repo_root() / "harness" / "skills" / "memory" / "scripts")
+    if skill not in sys.path:
+        sys.path.insert(0, skill)
+    return skill
+
+
+def _runner_pulse():
+    """The memory skill's `runner_pulse`, which the morning note grades with too."""
+    _skill_dir()
+    import runner_pulse  # noqa: PLC0415
+    return runner_pulse
 
 
 # `check_runner_job()` above asks whether a job is REGISTERED. That is not the
@@ -1461,10 +1530,12 @@ def check_backup_push(*, binary: "Path | None" = None, status: "dict | None" = N
     and a stale remote looks just like a current one (#818). The daemon reads
     the push from the vault repository itself, the remote-tracking ref the
     push moves and that ref's reflog, and reports it as `health.backup`. This
-    row says what the daemon says: FAIL once a commit has waited past two of
-    the job's runs, OK otherwise, with the last push's age either way.
+    row says what the daemon says: FAIL once the job's last two runs failed
+    with commits waiting, or a commit has waited past three of its runs, with
+    the reason the daemon read from the job's own log (task 198); OK
+    otherwise, with the last push's age and the last run either way.
 
-    Reported, never repaired. The job's own log says why a push failed.
+    Reported, never repaired.
     """
     name = "backup-push"
     if status is None:
@@ -1495,10 +1566,11 @@ def check_backup_push(*, binary: "Path | None" = None, status: "dict | None" = N
         return Check(name, "UNVERIFIED",
                      f"{remote}: {last}; the repository could not be read: {block.get('detail') or 'no detail'}")
     if state == "stale":
-        return Check(name, "FAIL",
-                     f"{remote}: {last}, {waiting} — past two of the push job's four-hourly "
-                     "runs; the job's log says why")
-    return Check(name, "OK", f"{remote}: {last}, {waiting}")
+        # An older daemon gives no reason.
+        why = block.get("reason") or "the job's log says why"
+        return Check(name, "FAIL", f"{remote}: {last}, {waiting} — {why}")
+    ran = f"; last run: {block['last_run']}" if block.get("last_run") else ""
+    return Check(name, "OK", f"{remote}: {last}, {waiting}{ran}")
 
 
 # ── composition ───────────────────────────────────────────────────────────
@@ -1524,6 +1596,7 @@ def run_inventory(
     checks.append(check_daemon_commits())
     checks.append(check_backup_push())
     checks.append(check_runner_cycle(state_root=state_root))
+    checks.append(check_claude_login())
     for job_name in job_names(repo):
         checks.append(check_runner_job(repo, job_name, state_root=state_root))
     for job_name, keys_label in _JOB_CONFIG_CHECKS:

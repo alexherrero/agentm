@@ -53,12 +53,14 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+import claude_login  # noqa: E402  (same skill dir)
 import clone_drift  # noqa: E402  (same skill dir)
 import corpus_scorecard  # noqa: E402
 import engine_state  # noqa: E402
 import lesson_compile  # noqa: E402
 import lifecycle_transitions  # noqa: E402
 import needs_review  # noqa: E402
+import runner_pulse  # noqa: E402
 import vault_size  # noqa: E402
 import vault_worktrees  # noqa: E402
 import write_meter  # noqa: E402
@@ -340,6 +342,7 @@ class Night:
     offenders: list = field(default_factory=list)  # notes the vault gates fail (task 195)
     writes_missing: str = ""
     size: Optional[dict] = None     # the vault's notes by area, now and before (task 199)
+    pulse: Optional["runner_pulse.Pulse"] = None  # is the runner still cycling (task 198)
     size_missing: str = ""
     lessons: Optional[dict] = None  # the lesson compile's run tonight (task 199)
     lessons_last: Optional[float] = None  # when it last ran, tonight or not
@@ -472,6 +475,15 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
     except Exception:  # a check that will not run costs the note one line
         night.worktrees = []
 
+    # Is the runner still cycling (task 198)? Inside a cycle the answer is yes
+    # by construction, so this speaks only when the note is run by hand while
+    # the runner is down; the daemon's alert is what goes red the same day. The
+    # machine's wake time is read only for a note about now, never a fixture's.
+    try:
+        night.pulse = runner_pulse.grade(runner_dir, now=now, read_wake=abs(now - time.time()) < 300)
+    except Exception:  # a check that will not run costs the note one line
+        night.pulse = None
+
     # The clone every scheduled job ran from, against the origin/main its last
     # fetch left (#815). The jobs ran anyway, by the operator's ruling; this
     # is where the morning hears they ran old code.
@@ -573,6 +585,11 @@ def _enrichment_line(runs: list) -> str:
     failed = _sum(runs, "failed")
     if failed:
         line += f" · {failed} failed"
+        # A lapsed login fails every call alike, at no cost; say so rather
+        # than leave "failed" to be read as the notes' fault (task 198).
+        lapsed = sum(claude_login.lapsed(r.get("errors") or []) for r in runs)
+        if lapsed:
+            line += f" ({lapsed} because {claude_login.ADVICE})"
     stopped = [r["stopped_by"] for r in runs if r.get("stopped_by")]
     if stopped:
         line += f". Stopped by {stopped[-1]}"
@@ -750,6 +767,15 @@ def what_ran(night: Night) -> list:
 
 def needs_you(night: Night) -> list:
     lines = []
+    lapsed = sum(claude_login.lapsed(r.get("errors") or []) for r in night.tonight_runs)
+    if lapsed:
+        advice = claude_login.ADVICE
+        lines.append(f"- **{advice[0].upper() + advice[1:]}.** Enrichment failed {lapsed} call(s) "
+                     "on it last night, and every job that calls the model fails the same way "
+                     "until then.")
+    if night.pulse is not None and night.pulse.level in ("WARN", "FAIL"):
+        lines.append(f"- **The runner {'has stopped' if night.pulse.level == 'FAIL' else 'is late'}:** "
+                     f"{night.pulse.detail}. The doctor's `runner-cycle` row has the detail.")
     behind = clone_drift.sentence(clone_drift.Drift(**night.clone)) if night.clone else None
     if behind:
         lines.append(f"- **{behind[0].upper() + behind[1:]}.** Every scheduled job ran that "

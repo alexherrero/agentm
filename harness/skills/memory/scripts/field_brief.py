@@ -69,6 +69,7 @@ if str(_HERE) not in sys.path:
 
 # Sibling imports come after the bootstrap above: a foreign loader file-path-loads
 # these modules with none of this directory on sys.path.
+import claude_login  # noqa: E402
 import engine_state  # noqa: E402
 import vault_layout  # noqa: E402
 from vault_lock import atomic_write  # noqa: E402
@@ -997,9 +998,9 @@ def _finish(vault: Path, run: ClaudeRun, record: dict, *, weekly: bool, question
         return Outcome(EXIT_AUDIT, "the run was refused by its own audit: "
                        + "; ".join(run.violations), record=record)
     if run.is_error:
-        if "authenticate" in run.error.lower() or "oauth" in run.error.lower():
-            return Outcome(EXIT_LOGIN, "the claude CLI login has lapsed; run `claude`, then /login "
-                           "(that is the operator's to do)", record=record)
+        if claude_login.is_lapse(run.error):
+            return Outcome(EXIT_LOGIN, claude_login.ADVICE + " (that is the operator's to do)",
+                           record=record)
         if run.subtype == "error_max_budget_usd":
             return Outcome(EXIT_BUDGET, f"the run hit its ${budget:.0f} cap", record=record)
         return Outcome(EXIT_RUN, f"the claude run failed: {run.error[:300]}", record=record)

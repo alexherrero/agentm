@@ -42,6 +42,25 @@ class TheBackupPushRow(unittest.TestCase):
         self.assertIn("last push 9h0m0s ago", check.detail)
         self.assertIn("140 commit(s) waiting, the oldest 8h30m0s", check.detail)
 
+    def test_a_stale_backup_says_why_in_the_jobs_words(self):
+        """Task 198: four alerts said only "its log says why"."""
+        why = ("the push job's last 2 runs failed; the latest, 8m0s ago: skip: fetch from gitea "
+               "failed — ssh: connect to host nas port 2222: Connection refused")
+        check = doctor_mod.check_backup_push(status=status(
+            state="stale", remote="gitea", last_push_at="2026-10-23T08:47:00Z",
+            last_push_age="8h0m0s", pending=65, oldest_pending_age="8h6m0s", failing=2,
+            last_run_at="2026-10-24T12:47:55Z", last_run="skip: fetch from gitea failed", reason=why))
+        self.assertEqual(check.status, "FAIL")
+        self.assertIn("Connection refused", check.detail)
+        self.assertNotIn("log says why", check.detail)
+
+    def test_a_current_backup_names_its_last_run(self):
+        check = doctor_mod.check_backup_push(status=status(
+            state="current", remote="gitea", last_push_at="2026-10-23T15:47:00Z",
+            last_push_age="2h0m0s", pending=0, last_run_at="2026-10-23T15:47:00Z",
+            last_run="pushed 3 commit(s) -> abc, verified on gitea"))
+        self.assertIn("last run: pushed 3 commit(s)", check.detail)
+
     def test_nothing_waiting_is_ok_however_old_the_push(self):
         check = doctor_mod.check_backup_push(status=status(
             state="current", remote="gitea", last_push_at="2026-10-22T08:47:00Z",
