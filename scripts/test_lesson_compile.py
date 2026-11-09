@@ -743,6 +743,56 @@ class TestAntigravity(_Base):
         self.assertIn("adding Y fixed it", runner.prompts("Draft the durable lessons")[0])
         self.assertEqual(self.pending("alpha"), [])
 
+    def stage(self, project: str, session: str, collected: datetime) -> None:
+        rec = {"host": lc.AGY, "project": project, "session": session, "cwd": "", "hints": [],
+               "relayed": False, "collected": collected.isoformat(timespec="seconds"),
+               "text": f"REQUESTER: work in {session}." + " It fails on the widget step." * 30}
+        lc._append_jsonl(lc.pending_dir() / f"{project}.jsonl", rec)
+
+    def test_the_oldest_slice_is_digested_first_whatever_its_project(self) -> None:
+        # 2026-11-08: a busy project early in the alphabet took the whole
+        # allowance two nights running, and a later project's slice was never
+        # digested at all.
+        self.stage("aardvark", "busy1", _NOW - timedelta(hours=1))
+        self.stage("aardvark", "busy2", _NOW - timedelta(hours=1))
+        self.stage("zeta", "quiet", _NOW - timedelta(days=1))
+        runner = FakeRunner(candidates=[])
+        with mock.patch.object(lc, "AGY_NIGHT_LIMIT", 1):
+            out = self.compile(runner, settings=lc.Settings(agy_enabled=True))
+        (digest_call,) = [a for a, _ in runner.calls if a[:2] == ["agy", "-p"]]
+        self.assertIn("work in quiet.", digest_call[2])
+        self.assertEqual(out["pending"], {"aardvark": 2})
+        self.assertEqual([r["session"] for r in self.pending("aardvark")], ["busy1", "busy2"])
+
+    def test_a_digest_that_keeps_failing_is_dropped_and_reported(self) -> None:
+        self.stage("alpha", "t3", _NOW)
+
+        class TimingOut(FakeRunner):
+            def __call__(self, argv, input_text=None, cwd=None, timeout=60, env=None):
+                if argv[:2] == ["agy", "-p"]:
+                    return 0, "", "error: print timeout after 3m0s with the turn still in progress"
+                return super().__call__(argv, input_text, cwd, timeout, env)
+
+        for night in range(lc.AGY_MAX_ATTEMPTS):
+            out = self.compile(TimingOut(candidates=[]), settings=lc.Settings(agy_enabled=True),
+                               now=_NOW + timedelta(hours=night * 20))
+            if night < lc.AGY_MAX_ATTEMPTS - 1:
+                self.assertEqual(self.pending("alpha")[0]["attempts"], night + 1)
+                self.assertEqual(out["dropped"], [])
+        self.assertEqual(self.pending("alpha"), [])
+        (drop,) = out["dropped"]
+        self.assertEqual((drop["project"], drop["session"]), ("alpha", "t3"))
+        self.assertTrue(drop["why"].startswith(f"digest failed {lc.AGY_MAX_ATTEMPTS} times: "), drop["why"])
+        last = lc._read_jsonl(lc.state_dir() / "runs.jsonl")[-1]
+        self.assertEqual(last["dropped"], out["dropped"])
+
+    def test_a_slice_past_its_days_is_dropped_and_reported(self) -> None:
+        self.stage("alpha", "old", _NOW - timedelta(days=lc.PENDING_MAX_DAYS + 1))
+        out = self.compile(FakeRunner(candidates=[]), settings=lc.Settings(agy_enabled=True))
+        self.assertEqual([(d["session"], d["why"]) for d in out["dropped"]],
+                         [("old", f"waited over {lc.PENDING_MAX_DAYS} days")])
+        self.assertEqual(self.pending("alpha"), [])
+
     def test_a_nothing_durable_digest_is_not_retried(self) -> None:
         self.agy_transcript("t2", self.rows(str(self.repo)))
         self.collect()

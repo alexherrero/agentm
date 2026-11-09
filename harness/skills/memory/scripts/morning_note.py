@@ -18,7 +18,9 @@ Four sections, each left out when it has nothing to say:
      candidates, and what sank this week — counts and the first five of each,
      with the needs-review map holding the full lists.
   3. **The corpus**, in one line: class populations, the queue and its oldest
-     item, enrichment coverage, and a link to the day's corpus scorecard.
+     item, enrichment coverage, and a link to the day's corpus scorecard;
+     then the write meter's line, and the vault's notes by area with the
+     change since yesterday.
   4. **Spend.** Last night's tokens against the tier's line, the seven-day
      total, and session spend when there was any.
 
@@ -54,8 +56,10 @@ if str(_HERE) not in sys.path:
 import clone_drift  # noqa: E402  (same skill dir)
 import corpus_scorecard  # noqa: E402
 import engine_state  # noqa: E402
+import lesson_compile  # noqa: E402
 import lifecycle_transitions  # noqa: E402
 import needs_review  # noqa: E402
+import vault_size  # noqa: E402
 import vault_worktrees  # noqa: E402
 import write_meter  # noqa: E402
 
@@ -225,6 +229,11 @@ def restated_runs(engine_dir: Path) -> list:
     return _runs_file(Path(engine_dir) / RESTATED_RUNS)
 
 
+def lesson_runs(engine_dir: Path) -> list:
+    """Every night the lesson compile recorded, oldest first, each with `_at`."""
+    return _runs_file(Path(engine_dir) / lesson_compile.STATE_SUBDIR / "runs.jsonl")
+
+
 def idea_judge_runs(engine_dir: Path) -> list:
     """Every run the idea judge recorded, oldest first, each with `_at`."""
     return _runs_file(Path(engine_dir) / IDEA_JUDGE_RUNS)
@@ -330,6 +339,10 @@ class Night:
     writes: Optional[dict] = None   # the write meter over the last 24 hours
     offenders: list = field(default_factory=list)  # notes the vault gates fail (task 195)
     writes_missing: str = ""
+    size: Optional[dict] = None     # the vault's notes by area, now and before (task 199)
+    size_missing: str = ""
+    lessons: Optional[dict] = None  # the lesson compile's run tonight (task 199)
+    lessons_last: Optional[float] = None  # when it last ran, tonight or not
 
 
 # The reasons a cycle gives whatever the hour, because it reads the switch and
@@ -478,6 +491,11 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
 
     night.populations = corpus_scorecard.class_populations(vault)
     read_writes(night, vault)
+    read_size(night, vault)
+    lessons = lesson_runs(engine_dir)
+    tonight = [r for r in lessons if r["_at"] >= start]
+    night.lessons = tonight[-1] if tonight else None
+    night.lessons_last = lessons[-1]["_at"] if lessons else None
     try:
         status = ask(["status"]) or {}
         night.queue = (status.get("health") or {}).get("queue") or {}
@@ -867,6 +885,55 @@ def writes_line(night: Night) -> list:
     return []
 
 
+def read_size(night: Night, vault: Path) -> None:
+    """The vault's notes by area, against a day and a week before (task 199)."""
+    try:
+        night.size = vault_size.measure(vault, now=night.now)
+    except RuntimeError as exc:
+        night.size_missing = str(exc)
+
+
+def size_line(night: Night) -> list:
+    """One line: the notes in each area and the change since yesterday. Fast
+    growth puts a warning on the line, as the write meter does."""
+    if night.size is not None:
+        return [f"- **Vault size:** {vault_size.describe(night.size)}"]
+    if night.size_missing:
+        return [f"- Vault size not measured ({night.size_missing})"]
+    return []
+
+
+def lessons_line(night: Night) -> list:
+    """One line for the lesson compile: new and augmented lessons per
+    project, the night's spend against its cap, the slices still waiting, and
+    a warning naming any slice the night dropped unread."""
+    r = night.lessons
+    if r is None:
+        if night.lessons_last is None:
+            return []
+        last = datetime.fromtimestamp(night.lessons_last).strftime("%Y-%m-%d %H:%M")
+        return [f"- **Lessons:** the compile did not run last night; it last ran {last}"]
+    per = []
+    for p in r.get("projects") or []:
+        bits = [f"{len(p[k])} {k}" for k in ("new", "augmented") if p.get(k)]
+        if p.get("error"):
+            bits.append(f"failed ({str(p['error'])[:80]})")
+        per.append(f"{p.get('project')} " + (", ".join(bits) or "nothing kept"))
+    parts = [" · ".join(per) or "nothing new to compile"]
+    cap = r.get("night_cap_usd")
+    parts.append(f"${float(r.get('spent') or 0):,.2f}" + (f" of the ${float(cap):,.2f} cap" if cap else ""))
+    waiting = r.get("pending") or {}
+    if waiting:
+        parts.append(f"{sum(waiting.values())} slice(s) waiting ("
+                     + ", ".join(f"{p} {n}" for p, n in sorted(waiting.items())) + ")")
+    line = "- **Lessons:** " + " — ".join(parts)
+    dropped = r.get("dropped") or []
+    if dropped:
+        line += " — ⚠ dropped " + _first(dropped, lambda d: (
+            f"{d.get('project')} {str(d.get('session'))[:8]} ({d.get('why')})"))
+    return [line]
+
+
 def _tier_added(runs: list) -> dict:
     """What the line counts, per tier: the tokens a call added — input, cache
     writes, output — and not the cached prefix it re-read (the operator's
@@ -1002,7 +1069,7 @@ def render(night: Night, *, vault: Path) -> tuple:
     """(the note's text, its headline)."""
     stamp = datetime.fromtimestamp(night.now).strftime("%Y-%m-%d")
     ran, needs, money = what_ran(night), needs_you(night), spend(night)
-    corpus = corpus_line(night) + writes_line(night)
+    corpus = corpus_line(night) + writes_line(night) + size_line(night) + lessons_line(night)
     head = headline(night, needs)
     out = [
         "---",
