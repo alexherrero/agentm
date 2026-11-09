@@ -26,6 +26,7 @@
 - [Persist a morning report](Persist-A-Morning-Report)
 - [Enable on-device notifications](Enable-On-Device-Notifications)
 - [Enable the daily email](Enable-Email-Digest-Delivery)
+- [Enable the weekly email](Enable-The-Weekly-Email)
 - [Ingest an article](Ingest-An-Article)
 - [Capture from your phone](Capture-From-Your-Phone)
 - [Archive a finished project](Archive-A-Finished-Project)

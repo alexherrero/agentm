@@ -1,0 +1,23 @@
+# urgent-lane.yaml — the urgent lane's daily check (agentm task 200).
+#
+# With the weekly summary email in place, almost nothing emails straight away.
+# The daemon still does for its allowlist (a stopped runner, a backup not
+# landing, a stale index, a failed self-probe, a stalled committer). This job
+# covers the two things the daemon cannot see or say: the `claude` login having
+# lapsed (every nightly model call fails until the operator signs in again) and
+# the daemon itself not answering. It emails once per condition until it
+# clears, and logs each send where the weekly email reads "Emailed you …".
+#
+# Register it by copying it to .harness/jobs/urgent-lane.yaml on the machine
+# that runs the runner (see weekly-email.yaml).
+schedule: daily
+lookback: 24h
+
+# After the night's batch, whose run record is where a lapsed login shows.
+window: "06:00-09:00"
+
+command: python3 ../harness/skills/memory/scripts/weekly_email.py --urgent
+
+tier: T2
+
+dry_run: false

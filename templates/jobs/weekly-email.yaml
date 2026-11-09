@@ -1,0 +1,42 @@
+# weekly-email.yaml — the weekly summary email (agentm task 200).
+#
+# One HTML email a week in place of the separate status emails: a stack of
+# cards (needs you, agent health, GitHub, what the agent learned, research,
+# projects in motion, the configured project cards, a homelab line, ideas),
+# each green / yellow / red, green ones shrunk to chips. It reads the week's
+# records, writes the full report to diagnostics/weekly/<date>.md under the
+# memory root, runs the configured vault push so the report's links resolve,
+# and sends through scripts/health/session_email.py's mail path. Personal
+# settings (the link base, the GitHub owner, the project cards, the homelab
+# report) live under `plugins.autonomy.weekly` in .agentm-config.json.
+#
+# Per agentm-runner.md's job-manifest contract — the as-built schema is
+# scripts/runner/manifest.py, which this file follows.
+#
+# .harness/jobs/ is gitignored (per-project runtime state), so this templates/
+# copy is the tracked, shipped source. Register it by copying it to
+# .harness/jobs/weekly-email.yaml on the machine that runs the runner, and edit
+# the live file in place afterwards.
+#
+# The runner has no weekday key: `weekly` means last run plus seven days,
+# snapped to the window. Register it with its first run recorded on the Sunday
+# morning it should anchor to, so the next run is the Sunday after.
+schedule: weekly
+
+# A Sunday the machine sleeps through catches up the next morning; the email
+# still covers the last full Monday-to-Sunday week.
+lookback: 2d
+
+# Sunday morning, after the night's batch (02:00-06:00) has written the day's
+# morning note and scorecard, which the email reads.
+window: "07:00-09:00"
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention), with
+# MEMORY_ROOT exported by the runner. `--no-mail` writes the report without the
+# email; `--no-push` skips the vault push.
+command: python3 ../harness/skills/memory/scripts/weekly_email.py
+
+# No model calls: it reads records, `gh` and the daemon's status.
+tier: T2
+
+dry_run: false

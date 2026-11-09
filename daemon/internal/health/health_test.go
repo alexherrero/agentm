@@ -511,3 +511,19 @@ func codes(r Report) string {
 	}
 	return strings.Join(out, ", ")
 }
+
+func TestUrgentKeepsOnlyTheAllowlist(t *testing.T) {
+	rep := Report{Level: LevelRed, Alerts: []Alert{
+		{Code: AlertQueueAge}, {Code: AlertBackupStale}, {Code: AlertContract}, {Code: AlertRunnerStale},
+	}}
+	got := rep.Urgent()
+	if f := got.Fingerprint(); f != "backup-stale+runner-stale" {
+		t.Fatalf("urgent fingerprint = %q", f)
+	}
+	if len(rep.Alerts) != 4 {
+		t.Fatalf("Urgent changed the report it was called on")
+	}
+	if none := (Report{Level: LevelRed, Alerts: []Alert{{Code: AlertQueueAge}}}).Urgent(); len(none.Alerts) != 0 {
+		t.Fatalf("queue-age is not urgent, got %+v", none.Alerts)
+	}
+}

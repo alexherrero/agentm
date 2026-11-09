@@ -28,6 +28,7 @@ import smtplib
 import sys
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from email.utils import formataddr
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -187,9 +188,12 @@ def _send_smtp(
 
 def _deliver(
     smtp_url: str, to_addr: str, subject: str, body: str, *, from_addr: "str | None" = None,
+    html: "str | None" = None, sender_name: "str | None" = None,
 ) -> "tuple[bool, str | None]":
     """`_send_smtp`'s whole behaviour, plus the relay's reply to DATA (its id for
-    the accepted message) when it gave one. `(False, None)` on any failure."""
+    the accepted message) when it gave one. `(False, None)` on any failure.
+    `html`, when given, rides as the HTML alternative to the plain-text body;
+    `sender_name` is the display name on From."""
     replies: list = []
     try:
         parsed = urlparse(smtp_url)
@@ -202,9 +206,11 @@ def _deliver(
         sender = from_addr or to_addr
         msg = EmailMessage()
         msg["Subject"] = subject
-        msg["From"] = sender
+        msg["From"] = formataddr((sender_name, sender)) if sender_name else sender
         msg["To"] = to_addr
         msg.set_content(body)
+        if html:
+            msg.add_alternative(html, subtype="html")
 
         if port == 465:
             with smtplib.SMTP_SSL(host, port, timeout=10) as server:
@@ -233,7 +239,8 @@ def _deliver(
         return False, None
 
 
-def send(subject: str, body: str, *, install_prefix: "Path | None" = None) -> dict:
+def send(subject: str, body: str, *, install_prefix: "Path | None" = None,
+         html: "str | None" = None, sender_name: "str | None" = None) -> dict:
     """The entry point for a caller with a message of its own (the weekly field
     brief is the first). It reads the same config and rides the same sender as
     the daily email, and it carries none of the daily send's rules: no
@@ -251,7 +258,8 @@ def send(subject: str, body: str, *, install_prefix: "Path | None" = None) -> di
             return {"sent": False, "configured": False, "relay_reply": None,
                     "skipped": "no mail path configured (plugins.autonomy.email_to and email_smtp_url)"}
         to_addr, smtp_url, from_addr = cfg
-        ok, reply = _deliver(smtp_url, to_addr, subject, body, from_addr=from_addr)
+        ok, reply = _deliver(smtp_url, to_addr, subject, body, from_addr=from_addr,
+                             html=html, sender_name=sender_name)
         return {"sent": ok, "configured": True, "relay_reply": reply,
                 "skipped": None if ok else "the relay refused the message or did not answer"}
     except Exception as e:

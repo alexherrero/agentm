@@ -385,6 +385,41 @@ type Report struct {
 // Red reports whether anything needs the operator.
 func (r Report) Red() bool { return r.Level == LevelRed }
 
+// UrgentCodes are the alerts that still email straight away. Everything else
+// red waits for the weekly summary email, which reads the same status: a
+// filing queue that has aged or a contract on its fallback can wait a few
+// days, a stopped runner, a backup that is not landing, a dead index or a
+// committer that cannot commit cannot (agentm task 200, the urgent lane).
+var UrgentCodes = map[string]bool{
+	AlertRunnerStale:   true,
+	AlertBackupStale:   true,
+	AlertIndexStale:    true,
+	AlertProbeFailed:   true,
+	AlertCommitStalled: true,
+}
+
+// Codes lists the report's alert codes, sorted.
+func (r Report) Codes() []string {
+	codes := make([]string, 0, len(r.Alerts))
+	for _, a := range r.Alerts {
+		codes = append(codes, a.Code)
+	}
+	sort.Strings(codes)
+	return codes
+}
+
+// Urgent is the report with only the alerts on the urgent lane's allowlist.
+func (r Report) Urgent() Report {
+	out := r
+	out.Alerts = nil
+	for _, a := range r.Alerts {
+		if UrgentCodes[a.Code] {
+			out.Alerts = append(out.Alerts, a)
+		}
+	}
+	return out
+}
+
 // Fingerprint identifies the set of conditions currently red, so the same
 // standing problem is not emailed twice while a genuinely new one still is.
 func (r Report) Fingerprint() string {
