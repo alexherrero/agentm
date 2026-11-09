@@ -270,3 +270,34 @@ func message(from, to, subject, body string) string {
 func scrubHeader(s string) string {
 	return strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(s))
 }
+
+// UrgentLogName is the file, in the engine state dir, where every urgent email
+// is recorded. The weekly summary email reads it to say "Emailed you <when>"
+// on the card the alert belongs to; the Python urgent-lane check appends to
+// the same file (agentm task 200).
+const UrgentLogName = "urgent-log.jsonl"
+
+// LogUrgent appends one record of an urgent email: when, and which codes.
+func LogUrgent(dir string, at time.Time, codes []string) error {
+	if dir == "" || len(codes) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	line, err := json.Marshal(struct {
+		At     string   `json:"at"`
+		Codes  []string `json:"codes"`
+		Source string   `json:"source"`
+	}{at.UTC().Format(time.RFC3339), codes, "daemon"})
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, UrgentLogName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(line, '\n'))
+	return err
+}

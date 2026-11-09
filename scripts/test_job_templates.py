@@ -141,9 +141,14 @@ class JobTemplatesLoad(unittest.TestCase):
         evening = ["field-brief-weekly"]
         for name in evening:
             self.assertEqual(loaded[name].window_minutes, (18 * 60, 23 * 60), name)
+        # The morning jobs (task 200) read what the night wrote: the urgent
+        # lane's check for a lapsed login, and Sunday's weekly email.
+        morning = {"urgent-lane": (6 * 60, 9 * 60), "weekly-email": (7 * 60, 9 * 60)}
+        for name, window in morning.items():
+            self.assertEqual(loaded[name].window_minutes, window, name)
         # Nothing else is windowed: the hourly sweep and the shepherds are not
         # night work, and a window on them would stall them all day.
-        others = [n for n, j in loaded.items() if j.window and n not in night and n not in evening]
+        others = [n for n, j in loaded.items() if j.window and n not in night and n not in evening and n not in morning]
         self.assertEqual(others, [])
         sweep = loaded["capture-ingest-sweep"]
         self.assertLess((sweep.order, sweep.name),

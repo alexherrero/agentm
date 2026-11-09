@@ -98,10 +98,14 @@ func watchHealth(
 		for _, a := range rep.Alerts {
 			log.Warn("RED", "code", a.Code, "detail", a.Detail)
 		}
-		if !mailer.Configured() {
+		// Only the urgent lane's alerts email now; the rest are the weekly
+		// summary's to report, from the same status.
+		urgent := rep.Urgent()
+		if !mailer.Configured() || len(urgent.Alerts) == 0 {
 			continue
 		}
-		sent, err := mailer.Send(time.Now(), rep.Fingerprint(), alertSubject(rep), renderReport(rep, cfg))
+		now := time.Now()
+		sent, err := mailer.Send(now, urgent.Fingerprint(), alertSubject(urgent), renderReport(rep, cfg))
 		switch {
 		case err != nil:
 			// A failed send is itself worth a line. The whole point of this
@@ -109,7 +113,10 @@ func watchHealth(
 			// silent failure to do that is the failure mode it exists to fix.
 			log.Error("could not send the alert email", "err", err)
 		case sent:
-			log.Info("alert email sent", "to", cfg.Email.To, "conditions", rep.Fingerprint())
+			log.Info("alert email sent", "to", cfg.Email.To, "conditions", urgent.Fingerprint())
+			if err := notify.LogUrgent(cfg.EngineStateDir, now, urgent.Codes()); err != nil {
+				log.Warn("could not record the alert for the weekly email", "err", err)
+			}
 		}
 	}
 }

@@ -2,9 +2,12 @@ package notify
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -302,5 +305,44 @@ func (f *fakeSMTP) serve(conn net.Conn, offerSTARTTLS bool) {
 		default:
 			fmt.Fprint(conn, "250 OK\r\n")
 		}
+	}
+}
+
+func TestLogUrgentAppendsOneLinePerSend(t *testing.T) {
+	dir := t.TempDir()
+	at := time.Date(2026, 11, 18, 10, 40, 0, 0, time.UTC)
+	if err := LogUrgent(dir, at, []string{"backup-stale"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := LogUrgent(dir, at.Add(time.Hour), []string{"runner-stale", "index-stale"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, UrgentLogName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want 2 lines, got %d: %q", len(lines), raw)
+	}
+	var rec struct {
+		At    string   `json:"at"`
+		Codes []string `json:"codes"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.At != "2026-11-18T10:40:00Z" || len(rec.Codes) != 1 || rec.Codes[0] != "backup-stale" {
+		t.Fatalf("first record = %+v", rec)
+	}
+}
+
+func TestLogUrgentWithNoCodesWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	if err := LogUrgent(dir, time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, UrgentLogName)); !os.IsNotExist(err) {
+		t.Fatalf("expected no file, got %v", err)
 	}
 }
