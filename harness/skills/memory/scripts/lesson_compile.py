@@ -457,6 +457,38 @@ def own_agy_digest(rows: list) -> bool:
     return False
 
 
+AGY_IMAGE_TOOL = "generate_image"
+
+
+def agy_image_run(path: Path) -> bool:
+    """Whether an agy conversation was opened to make an image: its request
+    names the image tool. A script that renders images one conversation at a
+    time leaves hundreds of these a night, each a request in and a picture
+    out, and their slices took the night's digests from real work. The
+    request is read from the top of the file, so a slice that only continues
+    one is known too; a subagent's conversation has no request of its own,
+    and its brief is the first system message."""
+    brief = None
+    try:
+        with open(path, "rb") as f:
+            for raw in f:
+                try:
+                    r = json.loads(raw.decode("utf-8", "replace"))
+                except ValueError:
+                    continue
+                if not isinstance(r, dict):
+                    continue
+                content = r.get("content") if isinstance(r.get("content"), str) else ""
+                if r.get("type") == "USER_INPUT":
+                    brief = content
+                    break
+                if r.get("type") == "SYSTEM_MESSAGE" and brief is None:
+                    brief = content
+    except OSError:
+        return False
+    return AGY_IMAGE_TOOL in (brief or "")
+
+
 _SCRATCH = re.compile(r"^/(?:private/)?tmp/claude-[^/]+/([^/]+)/")
 _AGY_PATH_ARGS = ("Cwd", "Path", "AbsolutePath", "TargetFile", "File", "DirectoryPath")
 
@@ -571,7 +603,7 @@ def collect(*, memory_root: "Path | None", claude_root: "Path | None" = None, ag
             cwd = session_binding.transcript_cwd(s.path)
             relayed = False
         else:
-            if own_agy_digest(rows):
+            if own_agy_digest(rows) or agy_image_run(s.path):
                 marks[s.key] = new_mark
                 continue
             cwd = agy_cwd(rows)

@@ -656,6 +656,50 @@ class TestAntigravity(_Base):
         self.assertEqual([r["session"] for r in self.pending("alpha")], ["a1"])
         self.assertIn(f"{lc.AGY}:d1", lc.load_bookmarks())
 
+    def image_rows(self) -> list:
+        rows = self.rows(str(self.repo))
+        rows[0]["content"] = ("<USER_REQUEST>\nGenerate exactly one image with the generate_image tool."
+                              + " A quiet harbour at dusk." * 30 + "\n</USER_REQUEST>")
+        rows[1]["tool_calls"] = [{"name": "generate_image", "args": {"Prompt": "harbour"}}]
+        return rows
+
+    def test_a_conversation_opened_to_make_an_image_is_not_staged(self) -> None:
+        # A script rendering images one conversation at a time left a hundred
+        # of these a night, and they took every digest from the real work.
+        self.agy_transcript("i1", self.image_rows())
+        self.agy_transcript("a1", self.rows(str(self.repo)))
+        report = self.collect()
+        self.assertEqual(report["staged"], 1)
+        self.assertEqual([r["session"] for r in self.pending("alpha")], ["a1"])
+        self.assertIn(f"{lc.AGY}:i1", lc.load_bookmarks())
+
+    def test_a_later_slice_of_an_image_conversation_is_not_staged(self) -> None:
+        # The request sits above the mark; the rows past it are tool calls only.
+        p = self.agy_transcript("i1", self.image_rows())
+        self.collect()
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(_lines([{"step_index": "4", "source": "MODEL", "type": "PLANNER_RESPONSE",
+                             "content": "Retrying." * 100,
+                             "tool_calls": [{"name": "generate_image", "args": {"Prompt": "harbour"}}]}]))
+        report = self.collect()
+        self.assertEqual(report["staged"], 0)
+        self.assertEqual(self.pending("alpha"), [])
+
+    def test_an_image_subagent_conversation_is_not_staged(self) -> None:
+        # A subagent's conversation has no request: its brief is a system message.
+        rows = [{"step_index": "0", "source": "SYSTEM", "type": "SYSTEM_MESSAGE",
+                 "content": "Call generate_image once with this prompt: a quiet harbour."},
+                *self.image_rows()[1:3]]
+        self.agy_transcript("s1", rows)
+        self.assertEqual(self.collect()["staged"], 0)
+
+    def test_work_that_makes_an_image_along_the_way_is_still_staged(self) -> None:
+        rows = self.rows(str(self.repo))
+        rows[1]["tool_calls"].append({"name": "generate_image", "args": {"Prompt": "icon"}})
+        self.agy_transcript("a1", rows)
+        self.collect()
+        self.assertEqual([r["session"] for r in self.pending("alpha")], ["a1"])
+
     def test_a_newer_agy_maps_by_the_paths_it_reads(self) -> None:
         # A newer agy records no Cwd: the workspace shows only in the paths its
         # file tools read and edit. The majority project wins.
