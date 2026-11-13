@@ -1024,6 +1024,118 @@ class WindowTests(unittest.TestCase):
                              ["sweep", "enrich-nightly", "dreaming", "dream", "corpus-scorecard"])
 
 
+class FailedRunRetryTests(unittest.TestCase):
+    """A failed run of a job that runs less often than daily is retried the
+    next day, while the slot it missed is within the lookback (task 198
+    follow-up). The case is the 2026-10-31 field brief: it failed on a lapsed
+    login at 18:12 on a Saturday and nothing ran again until 11-07."""
+
+    EVENING = "18:00-23:00"
+
+    def _weekly(self, **overrides) -> manifest.JobManifest:
+        fields = dict(name="brief", schedule="weekly", lookback="2d", command="true",
+                      tier="T3", dry_run=False, window=self.EVENING)
+        fields.update(overrides)
+        return manifest.JobManifest(**fields)
+
+    def _fail_on_saturday(self, sr: Path, job: manifest.JobManifest) -> None:
+        state.mark_done(job.name, now=_local(2026, 10, 24, 18, 7), state_root=sr)
+        now = _local(2026, 10, 31, 18, 12)
+        slot = cycle.serving_slot(job, state.read_marker(job.name, state_root=sr), now)
+        self.assertEqual(slot, _local(2026, 10, 31, 18, 0))
+        state.mark_done(job.name, now=now, state_root=sr, failed=True, slot=slot)
+
+    def test_a_failed_weekly_run_is_retried_the_next_evening(self):
+        with TemporaryDirectory() as td:
+            sr, job = Path(td), self._weekly()
+            self._fail_on_saturday(sr, job)
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 10, 31, 18, 42), state_root=sr),
+                             (False, "retry-wait"))
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 11, 1, 17, 42), state_root=sr),
+                             (False, "outside-window 18:00-23:00"))
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 11, 1, 18, 12), state_root=sr),
+                             (True, "retry"))
+
+    def test_a_retry_that_succeeds_keeps_the_job_on_its_day(self):
+        with TemporaryDirectory() as td:
+            sr, job = Path(td), self._weekly()
+            self._fail_on_saturday(sr, job)
+            now = _local(2026, 11, 1, 18, 12)
+            marker = state.read_marker(job.name, state_root=sr)
+            slot = cycle.serving_slot(job, marker, now)
+            self.assertEqual(slot, state.failed_slot(marker))
+            state.mark_done(job.name, now=now, state_root=sr, due_from=slot)
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 11, 6, 18, 12), state_root=sr),
+                             (False, "not-due"))
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 11, 7, 18, 12), state_root=sr),
+                             (True, "due"))
+
+    def test_retries_stop_once_the_missed_slot_is_past_the_lookback(self):
+        with TemporaryDirectory() as td:
+            sr, job = Path(td), self._weekly()
+            self._fail_on_saturday(sr, job)
+            # The Sunday retry fails too, and still serves Saturday's slot.
+            now = _local(2026, 11, 1, 18, 12)
+            slot = cycle.serving_slot(job, state.read_marker(job.name, state_root=sr), now)
+            state.mark_done(job.name, now=now, state_root=sr, failed=True, slot=slot)
+            # Monday evening is more than two days after Saturday 18:00.
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 11, 2, 18, 30), state_root=sr),
+                             (False, "not-due"))
+            # The regular schedule takes over, counted from the missed Saturday.
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 11, 6, 18, 30), state_root=sr),
+                             (False, "not-due"))
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 11, 7, 18, 12), state_root=sr),
+                             (True, "due"))
+
+    def test_a_daily_job_is_not_retried_before_its_next_run(self):
+        """Its next regular run is the retry; retrying sooner would only
+        hasten its watchdog stop."""
+        with TemporaryDirectory() as td:
+            sr = Path(td)
+            job = manifest.JobManifest(name="night", schedule="daily", lookback="24h",
+                                       command="true", tier="T3", dry_run=False,
+                                       window="02:00-06:00")
+            state.mark_done(job.name, now=_local(2026, 9, 11, 2, 7), state_root=sr,
+                            failed=True, slot=_local(2026, 9, 11, 2, 0))
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 9, 11, 3, 7), state_root=sr),
+                             (False, "not-due"))
+            self.assertEqual(cycle.is_due(job, now=_local(2026, 9, 12, 2, 7), state_root=sr),
+                             (True, "due"))
+
+    def test_through_the_cycle(self):
+        """End to end: the command fails, the marker says so, the next day's
+        cycle retries it, and the success records the slot it served."""
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            jobs_dir, sr = root / "jobs", root / "state"
+            login = root / "logged-in"
+            script = root / "brief.py"
+            script.write_text(f"import os, sys\nsys.exit(0 if os.path.exists({str(login)!r}) else 3)\n",
+                              encoding="utf-8")
+            _write_job(jobs_dir, "brief", schedule="weekly", lookback="2d",
+                       window=self.EVENING, command=f'"{sys.executable}" "{script}"',
+                       tier="T3", dry_run=False)
+            state.mark_done("brief", now=_local(2026, 10, 24, 18, 7), state_root=sr)
+
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 10, 31, 18, 12), state_root=sr)
+            self.assertEqual(report.outcomes[0].exit_code, 3)
+            marker = state.read_marker("brief", state_root=sr)
+            self.assertTrue(marker["failed"])
+            self.assertEqual(marker["slot"], _local(2026, 10, 31, 18, 0))
+
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 10, 31, 18, 42), state_root=sr)
+            self.assertEqual(report.outcomes[0].skipped_reason, "retry-wait")
+
+            login.write_text("", encoding="utf-8")
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 11, 1, 18, 12), state_root=sr)
+            self.assertTrue(report.outcomes[0].ran)
+            self.assertEqual(report.outcomes[0].exit_code, 0)
+            marker = state.read_marker("brief", state_root=sr)
+            self.assertNotIn("failed", marker)
+            self.assertEqual(marker["due_from"], _local(2026, 10, 31, 18, 0))
+            self.assertEqual(watchdog.read_health("brief", state_root=sr)["rung"], "healthy")
+
+
 class StateRootTests(unittest.TestCase):
     """The default state root, and who may make it (2026-09-14).
 
