@@ -82,6 +82,10 @@ A session trace is titled by what the session is for, not by the relay that open
 
 ### Fixed
 
+- **A failed weekly job is retried the next day, not the next week (task 198 follow-up).** The runner marked a run done whatever its exit code, so a job that runs less often than daily waited a full interval after a failure. The 2026-10-31 field brief exited 3 on a lapsed login, and nothing ran again until 11-07.
+  - **The rule.** A failed run's marker records the scheduled slot it was serving. A job whose interval is longer than a day is retried 24 hours after each failed attempt, inside its window, while that slot is still within the job's `lookback` and the next slot has not come. A cycle that is waiting says `retry-wait`, and a retry runs as `retry`.
+  - **The schedule keeps its days.** A retry that succeeds records the slot it served as `due_from`, and the next regular run counts from there, so a Saturday job retried on Sunday is next due on Saturday. When the retries run out, the schedule also counts from the missed slot.
+  - **Unchanged.** Daily and hourly jobs: their next regular run is already the retry. The spend gates still read `last_run`, the time of the attempt, so a paid retry cannot land inside the 20-hour window of the run it repeats. Each failed retry still counts toward the watchdog's stop rung.
 - **A stale backup's alert says why, and pages only on two missed runs (task 198).** Four `backup-stale` alerts between 2026-10-24 and 11-01 each said only "its log says why".
   - **What they were.** One was two runs refused by Gitea's SSH port, a real failure. One was a single run that could not reach the NAS, followed by a successful one. Two were a Mac asleep while launchd held the job back, with nothing failed.
   - **The reason in the alert.** The daemon now reads the push job's own log (`daemon.backup_log`, default `~/Library/Logs/vault-backup.log` on macOS). The alert quotes the failed run's error, or says that no run has failed and the job simply has not run yet. Two failed runs in a row page at once.

@@ -304,13 +304,69 @@ def _next_opening(window: tuple[int, int], at: float) -> float:
     return opening.timestamp()
 
 
+# How long a failed run waits before it is retried (task 198 follow-up). A
+# day, so a retry never runs inside the same 20-hour spend window as the
+# failure it repeats, and a job that stays broken adds one watchdog strike a
+# day rather than one a cycle.
+_RETRY_AFTER_SECONDS = 86400
+
+
+def _retries(job: manifest_mod.JobManifest) -> bool:
+    """Whether a failed run of this job is retried before its next slot.
+
+    Only a job that runs less often than daily. A daily or hourly job's next
+    regular run is already its retry, and retrying it sooner would only
+    hasten its watchdog stop. A weekly job is the case this is for: until
+    2026-11-12 its failure waited a whole week. The 2026-10-31 field brief
+    failed on a lapsed login and the next one came on 11-07.
+    """
+    return job.interval_seconds > 86400
+
+
+def _into_window(job: manifest_mod.JobManifest, at: float) -> float:
+    """`at`, or the window's next opening when `at` falls outside it."""
+    window = job.window_minutes
+    if window is None or in_window(window, at):
+        return at
+    return _next_opening(window, at)
+
+
+def _anchor(job: manifest_mod.JobManifest, marker: dict) -> Optional[float]:
+    """What the job's next regular slot counts from: the slot a failed run of
+    a retrying job was serving, so retries never move its days; else the
+    marker's `due_from` (`last_run` unless a retry succeeded)."""
+    slot = state_mod.failed_slot(marker)
+    if slot is not None and _retries(job):
+        return slot
+    return state_mod.due_from(marker)
+
+
+def serving_slot(job: manifest_mod.JobManifest, marker: dict, now: float) -> float:
+    """The scheduled time a run starting at `now` serves: the failed slot
+    when this is a retry, else the slot it fell due at (never later than
+    `now`), else `now` for a first run or one after a crash."""
+    slot = state_mod.failed_slot(marker)
+    if slot is not None and _retries(job) and now < _next_due(job, slot):
+        return slot
+    anchor = _anchor(job, marker)
+    if anchor is None:
+        return now
+    return min(now, _next_due(job, anchor))
+
+
 def is_due(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[Path] = None):
     """(due: bool, reason: str). reason in {"never-run", "orphaned-start",
-    "due", "not-due", "missed-beyond-lookback", "outside-window <window>"}.
+    "due", "not-due", "retry", "retry-wait", "missed-beyond-lookback",
+    "outside-window <window>"}.
 
     The window is checked first. A job waiting for its window is not late, so
     nothing here touches its marker while it waits — the lookback re-anchor
     below must never mistake "not yet 02:00" for "missed".
+
+    A failed run of a job that runs less often than daily is retried a day
+    later (inside its window), and again each day after, while the slot it
+    missed is still within the job's lookback and its next slot has not come.
+    Then the regular schedule takes over, counted from the missed slot.
     """
     window = job.window_minutes
     if window is not None and not in_window(window, now):
@@ -321,7 +377,14 @@ def is_due(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[Pa
     last_run = state_mod.last_run_epoch(marker)
     if last_run is None:
         return True, "never-run"
-    next_due = _next_due(job, last_run)
+    slot = state_mod.failed_slot(marker)
+    if slot is not None and _retries(job) and now < _next_due(job, slot):
+        if now - slot > job.lookback_seconds:
+            return False, "not-due"
+        if now < _into_window(job, last_run + _RETRY_AFTER_SECONDS):
+            return False, "retry-wait"
+        return True, "retry"
+    next_due = _next_due(job, _anchor(job, marker))
     if now < next_due:
         return False, "not-due"
     overdue_by = now - next_due
@@ -434,6 +497,9 @@ def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[
                      clone_behind=clone_behind)
         return outcome
 
+    prior = state_mod.read_marker(job.name, state_root=state_root)
+    slot = serving_slot(job, prior, now)
+    retrying = _retries(job) and slot == state_mod.failed_slot(prior)
     state_mod.mark_start(job.name, now=now, state_root=state_root)
     try:
         proc = subprocess.run(
@@ -445,7 +511,12 @@ def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[
     except Exception:
         exit_code = -1
         cost = 0.0
-    state_mod.mark_done(job.name, now=now, cost_usd=cost, state_root=state_root)
+    # A failure records the slot it was serving, so a job that runs less
+    # often than daily retries it; a retry that succeeds keeps the job's
+    # schedule counting from that slot.
+    state_mod.mark_done(job.name, now=now, cost_usd=cost, state_root=state_root,
+                        failed=exit_code != 0, slot=slot,
+                        due_from=slot if retrying and exit_code == 0 else None)
     watchdog_mod.record_outcome(job.name, succeeded=(exit_code == 0), now=now, state_root=state_root)
     outcome = JobOutcome(name=job.name, ran=True, exit_code=exit_code, cost_usd=cost)
     _emit_report(report_path, job, outcome, clone_behind=clone_behind)

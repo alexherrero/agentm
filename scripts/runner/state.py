@@ -84,14 +84,31 @@ def mark_done(
     now: Optional[float] = None,
     cost_usd: float = 0.0,
     state_root: Optional[Path] = None,
+    failed: bool = False,
+    slot: Optional[float] = None,
+    due_from: Optional[float] = None,
 ) -> None:
+    """A finished run. `last_run` is always when it ran, so the spend window
+    and every "last ran" reading stay true.
+
+    `failed` and `slot` mark a run that exited non-zero, and the scheduled
+    time it was serving: a job that runs less often than daily retries that
+    slot (`cycle.is_due`). `due_from` is where the next regular slot counts
+    from when that is not `last_run`, written by a retry that succeeded, so a
+    weekly job retried on Sunday stays on Saturdays."""
     ts = now if now is not None else time.time()
-    _write(_marker_path(job_name, state_root), {
+    payload = {
         "status": "done",
         "last_run": ts,
         "last_cost_usd": cost_usd,
         "last_real_run": ts,
-    })
+    }
+    if failed:
+        payload["failed"] = True
+        payload["slot"] = slot if slot is not None else ts
+    if due_from is not None:
+        payload["due_from"] = due_from
+    _write(_marker_path(job_name, state_root), payload)
 
 
 def mark_missed(job_name: str, *, now: Optional[float] = None, state_root: Optional[Path] = None) -> None:
@@ -130,6 +147,24 @@ def is_orphaned_start(marker: dict) -> bool:
 
 def last_run_epoch(marker: dict) -> Optional[float]:
     return marker.get("last_run") if marker.get("status") == "done" else None
+
+
+def failed_slot(marker: dict) -> Optional[float]:
+    """The scheduled time a failed run was serving; None unless the job's last
+    run exited non-zero."""
+    if marker.get("status") != "done" or not marker.get("failed"):
+        return None
+    val = marker.get("slot")
+    return float(val) if isinstance(val, (int, float)) else None
+
+
+def due_from(marker: dict) -> Optional[float]:
+    """Where the job's next regular slot counts from: a successful retry's
+    `due_from`, else `last_run`."""
+    if marker.get("status") != "done":
+        return None
+    val = marker.get("due_from")
+    return float(val) if isinstance(val, (int, float)) else marker.get("last_run")
 
 
 def last_cost_usd(marker: dict) -> float:
