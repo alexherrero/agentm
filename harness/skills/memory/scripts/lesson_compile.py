@@ -919,8 +919,11 @@ Each candidate below comes with the existing notes the vault's search found for 
 lessons already written tonight (T…). Never duplicate a lesson.
 
 For each candidate choose one action:
-- "augment": an existing note marked AUGMENTABLE, or a T note, already states this lesson or a close one.
-  Add what is new: a sharper statement, new evidence or a new case, or a correction if the note is wrong.
+- "augment": an existing note marked AUGMENTABLE, or a T note, already states this same lesson: the same
+  problem, cause or rule. Add only what is new to it: a sharper statement, a new case of the same problem,
+  or a correction if the note is wrong. A lesson that only shares a tool, a project, a file or a detail
+  with a note is a different lesson, and it is "new". An AUGMENTABLE note is shown whole, with what earlier
+  nights added to it: if it already says what you would add, the candidate is "drop".
   `kind` is one of sharpen, evidence, correct. `added` is at most 600 characters of plain prose.
 - "drop": the vault already holds it (in any note, augmentable or not) and there is nothing to add, or it
   is not a durable lesson after all, or it repeats another candidate you already kept.
@@ -996,15 +999,35 @@ def search_neighbours(query: str, *, vault_root: Path, memory_root: Path, runner
             continue
         augmentable = (under and rel.startswith(AUGMENT_CLASSES) and bool(row.get("type"))
                        and row.get("lifecycle") not in ("superseded", "archived"))
-        out_rows.append(Neighbour(rel, str(row.get("title") or Path(path).stem),
-                                  _cut(str(row.get("summary") or row.get("snippet") or ""), 400),
-                                  augmentable))
+        summary = _cut(str(row.get("summary") or row.get("snippet") or ""), 400)
+        if augmentable:
+            summary = _card_text(Path(memory_root) / rel) or summary
+        out_rows.append(Neighbour(rel, str(row.get("title") or Path(path).stem), summary, augmentable))
     # Lesson cards first, in rank order: they are what a candidate may
     # augment. The best read-only matches fill what is left, so the decision
     # still sees a design or a list that already says the same thing.
     cards = [n for n in out_rows if n.augmentable][: max(1, k - 2)]
     others = [n for n in out_rows if not n.augmentable][: k - len(cards)]
     return cards + others
+
+
+CARD_CHARS = 1500
+
+
+def _card_text(path: Path) -> str:
+    """A card the decision may add to, whole: its body below the frontmatter,
+    with what earlier nights added. The search's 400-character summary showed
+    only the top of a card, so a night could not see that a case was already
+    there and added it again."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        text = text[end + 4:] if end != -1 else text
+    text = _cut(text, CARD_CHARS)
+    return "\n".join("      " + l for l in text.splitlines() if l.strip())
 
 
 def neighbours_for(c: dict, night, k: int = 6) -> list:
@@ -1148,7 +1171,8 @@ def _render_candidates(cands: list, neighbours: list) -> str:
                    f"evidence: {'; '.join(map(str, c.get('evidence') or []))}")
         for j, n in enumerate(ns, 1):
             flag = "AUGMENTABLE" if n.augmentable else "read-only"
-            out.append(f"   N{i}.{j} [{flag}] {n.rel} — {n.title}: {n.summary}")
+            sep = "\n" if "\n" in n.summary else " "
+            out.append(f"   N{i}.{j} [{flag}] {n.rel} — {n.title}:{sep}{n.summary}")
     return "\n".join(out)
 
 

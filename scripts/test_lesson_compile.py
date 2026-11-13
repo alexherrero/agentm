@@ -375,6 +375,28 @@ class TestCompile(_Base):
         decide = runner.prompts("deciding")[0]
         self.assertIn("AUGMENTABLE", decide)
 
+    def test_a_card_reaches_the_decision_whole_with_its_earlier_additions(self) -> None:
+        # The search summary showed only a card's first lines, so a night could
+        # not see a case an earlier night had added and added it again.
+        existing = self.vault / "memory" / "procedural" / "warm-the-widget-cache.md"
+        existing.write_text("---\ntitle: Warm the widget cache\ntype: workflow\n---\n\n"
+                            "Warm the cache before building widgets.\n\n## Added by dreaming\n\n"
+                            "**2026-11-08 · lesson compile · evidence**\n\nSEEN-ON-THE-NIGHTLY-BUILD.\n",
+                            encoding="utf-8")
+        plan = {"path": "projects/alpha/plan.md", "title": "Plan", "summary": "PLAN-SUMMARY"}
+        self.stage()
+        runner = FakeRunner(
+            candidates=[_cand()],
+            search={"widget": [{"path": "memory/procedural/warm-the-widget-cache.md", "title": "Warm the widget cache",
+                                "type": "workflow", "lifecycle": "active", "summary": "TOP-ONLY"}, plan]},
+            actions=[])
+        self.compile(runner)
+        decide = runner.prompts("deciding")[0]
+        self.assertIn("SEEN-ON-THE-NIGHTLY-BUILD.", decide)
+        self.assertNotIn("TOP-ONLY", decide)
+        self.assertNotIn("title: Warm the widget cache", decide, "the frontmatter is left out")
+        self.assertIn("PLAN-SUMMARY", decide, "a read-only note is still shown by its summary")
+
     def test_a_second_augment_joins_the_same_section(self) -> None:
         card = ("---\ntitle: T\ntype: fix\n---\n\nBody.\n\n## Added by dreaming\n\n**2026-10-01 · x**\n\nEarlier.\n"
                 "\n## Notes\n\nOperator text below.\n")
