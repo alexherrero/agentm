@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ _REPO = _HERE.parent.parent
 
 sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
 import corpus_scorecard as sc  # noqa: E402 — the diagnostics-dir resolver lives there
+import report_history  # noqa: E402 — the history beside the artifact (task 205)
 
 GATE = _REPO / "scripts" / "check-retrieval-regression.sh"
 ARTIFACT_NAME = "latest_retrieval_gate.json"
@@ -37,6 +39,31 @@ ARTIFACT_NAME = "latest_retrieval_gate.json"
 # reworded log line away from being recorded as PASS — which is how a decay
 # flip nearly went in behind a gate that had printed `no reachable vault`.
 VERDICTS = {0: "PASS", 1: "FAIL", 2: "SKIP"}
+
+# The gate's name in the health folder's history.jsonl. The artifact keeps
+# only the last verdict, so a p-value drifting toward the line night after
+# night left no trace (task 205); each night's verdict and p are a row here.
+HISTORY_REPORT = "retrieval-gate"
+_P_RE = re.compile(r"exact paired p\s*:\s*([0-9]*\.?[0-9]+)")
+
+
+def p_value(tail: str) -> "float | None":
+    """The exact paired test's p from the gate's tail, or None."""
+    m = _P_RE.search(tail or "")
+    return float(m.group(1)) if m else None
+
+
+def record_history(out_dir: Path, result: dict, now: datetime) -> None:
+    """The night's verdict and p as a row in the history beside the artifact.
+    A failure to write it never changes the night's verdict."""
+    fields = {"verdict": result.get("verdict"), "exit": result.get("exit"),
+              "measured": bool(result.get("measured")), "p": p_value(result.get("tail", "")),
+              "at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    try:
+        report_history.record(out_dir, HISTORY_REPORT, now.astimezone().strftime("%Y-%m-%d"),
+                              fields, now=now)
+    except OSError as exc:
+        print(f"retrieval-gate-job: history not written: {exc}", file=sys.stderr)
 
 
 def embed_first() -> dict:
@@ -101,10 +128,12 @@ def main() -> int:
     embed = embed_first()
     result = run_gate()
     result["embed"] = embed
-    result["at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc)
+    result["at"] = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     path = artifact_path()
     path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8")
+    record_history(path.parent, result, now)
     print(f"retrieval-gate-job: {result['verdict']} — artifact at {path}")
     # The job's own exit mirrors the gate's, so the runner's log shows red on
     # a regression without anyone opening the artifact.

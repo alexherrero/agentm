@@ -76,7 +76,13 @@ The `morning-note` job writes it as the last step of the night, order 5 in the `
    pass is not built yet` is telling you the truth; a section reporting `0.00`
    would not be.
 
-4. **Read *Front pages* for what has fallen behind.** It checks each project's `charter.md` and
+4. **Read *hit rate, week by week* under Retrieval before the gate's verdict.** The gate
+   passes unless one night is significantly worse than the pin, so a slow slide passes every
+   night. This row averages the live readings by week and says `SLIDING` when the rate fell
+   three weeks running or the newest week is 5 points under the best of the last eight. It
+   changes nothing on its own; it says it is time to look at what changed in the vault.
+
+5. **Read *Front pages* for what has fallen behind.** It checks each project's `charter.md` and
    `tracker.md` and each system's `system.md` against the newest record beneath it, by the dates in
    their frontmatter. A page more than 7 days behind gets a row: how far behind, how many records
    under it are newer, and which one is newest. Open the page and bring it up to date, or, if it
@@ -84,12 +90,12 @@ The `morning-note` job writes it as the last step of the night, order 5 in the `
    generated project tracker, an `updated` that only records the enrichment pass and a file's
    modification time never count as work.
 
-5. **Read the completeness number with its sample size.** `claim-level coverage`
+6. **Read the completeness number with its sample size.** `claim-level coverage`
    is the headline, and the cell beside it says how many notes and how many
    replicates it came from. Five notes at three replicates is a smoke test, not a
    corpus measurement, and the row states that rather than leaving you to assume.
 
-6. **For the diversity meters, read the direction, not the value.** There is no
+7. **For the diversity meters, read the direction, not the value.** There is no
    good absolute number for trigram concentration. What matters is which way it
    moved since the last card:
 
@@ -103,14 +109,14 @@ The `morning-note` job writes it as the last step of the night, order 5 in the `
    The last one moves earliest. Convergence starts locally, so a few notes tighten
    around each other while the corpus-wide average is still flat.
 
-7. **If the two embedding meters say they refused, that is correct behaviour.**
+8. **If the two embedding meters say they refused, that is correct behaviour.**
    They will not run without the dense arm rather than returning zero. The
    safeguard exists because zero dispersion is what a perfectly converged corpus
    looks like and zero similarity is what a perfectly diverse one looks like, so a
    missing embedder returning zero would report either "everything is fine" or
    "the corpus has collapsed" depending which row you read.
 
-8. **Regenerate either report on demand** rather than waiting for the next night:
+9. **Regenerate either report on demand** rather than waiting for the next night:
 
    ```bash
    python3 harness/skills/memory/scripts/morning_note.py
