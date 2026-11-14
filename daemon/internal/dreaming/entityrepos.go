@@ -2,79 +2,8 @@ package dreaming
 
 import (
 	"sort"
-	"strconv"
 	"strings"
-
-	"github.com/alexherrero/agentm/daemon/internal/projectbind"
 )
-
-// What a repository's own clone says a page may be about (task 186).
-//
-// The vault growth audit of 2026-10-03 found the builder paging numbers and
-// versions the repository never had: a bare `#28272` in the home research is a
-// pest report's number, `#191614` in the blog's brand notes is a colour, and
-// "(World) (v1.0.1)" in the games lists is a ROM dump's version, each read as
-// the project's repository's issue or release. The extractor cannot tell from a
-// line; the repository can. An issue or pull request number is never above the
-// highest `#N` its commit subjects cite, on any ref — a squash merge ends its
-// subject with `(#N)` — and a release is one of its tags. An issue opened after
-// the newest merged pull request waits for the next merge to get its page. A repository with no clone on this
-// machine keeps the old reading, because no clone is no evidence.
-
-// repoFacts is one clone's evidence.
-type repoFacts struct {
-	// maxRef is the highest `#N` any commit subject cites; 0 when none does,
-	// so a repository that has never merged a pull request has no issue pages.
-	maxRef int
-	// tags is every tag in the clone.
-	tags map[string]bool
-}
-
-// readRepoFacts reads each clone once. A clone git cannot read — no commits
-// yet, a broken checkout — is left out, as if it were not on this machine.
-func readRepoFacts(clones map[string]string) map[string]repoFacts {
-	out := map[string]repoFacts{}
-	for repo, dir := range clones {
-		// Every ref, not the checkout's branch: the primary clone sits at the
-		// last deployed commit, and a remote-tracking or worktree branch cites
-		// the newer numbers.
-		maxRef, err := projectbind.MaxCitedRef(dir)
-		if err != nil {
-			continue
-		}
-		tagList, err := projectbind.GitOutput(dir, "tag", "--list")
-		if err != nil {
-			continue
-		}
-		facts := repoFacts{maxRef: maxRef, tags: map[string]bool{}}
-		for _, tag := range strings.Fields(tagList) {
-			facts.tags[tag] = true
-		}
-		out[repo] = facts
-	}
-	return out
-}
-
-// clonePermits reports whether the repository's clone allows a page for uri:
-// an issue whose number its history reaches, a release that is one of its
-// tags. A repository and an entity of a repository with no clone pass.
-func clonePermits(uri string, facts map[string]repoFacts) bool {
-	kind, id, _ := strings.Cut(uri, ":")
-	switch kind {
-	case "issue":
-		repo, num, _ := strings.Cut(id, "#")
-		if f, ok := facts[repo]; ok {
-			n, err := strconv.Atoi(num)
-			return err == nil && n <= f.maxRef
-		}
-	case "release":
-		repo, version, _ := strings.Cut(id, "@")
-		if f, ok := facts[repo]; ok {
-			return f.tags[version]
-		}
-	}
-	return true
-}
 
 // foldFormerName rewrites an entity of a renamed repository to the repository
 // it is now: `release:alexherrero/agentic-harness@v2.0.0` is agentm's.

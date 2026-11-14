@@ -37,6 +37,8 @@ func TestAHandWrittenNoteAtAPagesPathIsHeldNotOverwritten(t *testing.T) {
 }
 
 // Two spellings of one person share one page, and a rebuild writes nothing.
+// Since task 202 the person is one the people file lists; the spellings fold
+// into that one listed name.
 func TestTwoSpellingsOfOnePersonShareOnePageAndARebuildIsANoOp(t *testing.T) {
 	notes := map[string]string{
 		"projects/agentm/project.yaml":            "slug: agentm\nrepositories:\n  - alexherrero/agentm\n",
@@ -46,7 +48,8 @@ func TestTwoSpellingsOfOnePersonShareOnePageAndARebuildIsANoOp(t *testing.T) {
 		"projects/agentm/tasks/004-d/progress.md": "---\nupdated: 2026-09-23\npeople: [jean luc picard]\n---\n\njean luc picard.\n",
 	}
 	root, x := entityVault(t, notes)
-	first, err := PlanEntities(root, filepath.Dir(root), x, PeopleOptions{}, nil, entityNow)
+	opts := listedPeople(t, "  Jean-Luc Picard: [Jean Luc Picard]\n")
+	first, err := PlanEntities(root, filepath.Dir(root), x, opts, nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +58,7 @@ func TestTwoSpellingsOfOnePersonShareOnePageAndARebuildIsANoOp(t *testing.T) {
 		t.Fatalf("person pages %+v, want one page with all four notes", pages)
 	}
 	applyEntityIntents(t, root, first.Intents)
-	second, err := PlanEntities(root, filepath.Dir(root), x, PeopleOptions{}, nil, entityNow.Add(24*time.Hour))
+	second, err := PlanEntities(root, filepath.Dir(root), x, opts, nil, entityNow.Add(24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +74,7 @@ func TestANonLatinNameGetsAPageOfItsOwn(t *testing.T) {
 		"projects/agentm/tasks/002-b/progress.md": "---\nupdated: 2026-09-21\npeople: [Дмитрий Иванов]\n---\n\nwith Дмитрий Иванов again\n",
 	}
 	root, x := entityVault(t, notes)
-	plan, err := PlanEntities(root, filepath.Dir(root), x, PeopleOptions{}, nil, entityNow)
+	plan, err := PlanEntities(root, filepath.Dir(root), x, listedPeople(t, "  Дмитрий Иванов: []\n"), nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -42,6 +42,16 @@ func peopleOpts(t *testing.T) PeopleOptions {
 	return PeopleOptions{Table: tb}
 }
 
+// listedPeople is a people file listing the given `aliases:` lines.
+func listedPeople(t *testing.T, aliases string) PeopleOptions {
+	t.Helper()
+	tb, err := people.Parse("```people\nyou: [Pat Owner, Pat]\naliases:\n" + aliases + "```\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return PeopleOptions{Table: tb}
+}
+
 func personPages(plan EntitiesPlan) map[string]EntityPage {
 	out := map[string]EntityPage{}
 	for _, p := range plan.Pages {
@@ -155,7 +165,8 @@ func (f fixtureMail) Threads(context.Context) ([]EmailThread, error) {
 
 func TestAnEmailThreadCountsOnlyWhileTheSwitchIsOn(t *testing.T) {
 	root, x := entityVault(t, peopleFixture())
-	opts := peopleOpts(t)
+	// Ana is in the people file: since task 202 only a listed person has a page.
+	opts := listedPeople(t, "  Ben Okafor: [Ben]\n  Ana Ruiz: []\n")
 	asked := 0
 	opts.Email = fixtureMail{threads: []EmailThread{{ID: "t1", Participants: []string{"Ana Ruiz", "Pat Owner"}}}, asked: &asked}
 	off, err := PlanEntities(root, filepath.Dir(root), x, opts, nil, entityNow)

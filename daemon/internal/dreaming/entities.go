@@ -39,7 +39,6 @@ const JobEntities = "entities"
 // Default bars, used when the contract does not say.
 const (
 	defaultEntityMinMentions   = 2
-	defaultEntityMinNumbered   = 3
 	defaultPersonMinSharedWork = 2
 )
 
@@ -74,6 +73,15 @@ type EntitiesPlan struct {
 	// PeopleHeld is every note the people half could not read tonight; while
 	// any is listed, the people pages stand as they were.
 	PeopleHeld []string `json:"people_held,omitempty"`
+	// NoLongerBuilt is every page of the builder's own on disk that it no
+	// longer writes (task 202): an issue or a release page, and a person the
+	// people file does not list. Left where it is, unchanged, for the
+	// clear-out the operator approves; vault-relative.
+	NoLongerBuilt []string `json:"no_longer_built,omitempty"`
+	// Unlisted is every name a note's `people:` carries that the people file
+	// does not list as one person: no page is built for it, and the morning
+	// note can say who might be worth adding.
+	Unlisted []string `json:"unlisted,omitempty"`
 }
 
 // EntityThresholds are the contract's bars, or the defaults.
@@ -89,18 +97,6 @@ func EntityThresholds(r *rules.Rules) (minMentions, minSharedWork int) {
 		minSharedWork = int(v)
 	}
 	return
-}
-
-// EntityNumberedThreshold is the bar for an issue or a release page: the
-// contract's `entity_min_sources_numbered`, or three (the operator's ruling of
-// 2026-10-07, task 190). A repository page keeps `entity_min_mentions`.
-func EntityNumberedThreshold(r *rules.Rules) int {
-	if r != nil {
-		if v, ok := r.Threshold("entity_min_sources_numbered"); ok && v >= 1 {
-			return int(v)
-		}
-	}
-	return defaultEntityMinNumbered
 }
 
 // livePath is where a mentioning note sits tonight. The night builds the pages
@@ -156,9 +152,7 @@ func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *
 	memRel := memoryRootRel(root, vault)
 	projects := projectbind.Repositories(vault)
 	former := projectbind.FormerNames(vault)
-	facts := readRepoFacts(projectbind.Clones(vault))
 	minMentions, minSharedWork := EntityThresholds(r)
-	minNumbered := EntityNumberedThreshold(r)
 
 	rows, err := src.EntityRows(context.Background())
 	if err != nil {
@@ -180,18 +174,15 @@ func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *
 	}
 
 	// The bar counts sources, not notes (task 186): a task folder is one
-	// source. An issue or a release needs three of them and a repository two
-	// (the operator's ruling of 2026-10-07). And a number or a version the
-	// repository's clone has never had gets no page, however often it is
-	// mentioned.
+	// source, and a repository needs two (the operator's ruling of
+	// 2026-10-07). Only repositories reach here since task 202, so the
+	// numbered bar (`entity_min_sources_numbered`) and the clone check that
+	// decided which numbers and versions a repository really had went with
+	// the issue and release pages.
 	wanted := map[string]bool{}
 	var uris []string
 	for uri, ms := range byURI {
-		bar := minMentions
-		if kind, _, _ := strings.Cut(uri, ":"); kind == "issue" || kind == "release" {
-			bar = minNumbered
-		}
-		if distinctSources(ms) >= bar && clonePermits(uri, facts) {
+		if distinctSources(ms) >= minMentions {
 			uris = append(uris, uri)
 		}
 	}
@@ -226,7 +217,25 @@ func PlanEntities(root, vault string, src EntitySources, opts PeopleOptions, r *
 	for rel := range people {
 		wanted[rel] = true
 	}
-	plan.removeUnwanted(root, memRel, wanted, []string{"repo", "issue", "release", "person"})
+	// What the builder no longer writes stays where it is (task 202): every
+	// issue and release page, and a person page whose person the people file
+	// does not list. A listed person's page below its bar is still removed,
+	// and so is a repository's.
+	listed := map[string]bool{}
+	for _, full := range opts.Table.People() {
+		listed[entityRel(memRel, "person", cardshape.EntitySlug(full))] = true
+	}
+	for _, kind := range []string{"issue", "release", "person"} {
+		for _, rel := range existingPages(root, memRel, kind) {
+			if wanted[rel] || (kind == "person" && listed[rel]) {
+				continue
+			}
+			plan.NoLongerBuilt = append(plan.NoLongerBuilt, rel)
+			wanted[rel] = true
+		}
+	}
+	sort.Strings(plan.NoLongerBuilt)
+	plan.removeUnwanted(root, memRel, wanted, []string{"repo", "person"})
 	return plan, nil
 }
 

@@ -60,7 +60,7 @@ func renderEntityMap(pages []EntityPage, created, updated string) string {
 		"created: " + created, "updated: " + updated, "tags: [moc, entities]", "slug: " + MocEntitiesSlug,
 		fmt.Sprintf("members: %d", len(pages)), "generated_by: " + mocGeneratedBy, "---", "", "# entities", "",
 		"[[" + MocRootSlug + "]]", "",
-		fmt.Sprintf("%d %s, one for each repository, repo-qualified issue, release and person the vault keeps mentioning, rebuilt each night from the notes that mention them. Generated; not edited by hand.",
+		fmt.Sprintf("%d %s, one for each repository the vault keeps mentioning and each person the people file lists, rebuilt each night from the notes that mention them. Generated; not edited by hand.",
 			len(pages), mocPlural(len(pages), "page", "pages")), ""}
 	for _, h := range entityHeadings {
 		var of []EntityPage

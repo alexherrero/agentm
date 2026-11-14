@@ -118,6 +118,62 @@ func (t Table) Canonical(name string) (string, bool) {
 	return Clean(name), true
 }
 
+// People are the full names the table lists under `aliases`, cleaned, sorted:
+// the only people who get a page (task 204's sibling, task 202). A first name
+// alone is not a person: the vault audit of 2026-11-13 found three different
+// people merged on one "Kevin" page and a game character filed as a person,
+// both built from names the table never listed.
+func (t Table) People() []string {
+	var out []string
+	for f := range t.Aliases {
+		c := Clean(f)
+		if c == "" || contains(t.You, fold(c)) || contains(t.Deny, fold(c)) {
+			continue
+		}
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Listed is the listed person a name stands for: the full name it is, or the
+// person whose spellings hold it. A spelling two listed people share names
+// neither, because it cannot say which; an unlisted name names nobody.
+func (t Table) Listed(name string) (string, bool) {
+	key := fold(name)
+	if key == "" || contains(t.You, key) || contains(t.Deny, key) {
+		return "", false
+	}
+	var found []string
+	for _, full := range t.People() {
+		if fold(full) == key {
+			return full, true
+		}
+		for f, aliases := range t.Aliases {
+			if fold(f) == fold(full) && contains(aliases, key) {
+				found = append(found, full)
+				break
+			}
+		}
+	}
+	if len(found) == 1 {
+		return found[0], true
+	}
+	return "", false
+}
+
+// ListedSpellings are the texts that stand for one listed person: the full
+// name and each alias no other listed person shares. Longest first.
+func (t Table) ListedSpellings(full string) []string {
+	var out []string
+	for _, s := range t.Spellings(full) {
+		if who, ok := t.Listed(s); ok && fold(who) == fold(full) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // Spellings are the texts that stand for a canonical person: the name and, from
 // the table, its aliases. Longest first, so a matcher tries the full name before
 // a part of it.

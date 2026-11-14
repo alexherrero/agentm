@@ -323,6 +323,10 @@ func renderNightSections(rep *Report) (string, int) {
 		entityHeld = append(entityHeld, fmt.Sprintf("people pages kept as they were: %d note(s) could not be read, e.g. `%s`",
 			n, rep.Entities.PeopleHeld[0]))
 	}
+	if n := len(rep.Entities.NoLongerBuilt); n > 0 {
+		entityHeld = append(entityHeld, fmt.Sprintf("%d page(s) the builder no longer writes — issue and release pages, "+
+			"and people the people file does not list — left as they are for the clear-out", n))
+	}
 	section("Entity pages held", entityHeld)
 
 	var held []string

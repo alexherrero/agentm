@@ -16,14 +16,20 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/people"
 )
 
-// People pages (task 179 step 6, agentm-vault § Dreaming).
+// People pages (task 179 step 6, agentm-vault § Dreaming; task 202).
 //
-// Enrichment says who the people are: its deep pass writes `people:`, the
-// people a note names, grounded in the note's words and filed under the
-// operator's table in `standards/people/aliases.md`, which may also name a
-// person outright. It never reads a tracker, a plan, a progress log or a
-// calendar note, so this finds where each person appears by matching their
-// names across every note the index holds. A person gets a page once named in
+// A person has a page only when the operator's table in
+// `standards/people/aliases.md` lists them by full name. Enrichment's deep
+// pass writes `people:`, the names a note carries; a name counts toward a
+// listed person when it is their full name or a spelling no other listed
+// person shares. Anything else — a first name on its own, a name the table
+// never listed, a character in a game — builds no page, and is reported as
+// unlisted so the operator can add the people worth adding. Until task 202
+// every name was a person, so three different people shared one "Kevin" page
+// and a game character had a page with 81 mentions.
+//
+// Where each listed person appears is found by matching their spellings
+// across every note the index holds. A person gets a page once named in
 // `person_min_shared_work` distinct pieces of shared work; mentions anywhere
 // else are listed on the page but never qualify a person on their own.
 
@@ -131,11 +137,12 @@ func (g *personGroup) title() string { return g.ordered()[0] }
 
 // spellings are every spelling the group's names answer to, the table's
 // aliases included; of two that differ only in case, the better name's wins.
+// An alias two listed people share is no one's.
 func (g *personGroup) spellings(t people.Table) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, n := range g.ordered() {
-		for _, s := range t.Spellings(n) {
+		for _, s := range t.ListedSpellings(n) {
 			if k := strings.ToLower(s); !seen[k] {
 				seen[k] = true
 				out = append(out, s)
@@ -181,12 +188,11 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 		groups[slug].add(name, weight)
 		return slug
 	}
-	for full := range opts.Table.Aliases {
-		if name, ok := opts.Table.Canonical(full); ok {
-			// The table's own full name titles its person's page.
-			register(name, 1000)
-		}
+	for _, full := range opts.Table.People() {
+		// The table's own full name titles its person's page.
+		register(full, 1000)
 	}
+	unlisted := map[string]bool{}
 	var unreadable []string
 	for _, n := range notes {
 		if entitySourceExcluded(n.Path, n.Flags, memRel) {
@@ -203,8 +209,12 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 		_, body := ParseFrontmatter(string(raw))
 		named := map[string]bool{}
 		for _, v := range peopleField(string(raw)) {
-			if name, ok := opts.Table.Canonical(v); ok {
-				named[register(name, 1)] = true
+			if full, ok := opts.Table.Listed(v); ok {
+				named[register(full, 1)] = true
+			} else if name, ok := opts.Table.Canonical(v); ok && strings.EqualFold(name, people.Clean(v)) {
+				// Unlisted is a name no listed person answers to. A spelling
+				// two listed people share is listed, just not this one's alone.
+				unlisted[name] = true
 			}
 		}
 		texts = append(texts, noteText{row: n, text: people.NewText(displayTitle(n.Path, n.Title) + "\n" + body), named: named})
@@ -218,8 +228,8 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 		}
 		for _, t := range ts {
 			for _, p := range t.Participants {
-				if name, ok := opts.Table.Canonical(p); ok {
-					slug := register(name, 1)
+				if full, ok := opts.Table.Listed(p); ok {
+					slug := register(full, 1)
 					if threads[slug] == nil {
 						threads[slug] = map[string]bool{}
 					}
@@ -228,6 +238,11 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 			}
 		}
 	}
+
+	for name := range unlisted {
+		plan.Unlisted = append(plan.Unlisted, name)
+	}
+	sort.Strings(plan.Unlisted)
 
 	if len(unreadable) > 0 {
 		sort.Strings(unreadable)
