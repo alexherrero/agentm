@@ -11,6 +11,11 @@ A session trace is titled by what the session is for, not by the relay that open
 
 ### Added
 
+- **Session traces get real titles (task 203).** The vault audit of 2026-11-13 found 108 of 203 traces titled with a raw prompt and their Outcome being the session's last message.
+  - **The title.** The desktop app's own name for the session wins whenever the transcript has one; otherwise the first line typed, cut at a sentence or 80 characters, and never an attachment or a path. The app's name, arriving a turn after the first, replaces a typed title; the file keeps its name.
+  - **The night's summary.** The lesson compile's draft call, which already reads each new session, also returns a title of at most ten words and a two-or-three-sentence outcome for each. `episodic_trace.apply_summary` writes them into the trace and stamps `summarized: <day>`; a later turn keeps both and still adds to the lists. A session that went on is summarized again the next night.
+  - **Helpers.** A transcript under a session's `subagents/` folder writes no trace.
+  - **Not built.** Merging repeated sessions: the 26 traces that share a title were 26 separate sessions, and nothing in a transcript names a parent session.
 - **A short, fixed list of status words, and the status follows the state (task 204).** The vault audit of 2026-11-13 counted more than 60 status words, and archived, merged and dismissed notes still saying `active`.
   - **The list.** `agentmd rules --json` carries `statuses`: the contract's own `status:` list when it names one, else `unfiled`, `draft`, `queued`, `active`, `parked`, `done`, `dropped`, `superseded`, `merged`, `archived`. A contract that names none hashes as before.
   - **The rule.** Archiving writes `status: archived`, superseding `superseded`, a lesson's stamp `merged`, and coming back out of any of them `active`, in the same write. It covers the night's lifecycle pass, the copy collapse, the restated-rule merge, the source re-ingest, the lesson stamp and release, operator archive and revive, filing-time supersede and evolve. Enrichment keeps a status the state gave. A note with no `lifecycle` keeps what a person wrote.
