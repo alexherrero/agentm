@@ -130,6 +130,47 @@ def record(folder, report: str, date: str, fields: dict, *,
 
 # ── the one-time backfill ───────────────────────────────────────────────────
 
+NIGHT_LOG_DIR = Path("diagnostics") / "dreaming"
+NIGHT_LOG_REPORT = "dreaming-night"
+
+
+def backfill_night_log(memory_root) -> tuple:
+    """Copy the night's old calendar notes (`calendar/YYYY/YYYY-MM-DD-dreaming.md`,
+    written until task 201) into the night log's history, in the row shape
+    the dreaming binary writes. Returns (rows added, notes read); the notes
+    are read and never changed."""
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    import calendar_facets
+
+    root = Path(memory_root)
+    calendar = calendar_facets.calendar_root(root)
+    if calendar is None:
+        return 0, 0
+    folder = root / NIGHT_LOG_DIR
+    have = {r["date"] for r in read_rows(folder, NIGHT_LOG_REPORT)}
+    added = read = 0
+    for note in sorted(calendar.glob("[0-9][0-9][0-9][0-9]/????-??-??-dreaming.md")):
+        try:
+            text = note.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        read += 1
+        day = note.name[:10]
+        if day in have:
+            continue
+        body = text
+        if text.startswith("---\n") and "\n---\n" in text[4:]:
+            body = text[4:].split("\n---\n", 1)[1].lstrip("\n")
+        acts = sum(1 for line in body.splitlines() if line.startswith("- "))
+        record(folder, NIGHT_LOG_REPORT, day,
+               {"acts": acts, "body": f"# What the night did — {day}\n\n{body}",
+                "at": f"{day}T00:00:00Z", "backfilled_from": note.name}, keep_existing=True)
+        added += 1
+    return added, read
+
+
 def backfill(memory_root) -> list:
     """Fill each report's history from the dated notes still on disk. Returns
     one (report, rows added, notes read) triple per report.
@@ -149,7 +190,9 @@ def backfill(memory_root) -> list:
     import vault_lint
 
     root = Path(memory_root)
+    night = backfill_night_log(root)
     return [
+        ("night log", *night),
         ("health scorecard", *corpus_scorecard.backfill_history(root / corpus_scorecard.DIAGNOSTICS_DIR)),
         ("morning note", *morning_note.backfill_history(root / morning_note.DIAGNOSTICS_DIR)),
         ("digests", *inbox_digest.backfill_history(root)),

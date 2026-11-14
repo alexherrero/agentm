@@ -1,6 +1,7 @@
 package dreaming
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -241,15 +242,16 @@ func TestTheFacetNamesEveryActAndTheManifest(t *testing.T) {
 	if plan.Skipped != "" {
 		t.Fatalf("skipped: %s", plan.Skipped)
 	}
-	if plan.Rel != "../calendar/2026/2026-09-18-dreaming.md" {
-		t.Errorf("facet at %q, want the day's file in the register's year", plan.Rel)
+	if plan.Rel != "diagnostics/dreaming/latest_night.md" {
+		t.Errorf("the night's log at %q, want its one page under diagnostics", plan.Rel)
 	}
 	if len(plan.Intents) != 1 {
-		t.Fatalf("%d intents, want the one that writes the facet", len(plan.Intents))
+		t.Fatalf("%d intents, want the one that writes the page", len(plan.Intents))
 	}
 	body := string(plan.Intents[0].After)
 	for _, want := range []string{
-		"facet: dreaming",
+		"title: What the night did", "kind: report", "date: 2026-09-18", "generated_by: agentmdream",
+		"# What the night did — 2026-09-18",
 		"## Sank", "sank",
 		"## Archived", "archive/memory/semantic/cold.md",
 		"## Deleted", "manifest.json",
@@ -273,8 +275,170 @@ func TestANightThatMovedNothingWritesNoFacet(t *testing.T) {
 
 	plan := PlanDreamingFacet(root, axisContract(t), &Report{}, time.Now())
 	if len(plan.Intents) != 0 || plan.Acts != 0 {
-		t.Error("a quiet night wrote a facet; a facet file exists only on a day " +
-			"that had content for it")
+		t.Error("a quiet night wrote its log; the page is rewritten only on a " +
+			"night that did something")
+	}
+}
+
+// Task 201: the calendar is a diary. Two nights are one page under
+// diagnostics, rewritten, and a row each in the history beside it; nothing is
+// written under calendar/, whatever the contract's `facets` list says.
+func TestTwoNightsAreOnePageAndTwoRowsAndNothingInTheCalendar(t *testing.T) {
+	vault := t.TempDir()
+	root := filepath.Join(vault, "agent")
+	engine := t.TempDir()
+	for _, d := range []string{root, filepath.Join(vault, ".obsidian"), filepath.Join(vault, "calendar")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	journal, err := OpenJournal(engine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	night := func(now time.Time, moved string, acts int) FacetPlan {
+		t.Helper()
+		rep := &Report{}
+		for i := 0; i < acts; i++ {
+			rep.Plan.Demoted = append(rep.Plan.Demoted, Move{fmt.Sprintf("memory/semantic/%s-%d.md", moved, i), 400})
+		}
+		plan := PlanDreamingFacet(root, axisContract(t), rep, now)
+		if err := applyAll(journal, root, "run-"+now.Format("0102"), plan.Intents, now, 0, rep); err != nil {
+			t.Fatal(err)
+		}
+		if err := WriteNightHistory(root, plan); err != nil {
+			t.Fatal(err)
+		}
+		return plan
+	}
+	first := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)
+	night(first, "monday", 2)
+	plan := night(first.AddDate(0, 0, 1), "tuesday", 3)
+
+	dir := filepath.Join(root, "diagnostics", "dreaming")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, " ") != "history.jsonl latest_night.md" {
+		t.Errorf("the folder holds %v, want the page and its history and nothing else", names)
+	}
+	page, err := os.ReadFile(filepath.Join(dir, "latest_night.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(page)
+	for _, want := range []string{"date: 2026-11-14", "tuesday-2", "## Earlier nights", "- 2026-11-13 — 2 act(s)"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the page lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "monday-0") {
+		t.Errorf("the page still carries the earlier night in full:\n%s", text)
+	}
+	if plan.Acts != 3 {
+		t.Errorf("acts = %d, want 3", plan.Acts)
+	}
+
+	rows := readNightHistory(filepath.Join(dir, "history.jsonl"))
+	if len(rows) != 2 {
+		t.Fatalf("%d rows in the history, want one a night", len(rows))
+	}
+	if rows[0]["date"] != "2026-11-13" || rows[1]["date"] != "2026-11-14" {
+		t.Errorf("rows dated %v and %v, want oldest first", rows[0]["date"], rows[1]["date"])
+	}
+	if rows[0]["report"] != NightLogReport || rows[0]["acts"] != float64(2) {
+		t.Errorf("the first row is %v", rows[0])
+	}
+	if body, _ := rows[0]["body"].(string); !strings.Contains(body, "monday-1") || strings.Contains(body, "---") {
+		t.Errorf("the first row's body is not that night's lines: %q", body)
+	}
+
+	// The calendar holds nothing the night wrote.
+	var inCalendar []string
+	filepath.WalkDir(filepath.Join(vault, "calendar"), func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			inCalendar = append(inCalendar, p)
+		}
+		return nil
+	})
+	if len(inCalendar) != 0 {
+		t.Errorf("the night wrote under calendar/: %v", inCalendar)
+	}
+}
+
+// A second pass the same day replaces that day's row, and a night whose page
+// would read the same writes nothing and adds no row.
+func TestASecondPassTheSameDayReplacesTheRow(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "agent")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 11, 13, 3, 0, 0, 0, time.UTC)
+	write := func(rep *Report, at time.Time) FacetPlan {
+		t.Helper()
+		plan := PlanDreamingFacet(root, axisContract(t), rep, at)
+		for _, in := range plan.Intents {
+			abs := filepath.Join(root, filepath.FromSlash(in.Rel))
+			os.MkdirAll(filepath.Dir(abs), 0o755)
+			if err := os.WriteFile(abs, in.After, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := WriteNightHistory(root, plan); err != nil {
+			t.Fatal(err)
+		}
+		return plan
+	}
+	one := &Report{Plan: LifecyclePlan{Demoted: []Move{{"memory/semantic/a.md", 400}}}}
+	write(one, now)
+	if again := write(one, now.Add(time.Hour)); len(again.Intents) != 0 || again.History != nil {
+		t.Error("a pass that changed nothing rewrote the page or the history")
+	}
+	two := &Report{Plan: LifecyclePlan{Demoted: []Move{{"memory/semantic/a.md", 400}, {"memory/semantic/b.md", 401}}}}
+	write(two, now.Add(12*time.Hour))
+	rows := readNightHistory(filepath.Join(root, "diagnostics", "dreaming", "history.jsonl"))
+	if len(rows) != 1 || rows[0]["acts"] != float64(2) {
+		t.Errorf("rows = %v, want the day's one row with the later pass's 2 acts", rows)
+	}
+}
+
+// A torn last line in the history is skipped, and the next night's write
+// leaves a whole file. A link in a body keeps its angle brackets and its
+// accents as written, the way the Python reports' history does.
+func TestTheHistorySurvivesATornLineAndKeepsTextAsWritten(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "agent")
+	dir := filepath.Join(root, "diagnostics", "dreaming")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	torn := `{"acts":1,"at":"2026-11-12T03:00:00Z","body":"x","date":"2026-11-12","report":"dreaming-night"}` + "\n" +
+		`{"acts":4,"date":"2026-11-13","bo`
+	if err := os.WriteFile(filepath.Join(dir, "history.jsonl"), []byte(torn), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep := &Report{SkippedByHandMove: []string{"memory/semantic/café <moved> & kept.md"}}
+	plan := PlanDreamingFacet(root, axisContract(t), rep, time.Date(2026, 11, 14, 3, 0, 0, 0, time.UTC))
+	if err := WriteNightHistory(root, plan); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "history.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("%d lines, want the whole earlier row and tonight's:\n%s", len(lines), data)
+	}
+	if !strings.Contains(lines[1], "café <moved> & kept.md") {
+		t.Errorf("the row does not keep the text as written: %s", lines[1])
+	}
+	if !strings.Contains(string(plan.Intents[0].After), "- 2026-11-12 — 1 act(s)") {
+		t.Errorf("the page does not list the earlier night the history holds")
 	}
 }
 

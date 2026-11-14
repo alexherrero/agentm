@@ -142,7 +142,7 @@ lesson never sinks, and goes to the archive only once a newer lesson has
 replaced it, and is never deleted.
 
 Every act is capped at `demotion_cap` a night, journaled, and listed the next
-morning in the day's `dreaming` facet — and **every deletion writes its
+morning in the night's log (`agent/diagnostics/dreaming/latest_night.md`) — and **every deletion writes its
 manifest and its journal line before the file goes**, with the vault's git
 history behind it and a deep search that reaches what the manifests name.
 Archive is a move, which is what gives the class folders an eyeline: they

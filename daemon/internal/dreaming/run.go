@@ -479,6 +479,11 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 		if err := applyAll(journal, root, runID, facet.Intents, now, opt.Pace, &rep); err != nil {
 			return rep, err
 		}
+		// The night's row in the history beside the page: a data file, kept
+		// out of the journal (see FacetPlan.History).
+		if err := WriteNightHistory(root, facet); err != nil {
+			return rep, err
+		}
 	}
 
 	if rep.Reclassify, err = Reclassify(root, contract, version, st.LastPassVersion, ReclassifySample(contract), 0, opt.Reclassify); err != nil {

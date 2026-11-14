@@ -128,6 +128,7 @@ class BackfillCommandTests(unittest.TestCase):
 
     def test_every_report_gets_its_rows_and_no_note_changes(self):
         self.assertEqual(rh.backfill(self.root), [
+            ("night log", 0, 0),
             ("health scorecard", 1, 1), ("morning note", 1, 1),
             ("digests", 1, 1), ("lint report", 1, 1)])
         d = self.root / "diagnostics"
@@ -138,7 +139,32 @@ class BackfillCommandTests(unittest.TestCase):
         for path, text in self.notes.items():
             self.assertEqual(path.read_text(encoding="utf-8"), text)
         # A second run adds nothing.
-        self.assertEqual([added for _name, added, _read in rh.backfill(self.root)], [0, 0, 0, 0])
+        self.assertEqual([added for _name, added, _read in rh.backfill(self.root)], [0, 0, 0, 0, 0])
+
+    def test_the_nights_old_calendar_notes_go_into_the_night_logs_history(self):
+        # Until task 201 the night logged itself as a calendar note a night.
+        vault = self.root.parent
+        (vault / ".obsidian").mkdir()
+        year = vault / "calendar" / "2026"
+        year.mkdir(parents=True)
+        old = ("---\ntitle: 2026-11-12 — what the night did\nkind: calendar-facet\nfacet: dreaming\n"
+               "created: 2026-11-12\n---\n\n## Sank\n\n- [[a]] (`memory/semantic/a.md`) — silent 400 days\n"
+               "- [[b]] (`memory/semantic/b.md`) — silent 401 days\n\n## Deleted\n\n- [[c]] (`x/c.md`) — silent 3000 days\n\n")
+        (year / "2026-11-12-dreaming.md").write_text(old, encoding="utf-8")
+        (year / "2026-11-12-diary.md").write_text("- a line a person wrote\n", encoding="utf-8")
+        (year / "2026-W46-review.md").write_text("- generated\n", encoding="utf-8")
+        self.assertEqual(rh.backfill_night_log(self.root), (1, 1))
+        self.assertEqual(rh.backfill_night_log(self.root), (0, 1))
+        rows = rh.read_rows(self.root / "diagnostics" / "dreaming", rh.NIGHT_LOG_REPORT)
+        self.assertEqual([(r["date"], r["acts"], r["backfilled_from"]) for r in rows],
+                         [("2026-11-12", 3, "2026-11-12-dreaming.md")])
+        self.assertTrue(rows[0]["body"].startswith("# What the night did — 2026-11-12\n\n## Sank\n"))
+        self.assertNotIn("kind: calendar-facet", rows[0]["body"])
+        self.assertEqual((year / "2026-11-12-dreaming.md").read_text(encoding="utf-8"), old)
+
+    def test_no_calendar_is_no_night_log_to_backfill(self):
+        self.assertEqual(rh.backfill_night_log(self.root), (0, 0))
+        self.assertFalse((self.root / "diagnostics" / "dreaming").exists())
 
     def test_the_command_needs_a_memory_root_that_exists(self):
         import contextlib
