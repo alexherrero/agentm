@@ -157,12 +157,14 @@ func unstampFrom(raw []byte, released []string) string {
 			keep = append(keep, l)
 		}
 	}
+	// The status follows (task 204): back to `active` when no lesson is left,
+	// still `merged` while one is.
 	if len(keep) == 0 {
 		out, _ := fmlist.Remove(string(raw), "consolidated_into")
-		return out
+		return cardshape.SyncStatus(out)
 	}
 	out, _ := fmlist.Replace(string(raw), "consolidated_into", stampLine(keep))
-	return out
+	return cardshape.SyncStatus(out)
 }
 
 // ReleasedStems is the stems a lesson's `released:` list names: the cards

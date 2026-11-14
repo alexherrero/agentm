@@ -831,9 +831,36 @@ def lint_model(model: VaultModel) -> list:
     return findings
 
 
+def _vault_root_of(vault: Path) -> Path:
+    """The vault root a memory root sits in: its parent when Obsidian's
+    folder is there, itself in a flat layout."""
+    vault = Path(vault)
+    if (vault.parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        return vault.parent
+    return vault
+
+
+def status_word_findings(vault: Path, statuses=None) -> list:
+    """Task 204: every note under the vault root whose `status` is off the
+    contract's list (a warning, with the nearest word) or contradicts its own
+    state (an error: archived, merged, superseded or dismissed and still
+    `active`). Vault-wide, because a status word is not a memory-only field.
+    Paths are vault-root relative. `statuses` defaults to the contract's list,
+    asked of the daemon; a daemon that predates the list checks only the
+    contradictions."""
+    import status_words  # noqa: E402  (same skill dir)
+    root = _vault_root_of(vault)
+    out = []
+    for rel, f in status_words.vault_findings(root, statuses):
+        out.append(Finding("status-word", f.severity, rel, f.message, f.suggestion))
+    return out
+
+
 def lint_vault(vault: Path, scope: str = "all") -> tuple[VaultModel, list]:
     model = build_model(vault, scope)
     findings = lint_model(model)
+    if scope == "all":
+        findings += status_word_findings(vault)
     return model, findings
 
 

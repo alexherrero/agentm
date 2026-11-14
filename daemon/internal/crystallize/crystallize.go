@@ -702,6 +702,15 @@ func containsString(list []string, s string) bool {
 // otherwise, and then the whole frontmatter is put in the card's order, so a
 // note with neither ends with the stamp in its read block too.
 func Stamp(text, lessonStem string) string {
+	out := stamp(text, lessonStem)
+	if out == text {
+		return text
+	}
+	// A stamped source is `merged`, in the same write (task 204).
+	return cardshape.SyncStatus(out)
+}
+
+func stamp(text, lessonStem string) string {
 	if lessons := StampedLessons(text); len(lessons) > 0 {
 		if containsString(lessons, lessonStem) {
 			return text

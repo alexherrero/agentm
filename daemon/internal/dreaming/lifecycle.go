@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
@@ -402,7 +403,9 @@ func SetLifecycle(text, to, since string) string {
 	} else {
 		lines = append(lines[:at], append([]string{"lifecycle_since: " + since}, lines[at:]...)...)
 	}
-	return strings.Join(lines, "\n")
+	// The status follows in the same write (task 204): `archived` into the
+	// archive, `active` back out of it, and `dormant` leaves it alone.
+	return cardshape.SyncStatus(strings.Join(lines, "\n"))
 }
 
 // PlanLifecycle reads every memory under `root` and decides the pass. It

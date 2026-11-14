@@ -1,0 +1,141 @@
+{
+  "_about": "Task 204: a note's status follows its state in the same write. One table, read by daemon/internal/cardshape/status_test.go and scripts/test_status_words.py, so the Go and Python copies of the rule cannot drift. Each case is frontmatter lines in, the status out ('' means no status line).",
+  "cases": [
+    {
+      "name": "archived",
+      "lines": [
+        "title: a",
+        "status: active",
+        "lifecycle: archived"
+      ],
+      "want": "archived"
+    },
+    {
+      "name": "superseded",
+      "lines": [
+        "title: a",
+        "status: active",
+        "lifecycle: superseded",
+        "superseded_by: \"[[b]]\""
+      ],
+      "want": "superseded"
+    },
+    {
+      "name": "merged, flow list",
+      "lines": [
+        "title: a",
+        "status: active",
+        "lifecycle: active",
+        "consolidated_into: [\"[[lesson]]\"]"
+      ],
+      "want": "merged"
+    },
+    {
+      "name": "merged, block list",
+      "lines": [
+        "title: a",
+        "status: active",
+        "consolidated_into:",
+        "  - \"[[lesson]]\""
+      ],
+      "want": "merged"
+    },
+    {
+      "name": "merged, one link",
+      "lines": [
+        "title: a",
+        "status: active",
+        "consolidated_into: \"[[lesson]]\""
+      ],
+      "want": "merged"
+    },
+    {
+      "name": "archived beats merged",
+      "lines": [
+        "status: merged",
+        "lifecycle: archived",
+        "consolidated_into: [\"[[l]]\"]"
+      ],
+      "want": "archived"
+    },
+    {
+      "name": "revived from the archive",
+      "lines": [
+        "status: archived",
+        "lifecycle: active"
+      ],
+      "want": "active"
+    },
+    {
+      "name": "un-stamped",
+      "lines": [
+        "status: merged",
+        "lifecycle: active",
+        "consolidated_into: []"
+      ],
+      "want": "active"
+    },
+    {
+      "name": "dormant is left alone",
+      "lines": [
+        "status: active",
+        "lifecycle: dormant"
+      ],
+      "want": "active"
+    },
+    {
+      "name": "pinned is left alone",
+      "lines": [
+        "status: unfiled",
+        "lifecycle: pinned"
+      ],
+      "want": "unfiled"
+    },
+    {
+      "name": "a draft is left alone",
+      "lines": [
+        "status: draft"
+      ],
+      "want": "draft"
+    },
+    {
+      "name": "a dropped idea is left alone",
+      "lines": [
+        "status: dropped",
+        "dismissed: 2026-11-01"
+      ],
+      "want": "dropped"
+    },
+    {
+      "name": "quoted values are read",
+      "lines": [
+        "status: \"active\"",
+        "lifecycle: 'archived'"
+      ],
+      "want": "archived"
+    },
+    {
+      "name": "no status line is not given one",
+      "lines": [
+        "title: a",
+        "lifecycle: archived"
+      ],
+      "want": ""
+    },
+    {
+      "name": "superseded by hand on a note with no lifecycle is left alone",
+      "lines": [
+        "title: an overtaken plan",
+        "status: superseded"
+      ],
+      "want": "superseded"
+    },
+    {
+      "name": "archived by hand on a note with no lifecycle is left alone",
+      "lines": [
+        "status: archived"
+      ],
+      "want": "archived"
+    }
+  ]
+}

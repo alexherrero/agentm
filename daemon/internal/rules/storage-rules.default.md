@@ -151,6 +151,15 @@ hold what is alive, and one folder holds what is not. Obsidian resolves a
 link by basename, so a moved note is still found by every link that named it.
 `purge.py apply` stays as the hand lane for a manifest you write yourself.
 
+A note's `status` follows its state in the same write that changes it:
+`archived` when it goes to the archive, `superseded` when it is replaced,
+`merged` when a lesson stamps it in `consolidated_into`, `dropped` when an idea
+is dismissed, and `active` again when it comes back out of any of these.
+`status` holds one of a short list of words: the block's `status:` list when it
+names one, else `unfiled`, `draft`, `queued`, `active`, `parked`, `done`,
+`dropped`, `superseded`, `merged` and `archived`. The vault lint flags a word
+off the list and a status that contradicts the note's state.
+
 ## What the night may delete
 
 Deletion is a policy outcome in exactly these places, and in no others. Each

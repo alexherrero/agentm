@@ -253,8 +253,10 @@ def evolve_entry(
     # Build archive content (old frontmatter + superseded fields; body unchanged).
     archive_fm = dict(fm)
     # The contract's shape (PLAN-superseded-vocabulary): the relation lives on
-    # the lifecycle axis; `status` is left as it was.
+    # the lifecycle axis, and the status says so too (task 204).
     archive_fm["lifecycle"] = "superseded"
+    if "status" in archive_fm:
+        archive_fm["status"] = "superseded"
     new_relative = new_path.relative_to(vault) if new_path.is_absolute() else (vault / new_path).relative_to(vault)
     archive_fm["superseded_by"] = stem_links.link_value_for(str(new_relative).replace(os.sep, "/"), vault)
     archive_fm["superseded_at"] = _now_iso_utc()

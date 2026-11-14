@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 	"github.com/alexherrero/agentm/daemon/internal/fmlist"
 	"github.com/alexherrero/agentm/daemon/internal/people"
 )
@@ -265,6 +266,17 @@ func VerdictForNote(previous string, r Response, floor float64, neverFiles bool)
 }
 
 func verdictFor(previous string, r Response, floor float64, neverFiles bool) FilingVerdict {
+	// A note that is `merged`, `archived` or `superseded` has that status from
+	// its state, not from a judgment (task 204): a lesson stamped it, or the
+	// night moved it. A judgment of its text does not take that away, and
+	// does not sink it either; the confidence is still recorded.
+	if prev := strings.TrimSpace(frontmatterValue(previous, "status")); cardshape.IsStateStatus(prev) {
+		v := FilingVerdict{Status: strings.ToLower(prev), FilingConfidence: "low"}
+		if r.Confidence >= Floor(floor) {
+			v.FilingConfidence = "high"
+		}
+		return v
+	}
 	// The drop folder's rule, ahead of the floor: a card there stays `unfiled`
 	// however sure the model is, because "filed" is what the operator does at
 	// the review pass and a confidence score is not a person reading a card.

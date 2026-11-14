@@ -114,7 +114,8 @@ func TestAMergeKeepsTheOlderNoteWithTheNewerWording(t *testing.T) {
 		t.Errorf("survivor kept the older wording or took the newer importance:\n%s", survivor)
 	}
 	for _, want := range []string{"lifecycle: superseded\n", `superseded_by: "[[agent/memory/semantic/tests-are-sacred|tests-are-sacred]]"` + "\n",
-		"lifecycle_since: 2026-09-29\n", "status: active\n", "Read it, then fix the implementation."} {
+		// Task 204: the status says so too, in the same write.
+		"lifecycle_since: 2026-09-29\n", "status: superseded\n", "Read it, then fix the implementation."} {
 		if !strings.Contains(superseded, want) {
 			t.Errorf("superseded lacks %q:\n%s", want, superseded)
 		}

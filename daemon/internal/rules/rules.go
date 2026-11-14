@@ -168,6 +168,31 @@ type block struct {
 	// adding one is an edit here, never a mkdir: the registry is what keeps
 	// "the agent decides what mattered" from quietly growing new categories.
 	Facets []string `yaml:"facets" json:"facets,omitempty"`
+	// StatusList is the contract's own list of the words `status:` may hold,
+	// when it names one (task 204). Optional: a contract that names none uses
+	// DefaultStatuses, and `omitempty` keeps the hash of such a contract as it
+	// was, so adding the key to the code re-owes the corpus nothing.
+	StatusList []string `yaml:"status" json:"status,omitempty"`
+}
+
+// DefaultStatuses is the short, fixed list of words a note's `status:` may
+// hold when the contract names none (task 204, from the vault audit of
+// 2026-11-13, which counted more than 60 in use). Ten, not the audit's eight:
+//
+//   - `unfiled` — captured, waiting for filing;
+//   - `draft` — written, not yet finished;
+//   - `queued`, `active`, `parked`, `done`, `dropped` — the tracker's five, and
+//     the same words for any other note (`dropped` is a dismissed idea too);
+//   - `superseded` — replaced; search stops serving it;
+//   - `merged` — its content is in a lesson (`consolidated_into:`); still
+//     findable, at a reduced weight, which is why it is not `superseded`;
+//   - `archived` — moved out of everyday search.
+//
+// The last three, and `active` coming back out of them, follow the note's
+// state in the same write that changes it (cardshape.SyncStatus).
+var DefaultStatuses = []string{
+	"unfiled", "draft", "queued", "active", "parked", "done", "dropped",
+	"superseded", "merged", "archived",
 }
 
 // SourceTiers are the values `sources` may map a transport to. Two, on
@@ -191,6 +216,9 @@ type Rules struct {
 	// its frontmatter and the contract half of the ledger's version, so an edit
 	// to anything else re-judges nothing.
 	JudgmentHash string `json:"judgment_hash"`
+	// Statuses is the list `status:` may hold: the contract's own when it names
+	// one, else DefaultStatuses. Outside the block, so it is never hashed.
+	Statuses []string `json:"statuses"`
 	// ImportanceRubric is the paragraph under `## Importance`: what the deep
 	// pass proposes `importance_proposed` against. Prose rather than a key in
 	// the block, on the operator's ruling (agentm-vault § Dreaming, Q8) — a
@@ -304,6 +332,10 @@ func parse(text, source string, embedded bool) (*Rules, error) {
 	r.Hash = b.contentHash()
 	r.JudgmentHash = b.judgmentHash()
 	r.ImportanceRubric = proseSection(text, ImportanceHeading)
+	r.Statuses = append([]string(nil), DefaultStatuses...)
+	if len(b.StatusList) > 0 {
+		r.Statuses = append([]string(nil), b.StatusList...)
+	}
 	return r, nil
 }
 
@@ -482,6 +514,31 @@ func (b block) validate(source string) error {
 		return fail("`default_lifecycle` is %q, which `lifecycle` does not name", b.DefaultLifecycle)
 	}
 
+	// `status: []` would make every note's status wrong; a contract that wants
+	// the default leaves the key out.
+	if b.StatusList != nil && len(b.StatusList) == 0 {
+		return fail("`status` is an empty list — leave the key out to use the built-in list")
+	}
+	statuses := map[string]bool{}
+	for _, v := range b.StatusList {
+		if !kebabRe.MatchString(v) {
+			return fail("`status` entry %q is not kebab-case", v)
+		}
+		if statuses[v] {
+			return fail("`status` contains %q twice", v)
+		}
+		statuses[v] = true
+	}
+	// The words the machinery writes from a note's state must be on the list,
+	// or every archive and merge would write a status the lint then flags.
+	if len(b.StatusList) > 0 {
+		for _, need := range []string{"unfiled", "active", "superseded", "merged", "archived", "dropped"} {
+			if !statuses[need] {
+				return fail("`status` must include %q: the machinery writes it", need)
+			}
+		}
+	}
+
 	tiers := map[string]bool{}
 	for _, tier := range SourceTiers {
 		tiers[tier] = true
@@ -612,6 +669,16 @@ func (r *Rules) IsRecordKind(v string) bool {
 
 // Known reports whether either register carries v.
 func (r *Rules) Known(v string) bool { return r.IsMemoryType(v) || r.IsRecordKind(v) }
+
+// IsStatus reports whether v is a word `status:` may hold.
+func (r *Rules) IsStatus(v string) bool {
+	for _, s := range r.Statuses {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
 
 // IsLifecycle reports whether v is a value the `lifecycle:` axis carries.
 func (r *Rules) IsLifecycle(v string) bool {

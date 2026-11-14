@@ -2,6 +2,7 @@ package dreaming
 
 import (
 	"encoding/json"
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -143,6 +144,10 @@ func TestParityWithTheRecordedPythonPass(t *testing.T) {
 				want = s
 			}
 		}
+		// The recorded Python pass predates task 204, which set the status to
+		// follow the lifecycle in the same write. Parity is with that pass plus
+		// the one rule, applied the one way the binary applies it.
+		want = cardshape.SyncStatus(want)
 		if string(in.After) != want {
 			t.Errorf("%s after-text:\n go %q\n py %q", in.Rel, in.After, want)
 		}

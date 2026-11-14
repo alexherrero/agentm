@@ -121,6 +121,12 @@ class StorageRules:
         ranking reads as a demotion curve. Empty on a pre-v2 contract."""
         return frozenset(self._data.get("lifecycle") or ())
 
+    def statuses(self) -> tuple:
+        """The words a note's `status:` may hold (task 204): the contract's own
+        list when it names one, else the daemon's built-in ten. Empty when the
+        daemon predates the list, which a caller reads as "not checked"."""
+        return tuple(self._data.get("statuses") or self._data.get("status") or ())
+
     def default_lifecycle(self) -> str:
         """What a freshly filed memory carries. Empty on a pre-v2 contract."""
         return self._data.get("default_lifecycle") or ""
