@@ -466,8 +466,11 @@ func TestApplyWritesJournalsAndIsThenNotDueUntilTheIntervalPasses(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Outcome != OutcomeApplied || rep.Applied != 1 || rep.Skipped != 0 {
-		t.Errorf("apply: %+v", rep)
+	// Two writes: the transition, and the night's log of it. The log is a
+	// diagnostics page since task 201 and needs no calendar, so every vault
+	// that had a night gets one.
+	if rep.Outcome != OutcomeApplied || rep.Applied != 2 || rep.Skipped != 0 {
+		t.Errorf("apply: outcome=%s applied=%d skipped=%d", rep.Outcome, rep.Applied, rep.Skipped)
 	}
 	if lifecycleOf(t, filepath.Join(root, old)) != "dormant" {
 		t.Errorf("the silent note should be dormant now")
@@ -476,10 +479,17 @@ func TestApplyWritesJournalsAndIsThenNotDueUntilTheIntervalPasses(t *testing.T) 
 	if err != nil {
 		t.Fatal("the governance journal was not written")
 	}
-	line := strings.TrimSpace(string(blob))
+	lines := strings.Split(strings.TrimSpace(string(blob)), "\n")
 	want := `{"actor":"policy","from":"active","reason":"silent 400 days, past dormant_after_days 365 → dormant","rel":"memory/semantic/old.md","run_id":"run-a","to":"dormant","ts":"2026-09-05T09:00:00+00:00"}`
-	if line != want {
-		t.Errorf("lifecycle journal line\n got %s\nwant %s", line, want)
+	if lines[0] != want {
+		t.Errorf("lifecycle journal line\n got %s\nwant %s", lines[0], want)
+	}
+	wantLog := `{"actor":"policy","from":"","reason":"the night's log","rel":"diagnostics/dreaming/latest_night.md","run_id":"run-a","to":"written","ts":"2026-09-05T09:00:00+00:00"}`
+	if len(lines) != 2 || lines[1] != wantLog {
+		t.Errorf("the journal after the transition\n got %v\nwant the one line for the night's log: %s", lines[1:], wantLog)
+	}
+	if _, err := os.Stat(filepath.Join(root, "diagnostics", "dreaming", "history.jsonl")); err != nil {
+		t.Errorf("the night's row is not in the history beside its page: %v", err)
 	}
 	again, err := Run(cfg, Options{Now: now.Add(time.Hour), Apply: true})
 	if err != nil {
@@ -492,8 +502,22 @@ func TestApplyWritesJournalsAndIsThenNotDueUntilTheIntervalPasses(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if forced.Outcome != OutcomeApplied || forced.Applied != 0 {
-		t.Errorf("forced, with nothing left to do: %+v", forced)
+	// The forced pass moves no note and writes no log. What it does write is
+	// the maps catching up with the page the first pass added, and a pass
+	// after that has nothing left to do at all.
+	if forced.Outcome != OutcomeApplied || len(forced.Plan.Intents) != 0 || len(forced.Facet.Intents) != 0 {
+		t.Errorf("forced: outcome=%s transitions=%d log intents=%d",
+			forced.Outcome, len(forced.Plan.Intents), len(forced.Facet.Intents))
+	}
+	if forced.Applied != len(forced.Mocs.Intents) {
+		t.Errorf("forced applied %d write(s), want only the %d map(s)", forced.Applied, len(forced.Mocs.Intents))
+	}
+	settled, err := Run(cfg, Options{Now: now.Add(2 * time.Hour), Apply: true, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settled.Outcome != OutcomeApplied || settled.Applied != 0 {
+		t.Errorf("forced, with nothing left to do: outcome=%s applied=%d", settled.Outcome, settled.Applied)
 	}
 }
 

@@ -232,6 +232,14 @@ func TestAKilledPassResumesWithoutLossOrDoubleApplication(t *testing.T) {
 			runsDone++
 		}
 	}
+	// The pass that finishes also writes its own log, once: a diagnostics page
+	// since task 201, so a vault with no calendar has one too. It is the only
+	// write that is not one of the thirty notes.
+	const nightLog = "diagnostics/dreaming/latest_night.md"
+	if n := appliedBy[nightLog]; n != 1 {
+		t.Errorf("the night's log applied %d times, want once", n)
+	}
+	delete(appliedBy, nightLog)
 	if len(appliedBy) != 30 {
 		t.Errorf("%d notes applied in the journal, want 30", len(appliedBy))
 	}
@@ -266,6 +274,7 @@ func TestAKilledPassResumesWithoutLossOrDoubleApplication(t *testing.T) {
 	// A note the resume settled owes the same governance line the pass would
 	// have written; the line is idempotent by run, note and state, so the
 	// journal covers every note exactly once whichever side wrote it.
+	delete(seen, nightLog)
 	if len(seen) != 30 {
 		t.Errorf("lifecycle journal covers %d notes; want 30", len(seen))
 	}
