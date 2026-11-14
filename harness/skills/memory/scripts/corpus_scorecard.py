@@ -54,6 +54,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 import drive_artifacts  # noqa: E402  (same skill dir)
 import front_pages  # noqa: E402  (same skill dir)
 import report_history  # noqa: E402  (same skill dir)
+import retrieval_trend  # noqa: E402  (same skill dir)
 from typing import Any, Optional
 
 DAEMON_BIN = os.environ.get("AGENTMD", "agentmd")
@@ -719,6 +720,35 @@ def gate_reading(out_dir) -> "Reading":
                             source=GATE_ARTIFACT_NAME, note=note)
 
 
+def trend_reading(section: Section, out_dir, day: str) -> Reading:
+    """Whether the weekly hit rate is sliding (task 205): the earlier nights
+    from the history beside the page, tonight's from the row just measured.
+    Advisory, beside the gate rather than instead of it: the gate's verdict,
+    the pinned baseline and the registered test are not touched."""
+    label = "hit rate, week by week"
+    source = "retrieval_trend.py"
+    texts = [(d, t) for d, t, _name in scorecard_texts(out_dir)]
+    texts.append((day, "\n".join(r.render() for r in section.readings)))
+    result = retrieval_trend.trend(retrieval_trend.nights_from(texts))
+    if len(result.weeks) < 2:
+        return Reading.unavailable(
+            label, f"{len(result.weeks)} week(s) of live readings; the trend needs two", source=source)
+    shown = " · ".join(f"{w.key[5:]} {w.rate * 100:.1f}%" for w in result.weeks)
+    newest = result.weeks[-1]
+    if result.sliding:
+        note = (f"SLIDING: {'; '.join(result.reasons)}. No single night is significant, so the gate "
+                f"passes; the weeks together are the finding. {shown}")
+    else:
+        note = f"steady: {shown}"
+    return Reading.measured(label, f"{newest.rate * 100:.1f}%", unit=f"({newest.key})",
+                            source=source, note=note)
+
+
+def _with_trend(section: Section, out_dir, day: str) -> Section:
+    section.readings.append(trend_reading(section, out_dir, day))
+    return section
+
+
 RECALL_SURFACE_WINDOW_DAYS = 7
 
 
@@ -945,7 +975,8 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
         section_front_pages(vault, today=now.astimezone(tz).date()),
         section_completeness(out_dir),
         section_meters(),
-        _with_gate(section_retrieval(repo), out_dir),
+        _with_trend(_with_gate(section_retrieval(repo), out_dir), out_dir,
+                    now.astimezone(tz).strftime("%Y-%m-%d")),
         section_surfaces(),
         section_coverage(),
         section_graph(vault, out_dir),

@@ -36,6 +36,29 @@ best-cases p=0.25 — invisible. Per-target rank probes remain the sensitive
 instrument for sub-MDE mechanisms: they measure movement exactly, and they are
 how three alias strategies were shown to move nothing at all.
 
+## The slide warning is not the gate
+
+The nightly scorecard also prints **hit rate, week by week** (`retrieval_trend.py`,
+task 205). It averages the scorecard's live nightly readings by ISO week and
+warns when the weekly rate fell in each of the last three week-to-week steps,
+or when the newest week is 5 points or more under the best of the last eight.
+
+It exists because a slow slide never reaches six flips on any one night. From
+late October to mid-November 2026 the rate went from 42 of 63 to 35 of 60, the
+gate's p-value drifted from about 0.5 to 0.09, and every night passed.
+
+It is advisory and sits beside the gate, not inside it:
+
+- the gate's verdict, the exact paired test and its p < 0.05 line are unchanged;
+- the pinned baseline is never re-pinned by it;
+- it reads rates rather than counts, so retiring a question does not read as a slide;
+- it counts only rows that say "measured <date> on <N> documents". Before
+  2026-10-31 the scorecard row reprinted the pin, and a reprint is not a reading.
+
+The gate job keeps each night's verdict and p as a row in the health folder's
+`history.jsonl` (report `retrieval-gate`), so the p-value's path is on record
+rather than only the last night's.
+
 ## Pre-registering an experiment
 
 A RULE file (template: `scripts/health/results/RULE-TEMPLATE.md`) is committed
