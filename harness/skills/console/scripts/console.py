@@ -622,10 +622,14 @@ def section_vault_lint(vault: "Path | None", *, now: "float | None" = None) -> s
     if vault is None:
         return "Vault lint: n/a (no vault resolved)"
     lint_dir = vault / "diagnostics" / "lint"
-    reports = sorted(lint_dir.glob("vault-lint-*.md")) if lint_dir.is_dir() else []
+    # The lint keeps one page (task 201); a dated report is read only where
+    # an older run left one and no page exists yet.
+    page = lint_dir / "latest_vault_lint.md"
+    reports = [page] if page.is_file() else (
+        sorted(lint_dir.glob("vault-lint-*.md")) if lint_dir.is_dir() else [])
     if not reports:
         return (
-            "Vault lint: dark -- no vault-lint-*.md report under diagnostics/lint/ yet "
+            "Vault lint: dark -- no latest_vault_lint.md report under diagnostics/lint/ yet "
             "(the weekly job may not be registered on this machine or has never fired; "
             "see templates/jobs/vault-lint.yaml)"
         )
@@ -644,10 +648,12 @@ _H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 
 
 def section_brief(vault: "Path | None", *, now: "float | None" = None) -> str:
-    """Reads `<vault>/desk/briefs/*.md` (`inbox_digest.py` / `window_park.py`'s
-    shared write target, L1/F2 fix) and reports the most recent one by
-    filename -- slugs are `YYYYMMDD-...`, so lexicographic sort is
-    chronological. This is the one section `render_terminal`/
+    """Reads `<vault>/diagnostics/digests/*.md` (`inbox_digest.py` /
+    `window_park.py`'s shared write target, L1/F2 fix) and reports the most
+    recent one. A digest is one page per cadence, rewritten in place (task
+    201), so the newest page is the one written last; dated notes
+    (`YYYYMMDD-...`, where lexicographic sort is chronological) are read only
+    when no page exists. This is the one section `render_terminal`/
     `render_html_report` put first: the Morning Brief needs to actually be
     seen, not one more entry a triage pass could bury."""
     if vault is None:
@@ -656,7 +662,8 @@ def section_brief(vault: "Path | None", *, now: "float | None" = None) -> str:
     briefs = sorted(briefs_dir.glob("*.md")) if briefs_dir.is_dir() else []
     if not briefs:
         return "Latest brief: dark -- no diagnostics/digests/*.md yet (no digest or park job has fired on this machine)"
-    latest = briefs[-1]
+    pages = [p for p in briefs if p.name.startswith("latest_")]
+    latest = max(pages, key=lambda p: (p.stat().st_mtime, p.name)) if pages else briefs[-1]
     try:
         text = latest.read_text(encoding="utf-8")
     except OSError:

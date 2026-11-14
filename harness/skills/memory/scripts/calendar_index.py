@@ -106,10 +106,19 @@ def digest_embed(vault: "Path | str", day: date) -> "str | None":
     written vault-root-relative, so the nested layout's `agent/` prefix
     comes from the layout rather than a remembered path."""
     vault = Path(vault)
+    # A dated note where an older run left one for the day; otherwise the
+    # daily digest's one page, when it was written for this day (task 201).
     name = f"{day.strftime('%Y%m%d')}-digest-daily"
     p = vault.joinpath(*DIGEST_DIR) / f"{name}.md"
     if not p.is_file():
-        return None
+        name = "latest_digest_daily"
+        p = vault.joinpath(*DIGEST_DIR) / f"{name}.md"
+        try:
+            head = p.read_text(encoding="utf-8").split("\n---", 1)[0]
+        except OSError:
+            return None
+        if f"\ndigest_date: {day.isoformat()}" not in head:
+            return None
     vroot = cf.vault_root_of(vault)
     try:
         rel = p.with_suffix("").relative_to(vroot).as_posix()

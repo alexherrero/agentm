@@ -578,6 +578,33 @@ class VaultLintSectionTests(unittest.TestCase):
         self.assertNotIn("vault-lint-2026-07-01.md", out)
 
 
+class VaultLintOnePageTests(unittest.TestCase):
+    """Task 201: the lint keeps one page, and the console reads it ahead of
+    any dated report an older run left."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+        self.lint = self.vault / "diagnostics" / "lint"
+        self.lint.mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_the_page_is_read_ahead_of_a_dated_report(self):
+        (self.lint / "vault-lint-2026-07-10.md").write_text(
+            "# MemoryVault lint audit -- 2026-07-10\n\n**Summary:** 9 error across 9 entries.\n",
+            encoding="utf-8")
+        (self.lint / "latest_vault_lint.md").write_text(
+            "---\ntitle: Vault lint\nkind: report\ndate: 2026-11-14\n---\n\n"
+            "# MemoryVault lint audit -- 2026-11-14\n\n"
+            "**Summary:** 0 error · 2 warn · 0 info across 9 entries (0 skipped).\n", encoding="utf-8")
+        out = c.section_vault_lint(self.vault, now=time.time())
+        self.assertIn("latest_vault_lint.md", out)
+        self.assertIn("2 warn", out)
+        self.assertNotIn("9 error", out)
+
+
 class BriefSectionTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -609,6 +636,21 @@ class BriefSectionTests(unittest.TestCase):
         self.assertIn("20260712-digest-daily.md", out)
         self.assertNotIn("20260711-digest-daily.md", out)
         self.assertIn("Observability digest", out)
+
+    def test_a_page_written_last_is_the_latest_brief(self):
+        # Task 201: one page per cadence. "latest_digest_weekly" sorts after
+        # every other name, so the pick is by when a page was written.
+        briefs = self.vault / "diagnostics/digests"
+        briefs.mkdir(parents=True)
+        (briefs / "20260712-digest-daily.md").write_text("# An old dated digest\n", encoding="utf-8")
+        (briefs / "latest_digest_weekly.md").write_text("# Observability digest — weekly\n", encoding="utf-8")
+        (briefs / "latest_digest_3day.md").write_text("# Observability digest — 3day\n", encoding="utf-8")
+        now = time.time()
+        os.utime(briefs / "latest_digest_weekly.md", (now - 86400, now - 86400))
+        os.utime(briefs / "latest_digest_3day.md", (now - 60, now - 60))
+        out = c.section_brief(self.vault, now=now)
+        self.assertIn("latest_digest_3day.md", out)
+        self.assertIn("3day", out)
 
 
 class RetiredSectionsTests(unittest.TestCase):

@@ -218,9 +218,9 @@ class _Night(unittest.TestCase):
         self.sessions(1.5, 7)
 
     def build(self, ask=_ask_fine):
-        dated, stable, head = mn.build(self.vault, now=NOW, engine_dir=self.engine,
+        page, history, head = mn.build(self.vault, now=NOW, engine_dir=self.engine,
                                        runner_dir=self.runner, rollup=self.rollup, ask=ask)
-        return dated.read_text(encoding="utf-8"), dated, stable, head
+        return page.read_text(encoding="utf-8"), page, history, head
 
 
 class TheSpendLine(_Night):
@@ -344,13 +344,19 @@ class TheSpendLine(_Night):
 
 
 class TheNote(_Night):
-    def test_a_night_writes_one_note_and_its_mirror(self):
+    def test_a_night_writes_one_page_and_its_row_in_the_history(self):
+        # Task 201: no dated note. The page is rewritten and the morning is a
+        # row in the data file beside it.
         self.full_night()
-        text, dated, stable, _ = self.build()
-        self.assertEqual(dated, self.vault / "diagnostics" / "morning" / "2026-09-12.md")
-        self.assertEqual(stable.read_text(encoding="utf-8"), text)
-        self.assertEqual(sorted(p.name for p in dated.parent.iterdir()),
-                         ["2026-09-12.md", "latest_morning_note.md"])
+        text, page, history, head = self.build()
+        self.assertEqual(page, self.vault / "diagnostics" / "morning" / "latest_morning_note.md")
+        self.assertEqual(sorted(p.name for p in page.parent.iterdir()),
+                         ["history.jsonl", "latest_morning_note.md"])
+        rows = mn.report_history.read_rows(page.parent, mn.HISTORY_REPORT)
+        self.assertEqual([r["date"] for r in rows], ["2026-09-12"])
+        self.assertEqual(rows[0]["body"], text)
+        self.assertEqual(rows[0]["headline"], head)
+        self.assertEqual(history, page.parent / "history.jsonl")
         for section in ("## What ran", "## What needs you", "## The corpus", "## Spend"):
             self.assertIn(section, text)
 
@@ -745,8 +751,63 @@ class TheNote(_Night):
         self.build()
         after = sorted(p.relative_to(self.root).as_posix() for p in self.root.rglob("*") if p.is_file())
         self.assertEqual(sorted(set(after) - set(before)),
-                         ["agent/diagnostics/morning/2026-09-12.md",
+                         ["agent/diagnostics/morning/history.jsonl",
                           "agent/diagnostics/morning/latest_morning_note.md"])
+
+    def test_two_mornings_are_one_page_and_two_rows(self):
+        self.full_night()
+        self.build()
+        page, _, _ = mn.build(self.vault, now=NOW + 86400, engine_dir=self.engine,
+                              runner_dir=self.runner, rollup=self.rollup, ask=_ask_fine)
+        self.assertEqual(sorted(p.name for p in page.parent.iterdir()),
+                         ["history.jsonl", "latest_morning_note.md"])
+        rows = mn.report_history.read_rows(page.parent, mn.HISTORY_REPORT)
+        self.assertEqual([r["date"] for r in rows], ["2026-09-12", "2026-09-13"])
+        self.assertIn("# Morning — 2026-09-13", page.read_text(encoding="utf-8"))
+        self.assertIn("# Morning — 2026-09-12", rows[0]["body"])
+
+    def test_the_corpus_line_links_the_scorecards_one_page(self):
+        self.full_night()
+        health = self.vault / "diagnostics" / "health"
+        (health / "2026-09-12-health-scorecard.md").unlink()
+        (health / corpus_scorecard.STABLE_NAME).write_text("# scorecard\n", encoding="utf-8")
+        os.utime(health / corpus_scorecard.STABLE_NAME, (TONIGHT, TONIGHT))
+        text, *_ = self.build()
+        self.assertIn("[[latest_health_scorecard]]", text)
+        self.assertNotIn("Did not run last night: the corpus scorecard", text)
+
+    def test_a_scorecard_page_from_an_earlier_night_does_not_count_as_tonights_run(self):
+        self.full_night()
+        health = self.vault / "diagnostics" / "health"
+        (health / "2026-09-12-health-scorecard.md").unlink()
+        (health / corpus_scorecard.STABLE_NAME).write_text("# scorecard\n", encoding="utf-8")
+        os.utime(health / corpus_scorecard.STABLE_NAME, (THREE_DAYS_AGO, THREE_DAYS_AGO))
+        (self.runner / "corpus-scorecard.json").unlink()
+        night = mn.gather(self.vault, now=NOW, engine_dir=self.engine, runner_dir=self.runner,
+                          rollup=self.rollup, out_dir=self.vault / "diagnostics" / "morning",
+                          ask=_ask_fine)
+        self.assertFalse(night.ran["corpus-scorecard"])
+
+    def test_the_backfill_copies_dated_notes_into_the_history_and_changes_none(self):
+        out = self.vault / "diagnostics" / "morning"
+        out.mkdir(parents=True)
+        old = ('---\ntitle: Morning 2026-09-10\nkind: report\nheadline: "all ran · nothing needs you"\n'
+               'window_until: 1789000000\n---\n\n# Morning — 2026-09-10\n\n---\n\n'
+               'Written 2026-09-10 12:31Z from `/v`.\n')
+        (out / "2026-09-10.md").write_text(old, encoding="utf-8")
+        (out / "2026-09-11.md").write_text("---\ntitle: Morning 2026-09-11\n---\n", encoding="utf-8")
+        (out / "latest_morning_note.md").write_text("the page\n", encoding="utf-8")
+        self.assertEqual(mn.backfill_history(out), (2, 2))
+        self.assertEqual(mn.backfill_history(out), (0, 2))
+        rows = mn.report_history.read_rows(out, mn.HISTORY_REPORT)
+        self.assertEqual([r["date"] for r in rows], ["2026-09-10", "2026-09-11"])
+        self.assertEqual(rows[0]["headline"], "all ran · nothing needs you")
+        self.assertEqual(rows[0]["window_until"], 1789000000)
+        self.assertEqual(rows[0]["at"], "2026-09-10T12:31:00Z")
+        self.assertEqual(rows[0]["body"], old)
+        self.assertNotIn("window_until", rows[1])
+        self.assertEqual((out / "2026-09-10.md").read_text(encoding="utf-8"), old)
+        self.assertEqual((out / "latest_morning_note.md").read_text(encoding="utf-8"), "the page\n")
 
 
 class TheSeams(_Night):

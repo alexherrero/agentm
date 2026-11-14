@@ -18,16 +18,16 @@
 # Cadence: "weekly" — a lint audit over the whole vault is a low-urgency,
 # operator-review surface (the same shape as a dependency audit), not a
 # time-sensitive detector; weekly matches the cadence dream.yaml settled on
-# for its own whole-corpus pass, and keeps the audit report's date-stamped
-# filename (`_meta/vault-lint-<date>.md`) from accumulating a new file every
-# day for a report nobody reads that often.
+# for its own whole-corpus pass. The report is one page that each run
+# rewrites (`diagnostics/lint/latest_vault_lint.md`, task 201); the run's
+# counts are a row in `history.jsonl` beside it.
 schedule: weekly
 lookback: 7d
 
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention,
 # same as every sibling template). `--audit` writes the grouped
 # operator-review report to vault_lint.py's own default path
-# (`<vault>/_meta/vault-lint-<date>.md`, via `default_report_path`) — no
+# (`<vault>/diagnostics/lint/latest_vault_lint.md`, via `default_report_path`) — no
 # `--out` override needed here. Relies on `MEMORY_ROOT` already being
 # set in the runner's own environment, same as every other vault-reading
 # script in this repo (see dream.yaml's own note).

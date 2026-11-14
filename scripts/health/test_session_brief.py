@@ -62,6 +62,39 @@ class LatestDigestTests(unittest.TestCase):
     def test_none_when_no_briefs_dir(self):
         self.assertIsNone(sb.latest_digest(self.vault))
 
+    def test_a_cadences_one_page_is_read_by_its_digest_date(self):
+        # Task 201: a digest is one page per cadence, dated in its header.
+        briefs = self.vault / "diagnostics/digests"
+        briefs.mkdir(parents=True)
+        (briefs / "latest_digest_weekly.md").write_text(
+            "---\nkind: brief\nstatus: active\nslug: latest_digest_weekly\n"
+            "digest_cadence: weekly\ndigest_date: 2026-07-17\n---\n\n"
+            "# Observability digest — weekly\n\n- Spend: $12.5000\n- Events: 9\n", encoding="utf-8")
+        d = sb.latest_digest(self.vault)
+        self.assertEqual(d["date"].strftime("%Y-%m-%d"), "2026-07-17")
+        self.assertEqual(d["cadence"], "weekly")
+        self.assertEqual(d["slug"], "latest_digest_weekly")
+        self.assertAlmostEqual(d["spend"], 12.5)
+        self.assertEqual(d["events"], 9)
+
+    def test_the_newer_of_a_page_and_a_dated_note_wins(self):
+        briefs = self.vault / "diagnostics/digests"
+        _write_digest(briefs, "20260720", "daily", spend=3.0, events=2)
+        (briefs / "latest_digest_weekly.md").write_text(
+            "---\nkind: brief\ndigest_cadence: weekly\ndigest_date: 2026-07-17\n---\n\n- Spend: $12.5000\n",
+            encoding="utf-8")
+        self.assertEqual(sb.latest_digest(self.vault)["slug"], "20260720-digest-daily")
+        (briefs / "latest_digest_3day.md").write_text(
+            "---\nkind: brief\ndigest_cadence: 3day\ndigest_date: 2026-07-21\n---\n\n- Spend: $4.0000\n",
+            encoding="utf-8")
+        self.assertEqual(sb.latest_digest(self.vault)["slug"], "latest_digest_3day")
+
+    def test_a_page_with_no_digest_date_is_not_a_digest(self):
+        briefs = self.vault / "diagnostics/digests"
+        briefs.mkdir(parents=True)
+        (briefs / "latest_digest_weekly.md").write_text("# no header\n", encoding="utf-8")
+        self.assertIsNone(sb.latest_digest(self.vault))
+
     def test_none_when_only_park_notes(self):
         briefs = self.vault / "diagnostics/digests"
         briefs.mkdir(parents=True)

@@ -507,6 +507,42 @@ class SeamTests(_Vault):
         text, _head = morning_note.render(_drawable(night), vault=self.mem)
         self.assertIn(f"\nwindow_until: {int(now)}\n", text.split("\n---", 1)[0] + "\n")
 
+    def test_the_window_end_is_read_from_the_history_once_the_dated_notes_stop(self):
+        # Task 201: the morning note keeps one page; where each morning's
+        # window ended is in its history row.
+        out = self.tmp / "morning"
+        now = time.time()
+        yesterday = now - 86400 + 240
+        day = datetime.fromtimestamp(yesterday).strftime("%Y-%m-%d")
+        morning_note.report_history.record(out, morning_note.HISTORY_REPORT, day,
+                                           {"window_until": int(yesterday), "body": "x"})
+        (out / "latest_morning_note.md").write_text("---\ntitle: Morning\n---\n", encoding="utf-8")
+        self.assertEqual(morning_note.previous_window_end(out, now), float(int(yesterday)))
+        # Today's own row is never the previous morning.
+        morning_note.report_history.record(
+            out, morning_note.HISTORY_REPORT, datetime.fromtimestamp(now).strftime("%Y-%m-%d"),
+            {"window_until": int(now) - 5, "body": "y"})
+        self.assertEqual(morning_note.previous_window_end(out, now), float(int(yesterday)))
+
+    def test_the_history_row_wins_over_a_dated_note_for_the_same_morning(self):
+        out = self.tmp / "morning"
+        out.mkdir()
+        now = time.time()
+        yesterday = now - 86400 + 240
+        day = datetime.fromtimestamp(yesterday).strftime("%Y-%m-%d")
+        (out / f"{day}.md").write_text(
+            f"---\ntitle: Morning\nwindow_until: {int(yesterday) - 999}\n---\n", encoding="utf-8")
+        morning_note.report_history.record(out, morning_note.HISTORY_REPORT, day,
+                                           {"window_until": int(yesterday), "body": "x"})
+        self.assertEqual(morning_note.previous_window_end(out, now), float(int(yesterday)))
+
+    def test_a_morning_that_recorded_no_window_reads_the_last_24_hours_from_the_history_too(self):
+        out = self.tmp / "morning"
+        now = time.time()
+        day = datetime.fromtimestamp(now - 86400).strftime("%Y-%m-%d")
+        morning_note.report_history.record(out, morning_note.HISTORY_REPORT, day, {"body": "x"})
+        self.assertIsNone(morning_note.previous_window_end(out, now))
+
     def test_a_note_without_a_recorded_window_end_reads_the_last_24_hours(self):
         out = self.tmp / "morning"
         out.mkdir()

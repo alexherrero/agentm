@@ -4,8 +4,14 @@
 What the memory *is*, as opposed to what last night's run *did* — that second
 report is the morning note (`morning_note.py`), which links this one. This is memory
 statistics, the diversity meters, the retrieval numbers, component health, and
-the memory context graph, written date-marked to `<vault>/desk/diagnostics/`
-along with a stable `latest_health_scorecard.md` that a brief can link.
+the memory context graph, written to one page, `latest_health_scorecard.md`
+under `<memory root>/diagnostics/health/`, that a brief can link.
+
+One page, rewritten each night (task 201). It used to be a new dated note a
+night as well: seventy near-identical notes that search indexed and ranked
+beside the notes a person wrote. What each night read now goes to
+`history.jsonl` beside the page (`report_history.py`), a data file the index
+never opens, holding every row of every night.
 
 Not `scripts/health/health_score.py`. That name is already taken by the
 harness's own capability scorecard — a different subject (are the designed
@@ -46,6 +52,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import drive_artifacts  # noqa: E402  (same skill dir)
+import report_history  # noqa: E402  (same skill dir)
 from typing import Any, Optional
 
 DAEMON_BIN = os.environ.get("AGENTMD", "agentmd")
@@ -58,6 +65,10 @@ _TIMEOUT_SECONDS = 300
 # `agent/diagnostics/`, this writer's being `health/`.
 DIAGNOSTICS_DIR = Path("diagnostics") / "health"
 STABLE_NAME = "latest_health_scorecard.md"
+# The report's name in `history.jsonl`, and the dated notes the history
+# replaced: still read where they are on disk, never written again.
+HISTORY_REPORT = "health-scorecard"
+DATED_GLOB = "????-??-??-health-scorecard.md"
 COMPLETENESS_RESULT_NAME = "latest_completeness.json"
 
 # The retrieval harness and the baseline it is guarded against, repo-relative.
@@ -865,9 +876,10 @@ def render(sections: list, *, now: datetime, vault: Path, tz=None) -> str:
 
 def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
           tz=None) -> tuple:
-    """Assemble the scorecard and write both copies. Returns (dated, stable).
+    """Assemble the scorecard, write its page and the night's history row.
+    Returns (page, history).
 
-    `tz` is whose day the filename is named for; None means the machine's own.
+    `tz` is whose day the history row is dated for; None means the machine's own.
     An argument rather than ambient process state, because a test that has to
     mutate the environment to ask this question cannot run on Windows — where
     `time.tzset()` does not exist — and because a decision about whose day it is
@@ -887,20 +899,91 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
     ]
     body = render(sections, now=now, vault=vault, tz=tz)
 
-    # Local date in the name, UTC in the body. A nightly run late in the evening
-    # is stamped tomorrow in UTC, and "last night's scorecard" should not be the
-    # file dated the day after last night.
-    dated = out_dir / f"{now.astimezone(tz).strftime('%Y-%m-%d')}-health-scorecard.md"
+    # One page, and the night's row in the history beside it. The local date
+    # keys the row: a nightly run late in the evening is stamped tomorrow in
+    # UTC, and "last night's scorecard" should not be the row dated the day
+    # after last night.
     stable = out_dir / STABLE_NAME
-    dated.write_text(body, encoding="utf-8")
-    # A copy rather than a symlink: the vault syncs across machines and through
-    # git, and a symlink is a different thing on the other side of both.
     stable.write_text(body, encoding="utf-8")
-    return dated, stable
+    report_history.record(
+        out_dir, HISTORY_REPORT, now.astimezone(tz).strftime("%Y-%m-%d"),
+        {"sections": [_section_row(s) for s in sections], "body": body}, now=now)
+    return stable, report_history.history_path(out_dir)
+
+
+def _plain(value):
+    """A reading's value as JSON can hold it."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)
+
+
+def _section_row(section: Section) -> dict:
+    """One section as the history keeps it: every reading, measured or not."""
+    return {"title": section.title, "readings": [
+        {k: v for k, v in (("label", r.label), ("value", _plain(r.value)),
+                           ("unit", r.unit), ("note", r.note),
+                           ("missing", r.missing), ("source", r.source))
+         if v not in ("", None)}
+        for r in section.readings]}
+
+
+_WRITTEN_RE = re.compile(r"^Written (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})Z", re.M)
+
+
+def backfill_history(out_dir: Path) -> tuple:
+    """Copy the dated scorecards on disk into the history. Returns
+    (rows added, notes read).
+
+    The dated notes are read and never changed. A day the history already has
+    is left as a real run recorded it, so this can be run twice. Once a note's
+    text is in the history the note itself holds nothing the history lacks.
+    """
+    out_dir = Path(out_dir)
+    have = {r["date"] for r in report_history.read_rows(out_dir, HISTORY_REPORT)}
+    added = read = 0
+    for note in sorted(out_dir.glob(DATED_GLOB)):
+        try:
+            body = note.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        read += 1
+        day = note.name[:10]
+        if day in have:
+            continue
+        m = _WRITTEN_RE.search(body)
+        at = f"{m.group(1)}T{m.group(2)}:00Z" if m else f"{day}T00:00:00Z"
+        report_history.record(out_dir, HISTORY_REPORT, day,
+                              {"body": body, "at": at, "backfilled_from": note.name},
+                              keep_existing=True)
+        added += 1
+    return added, read
+
+
+def scorecard_texts(out_dir: Path) -> list:
+    """Every night's scorecard text the folder still holds, oldest first, as
+    (day, text, file name) triples.
+
+    The history first; a dated note on disk fills a day the history lacks, so
+    a reader works before the backfill, after it, and after the dated notes
+    are gone. The name is what a link should point at: the page for a row
+    from the history, the note itself for a note.
+    """
+    out_dir = Path(out_dir)
+    by_day = {}
+    for note in sorted(out_dir.glob(DATED_GLOB)):
+        try:
+            by_day[note.name[:10]] = (note.read_text(encoding="utf-8"), note.name)
+        except OSError:
+            continue
+    for row in report_history.read_rows(out_dir, HISTORY_REPORT):
+        if row.get("body"):
+            by_day[str(row["date"])] = (row["body"], STABLE_NAME)
+    return [(day, text, name) for day, (text, name) in sorted(by_day.items())]
 
 
 def diagnostics_dir() -> Path:
-    """Where the two scorecards go, vault-relative.
+    """Where the scorecard goes, vault-relative.
 
     Derived from the configured `projects` space, whose parent is the desk the
     design puts these beside: `agent/desk/projects` gives `agent/desk`, so the
@@ -964,10 +1047,10 @@ def main(argv: list = None) -> int:
               "daemon so it can say which vault it is serving.", file=sys.stderr)
         return 2
 
-    dated, stable = build(Path(vault), repo, now=datetime.now(timezone.utc),
-                          rel=diagnostics_dir())
-    print(f"corpus-scorecard: wrote {dated}")
-    print(f"corpus-scorecard: and {stable}")
+    stable, history = build(Path(vault), repo, now=datetime.now(timezone.utc),
+                            rel=diagnostics_dir())
+    print(f"corpus-scorecard: wrote {stable}")
+    print(f"corpus-scorecard: and the night's row in {history}")
     return 0
 
 

@@ -151,9 +151,51 @@ class WriteDigestNoteTests(unittest.TestCase):
         t1 = idg.write_digest_note(self.vault, "daily", "first\n", now=_NOW)
         t2 = idg.write_digest_note(self.vault, "daily", "second\n", now=_NOW)
         self.assertEqual(t1, t2)
-        files = list((self.vault / "diagnostics/digests").glob("*digest-daily*"))
+        files = list((self.vault / "diagnostics/digests").glob("*digest*daily*.md"))
         self.assertEqual(len(files), 1)
         self.assertIn("first", files[0].read_text(encoding="utf-8"))  # not overwritten
+        rows = self._history().read_rows(self.vault / "diagnostics/digests")
+        self.assertEqual([r["body"] for r in rows], ["first\n"], "the rerun added a second row")
+
+    def _history(self):
+        return idg._report_history()
+
+    def test_a_cadence_keeps_one_page_and_a_row_per_day(self):
+        # Task 201: a digest is one page per cadence, rewritten in place. What
+        # the earlier ones said is a row each in history.jsonl.
+        folder = self.vault / "diagnostics/digests"
+        idg.write_digest_note(self.vault, "weekly", "week one\n", now=_NOW)
+        page = idg.write_digest_note(self.vault, "weekly", "week two\n", now=_NOW + timedelta(days=7))
+        idg.write_digest_note(self.vault, "monthly", "the month\n", now=_NOW + timedelta(days=7))
+        self.assertEqual(sorted(p.name for p in folder.iterdir()),
+                         ["history.jsonl", "latest_digest_monthly.md", "latest_digest_weekly.md"])
+        text = page.read_text(encoding="utf-8")
+        self.assertIn("week two", text)
+        self.assertNotIn("week one", text)
+        self.assertIn("digest_date: 2026-07-14\n", text)
+        self.assertIn("slug: latest_digest_weekly\n", text)
+        rh = self._history()
+        weekly = rh.read_rows(folder, "digest-weekly")
+        self.assertEqual([(r["date"], r["body"]) for r in weekly],
+                         [("2026-07-07", "week one\n"), ("2026-07-14", "week two\n")])
+        self.assertEqual([r["body"] for r in rh.read_rows(folder, "digest-monthly")], ["the month\n"])
+
+    def test_the_backfill_copies_dated_digests_into_the_history_and_changes_none(self):
+        folder = self.vault / "diagnostics/digests"
+        folder.mkdir(parents=True)
+        old = "---\nkind: brief\nstatus: active\nslug: 20260601-digest-3day\n---\n\n# Observability digest\n- Spend: $1.0000\n"
+        (folder / "20260601-digest-3day.md").write_text(old, encoding="utf-8")
+        (folder / "20260602-digest-weekly.md").write_text("no header\n", encoding="utf-8")
+        (folder / "20260717-park-myplan.md").write_text("# Run parked\n", encoding="utf-8")
+        self.assertEqual(idg.backfill_history(self.vault), (2, 2))
+        self.assertEqual(idg.backfill_history(self.vault), (0, 2))
+        rows = self._history().read_rows(folder)
+        self.assertEqual([(r["report"], r["date"]) for r in rows],
+                         [("digest-3day", "2026-06-01"), ("digest-weekly", "2026-06-02")])
+        self.assertEqual(rows[0]["body"], "# Observability digest\n- Spend: $1.0000\n")
+        self.assertEqual(rows[0]["backfilled_from"], "20260601-digest-3day.md")
+        self.assertEqual(rows[1]["body"], "no header\n")
+        self.assertEqual((folder / "20260601-digest-3day.md").read_text(encoding="utf-8"), old)
 
     def test_missing_vault_is_a_clean_noop(self):
         target = idg.write_digest_note(self.tmp / "no-such-vault", "daily", "x", now=_NOW)
@@ -168,7 +210,9 @@ class WriteDigestNoteTests(unittest.TestCase):
         self.assertIsNone(target)
 
     def test_slug_naming_convention(self):
-        self.assertEqual(idg.digest_slug("weekly", _NOW), "20260707-digest-weekly")
+        # One page per cadence since task 201: the slug no longer carries a date.
+        self.assertEqual(idg.digest_slug("weekly", _NOW), "latest_digest_weekly")
+        self.assertEqual(idg.digest_slug("weekly"), "latest_digest_weekly")
 
 
 class RunDigestEndToEndTests(unittest.TestCase):

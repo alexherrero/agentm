@@ -386,12 +386,8 @@ def needs_you(src: Sources, week: Week, health: Optional[Card] = None) -> Card:
     return card
 
 
-def _scorecard_rows(path: Path) -> dict:
+def _scorecard_rows(text: str) -> dict:
     out = {}
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return out
     m = re.search(r"\|\s*gold-set R@5\s*\|\s*[\d.]+\s*\|\s*(\d+) of (\d+)", text)
     if m:
         out["recall"] = (int(m.group(1)), int(m.group(2)))
@@ -402,8 +398,10 @@ def _scorecard_rows(path: Path) -> dict:
 
 
 def _scorecards(vault: Path) -> list:
-    d = Path(vault) / "diagnostics" / "health"
-    return sorted(d.glob("*-health-scorecard.md")) if d.is_dir() else []
+    """Every night's scorecard, oldest first, as (day, text, file name): from
+    the scorecard's history, and from a dated note still on disk for a day the
+    history lacks (task 201)."""
+    return corpus_scorecard.scorecard_texts(Path(vault) / corpus_scorecard.DIAGNOSTICS_DIR)
 
 
 def agent_health(src: Sources, week: Week, *, now: float) -> Card:
@@ -458,24 +456,28 @@ def agent_health(src: Sources, week: Week, *, now: float) -> Card:
         card.worsen(LOOK if missed == 1 else ACT)
 
     cards = _scorecards(src.vault)
-    this = [p for p in cards if _in_week(p.name[:10], week)]
+    this = [c for c in cards if _in_week(c[0], week)]
     if this:
-        rows = _scorecard_rows(this[-1])
-        before = [p for p in cards if p.name[:10] < this[0].name[:10]]
-        prev = _scorecard_rows(before[-1]).get("recall") if before else None
+        day, text, name = this[-1]
+        rows = _scorecard_rows(text)
+        before = [c for c in cards if c[0] < this[0][0]]
+        prev = _scorecard_rows(before[-1][1]).get("recall") if before else None
         if "recall" in rows:
             hit, total = rows["recall"]
             st = LOOK if prev and hit < prev[0] else OK
             card.meters.append(Meter(f"Recall {hit}/{total}", hit, total, st,
                                      mark=prev[0] if prev else None,
                                      mark_label=f"last week {prev[0]}" if prev else "",
-                                     link=src.link(_rel(src.vault_root, this[-1]))))
+                                     link=src.link(_rel(
+                                         src.vault_root,
+                                         src.vault / corpus_scorecard.DIAGNOSTICS_DIR / name))))
             card.worsen(st)
         if "writes" in rows:
             n, budget = rows["writes"]
             st = LOOK if n > budget else OK
             card.meters.append(Meter(f"Writes {n} vs budget {budget}", n, max(n, budget), st, mark=budget,
-                                     link=src.link(f"agent/diagnostics/morning/{this[-1].name[:10]}.md")))
+                                     link=src.link(_rel(src.vault_root, morning_note.note_path(
+                                         src.vault / morning_note.DIAGNOSTICS_DIR, day)))))
             card.worsen(st)
     try:
         offenders = morning_note.vault_offenders(src.vault)

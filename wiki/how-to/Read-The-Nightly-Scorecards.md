@@ -6,7 +6,7 @@
 
 ## Where they are
 
-Both land under `diagnostics/` in the vault, one file per day plus a copy of the newest at a stable name. The morning note is `diagnostics/morning/YYYY-MM-DD.md`, and the corpus scorecard is `diagnostics/health/YYYY-MM-DD-health-scorecard.md`. Diagnostics has been its own vault space since filing-v2 part 2a; the old `desk/diagnostics/` location is gone.
+Both land under `diagnostics/` in the vault, and each is one page that the night rewrites. The morning note is `diagnostics/morning/latest_morning_note.md`, and the corpus scorecard is `diagnostics/health/latest_health_scorecard.md`. What earlier nights said is in `history.jsonl` beside each page, one row per night with the page's full text; search does not read that file. Until 2026-11-13 each night also wrote a dated note (`YYYY-MM-DD.md`, `YYYY-MM-DD-health-scorecard.md`); the ones still on disk are old copies, and `python3 harness/skills/memory/scripts/report_history.py backfill` copies them into the history without changing them. Diagnostics has been its own vault space since filing-v2 part 2a; the old `desk/diagnostics/` location is gone.
 
 ```bash
 ls ~/Vault/Agent/diagnostics/morning/latest_morning_note.md ~/Vault/Agent/diagnostics/health/latest_health_scorecard.md

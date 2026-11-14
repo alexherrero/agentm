@@ -53,6 +53,7 @@ import arc_registry  # noqa: E402  (2026-07-18 arc-as-metadata convention)
 import kind_registry  # noqa: E402  (the vocabulary registry, read from the storage rules)
 import storage_rules  # noqa: E402  (the filing contract, asked of the daemon)
 import note_links  # noqa: E402  (the link-valued keys' one parser, task 193 LD-5)
+import report_history  # noqa: E402  (the report's history beside its one page, task 201)
 from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task 7 — kind-taxonomy check)
 
 # Directories that are NOT memory-entry trees — skipped during the walk.
@@ -905,10 +906,86 @@ def build_report(model: VaultModel, findings: list, *, today: str) -> str:
     return "\n".join(out) + "\n"
 
 
-def default_report_path(vault: Path, today: str) -> Path:
+REPORT_NAME = "latest_vault_lint.md"
+HISTORY_REPORT = "vault-lint"
+
+
+def default_report_path(vault: Path, today: str = "") -> Path:
     # An operator-review report is a diagnostics record, not machine state —
     # it lives where the human reads health surfaces (filing-v2 part 2a).
-    return vault / "diagnostics" / "lint" / f"vault-lint-{today}.md"
+    # One page, rewritten each run (task 201): it was a new 200 KB note a
+    # week, each indexed. `today` is accepted and no longer part of the name.
+    return vault / "diagnostics" / "lint" / REPORT_NAME
+
+
+def report_page(report: str, *, today: str) -> str:
+    """The audit report as the vault keeps it: the report under a header that
+    says what the page is and which run it shows."""
+    return ("---\n"
+            "title: Vault lint\n"
+            "kind: report\n"
+            f"date: {today}\n"
+            "generated_by: vault_lint.py\n"
+            "---\n\n" + report)
+
+
+_SUMMARY_RE = re.compile(
+    r"\*\*Summary:\*\* (\d+) error · (\d+) warn · (\d+) info across (\d+) entries "
+    r"\((\d+) non-entry")
+_CHECK_HEAD_RE = re.compile(r"^### `([^`]+)` \((\d+)\)\s*$")
+_SEV_HEAD_RE = re.compile(r"^## (Errors|Warnings|Info) \(\d+\)\s*$")
+_SEV_OF_HEAD = {"Errors": "error", "Warnings": "warn", "Info": "info"}
+
+
+def backfill_history(lint_dir: Path) -> tuple:
+    """Copy the counts of the dated lint reports on disk into the history.
+    Returns (rows added, reports read). The reports are read and never
+    changed; a day the history already has is left as it is."""
+    lint_dir = Path(lint_dir)
+    have = {r["date"] for r in report_history.read_rows(lint_dir, HISTORY_REPORT)}
+    added = read = 0
+    for note in sorted(lint_dir.glob("vault-lint-????-??-??.md")):
+        try:
+            text = note.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        read += 1
+        day = note.stem[len("vault-lint-"):]
+        if day in have:
+            continue
+        fields: dict = {"at": f"{day}T00:00:00Z", "backfilled_from": note.name}
+        m = _SUMMARY_RE.search(text)
+        if m:
+            errs, warns, infos, entries, skipped = (int(g) for g in m.groups())
+            fields.update(errors=errs, warnings=warns, info=infos, entries=entries, skipped=skipped)
+        by_check: dict = {}
+        sev = ""
+        for line in text.splitlines():
+            head = _SEV_HEAD_RE.match(line)
+            if head:
+                sev = _SEV_OF_HEAD[head.group(1)]
+                continue
+            check = _CHECK_HEAD_RE.match(line)
+            if check and sev:
+                by_check.setdefault(check.group(1), {})[sev] = int(check.group(2))
+        fields["by_check"] = by_check
+        report_history.record(lint_dir, HISTORY_REPORT, day, fields, keep_existing=True)
+        added += 1
+    return added, read
+
+
+def history_fields(model: VaultModel, findings: list) -> dict:
+    """What one run adds to the history: the counts, by severity and by
+    check. The findings themselves are in the page; a 200 KB listing a week
+    is what the history exists to stop keeping."""
+    errs, warns, infos = _counts(findings)
+    by_check: dict = {}
+    for f in findings:
+        per = by_check.setdefault(f.check_id, {})
+        per[f.severity] = per.get(f.severity, 0) + 1
+    return {"errors": errs, "warnings": warns, "info": infos,
+            "entries": len(model.entries), "skipped": model.skipped,
+            "by_check": by_check}
 
 
 # -----------------------------------------------------------------------------
@@ -955,7 +1032,8 @@ def main(argv: Optional[list] = None) -> int:
     p.add_argument("--format", choices=("json", "text"), default="text")
     p.add_argument("--scope", choices=tuple(_SCOPE_DIRS), default="all")
     p.add_argument("--audit", action="store_true",
-                   help="write a grouped operator-review report (to --out or <vault>/diagnostics/lint/vault-lint-<date>.md)")
+                   help="write a grouped operator-review report (to --out, or to the lint's one page, "
+                        "<vault>/diagnostics/lint/latest_vault_lint.md, with the run's counts added to history.jsonl)")
     p.add_argument("--out", default=None, help="audit report output path (with --audit)")
     args = p.parse_args(argv)
     try:
@@ -974,7 +1052,12 @@ def main(argv: Optional[list] = None) -> int:
         report = build_report(model, findings, today=today)
         out_path = Path(args.out).expanduser() if args.out else default_report_path(vault, today)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(report, encoding="utf-8")
+        if args.out:
+            out_path.write_text(report, encoding="utf-8")
+        else:
+            out_path.write_text(report_page(report, today=today), encoding="utf-8")
+            report_history.record(out_path.parent, HISTORY_REPORT, today,
+                                  history_fields(model, findings))
         errs, warns, infos = _counts(findings)
         print(f"vault-lint audit: {errs} error / {warns} warn / {infos} info "
               f"across {len(model.entries)} entries -> {out_path}")
