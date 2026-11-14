@@ -52,6 +52,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import drive_artifacts  # noqa: E402  (same skill dir)
+import front_pages  # noqa: E402  (same skill dir)
 import report_history  # noqa: E402  (same skill dir)
 from typing import Any, Optional
 
@@ -836,6 +837,57 @@ def section_graph(vault: Path, out_dir: Path) -> Section:
     return s
 
 
+# How many stale front pages get a row of their own; the rest are counted.
+FRONT_PAGE_ROWS = 12
+
+
+def vault_root_of(vault: Path) -> Path:
+    """The vault root a memory root sits in: its parent when that is where
+    Obsidian's folder is, itself in a flat layout."""
+    vault = Path(vault)
+    if (vault.parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        return vault.parent
+    return vault
+
+
+def section_front_pages(vault: Path, *, today=None) -> Section:
+    """Whether the pages a person opens first have kept up with the work
+    under them (task 205): each project's charter and tracker, each system's
+    overview, against the newest record beneath it."""
+    grace = front_pages.GRACE_DAYS
+    s = Section("Front pages", blurb=(
+        "A project's `charter.md` and `tracker.md` and a system's `system.md`, each "
+        f"against the newest record beneath it. A page more than {grace} days behind "
+        "is listed; the fix is to read it and bring it up to date, or to confirm it "
+        "still holds and set its `updated`."))
+    source = "front_pages.py"
+    try:
+        stale, checked = front_pages.stale_front_pages(vault_root_of(vault), today=today)
+    except OSError as exc:
+        s.readings.append(Reading.unavailable("front pages checked", str(exc), source=source))
+        return s
+    if not checked:
+        s.readings.append(Reading.unavailable(
+            "front pages checked", "no project or system front page carries a date",
+            source=source))
+        return s
+    s.readings.append(Reading.measured("front pages checked", checked, source=source))
+    s.readings.append(Reading.measured(
+        f"more than {grace} days behind", len(stale), source=source,
+        note=("STALE: listed below, most behind first" if stale
+              else "every front page is within a week of the work under it")))
+    for row in stale[:FRONT_PAGE_ROWS]:
+        s.readings.append(Reading.measured(
+            f"`{row.page}`", f"{row.days_behind} days behind", source=source,
+            note=(f"last updated {row.page_date}; {row.newer} record(s) beneath it are newer, "
+                  f"the newest {row.newest_date}: `{row.newest}`")))
+    if len(stale) > FRONT_PAGE_ROWS:
+        s.readings.append(Reading.measured(
+            "and more", len(stale) - FRONT_PAGE_ROWS, source=source,
+            note="stale front pages not listed above; run `front_pages.stale_front_pages` for all"))
+    return s
+
+
 # ── the report ──────────────────────────────────────────────────────────────
 
 def _with_gate(section: Section, out_dir) -> Section:
@@ -890,6 +942,7 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
 
     sections = [
         section_corpus(vault, today=now.date(), now=now),
+        section_front_pages(vault, today=now.astimezone(tz).date()),
         section_completeness(out_dir),
         section_meters(),
         _with_gate(section_retrieval(repo), out_dir),
