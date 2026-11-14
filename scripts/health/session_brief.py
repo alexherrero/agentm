@@ -61,9 +61,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-# The digest-note slug shape `inbox_digest.digest_slug()` writes:
-# `YYYYMMDD-digest-<cadence>` (park notes share `desk/briefs/` but not `-digest-`).
+# A digest is one page per cadence, `latest_digest_<cadence>.md`, dated by
+# its `digest_date` (task 201). Before that each was its own note,
+# `YYYYMMDD-digest-<cadence>`; those are still read where they are on disk
+# (park notes share the folder but not `-digest-`).
 _DIGEST_SLUG_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})-digest-([a-z0-9]+)$")
+_DIGEST_PAGE_RE = re.compile(r"^latest_digest_([a-z0-9]+)$")
+_DIGEST_DATE_RE = re.compile(r"^digest_date:\s*(\d{4})-(\d{2})-(\d{2})\s*$", re.MULTILINE)
 # Finest cadence first — "the day's headline" prefers the daily digest.
 _CADENCE_PRIORITY = {"daily": 0, "3day": 1, "weekly": 2, "monthly": 3}
 
@@ -257,17 +261,24 @@ def latest_digest(vault: Path) -> "dict | None":
     best = None  # (date, -cadence_priority_inverted) tuple for max()
     best_key = None
     try:
-        for p in d.glob("*-digest-*.md"):
+        for p in d.glob("*digest*.md"):
             if not p.is_file():
                 continue
             m = _DIGEST_SLUG_RE.match(p.stem)
-            if not m:
+            page = _DIGEST_PAGE_RE.match(p.stem)
+            if m:
+                ymd, cadence = m.groups()[:3], m.group(4)
+            elif page:
+                dm = _DIGEST_DATE_RE.search(_safe_read(p).split("\n---", 1)[0])
+                if not dm:
+                    continue
+                ymd, cadence = dm.groups(), page.group(1)
+            else:
                 continue
             try:
-                dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=timezone.utc)
+                dt = datetime(int(ymd[0]), int(ymd[1]), int(ymd[2]), tzinfo=timezone.utc)
             except ValueError:
                 continue
-            cadence = m.group(4)
             # Sort key: later date wins; on a tie, finer cadence (lower priority
             # number) wins → negate so max() picks it.
             key = (dt, -_CADENCE_PRIORITY.get(cadence, 99))

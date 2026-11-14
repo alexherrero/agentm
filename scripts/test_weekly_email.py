@@ -163,6 +163,26 @@ class TheWeek(WeeklyFixture):
         self.assertEqual(card.footer[0], "3 notes to review")
         self.assertFalse(card.hidden)
 
+    def test_agent_health_reads_the_scorecards_from_their_history(self):
+        # Task 201: the scorecard keeps one page. The two weeks the card
+        # compares are rows in its history, and both links go to a page.
+        health = self.mem / "diagnostics/health"
+        for note in health.glob("*-health-scorecard.md"):
+            w.corpus_scorecard.report_history.record(
+                health, w.corpus_scorecard.HISTORY_REPORT, note.name[:10],
+                {"body": note.read_text(encoding="utf-8")})
+            note.unlink()
+        _write(health / "latest_health_scorecard.md", "the page\n")
+        _write(self.mem / "diagnostics/morning/latest_morning_note.md", "the page\n")
+        card = self.card(self.week(), "agent-health")
+        self.assertEqual([m.label for m in card.meters], ["Recall 35/60", "Writes 41 vs budget 30"])
+        self.assertEqual(card.meters[0].mark, 42)
+        self.assertEqual(card.meters[0].status, w.LOOK)
+        self.assertTrue(card.meters[0].link.endswith("agent/diagnostics/health/latest_health_scorecard.md"),
+                        card.meters[0].link)
+        self.assertTrue(card.meters[1].link.endswith("agent/diagnostics/morning/latest_morning_note.md"),
+                        card.meters[1].link)
+
     def test_agent_health_reads_the_meters_the_strip_and_the_urgent_log(self):
         card = self.card(self.week(), "agent-health")
         self.assertEqual([m.label for m in card.meters], ["Recall 35/60", "Writes 41 vs budget 30"])

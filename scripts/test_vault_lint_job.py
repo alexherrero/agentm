@@ -119,8 +119,8 @@ class SameShapeAsManualRunTests(unittest.TestCase):
             self.assertTrue(outcome.ran)
             self.assertEqual(outcome.exit_code, 0)
 
-            audit_files = list((vault / "diagnostics" / "lint").glob("vault-lint-*.md"))
-            self.assertEqual(len(audit_files), 1)
+            audit_files = list((vault / "diagnostics" / "lint").glob("*.md"))
+            self.assertEqual([p.name for p in audit_files], ["latest_vault_lint.md"])
             content = audit_files[0].read_text(encoding="utf-8")
             self.assertIn("MemoryVault lint audit", content)
 

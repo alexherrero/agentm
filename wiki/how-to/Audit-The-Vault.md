@@ -21,9 +21,9 @@
    python3 harness/skills/memory/scripts/vault_lint.py --audit
    ```
 
-   The report lands at `<vault>/diagnostics/lint/vault-lint-<YYYY-MM-DD>.md` (override with `--out PATH`). The command prints a one-line summary (`N error · N warn · N info across N entries → <path>`). This file is the **only** thing the lint writes — it never touches an entry.
+   The report lands at `<vault>/diagnostics/lint/latest_vault_lint.md`, one page that each run rewrites (override with `--out PATH`), and the run's counts by severity and by check are added to `history.jsonl` beside it. The command prints a one-line summary (`N error · N warn · N info across N entries → <path>`). The page and that history row are the **only** things the lint writes — it never touches an entry.
 
-3. **Read the report.** Open `<vault>/diagnostics/lint/vault-lint-<YYYY-MM-DD>.md`. Findings are grouped by severity (Errors → Warnings → Info), then by check, then collapsed by identical message so a repeated pattern (e.g. one unknown key across 30 entries) shows once with the affected entry list. Each finding names the entry path and a suggested fix.
+3. **Read the report.** Open `<vault>/diagnostics/lint/latest_vault_lint.md`. Findings are grouped by severity (Errors → Warnings → Info), then by check, then collapsed by identical message so a repeated pattern (e.g. one unknown key across 30 entries) shows once with the affected entry list. Each finding names the entry path and a suggested fix.
 
 4. **Apply fixes by hand.** Edit the flagged entries yourself. The lint applies nothing — every suggestion is advisory and operator-gated. Re-run step 1 to confirm a clean pass.
 

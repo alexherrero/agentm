@@ -106,6 +106,21 @@ class TheDayIndex(_Nested):
         text = self._index()
         self.assertIn("## Digest\n\n![[agent/diagnostics/digests/20260904-digest-daily]]\n", text)
 
+    def test_the_daily_digests_one_page_is_embedded_on_the_day_it_was_written_for(self):
+        # Task 201: the daily digest is one page; it belongs on the day its
+        # `digest_date` names and on no other.
+        dg = self.vault / "diagnostics" / "digests"; dg.mkdir(parents=True)
+        (dg / "latest_digest_daily.md").write_text(
+            "---\nkind: brief\ndigest_cadence: daily\ndigest_date: 2026-09-04\n---\n\n# digest\n",
+            encoding="utf-8")
+        cf.append(self.vault, "diary", "A line.", day=DAY, now=NOON, rules=self.rules)
+        self.assertIn("## Digest\n\n![[agent/diagnostics/digests/latest_digest_daily]]\n", self._index())
+        (dg / "latest_digest_daily.md").write_text(
+            "---\nkind: brief\ndigest_cadence: daily\ndigest_date: 2026-09-05\n---\n\n# digest\n",
+            encoding="utf-8")
+        cf.append(self.vault, "diary", "Another line.", day=DAY, now=NOON, rules=self.rules)
+        self.assertNotIn("## Digest", self._index())
+
     def test_the_index_never_lists_a_facet_that_has_no_note(self):
         cf.append(self.vault, "correspondence", "Replied to the vendor.", day=DAY, now=NOON, rules=self.rules)
         text = self._index()

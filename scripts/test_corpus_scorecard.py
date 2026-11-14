@@ -303,29 +303,102 @@ class ScorecardTests(unittest.TestCase):
 
     # ── the files ───────────────────────────────────────────────────────────
 
-    def test_it_writes_a_dated_file_and_a_stable_one(self):
+    def test_it_writes_one_page_and_the_nights_row_in_the_history(self):
+        """Task 201: one page a brief can link, and no dated note beside it.
+        What the night read is a row in `history.jsonl`."""
         import tempfile
 
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
-            dated, stable = self.build(answers(**HEALTHY), tmp)
+            page, history = self.build(answers(**HEALTHY), tmp)
 
-            self.assertTrue(dated.exists(), "no dated scorecard")
-            self.assertTrue(stable.exists(), "no stable copy for a brief to link")
-            self.assertEqual(dated.read_text(encoding="utf-8"),
-                             stable.read_text(encoding="utf-8"))
-            self.assertIn("2026-08-22", dated.name)
-            self.assertEqual(stable.name, sc.STABLE_NAME)
+            self.assertEqual(page.name, sc.STABLE_NAME)
+            self.assertEqual(sorted(p.name for p in page.parent.iterdir()
+                                    if p.suffix == ".md"), [sc.STABLE_NAME],
+                             "a dated scorecard note was written beside the page")
+            rows = sc.report_history.read_rows(page.parent, sc.HISTORY_REPORT)
+            self.assertEqual([r["date"] for r in rows], ["2026-08-22"])
+            self.assertEqual(rows[0]["body"], page.read_text(encoding="utf-8"))
+            self.assertEqual(history, page.parent / "history.jsonl")
+            titles = [s["title"] for s in rows[0]["sections"]]
+            self.assertIn("Retrieval", titles)
+            labels = [r["label"] for s in rows[0]["sections"] for r in s["readings"]]
+            self.assertIn("regression gate, last run", labels)
 
-    def test_the_stable_copy_is_a_file_rather_than_a_link(self):
+    def test_two_nights_are_one_page_and_two_rows(self):
+        import tempfile
+        from datetime import timedelta
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
+                sc.build(tmp, REPO, now=AT, rel=Path("diagnostics/health"))
+                page, _ = sc.build(tmp, REPO, now=AT + timedelta(days=1),
+                                   rel=Path("diagnostics/health"))
+            self.assertEqual(sorted(p.name for p in page.parent.iterdir()
+                                    if p.suffix == ".md"), [sc.STABLE_NAME])
+            rows = sc.report_history.read_rows(page.parent, sc.HISTORY_REPORT)
+            self.assertEqual([r["date"] for r in rows], ["2026-08-22", "2026-08-23"])
+            self.assertIn("# Corpus health — 2026-08-23", page.read_text(encoding="utf-8"))
+            self.assertIn("# Corpus health — 2026-08-22", rows[0]["body"])
+
+    def test_the_page_is_a_file_rather_than_a_link(self):
         """The vault crosses machines and git; a symlink is a different thing on
         the other side of both."""
         import tempfile
 
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
-            _, stable = self.build(answers(**HEALTHY), tmp)
-            self.assertFalse(stable.is_symlink(), "the stable copy is a symlink")
+            page, _ = self.build(answers(**HEALTHY), tmp)
+            self.assertFalse(page.is_symlink(), "the page is a symlink")
+
+    def test_the_backfill_copies_dated_notes_into_the_history_and_changes_none(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "diagnostics/health"
+            out.mkdir(parents=True)
+            notes = {
+                "2026-10-27-health-scorecard.md":
+                    "| gold-set R@5 | 0.6667 | 42 of 63 scored |\n\nWritten 2026-10-27 10:05Z from `/v`.\n",
+                "2026-10-31-health-scorecard.md": "| gold-set R@5 | 0.6190 | 39 of 63 scored |\n",
+                "2026-11-08-health-scorecard.md": "| gold-set R@5 | 0.5833 | 35 of 60 scored |\n",
+            }
+            for name, text in notes.items():
+                (out / name).write_text(text, encoding="utf-8")
+            (out / sc.STABLE_NAME).write_text("the page\n", encoding="utf-8")
+            # A real run already recorded the 8th: the backfill must not replace it.
+            sc.report_history.record(out, sc.HISTORY_REPORT, "2026-11-08", {"body": "the real run"})
+
+            self.assertEqual(sc.backfill_history(out), (2, 3))
+            self.assertEqual(sc.backfill_history(out), (0, 3), "a second backfill added rows")
+
+            rows = sc.report_history.read_rows(out, sc.HISTORY_REPORT)
+            self.assertEqual([r["date"] for r in rows], ["2026-10-27", "2026-10-31", "2026-11-08"])
+            self.assertEqual(rows[0]["at"], "2026-10-27T10:05:00Z")
+            self.assertEqual(rows[0]["backfilled_from"], "2026-10-27-health-scorecard.md")
+            self.assertEqual(rows[1]["at"], "2026-10-31T00:00:00Z")
+            self.assertEqual(rows[2]["body"], "the real run")
+            for name, text in notes.items():
+                self.assertEqual((out / name).read_text(encoding="utf-8"), text)
+            self.assertEqual((out / sc.STABLE_NAME).read_text(encoding="utf-8"), "the page\n")
+
+    def test_a_reader_gets_every_night_from_the_history_and_the_notes_left_on_disk(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "diagnostics/health"
+            out.mkdir(parents=True)
+            (out / "2026-10-27-health-scorecard.md").write_text("old note\n", encoding="utf-8")
+            (out / "2026-10-31-health-scorecard.md").write_text("stale note\n", encoding="utf-8")
+            sc.report_history.record(out, sc.HISTORY_REPORT, "2026-10-31", {"body": "from history\n"})
+            sc.report_history.record(out, sc.HISTORY_REPORT, "2026-11-08", {"body": "newest\n"})
+            self.assertEqual(sc.scorecard_texts(out), [
+                ("2026-10-27", "old note\n", "2026-10-27-health-scorecard.md"),
+                ("2026-10-31", "from history\n", sc.STABLE_NAME),
+                ("2026-11-08", "newest\n", sc.STABLE_NAME),
+            ])
+            self.assertEqual(sc.scorecard_texts(Path(d) / "nowhere"), [])
 
     def test_it_creates_the_directory_it_writes_into(self):
         import tempfile
@@ -491,7 +564,7 @@ class DaemonSeamTests(unittest.TestCase):
 
 
 class DateTests(unittest.TestCase):
-    """The filename carries the reader's date, not UTC's.
+    """The night's row carries the reader's date, not UTC's.
 
     The zone is passed in rather than forced onto the process. `time.tzset()`
     does not exist on Windows, so the first version of this test could not run
@@ -510,12 +583,13 @@ class DateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
-                dated, _ = sc.build(tmp, REPO, now=evening,
-                                    rel=Path("diagnostics/health"), tz=far_east)
-        self.assertIn("2026-08-23", dated.name,
-                      "the report is named for UTC's date rather than the "
-                      "reader's; a run late in the evening would be filed under "
-                      "the wrong day")
+                page, _ = sc.build(tmp, REPO, now=evening,
+                                   rel=Path("diagnostics/health"), tz=far_east)
+                days = [r["date"] for r in sc.report_history.read_rows(page.parent)]
+        self.assertEqual(days, ["2026-08-23"],
+                         "the row is dated for UTC's date rather than the "
+                         "reader's; a run late in the evening would be filed under "
+                         "the wrong day")
 
     def test_a_reader_behind_utc_gets_their_own_day_too(self):
         """The other direction, so the test cannot pass by always adding a day."""
@@ -528,9 +602,10 @@ class DateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
-                dated, _ = sc.build(tmp, REPO, now=early,
-                                    rel=Path("diagnostics/health"), tz=far_west)
-        self.assertIn("2026-08-21", dated.name)
+                page, _ = sc.build(tmp, REPO, now=early,
+                                   rel=Path("diagnostics/health"), tz=far_west)
+                days = [r["date"] for r in sc.report_history.read_rows(page.parent)]
+        self.assertEqual(days, ["2026-08-21"])
 
 
 # What one night's `eval_retrieval_shipped.py --baseline` writes, with numbers

@@ -2,10 +2,12 @@
 """morning_note.py — one note a morning (agentm-vault plan 04, task 6).
 
 The last step of the night. It reads what the night's other steps left behind
-and writes one page: `<memory root>/diagnostics/morning/YYYY-MM-DD.md`, with a
-`latest_morning_note.md` mirror beside it. The same page is the daily email's
-body, and its first section is the line the session brief shows. It replaces
-the dreaming scorecard and the daily observability digest.
+and writes one page: `<memory root>/diagnostics/morning/latest_morning_note.md`,
+rewritten each morning, with the morning's row added to `history.jsonl` beside
+it (task 201; it used to be a new dated note a morning as well). The page is
+the body of the daily email, and its first section is the line the session
+brief shows. It replaces the dreaming scorecard and the daily observability
+digest.
 
 Four sections, each left out when it has nothing to say:
 
@@ -60,6 +62,7 @@ import engine_state  # noqa: E402
 import lesson_compile  # noqa: E402
 import lifecycle_transitions  # noqa: E402
 import needs_review  # noqa: E402
+import report_history  # noqa: E402
 import runner_pulse  # noqa: E402
 import vault_size  # noqa: E402
 import vault_worktrees  # noqa: E402
@@ -67,6 +70,17 @@ import write_meter  # noqa: E402
 
 DIAGNOSTICS_DIR = Path("diagnostics") / "morning"
 STABLE_NAME = "latest_morning_note.md"
+# The report's name in `history.jsonl`, and the dated notes the history
+# replaced: still read where they are on disk, never written again.
+HISTORY_REPORT = "morning-note"
+DATED_GLOB = "????-??-??.md"
+
+
+def note_path(out_dir: Path, day: str) -> Path:
+    """The file that holds a day's morning note: the dated note where one is
+    still on disk, the page otherwise."""
+    dated = Path(out_dir) / f"{day}.md"
+    return dated if dated.is_file() else Path(out_dir) / STABLE_NAME
 
 # The night window every nightly step carries (templates/jobs/*.yaml), as
 # local minutes. The note's "last night" is everything since its last opening.
@@ -435,7 +449,12 @@ def gather(vault: Path, *, now: float, engine_dir: Path, runner_dir: Path,
         hour=NIGHT_WINDOW[1] // 60, minute=NIGHT_WINDOW[1] % 60).timestamp()
     cycle_tonight = cycle_at is not None and start <= cycle_at < closes
     today = datetime.fromtimestamp(now).strftime("%Y-%m-%d")
-    scorecard = out_dir.parent / "health" / f"{today}-health-scorecard.md"
+    # The scorecard is one page now; a dated note counts only where an older
+    # install left one for today.
+    health = out_dir.parent / "health"
+    scorecard = health / corpus_scorecard.STABLE_NAME
+    if not scorecard.is_file() and (health / f"{today}-health-scorecard.md").is_file():
+        scorecard = health / f"{today}-health-scorecard.md"
     for job, _label in NIGHT_JOBS:
         m = markers.get(job) or {}
         last = m.get("last_real_run", m.get("last_run")) if m.get("status") == "done" else None
@@ -902,19 +921,28 @@ def previous_window_end(out_dir: Path, now: float) -> Optional[float]:
     night before's by minutes (task 199, 2026-11-08). None when no earlier
     note recorded one; the window is then the last 24 hours."""
     today = datetime.fromtimestamp(now).strftime("%Y-%m-%d")
-    for p in sorted(Path(out_dir).glob("????-??-??.md"), reverse=True):
-        if p.stem >= today:
-            continue
+    # day -> where that morning's window ended, or None when it recorded none.
+    # The history is the record; a dated note still on disk fills a day the
+    # history lacks.
+    ends = {}
+    for p in Path(out_dir).glob(DATED_GLOB):
         try:
             head = p.read_text(encoding="utf-8").split("\n---", 1)[0]
         except OSError:
-            return None
+            ends[p.stem] = None
+            continue
         m = re.search(r"^window_until: (\d+)$", head, re.M)
-        if not m:
-            return None
-        end = float(m.group(1))
-        return end if now - WINDOW_MAX_DAYS * 86400 <= end < now else None
-    return None
+        ends[p.stem] = float(m.group(1)) if m else None
+    for row in report_history.read_rows(out_dir, HISTORY_REPORT):
+        until = row.get("window_until")
+        ends[str(row["date"])] = float(until) if isinstance(until, (int, float)) else None
+    earlier = sorted(day for day in ends if day < today)
+    if not earlier:
+        return None
+    end = ends[earlier[-1]]
+    if end is None:
+        return None
+    return end if now - WINDOW_MAX_DAYS * 86400 <= end < now else None
 
 
 def read_writes(night: Night, vault: Path, since: Optional[float] = None) -> None:
@@ -1158,8 +1186,8 @@ def render(night: Night, *, vault: Path) -> tuple:
 def build(vault: Path, *, now: Optional[float] = None, rel: Path = None,
           engine_dir: Path = None, runner_dir: Path = None, rollup: Path = None,
           ask: Ask = None, clone_repo: Optional[Path] = None) -> tuple:
-    """Gather, render and write the dated note and its mirror. Returns
-    (dated, stable, headline)."""
+    """Gather, render and write the note's one page and the morning's row in
+    the history. Returns (page, history, headline)."""
     vault = Path(vault)
     now = now if now is not None else datetime.now(timezone.utc).timestamp()
     out_dir = vault / (rel if rel is not None else DIAGNOSTICS_DIR)
@@ -1171,13 +1199,49 @@ def build(vault: Path, *, now: Optional[float] = None, rel: Path = None,
         rollup=Path(rollup) if rollup is not None else DEFAULT_ROLLUP,
         out_dir=out_dir, ask=ask or corpus_scorecard._agentmd, clone_repo=clone_repo)
     text, head = render(night, vault=vault)
-    dated = out_dir / f"{datetime.fromtimestamp(now).strftime('%Y-%m-%d')}.md"
     stable = out_dir / STABLE_NAME
-    dated.write_text(text, encoding="utf-8")
-    # A copy rather than a symlink: the vault syncs across machines and through
-    # git, and a symlink is a different thing on the other side of both.
     stable.write_text(text, encoding="utf-8")
-    return dated, stable, head
+    fields = {"headline": head, "body": text}
+    if night.writes is not None:
+        # Where this morning's write window ended: the next morning's starts here.
+        fields["window_until"] = night.writes["until"]
+    report_history.record(out_dir, HISTORY_REPORT,
+                          datetime.fromtimestamp(now).strftime("%Y-%m-%d"), fields,
+                          now=datetime.fromtimestamp(now, tz=timezone.utc))
+    return stable, report_history.history_path(out_dir), head
+
+
+def backfill_history(out_dir: Path) -> tuple:
+    """Copy the dated morning notes on disk into the history. Returns
+    (rows added, notes read). The notes are read and never changed, and a day
+    the history already has is left as it is."""
+    out_dir = Path(out_dir)
+    have = {r["date"] for r in report_history.read_rows(out_dir, HISTORY_REPORT)}
+    added = read = 0
+    for note in sorted(out_dir.glob(DATED_GLOB)):
+        try:
+            text = note.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        read += 1
+        if note.stem in have:
+            continue
+        head = text.split("\n---", 1)[0]
+        fields = {"body": text, "backfilled_from": note.name}
+        m = re.search(r"^headline: (.+)$", head, re.M)
+        if m:
+            try:
+                fields["headline"] = json.loads(m.group(1))
+            except json.JSONDecodeError:
+                fields["headline"] = m.group(1).strip()
+        m = re.search(r"^window_until: (\d+)$", head, re.M)
+        if m:
+            fields["window_until"] = int(m.group(1))
+        m = re.search(r"^Written (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})Z", text, re.M)
+        fields["at"] = f"{m.group(1)}T{m.group(2)}:00Z" if m else f"{note.stem}T00:00:00Z"
+        report_history.record(out_dir, HISTORY_REPORT, note.stem, fields, keep_existing=True)
+        added += 1
+    return added, read
 
 
 def main(argv: list = None) -> int:
@@ -1194,8 +1258,8 @@ def main(argv: list = None) -> int:
     # where they look rather than wherever a configured space would put it.
     # harness/skills/memory/scripts/ -> the clone this note, and every job the
     # runner starts, runs from. resolve() follows the installed skill's symlink.
-    dated, stable, head = build(Path(vault), clone_repo=Path(__file__).resolve().parents[4])
-    print(f"morning-note: wrote {dated} and {stable.name} — {head}")
+    stable, history, head = build(Path(vault), clone_repo=Path(__file__).resolve().parents[4])
+    print(f"morning-note: wrote {stable} and its row in {history.name} — {head}")
     return 0
 
 

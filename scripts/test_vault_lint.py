@@ -607,8 +607,67 @@ class TestAuditReport(unittest.TestCase):
             _write(v, "memory/_always-load/a.md", _clean("a"))
             rc = vl.main(["--audit", "--vault", str(v)])
             self.assertEqual(rc, 0)
-            reports = list((v / "diagnostics" / "lint").glob("vault-lint-*.md"))
-            self.assertEqual(len(reports), 1)
+            lint = v / "diagnostics" / "lint"
+            # Task 201: one page, and the run's counts in the history.
+            self.assertEqual(sorted(p.name for p in lint.iterdir()),
+                             ["history.jsonl", "latest_vault_lint.md"])
+            text = (lint / "latest_vault_lint.md").read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("---\ntitle: Vault lint\nkind: report\n"), text[:80])
+            self.assertIn("# MemoryVault lint audit", text)
+
+    def test_two_audits_are_one_page_and_the_history_keeps_the_counts(self):
+        with _Vault() as v:
+            _write(v, "memory/_always-load/a.md", _clean("a"))
+            lint = v / "diagnostics" / "lint"
+            self.assertEqual(vl.main(["--audit", "--vault", str(v)]), 0)
+            first = (lint / "latest_vault_lint.md").read_text(encoding="utf-8")
+            self.assertEqual(vl.main(["--audit", "--vault", str(v)]), 0)
+            self.assertEqual(sorted(p.name for p in lint.iterdir()),
+                             ["history.jsonl", "latest_vault_lint.md"])
+            self.assertEqual((lint / "latest_vault_lint.md").read_text(encoding="utf-8"), first)
+            rows = vl.report_history.read_rows(lint, vl.HISTORY_REPORT)
+            self.assertEqual(len(rows), 1, "a second audit the same day added a row")
+            model, findings = vl.lint_vault(v, "all")
+            errs, warns, infos = vl._counts(findings)
+            self.assertEqual((rows[0]["errors"], rows[0]["warnings"], rows[0]["info"]),
+                             (errs, warns, infos))
+            self.assertEqual(rows[0]["entries"], len(model.entries))
+            self.assertNotIn("body", rows[0], "the history kept the whole listing")
+
+    def test_the_history_counts_findings_by_check_and_severity(self):
+        model = vl.VaultModel(vault=Path("."))
+        findings = [vl.Finding("supersede", "warn", "a.md", "m", "s"),
+                    vl.Finding("supersede", "warn", "b.md", "m", "s"),
+                    vl.Finding("kind-taxonomy", "error", "c.md", "m", "s")]
+        fields = vl.history_fields(model, findings)
+        self.assertEqual((fields["errors"], fields["warnings"], fields["info"]), (1, 2, 0))
+        self.assertEqual(fields["by_check"], {"supersede": {"warn": 2}, "kind-taxonomy": {"error": 1}})
+
+    def test_an_audit_to_a_named_file_writes_only_that_file(self):
+        with _Vault() as v:
+            _write(v, "memory/_always-load/a.md", _clean("a"))
+            out = v.parent / "elsewhere.md"
+            self.assertEqual(vl.main(["--audit", "--vault", str(v), "--out", str(out)]), 0)
+            self.assertTrue(out.read_text(encoding="utf-8").startswith("# MemoryVault lint audit"))
+            self.assertFalse((v / "diagnostics" / "lint").exists())
+            out.unlink()
+
+    def test_the_backfill_reads_the_counts_of_dated_reports_and_changes_none(self):
+        with _Vault() as v:
+            lint = v / "diagnostics" / "lint"
+            lint.mkdir(parents=True)
+            old = ("# MemoryVault lint audit — 2026-11-07\n\n"
+                   "**Summary:** 3 error · 2 warn · 0 info across 814 entries (1073 non-entry file(s) skipped).\n\n"
+                   "## Errors (3)\n\n### `kind-taxonomy` (3)\n- **3×** unknown kind\n\n"
+                   "## Warnings (2)\n\n### `supersede` (2)\n- x\n")
+            (lint / "vault-lint-2026-11-07.md").write_text(old, encoding="utf-8")
+            self.assertEqual(vl.backfill_history(lint), (1, 1))
+            self.assertEqual(vl.backfill_history(lint), (0, 1))
+            row = vl.report_history.read_rows(lint, vl.HISTORY_REPORT)[0]
+            self.assertEqual((row["date"], row["errors"], row["warnings"], row["info"], row["entries"],
+                              row["skipped"]), ("2026-11-07", 3, 2, 0, 814, 1073))
+            self.assertEqual(row["by_check"], {"kind-taxonomy": {"error": 3}, "supersede": {"warn": 2}})
+            self.assertEqual((lint / "vault-lint-2026-11-07.md").read_text(encoding="utf-8"), old)
 
 
 class TestSchemaPin(unittest.TestCase):

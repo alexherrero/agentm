@@ -1533,7 +1533,7 @@ The last step of the night, and the page you read the next morning. `morning_not
 |---|---|
 | Command | `python3 harness/skills/memory/scripts/morning_note.py [--vault-path <memory-root>]`; without the flag, `$MEMORY_ROOT`, then the memory root the daemon reports |
 | Scheduled by | `templates/jobs/morning-note.yaml`: `schedule: daily`, `lookback: 3d`, window `02:00-06:00`, order 5 (after the corpus scorecard at 4), `tier: T2`, `dry_run: false` |
-| Writes | `<memory-root>/diagnostics/morning/YYYY-MM-DD.md`, dated by local time, and a copy at `latest_morning_note.md` beside it; a `diagnostics` space the daemon reports takes the place of `diagnostics/` |
+| Writes | `<memory-root>/diagnostics/morning/latest_morning_note.md`, one page rewritten each morning, and the morning's row (local date, `headline`, `window_until`, the page's text) in `history.jsonl` beside it; a `diagnostics` space the daemon reports takes the place of `diagnostics/` |
 | Frontmatter | `title`, `kind: report`, `date`, `headline` (*What ran* in one line with a count of the lists that need you, JSON-quoted), `generated_by: morning_note.py` |
 | Last night | everything since the most recent opening of the night window, 02:00 local, at or before the run |
 | Model calls | none |

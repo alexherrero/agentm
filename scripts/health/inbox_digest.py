@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -171,52 +172,117 @@ def render_digest_body(cadence: str, slice_data: "dict | None", *, now: datetime
     return "\n".join(lines) + "\n"
 
 
-def digest_slug(cadence: str, now: datetime) -> str:
-    return f"{now.strftime('%Y%m%d')}-digest-{cadence}"
+DIGEST_DIR = "diagnostics/digests"
+_DIGEST_DATE_RE = re.compile(r"^digest_date:\s*(\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE)
+
+
+def digest_slug(cadence: str, now: datetime = None) -> str:
+    """The stem of a cadence's one page. `now` is accepted and ignored: the
+    slug carried the date while every digest was its own note (until task
+    201), and a caller that still passes one gets the page."""
+    return f"latest_digest_{cadence}"
+
+
+def _report_history():
+    """`report_history`, from the memory skill's scripts beside this repo's
+    `scripts/`: the one writer of a report's `history.jsonl`."""
+    skill = HERE.parent.parent / "harness" / "skills" / "memory" / "scripts"
+    if str(skill) not in sys.path:
+        sys.path.insert(0, str(skill))
+    import report_history  # noqa: E402
+    return report_history
+
+
+def page_digest_date(path: Path) -> str:
+    """The day a digest page was last written for, from its `digest_date`."""
+    try:
+        head = path.read_text(encoding="utf-8").split("\n---", 1)[0]
+    except OSError:
+        return ""
+    m = _DIGEST_DATE_RE.search(head)
+    return m.group(1) if m else ""
 
 
 def write_digest_note(vault_path: "str | Path", cadence: str, body: str, *, now: datetime) -> "Path | None":
-    """Write the digest note to `<vault>/_briefs/<slug>.md` (L1, ledger
-    finding F2 fix). Previously landed in `personal/_inbox/` under
-    `kind: telemetry`, `status: inbox` -- auto-apply triage read that as
-    inbox noise and expired every digest within hours of creation (all
-    three 07-11 notes were gone by the next morning). `_briefs/` is a
-    dedicated home: `kind: brief`, `status: active`, never touched by
-    dream_confirm's staging machinery, which does not walk this directory.
+    """Write a cadence's digest to its one page,
+    `<vault>/diagnostics/digests/latest_digest_<cadence>.md`, and add the
+    day's row to `history.jsonl` beside it (task 201).
 
-    Idempotent per day: if today's note for this cadence already exists,
-    its path is returned unchanged -- never a second file, never a
-    numeric-suffix collision (a digest slug is meant to be stable per day).
-    Returns None if the vault directory doesn't exist, or if `vault_path`
-    is empty/falsy (2026-07-17 finding: an unset `$MEMORY_ROOT`
-    upstream expands to "", and `Path("")` resolves to cwd -- which always
-    "is a directory", so a bare `.is_dir()` check silently treats cwd as
-    the vault instead of correctly reading "no vault" -- graceful-skip).
+    Each digest used to be its own dated note: 79 of them by 2026-11-13,
+    each indexed and ranked beside the notes a person wrote. The page is
+    rewritten in place now, and what earlier digests said is in the history,
+    a data file the index never opens.
+
+    `kind: brief`, `status: active`: a dedicated home that dream_confirm's
+    staging machinery does not walk (L1, ledger finding F2: digests filed as
+    inbox telemetry were expired within hours).
+
+    Idempotent per day: if the page was already written for today it is
+    returned unchanged, and no second history row is added. Returns None if
+    the vault directory doesn't exist, or if `vault_path` is empty/falsy
+    (2026-07-17 finding: an unset `$MEMORY_ROOT` upstream expands to "", and
+    `Path("")` resolves to cwd -- which always "is a directory", so a bare
+    `.is_dir()` check silently treats cwd as the vault -- graceful-skip).
     """
     if not vault_path:
         return None
     vault = Path(vault_path)
     if not vault.is_dir():
         return None
-    briefs_dir = vault / "diagnostics/digests"
+    briefs_dir = vault / DIGEST_DIR
     briefs_dir.mkdir(parents=True, exist_ok=True)
-    slug = digest_slug(cadence, now)
+    slug = digest_slug(cadence)
     target = briefs_dir / f"{slug}.md"
-    if target.is_file():
+    today = now.strftime("%Y-%m-%d")
+    if page_digest_date(target) == today:
         return target
 
     fm = (
         "---\n"
         "kind: brief\n"
         "status: active\n"
-        f"created: {now.strftime('%Y-%m-%d')}\n"
+        f"created: {today}\n"
         f"slug: {slug}\n"
         f"digest_cadence: {cadence}\n"
-        f"digest_date: {now.strftime('%Y-%m-%d')}\n"
+        f"digest_date: {today}\n"
         "---\n"
     )
     target.write_text(fm + "\n" + body, encoding="utf-8")
+    _report_history().record(briefs_dir, f"digest-{cadence}", today,
+                             {"cadence": cadence, "body": body}, now=now)
     return target
+
+
+_DATED_DIGEST_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})-digest-([a-z0-9]+)$")
+
+
+def backfill_history(vault_path: "str | Path") -> tuple:
+    """Copy the dated digest notes on disk into the history. Returns
+    (rows added, notes read). The notes are read and never changed, and a
+    day a cadence already has a row for is left as it is."""
+    rh = _report_history()
+    folder = Path(vault_path) / DIGEST_DIR
+    have = {(r.get("report"), r["date"]) for r in rh.read_rows(folder)}
+    added = read = 0
+    for note in sorted(folder.glob("*-digest-*.md")):
+        m = _DATED_DIGEST_RE.match(note.stem)
+        if not m:
+            continue
+        try:
+            text = note.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        read += 1
+        day = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        cadence = m.group(4)
+        if (f"digest-{cadence}", day) in have:
+            continue
+        body = text.split("\n---\n", 1)[1].lstrip("\n") if text.startswith("---") and "\n---\n" in text else text
+        rh.record(folder, f"digest-{cadence}", day,
+                  {"cadence": cadence, "body": body, "at": f"{day}T00:00:00Z",
+                   "backfilled_from": note.name}, keep_existing=True)
+        added += 1
+    return added, read
 
 
 def is_empty(slice_data: "dict | None") -> bool:
