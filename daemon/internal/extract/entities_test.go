@@ -211,12 +211,13 @@ func TestAVersionThatIsNotTheRepositorysIsNoRelease(t *testing.T) {
 	}
 }
 
-// Commits, changelists and bare numbers are indexed and never paged.
-func TestOnlyRepositoriesQualifiedIssuesAndReleasesArePaged(t *testing.T) {
+// Only a repository is paged (task 202). Issues and releases, qualified or
+// not, commits and changelists are indexed for search and never paged.
+func TestOnlyRepositoriesArePaged(t *testing.T) {
 	for uri, want := range map[string]bool{
 		"repo:alexherrero/agentm":            true,
-		"issue:alexherrero/agentm#466":       true,
-		"release:alexherrero/agentm@v10.0.0": true,
+		"issue:alexherrero/agentm#466":       false,
+		"release:alexherrero/agentm@v10.0.0": false,
 		"issue:#466":                         false,
 		"commit:8296fc5":                     false,
 		"cl:99":                              false,

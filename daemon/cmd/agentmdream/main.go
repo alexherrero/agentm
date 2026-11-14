@@ -474,10 +474,9 @@ func printReport(rep dreaming.Report) {
 				written++
 			}
 		}
-		fmt.Printf("entities: %d page(s) (%d repo, %d issue, %d release, %d person), %s%d written, %s%d removed, %d held\n",
-			len(rep.Entities.Pages), rep.Entities.Counts["repo"], rep.Entities.Counts["issue"],
-			rep.Entities.Counts["release"], rep.Entities.Counts["person"], would, written, would, len(rep.Entities.Removed),
-			len(rep.Entities.Held))
+		fmt.Printf("entities: %d page(s) (%d repo, %d person), %s%d written, %s%d removed, %d held, %d no longer built\n",
+			len(rep.Entities.Pages), rep.Entities.Counts["repo"], rep.Entities.Counts["person"], would, written, would,
+			len(rep.Entities.Removed), len(rep.Entities.Held), len(rep.Entities.NoLongerBuilt))
 		if len(rep.Entities.PeopleHeld) > 0 {
 			fmt.Printf("  people pages held as they were: %d note(s) could not be read\n", len(rep.Entities.PeopleHeld))
 		}
@@ -645,9 +644,9 @@ func cmdEntities(args []string) error {
 		if plan.Skipped != "" {
 			fmt.Println("entities: skipped —", plan.Skipped)
 		}
-		fmt.Printf("entities: %d page(s) — %d repo, %d issue, %d release, %d person; %s %d, removed %d\n",
-			len(plan.Pages), plan.Counts["repo"], plan.Counts["issue"], plan.Counts["release"],
-			plan.Counts["person"], verb, written, len(plan.Removed))
+		fmt.Printf("entities: %d page(s) — %d repo, %d person; %s %d, removed %d, no longer built %d (left in place)\n",
+			len(plan.Pages), plan.Counts["repo"], plan.Counts["person"], verb, written, len(plan.Removed),
+			len(plan.NoLongerBuilt))
 		for _, r := range plan.Removed {
 			fmt.Println("  removed", r)
 		}
@@ -657,6 +656,10 @@ func cmdEntities(args []string) error {
 		if len(plan.PeopleHeld) > 0 {
 			fmt.Printf("  people pages held as they were: %d note(s) could not be read, e.g. %s\n",
 				len(plan.PeopleHeld), plan.PeopleHeld[0])
+		}
+		if len(plan.Unlisted) > 0 {
+			fmt.Printf("  %d name(s) in notes' people: lists that standards/people/aliases.md does not list: %s\n",
+				len(plan.Unlisted), strings.Join(plan.Unlisted, ", "))
 		}
 		if rep.Mode == "apply" {
 			fmt.Printf("  run %s: %d applied, %d skipped\n", rep.RunID, rep.Applied, rep.Skipped)

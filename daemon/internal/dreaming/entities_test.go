@@ -12,9 +12,10 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/index"
 )
 
-// Task 179 step 5: the builder writes repository, issue and release pages
-// from a fixture vault, a rebuild writes nothing, and a page below its bar is
-// removed with its bytes in the journal.
+// Task 179 step 5: the builder writes repository pages from a fixture vault,
+// a rebuild writes nothing, and a page below its bar is removed with its bytes
+// in the journal. Task 202: an issue or a release gets no page, however often
+// it is named, and the pages the builder wrote for them before are left alone.
 
 var entityNow = time.Date(2026, 9, 30, 3, 0, 0, 0, time.UTC)
 
@@ -99,27 +100,17 @@ func fixtureEntityNotes() map[string]string {
 	}
 }
 
-func TestTheBuilderWritesRepoIssueAndReleasePagesAndNothingElse(t *testing.T) {
+func TestTheBuilderWritesRepositoryPagesAndNothingElse(t *testing.T) {
 	root, x := entityVault(t, fixtureEntityNotes())
 	plan, err := PlanEntities(root, filepath.Dir(root), x, PeopleOptions{}, nil, entityNow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := map[string]EntityPage{}
-	for _, p := range plan.Pages {
-		got[p.ID] = p
-	}
-	for id, want := range map[string]int{
-		"repo:alexherrero/crickets":          3,
-		"issue:alexherrero/agentm#466":       3,
-		"release:alexherrero/agentm@v10.0.0": 3,
-	} {
-		if got[id].Mentions != want {
-			t.Errorf("%s: %d mentions, want %d (pages %v)", id, got[id].Mentions, want, plan.Pages)
-		}
-	}
-	if len(plan.Pages) != 3 {
-		t.Errorf("pages %v: want exactly the three — no commit, no bare number, nothing under its bar", plan.Pages)
+	// #466 and v10.0.0 are each named by three origins, the bar a number had
+	// before task 202; neither gets a page now.
+	if len(plan.Pages) != 1 || plan.Pages[0].ID != "repo:alexherrero/crickets" || plan.Pages[0].Mentions != 3 {
+		t.Errorf("pages %v: want the crickets page alone, with 3 mentions — no issue, no release, "+
+			"no commit, no bare number, nothing under its bar", plan.Pages)
 	}
 	if len(plan.Removed) != 1 || plan.Removed[0] != "memory/entities/repos/alexherrero-gone.md" {
 		t.Errorf("removed %v, want the stale builder page and never the hand-written note", plan.Removed)
@@ -159,11 +150,14 @@ func TestARebuildWritesNothingAndAPageUnderItsBarIsRemovedWithItsBytesJournaled(
 		t.Fatalf("a rebuild over an unchanged corpus planned %d write(s): %+v", len(second.Intents), second.Intents)
 	}
 
-	// One of the three origins naming #466 stops naming it: the page falls
-	// under the bar of three and goes, and the journal keeps what it said.
+	// Two of the three origins naming crickets stop naming it: the page falls
+	// under the repository's bar of two and goes, and the journal keeps what it
+	// said.
 	vault := filepath.Dir(root)
 	putEntityNote(t, vault, "projects/agentm/tasks/002-b/plan.md", "---\nupdated: 2026-09-25\n---\n\n"+
-		"Reopened after v10.0.0.\nSee github.com/alexherrero/crickets again.\n")
+		"Reopened #466 after v10.0.0.\n")
+	putEntityNote(t, vault, "agent/memory/semantic/a-card.md", "---\ntitle: A card\ntype: reference\n"+
+		"created: 2026-08-01\nproject: agentm\n---\n\nThe toolkit has moved.\n")
 	if _, err := x.Reconcile(); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +165,7 @@ func TestARebuildWritesNothingAndAPageUnderItsBarIsRemovedWithItsBytesJournaled(
 	if err != nil {
 		t.Fatal(err)
 	}
-	const gone = "memory/entities/issues/alexherrero-agentm-466.md"
+	const gone = "memory/entities/repos/alexherrero-crickets.md"
 	if len(third.Removed) != 1 || third.Removed[0] != gone {
 		t.Fatalf("removed %v, want %s", third.Removed, gone)
 	}
@@ -252,7 +246,7 @@ func TestABuildByHandJournalsThePagesAndARebuildIsANoOp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Pages) != 3 || rep.Applied != len(plan.Intents)+len(entityMap.Intents) || rep.Skipped != 0 {
+	if len(plan.Pages) != 1 || rep.Applied != len(plan.Intents)+len(entityMap.Intents) || rep.Skipped != 0 {
 		t.Fatalf("pages %d, applied %d of %d, skipped %d", len(plan.Pages), rep.Applied,
 			len(plan.Intents)+len(entityMap.Intents), rep.Skipped)
 	}

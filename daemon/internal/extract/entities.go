@@ -113,23 +113,17 @@ var releaseWords = map[string]bool{
 	"via": true, "per": true,
 }
 
-// Paged reports whether an entity may have a page of its own (task 179): a
-// repository, an issue whose repository is known, and a release. A commit, a
-// changelist and a bare `#12` are indexed for search and never paged — none is
-// something anyone asks about by name, and a bare number is a different issue
-// in every repository.
+// Paged reports whether an entity may have a page of its own: a repository.
+// Everything else the extractor finds is indexed for search and never paged.
+//
+// Task 179 paged a repo-qualified issue and a release too. The vault audit of
+// 2026-11-13 found 246 of 303 entity pages were those: a number with a list
+// of the notes that mention it, which says nothing a search for the number
+// does not (task 202). A commit, a changelist and a bare `#12` were never
+// paged. People are paged separately, from the operator's people file.
 func Paged(uri EntityURI) bool {
-	kind, rest, ok := strings.Cut(uri, ":")
-	if !ok {
-		return false
-	}
-	switch kind {
-	case "repo", "release":
-		return true
-	case "issue":
-		return !strings.HasPrefix(rest, "#")
-	}
-	return false
+	kind, _, ok := strings.Cut(uri, ":")
+	return ok && kind == "repo"
 }
 
 // Entities pulls every external reference out of a note, with no context.

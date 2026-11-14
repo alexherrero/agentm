@@ -574,9 +574,9 @@ func TestTheNightBuildsEntityPagesAfterTheMover(t *testing.T) {
 	vault := filepath.Dir(root)
 	writeAt(t, space, "agentm/project.yaml", "slug: agentm\nrepositories:\n  - alexherrero/agentm\n")
 	dir := closedTask(t, space, "agentm", "001-done", "done", "2026-08-01")
-	writeAt(t, dir, "plan.md", "# Plan\n\nFixed in #900.\n")
-	writeAt(t, space, "agentm/tasks/002-open/plan.md", "# Plan\n\nBuilds on #900.\n")
-	writeAt(t, space, "agentm/research/why.md", "# Why\n\nWhy #900 mattered.\n")
+	writeAt(t, dir, "plan.md", "# Plan\n\nFixed with github.com/alexherrero/moved.\n")
+	writeAt(t, space, "agentm/tasks/002-open/plan.md", "# Plan\n\nBuilds on github.com/alexherrero/moved.\n")
+	writeAt(t, space, "agentm/research/why.md", "# Why\n\nWhy github.com/alexherrero/moved mattered.\n")
 	cfg := moverConfig(t, root)
 	cfg.TaskMoverEnabled = true
 	cfg.IndexPath = filepath.Join(t.TempDir(), "index.db")
@@ -599,9 +599,9 @@ func TestTheNightBuildsEntityPagesAfterTheMover(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(space, "agentm", "completed", "tasks", "001-done", "plan.md")); err != nil {
 		t.Fatalf("the task did not move: %v", err)
 	}
-	page, err := os.ReadFile(filepath.Join(root, "memory", "entities", "issues", "alexherrero-agentm-900.md"))
+	page, err := os.ReadFile(filepath.Join(root, "memory", "entities", "repos", "alexherrero-moved.md"))
 	if err != nil {
-		t.Fatalf("#900 has three origins and no page: %v (entities %+v)", err, rep.Entities)
+		t.Fatalf("moved has three origins and no page: %v (entities %+v)", err, rep.Entities)
 	}
 	if !strings.Contains(string(page), "projects/agentm/completed/tasks/001-done/plan") ||
 		strings.Contains(string(page), "projects/agentm/tasks/001-done/") {

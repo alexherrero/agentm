@@ -43,9 +43,10 @@ principles and learned tool behaviour. `procedural/` holds recipes and protocols
 — how to do a thing. `episodic/` holds session traces.
 
 The other three are derived, and rebuildable from the first three. `entities/`
-holds one page per repo, repo-qualified issue, release and person the vault
-keeps mentioning, in a folder per type (`repos/`, `issues/`, `releases/`,
-`people/`), each a list of the notes that mention it. `crystallized/` holds
+holds one page per repo the vault keeps mentioning and per person
+`standards/people/aliases.md` lists, in a folder per type (`repos/`,
+`people/`), each a list of the notes that mention it. (`issues/` and
+`releases/` hold pages written before 2026-11-13, which nothing writes now.) `crystallized/` holds
 the lessons repetition produced, each carrying `consolidated_from` back to the
 traces it came from. `mocs/` holds maps of content over the corpus, generated
 rather than authored. Deleting anything in these three loses nothing that cannot
@@ -220,7 +221,7 @@ classes:
   semantic: Facts, principles and learned tool behaviour.
   procedural: Recipes and protocols — how to do a thing.
   episodic: Session traces — what happened, and when.
-  entities: One page per repo, qualified issue, release or person, built nightly from the notes that mention it.
+  entities: One page per repo or listed person, built nightly from the notes that mention it.
   crystallized: Lessons distilled from repetition, with provenance to their traces.
   mocs: Maps of content over the corpus — navigation, generated not authored.
 
@@ -302,8 +303,8 @@ record_kinds:
   - component
   - blueprint
   # 2026-09-29, on the operator's AgentKV rulings (section 5): the page the
-  # nightly entity builder writes under `memory/entities/<type>/`, one per repo,
-  # repo-qualified issue, release or person. Written only by that builder.
+  # nightly entity builder writes under `memory/entities/<type>/`, one per repo
+  # or listed person. Written only by that builder.
   - entity-profile
 
 deprecations:
@@ -600,10 +601,10 @@ thresholds:
   task_completed_after_days: 14
   # The entity builder's bars (2026-09-29; sources since 2026-10-03). A repo
   # gets a page once this many distinct sources mention it — a note, or a
-  # task's folder, whose notes count once together; a repo-qualified issue or
-  # a release once `entity_min_sources_numbered` do (three, the operator's
-  # ruling of 2026-10-07); a person, once named in this many distinct pieces of
-  # shared work. A page below its bar is removed through the journal.
+  # task's folder, whose notes count once together; a person the people file
+  # lists, once named in this many distinct pieces of shared work. A page below
+  # its bar is removed through the journal. `entity_min_sources_numbered` was
+  # the bar for issue and release pages, which are no longer built (task 202).
   entity_min_mentions: 2
   entity_min_sources_numbered: 3
   person_min_shared_work: 2
@@ -678,14 +679,14 @@ the morning note, because those notes are yours. The move runs only once
 `daemon.task_mover_enabled` is on; until then the night lists what it would
 move.
 
-`entity_min_mentions`, `entity_min_sources_numbered` and
-`person_min_shared_work` are the entity builder's bars. A repo gets a page under
-`memory/entities/` once `entity_min_mentions` distinct sources mention it, and a
-repo-qualified issue or a release once `entity_min_sources_numbered` do: a note
-is one source, and a task's folder (open or completed) is one source however
-many of its notes name the entity. Where the repository's clone is on this machine, an
-issue page also needs a number the clone's commit subjects reach, and a release
-page one of its tags. A person gets one
+`entity_min_mentions` and `person_min_shared_work` are the entity builder's
+bars. A repo gets a page under `memory/entities/` once `entity_min_mentions`
+distinct sources mention it: a note is one source, and a task's folder (open or
+completed) is one source however many of its notes name the repo. An issue or
+a release gets no page (since 2026-11-13); its references stay in the index for
+search. A person gets a page only when `standards/people/aliases.md` lists them
+by full name, and a name counts toward them only when it is that name or a
+spelling no other listed person shares. A listed person gets one
 once named in that many distinct pieces of shared work: a task's plan,
 progress or tracker, a `decisions/` note, a project tracker, a calendar note or
 a meeting note. A page that falls below its bar is removed through the
