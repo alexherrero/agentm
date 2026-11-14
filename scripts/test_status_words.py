@@ -108,6 +108,10 @@ class FindingTests(unittest.TestCase):
         (f,) = self.findings("agent/memory/semantic/a.md", "status: active", "superseded_by: \"[[b]]\"")
         self.assertEqual((f.severity, f.fix), ("error", ""))
 
+    def test_a_shape_with_its_own_words_is_not_checked(self):
+        self.assertEqual(self.findings("agent/memory/crystallized/x.md", "kind: opinion-supplement",
+                                       "status: proposed"), [])
+
     def test_with_no_list_only_contradictions_are_checked(self):
         self.assertEqual(sw.status_findings("p/a.md", card("status: launched"), ()), [])
         self.assertEqual(len(sw.status_findings("p/a.md", card("status: active", "lifecycle: archived"), ())), 1)
@@ -159,6 +163,18 @@ class VaultTests(unittest.TestCase):
         self.assertEqual(sw.plan_fixes(self.root), [])
         self.assertEqual((self.root / "projects/p/designs/d.md").read_text(encoding="utf-8"),
                          self.notes["projects/p/designs/d.md"], "an off-list word was rewritten")
+
+    def test_the_lints_staging_folders_are_not_walked(self):
+        # The lint skips these on purpose; so does the status walk.
+        for rel in ("agent/memory/_opinions/served/s.md", "agent/memory/crystallized/_opinions/x.md",
+                    "agent/memory/_meta/m.md", "projects/p/_idea-incubator/i/_index.md"):
+            path = self.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(card("status: served"), encoding="utf-8")
+        found = {rel for rel, _f in sw.vault_findings(self.root, LIST)}
+        self.assertFalse({r for r in found if "_opinions" in r or "_meta" in r or "_idea-incubator" in r}, found)
+        skip = set(vault_lint._EXCLUDE_DIRS) - {"_archive", "tasks"}
+        self.assertLessEqual(skip, sw._SKIP_DIRS, "a folder the lint skips is walked for status")
 
     def test_the_lint_carries_the_status_findings_vault_wide(self):
         memory_root = self.root / "agent"

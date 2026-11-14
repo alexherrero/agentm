@@ -75,7 +75,7 @@ def read_state(text: str) -> dict:
         if key == "consolidated_into":
             nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
             out[key] = (val not in ("", "[]")) or nxt.startswith("- ")
-        elif key in ("status", "lifecycle", "superseded_by", "dismissed"):
+        elif key in ("status", "lifecycle", "superseded_by", "dismissed", "kind"):
             out[key] = val
     return out
 
@@ -156,6 +156,11 @@ class StatusFinding:
     fix: str = ""      # the status a contradiction calls for; "" when none is certain
 
 
+#: Shapes with a status vocabulary of their own, which the vault lint skips
+#: by kind too: an opinion supplement is `proposed` or `promoted`.
+SKIP_KINDS = {"opinion-supplement"}
+
+
 def in_archive(rel: str) -> bool:
     parts = rel.replace(os.sep, "/").split("/")
     return any(p in ("archive", "_archive", "archived") for p in parts[:-1])
@@ -167,7 +172,7 @@ def status_findings(rel: str, text: str, statuses) -> list:
     empty (no daemon answered) only the contradictions are checked."""
     state = read_state(text)
     status = state.get("status")
-    if status is None or status == "":
+    if status is None or status == "" or state.get("kind") in SKIP_KINDS:
         return []
     out = []
     word = status.strip()
@@ -212,7 +217,13 @@ def contract_statuses() -> tuple:
 
 #: Never walked: machine folders, and the walled areas whose notes are not
 #: the vault's (templates are status placeholders by design).
-_SKIP_DIRS = {".git", ".obsidian", ".trash", ".harness", "node_modules"}
+_SKIP_DIRS = {".git", ".obsidian", ".trash", ".harness", "node_modules",
+              # The machinery's staging folders the vault lint skips too
+              # (`vault_lint._EXCLUDE_DIRS`): bespoke shapes, never notes. An
+              # archive folder and a task folder are walked: an archived note
+              # still saying `active` is exactly what the check is for.
+              "_idea-incubator", "_meta", "_inbox", "scratch", "_opinions",
+              "_crystallize-staging", "_dream-staging"}
 _SKIP_PREFIXES = ("standards/templates/",)
 
 
