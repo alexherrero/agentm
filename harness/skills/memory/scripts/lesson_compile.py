@@ -898,8 +898,17 @@ Rules:
 - `lesson` is two to five plain sentences that stand alone. `evidence` lists the sessions, commits or PRs
   it rests on, briefly. `query` is a short search phrase that would find an existing note saying the same.
 
+Also name each session above, whether or not it taught a lesson, for its record in the vault:
+- `session` is the 8-character id in its `--- session` line.
+- `title` is what the session was for, in at most 10 plain words, the way a person would name it.
+  A line marked `titled` is its current title: keep it when it already says that, improve it when it
+  does not. Never a pasted brief, a path or a command.
+- `outcome` is what came of it, in two or three plain sentences: what changed, what was decided,
+  what is still open. Not the steps taken.
+
 Answer with JSON only:
-{{"candidates": [{{"title": "...", "type": "...", "lesson": "...", "evidence": ["..."], "query": "..."}}]}}
+{{"candidates": [{{"title": "...", "type": "...", "lesson": "...", "evidence": ["..."], "query": "..."}}],
+"sessions": [{{"session": "...", "title": "...", "outcome": "..."}}]}}
 
 === INPUTS ===
 {inputs}
@@ -1118,6 +1127,8 @@ def _inputs_text(slices: list, automemory: list, history: list, traces: list) ->
     parts = []
     for s in slices:
         head = f"--- session {s['session'][:8]} ({s['host']}{', ' + s['cwd'] if s.get('cwd') else ''})"
+        if s.get("trace_title"):
+            head += f" titled {json.dumps(s['trace_title'], ensure_ascii=False)}"
         body = s.get("digest") or s.get("text") or ""
         hints = "\n".join(f"  hint: {h}" for h in s.get("hints") or [])
         parts.append(f"{head}\n{body}" + (f"\n{hints}" if hints else ""))
@@ -1149,6 +1160,7 @@ def compile_project(night: Night, project: str, *, slices: list, automemory: lis
     if night.left(project_spent) < MIN_CALL_USD:
         rep["error"] = "cost cap reached"
         return rep
+    slices = _with_trace_titles(night, slices)
     inputs = _inputs_text(slices, automemory, history, traces)
     draft = run_claude(DRAFT_PROMPT.format(project=project, max_candidates=MAX_CANDIDATES, inputs=inputs),
                        model=night.settings.model, budget=night.left(project_spent), runner=night.runner)
@@ -1163,6 +1175,7 @@ def compile_project(night: Night, project: str, *, slices: list, automemory: lis
         _keep_unparsed(project, "draft", draft.text)
         rep["error"] = "draft: the reply held no JSON"
         return rep
+    rep["summarized"] = apply_session_summaries(night, slices, drafted.get("sessions"))
     cands = [c for c in drafted.get("candidates") or [] if isinstance(c, dict)
              and str(c.get("lesson") or "").strip()][:MAX_CANDIDATES]
     # The night's own duplicates, before any search: one lesson said twice is one candidate.
@@ -1243,6 +1256,59 @@ def compile_project(night: Night, project: str, *, slices: list, automemory: lis
         night.written.append(Written(rel, title, body, "new"))
         writes += 1
     return rep
+
+
+# ── the session traces' summaries (task 203) ────────────────────────────────
+
+def _with_trace_titles(night, slices: list) -> list:
+    """The slices, each Claude Code one carrying its trace's current title,
+    so the draft can keep a title that already names the session."""
+    import episodic_trace
+    out = []
+    for s in slices:
+        title = ""
+        if s.get("host") == CLAUDE and s.get("session"):
+            path = episodic_trace.find_session_trace(night.memory_root, s["session"])
+            if path is not None:
+                head = path.read_text(encoding="utf-8").split("\n---", 1)[0]
+                m = re.search(r"^title: (.+)$", head, re.M)
+                if m:
+                    try:
+                        title = json.loads(m.group(1))
+                    except json.JSONDecodeError:
+                        title = m.group(1).strip().strip("'\"")
+        out.append(dict(s, trace_title=title) if title else s)
+    return out
+
+
+def apply_session_summaries(night, slices: list, sessions) -> list:
+    """Write each session's title and outcome from the draft into its trace.
+    Only a Claude Code session the night read has a trace to write; a reply
+    naming any other id is ignored. Returns the traces written, memory-root
+    relative (the would-be writes, on a dry run)."""
+    import episodic_trace
+    by_head = {}
+    for s in slices:
+        if s.get("host") == CLAUDE and s.get("session"):
+            by_head.setdefault(str(s["session"])[:8], str(s["session"]))
+    written = []
+    for item in sessions if isinstance(sessions, list) else []:
+        if not isinstance(item, dict):
+            continue
+        sid = by_head.get(str(item.get("session") or "").strip()[:8])
+        title = str(item.get("title") or "").strip()
+        outcome = str(item.get("outcome") or "").strip()
+        if sid is None or not (title or outcome):
+            continue
+        if night.dry_run:
+            path = episodic_trace.find_session_trace(night.memory_root, sid)
+            if path is not None:
+                written.append(path.relative_to(night.memory_root).as_posix())
+            continue
+        rel = episodic_trace.apply_summary(night.memory_root, sid, title=title, outcome=outcome, day=night.day)
+        if rel:
+            written.append(rel)
+    return written
 
 
 def _resolve_target(ref: str, cand, neighbours: list, written: list) -> "str | None":

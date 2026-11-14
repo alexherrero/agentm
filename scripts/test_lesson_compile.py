@@ -23,7 +23,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -527,6 +527,62 @@ class TestCompile(_Base):
         self.assertIn("commit abc1234", draft)
         self.assertIn("merged PR example/alpha#7", draft)
         self.assertIn("Warmed the cache; green.", draft)
+
+    # Task 203: the draft names each session too, and the night writes that
+    # title and outcome into the session's trace.
+
+    def _trace(self, sid: str, title: str) -> Path:
+        import episodic_trace as et
+        trace = et.Trace(when=date(2026, 11, 7), session_id=sid, title=title, asked=title,
+                         touched=["memory/semantic/a.md"], recalled=["memory/semantic/a.md"],
+                         outcome="The last thing the assistant said.", project="alpha")
+        return self.vault / et.write_trace(self.vault, trace)
+
+    def test_the_draft_names_each_session_and_its_trace_takes_the_summary(self) -> None:
+        sid = "1a2b3c4d-0000-0000-0000-000000000000"
+        lc._append_jsonl(lc.pending_dir() / "alpha.jsonl", {
+            "host": lc.CLAUDE, "session": sid, "project": "alpha", "cwd": "", "collected": _NOW.isoformat(),
+            "text": "OPERATOR: the widget failed cold.", "hints": [], "relayed": False})
+        path = self._trace(sid, "Run task 7, \"Fix the widget\", at `/srv/projects/alpha/tasks/007`")
+        reply = {"candidates": [], "sessions": [
+            {"session": "1a2b3c4d", "title": "Fix the cold widget build",
+             "outcome": "The widget builds cold now. The cache is warmed first; nothing is open."},
+            {"session": "ffffffff", "title": "A session the night never read", "outcome": "x"}]}
+        runner = FakeRunner(draft_text=json.dumps(reply))
+        out = self.compile(runner)
+        draft = runner.prompts("Draft the durable lessons")[0]
+        self.assertIn('--- session 1a2b3c4d (claude-code) titled "Run task 7', draft)
+        self.assertIn('"sessions": [', draft)
+        text = path.read_text(encoding="utf-8")
+        self.assertIn('title: "Fix the cold widget build"', text)
+        self.assertIn("## Outcome\n\nThe widget builds cold now. The cache is warmed first; nothing is open.\n", text)
+        self.assertIn(f"summarized: {_NOW.astimezone().date().isoformat()}\n", text)
+        self.assertEqual(out["projects"][0]["summarized"], [path.relative_to(self.vault).as_posix()])
+        self.assertEqual(len(list((self.vault / "memory" / "episodic").glob("*.md"))), 1,
+                         "an id the night did not read wrote nothing")
+
+    def test_a_dry_run_names_the_traces_it_would_summarize_and_writes_none(self) -> None:
+        sid = "1a2b3c4d-0000-0000-0000-000000000000"
+        lc._append_jsonl(lc.pending_dir() / "alpha.jsonl", {
+            "host": lc.CLAUDE, "session": sid, "project": "alpha", "cwd": "", "collected": _NOW.isoformat(),
+            "text": "OPERATOR: the widget failed cold.", "hints": [], "relayed": False})
+        path = self._trace(sid, "go")
+        before = path.read_text(encoding="utf-8")
+        reply = {"candidates": [], "sessions": [{"session": "1a2b3c4d", "title": "T", "outcome": "O."}]}
+        out = self.compile(FakeRunner(draft_text=json.dumps(reply)), dry_run=True)
+        self.assertEqual(out["projects"][0]["summarized"], [path.relative_to(self.vault).as_posix()])
+        self.assertEqual(path.read_text(encoding="utf-8"), before)
+
+    def test_a_draft_with_no_sessions_changes_no_trace(self) -> None:
+        sid = "1a2b3c4d-0000-0000-0000-000000000000"
+        lc._append_jsonl(lc.pending_dir() / "alpha.jsonl", {
+            "host": lc.CLAUDE, "session": sid, "project": "alpha", "cwd": "", "collected": _NOW.isoformat(),
+            "text": "OPERATOR: the widget failed cold.", "hints": [], "relayed": False})
+        path = self._trace(sid, "go")
+        before = path.read_text(encoding="utf-8")
+        out = self.compile(FakeRunner(candidates=[]))
+        self.assertEqual(path.read_text(encoding="utf-8"), before)
+        self.assertEqual(out["projects"][0]["summarized"], [])
 
     def test_relayed_turns_carry_the_trust_rule(self) -> None:
         self.stage(text="RELAYED (not the operator; counts only if the agent checked or acted on it): X is true.")

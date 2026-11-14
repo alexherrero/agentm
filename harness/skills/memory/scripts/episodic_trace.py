@@ -52,6 +52,10 @@ MAX_CANDIDATES = 40
 # carries up to about 1,200 characters of conversation, so the cap is lower.
 MAX_IDEAS = 20
 TITLE_CHARS = 120
+# A title made from a typed line is cut shorter, at a sentence or a word
+# (task 203): the 2026-11-13 audit found 108 traces titled with a pasted
+# brief cut mid-path at 120 characters.
+TYPED_TITLE_CHARS = 80
 # What was asked, at more than title length. The title is the handle; `##
 # Asked` is the request, and cutting it to a filename's worth would throw away
 # the half that makes the trace readable a month later.
@@ -127,6 +131,12 @@ class Trace:
     # Whether the operator took a turn (`has_operator_turn`). A session nobody
     # was at writes no trace, whatever it touched.
     attended: bool = True
+    # A sub-agent's transcript (under `<session>/subagents/`), never written.
+    helper: bool = False
+    # Whether the title is the app's own name for the session. The app names
+    # a session a moment after its first turn, so a later write may carry it
+    # where the first carried a typed line; that title replaces the typed one.
+    title_from_host: bool = False
 
     @property
     def rel(self) -> str:
@@ -409,6 +419,28 @@ def _first_request(messages: list) -> str:
     return ""
 
 
+_PATHISH = re.compile(r'^(?:@"?|[~/]|[A-Za-z]:\\|`?/)')
+_SENTENCE_END = re.compile(r"[.?!](?=\s|$)")
+
+
+def typed_title(line: str, limit: int = TYPED_TITLE_CHARS) -> str:
+    """A title from the line the operator typed (task 203): "" for a line that
+    is an attachment or a path rather than words, else the first sentence when
+    it fits in `limit`, else the words that fit, never cut mid-word."""
+    line = (line or "").strip()
+    if not line or _PATHISH.match(line):
+        return ""
+    if len(line) <= limit:
+        return line
+    m = _SENTENCE_END.search(line)
+    if m and m.end() <= limit:
+        return line[:m.end()].strip()
+    cut = line[:limit + 1]
+    space = cut.rfind(" ")
+    head = cut[:space] if space > limit // 2 else line[:limit]
+    return head.rstrip(" ,;:-–—(`\"'") + "…"
+
+
 def _opened_by_relay(messages: list) -> bool:
     """Whether the session's first readable turn came from somewhere other than
     the operator: a chip's background prompt, another session's message, a
@@ -623,14 +655,13 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
     if when is None:
         when = (start or datetime.now(timezone.utc)).date()
     asked = _first_request(messages)
-    # A session a relay opened is named by the app's title for it: the
-    # operator's first line there answers the relay, not what the session is
-    # for. Otherwise the first thing typed, then the app's title, then the id.
+    # The app's own title for the session wins whenever there is one (task
+    # 203): it is written to name the session, where the first typed line is
+    # often a pasted brief. Then the typed line, cut at a sentence or a word;
+    # then the id. The night's lesson compile writes a title of its own later
+    # (`apply_summary`), which a later turn does not undo.
     host = _host_title(Path(transcript_path))
-    if host and (not asked or _opened_by_relay(messages)):
-        title = host[:TITLE_CHARS]
-    else:
-        title = asked[:TITLE_CHARS] if asked else fallback_title(session_id)
+    title = host[:TITLE_CHARS] if host else (typed_title(asked) or fallback_title(session_id))
     touched = (captured + recalled)[:MAX_TOUCHED]
     return Trace(when=when, session_id=session_id, title=title, touched=touched,
                  captured=[t for t in captured if t in touched], recalled=[t for t in recalled if t in touched],
@@ -638,7 +669,9 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
                  candidates=list(candidates or [])[:MAX_CANDIDATES],
                  ideas=list(ideas or [])[:MAX_IDEAS],
                  project=project, task=task, surface=surface,
-                 attended=has_operator_turn(messages))
+                 attended=has_operator_turn(messages),
+                 helper="subagents" in Path(transcript_path).parts,
+                 title_from_host=bool(host))
 
 
 # ── one trace per session ────────────────────────────────────────────────────
@@ -754,9 +787,13 @@ def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcom
     i_fm, i_sec = _split_trace(incoming)
     fm = list(b_fm)
     fallback = _fm_value(b_fm, "title") == fallback_title(session_id)
+    # A trace the night has summarized keeps the night's title and outcome
+    # (task 203); a later turn adds to its lists and nothing else.
+    summarized = bool(_fm_value(b_fm, SUMMARIZED_KEY))
     if fallback and _fm_value(i_fm, "title") not in (None, fallback_title(session_id)):
         fm = _set_fm(fm, "title", next(line for line in i_fm if line.startswith("title:")), "title")
         b_sec["Asked"] = i_sec.get("Asked", b_sec.get("Asked", ""))
+
     for key, after in (("project", "created"), ("task", "project"), ("surface", "slug")):
         line = next((ln for ln in i_fm if ln.startswith(key + ":")), None)
         if line is not None:
@@ -767,7 +804,8 @@ def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcom
         fm = _set_fm(fm, "touched", "touched: [" + ", ".join(_yaml_scalar(t) for t in sorted(set(touched))) + "]",
                      "session")
     sections = dict(b_sec)
-    if i_sec.get("Outcome", "").strip() and (newest_outcome or not b_sec.get("Outcome", "").strip()):
+    if (not summarized and i_sec.get("Outcome", "").strip()
+            and (newest_outcome or not b_sec.get("Outcome", "").strip())):
         sections["Outcome"] = i_sec["Outcome"]
     for name in ("Captured", "Recalled"):
         merged = _union_lines(b_sec.get(name, ""), i_sec.get(name, ""), _link_target)
@@ -792,6 +830,57 @@ def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcom
         if text.strip():
             out += [f"## {name}", "", text, ""]
     return "\n".join(out)
+
+
+# ── the night's summary ──────────────────────────────────────────────────────
+#
+# Task 203: a trace's title and outcome come from a written summary. The
+# night's lesson compile already reads every session it has not read before;
+# its draft call returns a short title and a two-or-three-sentence outcome for
+# each, and `apply_summary` writes them here with the day it did. A trace that
+# carries `summarized:` keeps them when a later turn is merged; a session that
+# went on after the summary is read again the next night and summarized again.
+
+SUMMARIZED_KEY = "summarized"
+SUMMARY_TITLE_CHARS = 80
+SUMMARY_OUTCOME_CHARS = 700
+
+
+def summarized_text(text: str, *, title: str, outcome: str, day: str) -> str:
+    """A trace's text with the night's title and outcome and `summarized:
+    <day>`. The file name, `## Asked` and every list stay as they were."""
+    fm, sections = _split_trace(text)
+    title = " ".join((title or "").split())[:SUMMARY_TITLE_CHARS].strip()
+    outcome = (outcome or "").strip()[:SUMMARY_OUTCOME_CHARS].strip()
+    if title:
+        fm = _set_fm(fm, "title", f"title: {_yaml_scalar(title)}", "title")
+    fm = _set_fm(fm, SUMMARIZED_KEY, f"{SUMMARIZED_KEY}: {day}", "session")
+    if outcome:
+        sections = dict(sections)
+        sections["Outcome"] = outcome
+    out = ["---", *fm, "---", ""]
+    for name in list(_SECTIONS) + [k for k in sections if k not in _SECTIONS]:
+        body = _fences_closed((sections.get(name) or "").strip("\n"))
+        if body.strip():
+            out += [f"## {name}", "", body, ""]
+    return "\n".join(out)
+
+
+def apply_summary(vault_path, session_id: str, *, title: str, outcome: str, day: str) -> "str | None":
+    """Write the night's summary into the session's trace. Returns the
+    trace's path relative to the memory root, or None when the session has
+    no trace (nobody attended it, or it touched nothing)."""
+    root = Path(vault_path)
+    path = find_session_trace(root, session_id)
+    if path is None or not (title or outcome):
+        return None
+    text = path.read_text(encoding="utf-8")
+    after = summarized_text(text, title=title, outcome=outcome, day=day)
+    if after != text:
+        tmp = path.with_suffix(".md.tmp")
+        tmp.write_text(after, encoding="utf-8")
+        os.replace(tmp, path)
+    return path.relative_to(root).as_posix()
 
 
 def find_session_trace(vault_path, session_id: str) -> "Path | None":
@@ -834,12 +923,22 @@ def write_trace(vault_path, trace: Trace) -> str | None:
         return None
     if not trace.touched and not trace.candidates and not trace.ideas:
         return None
+    if trace.helper:
+        # A sub-agent's transcript (task 203): its work is its parent's.
+        return None
     root = Path(vault_path)
     existing = find_session_trace(root, trace.session_id)
     if existing is not None:
         rel = existing.relative_to(root).as_posix()
         incoming = trace.render().replace(f"slug: {trace.slug}\n", f"slug: {existing.stem}\n", 1)
-        text = merge_trace_text(existing.read_text(encoding="utf-8"), incoming, trace.session_id)
+        base = existing.read_text(encoding="utf-8")
+        text = merge_trace_text(base, incoming, trace.session_id)
+        if trace.title_from_host and not _fm_value(_split_trace(base)[0], SUMMARIZED_KEY):
+            # The app's name for the session replaces a typed line the first
+            # write had; never the night's summary, and the file keeps its name.
+            fm, sections = _split_trace(text)
+            text = text.replace(next(ln for ln in fm if ln.startswith("title:")),
+                                f"title: {_yaml_scalar(trace.title)}", 1)
     else:
         rel = trace.rel
         text = trace.render()

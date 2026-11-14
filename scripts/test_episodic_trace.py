@@ -342,6 +342,57 @@ class OneTracePerSessionTests(unittest.TestCase):
         self.assertEqual(fm["touched"], ["a", "b"])
         self.assertEqual(fm["session"], self.SID)
 
+    def test_the_apps_title_arriving_later_replaces_a_typed_one_and_keeps_the_file(self):
+        # Task 203: the app names a session a moment after its first turn.
+        first = et.write_trace(self.vault, self._trace("can you look at the nas", recalled=["memory/semantic/a.md"]))
+        named = self._trace("NAS share troubleshooting", recalled=["memory/semantic/b.md"])
+        named.title_from_host = True
+        second = et.write_trace(self.vault, named)
+        self.assertEqual(first, second)
+        text = (self.vault / first).read_text(encoding="utf-8")
+        self.assertIn('title: "NAS share troubleshooting"', text)
+        self.assertIn("## Asked\n\ncan you look at the nas\n", text, "the first request stays the Asked")
+        self.assertIn("slug: 2026-09-13-can-you-look-at-the-nas-9b9d740e\n", text, "the file keeps its name")
+
+    def test_a_summarized_trace_keeps_the_nights_title_and_outcome_through_later_turns(self):
+        rel = et.write_trace(self.vault, self._trace("go", outcome="Merged.", recalled=["memory/semantic/a.md"]))
+        self.assertEqual(et.apply_summary(self.vault, self.SID, title="Fix the NAS share permissions",
+                                          outcome="The share mounts again; the fix is in the runbook.",
+                                          day="2026-09-14"), rel)
+        later = self._trace("go", outcome="One more thing done.", recalled=["memory/semantic/b.md"])
+        later.title_from_host = True
+        later.title = "NAS share troubleshooting"
+        et.write_trace(self.vault, later)
+        text = (self.vault / rel).read_text(encoding="utf-8")
+        self.assertIn('title: "Fix the NAS share permissions"', text)
+        self.assertIn("summarized: 2026-09-14\n", text)
+        self.assertIn("## Outcome\n\nThe share mounts again; the fix is in the runbook.\n", text)
+        self.assertNotIn("One more thing done.", text)
+        self.assertIn("[[memory/semantic/b]]", text, "a later turn still adds to the lists")
+        import yaml
+        fm = yaml.safe_load(text.split("---")[1])
+        self.assertEqual(fm["session"], self.SID)
+
+    def test_a_summary_for_a_session_with_no_trace_writes_nothing(self):
+        self.assertIsNone(et.apply_summary(self.vault, "no-such-session", title="t", outcome="o", day="2026-09-14"))
+        self.assertEqual(self._files(), [])
+
+    def test_a_summary_is_cut_to_its_length_and_its_title_to_one_line(self):
+        rel = et.write_trace(self.vault, self._trace("go", recalled=["memory/semantic/a.md"]))
+        et.apply_summary(self.vault, self.SID, title="A title\nwith a break " + "x" * 200,
+                         outcome="y" * 2000, day="2026-09-14")
+        text = (self.vault / rel).read_text(encoding="utf-8")
+        title = next(ln for ln in text.splitlines() if ln.startswith("title: "))
+        self.assertLessEqual(len(json.loads(title[len("title: "):])), et.SUMMARY_TITLE_CHARS)
+        self.assertIn("y" * et.SUMMARY_OUTCOME_CHARS + "\n", text)
+        self.assertNotIn("y" * (et.SUMMARY_OUTCOME_CHARS + 1), text)
+
+    def test_a_subagents_transcript_writes_no_trace(self):
+        trace = self._trace("a helper's brief", recalled=["memory/semantic/a.md"])
+        trace.helper = True
+        self.assertIsNone(et.write_trace(self.vault, trace))
+        self.assertEqual(self._files(), [])
+
     def test_a_write_repeated_unchanged_changes_nothing(self):
         trace = self._trace("ship it", outcome="Done.", recalled=["memory/semantic/a.md"], candidates=["Never X."])
         rel = et.write_trace(self.vault, trace)
@@ -790,11 +841,43 @@ class ARelayIsNotTheTitle(unittest.TestCase):
             self._user("go", "2026-10-27T10:01:00Z"))
         self.assertEqual(title, "Implement task 193")
 
-    def test_a_session_the_operator_opened_keeps_their_words(self):
+    def test_the_apps_title_wins_even_when_the_operator_typed_the_first_line(self):
+        # Task 203: the app's title is written to name the session; the first
+        # typed line is often a pasted brief.
         title = self._title(
             self._host("Vault Perfection"),
             self._user("Show me a few recent memory cards", "2026-10-27T10:00:00Z", turnOrigin="human"))
-        self.assertEqual(title, "Show me a few recent memory cards")
+        self.assertEqual(title, "Vault Perfection")
+
+    def test_with_no_app_title_a_typed_line_is_the_title_cut_at_a_sentence_or_a_word(self):
+        title = self._title(
+            self._user("Let's do an audit of the vault for content, quality and correctness. The intent of "
+                       "the vault is to be the place I keep everything", "2026-10-27T10:00:00Z", turnOrigin="human"))
+        self.assertEqual(title, "Let's do an audit of the vault for content, quality and correctness.")
+        title = self._title(
+            self._user("Run AgentM task 198, \"Make a silent runner go red\", at `/srv/vault/projects/agentm/"
+                       "tasks/198-make-a-silent-runner-go-red/plan.md` and chase", "2026-10-27T10:00:00Z",
+                       turnOrigin="human"))
+        self.assertEqual(title, "Run AgentM task 198, \"Make a silent runner go red\", at…")
+        self.assertEqual(et.typed_title("NAS backup"), "NAS backup")
+
+    def test_a_transcript_under_subagents_is_a_helper(self):
+        sub = Path(self._tmp.name) / "82d1ca38-aaaa" / "subagents" / "agent-1.jsonl"
+        sub.parent.mkdir(parents=True)
+        sub.write_text(self._user("Read these files and report", "2026-10-27T10:00:00Z", turnOrigin="human") + "\n",
+                       encoding="utf-8")
+        trace = et.from_transcript(sub, session_id="82d1ca38-aaaa", history_path=Path(self._tmp.name) / "none.jsonl")
+        self.assertTrue(trace.helper)
+        self._write(self._user("Read these files and report", "2026-10-27T10:00:00Z", turnOrigin="human"))
+        self.assertFalse(et.from_transcript(self.transcript, session_id="x",
+                                            history_path=Path(self._tmp.name) / "none.jsonl").helper)
+
+    def test_an_attachment_line_is_never_the_title(self):
+        title = self._title(
+            self._user('@"/opt/uploads/6db3f5e2/154a6a87-From_a_school.pdf"',
+                       "2026-10-27T10:00:00Z", turnOrigin="human"))
+        self.assertTrue(title.startswith("session "), title)
+        self.assertEqual(et.typed_title("/srv/vault/some/path.md"), "")
 
     def test_nothing_readable_falls_back_to_the_id(self):
         title = self._title(
