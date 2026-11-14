@@ -83,7 +83,10 @@ RETIRED_POINTER = "Filing.md"
 
 def section(text: str) -> str | None:
     """The body under the heading, up to the next same-or-higher heading."""
-    m = re.search(rf"^##\s+{re.escape(HEADING)}\s*$", text, re.M)
+    # A lead-in before the words is the operator's to write ("For FRIDAY: how
+    # to read this vault", 2026-11-05); the words themselves are what is owed.
+    m = re.search(rf"^##\s+(?:.+?:\s+)?{re.escape(HEADING)}\s*$", text,
+                  re.M | re.I)
     if not m:
         return None
     rest = text[m.end():]
@@ -141,13 +144,22 @@ def self_test(out=sys.stdout) -> int:
                   f"missing a term and naming the retired pointer gave {got}",
                   file=out)
             return 1
+        (v / "index.md").write_text(
+            complete.replace("## How to read this vault",
+                             "## For FRIDAY: how to read this vault"),
+            encoding="utf-8")
+        if findings(v / "index.md"):
+            print("check-index-self-description: SELF-TEST FAILED — a heading "
+                  "with a lead-in before the words reported findings", file=out)
+            return 1
         (v / "index.md").write_text("## Something else\n\nbody\n", encoding="utf-8")
         if not findings(v / "index.md"):
             print("check-index-self-description: SELF-TEST FAILED — a missing "
                   "section reported clean", file=out)
             return 1
     print("check-index-self-description: self-test OK — a complete section "
-          "passes, a hole and a retired pointer each fail", file=out)
+          "passes, with or without a lead-in, and a hole and a retired "
+          "pointer each fail", file=out)
     return 0
 
 
