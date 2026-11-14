@@ -56,9 +56,11 @@ DROPPED_KEYS = ("lifecycle", "lifecycle_since")
 #: The type every idea card holds, and the status it holds when it carries one.
 #: A card with no `status` is read as `active`, because a card in the folder is
 #: filed by being there (the daemon's `enrich.KeptFiling`), and the night writes
-#: the field on its next pass.
+#: the field on its next pass. A dismissed idea is `dropped` (task 204): the one
+#: other word an idea card holds, and only beside its `dismissed:` day.
 IDEA_TYPE = "idea"
 IDEA_STATUS = "active"
+IDEA_DISMISSED_STATUS = "dropped"
 
 #: What every idea card carries: `type: idea`, which makes it one, and `area:`,
 #: the group it is listed under. Nothing else is asked of a card the operator
@@ -132,7 +134,7 @@ def as_idea_card(text: str, *, area: str, dismissed: "str | None" = None,
     entries = card_shape.drop_keys(entries, *DROPPED_KEYS)
     entries = card_shape.set_value(entries, "type", IDEA_TYPE)
     entries = card_shape.set_value(entries, "area", area)
-    entries = card_shape.set_value(entries, "status", IDEA_STATUS)
+    entries = card_shape.set_value(entries, "status", IDEA_DISMISSED_STATUS if dismissed else IDEA_STATUS)
     entries = card_shape.set_value(entries, "filing_confidence", "high")
     if dismissed:
         entries = card_shape.set_value(entries, "dismissed", dismissed)
@@ -248,3 +250,53 @@ def add_to_matching_card(memory_root, text: str, *, slug: str = "", title: str =
             return None
         append_capture(card, text, source=source, day=day or date.today().isoformat())
         return card
+
+
+# ── dismissing an idea ────────────────────────────────────────────────────────
+
+def dismissed_text(text: str, *, day: str) -> str:
+    """The card with `dismissed: <day>` and `status: dropped`, together, in the
+    card's order; the body byte for byte. Until task 204 a dismissal was typed
+    by hand and left `status: active`, so 19 dismissed ideas said active."""
+    if not DAY_RE.match(day):
+        raise ValueError(f"dismissed: {day!r} is not a YYYY-MM-DD day")
+    parsed = card_shape.split_note(text)
+    if parsed is None:
+        raise ValueError("the card has no frontmatter to record a dismissal in")
+    entries, rest = parsed
+    entries = card_shape.set_value(entries, "dismissed", day)
+    entries = card_shape.set_value(entries, "status", IDEA_DISMISSED_STATUS)
+    entries = card_shape.set_value(entries, "updated", day)
+    return card_shape.reorder(card_shape.join_note(entries, rest))
+
+
+def dismiss(card_path, *, day: "str | None" = None) -> bool:
+    """Dismiss the idea at `card_path`. Returns whether the file changed."""
+    path = Path(card_path)
+    text = path.read_text(encoding="utf-8")
+    after = dismissed_text(text, day=day or date.today().isoformat())
+    if after == text:
+        return False
+    path.write_text(after, encoding="utf-8")
+    return True
+
+
+def main(argv: "list | None" = None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="Idea cards in personal/ideas/.")
+    sub = ap.add_subparsers(dest="command", required=True)
+    d = sub.add_parser("dismiss", help="mark an idea dismissed: `dismissed:` and `status: dropped` together")
+    d.add_argument("card", help="the card's path")
+    d.add_argument("--day", default=None, help="YYYY-MM-DD; today when omitted")
+    args = ap.parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        changed = dismiss(args.card, day=args.day)
+    except (OSError, ValueError) as exc:
+        print(f"idea-cards: {exc}", file=sys.stderr)
+        return 2
+    print(f"idea-cards: {args.card} {'dismissed' if changed else 'was already dismissed that day'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

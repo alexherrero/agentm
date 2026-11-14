@@ -253,8 +253,15 @@ def idea_findings(rel: str, text: str) -> list[str]:
         return out
     out += [f"{rel}: missing `{name}`" for name in ic.REQUIRED_FIELDS if get(name) is None]
     status = get("status")
-    if status is not None and status != ic.IDEA_STATUS:
-        out.append(f"{rel}: `status: {status}`; an idea card is `{ic.IDEA_STATUS}` whatever the score")
+    # Task 204: a dismissed idea is `dropped`, and only a dismissed one. A
+    # dismissed card still saying `active` predates the dismiss command; the
+    # status lint lists those, and this gate does not fail on them.
+    if status == ic.IDEA_DISMISSED_STATUS and get("dismissed") is None:
+        out.append(f"{rel}: `status: {status}` with no `dismissed:` day; "
+                   f"dismiss an idea with `idea_cards.py dismiss`, which writes both")
+    elif status is not None and status not in (ic.IDEA_STATUS, ic.IDEA_DISMISSED_STATUS):
+        out.append(f"{rel}: `status: {status}`; an idea card is `{ic.IDEA_STATUS}` whatever the score, "
+                   f"or `{ic.IDEA_DISMISSED_STATUS}` once dismissed")
     out += [f"{rel}: carries `{name}`; an idea card has no aging axis"
             for name in ic.DROPPED_KEYS if name in keys]
     dismissed = get("dismissed")

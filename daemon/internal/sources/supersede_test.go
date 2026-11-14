@@ -73,13 +73,14 @@ func TestSupersedeMarksEveryMemoryTheSourceProduced(t *testing.T) {
 		if !strings.Contains(body, "superseded_at") {
 			t.Errorf("%s does not say when:\n%s", rel, body)
 		}
-		// The relation lives on the lifecycle axis: exactly one lifecycle line,
-		// and `status` neither carries supersession nor gets rewritten.
+		// The relation lives on the lifecycle axis: exactly one lifecycle line.
+		// The status follows it in the same write (task 204), on its own line,
+		// once: the note says `superseded` wherever a reader looks.
 		if strings.Count(body, "lifecycle:") != 1 {
 			t.Errorf("%s: one lifecycle line, want exactly one:\n%s", rel, body)
 		}
-		if strings.Contains(body, "status: superseded") {
-			t.Errorf("%s: status carries supersession; the axis does:\n%s", rel, body)
+		if strings.Count(body, "status:") != 1 || !strings.Contains(body, "\nstatus: superseded\n") {
+			t.Errorf("%s: want one status line, reading superseded:\n%s", rel, body)
 		}
 	}
 

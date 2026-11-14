@@ -338,6 +338,7 @@ func Merge(older, newer Note, today string) (survivor, superseded string, err er
 	nb = set(nb, "lifecycle_since", today)
 	nb = set(nb, "superseded_by", fmlist.LinkValue(fmlist.PathLink(older.Rel)))
 	_, olderBodyOfNewer, _ := splitNote(newer.Raw)
-	superseded = cardshape.Reorder(join(nb, olderBodyOfNewer))
+	// `status: superseded` with it, in the same write (task 204).
+	superseded = cardshape.SyncStatus(cardshape.Reorder(join(nb, olderBodyOfNewer)))
 	return survivor, superseded, nil
 }

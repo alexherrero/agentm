@@ -228,7 +228,19 @@ def check_file(path: Path, vault: Path, yaml_mod=None) -> list:
         problems += header_problems(path, rel, text, yaml_mod)
     problems += type_problems(rel, text)
     problems += tracker_problems(path, rel, text)
+    problems += status_problems(rel, text)
     return sorted(problems, key=lambda p: p.line or 0)
+
+
+def status_problems(rel: str, text: str) -> list:
+    """Task 204: a status off the contract's list, or one that contradicts the
+    note's own state. A tracker's status is `tracker_problems`' to report."""
+    if rel.endswith("/tracker.md") or rel == "tracker.md":
+        return []
+    import status_words  # noqa: E402  (the memory skill's scripts are on the path above)
+    line = _key_line(text, "status")
+    return [Problem(f"{f.message}; {f.suggestion}", line)
+            for f in status_words.status_findings(rel, text, status_words.contract_statuses())]
 
 
 def render(rel: str, problems: list) -> str:

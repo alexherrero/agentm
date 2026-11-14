@@ -25,6 +25,7 @@ var notJudgment = map[string]string{
 	"Warrants":             "the taxonomy growth rule only",
 	"Thresholds":           "the confidence floor applies at each note's next judgment",
 	"Lifecycles":           "the lifecycle job and the capture writers",
+	"StatusList":           "the lint and the save-time check; a judgment writes only active or unfiled",
 	"DefaultLifecycle":     "the capture writers",
 	"Sources":              "trust stamping at capture",
 	"Facets":               "the calendar",

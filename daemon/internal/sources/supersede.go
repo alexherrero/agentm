@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"fmt"
+	"github.com/alexherrero/agentm/daemon/internal/cardshape"
 	"strings"
 	"time"
 )
@@ -101,9 +102,16 @@ func Supersede(ctx context.Context, id ID, version string, at time.Time,
 // keeping a superseded memory at all, and a supersession that edited the text
 // would leave nothing to compare the new distillation against.
 func markSuperseded(body string, id ID, version, at string) string {
+	return cardshape.SyncStatus(markSupersededFields(body, id, version, at))
+}
+
+// markSupersededFields writes the supersession itself; markSuperseded then
+// sets `status: superseded` to match (task 204: it used to be left alone, so
+// a replaced memory still said `active`).
+func markSupersededFields(body string, id ID, version, at string) string {
 	// The contract's shape (PLAN-superseded-vocabulary): the relation lives on
 	// the lifecycle axis, the successor here being the source version that
-	// replaced this memory's, not a note. `status` is left alone.
+	// replaced this memory's, not a note.
 	fields := [][2]string{
 		{"lifecycle", "superseded"},
 		{"superseded_by", id.String() + " at " + version},

@@ -108,9 +108,33 @@ class AsIdeaCardTests(unittest.TestCase):
         self.assertEqual(card_shape.order_findings(card_shape.keys(out)), [])
 
     def test_a_struck_entry_carries_its_dismissal(self) -> None:
+        # Task 204: a dismissed idea says so in its status too.
         out = idea_cards.as_idea_card(_SEMANTIC_IDEA, area="home-tech", dismissed="2026-05-24")
         self.assertEqual(_fields(out)["dismissed"], "2026-05-24")
-        self.assertEqual(_fields(out)["status"], "active")
+        self.assertEqual(_fields(out)["status"], "dropped")
+        self.assertEqual(_fields(idea_cards.as_idea_card(_SEMANTIC_IDEA, area="home-tech"))["status"], "active")
+
+    def test_dismissing_a_card_writes_the_day_and_the_status_together(self) -> None:
+        card = idea_cards.as_idea_card(_SEMANTIC_IDEA, area="home-tech")
+        out = idea_cards.dismissed_text(card, day="2026-11-13")
+        f = _fields(out)
+        self.assertEqual((f["dismissed"], f["status"], f["updated"]), ("2026-11-13", "dropped", "2026-11-13"))
+        self.assertEqual(_body(out), _body(card))
+        self.assertEqual(card_shape.order_findings(card_shape.keys(out)), [])
+        with self.assertRaises(ValueError):
+            idea_cards.dismissed_text(card, day="13 Nov")
+        with self.assertRaises(ValueError):
+            idea_cards.dismissed_text("no frontmatter\n", day="2026-11-13")
+
+    def test_the_dismiss_command_changes_one_card_once(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "an-idea.md"
+            path.write_text(idea_cards.as_idea_card(_SEMANTIC_IDEA, area="home-tech"), encoding="utf-8")
+            self.assertTrue(idea_cards.dismiss(path, day="2026-11-13"))
+            self.assertFalse(idea_cards.dismiss(path, day="2026-11-13"))
+            self.assertEqual(_fields(path.read_text(encoding="utf-8"))["status"], "dropped")
+            self.assertEqual(idea_cards.main(["dismiss", str(Path(d) / "missing.md")]), 2)
 
     def test_why_and_project_fill_only_an_empty_field(self) -> None:
         out = idea_cards.as_idea_card(_INBOX_CARD, area="home-tech",

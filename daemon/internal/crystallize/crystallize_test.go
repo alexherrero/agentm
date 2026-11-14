@@ -440,6 +440,31 @@ func TestStampPlacesTheKeyBeforeTheProjectFields(t *testing.T) {
 	}
 }
 
+// Task 204: a stamped source is `merged` in the same write, and a source whose
+// last lesson is released is `active` again.
+func TestAStampedSourceIsMergedAndAReleasedOneIsActiveAgain(t *testing.T) {
+	in := "---\ntitle: a\nstatus: active\nlifecycle: active\nproject: agentm\n---\n\nbody\n"
+	stamped := Stamp(in, "the-lesson")
+	if !strings.Contains(stamped, "status: merged\n") || !strings.Contains(stamped, "consolidated_into:") {
+		t.Fatalf("stamped:\n%s", stamped)
+	}
+	two := Stamp(stamped, "another-lesson")
+	if !strings.Contains(two, "status: merged\n") {
+		t.Errorf("a second lesson changed the status:\n%s", two)
+	}
+	partly := unstampFrom([]byte(two), []string{"the-lesson"})
+	if !strings.Contains(partly, "status: merged\n") {
+		t.Errorf("a source still stamped by one lesson is not merged:\n%s", partly)
+	}
+	released := unstampFrom([]byte(two), []string{"the-lesson", "another-lesson"})
+	if !strings.Contains(released, "status: active\n") || strings.Contains(released, "consolidated_into") {
+		t.Errorf("a source with every lesson released:\n%s", released)
+	}
+	if Stamp(stamped, "the-lesson") != stamped {
+		t.Error("stamping a lesson the note already names changed it")
+	}
+}
+
 func TestClustersPreferTheRecurrenceOverTheWordInsideIt(t *testing.T) {
 	at := func(d int) time.Time {
 		return time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, d)

@@ -126,7 +126,10 @@ def set_lifecycle_text(text: str, to: str, *, since: str) -> str:
         lines[seen["lifecycle_since"]] = f"lifecycle_since: {since}"
     else:
         lines.insert(at, f"lifecycle_since: {since}")
-    return "\n".join(lines)
+    # The status follows in the same write (task 204): `archived` into the
+    # archive, `active` back out of it; `dormant` and `pinned` leave it alone.
+    import status_words  # noqa: E402  (same skill dir)
+    return status_words.sync_status("\n".join(lines))
 
 
 # ── the journal ───────────────────────────────────────────────────────────────

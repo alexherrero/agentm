@@ -443,3 +443,66 @@ func TestPackagedDefault(t *testing.T) {
 		}
 	}
 }
+
+// Task 204: a short, fixed list of `status` words. A contract that names none
+// uses the built-in ten; one that names its own must keep the words the
+// machinery writes; neither changes the hash of a contract that names none.
+func TestTheStatusList(t *testing.T) {
+	t.Run("a contract that names none uses the built-in list", func(t *testing.T) {
+		r, err := LoadFile(writeRules(t, t.TempDir(), validBlock))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(r.Statuses, " ") != "unfiled draft queued active parked done dropped superseded merged archived" {
+			t.Errorf("statuses = %v", r.Statuses)
+		}
+		if !r.IsStatus("merged") || r.IsStatus("pending-review") || r.IsStatus("Active") {
+			t.Error("IsStatus does not answer from the list, exactly as written")
+		}
+		canonical, _ := json.Marshal(r.block)
+		if strings.Contains(string(canonical), `"status"`) {
+			t.Error("a contract naming no status list hashes with one; every judgment would be re-owed")
+		}
+	})
+	t.Run("a contract's own list wins and is printed", func(t *testing.T) {
+		own := validBlock + "status: [unfiled, draft, active, done, dropped, superseded, merged, archived]\n"
+		r, err := LoadFile(writeRules(t, t.TempDir(), own))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(r.Statuses) != 8 || r.IsStatus("queued") {
+			t.Errorf("statuses = %v", r.Statuses)
+		}
+		blob, _ := json.Marshal(r)
+		if !strings.Contains(string(blob), `"statuses":["unfiled","draft","active"`) {
+			t.Errorf("`agentmd rules --json` would not carry the list: %s", blob)
+		}
+		base, _ := LoadFile(writeRules(t, t.TempDir(), validBlock))
+		if r.Hash == base.Hash {
+			t.Error("naming a status list should change the contract's hash")
+		}
+	})
+	for _, bad := range []struct{ name, line, want string }{
+		{"an empty list", "status: []\n", "empty list"},
+		{"a word twice", "status: [unfiled, active, active, superseded, merged, archived, dropped]\n", "twice"},
+		{"not kebab-case", "status: [unfiled, Active, superseded, merged, archived, dropped, active]\n", "kebab"},
+		{"a word the machinery writes is missing", "status: [unfiled, active, superseded, archived, dropped]\n", `"merged"`},
+	} {
+		t.Run("refused: "+bad.name, func(t *testing.T) {
+			_, err := LoadFile(writeRules(t, t.TempDir(), validBlock+bad.line))
+			if err == nil || !strings.Contains(err.Error(), bad.want) {
+				t.Errorf("err = %v, want one naming %s", err, bad.want)
+			}
+		})
+	}
+	t.Run("the packaged default parses with the built-in list", func(t *testing.T) {
+		clearEnv(t)
+		r, err := Load("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(r.Statuses) != len(DefaultStatuses) {
+			t.Errorf("the packaged default reads %v", r.Statuses)
+		}
+	})
+}

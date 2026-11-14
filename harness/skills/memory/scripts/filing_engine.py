@@ -441,7 +441,8 @@ def _stamp_superseded(vault: Path, rel: str, by_rel: str) -> None:
     # Back into the card's order: an appended `superseded_by` belongs beside
     # `related`, not after the machine block (agentm-vault § The card).
     import card_shape  # noqa: E402  (same skill dir)
-    p.write_text(card_shape.reorder("\n".join(lines)), encoding="utf-8")
+    import status_words  # noqa: E402  (same skill dir; task 204: the status follows)
+    p.write_text(status_words.sync_status(card_shape.reorder("\n".join(lines))), encoding="utf-8")
 
 
 def _write_day(extra: "dict | None") -> "date | None":

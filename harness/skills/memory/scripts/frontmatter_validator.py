@@ -86,8 +86,19 @@ def _vault_rel(path: Path, vault: Path) -> str:
 # nothing recognizes is a note no pass can reason about, and a validator that
 # waved either through would be leaving the taxonomy's brake off on two more
 # fields.
-STATUSES = ("unfiled", "active", "superseded", "expired")
+# The status words are the contract's (task 204: `agentmd rules --json` →
+# `statuses`). This tuple is what the validator falls back to when no daemon
+# answers: the words it always took, and the three the machinery now writes
+# from a note's state, so a merged or archived card is never a violation.
+STATUSES = ("unfiled", "active", "superseded", "expired", "merged", "archived", "dropped")
 ALTITUDES = ("artifact", "canonical")
+
+
+def _statuses() -> tuple:
+    try:
+        return tuple(storage_rules.rules().statuses()) or STATUSES
+    except Exception:
+        return STATUSES
 
 # The contract every memory carries, from the filing design's own frontmatter
 # block. This replaces `kind_registry.REQUIRED_UNIVERSAL_FIELDS`, which describes
@@ -290,9 +301,10 @@ def validate(note_path: Path | str, *, vault: Path | str | None = None) -> list[
 
     # The lifecycle is enum-locked for the same reason the taxonomy is: a status
     # nothing recognizes is a note no pass can reason about.
-    if status and status not in STATUSES:
+    statuses = _statuses()
+    if status and status not in statuses:
         violations.append(
-            f"status {status!r} is not one of: {', '.join(STATUSES)}"
+            f"status {status!r} is not one of: {', '.join(statuses)}"
         )
 
     # Altitude is the axis ranking dampens on, and it is enum-locked rather than

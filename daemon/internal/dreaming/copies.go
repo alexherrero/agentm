@@ -183,7 +183,8 @@ func PlanCopies(root string, cap int) (CopiesPlan, error) {
 			// Named as a quoted wikilink by its vault path (task 193 LD-5), so
 			// Obsidian draws the link and every reader resolves it.
 			successor := fmlist.LinkValue(fmlist.PathLink(path.Join(memRel, canonical.rel)))
-			after := cardshape.Reorder(PatchFrontmatter(c.raw, []Update{{"lifecycle", "superseded"}, {"superseded_by", successor}}))
+			after := cardshape.SyncStatus(cardshape.Reorder(PatchFrontmatter(c.raw,
+				[]Update{{"lifecycle", "superseded"}, {"superseded_by", successor}})))
 			from := strings.TrimSpace(ParseFrontmatterValue(c.raw, "lifecycle"))
 			if from == "" {
 				from = lifecycleDefaultState
