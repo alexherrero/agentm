@@ -167,3 +167,36 @@ func TestMatchingManyNamesOverManyNotesStaysCheap(t *testing.T) {
 		t.Errorf("300 names x 4,000 notes took %v", d)
 	}
 }
+
+// A deny phrase of two words or more hides the name inside it, in any case and
+// spacing, and only as a whole phrase; a one-word deny entry hides nothing.
+func TestMaskHidesDenyPhrases(t *testing.T) {
+	tb, err := Parse("```people\naliases:\n  Rosy Herrero: [Rosy]\n  Don Hopkins: [Hopkins]\n" +
+		"deny: [Rosy Rupeeland, Hopkins Way, Claude]\n```\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		text, who string
+		want      bool
+	}{
+		{"| Freshly-Picked - Tingle's Rosy Rupeeland |", "Rosy", false},
+		{"Tingle's ROSY  rupeeland (Europe)", "Rosy", false},
+		{"Rosy Rupeeland was on sale; Rosy bought it.", "Rosy", true},
+		{"Rosy Rupeelands", "Rosy", true}, // not the whole phrase
+		{"| 1039 Hopkins Way | 0.78 |", "Hopkins", false},
+		{"Hopkins Way, Hopkins Way and Hopkins Way.", "Hopkins", false},
+		{"Don Hopkins wrote Micropolis.", "Hopkins", true},
+		{"Claude Shannon", "Claude Shannon", true}, // a one-word deny entry masks nothing
+	} {
+		if got := Mentions(tb.Mask(c.text), []string{c.who}); got != c.want {
+			t.Errorf("Mentions(Mask(%q), %s) = %v, want %v", c.text, c.who, got, c.want)
+		}
+	}
+	if got := tb.Ground("Tingle's Rosy Rupeeland, Europe.", []string{"Rosy"}); len(got) != 0 {
+		t.Errorf("Ground kept a name found only inside a deny phrase: %v", got)
+	}
+	if got := tb.Ground("Rosy picked the house.", []string{"Rosy"}); len(got) != 1 || got[0] != "Rosy Herrero" {
+		t.Errorf("Ground = %v, want [Rosy Herrero]", got)
+	}
+}

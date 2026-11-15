@@ -217,7 +217,7 @@ func planPeople(plan *EntitiesPlan, root, vault, memRel string, src EntitySource
 				unlisted[name] = true
 			}
 		}
-		texts = append(texts, noteText{row: n, text: people.NewText(displayTitle(n.Path, n.Title) + "\n" + body), named: named})
+		texts = append(texts, noteText{row: n, text: people.NewText(opts.Table.Mask(displayTitle(n.Path, n.Title) + "\n" + body)), named: named})
 	}
 
 	threads := map[string]map[string]bool{}
