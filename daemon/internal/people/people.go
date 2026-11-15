@@ -13,6 +13,10 @@
 //	aliases:  a person's full name and the other spellings that mean them
 //	deny:     names that are not people — a product, a place, a model
 //
+// A deny entry of two words or more is also a phrase the name search skips
+// (Mask): "Hopkins Way" keeps a street from counting as Don Hopkins, and
+// "Rosy Rupeeland" keeps a game title from counting as Rosy.
+//
 // A missing file is an empty table: nothing is merged or denied, and the
 // owner is left out only by the prompt's own instruction.
 package people
@@ -193,6 +197,36 @@ func (t Table) Spellings(canonical string) []string {
 	return out
 }
 
+// Mask blanks out every deny entry of two words or more where text holds it as
+// a whole phrase, in any case and with any run of spaces between its words, so
+// a name inside it is not read as a person: a street ("1039 Hopkins Way"), a
+// game ("Tingle's Rosy Rupeeland"). A one-word deny entry is left alone: it
+// already stops that name being a person, and blanking it could break a full
+// name that carries it.
+func (t Table) Mask(text string) string {
+	for _, d := range t.Deny {
+		words := strings.Fields(Clean(d))
+		if len(words) < 2 {
+			continue
+		}
+		quoted := make([]string, len(words))
+		for i, w := range words {
+			quoted[i] = regexp.QuoteMeta(w)
+		}
+		re := regexp.MustCompile(`(?i)(^|[^\p{L}\p{N}_])` + strings.Join(quoted, `\s+`) + `($|[^\p{L}\p{N}_])`)
+		// Two hits that share the one character between them need a second
+		// pass; each pass only shortens the text, so the loop ends.
+		for {
+			next := re.ReplaceAllString(text, "${1} ${2}")
+			if next == text {
+				break
+			}
+			text = next
+		}
+	}
+	return text
+}
+
 // Text is a note's text prepared once for many lookups: its lower-case form
 // and the set of words in it. Matching a vault's worth of notes against every
 // person goes through it, so a note is lower-cased and split once rather than
@@ -306,7 +340,7 @@ func isWordRune(r rune) bool {
 // deterministic and free: a name the note does not contain was inferred, and an
 // inferred person is exactly what must not earn a page.
 func (t Table) Ground(text string, names []string) []string {
-	prepared := NewText(text)
+	prepared := NewText(t.Mask(text))
 	seen := map[string]bool{}
 	var out []string
 	for _, n := range names {

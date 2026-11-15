@@ -92,6 +92,49 @@ func TestAPersonNeedsTwoPiecesOfSharedWork(t *testing.T) {
 	}
 }
 
+// A deny phrase hides the name inside it: Ben's alias in a street name and a
+// game title is not Ben, so neither note is listed on his page, and the one
+// that was his second piece of shared work no longer qualifies him.
+func TestADenyPhraseHidesTheNameInsideIt(t *testing.T) {
+	notes := peopleFixture()
+	notes["agent/memory/semantic/comps.md"] = "---\ntitle: Comps\ntype: reference\n---\n\n| 12 Ben Way | $1.2M |\n"
+	notes["agent/memory/semantic/games.md"] = "---\ntitle: Games\ntype: reference\n---\n\n- Ben  way 2 (Europe)\n"
+	root, x := entityVault(t, notes)
+	without := listedPeople(t, "  Ben Okafor: [Ben]\n")
+	plan, err := PlanEntities(root, filepath.Dir(root), x, without, nil, entityNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := personPages(plan)["person:ben-okafor"].Mentions; got != 5 {
+		t.Fatalf("without the deny phrase Ben has %d mentions, want 5 (3 plus the street and the game)", got)
+	}
+
+	tb, err := people.Parse("```people\nyou: [Pat Owner, Pat]\naliases:\n  Ben Okafor: [Ben]\ndeny: [Ben Way]\n```\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err = PlanEntities(root, filepath.Dir(root), x, PeopleOptions{Table: tb}, nil, entityNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := personPages(plan)["person:ben-okafor"].Mentions; got != 3 {
+		t.Errorf("with \"Ben Way\" denied Ben has %d mentions, want 3", got)
+	}
+
+	// The decision that names him only as "Ben" in "Ben Way Partners" stops
+	// counting, which leaves one piece of shared work: no page.
+	notes["projects/agentm/decisions/ship-weekly.md"] = "---\ntitle: Ship weekly\nkind: decision\n" +
+		"updated: 2026-09-12\n---\n\nBen Way Partners and Pat agreed to ship weekly.\n"
+	root, x = entityVault(t, notes)
+	plan, err = PlanEntities(root, filepath.Dir(root), x, PeopleOptions{Table: tb}, nil, entityNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := personPages(plan)["person:ben-okafor"]; ok {
+		t.Errorf("Ben kept a page on one piece of shared work: %+v", p)
+	}
+}
+
 // A page whose person falls under the bar is removed, and a walled area is
 // never read: a note behind the wall neither registers a person nor counts.
 func TestAPersonUnderTheBarLosesTheirPageAndTheWallHolds(t *testing.T) {
