@@ -9,6 +9,9 @@ design puts one:
   <projects>/<slug>/tracker.md                  the project's own tracker
   <projects>/<slug>/tasks/<task>/tracker.md     a task's tracker
 
+and the same places under `<projects>/completed/<slug>/`, where a finished
+project moves whole.
+
 A tracker names the project it sits in, a task's tracker names its task, and a
 project's own tracker names none. A Markdown file anywhere else in a project
 that declares `kind: tracker` is reported as misplaced — a tracker beside a flat
@@ -112,17 +115,48 @@ def in_projects_space(slug: str, parts: tuple) -> bool:
             and not any(part.startswith(".") for part in parts))
 
 
+# A finished project moves whole to `projects/completed/<slug>/` (the vault
+# audit's batch m02, 2026-11-14), where it is still that project: its trackers
+# name `<slug>`, and their places are read from `completed/<slug>/`. The
+# project mapping reads the same folder (projectbind).
+COMPLETED = "completed"
+
+
+def split_project(parts: tuple) -> Optional[tuple]:
+    """`(slug, parts under the project)` for a file at `parts` under a projects
+    space, or None when it sits in no project's directory."""
+    if parts and parts[0] == COMPLETED:
+        parts = parts[1:]
+    if len(parts) < 2:
+        return None
+    return parts[0], parts[1:]
+
+
+def project_dirs(projects: Path) -> list:
+    """`(slug, directory, rel prefix)` for every project in one space, the
+    finished ones under `completed/` among them."""
+    out = []
+    for p in sorted(projects.iterdir()):
+        if not p.is_dir() or p.name.startswith((".", "_")):
+            continue
+        if p.name == COMPLETED:
+            out += [(c.name, c, f"{COMPLETED}/{c.name}") for c in sorted(p.iterdir())
+                    if c.is_dir() and not c.name.startswith((".", "_"))]
+        else:
+            out.append((p.name, p, p.name))
+    return out
+
+
 def projects_findings(projects: Path) -> tuple:
     """`(trackers read, findings)` over one projects space."""
     count, findings = 0, []
-    for project in sorted(p for p in projects.iterdir()
-                          if p.is_dir() and not p.name.startswith((".", "_"))):
+    for slug, project, prefix in project_dirs(projects):
         for path in sorted(project.rglob("*.md")):
             parts = path.relative_to(project).parts
-            if not in_projects_space(project.name, parts):
+            if not in_projects_space(slug, parts):
                 continue
-            rel = "/".join((project.name,) + parts)
-            problems = note_findings(path, project.name, parts)
+            rel = "/".join((prefix,) + parts)
+            problems = note_findings(path, slug, parts)
             if problems is None:
                 continue
             count += 1
@@ -185,13 +219,18 @@ def self_test(out=None) -> int:
         _put(project / retired / "tracker-build-it.md", tk.render(good))
         _put(project / "notes" / "stray.md", tk.render(good))
         _put(projects / "_archive" / "old" / "tracker.md", "not a tracker\n")
+        done = projects / COMPLETED / "fixture"
+        _put(done / "tracker.md", tk.render(dataclasses.replace(good, task=None)))
+        _put(done / "completed" / "tasks" / "build-it" / "tracker.md", tk.render(good))
+        _put(projects / COMPLETED / "other" / "tracker.md",
+             tk.render(dataclasses.replace(good, task=None)))  # names `fixture`, sits in `other`
         count, findings = projects_findings(projects)
     flagged = sorted({f.split(": ", 1)[0] for f in findings})
     expected = sorted([f"fixture/{retired}/tracker-build-it.md", "fixture/notes/stray.md",
-                       "fixture/tasks/broken/tracker.md"])
-    ok = count == 5 and flagged == expected
+                       "fixture/tasks/broken/tracker.md", f"{COMPLETED}/other/tracker.md"])
+    ok = count == 8 and flagged == expected
     if not ok:
-        print(f"check-tracker-schema: self-test FAILED — read {count} (expected 5), "
+        print(f"check-tracker-schema: self-test FAILED — read {count} (expected 8), "
               f"flagged {flagged} (expected {expected})", file=out)
         return 1
     return 0

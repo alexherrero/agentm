@@ -117,6 +117,17 @@ class VaultNoteCheck(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertIn("is not the project it sits in (`pixelton`)", problems[0].text)
 
+    def test_a_finished_project_under_completed_is_still_its_project(self) -> None:
+        # A finished project moves whole to projects/completed/<slug>/; its
+        # tracker still names <slug>, and still names a wrong project.
+        self.assertEqual(self._check(
+            "projects/completed/home-tech-next/completed/tasks/003-stand-up-the-runner/tracker.md",
+            TRACKER.format(status="queued")), [])
+        problems = self._check("projects/completed/pixelton/tasks/003-stand-up-the-runner/tracker.md",
+                               TRACKER.format(status="queued"))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("is not the project it sits in (`pixelton`)", problems[0].text)
+
     def test_each_unregistered_type_from_the_brief_is_named_with_registered_neighbours(self) -> None:
         for value in ("draft", "transcript", "gate-report", "list", "check"):
             with self.subTest(value=value):
