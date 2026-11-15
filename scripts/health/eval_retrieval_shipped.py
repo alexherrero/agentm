@@ -407,6 +407,13 @@ _RETIRE_REMAPS = (
      "projects/completed/primos/decisions/launch-readiness-verdict.md"),
     ("projects/primos/analysis/_summary.md",
      "projects/completed/primos/analysis/_summary.md"),
+    # The vault audit's batch m03 (2026-11-14): the June decision and research
+    # notes the later work overtook moved to agentm's `completed/`, each
+    # marked archived with an "Overtaken" line.
+    ("projects/agentm/decisions/research-concurrent-vault-writes.md",
+     "projects/agentm/completed/research-concurrent-vault-writes.md"),
+    ("projects/agentm/decisions/research-token-efficiency-novel.md",
+     "projects/agentm/completed/research-token-efficiency-novel.md"),
 )
 
 

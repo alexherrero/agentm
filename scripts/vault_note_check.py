@@ -198,7 +198,10 @@ def tracker_problems(path: Path, rel: str, text: str) -> list:
     parts = tuple(rel.split("/"))
     if len(parts) < 3 or parts[0] != PROJECTS:
         return []
-    slug, inner = parts[1], parts[2:]
+    split = tracker_gate.split_project(parts[1:])
+    if split is None:
+        return []
+    slug, inner = split
     if not tracker_gate.in_projects_space(slug, inner):
         return []
     out = []
