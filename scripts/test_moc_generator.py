@@ -44,6 +44,25 @@ class TestCommandLine(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in vault.iterdir()), ["memory"])
 
 
+class TestStandardsMap(unittest.TestCase):
+    """The voice library is the guides directly in `standards/voice/`. A guide
+    moved into a subfolder such as `retired/` has left the library, and the
+    map must stop listing it — the 2026-11-13 vault audit found a map that
+    still named three retired guides as live."""
+
+    def test_a_retired_voice_guide_is_not_listed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            standards = Path(tmp) / "standards"
+            (standards / "voice" / "retired").mkdir(parents=True)
+            (standards / "storage-rules.md").write_text("# The rules\n", encoding="utf-8")
+            (standards / "voice" / "live-guide.md").write_text("# Live\n", encoding="utf-8")
+            (standards / "voice" / "retired" / "old-guide.md").write_text("# Old\n", encoding="utf-8")
+            text = mg.render_standards_moc(standards)
+            self.assertIn("## Voice library (1)", text)
+            self.assertIn("[[live-guide]]", text)
+            self.assertNotIn("old-guide", text)
+
+
 def _write_project_note(path: Path, arc: str | None, created: str, slug: str | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     slug_line = f"slug: {slug}\n" if slug else f"slug: {path.stem}\n"

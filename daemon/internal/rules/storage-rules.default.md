@@ -21,9 +21,10 @@ checkout with no vault attached — a fresh clone, a CI run, a unit test. If the
 vault instance exists, it wins.
 
 Everything a program checks lives in the fenced `storage-rules` block at the
-bottom. The prose around it is what the enrichment prompt reads, so it is
-written to be understood rather than parsed. The two are meant to agree; when
-they disagree, the block is what runs, and the disagreement is a bug in this
+bottom. Of the prose, a program reads only the Importance section, which the
+nightly enrichment proposes importance from. The rest is for you and for every
+session, which loads this file whole except the block. When the prose and the
+block disagree, the block is what runs, and the disagreement is a bug in this
 file.
 
 **A block that will not parse halts filing.** Notes wait as `unfiled`, the
