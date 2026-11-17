@@ -161,6 +161,9 @@ class Trace:
             "lifecycle: active",
             "source: conversation",
             f"created: {self.when:%Y-%m-%d}",
+            # Required by the vault lint; a later write that changes the
+            # trace moves it forward, never back (`with_updated`).
+            f"updated: {self.when:%Y-%m-%d}",
         ]
         if self.project:
             lines.append(f"project: {_yaml_scalar(self.project)}")
@@ -744,6 +747,31 @@ def _set_fm(fm_lines: list, key: str, rendered: "str | None", after: str) -> lis
     return out + [rendered]
 
 
+_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _later_updated(fm_lines: list, *days) -> list:
+    """`fm_lines` with `updated:` set to the latest of its own value and
+    `days`, right after `created:` when it is new. The date moves forward and
+    never back; with no day to set, the lines come back as they were."""
+    known = [str(d)[:10] for d in (_fm_value(fm_lines, "updated"), *days) if d]
+    known = [d for d in known if _DAY.match(d)]
+    if not known:
+        return fm_lines
+    return _set_fm(fm_lines, "updated", f"updated: {max(known)}", "created")
+
+
+def with_updated(text: str, day: str) -> str:
+    """`text` with its `updated:` moved forward to `day`, never back."""
+    if not text.startswith("---\n"):
+        return text
+    end = text.find("\n---\n", 4)
+    if end < 0:
+        return text
+    fm = _later_updated(text[4:end].split("\n"), day)
+    return "---\n" + "\n".join(fm) + text[end:]
+
+
 def _link_target(line: str) -> str:
     m = re.match(r"^- \[\[([^\]|]+)", line.strip())
     return Path(m.group(1)).name if m else line.strip()
@@ -782,10 +810,11 @@ def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcom
     in first-seen order. The Outcome is the incoming one when it has one: the
     newest closing recap is where the session stands. A fold that merges an
     older file into a newer one passes `newest_outcome=False` to keep the
-    base's."""
+    base's. `updated:` is the later of the two files', so a fold never moves
+    it back; the day of a write is `with_updated`'s."""
     b_fm, b_sec = _split_trace(base)
     i_fm, i_sec = _split_trace(incoming)
-    fm = list(b_fm)
+    fm = _later_updated(list(b_fm), _fm_value(i_fm, "updated"))
     fallback = _fm_value(b_fm, "title") == fallback_title(session_id)
     # A trace the night has summarized keeps the night's title and outcome
     # (task 203); a later turn adds to its lists and nothing else.
@@ -848,7 +877,9 @@ SUMMARY_OUTCOME_CHARS = 700
 
 def summarized_text(text: str, *, title: str, outcome: str, day: str) -> str:
     """A trace's text with the night's title and outcome and `summarized:
-    <day>`. The file name, `## Asked` and every list stay as they were."""
+    <day>`. The file name, `## Asked` and every list stay as they were. A
+    summary that changes the trace moves its `updated:` forward to `day`
+    (never back); one that changes nothing leaves the text as it was."""
     fm, sections = _split_trace(text)
     title = " ".join((title or "").split())[:SUMMARY_TITLE_CHARS].strip()
     outcome = (outcome or "").strip()[:SUMMARY_OUTCOME_CHARS].strip()
@@ -863,7 +894,8 @@ def summarized_text(text: str, *, title: str, outcome: str, day: str) -> str:
         body = _fences_closed((sections.get(name) or "").strip("\n"))
         if body.strip():
             out += [f"## {name}", "", body, ""]
-    return "\n".join(out)
+    after = "\n".join(out)
+    return after if after == text else with_updated(after, day)
 
 
 def apply_summary(vault_path, session_id: str, *, title: str, outcome: str, day: str) -> "str | None":
@@ -907,7 +939,7 @@ def find_session_trace(vault_path, session_id: str) -> "Path | None":
     return sorted(found)[0][3] if found else None
 
 
-def write_trace(vault_path, trace: Trace) -> str | None:
+def write_trace(vault_path, trace: Trace, *, today: "date | None" = None) -> str | None:
     """Write the trace under the memory root; None when the session left
     nothing to record. A session that already has a trace is written into it,
     whatever its title says now; only a session with none gets a new name.
@@ -945,6 +977,11 @@ def write_trace(vault_path, trace: Trace) -> str | None:
     # A link this trace carries to another session's trace by a name that
     # trace no longer has points at its current file.
     text, _ = retarget_trace_links(text, _trace_stems_by_key(root))
+    if existing is not None and text != base:
+        # A write that changes the trace moves its `updated:` forward to the
+        # day of the write (`today` pins it for a test); a repeat that adds
+        # nothing leaves the file byte-identical.
+        text = with_updated(text, f"{today or date.today():%Y-%m-%d}")
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".md.tmp")
