@@ -948,5 +948,94 @@ class ALinkFollowsATraceWrittenUnderANewName(unittest.TestCase):
         self.assertNotIn(self.OLD, text)
         self.assertIn("[[2026-09-14-movies-tv-games-collection-planning-3587cdab]]", text)
 
+
+class ATraceSaysWhenItLastChanged(unittest.TestCase):
+    """`updated:` is a field the vault lint requires. The writer never set it,
+    so each new trace was a lint error (2026-11-16: 82 traces fixed by hand).
+    A later write moves it forward and never back."""
+
+    SID = "4a0bb8e1-0000-4000-8000-000000000001"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name) / "vault"
+        (self.vault / "memory" / "episodic").mkdir(parents=True)
+
+    def _trace(self, recalled="memory/semantic/a.md"):
+        return et.Trace(when=date(2026, 9, 13), session_id=self.SID, title="fix the lint",
+                        touched=[recalled], recalled=[recalled])
+
+    def _fm(self, rel):
+        import yaml
+        return yaml.safe_load((self.vault / rel).read_text(encoding="utf-8").split("---")[1])
+
+    def _keys(self, text):
+        return [ln.split(":", 1)[0] for ln in text.split("---")[1].strip().splitlines()]
+
+    def test_a_new_trace_carries_updated_right_after_created_in_card_order(self):
+        import card_shape
+        text = self._trace().render()
+        keys = self._keys(text)
+        self.assertIn("updated", keys)
+        self.assertEqual(keys.index("updated"), keys.index("created") + 1)
+        self.assertEqual(card_shape.order_findings(keys), [])
+        self.assertIn("created: 2026-09-13\nupdated: 2026-09-13\n", text)
+
+    def test_a_later_write_moves_updated_to_the_day_of_the_write(self):
+        rel = et.write_trace(self.vault, self._trace(), today=date(2026, 9, 13))
+        et.write_trace(self.vault, self._trace("memory/semantic/b.md"), today=date(2026, 9, 15))
+        fm = self._fm(rel)
+        self.assertEqual(str(fm["created"]), "2026-09-13")
+        self.assertEqual(str(fm["updated"]), "2026-09-15")
+
+    def test_a_later_write_never_moves_updated_back(self):
+        rel = et.write_trace(self.vault, self._trace(), today=date(2026, 9, 13))
+        path = self.vault / rel
+        path.write_text(path.read_text(encoding="utf-8").replace("updated: 2026-09-13", "updated: 2026-10-01"),
+                        encoding="utf-8")
+        et.write_trace(self.vault, self._trace("memory/semantic/b.md"), today=date(2026, 9, 20))
+        self.assertEqual(str(self._fm(rel)["updated"]), "2026-10-01")
+
+    def test_a_trace_written_before_the_field_gains_it_after_created(self):
+        rel = et.write_trace(self.vault, self._trace(), today=date(2026, 9, 13))
+        path = self.vault / rel
+        path.write_text(path.read_text(encoding="utf-8").replace("updated: 2026-09-13\n", ""), encoding="utf-8")
+        et.write_trace(self.vault, self._trace("memory/semantic/b.md"), today=date(2026, 9, 16))
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("created: 2026-09-13\nupdated: 2026-09-16\n", text)
+        self.assertEqual(self._keys(text).count("updated"), 1)
+
+    def test_the_nights_summary_moves_updated_forward_and_never_back(self):
+        rel = et.write_trace(self.vault, self._trace(), today=date(2026, 9, 13))
+        et.apply_summary(self.vault, self.SID, title="Fix the lint", outcome="Done.", day="2026-09-14")
+        self.assertEqual(str(self._fm(rel)["updated"]), "2026-09-14")
+        et.apply_summary(self.vault, self.SID, title="Fix the lint again", outcome="Done.", day="2026-09-10")
+        self.assertEqual(str(self._fm(rel)["updated"]), "2026-09-14")
+
+    def test_a_later_write_that_adds_nothing_leaves_updated_and_the_file_alone(self):
+        rel = et.write_trace(self.vault, self._trace(), today=date(2026, 9, 13))
+        once = (self.vault / rel).read_text(encoding="utf-8")
+        et.write_trace(self.vault, self._trace(), today=date(2026, 9, 18))
+        self.assertEqual((self.vault / rel).read_text(encoding="utf-8"), once)
+
+    def test_a_summary_repeated_on_a_later_night_leaves_updated_alone(self):
+        rel = et.write_trace(self.vault, self._trace(), today=date(2026, 9, 13))
+        et.apply_summary(self.vault, self.SID, title="Fix the lint", outcome="Done.", day="2026-09-14")
+        text = (self.vault / rel).read_text(encoding="utf-8")
+        after = et.summarized_text(text, title="Fix the lint", outcome="Done.", day="2026-09-14")
+        self.assertEqual(after, text)
+        # The same summary a night later changes only its own `summarized:`
+        # day, which is a change: `updated:` follows it.
+        later = et.summarized_text(text, title="Fix the lint", outcome="Done.", day="2026-09-15")
+        self.assertIn("updated: 2026-09-15\n", later)
+
+    def test_a_fold_of_two_files_keeps_the_later_updated(self):
+        older = self._trace().render().replace("updated: 2026-09-13", "updated: 2026-09-20")
+        newer = self._trace("memory/semantic/b.md").render()
+        merged = et.merge_trace_text(newer, older, self.SID, newest_outcome=False)
+        self.assertIn("updated: 2026-09-20\n", merged)
+        self.assertEqual(self._keys(merged).count("updated"), 1)
+
 if __name__ == "__main__":
     unittest.main()
