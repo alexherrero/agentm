@@ -886,5 +886,67 @@ class ARelayIsNotTheTitle(unittest.TestCase):
         self.assertEqual(title, "session 82d1ca38")
 
 
+
+class ALinkFollowsATraceWrittenUnderANewName(unittest.TestCase):
+    """A trace removed and written again later takes its session's current
+    title, so its file name changes; the notes that linked the old name follow
+    it in the same write (2026-11-16: 77 broken links in traces)."""
+
+    OLD = "2026-09-14-let-s-open-a-project-file-for-my-movies-3587cdab"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.vault = Path(self._tmp.name) / "Vault"
+        (self.vault / ".obsidian").mkdir(parents=True)
+        self.root = self.vault / "agent"
+        self.episodic = self.root / "memory" / "episodic"
+        self.episodic.mkdir(parents=True)
+        self.linker = self.episodic / "2026-09-17-plan-eleven-d29f7faf.md"
+        self.linker.write_text(
+            "---\ntitle: plan eleven\n"
+            f'touched: ["{self.OLD}", "vault-location"]\n'
+            "---\n\n## Recalled\n\n"
+            f"- [[{self.OLD}]]\n- [[memory/episodic/{self.OLD}|that session]]\n"
+            "- [[2026-09-16-a-session-that-is-gone-6d8fd821]]\n", encoding="utf-8")
+        self.idea = self.vault / "personal" / "ideas" / "plex.md"
+        self.idea.parent.mkdir(parents=True)
+        self.idea.write_text(f"Came from [[{self.OLD}]].\n", encoding="utf-8")
+
+    def _write(self, title="Movies TV games collection planning"):
+        trace = et.Trace(when=date(2026, 9, 14), session_id="3587cdab-1111-2222", title=title,
+                         touched=["memory/semantic/plex.md"], captured=["memory/semantic/plex.md"])
+        return et.write_trace(self.root, trace)
+
+    def test_the_links_to_the_old_name_name_the_new_file(self):
+        rel = self._write()
+        new = Path(rel).stem
+        self.assertEqual(new, "2026-09-14-movies-tv-games-collection-planning-3587cdab")
+        text = self.linker.read_text(encoding="utf-8")
+        self.assertNotIn(self.OLD, text)
+        self.assertIn(f"- [[{new}]]", text)
+        self.assertIn(f"[[memory/episodic/{new}|that session]]", text)
+        self.assertIn(f'touched: ["{new}", "vault-location"]', text)
+        self.assertIn("[[2026-09-16-a-session-that-is-gone-6d8fd821]]", text,
+                      "a link to a session with no trace is not this write's to change")
+        self.assertEqual(self.idea.read_text(encoding="utf-8"), f"Came from [[{new}]].\n",
+                         "a note outside the memory root follows too")
+
+    def test_an_old_name_that_still_has_its_file_is_left_alone(self):
+        (self.episodic / f"{self.OLD}.md").write_text("---\ntitle: x\n---\n", encoding="utf-8")
+        before = self.linker.read_text(encoding="utf-8")
+        self._write()
+        self.assertEqual(self.linker.read_text(encoding="utf-8"), before)
+
+    def test_a_trace_links_another_session_by_its_current_name(self):
+        (self.episodic / "2026-09-14-movies-tv-games-collection-planning-3587cdab.md").write_text(
+            "---\ntitle: x\n---\n", encoding="utf-8")
+        trace = et.Trace(when=date(2026, 9, 17), session_id="d29f7faf-0000", title="plan eleven",
+                         touched=[self.OLD], recalled=[self.OLD])
+        self.linker.unlink()
+        text = (self.root / et.write_trace(self.root, trace)).read_text(encoding="utf-8")
+        self.assertNotIn(self.OLD, text)
+        self.assertIn("[[2026-09-14-movies-tv-games-collection-planning-3587cdab]]", text)
+
 if __name__ == "__main__":
     unittest.main()
