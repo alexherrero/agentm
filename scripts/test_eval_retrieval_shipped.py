@@ -323,6 +323,36 @@ class TheSearchMatchesTheHook(unittest.TestCase):
         self.assertEqual(argv[argv.index("-k") + 1],
                          str(5 * recall.DAEMON_OVERFETCH))
 
+    def test_every_query_asks_from_a_folder_no_project_claims(self):
+        # The gate runs from the AgentM clone, whose recall_excludes wall names
+        # shrimpi. Without -cwd the search takes that folder and the wall, and
+        # the gold question about Shrimpi is lost to the wall, not the ranker.
+        import os
+        patcher, seen = self._daemon_returning(["agent/memory/2026/08/a.md"])
+        with patcher:
+            ev.search("agentmd", "when did I start working on shrimpi", k=5)
+        argv = seen["argv"]
+        self.assertIn("-cwd", argv, "the query fell back to the runner's folder")
+        folder = argv[argv.index("-cwd") + 1]
+        self.assertTrue(os.path.isdir(folder), "the neutral folder does not exist")
+        self.assertEqual(os.listdir(folder), [], "the neutral folder is not empty")
+        self.assertNotEqual(os.path.realpath(folder), os.path.realpath(os.getcwd()))
+        self.assertLess(argv.index("-cwd"), len(argv) - 1,
+                        "-cwd came after the terms, where the parser stops")
+
+    def test_a_cwd_passed_through_search_flag_wins(self):
+        patcher, seen = self._daemon_returning(["agent/memory/2026/08/a.md"])
+        saved = list(ev.SEARCH_EXTRA)
+        ev.SEARCH_EXTRA[:] = ["-cwd", "/somewhere/a/project"]
+        try:
+            with patcher:
+                ev.search("agentmd", "what did we decide about the ranker", k=5)
+        finally:
+            ev.SEARCH_EXTRA[:] = saved
+        argv = seen["argv"]
+        self.assertEqual(argv.count("-cwd"), 1, "two -cwd flags were passed")
+        self.assertEqual(argv[argv.index("-cwd") + 1], "/somewhere/a/project")
+
     def test_the_result_is_still_truncated_to_k(self):
         patcher, _ = self._daemon_returning(
             [f"agent/memory/2026/08/n{i}.md" for i in range(10)])

@@ -656,8 +656,32 @@ DEFAULT_K = 5
 # Extra `agentmd search` flags every query carries: a frozen snapshot's
 # `-vault`/`-index`, and an experiment arm's stage flag (task 184's `-mmr`,
 # `-spread`). Empty is the nightly gate's shape, and the argv is then the hook's
-# exactly. Set from the command line, never by a gate.
+# but for the folder below. Set from the command line, never by a gate.
 SEARCH_EXTRA: list = []
+
+# The folder every query says it is working in (`-cwd`). Without it the search
+# command takes the folder this script runs in, and a project's
+# `recall_excludes:` wall follows the folder. The nightly gate runs from the
+# AgentM clone, so since 2026-11-15, when AgentM's wall began naming `shrimpi`,
+# it has been scoring what an AgentM session sees, not the vault: the gold
+# question about Shrimpi lost its answer to the wall, not to the ranker.
+# Measuring the vault means asking from a folder no project claims. An empty
+# directory made for the run is one: no project's code path can sit under a
+# fresh temporary name. A run that wants a project's view passes its own
+# `-cwd` through --search-flag, and that wins.
+_NEUTRAL_CWD: list = []
+
+
+def neutral_cwd() -> str:
+    """An empty folder no project claims, made once per run and removed at exit."""
+    if not _NEUTRAL_CWD:
+        import atexit
+        import shutil
+        import tempfile
+        made = tempfile.mkdtemp(prefix="agentm-eval-neutral-")
+        atexit.register(shutil.rmtree, made, True)
+        _NEUTRAL_CWD.append(made)
+    return _NEUTRAL_CWD[0]
 
 # The snapshot index an experiment measures, or None for the live one. `agentmd
 # status` always reports the resident daemon's own index, so with a snapshot the
@@ -1033,6 +1057,8 @@ def _search_rows(binary: str, question: str, k: int,
         if before:
             argv += ["-before", before]
     # Before the terms, because the flag parser stops at the first positional.
+    if "-cwd" not in SEARCH_EXTRA:
+        argv += ["-cwd", neutral_cwd()]
     argv += SEARCH_EXTRA
     argv.append(terms)
 
