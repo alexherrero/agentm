@@ -942,12 +942,119 @@ def write_trace(vault_path, trace: Trace) -> str | None:
     else:
         rel = trace.rel
         text = trace.render()
+    # A link this trace carries to another session's trace by a name that
+    # trace no longer has points at its current file.
+    text, _ = retarget_trace_links(text, _trace_stems_by_key(root))
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".md.tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
+    if existing is None:
+        # A new file for a session that had one under another name: the
+        # notes that link the old name follow it (2026-11-16: 77 broken links
+        # in traces named traces re-created under their app-given titles).
+        retarget_vault_links(root, Path(rel).stem)
     return rel
+
+
+# ── links to a trace that changed its name ──────────────────────────────────
+# A trace is named `<day>-<slug>-<head>`, and only the slug ever changes: a
+# trace removed and written again later takes its session's current title.
+# The day and the session's head stay, so a link whose name has them and
+# names no trace is a link to the trace that has them now.
+
+_TRACE_STEM = re.compile(r"^(\d{4}-\d{2}-\d{2})-.+-([a-z0-9]{8})$")
+_WIKI = re.compile(r"\[\[([^\]|#]*/)?([a-z0-9][a-z0-9-]*)((?:#|\|)[^\]]*)?\]\]")
+_QUOTED = re.compile(r"([\"'])([a-z0-9][a-z0-9-]*)\1")
+
+
+def _trace_key(stem: str) -> "tuple | None":
+    m = _TRACE_STEM.match(stem)
+    return (m.group(1), m.group(2)) if m else None
+
+
+def _trace_stems_by_key(memory_root) -> dict:
+    """Each trace on disk by its (day, head), memory-root relative."""
+    folder = Path(memory_root) / EPISODIC_DIR
+    out = {}
+    if folder.is_dir():
+        for p in sorted(folder.glob("*.md")):
+            key = _trace_key(p.stem)
+            if key is not None:
+                out.setdefault(key, set()).add(p.stem)
+    return out
+
+
+def retarget_trace_links(text: str, stems_by_key: dict) -> "tuple[str, int]":
+    """`text` with each wikilink, and each quoted frontmatter item, that names
+    a trace by a name no trace has pointed at the one trace with the same day
+    and session head. A name that still has a file, or whose day and head have
+    no trace or two, is left as it is."""
+    def target(stem: str) -> "str | None":
+        key = _trace_key(stem)
+        found = stems_by_key.get(key) if key else None
+        if not found or stem in found or len(found) != 1:
+            return None
+        return next(iter(found))
+
+    count = 0
+
+    def wiki(m):
+        nonlocal count
+        new = target(m.group(2))
+        if new is None:
+            return m.group(0)
+        count += 1
+        return f"[[{m.group(1) or ''}{new}{m.group(3) or ''}]]"
+
+    def quoted(m):
+        nonlocal count
+        new = target(m.group(2))
+        if new is None:
+            return m.group(0)
+        count += 1
+        return f"{m.group(1)}{new}{m.group(1)}"
+
+    text = _WIKI.sub(wiki, text)
+    if text.startswith("---\n"):
+        end = text.find("\n---", 4)
+        if end > 0:
+            text = _QUOTED.sub(quoted, text[:end]) + text[end:]
+    return text, count
+
+
+def retarget_vault_links(memory_root, stem: str) -> list:
+    """Point every note in the vault that links this trace's session by an old
+    name at `stem`. Only names with the trace's own day and head are touched.
+    Returns the notes rewritten, relative to the vault root."""
+    key = _trace_key(stem)
+    if key is None:
+        return []
+    import vault_layout  # same skill dir
+    vault = vault_layout.vault_root_candidates(memory_root)[0]
+    # Every trace the day and head have on disk: an old name that still has
+    # its file is a trace of its own, and a link to it is not stale.
+    stems = {key: _trace_stems_by_key(memory_root).get(key) or {stem}}
+    needle = "-" + key[1]
+    written = []
+    for p in sorted(vault.rglob("*.md")):
+        rel = p.relative_to(vault)
+        if any(part.startswith(".") for part in rel.parts) or p.stem == stem:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if needle not in text:
+            continue
+        after, n = retarget_trace_links(text, stems)
+        if n:
+            tmp = p.with_suffix(".md.tmp")
+            tmp.write_text(after, encoding="utf-8")
+            os.replace(tmp, p)
+            written.append(rel.as_posix())
+    return written
 
 
 def _stamps_for(transcript: Path, project: str, task: str, memory_root=None) -> tuple:
