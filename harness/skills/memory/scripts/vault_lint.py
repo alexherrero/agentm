@@ -550,9 +550,37 @@ def _wikilink_resolves(target: str, model: VaultModel) -> bool:
     return t in model.link_stems or t in model.link_aliases
 
 
+_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+_CODE_SPAN_RE = re.compile(r"(`+)(?:(?!\1).)+?\1")
+
+
+def _outside_code(body: str) -> str:
+    """The body with fenced blocks and inline code spans blanked out.
+
+    Obsidian draws no link inside code, and that is where a page writes a link
+    as an example: a design showing `[[wikilink]]` syntax, a template's
+    `related: [[...]]` line in a fence. Counting those as broken links filled
+    the report with errors no edit could fix short of deleting the example.
+    """
+    out, fence = [], None
+    for line in body.split("\n"):
+        m = _FENCE_RE.match(line)
+        if fence is not None:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):
+                fence = None
+            out.append("")
+            continue
+        if m:
+            fence = m.group(1)
+            out.append("")
+            continue
+        out.append(_CODE_SPAN_RE.sub("", line))
+    return "\n".join(out)
+
+
 def check_wikilinks(entry: Entry, model: VaultModel) -> list:
     out = []
-    for m in _WIKILINK_RE.finditer(entry.body):
+    for m in _WIKILINK_RE.finditer(_outside_code(entry.body)):
         target = m.group(1).split("|", 1)[0].strip()  # strip [[target|alias]]
         if not target:
             continue

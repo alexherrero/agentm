@@ -275,6 +275,27 @@ class TestChecks(unittest.TestCase):
             self.assertEqual(len(wl), 1)  # only [[ghost]] is broken
             self.assertIn("ghost", wl[0].message)
 
+    def test_a_link_inside_code_is_an_example_not_a_link(self):
+        # Obsidian draws no link inside code, so a page showing link syntax
+        # there has no broken link. A real link on the same page still counts.
+        with _Vault() as v:
+            body = ("Write `[[wikilink]]` or ``[[double]]`` to link.\n"
+                    "```yaml\nrelated: [[in-a-fence]]\n```\n"
+                    "~~~\n[[tilde-fence]]\n~~~\n"
+                    "But [[ghost]] is a real link.\n")
+            _write(v, "memory/_always-load/ex.md", _clean("ex"), body=body)
+            _, findings = _lint(v)
+            wl = [f for f in findings if f.check_id == "wikilink-resolution"]
+            self.assertEqual([f.message.split("`")[1] for f in wl], ["[[ghost]]"])
+
+    def test_an_unclosed_backtick_does_not_hide_a_link(self):
+        with _Vault() as v:
+            _write(v, "memory/_always-load/odd.md", _clean("odd"),
+                   body="a stray ` then [[ghost]]\n")
+            _, findings = _lint(v)
+            wl = [f for f in findings if f.check_id == "wikilink-resolution"]
+            self.assertEqual(len(wl), 1)
+
     def test_wikilink_path_style_and_excluded_targets(self):
         with _Vault() as v:
             # A real target inside an EXCLUDED-from-lint dir is still a valid link target.
