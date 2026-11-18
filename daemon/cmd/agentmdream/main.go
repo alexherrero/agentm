@@ -324,9 +324,8 @@ func refuseAStrangeVaultOnLiveState(opts config.Options, cfg *config.Config) err
 // the file's own head, and writes nothing. `-intro <file>` is the adoption: the
 // head is built from that introduction, so the operator reads the whole first
 // rendering before anything replaces their hand-kept file. `-write` makes the
-// write, journaled and under the dreaming lock, and only then. The night never
-// rewrites the file: run this with `-write` whenever an idea is filed or
-// dismissed.
+// write, journaled and under the dreaming lock, and only then; the nightly job
+// keeps it current afterwards.
 func cmdIdeas(args []string) error {
 	fs := newFlagSet("ideas")
 	opts := bindCommon(fs)
@@ -481,6 +480,14 @@ func printReport(rep dreaming.Report) {
 		if len(rep.Entities.PeopleHeld) > 0 {
 			fmt.Printf("  people pages held as they were: %d note(s) could not be read\n", len(rep.Entities.PeopleHeld))
 		}
+	}
+	switch {
+	case rep.Ideas.NotWritten != "":
+		fmt.Printf("ideas: %d card(s), not written — %s\n", rep.Ideas.Cards, rep.Ideas.NotWritten)
+	case rep.Ideas.Changed:
+		fmt.Printf("ideas: %d card(s) in %d group(s), Ideas.md %srebuilt\n", rep.Ideas.Cards, rep.Ideas.Groups, would)
+	default:
+		fmt.Printf("ideas: %d card(s) in %d group(s), Ideas.md unchanged\n", rep.Ideas.Cards, rep.Ideas.Groups)
 	}
 	fmt.Printf("vocabulary: %d note(s) — %d unrecognized, %d malformed, %d retired\n", rep.Vocabulary.Considered,
 		len(rep.Vocabulary.Unrecognized), len(rep.Vocabulary.Malformed), len(rep.Vocabulary.Retired))

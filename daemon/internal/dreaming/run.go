@@ -72,6 +72,8 @@ type Report struct {
 	// Entities is the entity builder (task 179): the repository, issue,
 	// release and people pages it wrote, and those it removed.
 	Entities EntitiesPlan `json:"entities"`
+	// Ideas is `Ideas.md`, rebuilt with the maps (agentm-vault part 13).
+	Ideas IdeasPlan `json:"ideas"`
 	// IdeaJudge is the idea judge's counts for the day, when it ran before this
 	// pass (task 192); the facet reports them.
 	IdeaJudge *IdeaJudgeSummary `json:"idea_judge,omitempty"`
@@ -326,8 +328,14 @@ func Run(cfg *config.Config, opt Options) (Report, error) {
 	mocs.Intents = append(mocs.Intents, rootMap.Intents...)
 	rep.Mocs = mocs
 	intents = append(intents, mocs.Intents...)
-	// `Ideas.md` is not the night's: it is rewritten on request, when an idea
-	// is filed or dismissed (`agentmdream ideas -write`; ruling of 2026-11-17).
+	// `Ideas.md` rides with the maps: a list generated over the idea cards,
+	// under the operator's own head, and only once they have adopted it.
+	ideas, err := PlanIdeas(root, "")
+	if err != nil {
+		return rep, err
+	}
+	rep.Ideas = ideas
+	intents = append(intents, ideas.Intents...)
 	dates, err := PlanDates(root, contract, now)
 	if err != nil {
 		return rep, err

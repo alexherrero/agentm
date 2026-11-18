@@ -13,10 +13,11 @@ import (
 )
 
 // `Ideas.md` — the operator's list of ideas, generated over the idea cards in
-// the vault root's `personal/ideas/` (agentm-vault part 13). It is rewritten on
-// request only — `agentmdream ideas -write`, run when an idea is filed or
-// dismissed — and never by the night: the operator adds to the list and takes
-// from it, so it moves when they do (ruling of 2026-11-17).
+// the vault root's `personal/ideas/` (agentm-vault part 13) and rewritten with
+// the other maps each night. The list is the cards and nothing else — a title
+// per idea, no summary — so it moves only when a card is filed, dismissed,
+// retitled or regrouped (ruling of 2026-11-17).
+// `agentmdream ideas -write` makes the same rewrite at once.
 //
 // The file has two halves and the line between them is a pair of markers. Above
 // and between them is the operator's: the title, and the introduction they
@@ -31,8 +32,8 @@ import (
 // adoption rule: the operator's own `Ideas.md` predates this job, and the first
 // rewrite replaces it wholesale, so it happens once, on purpose, through
 // `agentmdream ideas -intro <file> -write`, after the operator has read the
-// dry run. From then on the markers are the operator's standing permission for
-// each requested rewrite, and deleting them withdraws it.
+// dry run. From then on the markers are the operator's standing permission, and
+// deleting them withdraws it.
 //
 // Nothing here carries a date or a count that moves without a card moving, so a
 // rewrite over an unchanged folder is byte-identical and plans nothing.
@@ -48,8 +49,8 @@ const (
 	// IdeasIntroStart and IdeasIntroEnd are the marker lines, as the adoption
 	// writes them. They are found by their prefixes, so the operator may reword
 	// a marker's tail without losing it.
-	IdeasIntroStart = "<!-- ideas:intro:start — the introduction above the list is yours; each rebuild copies it as it is -->"
-	IdeasIntroEnd   = "<!-- ideas:intro:end — everything below is rebuilt from personal/ideas/ when an idea is filed or dismissed -->"
+	IdeasIntroStart = "<!-- ideas:intro:start — the introduction above the list is yours; the night copies it as it is -->"
+	IdeasIntroEnd   = "<!-- ideas:intro:end — everything below is rebuilt every night from personal/ideas/ -->"
 
 	ideasStartPrefix = "<!-- ideas:intro:start"
 	ideasEndPrefix   = "<!-- ideas:intro:end"

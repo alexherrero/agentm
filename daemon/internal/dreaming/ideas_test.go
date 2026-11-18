@@ -276,29 +276,35 @@ func TestTheAdoptionWritesTheApprovedIntroductionOnceAndTheNightKeepsIt(t *testi
 	}
 }
 
-// The night leaves `Ideas.md` alone: the operator adds to the list and takes
-// from it on request, so a card filed or dismissed by hand shows up only when
-// `agentmdream ideas -write` runs (ruling of 2026-11-17).
-func TestTheNightLeavesIdeasAlone(t *testing.T) {
+// Through the night itself: `Run` rebuilds Ideas.md with the maps when a card
+// moved, and a second pass over the same folder writes nothing to it. The
+// summary the night writes on a card never reaches the list.
+func TestTheNightRebuildsIdeasWithTheMaps(t *testing.T) {
 	cfg, vault, root := ideasVault(t)
 	writeFile(t, vault, IdeasFile, operatorHead)
 	putIdea(t, vault, "a", "Alpha", "First.", "coding", "")
 	now := time.Date(2026, 9, 21, 7, 0, 0, 0, time.UTC)
-	if _, err := Run(cfg, Options{Now: now, Apply: true, Force: true}); err != nil {
-		t.Fatal(err)
-	}
-	if got := ideasFile(t, vault); got != operatorHead {
-		t.Fatalf("the night rewrote Ideas.md:\n%s", got)
-	}
-	// The requested write still picks the card up.
-	plan, err := PlanIdeas(root, "")
+	rep, err := Run(cfg, Options{Now: now, Apply: true, Force: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	applyIdeas(t, root, plan)
-	if got := ideasFile(t, vault); !strings.HasPrefix(got, operatorHead) || !strings.Contains(got, "## Coding\n\n- [[a|Alpha]]\n") {
-		t.Fatalf("Ideas.md after the requested write:\n%s", got)
+	if !rep.Ideas.Changed {
+		t.Fatalf("the night did not rebuild Ideas.md: %+v", rep.Ideas)
 	}
+	got := ideasFile(t, vault)
+	if !strings.HasPrefix(got, operatorHead) || !strings.Contains(got, "## Coding\n\n- [[a|Alpha]]\n") {
+		t.Fatalf("Ideas.md after the night:\n%s", got)
+	}
+	// A new summary on the card is not a change to the list.
+	putIdea(t, vault, "a", "Alpha", "A summary the night rewrote.", "coding", "")
+	again, err := Run(cfg, Options{Now: now.Add(time.Hour), Apply: true, Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Ideas.Changed || ideasFile(t, vault) != got {
+		t.Errorf("a second night rewrote a list whose cards kept their titles: %+v", again.Ideas)
+	}
+	_ = root
 }
 
 // A group word reads as a heading: hyphens to spaces, the first letter raised,
