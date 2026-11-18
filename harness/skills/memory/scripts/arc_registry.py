@@ -62,6 +62,10 @@ KNOWN_ARCS: frozenset[str] = frozenset({
     # predating v4) belongs to this same backfill pass.
     "worktree-native-flow", "observability", "ci-walltime-diet",
     "crickets-v3",
+    # (e) added 2026-11-17 in the vault cleanup: the memory-ingestion research
+    # arc of 2026-08-18, twelve papers under projects/agentm/research/ that
+    # carried the label before any list named it.
+    "memory-ingestion",
 })
 
 
