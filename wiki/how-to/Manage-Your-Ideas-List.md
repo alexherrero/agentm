@@ -5,7 +5,7 @@
 > **Goal:** Adopt the generated `Ideas.md` once, then add, regroup, and retire ideas by editing their cards — never the file itself.
 > **Prereqs:** `MEMORY_ROOT` set. `agentmdream` built and reachable (`~/.local/bin/agentmdream`, or built from `daemon/` — see [Memory daemon reference § the dreaming binary](Memory-Daemon#the-dreaming-binary-agentmdream)). At least one idea filed, or ready to file one — see [Drop a card in the inbox](Drop-A-Card-In-The-Inbox).
 
-`Ideas.md`, at the vault root, is a list the dreaming binary rebuilds every night over the idea cards in `personal/ideas/`. Everything from the top of the file through your own end marker is yours, copied into every rebuild byte for byte; below it, the list is entirely the night's — one heading per group your cards carry, one line per idea, and the dismissed ones set apart. You never edit the list directly. You edit the cards, and the list follows.
+`Ideas.md`, at the vault root, is a list the dreaming binary rebuilds every night over the idea cards in `personal/ideas/`, and from nothing else. Everything from the top of the file through your own end marker is yours, copied into every rebuild byte for byte; below it, the list is generated — one heading per group your cards carry, one bullet per idea that is just its title linking to the card, and the dismissed ones set apart. You never edit the list directly. You edit the cards, and the list follows.
 
 ## Steps
 
@@ -32,7 +32,7 @@
 
 3. **Regroup an idea.** Edit `area:` on its card by hand. There's no separate registry of groups to update — the heading in `Ideas.md` is generated from whatever values the cards carry, so renaming or merging a group is this one edit, repeated per card it applies to.
 
-4. **Retire an idea.** Add `dismissed: YYYY-MM-DD` to its card. Nothing deletes it — the card stays on disk in `personal/ideas/`, and reappears on the live list the moment you remove the date.
+4. **Retire an idea.** Run `python3 harness/skills/memory/scripts/idea_cards.py dismiss <card>`, which writes `dismissed:` with today's date and `status: dropped` together. Nothing deletes it — the card stays on disk in `personal/ideas/`, and reappears on the live list the moment you remove the date.
 
 5. **See the change land.** The nightly `agentmdream run -apply` rebuilds `Ideas.md` as one of its jobs, right alongside the maps. To see it sooner:
 
@@ -44,6 +44,7 @@
 
 ## What the night does to an idea card
 
+- **It rebuilds `Ideas.md` from the cards.** The list carries only each card's title, so the summary the night writes on a card never moves it; it changes when a card is filed, dismissed, retitled or regrouped.
 - **It enriches it.** An idea card joins the same nightly pass as any other card, in its own turn, and may add a summary, tags, related links, `importance_proposed`, and — on a deep pass — its own dated section under `## Added by dreaming`.
 - **It never re-grades it.** `status`, `filing_confidence`, `title` and `type` stay exactly what the card carries. The card never sinks to `dormant`, whatever the pass thinks of it.
 - **It adds a repeat you said.** When a session records a remark that repeats this idea, the nightly idea judge adds it as a dated entry at the end of the card's `## Added by dreaming` section, with its source, and changes nothing else on the card. The night never creates a card in `personal/ideas/`: a new idea waits in the inbox for you.
@@ -55,7 +56,7 @@ Full mechanism: [Memory daemon reference § Idea cards](Memory-Daemon#idea-cards
 ## Verify
 
 - `Ideas.md` opens with your introduction, between the two markers, byte for byte what you gave it.
-- Below the end marker, one `## <area>` heading per group your cards actually carry — alphabetical, with cards carrying no `area:` last, under "no group yet" — each idea a line like `- [[a-thought-from-the-couch|A thought from the couch]] — <summary>`.
+- Below the end marker, one `## <area>` heading per group your cards actually carry — alphabetical, with cards carrying no `area:` last, under "no group yet" — each idea a bullet like `- [[a-thought-from-the-couch|A thought from the couch]]`, the title alone. The heading is the group word with hyphens as spaces and its first letter raised.
 - A dismissed idea sits inside one collapsed `> [!note]- Dismissed (N)` callout at the end, not under its old heading.
 - `agentmdream ideas` (no flags) prints the rendering it would write next, and, on stderr, a line naming the card and group counts and whether a rebuild would change anything.
 
@@ -63,7 +64,7 @@ Full mechanism: [Memory daemon reference § Idea cards](Memory-Daemon#idea-cards
 
 - **`Ideas.md` never changes, however many ideas I file.** It probably isn't adopted yet. `agentmdream ideas` (no flags) says `nothing to render — Ideas.md carries no markers, so it has not been adopted and is not written` when that's why — go back to step 1.
 - **An idea I filed isn't on the list.** Confirm the card sits directly inside `personal/ideas/` — a subfolder is never read — and check its `area:`. A card with no `area:` still appears, under "no group yet", never silently dropped; if it's missing entirely, confirm the card's filename ends in `.md` and doesn't start with a dot.
-- **I edited `Ideas.md` by hand below the end marker, and it came back.** That's the rebuild working as designed, not a bug — everything below the marker is regenerated from the cards whenever the folder changes. Make the edit on the card instead: retitle, regroup, or dismiss it there.
+- **I edited `Ideas.md` by hand below the end marker, and it came back.** That's the rebuild working as designed, not a bug — everything below the marker is regenerated from the cards on each rebuild. Make the edit on the card instead: retitle, regroup, or dismiss it there.
 - **A dismissed idea is back on the live list.** Its card lost its `dismissed:` field. Enrichment always carries the field forward; a hand edit that rewrote the card's frontmatter from scratch is the likelier cause. Re-add the date.
 
 ## Related
