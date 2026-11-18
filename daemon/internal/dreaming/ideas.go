@@ -13,24 +13,26 @@ import (
 )
 
 // `Ideas.md` — the operator's list of ideas, generated over the idea cards in
-// the vault root's `personal/ideas/` (agentm-vault part 13) and rewritten with
-// the other maps each night.
+// the vault root's `personal/ideas/` (agentm-vault part 13). It is rewritten on
+// request only — `agentmdream ideas -write`, run when an idea is filed or
+// dismissed — and never by the night: the operator adds to the list and takes
+// from it, so it moves when they do (ruling of 2026-11-17).
 //
 // The file has two halves and the line between them is a pair of markers. Above
 // and between them is the operator's: the title, and the introduction they
 // approved. It is copied into every rewrite byte for byte — not re-rendered from
 // a template, copied — so no change to this file can move a character of it.
-// Below the end marker is the machine's: one `## <area>` heading per group name
-// the cards actually carry, each idea one line linking to its card with its
-// title and summary, and the dismissed ideas in one collapsed callout at the
-// end.
+// Below the end marker is the machine's: one `## <Area>` heading per group name
+// the cards actually carry, each idea one bullet that is its title linking to
+// its card, and the dismissed ideas, titles only, in one collapsed callout at
+// the end. The details live on the card; the list is only names.
 //
 // A file with no markers is never written. That is not a fallback, it is the
 // adoption rule: the operator's own `Ideas.md` predates this job, and the first
 // rewrite replaces it wholesale, so it happens once, on purpose, through
 // `agentmdream ideas -intro <file> -write`, after the operator has read the
-// dry run. From then on the markers are the operator's standing permission, and
-// deleting them withdraws it.
+// dry run. From then on the markers are the operator's standing permission for
+// each requested rewrite, and deleting them withdraws it.
 //
 // Nothing here carries a date or a count that moves without a card moving, so a
 // rewrite over an unchanged folder is byte-identical and plans nothing.
@@ -46,8 +48,8 @@ const (
 	// IdeasIntroStart and IdeasIntroEnd are the marker lines, as the adoption
 	// writes them. They are found by their prefixes, so the operator may reword
 	// a marker's tail without losing it.
-	IdeasIntroStart = "<!-- ideas:intro:start — the introduction above the list is yours; the night copies it as it is -->"
-	IdeasIntroEnd   = "<!-- ideas:intro:end — everything below is rebuilt every night from personal/ideas/ -->"
+	IdeasIntroStart = "<!-- ideas:intro:start — the introduction above the list is yours; each rebuild copies it as it is -->"
+	IdeasIntroEnd   = "<!-- ideas:intro:end — everything below is rebuilt from personal/ideas/ when an idea is filed or dismissed -->"
 
 	ideasStartPrefix = "<!-- ideas:intro:start"
 	ideasEndPrefix   = "<!-- ideas:intro:end"
@@ -55,6 +57,24 @@ const (
 	// the group names are.
 	ideasNoGroup = "no group yet"
 )
+
+// ideasHeadingNames spells the group words whose heading is not just the word
+// with its first letter raised: a product name keeps its own capitals.
+var ideasHeadingNames = map[string]string{"agentm": "AgentM"}
+
+// ideasHeading is a group word as its heading reads: hyphens become spaces and
+// the first letter is raised, so `home-tech` heads its ideas as "Home tech".
+func ideasHeading(area string) string {
+	if name, ok := ideasHeadingNames[strings.ToLower(area)]; ok {
+		return name
+	}
+	h := strings.ReplaceAll(area, "-", " ")
+	if h == "" {
+		return h
+	}
+	r := []rune(h)
+	return strings.ToUpper(string(r[0])) + string(r[1:])
+}
 
 // ErrIdeasNotAdopted is a file with no markers, or no file at all: there is no
 // operator text to keep, so there is no permission to write.
@@ -198,7 +218,7 @@ func RenderIdeas(head string, cards []IdeaCard) string {
 	for _, name := range names {
 		ms := groups[name]
 		sortByTitle(ms)
-		fmt.Fprintf(&b, "\n## %s\n\n", name)
+		fmt.Fprintf(&b, "\n## %s\n\n", ideasHeading(name))
 		for _, c := range ms {
 			b.WriteString(ideaLine(c) + "\n")
 		}
@@ -207,7 +227,7 @@ func RenderIdeas(head string, cards []IdeaCard) string {
 		sortByTitle(dismissed)
 		fmt.Fprintf(&b, "\n> [!note]- Dismissed (%d)\n>\n", len(dismissed))
 		for _, c := range dismissed {
-			b.WriteString("> " + ideaLine(c) + " · dismissed " + c.Dismissed + "\n")
+			b.WriteString("> " + ideaLine(c) + "\n")
 		}
 	}
 	return b.String()
@@ -223,12 +243,10 @@ func sortByTitle(cs []IdeaCard) {
 	})
 }
 
+// ideaLine is one idea: its title, linking to its card. The summary stays on
+// the card.
 func ideaLine(c IdeaCard) string {
-	line := "- [[" + c.Slug + "|" + c.Title + "]]"
-	if c.Summary != "" {
-		line += " — " + c.Summary
-	}
-	return line
+	return "- [[" + c.Slug + "|" + c.Title + "]]"
 }
 
 // IdeasPlan is what the job would write, or why it would not.

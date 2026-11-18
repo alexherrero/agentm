@@ -4,8 +4,9 @@ produce (agentm-vault part 13).
 
 An idea is a card at the vault root's `personal/ideas/<slug>.md`, flat, in the
 card's shape with `type: idea` and an `area:` holding one of the operator's own
-group names. `Ideas.md` is generated over the folder every night by the dreaming
-binary, one heading per group the cards carry.
+group names. `Ideas.md` is generated over the folder by the dreaming binary,
+one heading per group the cards carry and one title per idea, when an idea is
+filed or dismissed (`agentmdream ideas -write`); the night does not rewrite it.
 
 Two writers put a card there, and both go through `as_idea_card()` so the two
 cannot disagree about what "filed as an idea" means:

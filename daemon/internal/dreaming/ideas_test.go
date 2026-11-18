@@ -93,22 +93,27 @@ func TestTheListGroupsByAreaAndCollapsesTheDismissed(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := operatorHead +
-		"\n## blog\n\n" +
-		"- [[blog-series-transition|Move past the building series]] — Write about improving it.\n" +
-		"\n## coding\n\n" +
+		"\n## Blog\n\n" +
+		"- [[blog-series-transition|Move past the building series]]\n" +
+		"\n## Coding\n\n" +
 		"- [[go-libraries-for-trading-exchanges|Go libraries for exchanges]]\n" +
-		"- [[port-simcity-1989|Port the 1989 SimCity]] — Micropolis makes it a build.\n" +
-		"\n## home-tech\n\n" +
-		"- [[mcp-server-for-plex|MCP server for Plex]] — Ask the library from anywhere.\n" +
-		"\n## no group yet\n\n" +
-		"- [[freshly-filed|Something from the inbox]] — Not grouped yet.\n" +
+		"- [[port-simcity-1989|Port the 1989 SimCity]]\n" +
+		"\n## Home tech\n\n" +
+		"- [[mcp-server-for-plex|MCP server for Plex]]\n" +
+		"\n## No group yet\n\n" +
+		"- [[freshly-filed|Something from the inbox]]\n" +
 		"\n> [!note]- Dismissed (1)\n>\n" +
-		"> - [[unraid-github-actions-runner|Unraid GitHub Actions runner]] — Self-hosted CI. · dismissed 2026-05-24\n"
+		"> - [[unraid-github-actions-runner|Unraid GitHub Actions runner]]\n"
 	if plan.Text != want {
 		t.Errorf("rendering:\n%s\nwant:\n%s", plan.Text, want)
 	}
 	if plan.Cards != 6 || plan.Groups != 4 || !plan.Changed || len(plan.Intents) != 1 {
 		t.Errorf("plan %+v", plan)
+	}
+	for _, summary := range []string{"Micropolis", "Ask the library", "Self-hosted CI", "2026-05-24"} {
+		if strings.Contains(plan.Text, summary) {
+			t.Errorf("the list carries %q; a bullet is the title alone, the details stay on the card", summary)
+		}
 	}
 	if strings.Count(plan.Text, "unraid-github-actions-runner") != 1 {
 		t.Error("a dismissed idea appears outside the collapsed callout")
@@ -151,7 +156,7 @@ func TestARebuildKeepsTheIntroductionByteIdenticalAndIsIdempotent(t *testing.T) 
 	if !strings.HasPrefix(got, operatorHead) {
 		t.Fatalf("the operator's text is not byte-identical:\n%q", got[:len(operatorHead)])
 	}
-	if strings.Contains(got, "## home-tech") || !strings.Contains(got, "- [[b|Beta]] — Second.") {
+	if strings.Contains(got, "## Home tech") || !strings.Contains(got, "## Coding\n\n- [[a|Alpha]]\n- [[b|Beta]]\n") {
 		t.Errorf("the regrouped idea did not move headings:\n%s", got)
 	}
 
@@ -163,7 +168,7 @@ func TestARebuildKeepsTheIntroductionByteIdenticalAndIsIdempotent(t *testing.T) 
 	}
 	applyIdeas(t, root, dismissed)
 	got = ideasFile(t, vault)
-	if strings.Count(got, "[[a|Alpha]]") != 1 || !strings.Contains(got, "> - [[a|Alpha]] — First. · dismissed 2026-09-21") {
+	if strings.Count(got, "[[a|Alpha]]") != 1 || !strings.Contains(got, "> - [[a|Alpha]]\n") {
 		t.Errorf("the dismissed idea is not only under the collapsed heading:\n%s", got)
 	}
 	if !strings.HasPrefix(got, operatorHead) {
@@ -271,30 +276,39 @@ func TestTheAdoptionWritesTheApprovedIntroductionOnceAndTheNightKeepsIt(t *testi
 	}
 }
 
-// Through the night itself: `Run` rebuilds Ideas.md with the maps when a card
-// moved, and a second pass over the same folder writes nothing to it.
-func TestTheNightRebuildsIdeasWithTheMaps(t *testing.T) {
+// The night leaves `Ideas.md` alone: the operator adds to the list and takes
+// from it on request, so a card filed or dismissed by hand shows up only when
+// `agentmdream ideas -write` runs (ruling of 2026-11-17).
+func TestTheNightLeavesIdeasAlone(t *testing.T) {
 	cfg, vault, root := ideasVault(t)
 	writeFile(t, vault, IdeasFile, operatorHead)
 	putIdea(t, vault, "a", "Alpha", "First.", "coding", "")
 	now := time.Date(2026, 9, 21, 7, 0, 0, 0, time.UTC)
-	rep, err := Run(cfg, Options{Now: now, Apply: true, Force: true})
+	if _, err := Run(cfg, Options{Now: now, Apply: true, Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := ideasFile(t, vault); got != operatorHead {
+		t.Fatalf("the night rewrote Ideas.md:\n%s", got)
+	}
+	// The requested write still picks the card up.
+	plan, err := PlanIdeas(root, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !rep.Ideas.Changed {
-		t.Fatalf("the night did not rebuild Ideas.md: %+v", rep.Ideas)
+	applyIdeas(t, root, plan)
+	if got := ideasFile(t, vault); !strings.HasPrefix(got, operatorHead) || !strings.Contains(got, "## Coding\n\n- [[a|Alpha]]\n") {
+		t.Fatalf("Ideas.md after the requested write:\n%s", got)
 	}
-	got := ideasFile(t, vault)
-	if !strings.HasPrefix(got, operatorHead) || !strings.Contains(got, "- [[a|Alpha]] — First.") {
-		t.Fatalf("Ideas.md after the night:\n%s", got)
+}
+
+// A group word reads as a heading: hyphens to spaces, the first letter raised,
+// and a product name in its own capitals.
+func TestAGroupWordReadsAsAHeading(t *testing.T) {
+	for word, want := range map[string]string{
+		"home-tech": "Home tech", "coding": "Coding", "agentm": "AgentM", "no group yet": "No group yet",
+	} {
+		if got := ideasHeading(word); got != want {
+			t.Errorf("ideasHeading(%q) = %q, want %q", word, got, want)
+		}
 	}
-	again, err := Run(cfg, Options{Now: now.Add(time.Hour), Apply: true, Force: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Ideas.Changed || ideasFile(t, vault) != got {
-		t.Errorf("a second night rewrote an unchanged list: %+v", again.Ideas)
-	}
-	_ = root
 }
