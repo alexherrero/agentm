@@ -239,6 +239,10 @@ class TheNamedSuitesAreGoverned(unittest.TestCase):
         # suites joined the helper then; the console's and the morning note's
         # already carried it. test_engine_state_not_leaked runs all four by hand.
         "test_machinery_doctor", "test_session_brief_runner", "test_morning_note",
+        # The miner's route records each card in the filed-ledger (task 186).
+        # A hand run on 2026-11-14 wrote two test cards' keys into the live
+        # ledger, and every hand run after it refused them as already filed.
+        "test_session_stamps",
     )
 
     def test_each_named_suite_calls_the_helper(self):
