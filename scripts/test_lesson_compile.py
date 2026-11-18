@@ -397,6 +397,28 @@ class TestCompile(_Base):
         self.assertNotIn("title: Warm the widget cache", decide, "the frontmatter is left out")
         self.assertIn("PLAN-SUMMARY", decide, "a read-only note is still shown by its summary")
 
+    def test_a_long_card_shows_its_lesson_and_its_newest_additions(self) -> None:
+        # Two projects in one night added the same case to a long card: the
+        # first one's addition sat past the cut, so the second never saw it.
+        existing = self.vault / "memory" / "procedural" / "warm-the-widget-cache.md"
+        older = "".join(f"**2026-10-{d:02d} · lesson compile · evidence**\n\nMIDDLE-CASE {'x' * 300}\n\n"
+                        for d in range(1, 9))
+        existing.write_text("---\ntitle: Warm the widget cache\ntype: workflow\n---\n\n"
+                            "THE-LESSON: warm the cache before building widgets.\n\n## Added by dreaming\n\n"
+                            + older + "**2026-11-15 · lesson compile · evidence**\n\nNEWEST-CASE.\n",
+                            encoding="utf-8")
+        self.stage()
+        runner = FakeRunner(
+            candidates=[_cand()],
+            search={"widget": [{"path": "memory/procedural/warm-the-widget-cache.md", "title": "Warm the widget cache",
+                                "type": "workflow", "lifecycle": "active", "summary": "TOP-ONLY"}]},
+            actions=[])
+        self.compile(runner)
+        decide = runner.prompts("deciding")[0]
+        self.assertIn("THE-LESSON", decide)
+        self.assertIn("NEWEST-CASE.", decide)
+        self.assertLess(decide.count("MIDDLE-CASE"), 8, "the card is still cut to a bounded size")
+
     def test_a_second_augment_joins_the_same_section(self) -> None:
         card = ("---\ntitle: T\ntype: fix\n---\n\nBody.\n\n## Added by dreaming\n\n**2026-10-01 · x**\n\nEarlier.\n"
                 "\n## Notes\n\nOperator text below.\n")
@@ -770,6 +792,39 @@ class TestAntigravity(_Base):
                 *self.image_rows()[1:3]]
         self.agy_transcript("s1", rows)
         self.assertEqual(self.collect()["staged"], 0)
+
+    HOOK_ROW = {"step_index": "0", "source": "SYSTEM_SDK", "type": "SYSTEM_MESSAGE",
+                "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the user.\n\n"
+                           "<SYSTEM_MESSAGE>\nThe following system message was injected by a "
+                           "SessionStart hook:\n# Memory\nRemembered notes."}
+
+    def helper_rows(self, brief: str, *calls: str) -> list:
+        rows = self.rows(str(self.repo))
+        hook = dict(self.HOOK_ROW)
+        rows[0] = {"step_index": "0", "source": "SYSTEM_SDK", "type": "SYSTEM_MESSAGE", "content": brief}
+        rows[1]["tool_calls"] += [{"name": c, "args": {}} for c in calls]
+        return [hook, *rows[:3]]
+
+    def test_a_helper_that_calls_the_image_tool_is_not_staged(self) -> None:
+        # Briefs say "remake this texture" as often as they name the tool; a
+        # memory hook's message comes first, and it is not the brief.
+        self.agy_transcript("s1", self.helper_rows(
+            "Remake this 1994 texture as a modern material.", "generate_image"))
+        self.agy_transcript("a1", self.rows(str(self.repo)))
+        self.assertEqual(self.collect()["staged"], 1)
+        self.assertEqual([r["session"] for r in self.pending("alpha")], ["a1"])
+
+    def test_a_helper_briefed_to_make_an_image_is_not_staged_behind_a_hook_message(self) -> None:
+        # The helper failed before it drew anything; its brief still says why it ran.
+        self.agy_transcript("s1", self.helper_rows("Call generate_image once: a quiet harbour."))
+        self.assertEqual(self.collect()["staged"], 0)
+
+    def test_a_helper_doing_other_work_is_staged_when_the_hook_message_names_the_tool(self) -> None:
+        rows = self.helper_rows("Fix the build and report back.")
+        rows[0]["content"] += "\nA note about the generate_image tool."
+        self.agy_transcript("s1", rows)
+        self.assertEqual(self.collect()["staged"], 1)
+        self.assertEqual([r["session"] for r in self.pending("alpha")], ["s1"])
 
     def test_work_that_makes_an_image_along_the_way_is_still_staged(self) -> None:
         rows = self.rows(str(self.repo))
