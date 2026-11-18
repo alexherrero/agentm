@@ -155,5 +155,10 @@ class TheMiner(unittest.TestCase):
                 self.assertNotIn("\ntask:", text)
 
 
+from engine_state_isolation import isolate_module  # noqa: E402
+
+isolate_module(globals())
+
+
 if __name__ == "__main__":
     unittest.main()
