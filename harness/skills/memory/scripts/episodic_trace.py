@@ -595,32 +595,48 @@ def mined_candidates(messages: list, *, standing: "dict | None" = None, mined: "
     return out
 
 
-def note_stems(memory_root) -> "set[str]":
-    """Every note's file name, without `.md` and in lower case, across the vault
-    the memory root sits in: the vault is the nearest folder at or above it that
-    holds `.obsidian` or `.git`, else the memory root itself. Hidden folders are
-    not read."""
+def note_names(memory_root) -> "dict[str, str]":
+    """Every note's file name without `.md`, valued as the file spells it, and
+    keyed both as spelled and in lower case, across the vault the memory root
+    sits in: the vault is the nearest folder at or above it that holds
+    `.obsidian` or `.git`, else the memory root itself. Hidden folders are not
+    read. A name two files spell differently (`ROADMAP.md`, `roadmap.md`)
+    answers to each spelling as itself."""
     start = Path(memory_root)
     vault = start
     for cand in (start, *list(start.parents)[:2]):
         if (cand / ".obsidian").is_dir() or (cand / ".git").exists():
             vault = cand
             break
-    stems: set = set()
+    names: dict = {}
     for dirpath, dirnames, filenames in os.walk(vault):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
-        for name in filenames:
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        for name in sorted(filenames):
             if name.endswith(".md"):
-                stems.add(name[:-3].lower())
-    return stems
+                names[name[:-3]] = name[:-3]
+                names.setdefault(name[:-3].lower(), name[:-3])
+    return names
+
+
+def _spelled(known: dict, name: str) -> "str | None":
+    """`name` as a note's file spells it: itself when a file has that exact
+    name, else the spelling of a file whose name differs only in capitals,
+    else None."""
+    return known.get(name) or known.get(name.lower())
+
+
+def note_stems(memory_root) -> "set[str]":
+    """Every note's file name, without `.md` and in lower case."""
+    return {k.lower() for k in note_names(memory_root)}
 
 
 def from_transcript(transcript_path: Path, *, session_id: str, when: date = None,
                     history_path: Path = None, project: str = "", task: str = "", surface: str = "",
                     candidates: list = None, known: "set | None" = None, memory_root=None,
                     ideas: list = None) -> Trace:
-    """The session's trace. `known` is the vault's note names (`note_stems`):
-    when given, a recall-history slug that names no note is not linked. The
+    """The session's trace. `known` is the vault's note names (`note_stems`,
+    or `note_names` to link each by its file's own spelling): when given, a
+    recall-history slug that names no note is not linked. The
     history is the machine's, shared by every surface, and holds names that
     are no note — a self-probe's note retired the same minute, a test's
     fixture — and a trace that linked them linked nowhere (task 186).
@@ -653,6 +669,10 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
     for slug in recalled_between(history_path or default_history_path(), start, end):
         if known is not None and slug.lower() not in known:
             continue
+        if isinstance(known, dict):
+            # The history keeps a name as it was searched; a file renamed
+            # since (`FOLLOWUPS.md` → `followups.md`) is linked as it is now.
+            slug = _spelled(known, slug)
         if slug not in recalled and slug not in captured:
             recalled.append(slug)
     if when is None:
@@ -773,8 +793,53 @@ def with_updated(text: str, day: str) -> str:
 
 
 def _link_target(line: str) -> str:
-    m = re.match(r"^- \[\[([^\]|]+)", line.strip())
-    return Path(m.group(1)).name if m else line.strip()
+    """What a list line points at, whether it is a link or a name in plain
+    text: a link unlinked by hand, or by `checked_links`, is the same entry as
+    the link a later write brings, so the write does not add the link back.
+    A path is the whole path, and capitals count: two tasks' `plan` notes are
+    two entries, and so are `PLAN.md` and `plan.md`."""
+    s = line.strip()
+    m = re.match(r"^- \[\[([^\]|]+)", s) or re.match(r"^- `([^`]+)`", s)
+    if not m:
+        return s
+    target = m.group(1).strip()
+    return target[:-3] if target.endswith(".md") else target
+
+
+_LIST_LINK = re.compile(r"^- \[\[([^\]|]+)(\|[^\]]*)?\]\]\s*$")
+
+
+def checked_links(text: str, known: dict) -> str:
+    """`text` with each link in its Captured and Recalled lists checked against
+    the vault's notes (`note_names`). A link whose note is gone becomes its
+    name in plain text, so the record of what the session read stays and the
+    link to nowhere goes; a bare name spelled in other capitals than its file
+    takes the file's spelling. Every write checks the whole list, the lines an
+    earlier write left included: a note the session read can be deleted after
+    (a subtitle list once its job is done, a rip's stage note once promoted)."""
+    out: list = []
+    section, fence, seen = None, False, set()
+    for line in text.split("\n"):
+        if _is_fence(line):
+            fence = not fence
+        elif not fence and line.startswith("## "):
+            section, seen = line[3:].strip(), set()
+        elif not fence and section in ("Captured", "Recalled") and line.strip():
+            m = _LIST_LINK.match(line.strip())
+            if m:
+                target = m.group(1).strip()
+                name = Path(target).name
+                spelled = _spelled(known, name[:-3] if name.endswith(".md") else name)
+                if spelled is None:
+                    line = f"- `{target}`"
+                elif "/" not in target and spelled != target:
+                    line = f"- [[{spelled}{m.group(2) or ''}]]"
+            key = _link_target(line)
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(line)
+    return "\n".join(out)
 
 
 def _union_lines(base: str, incoming: str, key) -> str:
@@ -939,10 +1004,13 @@ def find_session_trace(vault_path, session_id: str) -> "Path | None":
     return sorted(found)[0][3] if found else None
 
 
-def write_trace(vault_path, trace: Trace, *, today: "date | None" = None) -> str | None:
+def write_trace(vault_path, trace: Trace, *, today: "date | None" = None,
+                known: "dict | None" = None) -> str | None:
     """Write the trace under the memory root; None when the session left
     nothing to record. A session that already has a trace is written into it,
     whatever its title says now; only a session with none gets a new name.
+    `known` (`note_names`), when given, checks every link in the lists
+    (`checked_links`).
 
     Candidates and ideas count as something to record. The miner files no note
     below HIGH and no idea at all, so a session whose only durable output was
@@ -977,6 +1045,8 @@ def write_trace(vault_path, trace: Trace, *, today: "date | None" = None) -> str
     # A link this trace carries to another session's trace by a name that
     # trace no longer has points at its current file.
     text, _ = retarget_trace_links(text, _trace_stems_by_key(root))
+    if known is not None:
+        text = checked_links(text, known)
     if existing is not None and text != base:
         # A write that changes the trace moves its `updated:` forward to the
         # day of the write (`today` pins it for a test); a repeat that adds
@@ -1125,12 +1195,13 @@ def main(argv: list | None = None) -> int:
         return 0
     project, task = _stamps_for(Path(a.transcript), a.project, a.task, memory_root=vault)
     try:
+        names = note_names(vault)
         trace = from_transcript(Path(a.transcript), session_id=a.session,
                                 when=date.fromisoformat(a.day) if a.day else None,
                                 history_path=Path(a.history) if a.history else None,
                                 project=project, task=task, surface=a.surface,
-                                known=note_stems(vault), memory_root=vault)
-        rel = write_trace(vault, trace)
+                                known=names, memory_root=vault)
+        rel = write_trace(vault, trace, known=names)
     except Exception as e:  # a hook never blocks session end on a trace
         print(f"episodic_trace: skipped ({e})", file=sys.stderr)
         return 0
