@@ -13,11 +13,12 @@ Signals (each defensive — absent/empty/malformed source → 0, never raises):
                      staging)
   - watchlist_high : _skill-watchlist entries with evaluator_classification HIGH
                      + status pending-review (reviewed by hand under `_skill-watchlist/`)
-  - incubator      : count of _idea-incubator/<slug>/ dirs (ideas in research)
 
 The idea-ledger signal and the promote-suggest nudge read the hand-kept
 `Ideas.md` and retired with it (agentm-vault part 13): the file is generated over
-`personal/ideas/` now, and nothing nudges an idea toward collection.
+`personal/ideas/` now, and nothing nudges an idea toward collection. The
+incubator signal (a count of `_idea-incubator/<slug>/` dirs) retired with the
+incubator itself on 2026-11-03: ideas are cards, and that folder is gone.
 
 Each signal surfaces only at/above its configured threshold. If nothing is over
 threshold, the briefing is empty (and nothing is recorded/printed).
@@ -117,19 +118,6 @@ def count_watchlist_high_pending(vault: Path) -> int:
     return n
 
 
-def count_incubator_pending(vault: Path) -> int:
-    root = Path(vault) / "_idea-incubator"
-    if not root.is_dir():
-        return 0
-    try:
-        return sum(
-            1 for d in root.iterdir()
-            if d.is_dir() and not d.name.startswith("_")
-        )
-    except OSError:
-        return 0
-
-
 # ── nudge signals (V4 #23 task 6: sub-item g) ───────────────────────────────
 # Sub-item f, the promote-suggest nudge, retired with the idea-ledger signal in
 # agentm-vault part 13: both read the hand-kept `Ideas.md`, which is generated
@@ -223,7 +211,6 @@ def gather_signals(vault: Path, config: dict, now: datetime) -> dict:
     sig = {
         "inbox": count_inbox(vault),
         "watchlist_high": count_watchlist_high_pending(vault),
-        "incubator": count_incubator_pending(vault),
         "staged_adapt": count_staged_adapt(vault),
     }
     # Nudges (task 6) — gated by their own toggles so a disabled nudge computes
@@ -242,8 +229,6 @@ def _over_threshold(signals: dict, config: dict) -> dict:
         out["inbox"] = signals["inbox"]
     if signals["watchlist_high"] >= int(config.get("watchlist_high_threshold", 1)):
         out["watchlist_high"] = signals["watchlist_high"]
-    if signals["incubator"] >= int(config.get("incubator_pending_threshold", 1)):
-        out["incubator"] = signals["incubator"]
     if signals.get("staged_adapt", 0) >= 1:  # candidates awaiting Pass-2 eval
         out["staged_adapt"] = signals["staged_adapt"]
     # Nudges (task 6) — the stale threshold is applied inside the counter, and
@@ -268,9 +253,6 @@ def build_briefing(signals: dict, config: dict) -> str:
     if "staged_adapt" in active:
         n = active["staged_adapt"]
         parts.append(f"{n} skill candidate{'' if n == 1 else 's'} staged for adapt-evaluation (`/memory adapt-skills`)")
-    if "incubator" in active:
-        n = active["incubator"]
-        parts.append(f"{n} incubator idea{'' if n == 1 else 's'} in research")
     if "stale_promoted" in active:
         n = active["stale_promoted"]
         d = config.get("stale_promotion_days", 30)

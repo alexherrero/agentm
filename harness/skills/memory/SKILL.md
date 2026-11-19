@@ -714,7 +714,7 @@ Output: one JSON record per line (`{"pass": "memory", "category": ..., "confiden
 
 ### `/memory promote` — retired
 
-Retired in agentm-vault part 13, with the hand-kept `Ideas.md` it annotated and the `ideas_promote.py` that did both halves. An idea is a card in the vault root's `personal/ideas/` now, filed there from the inbox with its group (`/memory inbox --file <name> --type idea --area <group>`), and `Ideas.md` is generated over that folder every night by the dreaming binary, one title per card (`agentmdream ideas` prints the rendering, `-write` makes it at once). There is no graduation step and no garbage collection: an idea card stays where the operator filed it, and they retire one by giving it a `dismissed:` date. The incubator's research skeleton (`ideas_incubator.py`) and its researcher are not part of this retirement; they wait on their own follow-up.
+Retired in agentm-vault part 13, with the hand-kept `Ideas.md` it annotated and the `ideas_promote.py` that did both halves. An idea is a card in the vault root's `personal/ideas/` now, filed there from the inbox with its group (`/memory inbox --file <name> --type idea --area <group>`), and `Ideas.md` is generated over that folder every night by the dreaming binary, one title per card (`agentmdream ideas` prints the rendering, `-write` makes it at once). There is no graduation step and no garbage collection: an idea card stays where the operator filed it, and they retire one by giving it a `dismissed:` date. The incubator's research skeleton (`ideas_incubator.py`) and its `memory-idea-researcher` sub-agent retired after it, on the operator's ruling of 2026-11-03: an idea is researched, if at all, on its card, and `_idea-incubator/` is gone.
 
 ### `/memory index-skills`
 

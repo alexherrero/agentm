@@ -115,7 +115,6 @@ echo "    $sh_count installed .sh files parse"
 # shared skills.
 required_non_empty=(
   agents/adapt-evaluator.md
-  agents/memory-idea-researcher.md
   skills/doctor/SKILL.md
   skills/memory/SKILL.md
 )

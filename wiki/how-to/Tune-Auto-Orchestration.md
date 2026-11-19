@@ -34,7 +34,7 @@ The tunables live in `<vault>/projects/agentm/desk/auto-orchestration-config.md`
    + inbox_threshold = 25
    ```
 
-   The other thresholds are `watchlist_high_threshold` and `incubator_pending_threshold`, plus the nudge threshold `stale_promotion_days`.
+   The other threshold is `watchlist_high_threshold`, plus the nudge threshold `stale_promotion_days`.
 
 3. **Change a cooldown so a chain fires more or less often.** Cooldowns are in hours; a non-positive value means "always eligible". To let the idle chain run twice a day instead of once:
 

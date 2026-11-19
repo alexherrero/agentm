@@ -94,8 +94,10 @@ printf -- '---\nstatus: pending-review\nevaluator_classification: HIGH\n---\nb\n
   > "$SV/projects/agentm/_skill-watchlist/src/p1.md"
 assert_contains "briefing: HIGH skill-watchlist surfaces"       "$(render)" "1 HIGH skill-watchlist"
 
+# The incubator retired on 2026-11-03 (ideas are cards in personal/ideas/): a
+# leftover `_idea-incubator/<slug>/` dir puts no line in the briefing.
 mkdir -p "$SV/_idea-incubator/an-idea"
-assert_contains "briefing: incubator idea surfaces"             "$(render)" "1 incubator idea"
+assert_absent   "briefing: leftover incubator dir stays silent" "$(render)" "incubator"
 
 # ── C. staged-adapt signal (v4.13.1) surfaces + clears on evaluation ────────
 mkdir -p "$AGENTM_STATE_DIR/skill-discovery-cache/adapt-state/src"

@@ -81,7 +81,7 @@ Every earlier lane that applied or staged anything is retired, and the amendment
 
 What's learned routes into the **general memory** the same way anything else does — as **`kind`-classified entries**: a learned preference, workflow, fix, or domain-reference becomes a typed entry, classified by reflection on the way in (see the [Memory System](agentm-memory-system.md)). Two other destinations sit alongside it:
 
-- **The idea incubator / skill watchlist** — an ingested idea, article, or candidate skill lands here **for later review**, not adopted silently.
+- **The idea cards / skill watchlist** — an ingested idea lands as a card in `personal/ideas/`, and a candidate skill on the watchlist, **for later review**, not adopted silently.
 - **The Opinion supplement** — no capture path routes a lesson here today. The *accumulate* loop that sharpened an opinion's learned layer is retired; see the section below and the condensed twin in the [Opinions design](agentm-opinions-and-gates.md).
 
 Everything routes through the existing memory engine — no new store; heat curation runs continuously over the always-load set.
@@ -201,7 +201,7 @@ The live-transcript filter stays load-bearing after the 2026-08-01 payload chang
 - **Writes to Memory** — every direction lands in the [Memory System](agentm-memory-system.md), and Experience is the **growth engine** that grows it into the interconnected knowledge base (its *How it grows* section).
 - **Sharpens Opinions** — the learned supplement is what makes an opinion's vault layer grow over time (the [Opinions design](agentm-opinions-and-gates.md)); the *accumulate* loop that filled it is retired (see its section above).
 - **The runner is shared substrate, built 2026-07-06** — the Maintainer + Researcher persona loops ([Personas design](agentm-personas.md)) run on it too, once each of those is built.
-- **crickets touch is light** — the memory-engine sub-agents (`memory-idea-researcher`, `adapt-evaluator`) run read-only inside the harness; reflection mines sessions that *used* crickets tools but depends on none; the weekly field brief reaches *out* to sources. Experience keeps working on a bare agentm.
+- **crickets touch is light** — the memory-engine sub-agent (`adapt-evaluator`) runs read-only inside the harness; reflection mines sessions that *used* crickets tools but depends on none; the weekly field brief reaches *out* to sources. Experience keeps working on a bare agentm.
 
 ## Risks & open questions
 
@@ -211,16 +211,18 @@ The live-transcript filter stays load-bearing after the 2026-08-01 payload chang
 
 ## References
 
-- `harness/skills/memory/scripts/` — `heat_policy.py` (promote/demote/pin), `reflect.py` (transcript mining), `ideas_incubator.py`, `adapt_skills.py`, `field_brief.py` (the weekly field brief: engine, note, `keep`; tested by `scripts/test_field_brief.py`), `crystallize.py` (the phase-close digest schema + `crystallize_exploration()`/`parse_digest()` primitives, operator-invoked, `PLAN-wave-e-experience` task 2; tested by `scripts/test_crystallize.py`), `revert_log.py` (the append-only undo journal; tested by `scripts/test_revert_log.py`), `dream.py` (the Python half of the night — reads, reports and proposes; possible twins, shared keys and proposed facets for the needs-review map; tested by `scripts/test_dream.py`), `needs_review.py` (the needs-review map, with the dream cycle's three sections; tested by `scripts/test_needs_review.py`)
+- `harness/skills/memory/scripts/` — `heat_policy.py` (promote/demote/pin), `reflect.py` (transcript mining), `adapt_skills.py`, `field_brief.py` (the weekly field brief: engine, note, `keep`; tested by `scripts/test_field_brief.py`), `crystallize.py` (the phase-close digest schema + `crystallize_exploration()`/`parse_digest()` primitives, operator-invoked, `PLAN-wave-e-experience` task 2; tested by `scripts/test_crystallize.py`), `revert_log.py` (the append-only undo journal; tested by `scripts/test_revert_log.py`), `dream.py` (the Python half of the night — reads, reports and proposes; possible twins, shared keys and proposed facets for the needs-review map; tested by `scripts/test_dream.py`), `needs_review.py` (the needs-review map, with the dream cycle's three sections; tested by `scripts/test_needs_review.py`)
 - `templates/jobs/field-brief-weekly.yaml` — the weekly field brief's job manifest for the [Runner](agentm-runner.md) (`schedule: weekly`, `lookback: 2d`, window `18:00-23:00`, `tier: T3`, `dry_run: false`); tracked template, copied to `.harness/jobs/` on the day the first brief should run — tested by `scripts/test_field_brief_job.py`
 - `templates/jobs/dream.yaml` — the Python cycle's scheduled job manifest for the [Runner](agentm-runner.md) (`schedule: daily`, window `02:00-06:00`, order 3, `tier: T3`, `dry_run: true`); tracked template, copied to `.harness/jobs/dream.yaml` by hand to opt in — tested by `scripts/test_dream_job.py`
 - `harness/hooks/` — `memory-reflect-stop`, `memory-reflect-idle` (the backward triggers)
-- `harness/agents/` — `memory-idea-researcher`, `adapt-evaluator` (read-only memory-engine sub-agents)
+- `harness/agents/` — `adapt-evaluator` (the read-only memory-engine sub-agent)
 - vault `decisions/research-dream-mode-design.md` — the locked-but-unbuilt dreaming design
 - `~/.claude/CLAUDE.md` (opusplan) + the heat policy — the token-cost lever behind curation
 - vault `_harness/designs/architecture-governance/ACCUMULATE-LOOP-SPEC-DRAFT.md` — the landed accumulate-loop spec's original source draft (Fable-authored, 2026-07-06); the condensed twin lives in the [Opinions design](agentm-opinions-and-gates.md)
 
 ## Amendment log
+
+**2026-11-18 — the idea incubator and its researcher retire (the operator's ruling of 2026-11-03).** An idea is a card in `personal/ideas/`, and `Ideas.md` is generated from those cards each night, so the `_idea-incubator/` folder is gone. The research skeleton `ideas_incubator.py`, its tests and the `memory-idea-researcher` sub-agent are removed, and so are the incubator counts in the session-start briefing and `/console`. The destinations bullet, the crickets bullet and the references now name the cards and the one remaining sub-agent. *Why not keep the researcher for idea cards:* nothing dispatched it after the incubator emptied, and a card is researched on request like any other note. *Re-audit trigger:* a ruling that asks for research on idea cards.
 
 **2026-11-17 — a long card shows its newest additions (task 199).** The 11-12 entry's re-audit trigger came true in its first three nights: on 11-15, two projects added the same case (an undrawn window spoils screenshots too) to a 3,400-character card, because the decision saw only the card's first 1,500 characters and the first addition sat at character 2,452. Of the 20 additions those three nights wrote, 16 belonged on their cards; besides that repeat, one retold the card's own case, one moved a lesson that lives on another card, and one added a different lesson about the same contract. Those four were trimmed by hand. Now a card past 1,500 characters shows its first 500 and its last 1,000. *Why not a larger limit:* each candidate can show several cards, so the cost grows with the limit; the top says what the lesson is, and the end says what was added lately, which is where the repeat came from. *Re-audit trigger:* a repeat of an addition from a card's middle.
 

@@ -55,16 +55,15 @@ The memory vault itself is browsable by type. Every memory appears on a generate
 
 A sub-agent is a helper your coding agent hands a narrow job to. It gathers what you asked for and reports back without touching your code.
 
-AgentM ships two sub-agents, both serving the memory engine:
+AgentM ships one sub-agent, serving the memory engine:
 
 | Sub-agent | What it does |
 |---|---|
 | `adapt-evaluator` | Judges a candidate skill against the adapt-don't-import rule and writes the watchlist entry you review. |
-| `memory-idea-researcher` | Fills out an idea-incubator entry, reading the vault, your notes, and the web under set budgets. |
 
-Both install into your agent's `.claude/agents/` folder — or `.agents/skills/` on Antigravity. Alongside them, AgentM installs its [personas](agentm-personas), compiling named stances like the engineer or the reviewer into that same directory.
+It installs into your agent's `.claude/agents/` folder — or `.agents/skills/` on Antigravity. Alongside them, AgentM installs its [personas](agentm-personas), compiling named stances like the engineer or the reviewer into that same directory.
 
-Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`, or `documenter` — comes from [`crickets`](https://github.com/alexherrero/crickets), not AgentM. Standalone AgentM includes only the two memory sub-agents and the personas. The review, phase-loop, and wiki agents arrive with crickets plugins. See [Toolkit interface](Toolkit-Interface) for where the line sits.
+Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`, or `documenter` — comes from [`crickets`](https://github.com/alexherrero/crickets), not AgentM. Standalone AgentM includes only the memory sub-agent and the personas. The review, phase-loop, and wiki agents arrive with crickets plugins. See [Toolkit interface](Toolkit-Interface) for where the line sits.
 
 ---
 

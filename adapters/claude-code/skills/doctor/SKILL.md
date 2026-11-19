@@ -35,7 +35,7 @@ Expected name sets:
 | Surface | Required (harness-shipped) | Crickets-provided / optional (graceful-skip if absent — never FAIL) |
 |---|---|---|
 | `$ROOT/commands/*.md` | — (agentm vendors no commands) | `bugfix, plan, release, review, setup, work` (crickets development-lifecycle — moved out of agentm in the V5 dev-loop slim); `recent-wiki-changes` (crickets wiki — retired from agentm 2026-08-12) |
-| `$ROOT/agents/*.md` | `adapt-evaluator, memory-idea-researcher` (memory engine) | `adversarial-reviewer, adversarial-reviewer-cross, explorer` (crickets code-review / development-lifecycle); `diataxis-evaluator, documenter, evaluator` (crickets wiki) |
+| `$ROOT/agents/*.md` | `adapt-evaluator` (memory engine) | `adversarial-reviewer, adversarial-reviewer-cross, explorer` (crickets code-review / development-lifecycle); `diataxis-evaluator, documenter, evaluator` (crickets wiki) |
 | `$ROOT/skills/*/` | `doctor` | `design, memory` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber, ship-release, wiki-author` (crickets — `diataxis-author` absorbs the retired four-mode `migrate-to-diataxis` migration; `ship-release` fully crickets-owned since 2026-07-01; `wiki-author` fully crickets-owned since 2026-08-12) |
 
 The table above is written with Claude Code's surfaces (`commands` / `agents` / `skills`); on **Antigravity** map them per the detection table — sub-agents *and* skills both live under `.agents/skills/*/` (the same Required name sets apply); on **Gemini** the required skills come from the shared `.agents/skills/*/` delivery. The dev-loop surfaces (phase commands + review agents) are crickets-provided on every host — `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, never FAIL.
@@ -166,7 +166,7 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
 
   structural:
     phase-commands    [OK]  0 harness-vendored; 6 dev-loop + recent-wiki-changes crickets-provided ([SKIP] if unpaired)
-    sub-agents        [OK]  2/2 required (adapt-evaluator, memory-idea-researcher); review agents crickets-provided
+    sub-agents        [OK]  1/1 required (adapt-evaluator); review agents crickets-provided
     skills            [OK]  1/1 required, optional present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/tasks/
     storage           [OK]  selected backend 'vault' (existing vault_path) — registered; seeded from <vault>

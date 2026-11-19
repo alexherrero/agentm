@@ -188,7 +188,7 @@ printf '%s' "$PAYLOAD" | "$AGENTM_PY" "$RECALL_PY" session-start --stdin-payload
 
 # ── Pending-state briefing pass (V4 #23 task 3) ────────────────────────────
 # Best-effort, non-blocking: scans the vault for over-threshold pending signals
-# (inbox / HIGH skill-watchlist / incubator / stale idea-ledger) and appends a
+# (inbox / HIGH skill-watchlist / staged adapt / stale promotion) and appends a
 # tight briefing block — but ONLY when something shifted since last shown AND
 # the cooldown allows (anti-fatigue guard in auto_orchestration.py). The
 # generator swallows any error → empty output, so this never blocks session

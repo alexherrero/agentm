@@ -118,7 +118,6 @@ Write-Host "    $ps1Count installed .ps1 files parse"
 # the shared skills.
 $requiredNonEmpty = @(
     'agents/adapt-evaluator.md'
-    'agents/memory-idea-researcher.md'
     'skills/doctor/SKILL.md'
     'skills/memory/SKILL.md'
 )

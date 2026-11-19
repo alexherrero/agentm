@@ -54,7 +54,6 @@ expected=(
   .agentm-config.json
   settings.json
   agents/adapt-evaluator.md
-  agents/memory-idea-researcher.md
   skills/doctor/SKILL.md
   skills/memory/SKILL.md
   skills/console/SKILL.md

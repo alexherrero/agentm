@@ -216,11 +216,11 @@ class TestDocumenterRetired(unittest.TestCase):
         name = "documenter"
         crickets_group = "diataxis-evaluator, documenter, evaluator"
         # Post-V5 dev-loop slim, the harness-required sub-agent set is the
-        # memory-engine pair — the three review agents (adversarial-reviewer /
+        # memory-engine sub-agent — the three review agents (adversarial-reviewer /
         # -cross / explorer) moved to crickets, so they are no longer the
         # required list. documenter must still sit in the crickets group, never
         # injected into this required list.
-        required_list = "adapt-evaluator, memory-idea-researcher"
+        required_list = "adapt-evaluator"
         for rel in (
             "harness/skills/doctor.md",
             "adapters/claude-code/skills/doctor/SKILL.md",

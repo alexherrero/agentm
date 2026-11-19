@@ -59,10 +59,6 @@ def _inbox_entry(vault: Path, name: str) -> None:
     (d / name).write_text("x", encoding="utf-8")
 
 
-def _incubator(vault: Path, slug: str) -> None:
-    (vault / "_idea-incubator" / slug).mkdir(parents=True, exist_ok=True)
-
-
 class TestCounters(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -112,17 +108,16 @@ class TestCounters(unittest.TestCase):
         _watchlist_entry(self.vault, "_archive", "p1", "HIGH", "pending-review")
         self.assertEqual(ob.count_watchlist_high_pending(self.vault), 0)
 
-    def test_incubator_counts_dirs_excludes_underscore(self) -> None:
-        _incubator(self.vault, "idea-one")
-        _incubator(self.vault, "idea-two")
-        _incubator(self.vault, "_archive")  # excluded
-        self.assertEqual(ob.count_incubator_pending(self.vault), 2)
-
-    def test_incubator_ignores_personal_nested(self) -> None:
-        # Real vault layout is root-level _idea-incubator; confirms this
-        # doesn't also (or instead) read <vault>/personal/_idea-incubator.
-        (self.vault / "memory" / "_idea-incubator" / "idea-one").mkdir(parents=True)
-        self.assertEqual(ob.count_incubator_pending(self.vault), 0)
+    def test_no_signal_counts_a_leftover_incubator(self) -> None:
+        # The incubator retired on 2026-11-03 (ideas are cards in
+        # personal/ideas/). A leftover `_idea-incubator/<slug>/` dir raises no
+        # signal and puts no line in the briefing.
+        (self.vault / "_idea-incubator" / "idea-one").mkdir(parents=True)
+        sig = ob.gather_signals(self.vault, dict(ao.DEFAULT_CONFIG), _NOW)
+        self.assertNotIn("incubator", sig)
+        self.assertFalse(hasattr(ob, "count_incubator_pending"))
+        self.assertNotIn("incubator_pending_threshold", ao.DEFAULT_CONFIG)
+        self.assertNotIn("incubator", ob.build_briefing(sig, dict(ao.DEFAULT_CONFIG)))
 
     def test_no_signal_reads_the_hand_kept_ideas_ledger(self) -> None:
         # The idea-ledger signal and the promote-suggest nudge retired with the
@@ -204,46 +199,44 @@ class TestRender(unittest.TestCase):
         return c
 
     def test_nothing_over_threshold_is_empty(self) -> None:
-        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0}
+        signals = {"inbox": 0, "watchlist_high": 0}
         self.assertEqual(ob.build_briefing(signals, self._cfg()), "")
 
     def test_renders_active_signals(self) -> None:
-        signals = {"inbox": 12, "watchlist_high": 3, "incubator": 0}
+        signals = {"inbox": 12, "watchlist_high": 3}
         out = ob.build_briefing(signals, self._cfg())
         self.assertIn("MemoryVault — pending", out)
         self.assertIn("12 inbox entries", out)
         self.assertIn("3 HIGH skill-watchlist patterns", out)
         self.assertIn("projects/agentm/_skill-watchlist/", out)
-        self.assertNotIn("incubator", out)  # below threshold (0)
 
     def test_renders_nudges(self) -> None:
-        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "stale_promoted": 1}
+        signals = {"inbox": 0, "watchlist_high": 0, "stale_promoted": 1}
         out = ob.build_briefing(signals, self._cfg())
         self.assertIn("1 skill-watchlist pattern promoted >30d ago", out)
         self.assertIn("author or dismiss", out)
 
     def test_nudge_singular(self) -> None:
-        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "stale_promoted": 1}
+        signals = {"inbox": 0, "watchlist_high": 0, "stale_promoted": 1}
         out = ob.build_briefing(signals, self._cfg())
         self.assertIn("1 skill-watchlist pattern promoted", out)
 
     def test_renders_staged_adapt(self) -> None:
-        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0,
+        signals = {"inbox": 0, "watchlist_high": 0,
                    "staged_adapt": 3}
         out = ob.build_briefing(signals, self._cfg())
         self.assertIn("3 skill candidates staged for adapt-evaluation", out)
         self.assertIn("/memory adapt-skills", out)
 
     def test_inbox_below_threshold_suppressed(self) -> None:
-        signals = {"inbox": 5, "watchlist_high": 0, "incubator": 0}
+        signals = {"inbox": 5, "watchlist_high": 0}
         self.assertEqual(ob.build_briefing(signals, self._cfg(inbox_threshold=10)), "")
 
     def test_singular_plural(self) -> None:
-        signals = {"inbox": 1, "watchlist_high": 1, "incubator": 1}
+        signals = {"inbox": 1, "watchlist_high": 1}
         out = ob.build_briefing(signals, self._cfg(inbox_threshold=1))
         self.assertIn("1 inbox entry to sort", out)
         self.assertIn("1 HIGH skill-watchlist pattern ", out)
-        self.assertIn("1 incubator idea ", out)
 
 
 class TestEmit(unittest.TestCase):

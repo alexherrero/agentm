@@ -425,22 +425,6 @@ def count_inbox(vault: Path) -> "int | None":
         return None
 
 
-def count_incubator(vault: Path) -> int:
-    """Real vault layout: `<vault>/_idea-incubator/<slug>/` (root-level).
-
-    NOTE: `orchestration_briefing.py`'s own `count_incubator_pending()` used
-    to look at `<vault>/personal/_idea-incubator` -- the opposite-direction
-    mismatch of `count_inbox`'s, now fixed there as well. Same historical
-    duplicate-that-now-agrees situation; see `count_inbox`'s NOTE above."""
-    d = vault / "_idea-incubator"
-    if not d.is_dir():
-        return 0
-    try:
-        return sum(1 for p in d.iterdir() if p.is_dir() and not p.name.startswith("_"))
-    except OSError:
-        return 0
-
-
 def _is_supplement_home(p: Path, rel: Path) -> bool:
     """Filing-v2 part 3: the accumulate loop's lanes live under
     `crystallized/<opinion>/` and their served files beside the crystallized
@@ -529,8 +513,6 @@ def section_memory(vault: "Path | None") -> str:
         lines.append("Inbox: n/a (the memory skill's review queue could not be read)")
     else:
         lines.append(f"Inbox: {inbox_n} unreviewed entr{'y' if inbox_n == 1 else 'ies'}")
-    incubator_n = count_incubator(vault)
-    lines.append(f"Incubator: {incubator_n} idea{'' if incubator_n == 1 else 's'} in research")
     newest = newest_curated_entries(vault)
     lines.append("Newest curated entries: " + (", ".join(newest) if newest else "none found"))
     lines.append(heat_policy_report(vault))
