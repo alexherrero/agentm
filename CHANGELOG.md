@@ -118,7 +118,7 @@ A session trace is titled by what the session is for, not by the relay that open
   - **Gone.** `harness/skills/memory/scripts/ideas_incubator.py`, its tests, and the `memory-idea-researcher` sub-agent. The install and integrity checks no longer expect the agent, and `/doctor` requires `adapt-evaluator` alone.
   - **No more incubator count.** The session-start briefing and the `/console` memory section stopped counting `_idea-incubator/<slug>/` folders. The `incubator_pending_threshold` setting is ignored; a config file that still has it reads as before.
   - **Guard.** `scripts/test_idea_incubator_retired.py` fails if a live file names the script or the agent again.
-  - **An installed copy stays until you remove it.** `install.sh` adds and refreshes agents but does not delete them, so an existing `~/.claude/agents/memory-idea-researcher.md` has to be removed by hand.
+  - **An installed copy.** A source-mode install reaps the dangling `~/.claude/agents/memory-idea-researcher.md` link on its next run. A release-mode install copies files and deletes none, so there the old copy has to be removed by hand.
 
 ### Fixed
 
