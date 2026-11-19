@@ -195,10 +195,25 @@ class TheLinksAndTheTitleAreReal(unittest.TestCase):
         self.assertIn("See [[gone-note]].", out)
         self.assertIn("- [[gone-in-a-fence]]", out)
         self.assertIn("- [[gone-candidate]]", out)
-        self.assertEqual(out.count("[[followups]]"), 1, "two spellings of one note are one entry")
+        self.assertEqual(out.count("[[followups]]"), 1, "a link re-spelled to its file is one entry with it")
         self.assertNotIn("[[FOLLOWUPS]]", out)
         self.assertIn("- `memory/semantic/gone.md`", out)
         self.assertIn("- [[kept|Kept note]]", out)
+
+    def test_notes_that_share_a_file_name_stay_apart(self):
+        # Every task has a `plan`, and a vault can hold `ROADMAP.md` beside
+        # `roadmap.md`: a link that names a real file is left as written.
+        (self.vault / "projects" / "a").mkdir(parents=True)
+        (self.vault / "projects" / "b").mkdir(parents=True)
+        (self.vault / "projects" / "a" / "plan.md").write_text("x\n", encoding="utf-8")
+        (self.vault / "projects" / "b" / "plan.md").write_text("x\n", encoding="utf-8")
+        (self.vault / "projects" / "a" / "ROADMAP.md").write_text("x\n", encoding="utf-8")
+        (self.vault / "projects" / "b" / "roadmap.md").write_text("x\n", encoding="utf-8")
+        lines = ["- [[projects/a/plan|A plan]]", "- [[projects/b/plan|B plan]]", "- [[roadmap]]", "- [[ROADMAP]]"]
+        text = "## Recalled\n\n" + "\n".join(lines) + "\n"
+        self.assertEqual(et.checked_links(text, et.note_names(self.memory)), text)
+        merged = et._union_lines("\n".join(lines[:1]), "\n".join(lines[1:2]), et._link_target)
+        self.assertEqual(merged.split("\n"), lines[:2], "a later write's other plan is a new entry")
 
     def test_a_line_the_host_wrote_is_not_the_title(self):
         for opener in ("[Image: original 2560x1600, displayed at 2000x1250. Multiply coordinates by 1.28.]",

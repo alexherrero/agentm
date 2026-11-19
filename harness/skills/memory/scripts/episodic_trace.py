@@ -596,10 +596,12 @@ def mined_candidates(messages: list, *, standing: "dict | None" = None, mined: "
 
 
 def note_names(memory_root) -> "dict[str, str]":
-    """Every note's file name without `.md`, keyed in lower case and valued as
-    the file spells it, across the vault the memory root sits in: the vault is
-    the nearest folder at or above it that holds `.obsidian` or `.git`, else
-    the memory root itself. Hidden folders are not read."""
+    """Every note's file name without `.md`, valued as the file spells it, and
+    keyed both as spelled and in lower case, across the vault the memory root
+    sits in: the vault is the nearest folder at or above it that holds
+    `.obsidian` or `.git`, else the memory root itself. Hidden folders are not
+    read. A name two files spell differently (`ROADMAP.md`, `roadmap.md`)
+    answers to each spelling as itself."""
     start = Path(memory_root)
     vault = start
     for cand in (start, *list(start.parents)[:2]):
@@ -611,14 +613,21 @@ def note_names(memory_root) -> "dict[str, str]":
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
         for name in sorted(filenames):
             if name.endswith(".md"):
+                names[name[:-3]] = name[:-3]
                 names.setdefault(name[:-3].lower(), name[:-3])
     return names
 
 
+def _spelled(known: dict, name: str) -> "str | None":
+    """`name` as a note's file spells it: itself when a file has that exact
+    name, else the spelling of a file whose name differs only in capitals,
+    else None."""
+    return known.get(name) or known.get(name.lower())
+
+
 def note_stems(memory_root) -> "set[str]":
-    """Every note's file name, without `.md` and in lower case (`note_names`'
-    keys)."""
-    return set(note_names(memory_root))
+    """Every note's file name, without `.md` and in lower case."""
+    return {k.lower() for k in note_names(memory_root)}
 
 
 def from_transcript(transcript_path: Path, *, session_id: str, when: date = None,
@@ -663,7 +672,7 @@ def from_transcript(transcript_path: Path, *, session_id: str, when: date = None
         if isinstance(known, dict):
             # The history keeps a name as it was searched; a file renamed
             # since (`FOLLOWUPS.md` → `followups.md`) is linked as it is now.
-            slug = known[slug.lower()]
+            slug = _spelled(known, slug)
         if slug not in recalled and slug not in captured:
             recalled.append(slug)
     if when is None:
@@ -784,13 +793,17 @@ def with_updated(text: str, day: str) -> str:
 
 
 def _link_target(line: str) -> str:
-    """The name a list line points at, in lower case, whether it is a link or
-    a name in plain text: a link unlinked by hand, or by `checked_links`, is
-    the same entry as the link a later write brings, so the write does not
-    add the link back."""
+    """What a list line points at, whether it is a link or a name in plain
+    text: a link unlinked by hand, or by `checked_links`, is the same entry as
+    the link a later write brings, so the write does not add the link back.
+    A path is the whole path, and capitals count: two tasks' `plan` notes are
+    two entries, and so are `PLAN.md` and `plan.md`."""
     s = line.strip()
     m = re.match(r"^- \[\[([^\]|]+)", s) or re.match(r"^- `([^`]+)`", s)
-    return Path(m.group(1)).name.lower() if m else s
+    if not m:
+        return s
+    target = m.group(1).strip()
+    return target[:-3] if target.endswith(".md") else target
 
 
 _LIST_LINK = re.compile(r"^- \[\[([^\]|]+)(\|[^\]]*)?\]\]\s*$")
@@ -816,7 +829,7 @@ def checked_links(text: str, known: dict) -> str:
             if m:
                 target = m.group(1).strip()
                 name = Path(target).name
-                spelled = known.get(name.lower())
+                spelled = _spelled(known, name[:-3] if name.endswith(".md") else name)
                 if spelled is None:
                     line = f"- `{target}`"
                 elif "/" not in target and spelled != target:
