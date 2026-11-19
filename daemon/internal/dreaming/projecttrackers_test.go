@@ -68,6 +68,41 @@ func TestAProjectTrackerIsTheChecklistOfItsTasks(t *testing.T) {
 	}
 }
 
+// A dropped task is closed but not done. Task 197 was dropped as a no-go and
+// the tracker counted it done and named it "the latest" to finish; it now
+// counts on its own line, and the done line names only a task that finished.
+func TestADroppedTaskIsNotCountedDone(t *testing.T) {
+	root, vault := rootMapVault(t)
+	writeAt(t, vault, "projects/mixed/charter.md", "# Mixed\n\n**What:** One of each.\n")
+	writeAt(t, vault, "projects/mixed/tasks/001-shipped/tracker.md",
+		trackerNote("Shipped", "mixed", "001-shipped", "done", "", "2026-09-05", "2026-09-05", "Shipped."))
+	// Dropped after the done task closed, so a done-or-dropped sort would
+	// name it the latest.
+	writeAt(t, vault, "projects/mixed/tasks/002-no-go/tracker.md",
+		trackerNote("No-go", "mixed", "002-no-go", "dropped", "", "2026-09-20", "2026-09-20", "Closed as a no-go."))
+	writeAt(t, vault, "projects/mixed/tasks/003-going/tracker.md",
+		trackerNote("Going", "mixed", "003-going", "active", "", "2026-09-12", "", "Under way."))
+	plan, err := PlanProjectTrackers(root, projectsNow, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := plannedText(plan, "../projects/mixed/tracker.md")
+	for _, want := range []string{
+		"## State\n\n1 open · 1 done · 1 dropped\n",
+		"- [ ] 003-going — active\n" +
+			"- [x] done: 1 — the latest 001-shipped, closed 2026-09-05\n" +
+			"- [x] dropped: 1 — the latest 002-no-go, closed 2026-09-20\n",
+		"## Next\n\n003-going (active)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("mixed's tracker lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "done: 2") || strings.Contains(text, "done: 1 — the latest 002-no-go") {
+		t.Errorf("the dropped task is counted done:\n%s", text)
+	}
+}
+
 // Task 177: a task the night has moved to `completed/tasks/` still counts, so
 // the tracker's "M done" line is the same the night after the move as before
 // it, and the project's map links the task where it now sits.
