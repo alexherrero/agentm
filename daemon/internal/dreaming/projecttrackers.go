@@ -29,7 +29,8 @@ import (
 //	Objective    the charter's What line, and that the file is generated
 //	State        a summary line, then the checklist: the open tasks first,
 //	             grouped by the design that governs them, each with its
-//	             status; the done ones collapsed to one line with a count
+//	             status; the done ones collapsed to one line with a count,
+//	             and the dropped ones to a line of their own
 //	Next         the first open task, or that none is in flight
 //	Outcome      empty unless project.yaml marks the project finished
 //
@@ -108,11 +109,16 @@ var trackerStatuses = map[string]bool{"queued": true, "active": true, "parked": 
 
 func renderProjectTracker(slug, title, status, sensitivity, what, opened, updated, closed string,
 	carried [][2]string, tasks []projectTask) string {
-	var open, done []projectTask
+	// A dropped task is closed but not done: it is counted on its own, so the
+	// done count and "the latest" name only the tasks that finished.
+	var open, done, dropped []projectTask
 	for _, t := range tasks {
-		if t.Status == "done" || t.Status == "dropped" {
+		switch t.Status {
+		case "done":
 			done = append(done, t)
-		} else {
+		case "dropped":
+			dropped = append(dropped, t)
+		default:
 			open = append(open, t)
 		}
 	}
@@ -137,12 +143,16 @@ func renderProjectTracker(slug, title, status, sensitivity, what, opened, update
 		}
 		return open[i].Task < open[j].Task
 	})
-	sort.SliceStable(done, func(i, j int) bool {
-		if done[i].Closed != done[j].Closed {
-			return done[i].Closed > done[j].Closed
-		}
-		return done[i].Task > done[j].Task
-	})
+	newestClosedFirst := func(ts []projectTask) {
+		sort.SliceStable(ts, func(i, j int) bool {
+			if ts[i].Closed != ts[j].Closed {
+				return ts[i].Closed > ts[j].Closed
+			}
+			return ts[i].Task > ts[j].Task
+		})
+	}
+	newestClosedFirst(done)
+	newestClosedFirst(dropped)
 
 	fm := []string{"---", "kind: tracker", "title: " + trackerScalar(title),
 		"project: " + trackerScalar(slug), "status: " + status,
@@ -164,7 +174,11 @@ func renderProjectTracker(slug, title, status, sensitivity, what, opened, update
 	if what != "" {
 		objective = what + "\n\n" + objective
 	}
-	state := []string{fmt.Sprintf("%d open · %d done", len(open), len(done))}
+	summary := fmt.Sprintf("%d open · %d done", len(open), len(done))
+	if len(dropped) > 0 {
+		summary += fmt.Sprintf(" · %d dropped", len(dropped))
+	}
+	state := []string{summary}
 	for _, t := range open {
 		line := fmt.Sprintf("- [ ] %s — %s", t.Task, t.Status)
 		if d := designName(t.Design); d != "" {
@@ -172,9 +186,15 @@ func renderProjectTracker(slug, title, status, sensitivity, what, opened, update
 		}
 		state = append(state, line)
 	}
-	if len(done) > 0 {
-		last := done[0]
-		line := fmt.Sprintf("- [x] done: %d", len(done))
+	for _, closedGroup := range []struct {
+		label string
+		tasks []projectTask
+	}{{"done", done}, {"dropped", dropped}} {
+		if len(closedGroup.tasks) == 0 {
+			continue
+		}
+		last := closedGroup.tasks[0]
+		line := fmt.Sprintf("- [x] %s: %d", closedGroup.label, len(closedGroup.tasks))
 		if last.Closed != "" {
 			line += fmt.Sprintf(" — the latest %s, closed %s", last.Task, last.Closed)
 		} else {
