@@ -3424,8 +3424,11 @@ def prompt_submit(
         )
     elif blocked:
         transparency += " (partial coverage — " + "; ".join(blocked) + ")"
-    if exclusion.slugs:
-        transparency += f" (recall_excludes: {', '.join(exclusion.slugs)})"
+    # A folder rule's projects are left out of the line: naming them would tell
+    # a session outside the folder what the rule keeps from it.
+    excluded_by_rule = [s for s in exclusion.slugs if s not in exclusion.walled]
+    if excluded_by_rule:
+        transparency += f" (recall_excludes: {', '.join(excluded_by_rule)})"
     if overrun:
         transparency += (
             f" (WARNING: {budget_ms}ms time budget exceeded)"

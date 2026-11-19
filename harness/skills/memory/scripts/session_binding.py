@@ -77,6 +77,10 @@ class ProjectYaml(NamedTuple):
     code_paths: list
     excludes: list
     excludes_malformed: bool
+    # `recall_cwd_match`: the folder fragments a session must be in to be served
+    # this project's notes, and why the key cannot be trusted, or None.
+    cwd_match: list = []
+    cwd_problem: Optional[str] = None
 
 
 def parse_project_yaml(text: str) -> ProjectYaml:
@@ -84,11 +88,13 @@ def parse_project_yaml(text: str) -> ProjectYaml:
     (`check-project-yaml` holds it), and this module stays on the standard
     library."""
     slug, in_list, named, empty = None, None, False, False
-    lists: dict = {"code_paths": [], "recall_excludes": []}
+    cwd_named, cwd_empty = False, False
+    lists: dict = {"code_paths": [], "recall_excludes": [], "recall_cwd_match": []}
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         named = named or "recall_excludes" in line
+        cwd_named = cwd_named or "recall_cwd_match" in line
         if not line[:1].isspace() and not line.startswith("-"):
             key, _, value = line.partition(":")
             key, value = key.strip(), value.strip()
@@ -98,6 +104,7 @@ def parse_project_yaml(text: str) -> ProjectYaml:
             elif key in lists and value.startswith("[") and value.endswith("]"):
                 lists[key] += [v.strip().strip("'\"") for v in value[1:-1].split(",") if v.strip()]
                 empty = empty or (key == "recall_excludes" and not value.strip("[] "))
+                cwd_empty = cwd_empty or (key == "recall_cwd_match" and not value.strip("[] "))
             continue
         item = line.strip()
         if in_list and item.startswith("- "):
@@ -105,7 +112,14 @@ def parse_project_yaml(text: str) -> ProjectYaml:
     # This reader takes the two list forms the schema writes. Anything else that
     # names the key, valid YAML or not, must not read as "no rule".
     malformed = named and not empty and not lists["recall_excludes"]
-    return ProjectYaml(slug, lists["code_paths"], lists["recall_excludes"], malformed)
+    cwd_problem = None
+    if cwd_named and not cwd_empty and not lists["recall_cwd_match"]:
+        cwd_problem = "`recall_cwd_match` is not a list of folder fragments"
+    for frag in lists["recall_cwd_match"]:
+        if not frag.strip("/\\ "):
+            cwd_problem = f"`recall_cwd_match` entry {frag!r} names no folder"
+    return ProjectYaml(slug, lists["code_paths"], lists["recall_excludes"], malformed,
+                       lists["recall_cwd_match"], cwd_problem)
 
 
 def _project_yaml(path: Path) -> "tuple[Optional[str], list]":

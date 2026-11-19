@@ -133,3 +133,58 @@ func TestMemorySearchAsksForTheFolder(t *testing.T) {
 	}
 	t.Fatal("memory_search is not in the tool list")
 }
+
+// A project's recall_cwd_match keeps its notes to sessions whose folder
+// contains a fragment it names. Over MCP the folder is what `cwd` says, and a
+// caller that names none is in no folder.
+func TestMemorySearchServesAFolderRuledProjectOnlyInsideItsFolder(t *testing.T) {
+	s, vault := exclusionServer(t)
+	secret := filepath.Join(vault, "projects", "secret")
+	if err := os.MkdirAll(secret, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rule := []byte("slug: secret\nrecall_cwd_match:\n  - /secret-mono/\n")
+	if err := os.WriteFile(filepath.Join(secret, "project.yaml"), rule, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	n := note.Note{Rel: "projects/secret/charter.md", Title: "charter", Body: "floodplain zoning",
+		Captured: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), CapturedSource: "mtime"}
+	if err := s.idx.Upsert(n, 1, 17); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(t.TempDir(), "secret-mono", "web")
+	if err := os.MkdirAll(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	has := func(paths []string) bool {
+		for _, p := range paths {
+			if p == "projects/secret/charter.md" {
+				return true
+			}
+		}
+		return false
+	}
+	for name, tc := range map[string]struct {
+		args map[string]any
+		want bool
+	}{
+		"inside the folder":    {map[string]any{"query": "floodplain zoning", "cwd": inside}, true},
+		"another folder":       {map[string]any{"query": "floodplain zoning", "cwd": t.TempDir()}, false},
+		"its own vault folder": {map[string]any{"query": "floodplain zoning", "cwd": secret}, false},
+		"no folder":            {map[string]any{"query": "floodplain zoning"}, false},
+		"a relative folder":    {map[string]any{"query": "floodplain zoning", "cwd": "secret-mono"}, false},
+	} {
+		paths, _, err := searchPaths(t, s, tc.args)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if has(paths) != tc.want {
+			t.Errorf("%s: served the folder-ruled note = %v, want %v (%v)", name, has(paths), tc.want, paths)
+		}
+		// An unmarked project's note is served wherever its own walls allow.
+		if name == "another folder" && len(paths) != 2 {
+			t.Errorf("%s: the folder rule took other notes too: %v", name, paths)
+		}
+	}
+}

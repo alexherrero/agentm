@@ -16,6 +16,15 @@ unknown only while some `project.yaml` will not read at all, since that file may
 be the one that claims it. A folder nobody can name may be a covered session, so
 it is held to every project's rule.
 
+The folder rule (amended 2026-11-18) is the other direction. A project's
+`recall_cwd_match:` names folder fragments, and its own notes are served only
+to a session whose folder contains one of them, ignoring case, with a separator
+on the end: as the session names it, as it resolves, or as the main checkout of
+the linked worktree it is in. It is a wall a project builds around its notes,
+for confidential work no other session may be handed. It is not lifted for the
+project's own vault folder, a session nobody can place is outside it, and a
+rule that cannot be read walls the project from every session.
+
 The Go side keeps the same rule in `daemon/internal/projectbind/exclusion.go`.
 Standard library only.
 """
@@ -44,6 +53,10 @@ _SLUG_SHAPE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 class Exclusion(NamedTuple):
     slugs: tuple = ()
     problem: Optional[str] = None
+    # The part of `slugs` a folder rule walls. Kept apart so a line that names
+    # what a session's own rule excludes never names a confidential project to
+    # a session outside its folder.
+    walled: tuple = ()
 
     def hides(self, rel: str, label=None) -> bool:
         """Whether a note belongs to an excluded project: it sits under
@@ -73,6 +86,18 @@ class _Rule(NamedTuple):
     codes: tuple
     excludes: tuple
     problem: Optional[str]
+    cwd_match: tuple = ()
+    cwd_problem: Optional[str] = None
+    # The project's directory name. The folder rule walls it as well as the
+    # declared slug, so a slug the line reader misreads (a YAML comment after
+    # it, say) cannot point the wall at a project nobody has.
+    folder: str = ""
+    # A projects/ folder that would not open: every rule in it is unknown.
+    unlisted: bool = False
+
+    @property
+    def folder_ruled(self) -> bool:
+        return bool(self.cwd_match) or self.cwd_problem is not None
 
 
 def _project_exists(vault_root: Path, slug: str) -> bool:
@@ -92,7 +117,7 @@ def _read_rules(vault_root: Path) -> list:
         except (FileNotFoundError, NotADirectoryError):
             continue
         except OSError as e:
-            rules.append(_Rule(parent.name, (), (), f"{_READ_FAILURE}: {e}"))
+            rules.append(_Rule(parent.name, (), (), f"{_READ_FAILURE}: {e}", unlisted=True))
             continue
         for folder in folders:
             if not folder.is_dir():
@@ -106,7 +131,8 @@ def _read_rules(vault_root: Path) -> list:
             except OSError as e:
                 if folder.name not in seen:
                     seen.add(folder.name)
-                    rules.append(_Rule(folder.name, (), (), f"{_READ_FAILURE}: {e}"))
+                    failure = f"{_READ_FAILURE}: {e}"
+                    rules.append(_Rule(folder.name, (), (), failure, (), failure, folder.name))
                 continue
             parsed = session_binding.parse_project_yaml(text)
             slug = parsed.slug or folder.name
@@ -124,7 +150,8 @@ def _read_rules(vault_root: Path) -> list:
                 elif not _project_exists(vault_root, name):
                     problem = f"`recall_excludes` names {name!r}, and the vault has no such project"
             codes = tuple(c for c in map(session_binding._real, parsed.code_paths) if c is not None)
-            rules.append(_Rule(slug, codes, tuple(parsed.excludes), problem))
+            rules.append(_Rule(slug, codes, tuple(parsed.excludes), problem,
+                               tuple(parsed.cwd_match), parsed.cwd_problem, folder.name))
     return rules
 
 
@@ -195,12 +222,56 @@ def _claiming_rules(rules: list, vault_root: Path, directory: Path) -> list:
     return list(claims.values())
 
 
+def _folder_forms(directory) -> list:
+    """The forms a session's folder is matched in: as named, as it resolves, and
+    as the main checkout of a linked worktree; lower case, `/`-separated, with a
+    separator on the end so a fragment `/app/` matches the folder `…/app`."""
+    if directory is None or not str(directory).strip():
+        return []
+    # Cleaned, so `…/app/../elsewhere` is not read as inside `/app/`.
+    forms = [os.path.normpath(str(directory))]
+    real = session_binding._real(str(directory))
+    if real is not None:
+        forms.append(str(real))
+        twin = _main_checkout_path(real)
+        if twin is not None:
+            forms.append(str(twin))
+    return [f.replace("\\", "/").rstrip("/").lower() + "/" for f in forms]
+
+
+def _folder_walled(rules: list, directory) -> list:
+    """Every project whose `recall_cwd_match` the session in `directory` does
+    not satisfy, a rule that cannot be read included. A blank folder satisfies
+    nothing."""
+    forms = _folder_forms(directory)
+    out = []
+    for rule in rules:
+        if not rule.folder_ruled:
+            continue
+        if rule.cwd_problem is None and any(
+                frag.replace("\\", "/").lower() in form
+                for frag in rule.cwd_match for form in forms):
+            continue
+        out.append(rule.slug)
+        if rule.folder and rule.folder.lower() != rule.slug.lower():
+            out.append(rule.folder)
+    return out
+
+
+def _with(slugs, walled) -> tuple:
+    out = list(slugs)
+    out += [s for s in walled if s not in out]
+    return tuple(out)
+
+
 def _every_rule(rules: list) -> Exclusion:
     """What a session nobody can place is held to: every rule there is."""
     for rule in rules:
         if rule.problem:
             return Exclusion(problem=f"project {rule.slug!r}: {rule.problem}")
-    return Exclusion(slugs=tuple(sorted({s for r in rules for s in r.excludes})))
+    walled = tuple(_folder_walled(rules, None))
+    return Exclusion(slugs=tuple(sorted({s for r in rules for s in r.excludes} | set(walled))),
+                     walled=walled)
 
 
 def for_session(directory, memory_root) -> Exclusion:
@@ -221,22 +292,28 @@ def for_session(directory, memory_root) -> Exclusion:
             return NONE
         vault_root = Path(vault_root).resolve()
         rules = _read_rules(vault_root)
+        for rule in rules:
+            if rule.unlisted:
+                return Exclusion(problem=f"the vault's {rule.slug!r} folder: {rule.problem}")
         here = session_binding._real(str(directory)) if directory else None
         if here is None:
             return _every_rule(rules)
+        # The folder rule is not lifted for a project's own sessions: it follows
+        # the folder, and a session of the project outside it is still outside.
+        walled = _folder_walled(rules, directory)
         claims = _claiming_rules(rules, vault_root, here)
         if not claims:
             for other in rules:
                 if other.problem and other.problem.startswith(_READ_FAILURE):
                     return Exclusion(problem=f"project {other.slug!r}: {other.problem}")
-            return NONE
+            return Exclusion(slugs=tuple(walled), walled=tuple(walled)) if walled else NONE
         own = {r.slug.lower() for r in claims}
         slugs: list = []
         for rule in claims:
             if rule.problem:
                 return Exclusion(problem=f"project {rule.slug!r}: {rule.problem}")
             slugs += [s for s in rule.excludes if s not in own and s not in slugs]
-        return Exclusion(slugs=tuple(slugs))
+        return Exclusion(slugs=_with(slugs, walled), walled=tuple(walled))
     except Exception as e:  # noqa: BLE001 — a rule nobody could evaluate is not a clear session
         return Exclusion(problem=f"{type(e).__name__}: {e}")
 

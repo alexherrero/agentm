@@ -30,6 +30,8 @@ Until task 199 the hook wrote `.harness/session-id-<session_id>.start` before th
 
 The hook hands `recall.py session-start --stdin-payload` the event's JSON, so a project's `recall_excludes:` rule follows the session's folder and not this process's (see [`memory-recall-prompt-submit`](../memory-recall-prompt-submit/hook.md#recall-exclusions)). The tier is the operator's standing rules and carries no project, so the rule can only ever remove a pen entry stamped with an excluded project. If the rule cannot be read, every entry that carries a project is withheld, the standing rules still load, and stderr says `recall exclusions could not be read`.
 
+A project's `recall_cwd_match:` rule follows the same folder: a pen entry stamped with a project whose folder fragments the session's folder does not contain is not loaded.
+
 ## What it never does
 
 - **Never blocks session start.** If anything fails (vault missing, Python missing, entries unreadable), the hook exits 0 and the session proceeds without injected memory.

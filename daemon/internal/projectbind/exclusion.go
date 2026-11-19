@@ -23,6 +23,13 @@ import (
 // an error, and the caller withholds rather than serves, because a session
 // that silently loses its wall looks exactly like one that never had it. The
 // Python side keeps the same rule in `recall_exclusion.py`.
+//
+// The folder rule (amended 2026-11-18) is the other direction. A project's
+// `recall_cwd_match:` names folder fragments, and its own notes are served
+// only to a session whose folder contains one of them. Where `recall_excludes`
+// is a wall a project builds around its sessions, this is a wall a project
+// builds around its notes: confidential work that no other session may be
+// handed, whatever folder it is in. A session nobody can place is outside.
 
 // readFailure opens the problem of a project.yaml that would not read, the one
 // kind that may be hiding a claim on a folder.
@@ -39,7 +46,20 @@ type projectRule struct {
 	codes    []string
 	excludes []string
 	problem  string
+	// cwdMatch is `recall_cwd_match`, and cwdProblem why it cannot be trusted.
+	cwdMatch   []string
+	cwdProblem string
+	// folder is the project's directory name. The folder rule walls it as well
+	// as the slug the file declares, so a slug the line reader misreads (a YAML
+	// comment after it, say) cannot point the wall at a project nobody has.
+	folder string
+	// unlisted marks a projects/ folder that would not open: every rule in it
+	// is unknown, folder rules included, so no session can be called clear.
+	unlisted bool
 }
+
+// folderRuled is whether the project keeps its notes to matching folders.
+func (r projectRule) folderRuled() bool { return len(r.cwdMatch) > 0 || r.cwdProblem != "" }
 
 // readRules lists the folders itself rather than globbing, for two reasons: a
 // bracket in the vault's path would be read as a pattern, and a glob drops a
@@ -57,7 +77,8 @@ func readRules(vaultRoot string) []projectRule {
 			continue
 		}
 		if err != nil {
-			out = append(out, projectRule{slug: filepath.Base(parent), problem: readFailure + ": " + err.Error()})
+			out = append(out, projectRule{slug: filepath.Base(parent), problem: readFailure + ": " + err.Error(),
+				unlisted: true})
 			continue
 		}
 		for _, e := range entries {
@@ -77,7 +98,8 @@ func readRules(vaultRoot string) []projectRule {
 				continue
 			}
 			seen[slug] = true
-			rule := projectRule{slug: slug, excludes: fields.lists["recall_excludes"], problem: fields.problem}
+			rule := projectRule{slug: slug, excludes: fields.lists["recall_excludes"], problem: fields.problem,
+				cwdMatch: fields.lists["recall_cwd_match"], cwdProblem: fields.cwdProblem, folder: e.Name()}
 			for _, p := range fields.lists["code_paths"] {
 				if code := realPath(p); code != "" {
 					rule.codes = append(rule.codes, code)
@@ -236,10 +258,19 @@ func vaultFolderProject(vault, dir string) string {
 // could only matter by adding a claim inside this one, and stopping every
 // session's recall for one bad file costs more than that rarity is worth.
 func Exclusions(vaultRoot, dir string) ([]string, error) {
-	if vaultRoot == "" || strings.TrimSpace(dir) == "" {
+	if vaultRoot == "" {
 		return nil, nil
 	}
+	if strings.TrimSpace(dir) == "" {
+		return EveryExclusion(vaultRoot)
+	}
 	rules := readRules(vaultRoot)
+	for _, r := range rules {
+		if r.unlisted {
+			return nil, fmt.Errorf("recall exclusions cannot be read: the vault's %q folder: %s", r.slug, r.problem)
+		}
+	}
+	walled := folderWalled(rules, dir)
 	claims := claimingRules(rules, vaultRoot, dir)
 	if len(claims) == 0 {
 		for _, r := range rules {
@@ -247,7 +278,7 @@ func Exclusions(vaultRoot, dir string) ([]string, error) {
 				return nil, fmt.Errorf("recall exclusions cannot be read for this folder: project %q: %s", r.slug, r.problem)
 			}
 		}
-		return nil, nil
+		return walled, nil
 	}
 	own := map[string]bool{}
 	for _, r := range claims {
@@ -266,19 +297,79 @@ func Exclusions(vaultRoot, dir string) ([]string, error) {
 			}
 		}
 	}
+	// The folder rule is not lifted for a project's own sessions: it follows
+	// the folder, and a session of the project outside it is still outside.
+	for _, name := range walled {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
 	return out, nil
 }
 
-// EveryExclusion returns the projects any project's rule excludes, for a caller
-// that cannot say where it is working. It may be a session the rule covers, so
-// it is treated as one.
+// folderWalled is every project whose `recall_cwd_match` the session in dir
+// does not satisfy, a rule that cannot be read included. The folder satisfies
+// a fragment when it contains it, ignoring case and with a separator on the
+// end, so `/app/` matches the folder `…/app` itself: as the session names it,
+// as it resolves, or as the main checkout of the linked worktree it is in. A
+// blank folder satisfies nothing.
+func folderWalled(rules []projectRule, dir string) []string {
+	var forms []string
+	if strings.TrimSpace(dir) != "" {
+		add := func(p string) {
+			if p != "" {
+				forms = append(forms, strings.ToLower(strings.TrimSuffix(filepath.ToSlash(p), "/")+"/"))
+			}
+		}
+		// Cleaned, so `…/app/../elsewhere` is not read as inside `/app/`.
+		add(filepath.Clean(dir))
+		real := realPath(dir)
+		add(real)
+		if real != "" {
+			add(mainCheckoutPath(real))
+		}
+	}
+	var out []string
+	for _, r := range rules {
+		if !r.folderRuled() || folderMatches(r, forms) {
+			continue
+		}
+		out = append(out, r.slug)
+		if r.folder != "" && !strings.EqualFold(r.folder, r.slug) {
+			out = append(out, r.folder)
+		}
+	}
+	return out
+}
+
+func folderMatches(r projectRule, forms []string) bool {
+	if r.cwdProblem != "" {
+		return false
+	}
+	for _, frag := range r.cwdMatch {
+		frag = strings.ToLower(filepath.ToSlash(strings.ReplaceAll(frag, "\\", "/")))
+		for _, f := range forms {
+			if strings.Contains(f, frag) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// EveryExclusion returns the projects any project's rule excludes, and every
+// project that keeps its notes to matching folders, for a caller that cannot
+// say where it is working. It may be a session the rule covers, so it is
+// treated as one, and it is in no folder a project names.
 func EveryExclusion(vaultRoot string) ([]string, error) {
 	if vaultRoot == "" {
 		return nil, nil
 	}
 	seen := map[string]bool{}
 	var out []string
-	for _, r := range readRules(vaultRoot) {
+	rules := readRules(vaultRoot)
+	for _, r := range rules {
 		if r.problem != "" {
 			return nil, fmt.Errorf("recall exclusions for project %q cannot be read: %s", r.slug, r.problem)
 		}
@@ -287,6 +378,12 @@ func EveryExclusion(vaultRoot string) ([]string, error) {
 				seen[name] = true
 				out = append(out, name)
 			}
+		}
+	}
+	for _, name := range folderWalled(rules, "") {
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
 		}
 	}
 	sort.Strings(out)

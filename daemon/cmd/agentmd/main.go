@@ -478,8 +478,8 @@ func cmdSearch(args []string) error {
 		"the session's vault project: a note whose project: names another one, or none, ranks a little "+
 			"lower (agentm-vault, projects and tasks); empty ranks exactly as before")
 	sessionDir := fs.String("cwd", "",
-		"the folder the session works in, which decides whether its project's recall_excludes rule applies; "+
-			"empty means the folder this command runs in")
+		"the folder the session works in, which decides whether its project's recall_excludes rule applies "+
+			"and which recall_cwd_match projects it may be served; empty means the folder this command runs in")
 	includeArchived := fs.Bool("include-archived", false,
 		"also return notes whose lifecycle is archived or superseded — the contract's explicit archive query; "+
 			"off by default, both have left everyday search while staying on disk (a superseded note comes back demoted beside its successor)")
