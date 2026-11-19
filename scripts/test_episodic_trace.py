@@ -154,6 +154,52 @@ class TheLinksAndTheTitleAreReal(unittest.TestCase):
         for gone in ("exhaust", "agentm-self-probe"):
             self.assertNotIn(gone, text)
 
+    def _write(self):
+        _transcript(self.transcript, with_tools=False)
+        names = et.note_names(self.memory)
+        trace = et.from_transcript(self.transcript, session_id="s3", history_path=self.history, known=names)
+        return self.memory / et.write_trace(self.memory, trace, known=names)
+
+    def test_a_name_is_linked_as_its_file_spells_it(self):
+        # The history holds `vault-location`; the file is `Vault-Location.md`,
+        # and a link in other capitals is a broken link to the vault lint.
+        _transcript(self.transcript, with_tools=False)
+        trace = et.from_transcript(self.transcript, session_id="s3", history_path=self.history,
+                                   known=et.note_names(self.memory))
+        self.assertEqual(trace.recalled, ["Vault-Location", "charter"])
+
+    def test_a_note_deleted_after_a_write_is_unlinked_by_the_next(self):
+        path = self._write()
+        self.assertIn("- [[charter]]", path.read_text(encoding="utf-8"))
+        (self.vault / "projects" / "agentm" / "charter.md").unlink()
+        self._write()
+        text = path.read_text(encoding="utf-8")
+        self.assertNotIn("[[charter]]", text, "the link an earlier write left is checked again")
+        self.assertIn("- `charter`", text, "the name stays, as plain text")
+        self.assertIn("- [[Vault-Location]]", text, "a note still there keeps its link")
+        self.assertEqual(text.count("charter`"), 1)
+
+    def test_a_link_unlinked_by_hand_is_not_linked_again(self):
+        path = self._write()
+        path.write_text(path.read_text(encoding="utf-8").replace("- [[charter]]", "- `charter`"), encoding="utf-8")
+        self._write()
+        text = path.read_text(encoding="utf-8")
+        self.assertNotIn("[[charter]]", text)
+        self.assertEqual(text.count("- `charter`"), 1)
+
+    def test_checked_links_touches_only_the_two_lists(self):
+        text = ("## Outcome\n\nSee [[gone-note]].\n\n```\n## Recalled\n- [[gone-in-a-fence]]\n```\n\n"
+                "## Recalled\n\n- [[FOLLOWUPS]]\n- [[followups]]\n- [[memory/semantic/gone.md]]\n"
+                "- [[kept|Kept note]]\n\n## Candidates\n\n- [[gone-candidate]]\n")
+        out = et.checked_links(text, {"followups": "followups", "kept": "kept"})
+        self.assertIn("See [[gone-note]].", out)
+        self.assertIn("- [[gone-in-a-fence]]", out)
+        self.assertIn("- [[gone-candidate]]", out)
+        self.assertEqual(out.count("[[followups]]"), 1, "two spellings of one note are one entry")
+        self.assertNotIn("[[FOLLOWUPS]]", out)
+        self.assertIn("- `memory/semantic/gone.md`", out)
+        self.assertIn("- [[kept|Kept note]]", out)
+
     def test_a_line_the_host_wrote_is_not_the_title(self):
         for opener in ("[Image: original 2560x1600, displayed at 2000x1250. Multiply coordinates by 1.28.]",
                        "The app was quit while you were working. Please continue from where you left off.",
