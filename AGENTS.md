@@ -76,7 +76,7 @@ your-project/
 ├── CLAUDE.md               # Claude Code entry point — points back here
 └── .claude/
     ├── commands/           # slash commands (Claude Code) — phase commands come from crickets development-lifecycle
-    ├── agents/             # sub-agents (Claude Code) — memory-engine: adapt-evaluator, memory-idea-researcher (review agents come from crickets)
+    ├── agents/             # sub-agents (Claude Code) — memory-engine: adapt-evaluator (review agents come from crickets)
     └── skills/             # auto-triggered skills (Claude Code) — e.g. doctor (dev/docs skills come from crickets)
 ```
 

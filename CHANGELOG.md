@@ -112,6 +112,14 @@ A session trace is titled by what the session is for, not by the relay that open
 
 - **The vault storage design closes its git transport** (`wiki/designs/agentm-vault-storage-presentation.md`, `wiki/how-to/Back-The-Vault-With-Drive.md`). The planned `vault-git` plugin was never built: the memory daemon already commits the vault to its git repository, and an off-device copy is a scheduled push to a remote you choose. The design's amendment log records why, and the Drive how-to now treats Drive as a file mirror beside the daemon's git history instead of the alternative to it.
 
+### Removed
+
+- **The idea incubator and its researcher retire (the operator's ruling of 2026-11-03).** An idea is a card in `personal/ideas/`, and `Ideas.md` is generated from those cards each night, so `_idea-incubator/` no longer exists and nothing fed these.
+  - **Gone.** `harness/skills/memory/scripts/ideas_incubator.py`, its tests, and the `memory-idea-researcher` sub-agent. The install and integrity checks no longer expect the agent, and `/doctor` requires `adapt-evaluator` alone.
+  - **No more incubator count.** The session-start briefing and the `/console` memory section stopped counting `_idea-incubator/<slug>/` folders. The `incubator_pending_threshold` setting is ignored; a config file that still has it reads as before.
+  - **Guard.** `scripts/test_idea_incubator_retired.py` fails if a live file names the script or the agent again.
+  - **An installed copy stays until you remove it.** `install.sh` adds and refreshes agents but does not delete them, so an existing `~/.claude/agents/memory-idea-researcher.md` has to be removed by hand.
+
 ### Fixed
 
 - **A failed weekly job is retried the next day, not the next week (task 198 follow-up).** The runner marked a run done whatever its exit code, so a job that runs less often than daily waited a full interval after a failure. The 2026-10-31 field brief exited 3 on a lapsed login, and nothing ran again until 11-07.

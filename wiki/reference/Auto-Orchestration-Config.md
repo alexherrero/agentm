@@ -33,7 +33,8 @@ These counts decide whether the SessionStart briefing reports a section. A signa
 |---|---|---|
 | `inbox_threshold` | The `_inbox/*.md` count that triggers a briefing flag. Filing v2's write path retired `_inbox/` as a capture destination, so this still reads that directory and effectively sees nothing — it does not see the low-confidence filings (`filing_confidence: low`) that now live at their class directories instead | `10` |
 | `watchlist_high_threshold` | `_skill-watchlist/` HIGH + `pending-review` count to surface | `1` |
-| `incubator_pending_threshold` | `_idea-incubator/<slug>/` dirs pending research to surface | `1` |
+
+`incubator_pending_threshold` retired with the idea incubator on 2026-11-03 — ideas are cards in `personal/ideas/` now, and `_idea-incubator/` is gone. A config file that still carries the key is read as before; nothing consults it.
 
 ## Nudge thresholds
 
@@ -79,4 +80,4 @@ The idle chain runs these bounded steps in order. The `enable_idle_chain` toggle
 
 - [Auto-orchestration](Auto-Orchestration) explains what these knobs change. It shows why the surface never nags.
 - [Tune auto-orchestration](Tune-Auto-Orchestration) provides the recipe for editing the config.
-- [AgentMemory context payload](AgentMemory-Context-Payload) details the vault folder map. These files reference the `_inbox/`, `_idea-incubator/`, `_meta/`, and `memory/` paths.
+- [AgentMemory context payload](AgentMemory-Context-Payload) details the vault folder map. These files reference the `_inbox/`, `_meta/`, and `memory/` paths.

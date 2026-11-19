@@ -35,8 +35,9 @@ local copy or a dangling path dependency on one:
      are forbidden, which is what a dangling link/dependency would contain.
   3. Both doctor surfaces categorize the six phase commands + three review
      sub-agents as crickets-provided (graceful-skip, never FAIL), with the
-     memory-engine pair (`adapt-evaluator`, `memory-idea-researcher`) as the
-     harness-required sub-agent set.
+     memory-engine sub-agent (`adapt-evaluator`; its sibling
+     `memory-idea-researcher` retired with the idea incubator, 2026-11-03) as
+     the harness-required sub-agent set.
   4. KEEP boundary — the memory engine stays in agentm, byte-untouched by the
      slim. The kept sub-agents, the memory hooks, the memory skill, and
      `harness_memory.py` must still exist.
@@ -97,7 +98,6 @@ RETIRED_PATHS = tuple(
 # ── memory-engine KEEP boundary (must survive the slim, byte-untouched) ──────
 KEPT_PATHS = (
     "harness/agents/adapt-evaluator.md",
-    "harness/agents/memory-idea-researcher.md",
     "harness/skills/memory",
     "harness/skills/doctor.md",
     # NB: `harness/hooks/conflict-merger-session-start` was a KEEP path until
@@ -248,10 +248,10 @@ class TestDevloopSlimRetired(unittest.TestCase):
         """Both doctor surfaces categorize the dev loop as crickets-provided.
 
         The six phase commands + the three review sub-agents are crickets-
-        provided (graceful-skip, never FAIL); the memory-engine pair is the
+        provided (graceful-skip, never FAIL); the memory-engine sub-agent is the
         harness-required sub-agent set.
         """
-        required_subagents = "adapt-evaluator, memory-idea-researcher"
+        required_subagents = "adapt-evaluator"
         phase_commands = "bugfix, plan, release, review, setup, work"
         review_agents = "adversarial-reviewer, adversarial-reviewer-cross, explorer"
         for rel in (
@@ -262,7 +262,7 @@ class TestDevloopSlimRetired(unittest.TestCase):
             self.assertIn(
                 required_subagents,
                 text,
-                f"{rel}: the memory-engine pair `{required_subagents}` must be "
+                f"{rel}: the memory-engine sub-agent `{required_subagents}` must be "
                 "the harness-required sub-agent set after the slim.",
             )
             self.assertIn(

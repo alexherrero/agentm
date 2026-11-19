@@ -168,5 +168,4 @@ Writes outside this allowlist are bugs in the sub-agent's dispatch + should be c
 - [`adapt_skills.py`](../skills/memory/scripts/adapt_skills.py) — Pass 1 Python pipeline that produces the enriched JSONs this sub-agent consumes.
 - [`discover_skills.py`](../skills/memory/scripts/discover_skills.py) — upstream fetcher whose diff files feed Pass 1.
 - [evaluator sub-agent](evaluator.md) — reference shape for the caller-supplies-inline-rubric pattern.
-- [memory-idea-researcher sub-agent](memory-idea-researcher.md) — sibling Tier-2 worker; similar read-only + bounded-write design.
 - [MemoryVault discovery-mining part](../wiki/explanation/designs/memoryvault/parts/discovery-mining.md) — full architectural context including the adapt-don't-import locked design call.

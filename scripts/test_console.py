@@ -260,7 +260,7 @@ class SectionDegradationTests(unittest.TestCase):
 
 class MemoryActivityTests(unittest.TestCase):
     """Real vault-layout fixtures -- these exercise the actual real paths
-    (`personal/_inbox`, root `_idea-incubator`) console.py reads directly,
+    (`personal/_inbox`) console.py reads directly,
     distinct from orchestration_briefing.py's own (mismatched) assumptions."""
 
     def setUp(self):
@@ -324,15 +324,12 @@ class MemoryActivityTests(unittest.TestCase):
             with patch.object(needs_review, "summary", side_effect=OSError("unreadable")):
                 self.assertIsNone(c.count_inbox(self.vault))
 
-    def test_count_incubator_root_level(self):
+    def test_no_incubator_line(self):
+        # The incubator retired on 2026-11-03 (ideas are cards in
+        # personal/ideas/); a leftover `_idea-incubator/` dir is not counted.
         (self.vault / "_idea-incubator" / "idea-one").mkdir(parents=True)
-        (self.vault / "_idea-incubator" / "idea-two").mkdir(parents=True)
-        self.assertEqual(c.count_incubator(self.vault), 2)
-
-    def test_count_incubator_ignores_personal_nested(self):
-        # Confirms this reads root _idea-incubator, not personal/_idea-incubator.
-        (self.vault / "memory" / "_idea-incubator" / "idea-one").mkdir(parents=True)
-        self.assertEqual(c.count_incubator(self.vault), 0)
+        self.assertFalse(hasattr(c, "count_incubator"))
+        self.assertNotIn("Incubator", c.section_memory(self.vault))
 
     def test_newest_curated_entries_excludes_staging_dirs(self):
         personal = self.vault / "memory"

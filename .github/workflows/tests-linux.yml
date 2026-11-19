@@ -169,8 +169,8 @@ jobs:
         # stay sha256-identical (testInfra#0: was check-all.sh-only, invisible to CI).
         run: bash scripts/check-vendored-parity.sh vault-lock
       - name: verify-orchestration-briefing (PM-half integration check)
-        # PM-owned orchestration signals (briefing · HIGH watchlist · incubator ·
-        # idea-ledger · staged-adapt · both nudges) against a throwaway scratch
+        # PM-owned orchestration signals (briefing · HIGH watchlist ·
+        # staged-adapt · the stale-promotion nudge) against a throwaway scratch
         # vault (testInfra#1: was check-all.sh-only, invisible to CI).
         run: bash scripts/verify-orchestration-briefing.sh
       - name: verify-idle-chain (non-dry-run chain + post-release dispatch)
