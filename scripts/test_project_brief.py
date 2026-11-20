@@ -238,10 +238,17 @@ class AFolderRuledProject(unittest.TestCase):
         tk.write(self.rule.parent / "tracker.md",
                  tk.new(title="Demo", project="demo", objective="Done.",
                         next_step="Read the hook.", today="2026-09-12"))
-        saved = os.environ.get("MEMORY_ROOT")
-        os.environ["MEMORY_ROOT"] = str(vault / "agent")
-        self.addCleanup(lambda: os.environ.pop("MEMORY_ROOT", None) if saved is None
-                        else os.environ.__setitem__("MEMORY_ROOT", saved))
+        # The vault backend lives in a plugin the CI runners do not install; a
+        # shim over the in-repo stub stands in for it, as test_harness_memory's does.
+        plugin = self.root / "vault-plugin"
+        plugin.mkdir()
+        (plugin / "storage_vault.py").write_text(
+            "from vault_backend_stub import VaultBackend\nPROTOCOL = 'vault'\n", encoding="utf-8")
+        for key, value in (("MEMORY_ROOT", str(vault / "agent")), ("OBSIDIAN_VAULT_SCRIPTS", str(plugin))):
+            saved = os.environ.get(key)
+            os.environ[key] = value
+            self.addCleanup(lambda k=key, s=saved: os.environ.pop(k, None) if s is None
+                            else os.environ.__setitem__(k, s))
 
     def repo(self, name: str) -> Path:
         harness = self.root / name / ".harness"
