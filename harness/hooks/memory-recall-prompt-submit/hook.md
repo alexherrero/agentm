@@ -33,6 +33,8 @@ This task ships the **hook scaffold** — the hook installs at its host destinat
 
 A project's `project.yaml` can name other projects under `recall_excludes:`, and a session working on that project gets no hit from them. The folder comes from the payload's `cwd`, or from the hook's own folder when the payload has none, and it counts when it is under one of the project's `code_paths`, under the project's folder in the vault, or in a linked git worktree of either. The hook drops a hit that sits under `projects/<slug>/` or `projects/completed/<slug>/`, or whose `project:` names an excluded project, before the five are chosen, on both engines. The stderr line ends `(recall_excludes: <slugs>)` when the rule applied.
 
+A project whose `project.yaml` sets `recall_cwd_match:` is the other direction: its own notes are dropped the same way unless the session's folder contains one of the fragments it lists, and a session with no folder is outside. The stderr line never names a project walled this way. A rule of this kind that cannot be read walls only its project, and the rest of the recall runs. See [Vault project.yaml reference](../../../wiki/reference/Vault-Project-Yaml.md#recall-cwd-match).
+
 A rule that cannot be read fails closed: no recall runs for that prompt, and stderr says `recall exclusions could not be read`, with the reason. See [Vault project.yaml reference](../../../wiki/reference/Vault-Project-Yaml.md#recall-excludes).
 
 ## What it never does

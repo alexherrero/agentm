@@ -306,7 +306,8 @@ type searchArgs struct {
 	Question string `json:"question"`
 	// Cwd is the folder the session works in. This server is one resident process
 	// with no idea who is calling, so this is the only way a project's
-	// recall_excludes rule can reach a search made over MCP. See exclusions.
+	// recall_excludes and recall_cwd_match rules can reach a search made over
+	// MCP. See exclusions.
 	Cwd string `json:"cwd"`
 	// Lex3 is accepted on the same unpublished seam as Mode and Question: a
 	// measurement driver can widen the lexical arm from 2-term to 2- and 3-term
@@ -520,7 +521,7 @@ func toolSpecs(r *rules.Rules) []map[string]any {
 					},
 					"cwd": map[string]any{
 						"type":        "string",
-						"description": "The absolute path of the folder you are working in. A project can keep another project's notes out of its sessions, and this is how the search knows which rule applies; without it, every such rule applies.",
+						"description": "The absolute path of the folder you are working in. A project can keep another project's notes out of its sessions, or keep its own notes to sessions in its folders, and this is how the search knows which rules apply; without it, every such rule applies.",
 					},
 				},
 				"required": []string{"query", "cwd"},

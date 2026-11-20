@@ -177,7 +177,11 @@ class ARuleThatCannotBeReadFailsClosed(_Vault):
         self.assertIn("clean", self.exclusion(self.code).problem)
         self.assertIn("clean", self.exclusion(self.vault / "projects" / "clean").problem)
         # A project that still reads is known, so its session is not held up.
-        self.assertEqual(self.exclusion(self.other), recall_exclusion.NONE)
+        # The unreadable project's own notes are walled from it: the file may
+        # hold a recall_cwd_match rule, and one nobody can read is outside.
+        walls = self.exclusion(self.other)
+        self.assertIsNone(walls.problem)
+        self.assertEqual(walls.slugs, ("clean",))
 
     def test_a_rule_the_reader_cannot_take_is_never_an_empty_rule(self):
         for rule in ("recall_excludes:\n  [port]\n", "'recall_excludes': [port]\n",

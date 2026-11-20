@@ -222,6 +222,59 @@ class TheCommandLine(unittest.TestCase):
         self.assertEqual(self._main(), (pb.NO_BRIEF, ""))
 
 
+class AFolderRuledProject(unittest.TestCase):
+    """A project whose `project.yaml` sets `recall_cwd_match` keeps its trackers
+    to the folders it names, as it keeps the rest of its notes."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="agentm-brief-folder-")).resolve()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        vault = self.root / "Vault"
+        (vault / ".obsidian").mkdir(parents=True)
+        (vault / "agent").mkdir()
+        self.rule = vault / "projects" / "demo" / "project.yaml"
+        self.rule.parent.mkdir(parents=True)
+        self.rule.write_text("slug: demo\nrecall_cwd_match:\n  - /demo-mono/\n", encoding="utf-8")
+        tk.write(self.rule.parent / "tracker.md",
+                 tk.new(title="Demo", project="demo", objective="Done.",
+                        next_step="Read the hook.", today="2026-09-12"))
+        # The vault backend lives in a plugin the CI runners do not install; a
+        # shim over the in-repo stub stands in for it, as test_harness_memory's does.
+        plugin = self.root / "vault-plugin"
+        plugin.mkdir()
+        (plugin / "storage_vault.py").write_text(
+            "from vault_backend_stub import VaultBackend\nPROTOCOL = 'vault'\n", encoding="utf-8")
+        for key, value in (("MEMORY_ROOT", str(vault / "agent")), ("OBSIDIAN_VAULT_SCRIPTS", str(plugin))):
+            saved = os.environ.get(key)
+            os.environ[key] = value
+            self.addCleanup(lambda k=key, s=saved: os.environ.pop(k, None) if s is None
+                            else os.environ.__setitem__(k, s))
+
+    def repo(self, name: str) -> Path:
+        harness = self.root / name / ".harness"
+        harness.mkdir(parents=True)
+        (harness / "project.json").write_text(json.dumps({"vault_project": "demo"}), encoding="utf-8")
+        return harness.parent
+
+    def brief(self, repo: Path) -> Optional[list]:
+        with contextlib.redirect_stderr(io.StringIO()):
+            return pb.brief_for(repo)
+
+    def test_inside_the_folder_the_brief_prints(self) -> None:
+        self.assertTrue(self.brief(self.repo("demo-mono")))
+
+    def test_a_folder_bound_from_outside_gets_no_brief(self) -> None:
+        self.assertIsNone(self.brief(self.repo("elsewhere")))
+
+    def test_a_rule_that_cannot_be_read_gets_no_brief(self) -> None:
+        self.rule.write_text("slug: demo\nrecall_cwd_match: /demo-mono/\n", encoding="utf-8")
+        self.assertIsNone(self.brief(self.repo("demo-mono")))
+
+    def test_an_unmarked_project_is_unaffected(self) -> None:
+        self.rule.write_text("slug: demo\n", encoding="utf-8")
+        self.assertTrue(self.brief(self.repo("elsewhere")))
+
+
 class _Hooks(unittest.TestCase):
     """Both hooks as subprocesses, against a fake HOME whose config resolves this
     repo's scripts, over device-local plan state."""

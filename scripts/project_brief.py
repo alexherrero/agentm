@@ -191,6 +191,17 @@ def brief_for(cwd: Path) -> Optional[list]:
     binding = session_binding.read_binding(cwd)
     if not binding.project:
         return None
+    try:
+        memory_root = hm.memory_root()
+    except Exception:
+        memory_root = None
+    # A project that keeps its notes to matching folders (`recall_cwd_match`)
+    # keeps its trackers there too: a folder bound to it from outside them gets
+    # no brief, and neither does one whose rule cannot be read.
+    import recall_exclusion  # noqa: E402
+    walls = recall_exclusion.for_session(str(cwd), memory_root)
+    if walls.problem or walls.hides(f"projects/{binding.project}/tracker.md", binding.project):
+        return None
     resolution = hm.resolve_project({"cwd": Path(cwd)})
     # The project's own vault directory holds its tracker, and `docs/` its
     # `followups.md` (agentm-vault § Projects and tasks; the root locked to five
@@ -213,10 +224,6 @@ def brief_for(cwd: Path) -> Optional[list]:
             followups = count_open_followups(candidate.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):
             followups = 0
-    try:
-        memory_root = hm.memory_root()
-    except Exception:
-        memory_root = None
     return render(
         project=binding.project, task=binding.task,
         project_tracker=read_tracker(project_dir / "tracker.md" if project_dir else None),

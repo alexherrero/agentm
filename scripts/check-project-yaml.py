@@ -26,8 +26,10 @@ those is a finding:
     `..` and no hidden or `_`-prefixed part; task 193) and `recall_excludes`
     (a list of the projects whose notes this project's sessions must not be
     served: each a slug, not the project itself, naming a project the vault
-    has); nothing else is allowed, so a typo in a key name is caught rather
-    than ignored.
+    has) and `recall_cwd_match` (a list of folder fragments: the project's own
+    notes are served only to a session whose folder contains one; each a
+    string naming a folder, not a bare separator); nothing else is allowed, so
+    a typo in a key name is caught rather than ignored.
 
 The template the files are seeded from, `standards/templates/project.yaml`, is
 checked the same way except for the slug, which it does not have.
@@ -60,7 +62,7 @@ FILENAME = "project.yaml"
 TEMPLATE_REL = ("standards", "templates", FILENAME)
 REQUIRED = ("slug", "title", "status", "repositories", "code_paths")
 OPTIONAL = ("board", "sensitivity", "former_names", "bare_issue_floor", "map_folders",
-            "recall_excludes")
+            "recall_excludes", "recall_cwd_match")
 STATUSES = ("queued", "active", "parked", "done", "dropped")
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _WORD = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -158,6 +160,14 @@ def check_mapping(data, rel: str, *, slug: "str | None", known: "frozenset | Non
                     out.append(f"{rel}: `recall_excludes` names the project itself")
                 elif known is not None and name not in known:
                     out.append(f"{rel}: `recall_excludes` names `{name}`, and the vault has no such project")
+    if "recall_cwd_match" in data:
+        fragments = data["recall_cwd_match"]
+        if not isinstance(fragments, list):
+            out.append(f"{rel}: `recall_cwd_match` must be a list of folder fragments")
+        else:
+            for frag in fragments:
+                if not (isinstance(frag, str) and frag.strip("/\\ ")):
+                    out.append(f"{rel}: `recall_cwd_match` entry `{frag}` names no folder")
     return out
 
 
@@ -216,6 +226,12 @@ def run_self_test(yaml) -> int:
         "iota": ("slug: iota\ntitle: I\nstatus: active\nrepositories: []\ncode_paths: []\n"
                  "recall_excludes: [iota, nowhere, 'Not A Slug']\n",
                  ["names the project itself", "`nowhere`", "not a project slug"]),
+        "lambda": ("slug: lambda\ntitle: L\nstatus: active\nrepositories: []\ncode_paths: []\n"
+                   "recall_cwd_match: /lambda-mono/\n", ["`recall_cwd_match` must be a list"]),
+        "mu": ("slug: mu\ntitle: M\nstatus: active\nrepositories: []\ncode_paths: []\n"
+               "recall_cwd_match: ['/', 3]\n", ["entry `/` names no folder", "entry `3` names no folder"]),
+        "nu": ("slug: nu\ntitle: N\nstatus: active\nrepositories: []\ncode_paths: []\n"
+               "recall_cwd_match: [/nu-mono/]\n", []),
         "kappa": ("slug: kappa\ntitle: K\nstatus: active\nrepositories: []\ncode_paths: []\nrecall_excludes: [alpha, old]\n", []),
     }
     with tempfile.TemporaryDirectory() as td:

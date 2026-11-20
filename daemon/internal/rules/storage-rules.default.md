@@ -471,6 +471,13 @@ recall_exempt_areas:
   - personal/Home/Important Docs
   - standards/templates
 
+# Two narrower walls are kept per project, in its `project.yaml`, because they
+# depend on who is asking: `recall_excludes:` keeps the projects it names out of
+# that project's sessions, and `recall_cwd_match:` serves the project's own
+# notes only to a session whose working folder contains one of the fragments it
+# lists. A session whose folder is unknown is outside, and a rule that cannot be
+# read walls its project. Neither is read from a note's frontmatter.
+
 # Areas every session has already read in full, so recall never serves them
 # again. The fourth list, and the weakest of the four: it is not a wall and not
 # a privacy line, it is the absence of a second copy.

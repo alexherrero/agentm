@@ -43,28 +43,35 @@ type yamlFields struct {
 	// the file would not read, or the key is not a list. Nothing but that rule
 	// looks at it (exclusion.go), because only that rule fails closed.
 	problem string
+	// cwdProblem is the same for `recall_cwd_match`: the file would not read,
+	// the key is not a list, or an entry names no folder. A project whose rule
+	// cannot be trusted is walled from every session (exclusion.go).
+	cwdProblem string
 }
 
 // listKeys are the list-valued keys the reader collects.
 var listKeys = map[string]bool{"code_paths": true, "repositories": true, "former_names": true, "map_folders": true,
-	"recall_excludes": true}
+	"recall_excludes": true, "recall_cwd_match": true}
 
 func readFields(path string) yamlFields {
 	out := yamlFields{lists: map[string][]string{}}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		out.problem = "could not read it: " + err.Error()
+		out.cwdProblem = out.problem
 		return out
 	}
 	inList := ""
 	unquote := func(v string) string { return strings.Trim(strings.TrimSpace(v), `"'`) }
 	excludesNamed, excludesEmpty := false, false
+	cwdNamed, cwdEmpty := false, false
 	for _, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 		excludesNamed = excludesNamed || strings.Contains(trimmed, "recall_excludes")
+		cwdNamed = cwdNamed || strings.Contains(trimmed, "recall_cwd_match")
 		if line[0] != ' ' && line[0] != '\t' && line[0] != '-' {
 			key, value, _ := strings.Cut(line, ":")
 			key, value = strings.TrimSpace(key), strings.TrimSpace(value)
@@ -85,6 +92,7 @@ func readFields(path string) yamlFields {
 				}
 			case listKeys[key] && strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]"):
 				excludesEmpty = excludesEmpty || (key == "recall_excludes" && strings.Trim(value, "[] ") == "")
+				cwdEmpty = cwdEmpty || (key == "recall_cwd_match" && strings.Trim(value, "[] ") == "")
 				for _, p := range strings.Split(value[1:len(value)-1], ",") {
 					if p = unquote(p); p != "" {
 						out.lists[key] = append(out.lists[key], p)
@@ -101,6 +109,14 @@ func readFields(path string) yamlFields {
 	// names the key, valid YAML or not, must not read as "no rule".
 	if excludesNamed && !excludesEmpty && len(out.lists["recall_excludes"]) == 0 {
 		out.problem = "`recall_excludes` is not a list of project slugs"
+	}
+	if cwdNamed && !cwdEmpty && len(out.lists["recall_cwd_match"]) == 0 {
+		out.cwdProblem = "`recall_cwd_match` is not a list of folder fragments"
+	}
+	for _, frag := range out.lists["recall_cwd_match"] {
+		if strings.Trim(frag, `/\ `) == "" {
+			out.cwdProblem = fmt.Sprintf("`recall_cwd_match` entry %q names no folder", frag)
+		}
 	}
 	return out
 }

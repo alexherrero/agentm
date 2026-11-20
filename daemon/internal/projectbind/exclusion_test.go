@@ -128,7 +128,10 @@ func TestAFileThatWillNotReadLeavesAnUnclaimedFolderUnknown(t *testing.T) {
 	if _, err := Exclusions(vault, filepath.Join(vault, "projects", "clean")); err == nil {
 		t.Fatalf("a session in its vault folder got no error")
 	}
-	if got, err := Exclusions(vault, filepath.Join(vault, "projects", "other")); err != nil || got != nil {
+	// Another project's session is not stopped by the file. The unreadable
+	// project's own notes are walled from it, though: the file may hold a
+	// recall_cwd_match rule, and a folder rule nobody can read is outside.
+	if got, err := Exclusions(vault, filepath.Join(vault, "projects", "other")); err != nil || !reflect.DeepEqual(got, []string{"clean"}) {
 		t.Fatalf("a project that reads got %v, %v", got, err)
 	}
 }
