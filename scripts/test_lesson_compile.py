@@ -419,6 +419,62 @@ class TestCompile(_Base):
         self.assertIn("NEWEST-CASE.", decide)
         self.assertLess(decide.count("MIDDLE-CASE"), 8, "the card is still cut to a bounded size")
 
+    def test_the_draft_asks_for_one_lesson_per_candidate(self) -> None:
+        # Candidates bundled two or three rules from one session, and the
+        # decision attached the bundle to a card that held only one of them.
+        self.stage()
+        runner = FakeRunner(candidates=[])
+        self.compile(runner)
+        draft = " ".join(runner.prompts("nightly lesson compiler")[0].split())
+        self.assertIn("Each candidate is one lesson", draft)
+        self.assertIn("Two rules learned in the same session are two candidates", draft)
+        self.assertNotIn("fold related notes into one lesson", draft)
+
+    def test_the_decision_keeps_a_second_lesson_out_of_an_addition(self) -> None:
+        self.stage()
+        existing = self.vault / "memory" / "procedural" / "warm-the-widget-cache.md"
+        existing.write_text("---\ntitle: Warm the widget cache\ntype: workflow\n---\n\nWarm it first.\n",
+                            encoding="utf-8")
+        runner = FakeRunner(
+            candidates=[_cand()],
+            search={"widget": [{"path": "memory/procedural/warm-the-widget-cache.md", "title": "Warm the widget cache",
+                                "type": "workflow", "lifecycle": "active", "summary": "warm first"}]},
+            actions=[{"candidate": 1, "action": "augment", "target": "N1.1", "kind": "evidence",
+                      "added": "Seen again: a cold build failed."},
+                     {"candidate": 1, "action": "new", "title": "Widget logs rotate at midnight", "type": "reference",
+                      "body": "The widget log rotates at midnight, so read yesterday's file for a night build."}])
+        out = self.compile(runner)
+        decide = " ".join(runner.prompts("deciding")[0].split())
+        self.assertIn("holds only what belongs to that note's lesson", decide)
+        self.assertIn("If a candidate holds a second lesson, give it its own action", decide)
+        # The split the prompt asks for is one the writer carries out: both actions land.
+        self.assertEqual(out["projects"][0]["augmented"], ["memory/procedural/warm-the-widget-cache.md"])
+        self.assertEqual(len(out["projects"][0]["new"]), 1)
+
+    def test_a_correction_names_its_card_for_a_rewrite(self) -> None:
+        # An addition cannot change the title or main text above it: a card the
+        # 11-18 night corrected kept the old rule in its title.
+        for name in ("reserve-unmorph-for-up", "warm-the-widget-cache"):
+            (self.vault / "memory" / "semantic" / f"{name}.md").parent.mkdir(parents=True, exist_ok=True)
+            (self.vault / "memory" / "semantic" / f"{name}.md").write_text(
+                f"---\ntitle: {name}\ntype: convention\n---\n\n{name} body.\n", encoding="utf-8")
+        self.stage()
+        runner = FakeRunner(
+            candidates=[_cand(), _cand(title="Unmorph rule", query="unmorph", mtype="convention",
+                                       lesson="Two Down taps unmorph the ball; pushing Up never does.")],
+            search={"widget": [{"path": "memory/semantic/warm-the-widget-cache.md", "title": "w",
+                                "type": "convention", "lifecycle": "active"}],
+                    "unmorph": [{"path": "memory/semantic/reserve-unmorph-for-up.md", "title": "u",
+                                 "type": "convention", "lifecycle": "active"}]},
+            actions=[{"candidate": 1, "action": "augment", "target": "N1.1", "kind": "evidence",
+                      "added": "Another cold build."},
+                     {"candidate": 2, "action": "augment", "target": "N2.1", "kind": "correct",
+                      "added": "Up never unmorphs now; two Down taps do."}])
+        out = self.compile(runner)
+        project = out["projects"][0]
+        self.assertEqual(len(project["augmented"]), 2)
+        self.assertEqual(project["corrected"], ["memory/semantic/reserve-unmorph-for-up.md"])
+
     def test_a_second_augment_joins_the_same_section(self) -> None:
         card = ("---\ntitle: T\ntype: fix\n---\n\nBody.\n\n## Added by dreaming\n\n**2026-10-01 · x**\n\nEarlier.\n"
                 "\n## Notes\n\nOperator text below.\n")
