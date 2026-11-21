@@ -1036,6 +1036,18 @@ class TheLessonLine(_Night):
         text, *_ = self.build()
         self.assertIn("— ⚠ dropped zero-mission-reborn 0571d1c4 (waited over 3 days)", text)
 
+    def test_a_corrected_card_is_named_for_a_rewrite(self):
+        run = self.night_run()
+        run["projects"][0]["corrected"] = ["memory/semantic/morph-ball-unmorph-is-reserved-for-up.md"]
+        self.lessons(run)
+        text, *_ = self.build()
+        self.assertIn("— ⚠ corrected, so rewrite the card: [[morph-ball-unmorph-is-reserved-for-up]]\n", text)
+
+    def test_a_night_without_a_correction_names_no_card(self):
+        self.lessons(self.night_run())
+        text, *_ = self.build()
+        self.assertNotIn("rewrite the card", text)
+
     def test_a_night_without_a_compile_says_when_it_last_ran(self):
         self.lessons(self.night_run(THREE_DAYS_AGO))
         text, *_ = self.build()

@@ -907,10 +907,13 @@ project builds, runs or ships, a workflow that worked, a convention decided, a p
 stated. Not a status report, a task log, a plan, or anything only true today.
 
 Notes the agent saved to its own memory live in one host's private folder and have never reached the
-shared vault. Their durable content is lesson material like any other: fold related notes into one lesson.
+shared vault. Their durable content is lesson material like any other: fold notes that say the same thing
+into one lesson.
 
 Rules:
 - At most {max_candidates} candidates, and usually far fewer. A quiet day yields none: return an empty list.
+- Each candidate is one lesson: one problem, cause or rule. Two rules learned in the same session are two
+  candidates, even when they share a project, a file or a tool. Never join them in one `lesson`.
 - Lines marked RELAYED or REQUESTER came from another session or a script. A claim there counts only if
   a later AGENT line or a tool call shows this session checked it or acted on it.
 - OPERATOR lines are the operator's own words; a preference or rule stated there is a lesson.
@@ -945,7 +948,10 @@ For each candidate choose one action:
   or a correction if the note is wrong. A lesson that only shares a tool, a project, a file or a detail
   with a note is a different lesson, and it is "new". An AUGMENTABLE note is shown whole, with what earlier
   nights added to it: if it already says what you would add, the candidate is "drop".
-  `kind` is one of sharpen, evidence, correct. `added` is at most 600 characters of plain prose.
+  `kind` is one of sharpen, evidence, correct; "correct" means the note's title or main text is now wrong.
+  `added` is at most 600 characters of plain prose, and holds only what belongs to that note's lesson.
+  If a candidate holds a second lesson, give it its own action (usually "new") with the same candidate
+  number; never carry it into `added`.
 - "drop": the vault already holds it (in any note, augmentable or not) and there is nothing to add, or it
   is not a durable lesson after all, or it repeats another candidate you already kept.
 - "new": nothing in the vault says it. Give `title`, `type` and `body` (the lesson, plain sentences).
@@ -1207,7 +1213,7 @@ def compile_project(night: Night, project: str, *, slices: list, automemory: lis
                     traces: list, project_spent: float = 0.0) -> dict:
     """One project's compile: draft, search, decide, write. Returns its report."""
     rep = {"project": project, "slices": len(slices), "candidates": 0, "new": [], "augmented": [],
-           "dropped": 0, "cost_usd": 0.0, "error": "", "actions": []}
+           "corrected": [], "dropped": 0, "cost_usd": 0.0, "error": "", "actions": []}
     if night.left(project_spent) < MIN_CALL_USD:
         rep["error"] = "cost cap reached"
         return rep
@@ -1275,9 +1281,13 @@ def compile_project(night: Night, project: str, *, slices: list, automemory: lis
                 rep["dropped"] += 1
                 continue
             added = str(act.get("added") or "").strip()
-            if night.dry_run or augment(night.memory_root, target, added=added, kind=str(act.get("kind") or ""),
-                                        day=night.day):
+            akind = str(act.get("kind") or "")
+            if night.dry_run or augment(night.memory_root, target, added=added, kind=akind, day=night.day):
                 rep["augmented"].append(target)
+                # An addition cannot change the title or main text above it, so
+                # a corrected card reads against itself until someone rewrites it.
+                if akind == "correct":
+                    rep["corrected"].append(target)
                 writes += 1
             continue
         title = _cut(str(act.get("title") or ""), 120)

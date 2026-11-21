@@ -989,8 +989,9 @@ def size_line(night: Night) -> list:
 
 def lessons_line(night: Night) -> list:
     """One line for the lesson compile: new and augmented lessons per
-    project, the night's spend against its cap, the slices still waiting, and
-    a warning naming any slice the night dropped unread."""
+    project, the night's spend against its cap, the slices still waiting, a
+    warning naming any slice the night dropped unread, and one naming any card
+    an addition corrected, whose title and main text still say the old thing."""
     r = night.lessons
     if r is None:
         if night.lessons_last is None:
@@ -1015,6 +1016,10 @@ def lessons_line(night: Night) -> list:
     if dropped:
         line += " — ⚠ dropped " + _first(dropped, lambda d: (
             f"{d.get('project')} {str(d.get('session'))[:8]} ({d.get('why')})"))
+    corrected = [rel for p in r.get("projects") or [] for rel in p.get("corrected") or []]
+    if corrected:
+        line += " — ⚠ corrected, so rewrite the card: " + _first(
+            corrected, lambda rel: f"[[{Path(str(rel)).stem}]]")
     return [line]
 
 
