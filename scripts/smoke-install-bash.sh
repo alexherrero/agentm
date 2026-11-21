@@ -57,7 +57,6 @@ expected=(
   skills/doctor/SKILL.md
   skills/memory/SKILL.md
   skills/console/SKILL.md
-  skills/design/SKILL.md
   scripts/telemetry.sh
   hooks/harness-context-session-start/harness-context-session-start.sh
   hooks/memory-recall-prompt-submit/memory-recall-prompt-submit.sh

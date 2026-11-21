@@ -1299,7 +1299,7 @@ See the [parent design's 2026-05-16 Document History row](https://github.com/ale
 - **Parent design**: [MemoryVault — permanent agent memory](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault.md) — the canonical "Why we built this" wiki entry point per the locked design call from plan #6
 - **Part 1 plan**: `write-primitives` (active at `.harness/PLAN.md`) — ships `save` + `evolve` bodies (tasks 2 + 3) + embedding integration (task 4) + partial how-to (task 5)
 - **Queued parts**: `recall-loop` (part 2) / `reflection-and-recovery` (part 3) / `idea-ledger` (part 4) / `seed-pass` (part 5) / `discovery-mining` (part 6 = plan #7b)
-- **Conventions**: shipping pattern follows [`design` skill's multi-sub-command body shape](https://github.com/alexherrero/crickets/blob/main/skills/design/SKILL.md) — the first toolkit skill with multiple sub-commands handing off between each other
+- **Conventions**: shipping pattern follows [`design` skill's multi-sub-command body shape](https://github.com/alexherrero/crickets/blob/main/src/design/commands/design.md) — the first toolkit skill with multiple sub-commands handing off between each other
 - **External-review handoff**: applies to design + plan refinement passes; lands via [crickets v0.8.1](https://github.com/alexherrero/crickets/releases/tag/v0.8.1) + [agentm v2.3.1](https://github.com/alexherrero/agentm/releases/tag/v2.3.1) shipped 2026-05-16
 
 ## Status

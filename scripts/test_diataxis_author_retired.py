@@ -196,18 +196,19 @@ class TestDiataxisAuthorRetired(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn(name, text, f"{rel} should still mention {name}")
             # The harness-shipped compound list must no longer carry it.
-            harness_list = "design, memory"
+            # The harness-shipped compound list is exactly `memory` now
+            # (`design` also retired to crickets, 2026-11-21), so an exact
+            # phrase pins that diataxis-author is not in it.
+            harness_list = {
+                "harness/skills/doctor.md": "compound skill: `memory` —",
+                "adapters/claude-code/skills/doctor/SKILL.md":
+                    "`memory` (harness compound)",
+            }[rel]
             self.assertIn(
                 harness_list,
                 text,
                 f"{rel}: harness-shipped compound skills should be "
-                f"`{harness_list}` (diataxis-author removed).",
-            )
-            self.assertNotIn(
-                "design, " + name,
-                text,
-                f"{rel}: diataxis-author must not remain in the "
-                "harness-shipped compound-skills list.",
+                f"`memory` only (diataxis-author removed).",
             )
 
 
