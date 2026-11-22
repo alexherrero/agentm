@@ -14,7 +14,7 @@ Antigravity's native surface maps as follows. Since the V5 unbundling ([ADR 0011
 |---|---|---|
 | Always-on operating contract | Rules (`.agents/rules/*.md`) | `agentm` |
 | Utility skills (doctor, memory, console) | Skills (`.agents/skills/<name>/SKILL.md`) | `agentm` |
-| Wiki authoring (wiki-author, diataxis-author) | Skills | crickets **wiki** |
+| Wiki authoring (wiki-author) | Skills | crickets **wiki** |
 | Phase loop (setup/plan/work/review/release/bugfix) | Workflows | crickets **development-lifecycle** |
 | Review sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) | Skills | crickets **code-review** / **development-lifecycle** |
 

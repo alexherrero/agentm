@@ -367,35 +367,35 @@ class TestDiffDetection(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
             config = self._fresh_config(repo)
-            self.assertFalse(config["skills"]["diataxis-author"]["auto_detected"])
+            self.assertFalse(config["skills"]["wiki-author"]["auto_detected"])
 
             (repo / "wiki").mkdir()
             diff = pc.diff_detection(config, dp.detect(repo))
 
             self.assertTrue(diff.has_changes())
             changes = {c.name: c for c in diff.changes}
-            self.assertIn("diataxis-author", changes)
-            self.assertEqual(changes["diataxis-author"].change, pc.CHANGE_NEWLY_DETECTED)
-            self.assertEqual(changes["diataxis-author"].kind, "skill")
-            self.assertEqual(changes["diataxis-author"].now["rule_id"], "R-wiki")
+            self.assertIn("wiki-author", changes)
+            self.assertEqual(changes["wiki-author"].change, pc.CHANGE_NEWLY_DETECTED)
+            self.assertEqual(changes["wiki-author"].kind, "skill")
+            self.assertEqual(changes["wiki-author"].now["rule_id"], "R-wiki")
             self.assertIn("R-wiki", diff.matched_rules)
             # Nothing else moved — a diff that reports the whole config is noise.
-            self.assertEqual(list(changes), ["diataxis-author"])
+            self.assertEqual(list(changes), ["wiki-author"])
 
     def test_rule_that_stopped_matching_is_reported(self):
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
             (repo / "wiki").mkdir()
             config = self._fresh_config(repo)
-            self.assertTrue(config["skills"]["diataxis-author"]["auto_detected"])
+            self.assertTrue(config["skills"]["wiki-author"]["auto_detected"])
 
             # The wiki/ dir goes away; R-wiki no longer justifies the skill.
             (repo / "wiki").rmdir()
             diff = pc.diff_detection(config, dp.detect(repo))
 
             changes = {c.name: c for c in diff.changes}
-            self.assertEqual(changes["diataxis-author"].change, pc.CHANGE_NO_LONGER_DETECTED)
-            self.assertEqual(changes["diataxis-author"].was["rule_id"], "R-wiki")
+            self.assertEqual(changes["wiki-author"].change, pc.CHANGE_NO_LONGER_DETECTED)
+            self.assertEqual(changes["wiki-author"].was["rule_id"], "R-wiki")
 
     def test_operator_override_suppresses_the_suggestion(self):
         # The case that proves overrides are honored: the operator declined
@@ -478,13 +478,13 @@ class TestDiffDetection(unittest.TestCase):
             diff = pc.diff_detection(config, dp.detect(repo))
             applied = pc.apply_redetect(config, diff, now="2026-06-02T00:00:00Z")
 
-            entry = applied["skills"]["diataxis-author"]
+            entry = applied["skills"]["wiki-author"]
             self.assertTrue(entry["enabled"])          # untouched
             self.assertFalse(entry["auto_detected"])   # rationale refreshed
             self.assertIsNone(entry["rule_id"])
             self.assertEqual(applied["last_redetect_at"], "2026-06-02T00:00:00Z")
             # Input not mutated.
-            self.assertTrue(config["skills"]["diataxis-author"]["auto_detected"])
+            self.assertTrue(config["skills"]["wiki-author"]["auto_detected"])
 
     def test_apply_never_re_enables_a_disabled_target(self):
         # The footgun this carry-over exists to stop. `enabled: false` with no
@@ -494,22 +494,22 @@ class TestDiffDetection(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
             config = self._fresh_config(repo)
-            config["skills"]["diataxis-author"]["enabled"] = False
-            self.assertIsNone(config["skills"]["diataxis-author"]["operator_action"])
+            config["skills"]["wiki-author"]["enabled"] = False
+            self.assertIsNone(config["skills"]["wiki-author"]["operator_action"])
 
             (repo / "wiki").mkdir()  # R-wiki now fires for this very target
             diff = pc.diff_detection(config, dp.detect(repo))
             # Not suppressed — nothing recorded a decline.
-            self.assertIn("diataxis-author", {c.name for c in diff.changes})
+            self.assertIn("wiki-author", {c.name for c in diff.changes})
             # The fresh proposal says enabled (DC-7 default-all-enabled)…
-            self.assertTrue(dp.detect(repo).to_dict()["skills"]["diataxis-author"]["enabled"])
+            self.assertTrue(dp.detect(repo).to_dict()["skills"]["wiki-author"]["enabled"])
 
             applied = pc.apply_redetect(config, diff)
             # …and apply must NOT let that overwrite the operator's off switch.
-            self.assertFalse(applied["skills"]["diataxis-author"]["enabled"])
+            self.assertFalse(applied["skills"]["wiki-author"]["enabled"])
             # The rationale still refreshed — that half is detection's to own.
-            self.assertTrue(applied["skills"]["diataxis-author"]["auto_detected"])
-            self.assertEqual(applied["skills"]["diataxis-author"]["rule_id"], "R-wiki")
+            self.assertTrue(applied["skills"]["wiki-author"]["auto_detected"])
+            self.assertEqual(applied["skills"]["wiki-author"]["rule_id"], "R-wiki")
 
     def test_retired_target_reported_even_when_overridden(self):
         # RD-3: an override suppresses enablement SUGGESTIONS, not inventory
@@ -567,7 +567,7 @@ class TestDiffDetection(unittest.TestCase):
             payload = pc.diff_detection(config, dp.detect(repo)).to_dict()
             round_tripped = json.loads(json.dumps(payload))
             self.assertTrue(round_tripped["has_changes"])
-            self.assertEqual(round_tripped["changes"][0]["name"], "diataxis-author")
+            self.assertEqual(round_tripped["changes"][0]["name"], "wiki-author")
             self.assertIn("proposal", round_tripped["changes"][0])
 
 
@@ -613,17 +613,17 @@ class TestRedetectIntegration(unittest.TestCase):
             on_disk = json.loads(pj.read_text(encoding="utf-8"))
             self.assertIsNotNone(on_disk["last_redetect_at"])
             self.assertEqual(on_disk["last_redetect_at"], config["last_redetect_at"])
-            self.assertFalse(on_disk["skills"]["diataxis-author"]["auto_detected"])
-            self.assertIsNone(on_disk["skills"]["diataxis-author"]["rule_id"])
+            self.assertFalse(on_disk["skills"]["wiki-author"]["auto_detected"])
+            self.assertIsNone(on_disk["skills"]["wiki-author"]["rule_id"])
             # The routing pointer survives the write.
             self.assertEqual(on_disk["vault_project"], "redetect-demo")
 
             # --apply: now the rationale lands.
             self._run(lambda: pc.redetect(repo, apply=True))
             on_disk = json.loads(pj.read_text(encoding="utf-8"))
-            self.assertTrue(on_disk["skills"]["diataxis-author"]["auto_detected"])
-            self.assertEqual(on_disk["skills"]["diataxis-author"]["rule_id"], "R-wiki")
-            self.assertTrue(on_disk["skills"]["diataxis-author"]["enabled"])
+            self.assertTrue(on_disk["skills"]["wiki-author"]["auto_detected"])
+            self.assertEqual(on_disk["skills"]["wiki-author"]["rule_id"], "R-wiki")
+            self.assertTrue(on_disk["skills"]["wiki-author"]["enabled"])
 
             # And a re-run is clean — the diff converges.
             diff, _ = self._run(lambda: pc.redetect(repo))

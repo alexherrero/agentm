@@ -20,7 +20,7 @@ The `build_enablement_block` function emits 7 keys. The `merge_enablement` funct
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `type` | string | `"coding"` | Project type. The taxonomy beyond `"coding"` is deferred to V5. |
-| `skills` | object | the 6 enableable skills, all enabled | Map `<name> → TargetState`. Names: `memory`, `design`, `diataxis-author`, `pii-scrubber`, `ship-release`, `dependabot-fixer`. |
+| `skills` | object | the 6 enableable skills, all enabled | Map `<name> → TargetState`. Names: `memory`, `design`, `wiki-author`, `pii-scrubber`, `ship-release`, `dependabot-fixer`. |
 | `hooks` | object | the 7 enableable hooks, all enabled | Map `<name> → TargetState`. Names: `kill-switch`, `steer`, `commit-on-stop`, `memory-recall-session-start`, `memory-recall-prompt-submit`, `memory-reflect-idle`, `memory-reflect-stop`. |
 | `registered_at` | string (ISO-8601 UTC) | now, at write time | When the block was first written, e.g. `2026-05-29T14:03:00Z`. |
 | `registered_via` | string | `"auto-detect"` | How the repo was registered — `"auto-detect"` (the flow) or `"manual"`. |

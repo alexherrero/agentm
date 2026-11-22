@@ -182,13 +182,16 @@ class TestDiataxisAuthorRetired(unittest.TestCase):
             )
 
     def test_doctor_categorizes_diataxis_author_as_crickets(self):
-        """Both doctor surfaces list diataxis-author as crickets-shipped.
+        """Both doctor surfaces list the crickets wiki skill as crickets-shipped.
+
+        crickets plan 105 folded diataxis-author into wiki-author, so the doctor
+        names wiki-author (and no longer diataxis-author) in that list.
 
         Pins the crickets-absent graceful-skip contract: the skill is grouped
         with the other crickets-shipped skills (graceful-skip if crickets is
         not paired), not with the harness-shipped compound skills.
         """
-        name = "diataxis-author"
+        name = "wiki-author"
         for rel in (
             "harness/skills/doctor.md",
             "adapters/claude-code/skills/doctor/SKILL.md",
@@ -208,7 +211,7 @@ class TestDiataxisAuthorRetired(unittest.TestCase):
                 harness_list,
                 text,
                 f"{rel}: harness-shipped compound skills should be "
-                f"`memory` only (diataxis-author removed).",
+                f"`memory` only (the wiki skill is crickets-shipped).",
             )
 
 

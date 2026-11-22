@@ -21,9 +21,9 @@ Repos change after you configure them. You add a `wiki/` dir, a CHANGELOG, a Dep
    Rules matching now: R-wiki, R-pii
 
    Proposed changes:
-     [newly-detected] skill diataxis-author
+     [newly-detected] skill wiki-author
          a rule now justifies this — refresh its rationale
-         now: R-wiki — Found wiki/ dir -> diataxis-author manages Diataxis-shaped documentation.
+         now: R-wiki — Found wiki/ dir -> wiki-author manages the six-section wiki.
 
    Suppressed — you already decided these, so re-detect will not re-suggest them:
      [newly-detected] skill pii-scrubber — declined on 2026-06-01T00:00:00Z (.envrc is direnv, not a secret)

@@ -55,8 +55,8 @@ class TestSingleRules(unittest.TestCase):
             p = dp.detect(root)
             self.assertEqual(p.verdict, "propose")
             self.assertIn("R-wiki", p.matched_rules)
-            self.assertTrue(p.skills["diataxis-author"].auto_detected)
-            self.assertEqual(p.skills["diataxis-author"].rule_id, "R-wiki")
+            self.assertTrue(p.skills["wiki-author"].auto_detected)
+            self.assertEqual(p.skills["wiki-author"].rule_id, "R-wiki")
 
     def test_changelog_requires_manifest(self):
         with _TmpRepo() as root:
@@ -229,7 +229,7 @@ class TestComposition(unittest.TestCase):
             self.assertEqual(p.verdict, "propose")
             for rid in ("R-wiki", "R-pkg-scripts", "R-changelog"):
                 self.assertIn(rid, p.matched_rules)
-            self.assertTrue(p.skills["diataxis-author"].auto_detected)
+            self.assertTrue(p.skills["wiki-author"].auto_detected)
             self.assertTrue(p.skills["ship-release"].auto_detected)
             self.assertTrue(p.hooks["kill-switch"].auto_detected)
             # Untouched targets keep their default rationale.
@@ -245,7 +245,7 @@ class TestRendering(unittest.TestCase):
             self.assertIn("new project", txt)
             self.assertIn("Repo: my-app", txt)
             self.assertIn("(a) Register with all-enabled", txt)
-            self.assertIn("diataxis-author", txt)
+            self.assertIn("wiki-author", txt)
 
     def test_text_bypass_block(self):
         with _TmpRepo() as root:
@@ -263,7 +263,7 @@ class TestRendering(unittest.TestCase):
             self.assertIn("skills", d)
             self.assertIn("hooks", d)
             self.assertIn("R-wiki", d["matched_rules"])
-            self.assertEqual(d["skills"]["diataxis-author"]["rule_id"], "R-wiki")
+            self.assertEqual(d["skills"]["wiki-author"]["rule_id"], "R-wiki")
 
     def test_json_bypass_shape(self):
         with _TmpRepo() as root:

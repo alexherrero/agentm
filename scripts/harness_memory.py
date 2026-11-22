@@ -27,7 +27,7 @@ Sub-commands:
                           a task's log in the vault, else the repo-local pair's)
     documenter-context  — V4 #35: doc-write-time recall bundle (operator conventions
                           + project decisions + wiki-style) for the documenter
-                          sub-agent + wiki-author/diataxis-author skills
+                          sub-agent + wiki-author skills
 
 Stdlib-only. Cross-platform via pathlib + subprocess. No third-party deps.
 
@@ -103,7 +103,7 @@ class StorageBackendNotInstalledError(RuntimeError):
 
 # The six lifecycle phases plus `documenter` — a recall-context pseudo-phase
 # (V4 #35). `documenter` is NOT a lifecycle phase the operator invokes; it's the
-# context-load surface the documenter sub-agent + wiki-author/diataxis-author
+# context-load surface the documenter sub-agent + wiki-author
 # skills consume at doc-write time so they don't re-litigate settled style calls.
 # It rides the same recall machinery (budget env, project-dir scope) as the real
 # phases, which is why it lives in this tuple — `phase_recall("documenter", ...)`
@@ -2411,7 +2411,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # documenter-context (V4 #35): doc-write-time recall bundle for the
-    # documenter sub-agent + wiki-author/diataxis-author skills. Composes
+    # documenter sub-agent + wiki-author skills. Composes
     # `recall` under the hood with phase=documenter; one subcommand for all
     # three primitives (locked design call #2 — not three separate verbs).
     p_dc = sub.add_parser(

@@ -321,10 +321,11 @@ class TestDevloopSlimRetired(unittest.TestCase):
                 "crickets).",
             )
             self.assertIn(
-                "diataxis-author",
+                "wiki-author",
                 text,
-                f"{rel}: doctor must name crickets' diataxis-author as the "
-                "provider that absorbed the retired migration skill.",
+                f"{rel}: doctor must name crickets' wiki-author, which since "
+                "crickets plan 105 carries what diataxis-author (and the "
+                "retired migration skill it absorbed) did.",
             )
 
     def test_keep_memory_engine(self):

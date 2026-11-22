@@ -54,11 +54,12 @@ from typing import Callable, Optional
 # gated per project. (`wiki-author` used to be named here as always-on tooling;
 # it retired to crickets' `wiki` plugin on 2026-08-12. It is deliberately NOT
 # added to ENABLEABLE_SKILLS below — the R-wiki detection rule already gates
-# wiki authoring through `diataxis-author`, and agentm no longer ships either.)
+# wiki authoring through `wiki-author`, which since crickets plan 105 also
+# carries what `diataxis-author` did; agentm ships neither.)
 ENABLEABLE_SKILLS: tuple[str, ...] = (
     "memory",
     "design",
-    "diataxis-author",
+    "wiki-author",
     "pii-scrubber",
     "ship-release",
     "dependabot-fixer",
@@ -183,8 +184,8 @@ def rule_wiki(cwd: Path) -> Optional[RuleMatch]:
     if (cwd / "wiki").is_dir():
         return RuleMatch(
             rule_id="R-wiki",
-            rationale="Found wiki/ dir -> diataxis-author manages Diataxis-shaped documentation.",
-            skills=("diataxis-author",),
+            rationale="Found wiki/ dir -> wiki-author manages the six-section wiki.",
+            skills=("wiki-author",),
         )
     return None
 

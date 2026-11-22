@@ -20,7 +20,7 @@ The engine runs the rules in registry order. `R-harness` runs first. A bypass sh
 | Rule | Detects | Attaches rationale to | Notes |
 |---|---|---|---|
 | `R-harness` | `harness/` dir **and** `scripts/harness_memory.py` present | — (sets `bypass` verdict) | This IS the harness source repo → detection is skipped. JSON reports `legacy_harness_present: true` when a `.harness/` state dir is also present, to offer migration. |
-| `R-wiki` | `wiki/` dir present | `diataxis-author` skill | Diátaxis-shaped docs to maintain. |
+| `R-wiki` | `wiki/` dir present | `wiki-author` skill | a six-section wiki to maintain. |
 | `R-changelog` | `CHANGELOG.md` **and** a language manifest (`package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod`) | `ship-release` skill | Both signals required, not either-or. |
 | `R-dependabot` | `.github/dependabot.yml` or `.github/dependabot.yaml` | `dependabot-fixer` skill | Helps fix breakage on update PRs. |
 | `R-pii` | any `.env*` file (`.env`, `.env.*`) | `pii-scrubber` skill | Filename signal only — no content scanning. `.envrc` (direnv) is a known false positive the operator declines at approval; the decline is recorded in `operator_overrides`. |
