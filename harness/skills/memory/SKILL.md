@@ -943,7 +943,7 @@ For each candidate that clears the rubric, Pass 1 enriches with:
    - `high_stars` (≥500) / `low_stars` (<50) / `archived_warning` / `activity_recent` (committed in last 365d) / `permissive_license` (MIT / Apache-2.0 / BSD / ISC / MPL)
 3. **Rubric verdict**: `rubric_score`, `rubric_rules_fired`, `rubric_confidence`
 
-Output: one JSON per candidate at `<vault>/_meta/skill-discovery-cache/adapt-state/<source-slug>/<pattern-slug>.json`. State file at `adapt-state/evaluated.json` tracks (source, pattern, diff-date) tuples for idempotent re-runs.
+Output: one JSON per candidate at `<engine-state>/skill-discovery-cache/adapt-state/<source-slug>/<pattern-slug>.json` (`engine_state.engine_state_dir()`, `~/.local/state/agentm` by default). State file at `adapt-state/evaluated.json` tracks (source, pattern, diff-date) tuples for idempotent re-runs.
 
 #### Pass 2: sub-agent judgment
 
@@ -953,6 +953,7 @@ Caller dispatches `adapt-evaluator` (see [`agents/adapt-evaluator.md`](../../age
 2. **Cross-references** the operator's vault (`personal-skills/` / `standards/` / `projects/<slug>/docs/conventions.md`) for fit.
 3. **Classifies** with semantic judgment (HIGH / MEDIUM / LOW) — overrides Pass 1's rubric verdict when context warrants.
 4. **Writes** the watchlist entry to `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` — the feature's state lives in its project since the memory-root trims, and the retired `memory/_skill-watchlist/` is neither read nor written (HIGH + MEDIUM only; LOW dropped silently).
+5. **Reports** the candidate JSONs it judged in a closing `JUDGED:` list. Its tools are `Read, Glob, Grep, Write` — no Bash — so it cannot delete them; the caller removes each listed JSON, which clears it from the SessionStart staged count and keeps a LOW candidate from being judged again.
 
 Watchlist entry shape locked in [`agents/adapt-evaluator.md`](../../agents/adapt-evaluator.md) under "Watchlist entry shape".
 
