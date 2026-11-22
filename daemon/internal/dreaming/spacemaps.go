@@ -30,6 +30,8 @@ import (
 // past the limit is counted and linked to a map of its own in turn. A section
 // folder whose own notes are counted gets one the same way. The space's own
 // map still never lists more than the limit's worth of titles from one folder.
+// Once written, a folder's map is kept true while it stays on disk, and
+// rewritten as an emptied page when its folder holds no note (foldermaps.go).
 //
 // The rules the projects maps keep hold here too: a note is dated by its
 // `created`, so the night's enrichment, which stamps `updated`, never reorders
@@ -94,8 +96,9 @@ func spaceSkip(name string) bool {
 }
 
 // readSpaceFolder reads a folder: its notes in title order, its subfolders by
-// name, and every note's date into `dates`.
-func readSpaceFolder(vault, dir string, dates *[]string) spaceFolder {
+// name, and every note's date into `dates`. A subfolder that holds no note but
+// still has a map the night wrote goes into `emptied`.
+func readSpaceFolder(vault, dir string, dates, emptied *[]string) spaceFolder {
 	f := spaceFolder{Name: filepath.Base(dir), Dir: dir}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -108,10 +111,12 @@ func readSpaceFolder(vault, dir string, dates *[]string) spaceFolder {
 		}
 		path := filepath.Join(dir, name)
 		if e.IsDir() {
-			sub := readSpaceFolder(vault, path, dates)
+			sub := readSpaceFolder(vault, path, dates, emptied)
 			if sub.Total > 0 {
 				f.Subdirs = append(f.Subdirs, sub)
 				f.Total += sub.Total
+			} else if m := filepath.Join(path, "moc-"+name+".md"); keptFolderMap(m) {
+				*emptied = append(*emptied, m)
 			}
 			continue
 		}
@@ -133,10 +138,12 @@ func readSpaceFolder(vault, dir string, dates *[]string) spaceFolder {
 
 // assignSpaceMaps gives a map of its own to each folder a map above would
 // count: a section folder whose own notes are past the limit, or a folder
-// below one that holds more than the limit at or below it.
+// below one that holds more than the limit at or below it. A map the night
+// already wrote is kept whatever the folder holds now.
 func assignSpaceMaps(vault string, f *spaceFolder, section bool) {
-	if (section && len(f.Notes) > spaceMapListLimit) || (!section && f.Total > spaceMapListLimit) {
-		f.MapAbs = filepath.Join(f.Dir, "moc-"+f.Name+".md")
+	abs := filepath.Join(f.Dir, "moc-"+f.Name+".md")
+	if (section && len(f.Notes) > spaceMapListLimit) || (!section && f.Total > spaceMapListLimit) || keptFolderMap(abs) {
+		f.MapAbs = abs
 		f.MapLink = projLink(vault, f.MapAbs, f.Name+"/")
 	}
 	for i := range f.Subdirs {
@@ -154,23 +161,21 @@ func countedLine(indent, name, mapLink string, n int) string {
 }
 
 // spaceFolderLines renders a section's body: the folder's own notes, then each
-// subfolder, listed while small and counted once large, a count linking the
-// folder's own map.
+// subfolder, listed while small and counted once large or once it has a map of
+// its own, a count linking that map.
 func spaceFolderLines(f spaceFolder, indent string) []string {
 	var lines []string
-	if len(f.Notes) > spaceMapListLimit {
-		if f.MapLink != "" {
-			lines = append(lines, countedLine(indent, f.Name, f.MapLink, len(f.Notes)))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s- %d %s", indent, len(f.Notes), mocPlural(len(f.Notes), "note", "notes")))
-		}
+	if f.MapLink != "" {
+		lines = append(lines, countedLine(indent, f.Name, f.MapLink, len(f.Notes)))
+	} else if len(f.Notes) > spaceMapListLimit {
+		lines = append(lines, fmt.Sprintf("%s- %d %s", indent, len(f.Notes), mocPlural(len(f.Notes), "note", "notes")))
 	} else {
 		for _, n := range f.Notes {
 			lines = append(lines, indent+"- "+n.Link)
 		}
 	}
 	for _, sub := range f.Subdirs {
-		if sub.Total > spaceMapListLimit {
+		if sub.MapLink != "" || sub.Total > spaceMapListLimit {
 			lines = append(lines, countedLine(indent, sub.Name, sub.MapLink, sub.Total))
 			continue
 		}
@@ -296,8 +301,18 @@ func PlanSpaceMaps(root string, now time.Time) (MocsPlan, error) {
 		if !isDirExact(dir) {
 			continue
 		}
-		var dates []string
-		top := readSpaceFolder(vault, dir, &dates)
+		var dates, emptied []string
+		top := readSpaceFolder(vault, dir, &dates, &emptied)
+		spaceUp := projLink(vault, filepath.Join(dir, "moc-"+s.Name+".md"), s.Name)
+		for _, abs := range emptied {
+			where := strings.TrimPrefix(projVaultRel(vault, filepath.Dir(abs)), s.Name+"/")
+			rel := memoryRel(root, abs)
+			before, _ := mocCurrentPage(root, rel)
+			plan.add(MocPage{Rel: rel}, before,
+				renderEmptiedMap(before, strings.TrimSuffix(filepath.Base(abs), ".md"), where+"/", spaceUp,
+					fmt.Sprintf("`%s/` of the %s space holds no notes now, so this map lists none.", where, s.Name), today),
+				fmt.Sprintf("the map of %s/%s emptied", s.Name, where))
+		}
 		if top.Total == 0 {
 			continue
 		}
@@ -313,9 +328,8 @@ func PlanSpaceMaps(root string, now time.Time) (MocsPlan, error) {
 		plan.add(MocPage{Rel: rel, Members: top.Total, Newest: updated}, before,
 			renderSpaceMap(s.Name, s.Text, top, created, updated),
 			fmt.Sprintf("the %s map regenerated (%d %s)", s.Name, top.Total, mocPlural(top.Total, "note", "notes")))
-		up := projLink(vault, filepath.Join(dir, "moc-"+s.Name+".md"), s.Name)
 		for _, sub := range top.Subdirs {
-			planSpaceFolderMaps(&plan, root, vault, s.Name, sub, up, today)
+			planSpaceFolderMaps(&plan, root, vault, s.Name, sub, spaceUp, today)
 		}
 	}
 	return plan, nil
