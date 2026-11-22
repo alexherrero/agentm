@@ -68,7 +68,6 @@ try {
         'skills/doctor/SKILL.md'
         'skills/memory/SKILL.md'
         'skills/console/SKILL.md'
-        'skills/design/SKILL.md'
         'hooks/harness-context-session-start/harness-context-session-start.ps1'
         'hooks/memory-recall-prompt-submit/memory-recall-prompt-submit.ps1'
         'hooks/memory-recall-session-start/memory-recall-session-start.ps1'

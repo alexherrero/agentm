@@ -121,6 +121,7 @@ A session trace is titled by what the session is for, not by the relay that open
 
 ### Removed
 
+- **agentm's own `design` skill (`harness/skills/design/`).** crickets' `design` plugin owns `/design`. `install.sh` linked this copy into `~/.claude/skills/design`, and a bare standalone always beats a plugin of the same name, so every `/design` run loaded this older copy (no Gemini prose pass) instead of the plugin's. Both doctor surfaces now list `/design` as crickets-shipped, the smoke-install lists and the plan-naming scan drop it, and `scripts/test_design_skill_retired.py` keeps it from coming back. The next `install.sh --scope user` reaps any leftover link.
 - **The idea incubator and its researcher retire (the operator's ruling of 2026-11-03).** An idea is a card in `personal/ideas/`, and `Ideas.md` is generated from those cards each night, so `_idea-incubator/` no longer exists and nothing fed these.
   - **Gone.** `harness/skills/memory/scripts/ideas_incubator.py`, its tests, and the `memory-idea-researcher` sub-agent. The install and integrity checks no longer expect the agent, and `/doctor` requires `adapt-evaluator` alone.
   - **No more incubator count.** The session-start briefing and the `/console` memory section stopped counting `_idea-incubator/<slug>/` folders. The `incubator_pending_threshold` setting is ignored; a config file that still has it reads as before.

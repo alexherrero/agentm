@@ -47,7 +47,6 @@ _CURATED = (
     "harness/documentation.md",
     "harness/skills/doctor.md",
     "harness/skills/memory/SKILL.md",
-    "harness/skills/design/SKILL.md",
 )
 
 # A harness_memory.py that satisfies assertion 1 (both defs at column 0).

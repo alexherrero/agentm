@@ -65,7 +65,6 @@ CURATED=(
   harness/documentation.md
   harness/skills/doctor.md
   harness/skills/memory/SKILL.md
-  harness/skills/design/SKILL.md
 )
 
 # Deny: definite-article ("the PLAN.md") or possessive ("PLAN.md's") singleton.
