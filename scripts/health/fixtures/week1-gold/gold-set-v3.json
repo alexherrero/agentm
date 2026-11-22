@@ -1,5 +1,5 @@
 {
-  "$schema_note": "Week-1 retrieval gold set (60 questions) for wiki/designs/agentm-rescope-week1-experiment.md. Scored with the P@5/R@5 code in scripts/health/eval_v6_retrieval.py against both arms (FTS5-only vs FTS5+vector). Entry shape: {id, question, expected_note_paths, stratum, source}. `expected_note_paths` are vault-relative, resolved against plugins.obsidian-vault.vault_path — never hardcode the absolute path. v3 (2026-08-17): post-decontamination relabel, see _harness/goldv3-diagnosis.md and NOTES.md's changeover entry. New optional entry fields: `expected_note_prefixes` (folder-level accept, alongside exact `expected_note_paths`), `hook_reachable` (false when every expected note lives in a hook-excluded subtree — excluded from the hook arm's denominator, reported separately), `layer` (`gate-only` on negatives — rejection is scored at the deliberate-path gate, not this layer; reported as a separate block, not inside R@5's sweep).",
+  "$schema_note": "Week-1 retrieval gold set (60 questions) for wiki/designs/agentm-rescope-week1-experiment.md. Scored with the P@5/R@5 code in scripts/health/eval_v6_retrieval.py against both arms (FTS5-only vs FTS5+vector). Entry shape: {id, question, expected_note_paths, stratum, source}. `expected_note_paths` are vault-relative, resolved against plugins.obsidian-vault.vault_path — never hardcode the absolute path. v3 (2026-08-17): post-decontamination relabel, see _harness/goldv3-diagnosis.md and NOTES.md's changeover entry. New optional entry fields: `expected_note_prefixes` (folder-level accept, alongside exact `expected_note_paths`), `hook_reachable` (false when every expected note lives in a hook-excluded subtree — excluded from the hook arm's denominator, reported separately), `layer` (`gate-only` on negatives — rejection is scored at the deliberate-path gate, not this layer; reported as a separate block, not inside R@5's sweep). `group` (2026-11-21): `gate` when the answer is a note nothing is meant to demote, so the question decides pass or fail; `report` when every expected note is one the vault demotes on purpose (finished work in a `completed/` or archive folder, a card merged into a lesson, a replaced note, an open task that moves when it closes, a walled project), so it is scored and printed but never fails the gate. `gate_note_paths` lists, for a gate question that also names such notes, the expected notes it is scored on. Both are part of the question paper and move the hash. The rule and the sort are in scripts/health/fixtures/week1-gold/README.md.",
   "$corpus": {
     "name": "goldv2-20260812",
     "vault_head": "4391c9e",
@@ -43,6 +43,7 @@
       "expected_note_paths": [
         "Agent/desk/scratch/_index.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript",
       "hook_reachable": false,
@@ -54,6 +55,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/_archive/experimental/onenote-migration-summary.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript",
       "history": true
@@ -64,6 +66,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript"
     },
@@ -73,6 +76,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/_harness/designs/vault-backing/vault-git.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript"
     },
@@ -82,6 +86,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/_harness/designs/vault-backing/vault-drive.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript"
     },
@@ -92,6 +97,7 @@
       "expected_note_paths": [
         "Agent/external/primos/_index.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript"
     },
@@ -102,6 +108,7 @@
         "Agent/desk/projects/_global/wiki-style/2026-06-09-llm-tell-vocabulary.md",
         "Agent/desk/projects/blog/writing-voice.md"
       ],
+      "group": "gate",
       "stratum": "distinctive-token",
       "source": "transcript",
       "v3_note": "Relabeled: the codified alternates to 'load-bearing' live in the wiki-style lesson (retrieval's own #1), not the blog voice profile. writing-voice.md kept as secondary."
@@ -112,6 +119,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/_harness/designs/architecture-governance/hld-template.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript"
     },
@@ -121,6 +129,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript",
       "history": true
@@ -131,6 +140,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md"
       ],
+      "group": "report",
       "stratum": "distinctive-token",
       "source": "transcript"
     },
@@ -140,6 +150,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
       ],
+      "group": "gate",
       "stratum": "distinctive-token",
       "source": "transcript"
     },
@@ -149,6 +160,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/05/agent-m-crickets-branding.md"
       ],
+      "group": "gate",
       "stratum": "distinctive-token",
       "source": "transcript"
     },
@@ -159,6 +171,7 @@
         "Agent/desk/projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md",
         "Agent/desk/projects/crickets/_harness/archive/wave-c/PLAN.archive.20260706-wave-c-design-and-conventions.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "templates (3.4%)"
@@ -169,6 +182,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/05/worktrees-never-auto.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "worktree (3.0%)"
@@ -180,6 +194,7 @@
         "Agent/desk/projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
         "Agent/desk/projects/_global/wiki-style/2026-06-09-design-doc-prose.md"
       ],
+      "group": "gate",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "voice (3.7%)"
@@ -190,6 +205,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/blog/writing-voice.md"
       ],
+      "group": "gate",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "blog (2.5%)"
@@ -201,6 +217,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/home-tech-next/_index.md"
       ],
+      "group": "gate",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "ideas (2.2%)"
@@ -212,6 +229,7 @@
         "Agent/desk/projects/sherwood/decisions/2026-04-27-v2-design-decisions.md",
         "Agent/desk/projects/sherwood/_index.md"
       ],
+      "group": "gate",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "sherwood (1.4%) — KNOWN EXCEPTION to the 2% bar. Kept deliberately: it is the only term identifying which project, and agentm was rewritten too, so removing it makes the question ambiguous. An ambiguous question is a worse defect than a mild collision. v1 (4.6%) and v2 (3.8%) clear.",
@@ -224,6 +242,7 @@
         "Agent/desk/projects/agentm/_harness/designs/friday/F1-REAUDIT.md",
         "Agent/desk/projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "fully (5.3%)",
@@ -238,6 +257,7 @@
         "Agent/external/primos/decisions/launch-readiness-verdict.md",
         "Agent/external/primos/analysis/03-review/verdict.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "primos (1.0%) — KNOWN EXCEPTION, same reasoning as pp06's sherwood: the only term identifying which review. 'conclusion' (0.4%) was swapped for 'decide' (clear) to remove the avoidable rare collision.",
@@ -250,6 +270,7 @@
         "Agent/external/primos/_index.md",
         "Agent/external/primos/analysis/_summary.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "primos (1.0%) — KNOWN EXCEPTION as above. 'analysis' (1.9%) was swapped for 'notes' (clear).",
@@ -267,6 +288,7 @@
         "Agent/memory/preferences/i-want-to-create-the-vault.md",
         "Agent/desk/projects/_archive/memoryvault/conversations/2026-05-10-vault-design.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "place (4.5%)",
@@ -280,6 +302,7 @@
         "Agent/desk/projects/blog/writing-voice.md",
         "Agent/desk/projects/_global/wiki-style/2026-06-09-design-doc-prose.md"
       ],
+      "group": "gate",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "note": "FALSE PREMISE — em-dashes were never banned, they were mandated. writing-voice.md lists them as a deliberate casual marker ('Contractions, em-dashes everywhere'); design-doc-prose.md item 7 says em-dash asides are 'used liberally' and notes the approved voice would trip a naive check-slop em-dash-rate gate. The only 'avoid em dashes' text in the vault is a miner fragment (personal/preferences/i-want-it-even-more-plain.md, body opens 'User stated:'), which is precisely the shape that is not valid ground truth. Correct retrieval surfaces the contradiction.",
@@ -291,6 +314,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/05/worktrees-never-auto.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "note": "Shares its target with pp02, which asks about the same note from the storage angle. Errors on the two will correlate.",
@@ -303,6 +327,10 @@
       "expected_note_paths": [
         "Agent/memory/2026/05/nas-unraid.md",
         "Agent/memory/2026/05/home-server.md"
+      ],
+      "group": "gate",
+      "gate_note_paths": [
+        "Agent/memory/2026/05/nas-unraid.md"
       ],
       "stratum": "pure-paraphrase",
       "source": "cold",
@@ -317,6 +345,11 @@
         "Agent/memory/skill-discovery-sources.md",
         "Agent/memory/trusted-sources.md"
       ],
+      "group": "gate",
+      "gate_note_paths": [
+        "Agent/memory/skill-discovery-sources.md",
+        "Agent/memory/trusted-sources.md"
+      ],
       "stratum": "pure-paraphrase",
       "source": "cold",
       "note": "Three separately scoped whitelists, no single answer: the security advisory whitelist (a prompt-injection guard for the unbuilt vuln-watch sidecar), the skill-discovery source list, and an org-slug config used by adapt-skills to flag trustworthiness. Nothing covers general news or article reading.",
@@ -328,6 +361,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-os-install-matrix.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "operating (0.6%)"
@@ -341,6 +375,10 @@
         "Agent/desk/projects/agentm/_harness/designs/roadmap-research-2026-06/R06-token-efficiency.md",
         "Agent/desk/projects/agentm/decisions/research-token-efficiency-novel.md"
       ],
+      "group": "gate",
+      "gate_note_paths": [
+        "Agent/desk/projects/agentm/_harness/designs/roadmap-research-2026-06/R06-token-efficiency.md"
+      ],
       "stratum": "pure-paraphrase",
       "source": "cold",
       "sharpest_collision": "cost (4.5%)",
@@ -352,6 +390,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/crickets/_harness/archive/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md"
       ],
+      "group": "report",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "v3_note": "Typo fixed ('automaticaly' -> 'automatically') — it was the exact verbatim token the purged decoy note shared with this question, and the reason the decoy ranked #1 ahead of the real answer. Label (autonomy-doctrine.md) stands unchanged."
@@ -362,6 +401,10 @@
       "expected_note_paths": [
         "Agent/desk/projects/blog/parts/content-model.md",
         "Agent/desk/projects/blog/_harness/progress.md"
+      ],
+      "group": "gate",
+      "gate_note_paths": [
+        "Agent/desk/projects/blog/parts/content-model.md"
       ],
       "stratum": "pure-paraphrase",
       "source": "cold",
@@ -374,6 +417,10 @@
       "expected_note_paths": [
         "Agent/memory/2026/05/network-topology.md",
         "Agent/memory/2026/05/homelab-domain.md"
+      ],
+      "group": "gate",
+      "gate_note_paths": [
+        "Agent/memory/2026/05/network-topology.md"
       ],
       "stratum": "episodic-temporal",
       "source": "cold",
@@ -388,6 +435,7 @@
         "Agent/desk/projects/shrimpi/decisions/2026-03-20-key-design-decisions.md",
         "Agent/desk/projects/shrimpi/conventions/auto-sync-worktree.md"
       ],
+      "group": "report",
       "stratum": "episodic-temporal",
       "source": "cold",
       "note": "No note states a start or stop date. The answer is only inferable from artifact dating: the decisions doc is named 2026-03-20, auto-sync-worktree.md was created 2026-04-15 and last touched 2026-05-28, _index.md was created 2026-05-19 and still reads status: active. 'When I stopped' resolves to late May; 'when I started' is not recorded — the March decisions doc predates vault capture of this project, so the vault knows when it began watching, not when work began.",
@@ -400,6 +448,7 @@
         "Agent/desk/projects/blog/_harness/PLAN.md",
         "Agent/desk/projects/blog/_harness/progress.md"
       ],
+      "group": "report",
       "stratum": "episodic-temporal",
       "source": "cold",
       "note": "Answerable, with an ambiguity the vault cannot resolve: posts are backdated via date: frontmatter in drafts/_archive/, so 'last post' reads two ways — by post date it is google-drive-no-undo (2026-06-26), by publish order it is 'Running Agent M all day' (v1.2.13). Both land in the same week of late June. PLAN.md still shows Task 4 ('Grounding Agent M', targeted July) open, confirming the gap is real rather than an unrecorded publish.",
@@ -411,6 +460,10 @@
       "expected_note_paths": [
         "Agent/desk/projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
         "Agent/desk/projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-newcomer-onboarding.md"
+      ],
+      "group": "gate",
+      "gate_note_paths": [
+        "Agent/desk/projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
       ],
       "stratum": "episodic-temporal",
       "source": "cold",
@@ -424,6 +477,10 @@
         "Agent/desk/projects/crickets/decisions/2026-05-12-key-decisions.md",
         "Agent/desk/projects/agentm/decisions/2026-03-01-key-decisions.md"
       ],
+      "group": "gate",
+      "gate_note_paths": [
+        "Agent/desk/projects/agentm/decisions/2026-03-01-key-decisions.md"
+      ],
       "stratum": "episodic-temporal",
       "source": "cold",
       "history": true
@@ -435,6 +492,7 @@
         "Agent/desk/projects/dev-setup/_harness/progress.md",
         "Agent/desk/projects/dev-setup/designs/2026-06-26-ecosystem-reconciliation.md"
       ],
+      "group": "gate",
       "stratum": "episodic-temporal",
       "source": "cold",
       "history": true
@@ -446,6 +504,7 @@
         "Agent/desk/projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md",
         "Agent/desk/projects/_archive/agent-m-v4/_index.md"
       ],
+      "group": "report",
       "stratum": "episodic-temporal",
       "source": "cold",
       "note": "The V4 roadmap's own '## Why a separate V4 roadmap' section is the decision — V4 work 'isn't sequenced linearly behind the non-V4 backlog. It's its own track, and items in this file get planned + executed in their own cadence once V3 is in production.' agent-m-v4/_index.md dates it: deferred to a dedicated roadmap as of plan #14 close, 2026-05-23. Ambiguity worth knowing: 'arc' as a formal label only appears from 2026-06-05, when arc: frontmatter stamping begins — so the first work stream that WAS an arc (V4, May) and the first thing CALLED one (June) are different dates. Both readings resolve inside these two notes.",
@@ -457,6 +516,11 @@
       "question": "What caused googel drive to thrash on file sync and how did we fix it?",
       "expected_note_paths": [
         "Agent/desk/projects/agentm/decisions/research-concurrent-vault-writes.md",
+        "Agent/desk/projects/agentm/research/file-watching/reference/google-drive-tmp-drivedownload-temp-files.md",
+        "Agent/memory/2026/08/vault-git-directory-sits-outside-the-drive-sync-set.md"
+      ],
+      "group": "gate",
+      "gate_note_paths": [
         "Agent/desk/projects/agentm/research/file-watching/reference/google-drive-tmp-drivedownload-temp-files.md",
         "Agent/memory/2026/08/vault-git-directory-sits-outside-the-drive-sync-set.md"
       ],
@@ -474,6 +538,7 @@
         "Agent/desk/projects/agentm/version-summaries.md",
         "Agent/desk/projects/blog/drafts/_archive/rebuild-not-refactor.md"
       ],
+      "group": "report",
       "stratum": "episodic-temporal",
       "source": "cold",
       "note": "PARTIAL. No note calls anything an agentm rewrite. The closest records are the V3->V4 break (agent-m-v4/_index.md: V4 'deliberately breaks V3's folder structure + storage patterns', deferred 2026-05-23) and the V4->V7 through-line in version-summaries.md. rebuild-not-refactor.md dates Agent M's v0 birth to the Sherwood rebuild window (~April 2026) but describes a first build, not a rewrite. Answerable by inference, not by statement.",
@@ -484,6 +549,10 @@
       "question": "When did we re-write sherwood the first time?",
       "expected_note_paths": [
         "Agent/desk/projects/blog/drafts/_archive/rebuild-not-refactor.md",
+        "Agent/desk/projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
+      ],
+      "group": "gate",
+      "gate_note_paths": [
         "Agent/desk/projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
       ],
       "stratum": "episodic-temporal",
@@ -499,6 +568,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
       ],
+      "group": "gate",
       "stratum": "episodic-temporal",
       "source": "cold",
       "note": "Clean answer with a date in the note itself: created 2026-05-23, 'Learned during plan #14 ... over 3 review iterations where the user heavily edited an initial draft'. The same note's amendment log then dates every later evolution, so it answers both when it started and how it grew. Shares its target with pp03.",
@@ -511,6 +581,7 @@
         "Agent/desk/projects/blog/drafts/_archive/claude-allowance-cut.md",
         "Agent/desk/projects/blog/drafts/_archive/green-squares.md"
       ],
+      "group": "report",
       "stratum": "episodic-temporal",
       "source": "cold",
       "note": "First half answered precisely: claude-allowance-cut.md (dated 2026-02-04) records working almost entirely in Antigravity until the Claude allowance there was cut below usable, which forced the harness rethink and the lean into Claude — with Antigravity retained for what Gemini is good at. Second half is not recorded: green-squares.md only places first agentic-coding experience 'about eighteen months earlier' than 2026-01-19, and never names Claude as the tool.",
@@ -524,6 +595,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/sqlite/reference/bm25-k1-b-constants.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -533,6 +605,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/sqlite/reference/trigram-tokenizer-substring-match.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -542,6 +615,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/llama-cpp-embeddings/reference/rank-pooling-is-not-a-vector.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -551,6 +625,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/llama-cpp-embeddings/reference/bge-small-optional-query-instruction.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -560,6 +635,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/file-watching/reference/issue-214-watch-removed-on-rename.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -569,6 +645,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/file-watching/reference/event-write-directory-platform-divergence.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -578,6 +655,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/go-git/reference/plain-open-side-effect-creates-git-dir.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -587,6 +665,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/go-git/reference/default-diff-tree-options-rename-score.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -596,6 +675,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/go-static-binaries/reference/embed-no-compression-random-access-rationale.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -605,6 +685,7 @@
       "expected_note_paths": [
         "Agent/desk/projects/agentm/research/go-static-binaries/reference/ldflags-x-silent-failure-mismatch.md"
       ],
+      "group": "gate",
       "stratum": "research-density",
       "source": "authored"
     },
@@ -683,6 +764,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/google-cloud-ships-a-memory-agent-with-no-vector-db-and-no-embeddings.md"
       ],
+      "group": "gate",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": false
@@ -693,6 +775,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/the-always-on-agent-s-consolidation-loop-is-dreaming-under-a-different-n.md"
       ],
+      "group": "report",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": false
@@ -702,6 +785,10 @@
       "question": "What stops a system from just handing the model everything it remembers?",
       "expected_note_paths": [
         "Agent/memory/2026/08/the-always-on-agent-reads-up-to-50-recent-memories-per-query-which-is-it.md",
+        "Agent/memory/2026/08/read-all-versus-search-is-a-corpus-size-decision-not-a-quality-one.md"
+      ],
+      "group": "gate",
+      "gate_note_paths": [
         "Agent/memory/2026/08/read-all-versus-search-is-a-corpus-size-decision-not-a-quality-one.md"
       ],
       "stratum": "research-corpus",
@@ -714,6 +801,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/read-all-versus-search-is-a-corpus-size-decision-not-a-quality-one.md"
       ],
+      "group": "gate",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": false
@@ -724,6 +812,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/three-specialist-sub-agents-under-an-orchestrator-ingest-consolidate-que.md"
       ],
+      "group": "report",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": false
@@ -734,6 +823,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/ingest-extracts-summary-entities-topics-and-an-importance-score-at-write.md"
       ],
+      "group": "report",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": true
@@ -744,6 +834,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/its-query-agent-cites-the-memory-ids-it-used-as-sources.md"
       ],
+      "group": "report",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": false
@@ -754,6 +845,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/the-stated-case-against-rag-here-is-passivity-not-accuracy.md"
       ],
+      "group": "report",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": true
@@ -764,6 +856,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/always-on-memory-agent-stack-and-operational-shape.md"
       ],
+      "group": "gate",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": false
@@ -775,6 +868,7 @@
         "Agent/memory/2026/08/aliases-carry-concept-recall-unanticipated-vocabulary-still-misses-entir.md",
         "Agent/memory/2026/08/desk-documents-outrank-memory-notes-for-memory-questions.md"
       ],
+      "group": "report",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": true
@@ -785,6 +879,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/aliases-carry-concept-recall-unanticipated-vocabulary-still-misses-entir.md"
       ],
+      "group": "report",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": true
@@ -795,6 +890,7 @@
       "expected_note_paths": [
         "Agent/memory/2026/08/desk-documents-outrank-memory-notes-for-memory-questions.md"
       ],
+      "group": "report",
       "stratum": "research-corpus",
       "source": "authored",
       "alias_overlap": true

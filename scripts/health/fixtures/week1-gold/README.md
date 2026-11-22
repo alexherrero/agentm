@@ -137,3 +137,25 @@ python3 scripts/health/week1_retrieval_experiment.py --gold-set scripts/health/f
 
 `--arm B` adds the vector tool. `--driver mock` exercises the harness without an
 API key. `--limit N` runs the first N questions.
+
+## Gate questions and report questions (`gold-set-v3.json`, 2026-11-21)
+
+`eval_retrieval_shipped.py` reads `gold-set-v3.json`, and every scored question in it carries a `group`:
+
+- **`gate`.** The answer is a note nothing is meant to demote. Only these questions decide whether `check-retrieval-regression` passes.
+- **`report`.** Every expected note is one the vault demotes on purpose. The question is scored and its flips printed, but it never fails the gate.
+
+Each expected note was sorted by the daemon index's flags on the day of the split:
+
+| the note is… | flag or path | group |
+|---|---|---|
+| finished work | `archive-class` (a `completed/`, `_archive/` or archive folder) | report |
+| replaced | `lifecycle-superseded`, `lifecycle-archived`, `lifecycle-dormant`, `status` | report |
+| merged into a lesson | `consolidated` | report |
+| part of an open task | under `projects/<slug>/tasks/` | report |
+| in a walled project | its `project.yaml` carries `recall_cwd_match` | report |
+| anything else, `durable` included | | gate |
+
+A question with at least one gate note is a gate question. When it also names report notes, `gate_note_paths` lists the notes it is scored on. Both fields change the gold-set hash, so changing either one is a re-pin.
+
+The groups are fixed in the file and never recomputed. When a gate question's note is later demoted, the eval reads that off the note itself (never the index) and prints it on a `left the gate:` line. It then leaves the question out of the paired test, and the next re-pin moves it. See `wiki/reference/Retrieval-Eval-Contract.md`.

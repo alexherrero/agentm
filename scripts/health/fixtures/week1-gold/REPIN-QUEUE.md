@@ -10,6 +10,43 @@ Written at the close of task 182 (2026-10-02, #797), after the defects that
 nightly passes were writing into the vault were fixed. Each item names what is
 true now, the evidence, and the choice the re-pin faces.
 
+## 2026-11-21: the split re-pin, and what this queue holds now
+
+The operator ruled on 2026-11-21 to split the gold set into gate and report
+questions and re-pin, as an exception to the standing rule (see
+BASELINE-HISTORY.md). The entries below that are against the 2026-09-19
+baseline are kept as the record of that pin. From this pin on, this queue
+holds one kind of entry: a gate question the eval names on a `left the gate:`
+line, because one of its notes has since been demoted on purpose. The next
+re-pin moves each one to the report, or drops the demoted note from its
+`gate_note_paths`.
+
+**Why the 2026-09-19 pin went red on 2026-11-21 (R@5 0.667 → 0.533, 2 hits
+gained against 11 lost, p 0.0225).** The flip split was 3 vs 5 every night up
+to 2026-11-03 and 3 vs 9 on 2026-11-04. The jump lines up with vault commits
+`9f1a91c1b`, `46c27653a` and `c4c586097`, written between 22:41 and 22:45 on
+2026-11-03: the content review moving finished agentm designs and the whole of
+primos into `completed/`. Of the eleven misses:
+
+- **Seven expect notes now under `completed/`.** These rank at ×0.30
+  (`archive-class`): dt04 (rank 2 → 99), dt05 (2 → 19), dt08 (1 → 18),
+  dt10 (4 → 7), pp01 (2 → 36 and 57), pp08 (2 → 12 and 26), and one of
+  ep10's two notes. All are report questions now, except ep10, which gates on
+  its Sherwood decisions note alone.
+- **ep02 expects Shrimpi notes.** On 2026-11-20 (#972) Shrimpi was walled to
+  `/shrimpi-mono/`. Asked from a folder of that name, its notes rank 1, 3
+  and 4; from the gate's neutral folder they never come back. This is the
+  11-20 → 11-21 flip. It is a report question now.
+- **ep06 and ep10 were already queued here** in October.
+- **ep03, rd08 and ep01 were displaced just past rank 5 by newer notes**
+  (blog tasks 016 and 017, `mocs/needs-review.md`, home-tech-next's own
+  VPN research). ep03 is a report question (an open task); rd08 and ep01 gate,
+  and miss at the new pin.
+
+Ruled out: stale vectors (after `agentmd embed` left 0 stale, the reading was
+0.517 — ep01 slipped one place), the space maps of #978 and #979 (the 11-04
+step came first), and any ranker deploy.
+
 ## Final measurement (task 182 close)
 
 Live vault, deployed `f26955f6`, after `agentmd embed` (0 stale), 2026-10-02:

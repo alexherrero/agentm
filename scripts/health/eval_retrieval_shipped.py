@@ -651,6 +651,26 @@ def _migrated(path: str, table: "dict | None" = None) -> str:
 # nothing, and hiding them would lose the only check on false confidence.
 NEGATIVE_STRATUM = "negative"
 
+# The two groups a scored question belongs to (the gold set's `group`, ruled
+# 2026-11-21). A `gate` question's answer is a note nothing is meant to demote,
+# so it decides pass or fail. A `report` question's answer is one the vault
+# demotes on purpose — finished work, a card merged into a lesson, a replaced
+# note, an open task, a walled project — so it is scored and printed and never
+# fails the gate. Before the split every question gated, and each deliberate
+# filing pass (the content review of 2026-11-03, the Shrimpi wall of
+# 2026-11-20) read as a ranker regression. An entry with no `group` gates, which
+# is what every set did before the field existed.
+GROUP_GATE = "gate"
+GROUP_REPORT = "report"
+
+# What makes a note one the vault demotes on purpose, read from the note itself
+# rather than from the index's flags. The index's flags are the ranker's own
+# classifier, and the guard below must not trust the thing it guards: a
+# classifier bug that flagged notes wrongly would otherwise move questions out
+# of the gate quietly, which is the failure the gate exists to catch.
+_FINISHED_SEGMENTS = frozenset({"archive", "_archive", "completed"})
+_REPLACED_STATES = frozenset({"superseded", "expired", "archived", "dormant"})
+
 DEFAULT_K = 5
 
 # Extra `agentmd search` flags every query carries: a frozen snapshot's
@@ -941,6 +961,95 @@ def resolve_expected(entry: dict) -> tuple:
     return live, retired
 
 
+def scored_expected(entry: dict) -> tuple:
+    """`(live, retired)` as the question is scored: a gate question's own notes.
+
+    A gate question that also names notes the vault demotes on purpose carries
+    `gate_note_paths`, the expected notes it is scored on. Every expected path
+    still has to exist (`check_expectations` checks them all); only the scoring
+    narrows.
+    """
+    live, retired = resolve_expected(entry)
+    if entry.get("group", GROUP_GATE) == GROUP_GATE and entry.get("gate_note_paths"):
+        keep, _ = resolve_expected({EXPECTED_FIELD: entry["gate_note_paths"]})
+        live = [p for p in live if p in keep]
+    return live, retired
+
+
+def _frontmatter(path: Path) -> dict:
+    """The top-level keys of a note's frontmatter, as plain strings.
+
+    Enough to read the four keys the demotion guard needs, without a YAML
+    dependency: a key whose value sits on the following indented `- ` lines (a
+    block list) reads as the literal "[list]", so it is truthy.
+    """
+    try:
+        text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    except OSError:
+        return {}
+    if not text.startswith("---\n"):
+        return {}
+    end = text.find("\n---", 4)
+    if end < 0:
+        return {}
+    lines = text[4:end].split("\n")
+    out = {}
+    for i, line in enumerate(lines):
+        m = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", line)
+        if not m:
+            continue
+        value = m.group(2).strip().strip("'\"")
+        if not value and i + 1 < len(lines) and re.match(r"^\s*- ", lines[i + 1]):
+            value = "[list]"
+        out[m.group(1)] = value
+    return out
+
+
+def _walled(root: Path, slug: str) -> bool:
+    """Whether a project keeps its notes to its own folders (`recall_cwd_match`)."""
+    yaml = Path(root) / "projects" / slug / "project.yaml"
+    try:
+        text = yaml.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return any(line.startswith("recall_cwd_match:") for line in text.splitlines())
+
+
+def demotion(path: str, vault_root: "Path | None | bool" = False) -> "str | None":
+    """Why the vault now demotes this note on purpose, or None if it doesn't.
+
+    A gate question's notes were all ones nothing demotes when the baseline was
+    pinned. When one has since become finished work, a merged card, a replaced
+    note or part of a walled project, the question no longer measures the ranker
+    alone: the gate names it and leaves it out of the paired test, and the next
+    re-pin sorts it into the report.
+    """
+    parts = path.split("/")
+    if _FINISHED_SEGMENTS & set(parts[:-1]):
+        return "now sits in a finished-work folder"
+    root = _vault_root() if vault_root is False else vault_root
+    if root is None:
+        return None
+    fm = _frontmatter(Path(root) / path)
+    if fm.get("consolidated_into"):
+        return "merged into a lesson (consolidated_into)"
+    for key in ("status", "lifecycle"):
+        if fm.get(key, "").lower() in _REPLACED_STATES:
+            return f"{key}: {fm[key]}"
+    slugs = set()
+    if parts[0] == "projects" and len(parts) > 2:
+        slugs.add(parts[1])
+    stamped = fm.get("project", "")
+    m = re.search(r"projects/([^/|\]]+)", stamped)
+    slug = m.group(1) if m else stamped.strip("[]")
+    if slug:
+        slugs.add(slug)
+    for s in sorted(slugs):
+        if _walled(root, s):
+            return f"walled to {s}'s own folder (recall_cwd_match)"
+    return None
+
+
 def check_expectations(entries: list) -> dict:
     """Every surviving expectation names a file that is on disk, or the run stops.
 
@@ -1118,6 +1227,8 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
     negatives = 0
     negatives_hard = 0
     false_positives_hard = 0
+    gate_scored = gate_hits = report_scored = report_hits = 0
+    left_gate = {}
 
     all_scores = []
     for e in entries:
@@ -1135,7 +1246,9 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
         # second copy of the chain here is how the ordering bug of 2026-09-16
         # got in: `_remap_projects` has to run outermost, after the casing
         # fold, because its table is keyed on the folded path.
-        expected, _retired = resolve_expected(e)
+        is_negative = e.get("stratum") == NEGATIVE_STRATUM
+        expected, _retired = (resolve_expected(e) if is_negative
+                              else scored_expected(e))
         seen = {} if record else None
         rows = _search_rows(binary, question, k, record=seen)
         got = [path for path, _score in rows]
@@ -1143,7 +1256,7 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
         if record:
             latency_ms[e["id"]] = seen.get("ms")
 
-        if e.get("stratum") == NEGATIVE_STRATUM:
+        if is_negative:
             negatives += 1
             hard = e.get("hardness") == "near-miss"
             if hard:
@@ -1193,7 +1306,20 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
             ranked += 1
             if rank == 1:
                 hits_at_1 += 1
-        per_question[e["id"]] = {"hit": rank is not None, "negative": False, "rank": rank}
+        group = e.get("group", GROUP_GATE)
+        per_question[e["id"]] = {"hit": rank is not None, "negative": False,
+                                 "rank": rank, "group": group}
+        if group == GROUP_GATE:
+            why = [f"{p} {d}" for p in expected for d in [demotion(p)] if d]
+            if why:
+                per_question[e["id"]]["left_gate"] = "; ".join(why)
+                left_gate[e["id"]] = "; ".join(why)
+            else:
+                gate_scored += 1
+                gate_hits += rank is not None
+        else:
+            report_scored += 1
+            report_hits += rank is not None
         if via:
             per_question[e["id"]]["successor"] = via
         if record:
@@ -1233,6 +1359,18 @@ def score(binary: str, entries: list, k: int, record: bool = False) -> dict:
         "history_scored": len(history_ids),
         "r_at_k_history": (round(history_hits / len(history_ids), 4)
                            if history_ids else None),
+        # The split (2026-11-21). The paired test runs on the gate alone; the
+        # report is printed so the cost of deliberate demotions stays visible.
+        # `left_gate` names gate questions whose notes the vault has since
+        # demoted on purpose: out of the paired test, back in at the next pin.
+        "gate_scored": gate_scored,
+        "gate_hits": gate_hits,
+        "r_at_k_gate": round(gate_hits / gate_scored, 4) if gate_scored else None,
+        "report_scored": report_scored,
+        "report_hits": report_hits,
+        "r_at_k_report": (round(report_hits / report_scored, 4)
+                          if report_scored else None),
+        "left_gate": left_gate,
         "negatives": negatives,
         "false_positives": false_positives,
         "negatives_hard": negatives_hard,
@@ -1312,14 +1450,32 @@ def mcnemar_exact(flips_for: int, flips_against: int) -> float:
 
 
 def compare(baseline: dict, current: dict) -> dict:
-    """Paired comparison over the per-question outcomes."""
+    """Paired comparison over the gate questions' outcomes.
+
+    Only gate questions are paired, and a gate question that has left the gate
+    since the pin (its note now demoted on purpose) is left out on both sides.
+    Report questions get the same flip count, printed beside the verdict and
+    never part of it. A baseline written before the split has no `group` on its
+    rows, so every question in it gates, as it always did.
+    """
     b, c = baseline["per_question"], current["per_question"]
-    shared = [q for q in b if q in c and not b[q].get("negative")
-              and b[q].get("hit") is not None and c[q].get("hit") is not None]
+    both = [q for q in b if q in c and not b[q].get("negative")
+            and b[q].get("hit") is not None and c[q].get("hit") is not None]
+
+    def gates(row):
+        return row.get("group", GROUP_GATE) == GROUP_GATE and not row.get("left_gate")
+
+    shared = [q for q in both if gates(b[q]) and gates(c[q])]
+    report = [q for q in both
+              if GROUP_REPORT in (b[q].get("group"), c[q].get("group"))]
+    left = sorted(q for q in both if gates(b[q]) and c[q].get("left_gate"))
 
     for_current = [q for q in shared if c[q]["hit"] and not b[q]["hit"]]
     against = [q for q in shared if b[q]["hit"] and not c[q]["hit"]]
     p = mcnemar_exact(len(for_current), len(against))
+
+    def r(side, ids):
+        return round(sum(1 for q in ids if side[q]["hit"]) / len(ids), 4) if ids else 0.0
 
     return {
         "compared": len(shared),
@@ -1328,8 +1484,18 @@ def compare(baseline: dict, current: dict) -> dict:
         "flipped_for_ids": sorted(for_current),
         "flipped_against_ids": sorted(against),
         "p": p,
-        "r_at_k_before": baseline["r_at_k"],
-        "r_at_k_after": current["r_at_k"],
+        # Over the questions actually paired, so the two numbers and the flips
+        # describe one set — the whole-run R@k mixes in the report.
+        "r_at_k_before": r(b, shared),
+        "r_at_k_after": r(c, shared),
+        "report": {
+            "compared": len(report),
+            "r_at_k_before": r(b, report),
+            "r_at_k_after": r(c, report),
+            "flipped_for_ids": sorted(q for q in report if c[q]["hit"] and not b[q]["hit"]),
+            "flipped_against_ids": sorted(q for q in report if b[q]["hit"] and not c[q]["hit"]),
+        },
+        "left_gate_ids": left,
         "regressed": len(against) > len(for_current) and p < 0.05,
         # Symmetric with `regressed`, because a gate that can only ever say "not
         # worse" leaves an intervention worth +5 questions exiting identically to
@@ -1349,13 +1515,26 @@ def shown_ids(ids: list, limit: int = 6) -> str:
 
 def comparison_lines(cmp: dict, k: int) -> list:
     """The paired comparison, as the gate prints it."""
-    return [
-        f"\npaired comparison over {cmp['compared']} question(s):",
+    lines = [
+        f"\npaired comparison over {cmp['compared']} gate question(s):",
         f"  R@{k}            : {cmp['r_at_k_before']:.3f} -> {cmp['r_at_k_after']:.3f}",
         f"  flipped to a hit  : {cmp['flips_for']} {shown_ids(cmp['flipped_for_ids'])}",
         f"  flipped to a miss : {cmp['flips_against']} {shown_ids(cmp['flipped_against_ids'])}",
         f"  exact paired p    : {cmp['p']:.4f}",
     ]
+    if cmp.get("left_gate_ids"):
+        lines.append(f"  left the gate since the pin: {shown_ids(cmp['left_gate_ids'])}"
+                     " — their notes are now demoted on purpose; the next re-pin"
+                     " moves them to the report")
+    rep = cmp.get("report") or {}
+    if rep.get("compared"):
+        lines += [
+            f"\nreport questions, which never fail the gate ({rep['compared']}):",
+            f"  R@{k}            : {rep['r_at_k_before']:.3f} -> {rep['r_at_k_after']:.3f}",
+            f"  flipped to a hit  : {len(rep['flipped_for_ids'])} {shown_ids(rep['flipped_for_ids'])}",
+            f"  flipped to a miss : {len(rep['flipped_against_ids'])} {shown_ids(rep['flipped_against_ids'])}",
+        ]
+    return lines
 
 
 def render(result: dict, provenance: str, census: dict = None) -> str:
@@ -1377,9 +1556,21 @@ def render(result: dict, provenance: str, census: dict = None) -> str:
     if "r_at_1" in result:
         lines.append(f"  R@1 (informational): {result['r_at_1']:.3f} "
                      f"({result['hits_at_1']} first-slot hits)")
-    n = result["scored"]
+    if result.get("r_at_k_gate") is not None:
+        lines.append(f"  gate questions     : {result['r_at_k_gate']:.3f} "
+                     f"({result['gate_hits']} of {result['gate_scored']}) — these decide pass or fail")
+    if result.get("r_at_k_report") is not None:
+        lines.append(f"  report questions   : {result['r_at_k_report']:.3f} "
+                     f"({result['report_hits']} of {result['report_scored']}) — answers the vault "
+                     f"demotes on purpose; printed, never failing")
+    for q, why in sorted((result.get("left_gate") or {}).items()):
+        lines.append(f"  left the gate: {q} — {why}")
+    # The interval and the resolution describe the set the verdict is read on:
+    # the gate when the set is split, the whole run when it is not.
+    n = result.get("gate_scored") or result["scored"]
+    h = result["gate_hits"] if result.get("gate_scored") else result["hits"]
     if n:
-        lo, hi = wilson_ci(result["hits"], n)
+        lo, hi = wilson_ci(h, n)
         flips = min_detectable_flips()
         # The report states its own resolution, every run, so a bar below it
         # cannot be pre-registered by someone who never saw the number.
