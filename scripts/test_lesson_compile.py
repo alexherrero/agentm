@@ -417,7 +417,64 @@ class TestCompile(_Base):
         decide = runner.prompts("deciding")[0]
         self.assertIn("THE-LESSON", decide)
         self.assertIn("NEWEST-CASE.", decide)
-        self.assertLess(decide.count("MIDDLE-CASE"), 8, "the card is still cut to a bounded size")
+        self.assertLess(decide.count("x" * 300), 8, "the card is still cut to a bounded size")
+
+    def test_a_long_card_names_every_addition_it_cuts(self) -> None:
+        # 11-21: a night added a rule a long card already held in its middle,
+        # past the top and before the newest additions the decision sees.
+        existing = self.vault / "memory" / "procedural" / "warm-the-widget-cache.md"
+        older = "".join(f"**2026-10-{d:02d} · lesson compile · evidence**\n\nMIDDLE-RULE-{d} holds here. "
+                        f"{'filler ' * 50}\n\n" for d in range(1, 9))
+        existing.write_text("---\ntitle: Warm the widget cache\ntype: workflow\n---\n\n"
+                            "THE-LESSON: warm the cache before building widgets.\n\n## Added by dreaming\n\n"
+                            + older + "**2026-11-15 · lesson compile · evidence**\n\nNEWEST-CASE.\n",
+                            encoding="utf-8")
+        self.stage()
+        runner = FakeRunner(
+            candidates=[_cand()],
+            search={"widget": [{"path": "memory/procedural/warm-the-widget-cache.md", "title": "Warm the widget cache",
+                                "type": "workflow", "lifecycle": "active"}]},
+            actions=[])
+        self.compile(runner)
+        decide = runner.prompts("deciding")[0]
+        for d in range(1, 9):
+            self.assertIn(f"MIDDLE-RULE-{d} holds here.", decide)
+        self.assertIn("2026-10-04 · evidence: MIDDLE-RULE-4 holds here.", decide)
+        self.assertIn("NEWEST-CASE.", decide)
+        self.assertLess(decide.count("filler"), 8 * 50, "a cut addition is named, not shown whole")
+
+    def test_a_lesson_is_also_searched_by_its_first_sentence(self) -> None:
+        # 11-21: a card held the same procedure in other words, and neither the
+        # candidate's query nor its title found it.
+        held = self.vault / "memory" / "procedural" / "close-the-arm-job-first.md"
+        held.write_text("---\ntitle: Close the ARM job first\ntype: workflow\n---\n\nHELD-PROCEDURE.\n",
+                        encoding="utf-8")
+        self.stage()
+        runner = FakeRunner(
+            candidates=[_cand(title="Rip by hand", query="manual rip",
+                              lesson="Kill the ripper before a manual read. Then rip.")],
+            search={"ripper": [{"path": "memory/procedural/close-the-arm-job-first.md",
+                                "title": "Close the ARM job first", "type": "workflow",
+                                "lifecycle": "active"}]},
+            actions=[])
+        self.compile(runner)
+        decide = runner.prompts("deciding")[0]
+        self.assertIn("HELD-PROCEDURE.", decide)
+        self.assertIn("AUGMENTABLE", decide)
+
+    def test_up_to_six_cards_reach_the_decision(self) -> None:
+        rows = []
+        for i in range(1, 9):
+            (self.vault / "memory" / "procedural" / f"card-{i}.md").write_text(
+                f"---\ntitle: Card {i}\ntype: workflow\n---\n\nCARD-BODY-{i}.\n", encoding="utf-8")
+            rows.append({"path": f"memory/procedural/card-{i}.md", "title": f"Card {i}", "type": "workflow",
+                         "lifecycle": "active"})
+        self.stage()
+        runner = FakeRunner(candidates=[_cand()], search={"widget": rows}, actions=[])
+        self.compile(runner)
+        decide = runner.prompts("deciding")[0]
+        shown = [i for i in range(1, 9) if f"CARD-BODY-{i}." in decide]
+        self.assertEqual(shown, [1, 2, 3, 4, 5, 6])
 
     def test_the_draft_asks_for_one_lesson_per_candidate(self) -> None:
         # Candidates bundled two or three rules from one session, and the
@@ -501,8 +558,9 @@ class TestCompile(_Base):
         runner = FakeRunner(candidates=[_cand()], actions=[])
         self.compile(runner)
         searches = [argv for argv, _ in runner.calls if Path(argv[0]).stem == "agentmd"]
-        self.assertEqual([argv[-1] for argv in searches], ["widget cold cache", "widgets warm cache"],
-                         "once by the model's query, once by the candidate's title")
+        self.assertEqual([argv[-1] for argv in searches],
+                         ["widget cold cache", "widgets warm cache", "cold cache makes widget build fail"],
+                         "by the model's query, by the candidate's title, and by its lesson's first sentence")
         for argv in searches:
             self.assertIn("hybrid", argv)
             self.assertIn("-question", argv)
@@ -811,6 +869,38 @@ class TestAntigravity(_Base):
         self.collect()
         self.assertEqual([r["session"] for r in self.pending("alpha")], ["a1"])
         self.assertIn(f"{lc.AGY}:d1", lc.load_bookmarks())
+
+    def list_as_scripted(self, *sids, at=_NOW) -> None:
+        (lc.state_dir()).mkdir(parents=True, exist_ok=True)
+        with open(lc.state_dir() / lc.SCRIPTED_LEDGER, "a", encoding="utf-8") as f:
+            for sid in sids:
+                f.write(json.dumps({"conversation": sid, "at": at.isoformat()}) + "\n")
+
+    def test_a_conversation_a_script_opened_is_not_staged(self) -> None:
+        # 11-22: 185 of 206 waiting slices were code reviews and prose passes
+        # that scripts ran through `agy -p`; the calling session records them.
+        self.agy_transcript("r1", self.rows(str(self.repo)))
+        self.agy_transcript("a1", self.rows(str(self.repo)))
+        self.list_as_scripted("r1")
+        self.collect()
+        self.assertEqual([r["session"] for r in self.pending("alpha")], ["a1"])
+        self.assertIn(f"{lc.AGY}:r1", lc.load_bookmarks(), "its mark moves, so it is not read again")
+
+    def test_a_scripted_conversation_carried_on_by_hand_is_read(self) -> None:
+        rows = self.rows(str(self.repo))
+        rows.append({"step_index": "4", "source": "USER_EXPLICIT", "type": "USER_INPUT",
+                     "content": "<USER_REQUEST>\nWhy did that fail?\n</USER_REQUEST>"})
+        self.agy_transcript("r1", rows)
+        self.list_as_scripted("r1")
+        self.collect()
+        self.assertEqual([r["session"] for r in self.pending("alpha")], ["r1"])
+
+    def test_the_list_forgets_conversations_after_two_weeks(self) -> None:
+        self.list_as_scripted("old", at=_NOW - timedelta(days=lc.SCRIPTED_KEEP_DAYS + 1))
+        self.list_as_scripted("new")
+        self.assertEqual(lc.scripted_agy(_NOW), {"new"})
+        ledger = (lc.state_dir() / lc.SCRIPTED_LEDGER).read_text(encoding="utf-8")
+        self.assertNotIn('"old"', ledger)
 
     def image_rows(self) -> list:
         rows = self.rows(str(self.repo))
