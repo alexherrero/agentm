@@ -1,17 +1,42 @@
 {
-  "avg_rank_to_first_hit": 2.0,
+  "avg_rank_to_first_hit": 1.7742,
   "corpus": {
-    "documents": 2883,
-    "embedded_in_scope": 2196,
-    "gold_sha": "1aa1-c96d-39d1",
-    "pinned": "2026-09-18"
+    "documents": 3470,
+    "embedded_in_scope": 3176,
+    "gold_sha": "c562-0e74-699f",
+    "pinned": "2026-11-21"
   },
-  "false_positives": 9,
+  "false_positives": 3,
   "false_positives_easy": 0,
-  "false_positives_hard": 9,
-  "hits": 42,
+  "false_positives_hard": 3,
+  "gate_hits": 20,
+  "gate_scored": 31,
+  "history_hits": 7,
+  "history_ids": [
+    "dt02",
+    "dt09",
+    "pp06",
+    "pp07",
+    "pp08",
+    "pp10",
+    "ep01",
+    "ep02",
+    "ep03",
+    "ep04",
+    "ep05",
+    "ep06",
+    "ep07",
+    "ep08",
+    "ep09",
+    "ep10",
+    "ep11",
+    "ep12"
+  ],
+  "history_scored": 18,
+  "hits": 31,
   "hits_at_1": 16,
   "k": 5,
+  "left_gate": {},
   "negatives": 30,
   "negatives_easy": 20,
   "negatives_hard": 10,
@@ -23,116 +48,139 @@
       "rank": null
     },
     "dt02": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "dt03": {
-      "hit": true,
-      "negative": false,
-      "rank": 1
-    },
-    "dt04": {
-      "hit": true,
-      "negative": false,
-      "rank": 2
-    },
-    "dt05": {
-      "hit": true,
-      "negative": false,
-      "rank": 2
-    },
-    "dt06": {
+      "group": "report",
       "hit": true,
       "negative": false,
       "rank": 3
     },
+    "dt04": {
+      "group": "report",
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "dt05": {
+      "group": "report",
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "dt06": {
+      "hit": null,
+      "negative": false,
+      "note": "not counted: Asks where to file a project while that was undecided, and assumes it stays apart from the operator's own work. It now sits in projects/primos beside that work and the folder the question was written for is gone, so no note answers it as asked.",
+      "rank": null
+    },
     "dt07": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "dt08": {
-      "hit": true,
+      "group": "report",
+      "hit": false,
       "negative": false,
-      "rank": 1
+      "rank": null
     },
     "dt09": {
-      "hit": true,
-      "negative": false,
-      "rank": 2
-    },
-    "dt10": {
+      "group": "report",
       "hit": true,
       "negative": false,
       "rank": 4
     },
+    "dt10": {
+      "group": "report",
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
     "dt11": {
+      "group": "gate",
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 5
     },
     "dt12": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 2
     },
     "ep01": {
-      "hit": true,
+      "group": "gate",
+      "hit": false,
       "negative": false,
-      "rank": 4
+      "rank": null
     },
     "ep02": {
-      "hit": true,
+      "group": "report",
+      "hit": false,
       "negative": false,
-      "rank": 1
+      "rank": null
     },
     "ep03": {
-      "hit": true,
+      "group": "report",
+      "hit": false,
       "negative": false,
-      "rank": 3
+      "rank": null
     },
     "ep04": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "ep05": {
+      "group": "gate",
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "ep06": {
-      "hit": true,
+      "group": "gate",
+      "hit": false,
       "negative": false,
-      "rank": 3
+      "rank": null
     },
     "ep07": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "ep08": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "ep09": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "ep10": {
+      "group": "gate",
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "ep11": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 2
     },
-    "ep11": {
-      "hit": true,
-      "negative": false,
-      "rank": 1
-    },
     "ep12": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
@@ -259,7 +307,7 @@
     },
     "ngh01": {
       "hard": true,
-      "hit": false,
+      "hit": true,
       "negative": true,
       "rank": null
     },
@@ -289,236 +337,282 @@
     },
     "ngh06": {
       "hard": true,
-      "hit": false,
+      "hit": true,
       "negative": true,
       "rank": null
     },
     "ngh07": {
       "hard": true,
-      "hit": false,
+      "hit": true,
       "negative": true,
       "rank": null
     },
     "ngh08": {
       "hard": true,
-      "hit": false,
+      "hit": true,
       "negative": true,
       "rank": null
     },
     "ngh09": {
       "hard": true,
-      "hit": false,
+      "hit": true,
       "negative": true,
       "rank": null
     },
     "ngh10": {
       "hard": true,
-      "hit": false,
+      "hit": true,
       "negative": true,
       "rank": null
     },
     "pp01": {
-      "hit": true,
+      "group": "report",
+      "hit": false,
       "negative": false,
-      "rank": 2
+      "rank": null
     },
     "pp02": {
+      "group": "report",
       "hit": true,
       "negative": false,
       "rank": 3
     },
     "pp03": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 2
     },
     "pp04": {
+      "group": "gate",
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "pp05": {
+      "hit": null,
+      "negative": false,
+      "note": "not counted: 'The house' now names two projects: the home-tech ideas this was written for and the house hunt. The question does not say which, and each holds notes that fairly answer it.",
+      "rank": null
+    },
+    "pp06": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 2
     },
-    "pp05": {
-      "hit": false,
-      "negative": false,
-      "rank": null
-    },
-    "pp06": {
-      "hit": true,
-      "negative": false,
-      "rank": 4
-    },
     "pp07": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "pp08": {
-      "hit": true,
+      "group": "report",
+      "hit": false,
       "negative": false,
-      "rank": 2
+      "rank": null
     },
     "pp09": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "pp10": {
-      "hit": true,
-      "negative": false,
-      "rank": 3
-    },
-    "pp11": {
+      "group": "report",
       "hit": true,
       "negative": false,
       "rank": 2
     },
+    "pp11": {
+      "group": "gate",
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
     "pp12": {
+      "group": "report",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "pp13": {
-      "hit": false,
+      "hit": null,
       "negative": false,
+      "note": "not counted: 'House configuration' now reads as the house hunt as much as the home servers, and the question asks for both a configuration and a processor. Its first half has more than one fair answer.",
       "rank": null
     },
     "pp14": {
+      "group": "gate",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "pp15": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "pp16": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "pp17": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "pp18": {
+      "group": "gate",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "rc01": {
+      "group": "gate",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "rc02": {
+      "group": "report",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "rc03": {
+      "group": "gate",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "rc04": {
+      "group": "gate",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "rc05": {
+      "group": "report",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "rc06": {
-      "hit": false,
-      "negative": false,
-      "rank": null
-    },
-    "rc07": {
+      "group": "report",
       "hit": true,
       "negative": false,
-      "rank": 3
+      "rank": 2
+    },
+    "rc07": {
+      "group": "report",
+      "hit": true,
+      "negative": false,
+      "rank": 1
     },
     "rc08": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "rc09": {
-      "hit": false,
+      "group": "gate",
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 1
     },
     "rc10": {
+      "group": "report",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "rc11": {
-      "hit": true,
-      "negative": false,
-      "rank": 2
-    },
-    "rc12": {
+      "group": "report",
       "hit": true,
       "negative": false,
       "rank": 1
     },
+    "rc12": {
+      "group": "report",
+      "hit": true,
+      "negative": false,
+      "rank": 1,
+      "successor": "agent/memory/crystallized/bm25-length-bias-favors-desk-over-memory.md"
+    },
     "rd01": {
+      "group": "gate",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "rd02": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "rd03": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 3
     },
     "rd04": {
+      "group": "gate",
       "hit": false,
       "negative": false,
       "rank": null
     },
     "rd05": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "rd06": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 2
     },
     "rd07": {
+      "group": "gate",
       "hit": true,
       "negative": false,
       "rank": 1
     },
     "rd08": {
-      "hit": true,
+      "group": "gate",
+      "hit": false,
       "negative": false,
-      "rank": 4
+      "rank": null
     },
     "rd09": {
+      "group": "gate",
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "rd10": {
+      "group": "gate",
       "hit": true,
       "negative": false,
-      "rank": 3
+      "rank": 2
     }
   },
-  "r_at_1": 0.254,
-  "r_at_k": 0.6667,
-  "scored": 63
+  "r_at_1": 0.2667,
+  "r_at_k": 0.5167,
+  "r_at_k_gate": 0.6452,
+  "r_at_k_history": 0.3889,
+  "r_at_k_report": 0.3793,
+  "report_hits": 11,
+  "report_scored": 29,
+  "scored": 60
 }

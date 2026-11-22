@@ -11,7 +11,7 @@
 One number with provenance. The eval issues each gold-set question exactly as
 the recall hook does — hybrid mode, term extraction, ×2 over-fetch, the
 admissibility filter, temporal bounds — and scores exact-path membership at
-k=5 against `gold-set-v3.json` (64 scored questions, 20 easy negatives, 10
+k=5 against `gold-set-v3.json` (60 scored questions, 20 easy negatives, 10
 near-miss negatives; a question carrying `not_counted` is neither run nor scored). Baselines embed a corpus fingerprint (document count,
 embedded-in-scope count, gold-set hash, pin date); `--compare` refuses across
 fingerprints unless `--drifted-ok` says the drift is understood, and a
@@ -25,16 +25,60 @@ cannot resolve without having seen it refuse the idea:
 
 | scored n | smallest clean gain (6 flips) | Wilson 95% width near 75% |
 |---|---|---|
-| 64 (today) | +9.4pp | ~21pp |
+| 31 (the gate, since 2026-11-21) | +19.4pp | ~32pp |
+| 64 (the whole set before the split) | +9.4pp | ~21pp |
 | 100 | +6.0pp | ~17pp |
 | 125 | +4.8pp | ~15pp |
 | 250 | +2.4pp | ~11pp |
+
+The gate/report split (below) halved the set the verdict is read on, so the gate now needs a
+19-point move to see anything. Growing the gate back toward 60 with new
+questions whose answers are stable is how to win that back. A third of the
+gate today is `resources/topics` (rd01–rd10), so project designs and
+decisions are where new questions are most needed.
 
 Six flips is derived from the exact paired test (two-sided binomial:
 2·(½)^k < 0.05 first at k=6), not chosen. A true 5pp improvement at n=64
 best-cases p=0.25 — invisible. Per-target rank probes remain the sensitive
 instrument for sub-MDE mechanisms: they measure movement exactly, and they are
 how three alias strategies were shown to move nothing at all.
+
+## Gate questions and report questions
+
+Since 2026-11-21 each scored question carries a `group`, and only one group can
+fail the gate.
+
+- **Gate questions (31).** The answer is a note nothing is meant to demote:
+  resources, standards, system pages, living designs, durable decisions, and
+  memory cards not merged into a lesson. The exact paired test runs on these
+  alone.
+- **Report questions (29).** Every expected note is one the vault demotes on
+  purpose: finished work in a `completed/` or archive folder, a card merged
+  into a lesson, a replaced note, an open task that moves when it closes, or a
+  project walled to its own folder (`recall_cwd_match`). They are scored and
+  their flips printed beside the verdict, so the cost of those demotions stays
+  visible, but they never fail the gate.
+
+A gate question that also names demoted notes lists the ones it is scored on in
+`gate_note_paths`. Both fields are part of the question paper and move the
+gold-set hash.
+
+**Why.** Before the split, every question gated, and a deliberate filing pass
+read as a ranker regression. The content review of 2026-11-03 moved finished
+designs into `completed/`, where they rank at ×0.30, and seven questions
+flipped to a miss overnight. The Shrimpi wall of 2026-11-20 took one more. The
+gate went red on 2026-11-21 with p 0.0225, and nothing in the ranker had
+changed. Split the same way, the gate read 23 → 20 of 31 (p 0.375) and the
+report 18 → 11 of 29.
+
+**Membership is fixed at the pin.** The groups are written into the gold set,
+not worked out each night. If they were worked out from the index's flags, a
+classifier bug that flagged notes wrongly would quietly move questions out of
+the gate, which is the failure the gate exists to catch. When a gate
+question's note is later demoted, the eval names it on a `left the gate:`
+line and leaves it out of the paired test until the next re-pin moves it. The
+check reads the note itself (its path, `consolidated_into`, `status` and
+`lifecycle`, and its project's `project.yaml`), never the index.
 
 ## The slide warning is not the gate
 

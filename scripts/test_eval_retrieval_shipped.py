@@ -1352,8 +1352,10 @@ class TheExperimentShape(unittest.TestCase):
                                              "agent/memory/2026/08/c.md"])
         with patcher:
             result = ev.score("agentmd", entries, k=5)
+        # `group` joined the row with the gate/report split (2026-11-21): an
+        # entry with no `group` gates, as every entry did before the field.
         self.assertEqual(result["per_question"]["q1"],
-                         {"hit": True, "negative": False, "rank": 1})
+                         {"hit": True, "negative": False, "rank": 1, "group": "gate"})
         self.assertNotIn("latency_ms", result)
 
 
@@ -1399,6 +1401,188 @@ class TheNotCountedQuestions(unittest.TestCase):
         self.assertTrue(all(len(why) > 40 for why in marked.values()), marked)
         pin = json.loads((ev.GOLD_SET.parent / "shipped-baseline.json").read_text(encoding="utf-8"))
         self.assertEqual(ev.gold_sha(), pin["corpus"]["gold_sha"])
+
+
+def _row(hit, group=None, **extra):
+    row = {"hit": hit, "negative": False, "rank": 1 if hit else None}
+    if group:
+        row["group"] = group
+    row.update(extra)
+    return row
+
+
+class TheGateAndTheReport(unittest.TestCase):
+    """Only gate questions decide the verdict; report questions are printed.
+
+    The split exists because a deliberate filing pass — the content review of
+    2026-11-03 moving finished designs to `completed/`, the Shrimpi wall of
+    2026-11-20 — read as a ranker regression when every question gated.
+    """
+
+    def test_report_questions_losing_everything_is_not_a_regression(self):
+        before = result({**{f"g{i}": _row(True, "gate") for i in range(10)},
+                         **{f"r{i}": _row(True, "report") for i in range(14)}})
+        after = result({**{f"g{i}": _row(True, "gate") for i in range(10)},
+                        **{f"r{i}": _row(False, "report") for i in range(14)}})
+        cmp = ev.compare(before, after)
+        self.assertEqual((cmp["compared"], cmp["flips_against"]), (10, 0))
+        self.assertFalse(cmp["regressed"])
+        self.assertEqual(len(cmp["report"]["flipped_against_ids"]), 14)
+        self.assertEqual(cmp["report"]["r_at_k_after"], 0.0)
+
+    def test_gate_questions_losing_still_fails(self):
+        before = result({**{f"g{i}": _row(True, "gate") for i in range(14)},
+                         "r0": _row(False, "report")})
+        after = result({**{f"g{i}": _row(False, "gate") for i in range(14)},
+                        "r0": _row(True, "report")})
+        cmp = ev.compare(before, after)
+        self.assertTrue(cmp["regressed"])
+        self.assertEqual(cmp["report"]["flipped_for_ids"], ["r0"])
+
+    def test_a_question_that_left_the_gate_is_out_of_the_pairing_and_named(self):
+        before = result({f"g{i}": _row(True, "gate") for i in range(14)})
+        after = result({f"g{i}": _row(False, "gate", left_gate="x.md now sits in a "
+                                      "finished-work folder") for i in range(14)})
+        cmp = ev.compare(before, after)
+        self.assertEqual(cmp["compared"], 0)
+        self.assertFalse(cmp["regressed"])
+        self.assertEqual(len(cmp["left_gate_ids"]), 14)
+        self.assertIn("left the gate since the pin",
+                      "\n".join(ev.comparison_lines(cmp, 5)))
+
+    def test_a_pre_split_baseline_gates_every_question_it_holds(self):
+        # No `group` on the old rows: the comparison it always was.
+        before = result({f"q{i}": _row(True) for i in range(14)})
+        after = result({f"q{i}": _row(False) for i in range(14)})
+        self.assertTrue(ev.compare(before, after)["regressed"])
+
+    def test_r_at_k_is_read_over_the_questions_paired(self):
+        before = result({"g0": _row(True, "gate"), "g1": _row(False, "gate"),
+                         "r0": _row(True, "report")}, r=0.667)
+        after = result({"g0": _row(True, "gate"), "g1": _row(True, "gate"),
+                        "r0": _row(False, "report")}, r=0.667)
+        cmp = ev.compare(before, after)
+        self.assertEqual((cmp["r_at_k_before"], cmp["r_at_k_after"]), (0.5, 1.0))
+
+    def test_a_mixed_question_is_scored_on_its_gate_notes_only(self):
+        entry = {"id": "m", "question": "q", "stratum": "pure-paraphrase", "group": "gate",
+                 "expected_note_paths": ["agent/memory/live.md", "agent/memory/old.md"],
+                 "gate_note_paths": ["agent/memory/live.md"]}
+        with mock.patch.object(ev, "_vault_root", return_value=None):
+            live, _ = ev.scored_expected(entry)
+            self.assertEqual(live, ["agent/memory/live.md"])
+            entry["group"] = "report"
+            live, _ = ev.scored_expected(entry)
+        self.assertEqual(live, ["agent/memory/live.md", "agent/memory/old.md"])
+
+
+class TheDemotionGuard(unittest.TestCase):
+    """A gate note the vault has since demoted on purpose is named, from the note."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.root, ignore_errors=True))
+
+    def _note(self, rel, frontmatter=""):
+        p = self.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"---\n{frontmatter}---\n\nbody\n", encoding="utf-8")
+        return rel
+
+    def test_a_plain_note_is_not_demoted(self):
+        rel = self._note("resources/topics/x/a.md", "status: active\n")
+        self.assertIsNone(ev.demotion(rel, self.root))
+
+    def test_a_finished_work_folder_is_read_off_the_path(self):
+        self.assertIn("finished-work", ev.demotion("projects/agentm/completed/designs/a.md",
+                                                   self.root))
+        self.assertIn("finished-work", ev.demotion("projects/blog/drafts/_archive/a.md",
+                                                   self.root))
+
+    def test_a_merged_card_is_demoted_in_either_list_form(self):
+        inline = self._note("agent/memory/semantic/a.md",
+                            "consolidated_into: [[agent/memory/crystallized/l]]\n")
+        block = self._note("agent/memory/semantic/b.md",
+                           "consolidated_into:\n  - \"[[agent/memory/crystallized/l]]\"\n")
+        self.assertIn("merged", ev.demotion(inline, self.root))
+        self.assertIn("merged", ev.demotion(block, self.root))
+
+    def test_a_replaced_note_is_demoted_by_status_or_lifecycle(self):
+        a = self._note("systems/a.md", "status: superseded\n")
+        b = self._note("systems/b.md", "status: active\r\nlifecycle: archived\r\n")
+        self.assertEqual(ev.demotion(a, self.root), "status: superseded")
+        self.assertEqual(ev.demotion(b, self.root), "lifecycle: archived")
+
+    def test_a_walled_project_is_demoted_by_folder_and_by_stamp(self):
+        (self.root / "projects" / "secret").mkdir(parents=True)
+        (self.root / "projects" / "secret" / "project.yaml").write_text(
+            "slug: secret\nrecall_cwd_match: [/secret-mono/]\n", encoding="utf-8")
+        inside = self._note("projects/secret/charter.md", "status: active\n")
+        stamped = self._note("agent/memory/semantic/c.md",
+                             "project: \"[[projects/secret/charter|secret]]\"\n")
+        open_one = self._note("projects/open/charter.md", "status: active\n")
+        self.assertIn("walled to secret", ev.demotion(inside, self.root))
+        self.assertIn("walled to secret", ev.demotion(stamped, self.root))
+        self.assertIsNone(ev.demotion(open_one, self.root))
+
+    def test_scoring_moves_a_demoted_gate_question_out_and_names_it(self):
+        self._note("agent/memory/semantic/gone.md", "consolidated_into: [[l]]\n")
+        self._note("agent/memory/semantic/kept.md", "status: active\n")
+        entries = [
+            {"id": "left", "question": "where did the merged card go", "group": "gate",
+             "stratum": "pure-paraphrase",
+             "expected_note_paths": ["agent/memory/semantic/gone.md"]},
+            {"id": "kept", "question": "where is the kept card", "group": "gate",
+             "stratum": "pure-paraphrase",
+             "expected_note_paths": ["agent/memory/semantic/kept.md"]},
+            {"id": "rep", "question": "where is the old design", "group": "report",
+             "stratum": "pure-paraphrase",
+             "expected_note_paths": ["projects/a/completed/d.md"]},
+        ]
+        rows = [{"path": "agent/memory/semantic/kept.md", "score": 9.0},
+                {"path": "agent/memory/semantic/gone.md", "score": 8.0}]
+        done = subprocess.CompletedProcess([], 0, stdout=json.dumps({"results": rows}), stderr="")
+        with mock.patch.object(subprocess, "run", return_value=done), \
+                mock.patch.object(ev, "_vault_root", return_value=self.root):
+            got = ev.score("agentmd", entries, 5)
+        self.assertIn("merged into a lesson", got["per_question"]["left"]["left_gate"])
+        self.assertEqual(sorted(got["left_gate"]), ["left"])
+        self.assertEqual((got["gate_scored"], got["gate_hits"]), (1, 1))
+        self.assertEqual((got["report_scored"], got["report_hits"]), (1, 0))
+        text = ev.render(got, "test")
+        self.assertIn("left the gate: left", text)
+        self.assertIn("report questions", text)
+
+
+class TheShippedSplit(unittest.TestCase):
+    """The shipped gold set carries the split whole and consistently."""
+
+    def setUp(self):
+        self.entries = [e for e in json.loads(ev.GOLD_SET.read_text(encoding="utf-8"))["entries"]
+                        if e.get("stratum") != ev.NEGATIVE_STRATUM]
+
+    def test_every_scored_question_has_a_group(self):
+        self.assertEqual({e["id"]: e.get("group") for e in self.entries
+                          if e.get("group") not in (ev.GROUP_GATE, ev.GROUP_REPORT)}, {})
+
+    def test_gate_note_paths_name_expected_notes_of_gate_questions(self):
+        for e in self.entries:
+            if "gate_note_paths" in e:
+                self.assertEqual(e["group"], ev.GROUP_GATE, e["id"])
+                self.assertTrue(e["gate_note_paths"], e["id"])
+                self.assertLess(set(e["gate_note_paths"]), set(e["expected_note_paths"]), e["id"])
+
+    def test_both_groups_hold_enough_questions_to_mean_something(self):
+        # The gate must stay able to see a six-flip move; the report must exist.
+        gate = [e for e in self.entries if e["group"] == ev.GROUP_GATE]
+        report = [e for e in self.entries if e["group"] == ev.GROUP_REPORT]
+        self.assertGreaterEqual(len(gate), 30)
+        self.assertGreaterEqual(len(report), 20)
+
+    def test_the_group_fields_move_the_hash(self):
+        # They change what scores a question, so they are not labels.
+        self.assertNotIn("group", ev.GOLD_LABELS)
+        self.assertNotIn("gate_note_paths", ev.GOLD_LABELS)
 
 
 if __name__ == "__main__":
