@@ -113,6 +113,7 @@ gate "check-storage-seam-no-path-leak (no Path crosses the seam)" "$PY" scripts/
 gate "check-opinion-honesty (no orphan Opinion references)" "$PY" scripts/check-opinion-honesty.py
 gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/check-personas.py
 gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts/check-governs-index.py
+gate "check-agent-tools (every agent states tools:; read-only grants no write tool)" "$PY" scripts/check-agent-tools.py
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
 gate "check-no-title-case-roots (no literal spells a root space Title Case)" "$PY" scripts/check-no-title-case-roots.py
 gate "check-no-harness-paths (no code names the retired project state directory)" "$PY" scripts/check-no-harness-paths.py

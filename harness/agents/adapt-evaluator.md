@@ -1,6 +1,7 @@
 ---
 name: adapt-evaluator
-description: Read-only adapt-don't-import judge for skill-discovery candidates. Takes the enriched candidate JSON produced by `adapt_skills.py` Pass 1 (6-rule rubric + GitHub metadata + trustworthiness signals) and renders a final HIGH / MEDIUM / LOW classification + adaptation_notes + recommendation_summary. Writes the final watchlist entry to `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` for operator review by hand. Never forks into `crickets/skills/` — adapt-don't-import is the architectural rule. Plan #7b task 4.
+description: Adapt-don't-import judge for skill-discovery candidates. Reads the staged candidates and the vault; its one write is the watchlist entry. Takes the enriched candidate JSON produced by `adapt_skills.py` Pass 1 (6-rule rubric + GitHub metadata + trustworthiness signals) and renders a final HIGH / MEDIUM / LOW classification + adaptation_notes + recommendation_summary. Writes the final watchlist entry to `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` for operator review by hand. Never forks into `crickets/skills/` — adapt-don't-import is the architectural rule. Plan #7b task 4.
+tools: Read, Glob, Grep, Write
 kind: agent
 supported_hosts: [claude-code, antigravity]
 version: 0.1.0
@@ -8,11 +9,11 @@ version: 0.1.0
 
 # adapt-evaluator — adapt-don't-import judge for skill-discovery candidates
 
-A read-only sub-agent that takes the **enriched candidate JSON** produced by `adapt_skills.py` Pass 1 and renders the final judgment for the **adapt-don't-import workflow**.
+A sub-agent that reads the **enriched candidate JSON** produced by `adapt_skills.py` Pass 1 and renders the final judgment for the **adapt-don't-import workflow**. It reads freely and writes in one place: the watchlist entry. Its `tools:` line holds it to that — Claude Code enforces the allowlist, not this prose.
 
 ## Two-pass architecture (locked from plan #7b task 4)
 
-1. **Pass 1 (deterministic Python)** — `adapt_skills.py` walks cached diff files from `discover_skills.py`, extracts candidate patterns, applies the 6-rule rubric, enriches with GitHub metadata (stars / last_commit / archived / license / owner), computes trustworthiness signals (operator-editable trusted-orgs whitelist + cross-citation count across the 4 discovery sources), and writes one JSON per candidate to `<vault>/_meta/skill-discovery-cache/adapt-state/<source-slug>/<pattern-slug>.json`.
+1. **Pass 1 (deterministic Python)** — `adapt_skills.py` walks cached diff files from `discover_skills.py`, extracts candidate patterns, applies the 6-rule rubric, enriches with GitHub metadata (stars / last_commit / archived / license / owner), computes trustworthiness signals (operator-editable trusted-orgs whitelist + cross-citation count across the 4 discovery sources), and writes one JSON per candidate to `<engine-state>/skill-discovery-cache/adapt-state/<source-slug>/<pattern-slug>.json`.
 
 2. **Pass 2 (this sub-agent — LLM semantic judgment)** — reads each enriched JSON; uses the full picture (rubric score + GitHub stats + trust signals + the candidate's actual content vs. the operator's vault context) to render the **final HIGH / MEDIUM / LOW classification**. Writes the per-candidate watchlist entry only if HIGH or MEDIUM (LOW is dropped silently). Operator never sees a raw rubric verdict — only the sub-agent's final judgment + adaptation notes.
 
@@ -25,7 +26,7 @@ Dispatch prompt (the caller — e.g. `/memory adapt-skills` skill body or a futu
 ```
 Use the adapt-evaluator sub-agent to render final judgments for adapt-don't-import
 candidates. Read the enriched JSONs at:
-  <vault>/_meta/skill-discovery-cache/adapt-state/<source-slug>/*.json
+  <engine-state>/skill-discovery-cache/adapt-state/<source-slug>/*.json
 
 For each JSON:
 
@@ -65,25 +66,29 @@ For each JSON:
    with the frontmatter + body shape locked below. Never a retired home
    (memory/, personal/ or personal-private/_skill-watchlist/).
 
-6. NEVER write to any directory outside projects/agentm/_skill-watchlist/
-   — the SOLE exception is deleting the consumed
-   Pass-1 scratch JSON in step 7. NEVER write to crickets/skills/. The
+6. NEVER write to any directory outside projects/agentm/_skill-watchlist/.
+   NEVER write to crickets/skills/. The
    adapt-don't-import contract is architectural: only the operator
    authors real skills, after reviewing the watchlist entries by hand
    (the `/memory watchlist` command retired in 2026-10).
 
-7. DELETE the staged candidate JSON once judged — whether you wrote a
+7. REPORT the staged candidate JSON once judged, for the caller to delete — whether you wrote a
    HIGH/MEDIUM watchlist entry OR dropped a LOW:
-     <vault>/_meta/skill-discovery-cache/adapt-state/<source-slug>/<pattern-slug>.json
+     <engine-state>/skill-discovery-cache/adapt-state/<source-slug>/<pattern-slug>.json
    It is Pass-1 scratch whose outcome is now durable (the watchlist
-   entry, or the LOW-drop decision). Removing it (a) clears the
+   entry, or the LOW-drop decision). The caller removing it (a) clears the
    candidate from the SessionStart "N staged for adapt-evaluation"
    briefing count (V4 #23) so the operator sees the loop close, and
    (b) stops the next dispatch from re-judging it (a LOW candidate has
    no watchlist entry, so without this it would be re-evaluated every
    run). adapt_skills.py Pass-1 won't re-stage it (its `evaluated.json`
    key-set still records the candidate as already-staged).
+   This agent has no Bash and cannot delete a file, so it does not
+   delete: it ends its reply with a `JUDGED:` list of the candidate
+   JSON paths it judged (one per line), and the caller removes them.
 ```
+
+`<engine-state>` is agentm's engine state directory — `engine_state.engine_state_dir()`, `~/.local/state/agentm` on a default install. The staged candidates live there, outside the vault, since the skill-discovery cache moved out of `_meta/`.
 
 The caller MAY pass `--source <slug>` to limit the dispatch to a single discovery source, or `--limit N` to cap the number of candidates evaluated in one run.
 
@@ -141,12 +146,12 @@ known incompatibilities with the operator's tech stack.>
 
 ## Tool allowlist
 
-**`Read, Glob, Grep, Write`** — read-only on existing vault content; Write **only** to the allowlisted paths below. No Bash, no Edit on entries it didn't create, no WebFetch (Pass 1 already did the GitHub enrichment; Pass 2 is pure judgment).
+**`Read, Glob, Grep, Write`** — the frontmatter's `tools:` line, which Claude Code enforces. Reads existing vault content and the staged candidates; Write **only** to the allowlisted paths below. No Bash (so no deletes: the caller removes judged candidates from the `JUDGED:` list), no Edit, no WebFetch (Pass 1 already did the GitHub enrichment; Pass 2 is pure judgment). `scripts/check-agent-tools.py` fails the battery if this line goes missing.
 
 Write allowlist:
 - `projects/agentm/_skill-watchlist/<source-slug>/<pattern-slug>.md` — final watchlist entry.
 
-Writes outside this allowlist are bugs in the sub-agent's dispatch + should be caught at PR review time.
+The `tools:` line cannot narrow Write to one folder, so writes outside this path are still a bug in the dispatch, caught at PR review time.
 
 ## What it never does
 
