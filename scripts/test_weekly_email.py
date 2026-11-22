@@ -360,6 +360,52 @@ class TheUrgentLane(WeeklyFixture):
         self.assertEqual(len(w.read_jsonl(self.engine / w.URGENT_LOG)), 3)   # two from setUp, one now
 
 
+def _sunday_local(hour: int, minute: int = 0, day: int = 8) -> float:
+    """A local wall-clock time on the fixture's week (Sunday 8 Nov 2026)."""
+    return datetime(2026, 11, day, hour, minute).astimezone().timestamp()
+
+
+class TheHomelabWait(WeeklyFixture):
+    """The NAS sends its report at 07:00, or up to noon when its backup box is
+    late; on 2026-11-22 it landed at 12:00 and the 07:07 email said "not in
+    yet". The email now waits for it until `homelab.wait_until`."""
+
+    def at(self, now: float, report=None, config=None) -> bool:
+        src = self.sources(config=config)
+        week = w.collect(src, now=now, fetch=lambda url, tok: report)
+        return w.homelab_pending(src, week, now)
+
+    def test_a_missing_report_holds_the_email_on_sunday_morning(self):
+        self.assertTrue(self.at(_sunday_local(7, 7)))
+        self.assertTrue(self.at(_sunday_local(12, 29)))
+
+    def test_it_sends_without_the_report_once_the_wait_runs_out(self):
+        self.assertFalse(self.at(_sunday_local(12, 30)))
+
+    def test_a_catch_up_run_on_a_later_day_does_not_wait(self):
+        self.assertFalse(self.at(_sunday_local(8, 0, day=9)))
+
+    def test_a_report_that_is_in_does_not_wait(self):
+        self.assertFalse(self.at(_sunday_local(7, 7), report=NAS_REPORT))
+
+    def test_the_wait_is_configurable_and_off_without_a_homelab(self):
+        cfg = dict(self.config, homelab=dict(self.config["homelab"], wait_until="09:00"))
+        self.assertFalse(self.at(_sunday_local(9, 0), config=cfg))
+        self.assertTrue(self.at(_sunday_local(8, 59), config=cfg))
+        self.assertFalse(self.at(_sunday_local(7, 7), config={k: v for k, v in self.config.items() if k != "homelab"}))
+
+    def test_a_held_run_writes_nothing_and_sends_nothing(self):
+        real = w.collect
+        with mock.patch.object(w, "load_config", return_value=self.config), \
+                mock.patch.object(w, "build_sources", return_value=self.sources()), \
+                mock.patch.object(w, "collect", lambda src, now: real(src, now=now, fetch=lambda u, t: None)), \
+                mock.patch.object(w, "_session_email", side_effect=AssertionError("sent")), \
+                mock.patch.object(w, "push_vault", side_effect=AssertionError("pushed")):
+            code = w.run_weekly(self.mem, now=_sunday_local(7, 7))
+        self.assertEqual(code, w.NOT_READY)
+        self.assertFalse((self.mem / w.WEEKLY_DIR).exists())
+
+
 class ThePush(unittest.TestCase):
     def setUp(self):
         self.repo = Path(tempfile.mkdtemp(prefix="weekly-push-"))

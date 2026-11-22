@@ -1136,6 +1136,61 @@ class FailedRunRetryTests(unittest.TestCase):
             self.assertEqual(watchdog.read_health("brief", state_root=sr)["rung"], "healthy")
 
 
+class NotReadyTests(unittest.TestCase):
+    """A job that exits NOT_READY_EXIT ran and found its input missing (task
+    200 follow-up: the weekly email went out on 2026-11-22 at 07:07, before
+    the NAS report it reads landed at 12:00). It stays due, and the next cycle
+    inside its window runs it again."""
+
+    MORNING = "07:00-13:00"
+
+    def _script(self, root: Path, ready: Path) -> str:
+        script = root / "weekly.py"
+        script.write_text(f"import os, sys\nsys.exit(0 if os.path.exists({str(ready)!r}) else "
+                          f"{cycle.NOT_READY_EXIT})\n", encoding="utf-8")
+        return f'"{sys.executable}" "{script}"'
+
+    def test_a_job_whose_input_is_late_runs_again_next_cycle(self):
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            jobs_dir, sr, ready = root / "jobs", root / "state", root / "nas-report"
+            _write_job(jobs_dir, "weekly", schedule="weekly", lookback="2d", window=self.MORNING,
+                       command=self._script(root, ready), tier="T2", dry_run=False)
+            state.mark_done("weekly", now=_local(2026, 11, 15, 7, 7), state_root=sr)
+            prior = state.read_marker("weekly", state_root=sr)
+
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 11, 22, 7, 7), state_root=sr)
+            outcome = report.outcomes[0]
+            self.assertTrue(outcome.ran)
+            self.assertTrue(outcome.deferred)
+            self.assertEqual(outcome.exit_code, cycle.NOT_READY_EXIT)
+            self.assertEqual(state.read_marker("weekly", state_root=sr), prior)
+            self.assertEqual(watchdog.read_health("weekly", state_root=sr)["consecutive_failures"], 0)
+            self.assertTrue(cycle.report_summary(report)["outcomes"][0]["deferred"])
+
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 11, 22, 7, 37), state_root=sr)
+            self.assertTrue(report.outcomes[0].deferred)
+
+            ready.write_text("", encoding="utf-8")
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 11, 22, 12, 7), state_root=sr)
+            self.assertEqual(report.outcomes[0].exit_code, 0)
+            self.assertFalse(report.outcomes[0].deferred)
+            self.assertEqual(state.read_marker("weekly", state_root=sr)["last_run"], _local(2026, 11, 22, 12, 7))
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 11, 22, 12, 37), state_root=sr)
+            self.assertFalse(report.outcomes[0].ran)
+            self.assertEqual(report.outcomes[0].skipped_reason, "not-due")
+
+    def test_a_first_run_that_is_not_ready_leaves_no_marker(self):
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            jobs_dir, sr = root / "jobs", root / "state"
+            _write_job(jobs_dir, "weekly", schedule="weekly", lookback="2d", window=self.MORNING,
+                       command=self._script(root, root / "never"), tier="T2", dry_run=False)
+            report = cycle.run_cycle(jobs_dir, now=_local(2026, 11, 22, 7, 7), state_root=sr)
+            self.assertTrue(report.outcomes[0].deferred)
+            self.assertEqual(state.read_marker("weekly", state_root=sr), {})
+
+
 class StateRootTests(unittest.TestCase):
     """The default state root, and who may make it (2026-09-14).
 

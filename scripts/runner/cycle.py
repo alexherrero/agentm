@@ -47,6 +47,9 @@ class JobOutcome:
     skipped_reason: Optional[str] = None
     exit_code: Optional[int] = None
     cost_usd: float = 0.0
+    # The job exited NOT_READY_EXIT: it ran, found its input missing, and
+    # stays due for the next cycle.
+    deferred: bool = False
 
 
 @dataclass
@@ -74,7 +77,7 @@ def report_summary(report: "CycleReport", *, now: Optional[float] = None) -> dic
             {
                 "job": o.name, "ran": o.ran, "dry_run": o.dry_run,
                 "skipped_reason": o.skipped_reason, "exit_code": o.exit_code,
-                "cost_usd": o.cost_usd,
+                "cost_usd": o.cost_usd, "deferred": o.deferred,
             }
             for o in report.outcomes
         ],
@@ -310,6 +313,12 @@ def _next_opening(window: tuple[int, int], at: float) -> float:
 # day rather than one a cycle.
 _RETRY_AFTER_SECONDS = 86400
 
+# A job that exits with this code (sysexits' EX_TEMPFAIL) is saying its input
+# is not ready yet: the weekly email waiting for the NAS's report. The runner
+# keeps it due, so it runs again on every cycle inside its window until it
+# exits anything else. The job owns the limit on its own waiting.
+NOT_READY_EXIT = 75
+
 
 def _retries(job: manifest_mod.JobManifest) -> bool:
     """Whether a failed run of this job is retried before its next slot.
@@ -438,6 +447,7 @@ def _emit_report(report_path: Optional[Path], job: manifest_mod.JobManifest,
         "dry_run": outcome.dry_run,
         "exit_code": outcome.exit_code,
         "cost_usd": outcome.cost_usd,
+        "deferred": outcome.deferred,
         "rendered_command": rendered_command,
         "ts": time.time(),
     }
@@ -511,6 +521,14 @@ def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[
     except Exception:
         exit_code = -1
         cost = 0.0
+    if exit_code == NOT_READY_EXIT:
+        # Its input has not landed. The marker goes back as it was, so the job
+        # stays due and the next cycle inside its window asks again; it is
+        # neither a success nor a failure, so the watchdog is not told.
+        state_mod.restore_marker(job.name, prior, state_root=state_root)
+        outcome = JobOutcome(name=job.name, ran=True, exit_code=exit_code, cost_usd=cost, deferred=True)
+        _emit_report(report_path, job, outcome, clone_behind=clone_behind)
+        return outcome
     # A failure records the slot it was serving, so a job that runs less
     # often than daily retries it; a retry that succeeds keeps the job's
     # schedule counting from that slot.
