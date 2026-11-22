@@ -71,13 +71,20 @@ type projectRecord struct {
 
 // folderGroup is the notes a project map lists together: those directly in a
 // folder (Name ""), or every note at or below one of its subfolders. Past
-// spaceMapListLimit the group gets its own map beside its notes, MapAbs.
+// spaceMapListLimit the group gets its own map beside its notes, MapAbs, which
+// is then kept while it stays on disk (foldermaps.go). A group with a map also
+// carries Completed, the notes that moved from it to the project's
+// `completed/` mirror.
 type folderGroup struct {
-	Name   string
-	Dir    string
-	Notes  []projectRecord
-	MapAbs string
+	Name      string
+	Dir       string
+	Notes     []projectRecord
+	Completed []projectRecord
+	MapAbs    string
 }
+
+// listed is every note the group's map lists, the moved ones included.
+func (g folderGroup) listed() int { return len(g.Notes) + len(g.Completed) }
 
 // projectFolder is one of the project skeleton's working folders (`research/`,
 // `drafts/`, `desk/`), or a folder the project's `project.yaml` names under
@@ -86,6 +93,22 @@ type projectFolder struct {
 	Rel     string
 	Loose   folderGroup
 	Bundles []folderGroup
+	// Emptied is each kept map whose group holds no note now, here or in
+	// `completed/`: rewritten as an emptied page, linked from nowhere.
+	Emptied []folderGroup
+}
+
+// shown says whether the project map has anything of the folder to show.
+func (f projectFolder) shown() bool {
+	if f.notes() > 0 {
+		return true
+	}
+	for _, g := range append([]folderGroup{f.Loose}, f.Bundles...) {
+		if g.MapAbs != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (f projectFolder) notes() int {
@@ -349,31 +372,45 @@ func folderNotes(vault, dir string, recurse bool) []projectRecord {
 
 // readProjectFolder reads one working folder: its own notes, and each
 // subfolder's notes at or below it. A group past spaceMapListLimit is given a
-// map of its own, `moc-<name>.md` beside its notes, named for its folder.
+// map of its own, `moc-<name>.md` beside its notes, named for its folder, and a
+// map already there is kept whatever the group holds now (foldermaps.go).
 func readProjectFolder(vault, projectDir, rel string) projectFolder {
 	dir := filepath.Join(projectDir, filepath.FromSlash(rel))
 	f := projectFolder{Rel: rel}
 	if !isDirExact(dir) {
 		return f
 	}
-	f.Loose = folderGroup{Dir: dir, Notes: folderNotes(vault, dir, false)}
-	if len(f.Loose.Notes) > spaceMapListLimit {
-		f.Loose.MapAbs = filepath.Join(dir, "moc-"+filepath.Base(dir)+".md")
+	mirror := filepath.Join(projectDir, completedDirName, filepath.FromSlash(rel))
+	// group decides a group's map and reads its moved notes; false is a group
+	// with nothing to show and no map to keep.
+	group := func(g folderGroup, mapAbs, moved string, recurse bool) (folderGroup, bool) {
+		if len(g.Notes) <= spaceMapListLimit && !keptFolderMap(mapAbs) {
+			return g, len(g.Notes) > 0
+		}
+		g.MapAbs = mapAbs
+		if isDirExact(moved) {
+			g.Completed = folderNotes(vault, moved, recurse)
+		}
+		if g.listed() == 0 {
+			f.Emptied = append(f.Emptied, g)
+			g.MapAbs = ""
+			return g, false
+		}
+		return g, true
 	}
+	f.Loose, _ = group(folderGroup{Dir: dir, Notes: folderNotes(vault, dir, false)},
+		filepath.Join(dir, "moc-"+filepath.Base(dir)+".md"), mirror, false)
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
 		if !e.IsDir() || spaceSkip(e.Name()) {
 			continue
 		}
 		sub := filepath.Join(dir, e.Name())
-		g := folderGroup{Name: e.Name(), Dir: sub, Notes: folderNotes(vault, sub, true)}
-		if len(g.Notes) == 0 {
-			continue
+		g, ok := group(folderGroup{Name: e.Name(), Dir: sub, Notes: folderNotes(vault, sub, true)},
+			filepath.Join(sub, "moc-"+e.Name()+".md"), filepath.Join(mirror, e.Name()), true)
+		if ok {
+			f.Bundles = append(f.Bundles, g)
 		}
-		if len(g.Notes) > spaceMapListLimit {
-			g.MapAbs = filepath.Join(sub, "moc-"+e.Name()+".md")
-		}
-		f.Bundles = append(f.Bundles, g)
 	}
 	return f
 }
@@ -442,7 +479,7 @@ func readProject(vault, dir string) projectEntry {
 	}
 	for _, rel := range mapFolders(dir) {
 		f := readProjectFolder(vault, dir, rel)
-		if f.notes() == 0 {
+		if !f.shown() && len(f.Emptied) == 0 {
 			continue
 		}
 		p.Folders = append(p.Folders, f)
@@ -586,6 +623,9 @@ func renderProjectMap(vault string, p projectEntry, created, updated string) str
 		}
 	}
 	for _, f := range p.Folders {
+		if !f.shown() {
+			continue
+		}
 		lines = append(lines, "", "## "+folderHeading(f.Rel), "")
 		lines = append(lines, folderLines(vault, f)...)
 	}
@@ -611,13 +651,24 @@ func recordLine(indent string, r projectRecord) string {
 	return line
 }
 
+// folderMapLine is a group's line on the project map once it has a map of its
+// own: a link to it, the notes the folder holds, and how many moved on.
+func folderMapLine(vault, label string, g folderGroup) string {
+	n := len(g.Notes)
+	line := fmt.Sprintf("- %s — %d %s", projLink(vault, g.MapAbs, label), n, mocPlural(n, "note", "notes"))
+	if c := len(g.Completed); c > 0 {
+		line += fmt.Sprintf(" · %d completed", c)
+	}
+	return line
+}
+
 // folderLines renders a working folder's section: its own notes, then each
 // subfolder, listed while it holds spaceMapListLimit notes or fewer and linked
-// to its own map once it holds more (task 193 LD-2).
+// to its own map once it holds more (task 193 LD-2), or while that map is kept.
 func folderLines(vault string, f projectFolder) []string {
 	var lines []string
-	if n := len(f.Loose.Notes); n > 0 && f.Loose.MapAbs != "" {
-		lines = append(lines, fmt.Sprintf("- %s — %d %s", projLink(vault, f.Loose.MapAbs, f.Rel+"/"), n, mocPlural(n, "note", "notes")))
+	if f.Loose.MapAbs != "" {
+		lines = append(lines, folderMapLine(vault, f.Rel+"/", f.Loose))
 	} else {
 		for _, r := range f.Loose.Notes {
 			lines = append(lines, recordLine("", r))
@@ -625,8 +676,7 @@ func folderLines(vault string, f projectFolder) []string {
 	}
 	for _, g := range f.Bundles {
 		if g.MapAbs != "" {
-			n := len(g.Notes)
-			lines = append(lines, fmt.Sprintf("- %s — %d %s", projLink(vault, g.MapAbs, g.Name+"/"), n, mocPlural(n, "note", "notes")))
+			lines = append(lines, folderMapLine(vault, g.Name+"/", g))
 			continue
 		}
 		lines = append(lines, "- `"+g.Name+"/`")
@@ -637,27 +687,45 @@ func folderLines(vault string, f projectFolder) []string {
 	return lines
 }
 
-// renderFolderMap renders a working folder's own map, for a group past
-// spaceMapListLimit: every note in it, newest first, under a link back to the
-// project's map.
+// folderWhere is a group's folder as its map names it, `desk/briefs/`.
+func folderWhere(folder string, g folderGroup) string {
+	where := folder + "/"
+	if g.Name != "" {
+		where += g.Name + "/"
+	}
+	return where
+}
+
+// renderFolderMap renders a working folder's own map: every note in it, newest
+// first, then those that moved to the project's `completed/` mirror, under a
+// link back to the project's map.
 func renderFolderMap(p projectEntry, folder string, g folderGroup, created, updated string) string {
 	if created == "" {
 		created = updated
 	}
 	name := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(g.MapAbs), "moc-"), ".md")
-	where := folder + "/"
-	if g.Name != "" {
-		where += g.Name + "/"
-	}
+	where := folderWhere(folder, g)
 	n := len(g.Notes)
+	intro := fmt.Sprintf("The %d %s in `%s` of project %s, newest first.", n, mocPlural(n, "note", "notes"), where, p.Slug)
+	if c := len(g.Completed); c > 0 {
+		intro += fmt.Sprintf(" Below, the %d that moved to `completed/%s` when their work finished.", c, where)
+	}
 	lines := []string{"---", "title: " + p.Slug + " " + where + " — map of content", "kind: moc", "status: active",
 		"created: " + created, "updated: " + updated, "tags: [moc, projects, " + p.Slug + "]",
-		"slug: moc-" + name, fmt.Sprintf("members: %d", n), "generated_by: " + mocGeneratedBy,
+		"slug: moc-" + name, fmt.Sprintf("members: %d", g.listed()), "generated_by: " + mocGeneratedBy,
 		"---", "", "# " + where, "", "[[" + p.MapLink + "|" + p.Slug + "]]", "",
-		fmt.Sprintf("The %d %s in `%s` of project %s, newest first. Generated nightly from the folder's notes; not edited by hand.",
-			n, mocPlural(n, "note", "notes"), where, p.Slug), ""}
+		intro + " Generated nightly from the folder's notes; not edited by hand.", ""}
 	for _, r := range g.Notes {
 		lines = append(lines, recordLine("", r))
+	}
+	if len(g.Completed) > 0 {
+		if n > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, "## Completed", "")
+		for _, r := range g.Completed {
+			lines = append(lines, recordLine("", r))
+		}
 	}
 	return mocJoin(append(lines, ""))
 }
@@ -771,14 +839,29 @@ func PlanProjectMaps(root string, now time.Time) (MocsPlan, error) {
 		before, created := mocCurrentPage(root, rel)
 		plan.add(MocPage{Rel: rel, Members: p.members(), Newest: updated}, before,
 			renderProjectMap(vault, p, created, updated), fmt.Sprintf("the map of project %s regenerated", name))
-		// A working folder's group past the list limit has its own map (task 193 LD-2).
+		// A working folder's group past the list limit has its own map (task 193
+		// LD-2), kept while it stays on disk (foldermaps.go).
 		for _, f := range p.Folders {
+			for _, g := range f.Emptied {
+				abs := g.MapAbs
+				if abs == "" {
+					abs = filepath.Join(g.Dir, "moc-"+filepath.Base(g.Dir)+".md")
+				}
+				gRel := memoryRel(root, abs)
+				gBefore, _ := mocCurrentPage(root, gRel)
+				where := folderWhere(f.Rel, g)
+				plan.add(MocPage{Rel: gRel}, gBefore,
+					renderEmptiedMap(gBefore, strings.TrimSuffix(filepath.Base(abs), ".md"), where,
+						"[["+p.MapLink+"|"+p.Slug+"]]",
+						fmt.Sprintf("`%s` of project %s holds no notes now, and none of it is in `completed/`, so this map lists none.", where, p.Slug), today),
+					fmt.Sprintf("the map of %s's %s emptied", name, projVaultRel(filepath.Join(space, name), g.Dir)))
+			}
 			for _, g := range append([]folderGroup{f.Loose}, f.Bundles...) {
 				if g.MapAbs == "" {
 					continue
 				}
 				var dates []string
-				for _, r := range g.Notes {
+				for _, r := range append(append([]projectRecord(nil), g.Notes...), g.Completed...) {
 					dates = append(dates, r.Date)
 				}
 				gUpdated := projNewest(dates...)
@@ -787,10 +870,10 @@ func PlanProjectMaps(root string, now time.Time) (MocsPlan, error) {
 				}
 				gRel := memoryRel(root, g.MapAbs)
 				gBefore, gCreated := mocCurrentPage(root, gRel)
-				plan.add(MocPage{Rel: gRel, Members: len(g.Notes), Newest: gUpdated}, gBefore,
+				plan.add(MocPage{Rel: gRel, Members: g.listed(), Newest: gUpdated}, gBefore,
 					renderFolderMap(p, f.Rel, g, gCreated, gUpdated),
 					fmt.Sprintf("the map of %s's %s regenerated (%d %s)", name, projVaultRel(filepath.Join(space, name), g.Dir),
-						len(g.Notes), mocPlural(len(g.Notes), "note", "notes")))
+						g.listed(), mocPlural(g.listed(), "note", "notes")))
 			}
 		}
 	}
