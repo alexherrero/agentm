@@ -62,6 +62,9 @@ import write_meter  # noqa: E402
 WEEKLY_DIR = Path("diagnostics") / "weekly"
 URGENT_LOG = "urgent-log.jsonl"
 URGENT_STATE = "urgent-sent.json"
+# The runner's "not ready yet" exit (scripts/runner/cycle.py NOT_READY_EXIT):
+# the job stays due and runs again next cycle.
+NOT_READY = 75
 CONFIG_KEY = "plugins.autonomy.weekly"
 
 OK, LOOK, ACT = "ok", "look", "act"
@@ -797,6 +800,25 @@ def homelab(src: Sources, week: Week, *, fetch: Callable) -> Optional[Card]:
     return card
 
 
+def homelab_pending(src: Sources, week: Week, now: float) -> bool:
+    """Whether to hold the email for the homelab report. The NAS sends its own
+    at 07:00, or as late as noon when its backup box has not reported. So while
+    the report is missing, on the week's own Sunday, before
+    `homelab.wait_until` (default 12:30), the email waits. A report still
+    missing then, or a catch-up run on a later day, goes out with the card
+    saying "not in yet"."""
+    spec = src.config.get("homelab")
+    card = next((c for c in week.cards if c.slug == "homelab"), None)
+    if not isinstance(spec, dict) or card is None or card.chip != "no report":
+        return False
+    try:
+        hour, minute = (int(x) for x in str(spec.get("wait_until", "12:30")).split(":"))
+    except ValueError:
+        return False
+    local = datetime.fromtimestamp(now).astimezone()
+    return local.date() == week.end.date() and (local.hour, local.minute) < (hour, minute)
+
+
 def _fetch(url: str, token_command: Optional[list]) -> Optional[str]:
     """GET a report over HTTPS with a token read from a command (a keychain
     lookup), passed straight to the request and never kept."""
@@ -961,11 +983,15 @@ def build_sources(vault: Path, config: dict) -> Sources:
 
 
 def run_weekly(vault: Path, *, mail: bool = True, push: bool = True, now: Optional[float] = None,
-               install_prefix: Optional[Path] = None) -> int:
+               install_prefix: Optional[Path] = None, wait: bool = True) -> int:
     import weekly_render
     config = load_config(install_prefix)
     src = build_sources(vault, config)
+    now = now if now is not None else time.time()
     week = collect(src, now=now)
+    if mail and wait and homelab_pending(src, week, now):
+        print("weekly-email: the homelab report is not in yet; the runner asks again next cycle")
+        return NOT_READY
     out = src.vault / WEEKLY_DIR / f"{week.end:%Y-%m-%d}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(weekly_render.markdown(week), encoding="utf-8")
@@ -1032,6 +1058,7 @@ def main(argv: Optional[list] = None) -> int:
     ap.add_argument("--vault-path", default=None, help="the memory root (overrides MEMORY_ROOT)")
     ap.add_argument("--no-mail", action="store_true", help="write the report, send nothing")
     ap.add_argument("--no-push", action="store_true", help="do not push the vault before sending")
+    ap.add_argument("--no-wait", action="store_true", help="send now, even if the homelab report is not in")
     ap.add_argument("--urgent", action="store_true", help="run the urgent lane's daily check instead")
     args = ap.parse_args(sys.argv[1:] if argv is None else argv)
     vault = args.vault_path or os.environ.get("MEMORY_ROOT") or corpus_scorecard.memory_root_from_daemon()
@@ -1040,7 +1067,7 @@ def main(argv: Optional[list] = None) -> int:
         return 2
     if args.urgent:
         return run_urgent(Path(vault))
-    return run_weekly(Path(vault), mail=not args.no_mail, push=not args.no_push)
+    return run_weekly(Path(vault), mail=not args.no_mail, push=not args.no_push, wait=not args.no_wait)
 
 
 if __name__ == "__main__":

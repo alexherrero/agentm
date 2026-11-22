@@ -140,6 +140,17 @@ def mark_missed(job_name: str, *, now: Optional[float] = None, state_root: Optio
     })
 
 
+def restore_marker(job_name: str, prior: dict, *, state_root: Optional[Path] = None) -> None:
+    """Put back the marker a run found, for a run that said its input was not
+    ready (`cycle.NOT_READY_EXIT`): the job reads exactly as it did before, so
+    it stays due. A job that had never run goes back to having no marker."""
+    p = _marker_path(job_name, state_root)
+    if prior:
+        _write(p, prior)
+    else:
+        p.unlink(missing_ok=True)
+
+
 def is_orphaned_start(marker: dict) -> bool:
     """True if the marker's last write was a "start" that never reached "done"."""
     return marker.get("status") == "start"

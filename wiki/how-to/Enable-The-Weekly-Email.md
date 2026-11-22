@@ -30,8 +30,9 @@
    - `push_command` runs before the send, so the report's page exists when you tap it.
    - A `private` project card shows only steps and dates, never the words in its notes.
    - `token_command` prints a token to stdout. The token goes straight into the request and is never stored.
+   - `wait_until` (`"12:30"` by default) is how long the email waits on Sunday for a homelab report that has not landed. Until then the job exits 75 and the runner tries again next cycle; after it, the email goes out with the line saying "not in yet".
 
-2. **Register the two jobs.** Copy `templates/jobs/weekly-email.yaml` and `templates/jobs/urgent-lane.yaml` into `.harness/jobs/`. The weekly job runs on Sunday between 07:00 and 09:00; the urgent lane checks daily between 06:00 and 09:00.
+2. **Register the two jobs.** Copy `templates/jobs/weekly-email.yaml` and `templates/jobs/urgent-lane.yaml` into `.harness/jobs/`. The weekly job runs on Sunday between 07:00 and 13:00, as soon as the homelab report is in; the urgent lane checks daily between 06:00 and 09:00.
 
 3. **Turn the old emails off.** Set `enabled: false` in `.harness/jobs/observability-email-daily.yaml`, and add `--no-mail` to the command in `.harness/jobs/field-brief-weekly.yaml`. The morning note and the field brief keep being written; the weekly email reads them.
 
@@ -41,7 +42,7 @@
 python3 harness/skills/memory/scripts/weekly_email.py --no-mail --no-push
 ```
 
-It prints where it wrote the report and the week's verdict. Open the report to see every card. Run without `--no-mail` to send one.
+It prints where it wrote the report and the week's verdict. Open the report to see every card. Run without `--no-mail` to send one; add `--no-wait` to send before the homelab report is in.
 
 ## A project's own card
 

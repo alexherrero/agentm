@@ -28,12 +28,16 @@ schedule: weekly
 lookback: 2d
 
 # Sunday morning, after the night's batch (02:00-06:00) has written the day's
-# morning note and scorecard, which the email reads.
-window: "07:00-09:00"
+# morning note and scorecard, which the email reads. The window runs to 13:00
+# so the email can wait for a homelab report that lands late: while it is
+# missing, before `homelab.wait_until` (12:30), the script exits 75 and the
+# runner asks again next cycle.
+window: "07:00-13:00"
 
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention), with
 # MEMORY_ROOT exported by the runner. `--no-mail` writes the report without the
-# email; `--no-push` skips the vault push.
+# email; `--no-push` skips the vault push; `--no-wait` sends without waiting
+# for the homelab report.
 command: python3 ../harness/skills/memory/scripts/weekly_email.py
 
 # No model calls: it reads records, `gh` and the daemon's status.

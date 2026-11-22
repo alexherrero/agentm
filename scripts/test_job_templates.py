@@ -143,7 +143,7 @@ class JobTemplatesLoad(unittest.TestCase):
             self.assertEqual(loaded[name].window_minutes, (18 * 60, 23 * 60), name)
         # The morning jobs (task 200) read what the night wrote: the urgent
         # lane's check for a lapsed login, and Sunday's weekly email.
-        morning = {"urgent-lane": (6 * 60, 9 * 60), "weekly-email": (7 * 60, 9 * 60)}
+        morning = {"urgent-lane": (6 * 60, 9 * 60), "weekly-email": (7 * 60, 13 * 60)}
         for name, window in morning.items():
             self.assertEqual(loaded[name].window_minutes, window, name)
         # Nothing else is windowed: the hourly sweep and the shepherds are not

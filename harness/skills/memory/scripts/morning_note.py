@@ -379,6 +379,8 @@ def _skip_reason(job: str, outcomes: dict, registered: bool, *, cycle_tonight: b
         return "dry run"
     if o.get("skipped_reason"):
         return str(o["skipped_reason"])
+    if o.get("deferred"):
+        return "waiting on its input"
     if o.get("ran") and o.get("exit_code") not in (0, None):
         return f"exited {o.get('exit_code')}"
     return "not due"
