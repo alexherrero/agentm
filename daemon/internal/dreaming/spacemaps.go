@@ -22,6 +22,15 @@ import (
 // by bundle. `systems/` is small, so a system's overview and its components
 // are listed whole.
 //
+// A counted folder still gets its notes linked: it is given a map of its own
+// beside them, `<space>/<path>/moc-<folder>.md`, which lists every note in the
+// folder newest first under a link back up, and the counted line links that
+// map. Without it a counted folder's cards had no link in or out (the graph
+// review of 2026-11-21). The rule recurses: inside a folder's map a subfolder
+// past the limit is counted and linked to a map of its own in turn. A section
+// folder whose own notes are counted gets one the same way. The space's own
+// map still never lists more than the limit's worth of titles from one folder.
+//
 // The rules the projects maps keep hold here too: a note is dated by its
 // `created`, so the night's enrichment, which stamps `updated`, never reorders
 // or rewrites a map; a page carries its newest input's date as `updated`, so a
@@ -55,9 +64,14 @@ type spaceNote struct {
 
 type spaceFolder struct {
 	Name    string
+	Dir     string
 	Notes   []spaceNote // notes directly in the folder, by title
 	Subdirs []spaceFolder
 	Total   int // every note at or below the folder
+	// MapAbs is the folder's own map when a map above counts it rather than
+	// listing it, and MapLink the link to it, labelled `<name>/`.
+	MapAbs  string
+	MapLink string
 }
 
 // spaceNoteAt reads one note for a map line: its link by title and its date.
@@ -82,7 +96,7 @@ func spaceSkip(name string) bool {
 // readSpaceFolder reads a folder: its notes in title order, its subfolders by
 // name, and every note's date into `dates`.
 func readSpaceFolder(vault, dir string, dates *[]string) spaceFolder {
-	f := spaceFolder{Name: filepath.Base(dir)}
+	f := spaceFolder{Name: filepath.Base(dir), Dir: dir}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return f
@@ -117,12 +131,39 @@ func readSpaceFolder(vault, dir string, dates *[]string) spaceFolder {
 	return f
 }
 
+// assignSpaceMaps gives a map of its own to each folder a map above would
+// count: a section folder whose own notes are past the limit, or a folder
+// below one that holds more than the limit at or below it.
+func assignSpaceMaps(vault string, f *spaceFolder, section bool) {
+	if (section && len(f.Notes) > spaceMapListLimit) || (!section && f.Total > spaceMapListLimit) {
+		f.MapAbs = filepath.Join(f.Dir, "moc-"+f.Name+".md")
+		f.MapLink = projLink(vault, f.MapAbs, f.Name+"/")
+	}
+	for i := range f.Subdirs {
+		assignSpaceMaps(vault, &f.Subdirs[i], false)
+	}
+}
+
+// countedLine is a counted folder's line: a link to its own map when it has
+// one, else the bare count.
+func countedLine(indent, name, mapLink string, n int) string {
+	if mapLink != "" {
+		return fmt.Sprintf("%s- %s — %d %s", indent, mapLink, n, mocPlural(n, "note", "notes"))
+	}
+	return fmt.Sprintf("%s- `%s/` — %d %s", indent, name, n, mocPlural(n, "note", "notes"))
+}
+
 // spaceFolderLines renders a section's body: the folder's own notes, then each
-// subfolder, listed while small and counted once large.
+// subfolder, listed while small and counted once large, a count linking the
+// folder's own map.
 func spaceFolderLines(f spaceFolder, indent string) []string {
 	var lines []string
 	if len(f.Notes) > spaceMapListLimit {
-		lines = append(lines, fmt.Sprintf("%s- %d %s", indent, len(f.Notes), mocPlural(len(f.Notes), "note", "notes")))
+		if f.MapLink != "" {
+			lines = append(lines, countedLine(indent, f.Name, f.MapLink, len(f.Notes)))
+		} else {
+			lines = append(lines, fmt.Sprintf("%s- %d %s", indent, len(f.Notes), mocPlural(len(f.Notes), "note", "notes")))
+		}
 	} else {
 		for _, n := range f.Notes {
 			lines = append(lines, indent+"- "+n.Link)
@@ -130,13 +171,98 @@ func spaceFolderLines(f spaceFolder, indent string) []string {
 	}
 	for _, sub := range f.Subdirs {
 		if sub.Total > spaceMapListLimit {
-			lines = append(lines, fmt.Sprintf("%s- `%s/` — %d %s", indent, sub.Name, sub.Total, mocPlural(sub.Total, "note", "notes")))
+			lines = append(lines, countedLine(indent, sub.Name, sub.MapLink, sub.Total))
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("%s- `%s/`", indent, sub.Name))
 		lines = append(lines, spaceFolderLines(sub, indent+"  ")...)
 	}
 	return lines
+}
+
+// spaceNewestFirst is a folder's own notes newest `created` first, then by
+// link, the order a project folder's map keeps.
+func spaceNewestFirst(notes []spaceNote) []spaceNote {
+	out := append([]spaceNote(nil), notes...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Date != out[j].Date {
+			return out[i].Date > out[j].Date
+		}
+		return out[i].Link < out[j].Link
+	})
+	return out
+}
+
+// spaceDates is every note's date at or below a folder.
+func spaceDates(f spaceFolder) []string {
+	var out []string
+	for _, n := range f.Notes {
+		out = append(out, n.Date)
+	}
+	for _, sub := range f.Subdirs {
+		out = append(out, spaceDates(sub)...)
+	}
+	return out
+}
+
+// spaceFolderMapLines renders a folder's own map body: every note in it newest
+// first, then each subfolder, listed whole while small and linked to its own
+// map once past the limit.
+func spaceFolderMapLines(f spaceFolder, indent string) []string {
+	var lines []string
+	for _, n := range spaceNewestFirst(f.Notes) {
+		line := indent + "- " + n.Link
+		if n.Date != "" {
+			line += " · " + n.Date
+		}
+		lines = append(lines, line)
+	}
+	for _, sub := range f.Subdirs {
+		if sub.MapLink != "" {
+			lines = append(lines, countedLine(indent, sub.Name, sub.MapLink, sub.Total))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s- `%s/`", indent, sub.Name))
+		lines = append(lines, spaceFolderMapLines(sub, indent+"  ")...)
+	}
+	return lines
+}
+
+// renderSpaceFolderMap renders a counted folder's own map. `where` is the
+// folder's path inside the space, `topics/sqlite`; `up` links the map above.
+func renderSpaceFolderMap(space, where string, f spaceFolder, up, created, updated string) string {
+	if created == "" {
+		created = updated
+	}
+	lines := []string{"---", "title: " + space + " " + where + "/ — map of content", "kind: moc", "status: active",
+		"created: " + created, "updated: " + updated, "tags: [moc, " + space + "]",
+		"slug: moc-" + f.Name, fmt.Sprintf("members: %d", f.Total), "generated_by: " + mocGeneratedBy,
+		"---", "", "# " + where + "/", "", up, "",
+		fmt.Sprintf("The %d %s in `%s/` of the %s space, newest first. Generated nightly from the folder's notes; not edited by hand.",
+			f.Total, mocPlural(f.Total, "note", "notes"), where, space), ""}
+	lines = append(lines, spaceFolderMapLines(f, "")...)
+	return mocJoin(append(lines, ""))
+}
+
+// planSpaceFolderMaps plans the map of each folder given one, at or below f,
+// in the tree's order. `up` links the nearest map above.
+func planSpaceFolderMaps(plan *MocsPlan, root, vault, space string, f spaceFolder, up, today string) {
+	if f.MapAbs != "" {
+		where := strings.TrimPrefix(projVaultRel(vault, f.Dir), space+"/")
+		updated := projNewest(spaceDates(f)...)
+		if updated == "" {
+			updated = today
+		}
+		rel := memoryRel(root, f.MapAbs)
+		before, created := mocCurrentPage(root, rel)
+		plan.add(MocPage{Rel: rel, Members: f.Total, Newest: updated}, before,
+			renderSpaceFolderMap(space, where, f, up, created, updated),
+			fmt.Sprintf("the map of %s/%s regenerated (%d %s)", space, where, f.Total, mocPlural(f.Total, "note", "notes")))
+		up = projLink(vault, f.MapAbs, where+"/")
+	}
+	for _, sub := range f.Subdirs {
+		planSpaceFolderMaps(plan, root, vault, space, sub, up, today)
+	}
 }
 
 func renderSpaceMap(space, text string, top spaceFolder, created, updated string) string {
@@ -175,6 +301,9 @@ func PlanSpaceMaps(root string, now time.Time) (MocsPlan, error) {
 		if top.Total == 0 {
 			continue
 		}
+		for i := range top.Subdirs {
+			assignSpaceMaps(vault, &top.Subdirs[i], true)
+		}
 		updated := projNewest(dates...)
 		if updated == "" {
 			updated = today
@@ -184,6 +313,10 @@ func PlanSpaceMaps(root string, now time.Time) (MocsPlan, error) {
 		plan.add(MocPage{Rel: rel, Members: top.Total, Newest: updated}, before,
 			renderSpaceMap(s.Name, s.Text, top, created, updated),
 			fmt.Sprintf("the %s map regenerated (%d %s)", s.Name, top.Total, mocPlural(top.Total, "note", "notes")))
+		up := projLink(vault, filepath.Join(dir, "moc-"+s.Name+".md"), s.Name)
+		for _, sub := range top.Subdirs {
+			planSpaceFolderMaps(&plan, root, vault, s.Name, sub, up, today)
+		}
 	}
 	return plan, nil
 }
