@@ -359,6 +359,141 @@ class TheUrgentLane(WeeklyFixture):
         self.assertEqual(len(sent), 2)
         self.assertEqual(len(w.read_jsonl(self.engine / w.URGENT_LOG)), 3)   # two from setUp, one now
 
+    def test_the_alert_carries_its_evidence(self):
+        runs = self.engine / "enrich-runs.jsonl"
+        runs.write_text(json.dumps({"at": "2026-11-08T10:30:00Z", "model_calls": 7,
+                                    "errors": ["x.md: enrich: claude exited exit status 1: Failed to authenticate: "
+                                               "OAuth session expired and could not be refreshed"] * 7}) + "\n")
+        sent = []
+        w.run_urgent(self.mem, now=NOW, ask=lambda a: {}, send=lambda s, b: sent.append(b) or {"sent": True})
+        self.assertIn("had 7 of its 7 call(s) refused", sent[0])
+
+
+# The rejection the enrichment logged on 2026-11-22: the model answered, and the
+# grounding gate turned its proposal down. "coauthor" holds the letters "oauth".
+COAUTHOR = ("agent/memory/semantic/scope-agent-trailer-matching.md: enrich: post-gate grounding: enrich: note is "
+            "not eligible: the proposal asserts what the card and its neighbours do not: `Records the fix for "
+            "coauthor-guard.sh's AGENT_RE (the source does not say a fix was applied)`")
+
+
+class TheLoginCheck(WeeklyFixture):
+    """Task 198's check named the login lapsed on 2026-11-16 and 11-22, both
+    nights every call reached the model."""
+
+    def test_only_the_clis_own_words_are_a_lapse(self):
+        lapse = w.claude_login.is_lapse
+        for real in ("x.md: enrich: claude exited exit status 1: Failed to authenticate: OAuth session expired "
+                     "and could not be refreshed", "Not logged in · Please run /login", "Invalid API key",
+                     "OAuth session expired"):
+            self.assertTrue(lapse(real), real)
+        for false in (COAUTHOR,
+                      "agent/memory/procedural/google-oauth-sign-in-for-the-blog.md: enrich: post-gate grounding: x",
+                      "notes/login-flow.md: enrich: the proposal is empty",
+                      "x.md: enrich: post-gate grounding: the card says `Failed to authenticate: OAuth session "
+                      "expired` and the source does not"):
+            self.assertFalse(lapse(false), false)
+
+    def test_a_night_whose_note_mentions_oauth_stays_green(self):
+        runs = self.engine / "enrich-runs.jsonl"
+        runs.write_text(runs.read_text() + json.dumps(
+            {"at": "2026-11-08T10:30:00Z", "model_calls": 90, "errors": [COAUTHOR]}) + "\n")
+        week = self.week()
+        health = self.card(week, "agent-health")
+        self.assertEqual(next(t for t in health.tiles if t.name == "Login").status, w.OK)
+        self.assertEqual(health.strip[-1], "ok")
+        self.assertFalse(any("login" in i.text for i in self.card(week, "needs-you").items))
+        sent = []
+        w.run_urgent(self.mem, now=NOW, ask=lambda a: {}, send=lambda s, b: sent.append(s) or {"sent": True})
+        self.assertEqual(sent, [])
+
+    def test_the_login_items_open_the_morning_note_not_its_folder(self):
+        runs = self.engine / "enrich-runs.jsonl"
+        runs.write_text(runs.read_text() + json.dumps(
+            {"at": "2026-11-08T10:30:00Z", "errors": ["Not logged in · Please run /login"] * 2}) + "\n")
+        week = self.week()
+        sign_in = self.card(week, "needs-you").items[0]
+        lapsed = next(i for i in self.card(week, "agent-health").items if i.text.startswith("Claude login lapsed"))
+        for it in (sign_in, lapsed):
+            self.assertEqual(it.link, BASE + "agent/diagnostics/morning/latest_morning_note.md")
+        self.assertIn("2 calls refused", lapsed.text)
+
+
+class TheTruth(WeeklyFixture):
+    def test_one_failing_note_says_fails_and_opens_that_note(self):
+        rel = "projects/doom-3d/tasks/008-the-sound/tracker.md"
+        with mock.patch.object(w.morning_note, "vault_offenders", return_value=[{"rel": rel, "finding": "x"}]):
+            card = self.card(self.week(), "agent-health")
+        it = next(i for i in card.items if "vault checks" in i.text)
+        self.assertEqual((it.text, it.link), ("1 note fails the vault checks", BASE + rel))
+
+    def test_one_red_card_needs_action(self):
+        runs = self.engine / "enrich-runs.jsonl"
+        runs.write_text(runs.read_text() + json.dumps(
+            {"at": "2026-11-08T10:30:00Z", "errors": ["Not logged in"]}) + "\n")
+        self.assertEqual(self.week().headline, "Agent health needs action.")
+
+    def test_spend_counts_what_the_lesson_compile_spent(self):
+        _write(self.engine / w.morning_note.lesson_compile.STATE_SUBDIR / "runs.jsonl",
+               json.dumps({"at": "2026-11-07T10:00:00Z", "spent": 2.0, "projects": []}) + "\n")
+        self.assertEqual(self.card(self.week(), "agent-health").footer[0], "$17 this week")
+
+    def test_the_writes_meter_says_it_is_one_night(self):
+        meter = self.card(self.week(), "agent-health").meters[1]
+        self.assertEqual(meter.mark_label, "night of Sun 8 Nov")
+
+    def test_red_on_main_opens_the_failing_run(self):
+        gh = self.gh
+        url = "https://github.com/someone/alpha/actions/runs/7"
+
+        def with_urls(args):
+            out = gh(args)
+            if args[:2] == ["run", "list"]:
+                out = [dict(x, url=url) for x in out]
+            return out
+        self.gh = with_urls
+        number = next(n for n in self.card(self.week(), "github").numbers if n.label == "red on main")
+        self.assertEqual(number.link, url)
+
+    def test_the_homelab_line_names_the_areas_that_need_action_first(self):
+        report = NAS_REPORT.replace("**Needs a look.**", "**Needs action.**").replace(
+            "| OK | [Disks](#disks)", "| ACT | [Last backup](#last-backup)").replace(
+            "| LOOK | [Cooling](#cooling) | Main NAS | CPU at 84°C |\n",
+            "| LOOK | [Disks](#disks) | Main NAS | 50°C |\n| LOOK | [Cooling](#cooling) | Main NAS | CPU at 84°C |\n")
+        week = w.collect(self.sources(), now=NOW, fetch=lambda url, tok: report)
+        self.assertEqual(self.card(week, "homelab").items[0].text, "NAS · Needs action · last backup, disks")
+
+
+class ThePhoneLayout(WeeklyFixture):
+    """At 320–375px, with the `<style>` block stripped as some Gmail apps do."""
+
+    def page(self) -> str:
+        return r.html(self.week())
+
+    def test_no_row_of_tiles_or_numbers_is_more_than_three_wide(self):
+        import re
+        rows = re.findall(r"<tr>((?:(?!<tr>|</tr>).)*)</tr>", self.page(), re.DOTALL)
+        widest = max(row.count('class="surface-tile"') for row in rows)
+        self.assertLessEqual(widest, 3)
+
+    def test_nothing_that_wraps_is_shaped_as_a_pill(self):
+        page = self.page()
+        self.assertNotIn('class="surface-capsule" style="background:#FFFFFF;border:1px solid #DCE0D9;border-radius:999px',
+                         page)
+        self.assertNotIn("border-radius:999px;padding:1px 6px", page)      # the "Emailed you" badge
+
+    def test_there_are_no_in_message_anchor_links(self):
+        self.assertNotIn('href="#', self.page())
+
+    def test_the_strip_names_each_night(self):
+        page = self.page()
+        self.assertEqual(page.count(">S</td>"), 2)
+        self.assertEqual(page.count(">T</td>"), 2)
+
+    def test_long_tokens_wrap(self):
+        week = self.week()
+        self.card(week, "needs-you").items[0].text = "x" * 200
+        self.assertIn("overflow-wrap:anywhere;", r.html(week))
+
 
 def _sunday_local(hour: int, minute: int = 0, day: int = 8) -> float:
     """A local wall-clock time on the fixture's week (Sunday 8 Nov 2026)."""

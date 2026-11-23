@@ -7,6 +7,13 @@ small screens, no images and no remote resources. A card whose pill is not
 green is drawn in full; a green card is a chip in the "All good" block; a
 single-line card (the homelab line) is a capsule. Every status carries a shape
 as well as a color: ● OK, ▲ Look, ■ Act.
+
+Phone first, and without the `<style>` block: Gmail's apps drop it for some
+accounts and never honour its dark-mode query, so the inline layout has to
+stand on its own at 320–375px. More than three tiles or numbers go two to a
+row, nothing is shaped as a pill once its text can wrap, text cells break long
+tokens, and there are no in-message `#anchor` links, since Gmail does not
+follow them.
 """
 from __future__ import annotations
 
@@ -23,6 +30,11 @@ FG = {OK: ("fg-green", "#047857"), LOOK: ("fg-amber", "#B45309"), ACT: ("fg-red"
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
 TABLE = 'role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
 LINK = 'class="fg-link" style="color:#0369A1;text-decoration:none;font-weight:600;"'
+# On every cell that carries words: a path, a SHA or a long name wraps rather
+# than widening the email past the phone.
+WRAP = "word-break:break-word;overflow-wrap:anywhere;"
+# Above this many cells, a row of tiles or numbers goes two to a row.
+PER_ROW = 3
 
 STYLE = """<style type="text/css">
 :root { color-scheme: light dark; supported-color-schemes: light dark; }
@@ -71,7 +83,7 @@ def _a(href, inner: str, attrs: str = LINK) -> str:
 
 def pill(status: str, label: str = "", size: int = 11) -> str:
     cls, bg, fg, border = PILL[status]
-    return (f'<span class="{cls}" style="display:inline-block;font-size:{size}px;font-weight:700;padding:2px 9px;'
+    return (f'<span class="{cls}" style="display:inline-block;white-space:nowrap;font-size:{size}px;font-weight:700;padding:2px 9px;'
             f'border-radius:999px;background:{bg};color:{fg};border:1px solid {border};">'
             f'{SHAPE[status]} {_e(label or WORD[status])}</span>')
 
@@ -87,8 +99,24 @@ def _mark(status) -> str:
 def _emailed(text) -> str:
     if not text:
         return ""
-    return ('<div class="badge-urgent" style="display:inline-block;font-size:10px;background:#F3F4F6;color:#4B5563;'
-            f'border:1px solid #E5E7EB;border-radius:999px;padding:1px 6px;margin-top:4px;">{_e(text)}</div>')
+    # A soft rectangle, not a pill: in a phone-width tile the words wrap.
+    return ('<div class="badge-urgent" style="display:inline-block;font-size:11px;line-height:14px;background:#F3F4F6;'
+            f'color:#4B5563;border:1px solid #E5E7EB;border-radius:6px;padding:2px 6px;margin-top:4px;">{_e(text)}</div>')
+
+
+def _grid(cells: list, *, gap: str = "0 2px") -> str:
+    """Cells in one row, or two to a row past PER_ROW: four across is too
+    narrow on a phone, and a two-column table needs no media query."""
+    per = len(cells) if len(cells) <= PER_ROW else 2
+    width = 100 // per
+    rows = []
+    for i in range(0, len(cells), per):
+        chunk = cells[i:i + per]
+        tds = "".join(f'<td width="{width}%" valign="top" style="padding:{gap};">{c}</td>' for c in chunk)
+        if len(chunk) < per:
+            tds += f'<td width="{width * (per - len(chunk))}%" colspan="{per - len(chunk)}"></td>'
+        rows.append(f"<tr>{tds}</tr>")
+    return f'<table {TABLE} style="margin-bottom:8px;">{"".join(rows)}</table>'
 
 
 def _items(card: Card) -> str:
@@ -96,7 +124,7 @@ def _items(card: Card) -> str:
     for i, it in enumerate(card.items):
         last = i == len(card.items) - 1
         sep = "" if last else "border-bottom:1px solid #ECEFEA;"
-        rows.append(f'<!-- row:item --><tr><td class="line-sep" style="padding:6px 0;{sep}font-size:14px;">'
+        rows.append(f'<!-- row:item --><tr><td class="line-sep" style="padding:6px 0;{sep}font-size:14px;{WRAP}">'
                     f'{_mark(it.mark)}{_a(it.link, _e(it.text))}{_emailed(it.emailed)}</td></tr><!-- /row:item -->')
     return f'<table {TABLE}>{"".join(rows)}</table>' if rows else ""
 
@@ -108,27 +136,29 @@ def _tiles(card: Card) -> str:
     for t in card.tiles:
         cls, color = FG[t.status]
         border = {OK: "#E4E8E1", LOOK: "#F59E0B", ACT: "#DC2626"}[t.status]
-        inner = (f'<div style="font-size:12px;font-weight:700;color:#111827;"><span class="fg-strong">{_e(t.name)}</span> '
+        inner = (f'<div style="font-size:13px;font-weight:700;color:#111827;"><span class="fg-strong">{_e(t.name)}</span> '
                  f'<span class="{cls}" style="color:{color};">{SHAPE[t.status]}</span></div>{_emailed(t.emailed)}')
         box = (f'class="surface-tile" style="display:block;text-decoration:none;background:#F8FAF7;border:1px solid {border};'
-               f'border-radius:8px;padding:6px 4px;text-align:center;"')
+               f'border-radius:8px;padding:8px 6px;text-align:center;{WRAP}"')
         body = f'<a href="{_e(t.link)}" {box}>{inner}</a>' if t.link else f'<div {box}>{inner}</div>'
-        cells.append(f'<td width="{100 // len(card.tiles)}%" valign="top" style="padding:0 2px;">{body}</td>')
-    return f'<table {TABLE} style="margin-bottom:8px;"><tr>{"".join(cells)}</tr></table>'
+        cells.append(body)
+    return _grid(cells, gap="0 2px 4px 2px")
 
 
 def _strip(card: Card) -> str:
     if not card.strip:
         return ""
+    # One column a night, its day's letter over its dot, so a red night can be
+    # named without counting dots from Monday.
+    letters = "".join(f'<td align="center" class="fg-quiet" style="font-size:11px;font-weight:600;color:#5F665E;">{d}</td>'
+                      for d in "MTWTFSS")
     dots = "".join(
-        f'<span class="{FG[s][0]}" style="color:{FG[s][1]};">{SHAPE[s]}</span>' if s in FG
-        else '<span class="fg-quiet" style="color:#9CA3AF;">&#9675;</span>' for s in card.strip)
+        f'<td align="center" style="font-size:14px;line-height:18px;">'
+        + (f'<span class="{FG[s][0]}" style="color:{FG[s][1]};">{SHAPE[s]}</span>' if s in FG
+           else '<span class="fg-quiet" style="color:#9CA3AF;">&#9675;</span>') + '</td>'
+        for s in card.strip)
     return (f'<div class="surface-tile" style="background:#F8FAF7;border:1px solid #E4E8E1;border-radius:8px;'
-            f'padding:6px 10px;margin-bottom:10px;"><table {TABLE}><tr>'
-            '<td class="fg-quiet" style="font-size:11px;font-weight:600;color:#5F665E;width:32px;">Mon</td>'
-            f'<td align="center" style="font-size:14px;letter-spacing:6px;">{dots}</td>'
-            '<td align="right" class="fg-quiet" style="font-size:11px;font-weight:600;color:#5F665E;width:32px;">Sun</td>'
-            '</tr></table></div>')
+            f'padding:6px 8px;margin-bottom:10px;"><table {TABLE}><tr>{letters}</tr><tr>{dots}</tr></table></div>')
 
 
 def _meters(card: Card) -> str:
@@ -171,14 +201,13 @@ def _numbers(card: Card) -> str:
     for n in card.numbers:
         cls, color = FG[n.status] if n.status else ("fg-strong", "#111827")
         inner = (f'<div class="num-big {cls}" style="font-size:22px;line-height:26px;font-weight:800;color:{color};">'
-                 f'{_e(n.value)}</div><div class="fg-body" style="font-size:11px;line-height:14px;font-weight:600;'
+                 f'{_e(n.value)}</div><div class="fg-body" style="font-size:12px;line-height:15px;font-weight:600;'
                  f'color:#4B5563;margin-top:2px;">{_e(n.label)}</div>')
         box = ('class="surface-tile" style="display:block;text-decoration:none;background:#F8FAF7;border:1px solid #E4E8E1;'
-               'border-radius:10px;padding:10px 4px;text-align:center;"')
+               f'border-radius:10px;padding:10px 4px;text-align:center;{WRAP}"')
         body = f'<a href="{_e(n.link)}" {box}>{inner}</a>' if n.link else f'<div {box}>{inner}</div>'
-        cells.append(f'<!-- row:number --><td width="{100 // len(card.numbers)}%" valign="top" style="padding:0 2px;">'
-                     f'{body}</td><!-- /row:number -->')
-    return f'<table {TABLE} style="margin-bottom:8px;"><tr>{"".join(cells)}</tr></table>'
+        cells.append(f'<!-- row:number -->{body}<!-- /row:number -->')
+    return _grid(cells, gap="0 2px 4px 2px")
 
 
 def _footer(card: Card) -> str:
@@ -211,9 +240,11 @@ def full_card(card: Card) -> str:
 def line_card(card: Card) -> str:
     it = card.items[0] if card.items else None
     words = _a(it.link, _e(it.text)) if it else ""
+    # Rounded like the other cards, not a capsule: on a phone the line wraps,
+    # and a 999px radius clips a two-line box into a lozenge.
     return (f'<!-- card:{card.slug} --><tr><td id="{card.slug}" style="padding:0 0 12px 0;">'
-            f'<table {TABLE} class="surface-capsule" style="background:#FFFFFF;border:1px solid #DCE0D9;border-radius:999px;">'
-            f'<tr><td style="padding:10px 16px;font-size:14px;line-height:20px;">{pill(card.status)} '
+            f'<table {TABLE} class="surface-capsule" style="background:#FFFFFF;border:1px solid #DCE0D9;border-radius:14px;">'
+            f'<tr><td style="padding:12px 16px;font-size:14px;line-height:20px;{WRAP}">{pill(card.status)} '
             f'<strong class="fg-strong" style="color:#111827;">{card.icon} {_e(card.title)}</strong> &middot; {words}'
             f'</td></tr></table></td></tr><!-- /card:{card.slug} -->')
 
@@ -239,15 +270,24 @@ def _chip_name(card: Card) -> str:
 
 
 def _glance(week: Week) -> str:
+    """The cards at a glance: each one that is not green by name, the green
+    ones as a single count. Words, not a row of bare icons, and no `#anchor`
+    links: Gmail does not follow them, so they were taps that went nowhere."""
+    shown = [c for c in week.cards if not c.hidden]
     out = []
-    for c in week.cards:
-        if c.hidden:
+    for c in shown:
+        if c.status == OK:
             continue
         cls, bg, fg, border = PILL[c.status]
-        target = "#all-good" if c.status == OK else f"#{c.slug}"
-        out.append(f'<a href="{target}" class="{cls}" style="display:inline-block;text-decoration:none;padding:3px 6px;'
-                   f'margin:0 4px 4px 0;border-radius:6px;background:{bg};color:{fg};border:1px solid {border}">'
-                   f'{c.icon}{SHAPE[c.status]}</a>')
+        out.append(f'<span class="{cls}" style="display:inline-block;padding:3px 8px;margin:0 4px 4px 0;'
+                   f'border-radius:6px;background:{bg};color:{fg};border:1px solid {border};font-size:12px;'
+                   f'line-height:16px;font-weight:600;">{SHAPE[c.status]} {c.icon} {_e(c.title)}</span>')
+    greens = sum(1 for c in shown if c.status == OK)
+    if greens:
+        cls, bg, fg, border = PILL[OK]
+        out.append(f'<span class="{cls}" style="display:inline-block;padding:3px 8px;margin:0 4px 4px 0;'
+                   f'border-radius:6px;background:{bg};color:{fg};border:1px solid {border};font-size:12px;'
+                   f'line-height:16px;font-weight:600;">{SHAPE[OK]} {greens} all good</span>')
     return '<div class="line-sep" style="border-top:1px solid #ECEFEA;padding-top:10px">' + "".join(out) + "</div>"
 
 
@@ -261,14 +301,16 @@ def html(week: Week) -> str:
     header = (
         f'<tr><td style="padding:0 0 12px 0;"><table {TABLE} class="surface-main" style="background:#FFFFFF;'
         f'border:1px solid #DCE0D9;border-radius:14px;"><tr><td class="card-inner" style="padding:18px 20px;">'
+        # The verdict sits beside the short date line and the title gets a row
+        # of its own: side by side, at 320px both wrapped.
         f'<table {TABLE}><tr><td align="left" style="vertical-align:middle;">'
         f'<div class="fg-quiet" style="font-size:12px;font-weight:600;color:#5F665E;letter-spacing:0.03em;">'
-        f'{week.end:%a} {week.end.day} {week.end:%b %Y}</div>'
+        f'{week.end:%a} {week.end.day} {week.end:%b %Y}</div></td>'
+        f'<td align="right" style="vertical-align:middle;white-space:nowrap;"><span class="{cls}" style="display:inline-block;'
+        f'font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:{bg};color:{fg};'
+        f'border:1px solid {border};white-space:nowrap;">{SHAPE[status]} {_e(verdict)}</span></td></tr></table>'
         '<div class="fg-strong" style="font-size:22px;font-weight:800;color:#111827;letter-spacing:-0.02em;'
-        'line-height:28px;margin-top:2px;">AgentM Weekly</div></td>'
-        f'<td align="right" style="vertical-align:top;"><span class="{cls}" style="display:inline-block;font-size:12px;'
-        f'font-weight:700;padding:5px 11px;border-radius:999px;background:{bg};color:{fg};border:1px solid {border};">'
-        f'{SHAPE[status]} {_e(verdict)}</span></td></tr></table>'
+        'line-height:28px;margin-top:4px;">AgentM Weekly</div>'
         f'<p class="fg-body" style="margin:8px 0 12px 0;font-size:15px;line-height:21px;color:#374151;font-weight:500;">'
         f'{_e(week.headline)}</p>{_glance(week)}</td></tr></table></td></tr>')
     body = []
