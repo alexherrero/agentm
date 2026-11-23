@@ -368,6 +368,31 @@ class AgyChainTests(_AgyFixture):
         tight = self._answer(self._run(cmd, self._payload(), RECALL_TOKEN_BUDGET="100"))
         self.assertIn("recall truncated", tight["injectSteps"][0]["systemMessage"]["systemMessage"])
 
+    def test_the_off_switch_lists_a_scripted_conversation_for_the_compile(self) -> None:
+        # A script's `agy -p` run is recorded out of band: nothing reaches
+        # the conversation, and the nightly lesson compile skips it.
+        state = self.root / "state"
+        r = self._run(self._command("memory-recall-session-start"), self._payload(conversation="conv-9"),
+                      AGENTM_AGY_RECALL="off", AGENTM_STATE_DIR=str(state))
+        self.assertEqual(self._answer(r), {})
+        rows = [json.loads(l) for l in
+                (state / "lesson-compile" / "scripted-agy.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([row["conversation"] for row in rows], ["conv-9"])
+
+    def test_only_session_start_lists_the_conversation(self) -> None:
+        state = self.root / "state"
+        cmd = self._command("memory-recall-prompt-submit")
+        r = self._run(cmd, self._payload(prompt="hello"), AGENTM_AGY_RECALL="off", AGENTM_STATE_DIR=str(state))
+        self.assertEqual(self._answer(r), {})
+        self.assertFalse((state / "lesson-compile" / "scripted-agy.jsonl").exists())
+
+    def test_a_listing_that_fails_still_answers_empty(self) -> None:
+        blocked = self.root / "state-is-a-file"
+        blocked.write_text("not a folder", encoding="utf-8")
+        r = self._run(self._command("memory-recall-session-start"), self._payload(),
+                      AGENTM_AGY_RECALL="off", AGENTM_STATE_DIR=str(blocked))
+        self.assertEqual(self._answer(r), {})
+
     def test_the_off_switch_answers_empty_and_runs_no_hook(self) -> None:
         self._seed_always_load()
         r = self._run(self._command("memory-recall-session-start"), self._payload(),

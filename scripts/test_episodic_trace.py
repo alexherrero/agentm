@@ -787,6 +787,17 @@ class ARewriteKeepsWhatTheTraceHolds(unittest.TestCase):
         _, sections = et._split_trace(et.merge_trace_text(base, incoming, "s1"))
         self.assertIn("always use rebase from now on", sections.get("Candidates", ""))
 
+    def test_a_project_bound_later_goes_where_a_fresh_trace_has_it(self):
+        base = et.Trace(when=date(2026, 11, 21), session_id="s1", title="t").render()
+        incoming = et.Trace(when=date(2026, 11, 21), session_id="s1", title="t", project="blog").render()
+        def keys(text):
+            fm, _ = et._split_trace(text)
+            return [line.split(":", 1)[0] for line in fm if ":" in line and not line.startswith(" ")]
+        merged = keys(et.merge_trace_text(base, incoming, "s1"))
+        fresh = keys(incoming)
+        self.assertEqual([k for k in merged if k in fresh], [k for k in fresh if k in merged])
+        self.assertLess(merged.index("updated"), merged.index("project"))
+
     def test_a_remark_the_operator_corrected_is_not_added_again(self):
         turns = [("user", "tidy up the importer module please", "u0"), ("assistant", "Done.", "a0"),
                  ("user", "Later we could add a cahce for the folder walk.", "u1"), ("assistant", "Noted.", "a1")]

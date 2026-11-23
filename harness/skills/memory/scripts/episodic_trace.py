@@ -888,7 +888,10 @@ def merge_trace_text(base: str, incoming: str, session_id: str, *, newest_outcom
         fm = _set_fm(fm, "title", next(line for line in i_fm if line.startswith("title:")), "title")
         b_sec["Asked"] = i_sec.get("Asked", b_sec.get("Asked", ""))
 
-    for key, after in (("project", "created"), ("task", "project"), ("surface", "slug")):
+    # A project bound after the first write goes where a fresh trace has it,
+    # after `updated` (the card-shape order); after `created`, it failed the
+    # card-shape check on 11-22.
+    for key, after in (("project", "updated"), ("task", "project"), ("surface", "slug")):
         line = next((ln for ln in i_fm if ln.startswith(key + ":")), None)
         if line is not None:
             fm = _set_fm(fm, key, line, after)

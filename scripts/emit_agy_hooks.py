@@ -20,7 +20,7 @@ is an error, not a silent skip: a registration that quietly lacks a handler is
 how a guard goes missing.
 
 Every handler is
-    [ "${AGENTM_AGY_RECALL:-}" = off ] && echo '{}' || \
+    [ "${AGENTM_AGY_RECALL:-}" = off ] && <off> || \
         RECALL_TOKEN_BUDGET="${RECALL_TOKEN_BUDGET:-<budget>}" AGENTM_HOST=antigravity \
         python3 ./hooks/_agy_hook_adapter.py <Event> bash <installed hook script>
 
@@ -40,7 +40,9 @@ leaves out the parts that are Claude's alone (see memory-recall-session-start).
 `AGENTM_AGY_RECALL=off` in the environment of an `agy` run turns the recall off for
 that run — for a script that shells out to `agy -p` and does not want the operator's
 memory in it — and `agy plugin disable agentm` turns it off for good; a re-run of
-the installer keeps a disabled plugin disabled.
+the installer keeps a disabled plugin disabled. `<off>` answers `{}`. At SessionStart it
+first runs agentm_scripted_run.py, which lists the conversation for the nightly lesson
+compile to skip as a script's, adding nothing to the conversation itself.
 
 The handlers point at the hook scripts under `<prefix>/hooks/`, the copies Claude
 Code runs, not at copies inside the plugin: one script, one set of siblings
@@ -68,6 +70,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ADAPTER_SRC = REPO_ROOT / "adapters" / "antigravity" / "hooks" / "_agy_hook_adapter.py"
 ADAPTER_REL = "hooks/_agy_hook_adapter.py"
+# agentm's own: records a scripted run's conversation for the lesson compile.
+SCRIPTED_SRC = REPO_ROOT / "adapters" / "antigravity" / "agentm_scripted_run.py"
+SCRIPTED_REL = "hooks/agentm_scripted_run.py"
 
 HOST = "antigravity"
 PLUGIN_NAME = "agentm"
@@ -111,8 +116,12 @@ def handler_command(event: str, script: Path) -> str:
         if event == "UserPromptSubmit"
         else AGY_SESSION_START_TOKEN_BUDGET
     )
+    # With recall off, SessionStart records the conversation as a script's
+    # (agentm_scripted_run.py prints nothing and never fails), then answers {}.
+    off = ("{ python3 ./" + SCRIPTED_REL + " >/dev/null 2>&1; echo '{}'; }"
+           if event == "SessionStart" else "echo '{}'")
     return (
-        '[ "${AGENTM_AGY_RECALL:-}" = off ] && echo \'{}\' || '
+        '[ "${AGENTM_AGY_RECALL:-}" = off ] && ' + off + ' || '
         f'RECALL_TOKEN_BUDGET="${{RECALL_TOKEN_BUDGET:-{budget}}}" AGENTM_HOST={HOST} '
         f"python3 ./{ADAPTER_REL} {event} bash {shlex.quote(str(script))}"
     )
@@ -180,6 +189,7 @@ def emit(prefix: Path, out_dir: Path, version: str) -> int:
     (out_dir / "plugin.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (out_dir / "hooks.json").write_text(json.dumps(hooks, indent=2) + "\n", encoding="utf-8")
     shutil.copyfile(ADAPTER_SRC, out_dir / ADAPTER_REL)
+    shutil.copyfile(SCRIPTED_SRC, out_dir / SCRIPTED_REL)
     return 0
 
 

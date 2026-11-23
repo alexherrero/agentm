@@ -457,6 +457,57 @@ def own_agy_digest(rows: list) -> bool:
     return False
 
 
+# A script that runs `agy -p` sets AGENTM_AGY_RECALL=off, and agentm's agy
+# plugin then lists the conversation here at SessionStart
+# (adapters/antigravity/agentm_scripted_run.py). On 11-22, 185 of the 206
+# waiting slices were such calls: cross-model code reviews and prose passes,
+# whose results the calling session already records.
+SCRIPTED_LEDGER = "scripted-agy.jsonl"
+SCRIPTED_KEEP_DAYS = 14
+
+
+def scripted_agy(now: datetime) -> set:
+    """The conversations a script opened, listed in the last two weeks. The
+    list is rewritten without older rows, so it stays small."""
+    path = state_dir() / SCRIPTED_LEDGER
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return set()
+    keep, ids = [], set()
+    for line in lines:
+        try:
+            row = json.loads(line)
+            at = datetime.fromisoformat(str(row.get("at")))
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if (now - at).days <= SCRIPTED_KEEP_DAYS and str(row.get("conversation") or ""):
+            keep.append(line)
+            ids.add(str(row["conversation"]))
+    if len(keep) < len(lines):
+        try:
+            path.write_text("".join(l + "\n" for l in keep), encoding="utf-8")
+        except OSError:
+            pass
+    return ids
+
+
+def agy_requests(path: Path) -> int:
+    """How many requests a whole agy conversation holds."""
+    n = 0
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    if json.loads(line).get("type") == "USER_INPUT":
+                        n += 1
+                except (ValueError, AttributeError):
+                    continue
+    except OSError:
+        pass
+    return n
+
+
 AGY_IMAGE_TOOL = "generate_image"
 # agy's wording when a hook adds a system message. Such a message (the memory
 # a SessionStart hook loads, say) opens every conversation, so it is never the
@@ -600,6 +651,7 @@ def collect(*, memory_root: "Path | None", claude_root: "Path | None" = None, ag
         sources = [s for s in sources if s.path.resolve() == target] or [
             Source(CLAUDE, f"{CLAUDE}:{target.stem}", target.stem, target)]
     marks = load_bookmarks()
+    scripted = scripted_agy(now)
     seeded = False
     if marks is None:
         marks = seed_bookmarks(sources if only is None else [], now=now)
@@ -624,7 +676,9 @@ def collect(*, memory_root: "Path | None", claude_root: "Path | None" = None, ag
             cwd = session_binding.transcript_cwd(s.path)
             relayed = False
         else:
-            if own_agy_digest(rows) or agy_image_run(s.path):
+            # A script's call, while nobody has carried it on by hand.
+            by_script = s.session in scripted and agy_requests(s.path) <= 1
+            if own_agy_digest(rows) or agy_image_run(s.path) or by_script:
                 marks[s.key] = new_mark
                 continue
             cwd = agy_cwd(rows)
@@ -1040,6 +1094,16 @@ def search_neighbours(query: str, *, vault_root: Path, memory_root: Path, runner
 
 CARD_CHARS = 1500
 CARD_HEAD = 500
+# A hidden addition is still named by its first sentence, cut to this length.
+HIDDEN_LINE = 200
+_ADDITION = re.compile(r"^\*\*(\d{4}-\d\d-\d\d) · [^*\n]*?(\w+)\*\*\s*\n+(.+?)(?=\n\*\*\d{4}-\d\d-\d\d · |\n## |\Z)",
+                       re.M | re.S)
+
+
+def _first_sentence(text: str, limit: int = HIDDEN_LINE) -> str:
+    flat = " ".join(text.split())
+    m = re.search(r"(?<=[.!?])\s", flat)
+    return _cut(flat[: m.start()] if m else flat, limit)
 
 
 def _card_text(path: Path) -> str:
@@ -1059,19 +1123,33 @@ def _card_text(path: Path) -> str:
         # the end, and the repeats come from the end: two projects in one
         # night added the same case to a 3,000-character card because the
         # first one's addition sat past the cut.
-        text = text[:CARD_HEAD].rstrip() + "\n[…]\n" + text[-(CARD_CHARS - CARD_HEAD):].lstrip()
+        # Every addition in the cut middle is still named by its first
+        # sentence: a night added a rule a long card already held there.
+        tail_at = len(text) - (CARD_CHARS - CARD_HEAD)
+
+        def _cut_off(m) -> bool:  # the addition's first sentence does not fit in the top
+            return m.start(3) + len(m.group(3).split(". ")[0]) > CARD_HEAD
+
+        hidden = [f"- {m.group(1)} · {m.group(2)}: {_first_sentence(m.group(3))}"
+                  for m in _ADDITION.finditer(text) if _cut_off(m) and m.start() < tail_at]
+        middle = ("\n[… earlier additions, first sentence each:]\n" + "\n".join(hidden) + "\n[…]\n"
+                  if hidden else "\n[…]\n")
+        text = text[:CARD_HEAD].rstrip() + middle + text[tail_at:].lstrip()
     return "\n".join("      " + l for l in text.splitlines() if l.strip())
 
 
-def neighbours_for(c: dict, night, k: int = 6) -> list:
-    """A candidate's neighbours, searched twice: by the query the model wrote
-    for it and by its own title. The query alone missed cards that held the
-    same lesson under the same title (the first unattended night refiled three
-    of them), so the two result lists are interleaved, each one's best first,
-    and cut to the usual pool with lesson cards first."""
+def neighbours_for(c: dict, night, k: int = 8) -> list:
+    """A candidate's neighbours, searched three times: by the query the model
+    wrote for it, by its own title, and by its lesson's first sentence. The
+    query alone missed cards that held the same lesson under the same title
+    (the first unattended night refiled three of them), and query and title
+    together missed a card holding the same procedure in other words (11-21).
+    The result lists are interleaved, each one's best first, and cut to up to
+    six lesson cards and the best read-only notes after them."""
     question = f"{c.get('title') or ''}. {c.get('lesson') or ''}"
     runs = []
-    for terms in dict.fromkeys(t for t in (str(c.get("query") or ""), str(c.get("title") or "")) if t.strip()):
+    asks = (str(c.get("query") or ""), str(c.get("title") or ""), _first_sentence(str(c.get("lesson") or "")))
+    for terms in dict.fromkeys(t for t in asks if t.strip()):
         runs.append(search_neighbours(terms, vault_root=night.vault_root, memory_root=night.memory_root,
                                       runner=night.runner, question=question, k=k))
     merged, seen = [], set()
