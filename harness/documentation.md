@@ -60,7 +60,7 @@ The four always-present sections (how-to · reference · designs · explanation)
 Pages outside these six sections are not part of the convention — either file them under the correct section or add a subdir with a rationale in that section's `README.md`.
 
 > [!NOTE]
-> **Authoring tooling lives in crickets.** The six-section authoring + maintenance tooling is crickets' canonical [`wiki`](https://github.com/alexherrero/crickets/tree/main/src/wiki) plugin (the `diataxis-author` skill + `/diataxis` commands). agentm's duplicate four-mode copy was retired toward it. Harness wiki-authoring now **defers to crickets with the crickets-split graceful-skip**: when crickets is installed it drives mode selection + section-template choice; when it is absent the harness suggests installing it and falls back — never hard-fails. The deterministic gate stays agentm's own six-folder [`scripts/check-wiki.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-wiki.py), unchanged by the retire.
+> **Authoring tooling lives in crickets.** The six-section authoring + maintenance tooling is crickets' canonical [`wiki`](https://github.com/alexherrero/crickets/tree/main/src/wiki) plugin (the `wiki-author` skill, the `documenter` agent and `/wiki-watch`). agentm's duplicate four-mode copy was retired toward it. Harness wiki-authoring now **defers to crickets with the crickets-split graceful-skip**: when crickets is installed it drives mode selection + section-template choice; when it is absent the harness suggests installing it and falls back — never hard-fails. The deterministic gate stays agentm's own six-folder [`scripts/check-wiki.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-wiki.py), unchanged by the retire.
 
 ### Filename rules
 
