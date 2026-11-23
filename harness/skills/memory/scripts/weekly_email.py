@@ -347,11 +347,17 @@ class Sources:
     gh: Callable                     # (args) -> parsed JSON, or raises
 
 
+def _morning_link(src: Sources) -> Optional[str]:
+    """The morning note's page, the one place that says why the night went as
+    it did. Not its folder: a folder opens a file list, not an answer."""
+    return src.link(_rel(src.vault_root, src.vault / morning_note.DIAGNOSTICS_DIR / morning_note.STABLE_NAME))
+
+
 def needs_you(src: Sources, week: Week, health: Optional[Card] = None) -> Card:
     card = Card("needs-you", "Needs you", "✋", tray=True)
     items: list = []
     if health is not None and any(t.name == "Login" and t.status == ACT for t in health.tiles):
-        items.append(Item("Sign in: run claude, then /login", src.link("agent/diagnostics/morning"), ACT))
+        items.append(Item("Sign in: run claude, then /login", _morning_link(src), ACT))
     purge = src.vault / "diagnostics" / "migrations" / "purge"
     for note in sorted(purge.glob("*.md")) if purge.is_dir() else []:
         fm = frontmatter(note)
@@ -441,7 +447,9 @@ def agent_health(src: Sources, week: Week, *, now: float) -> Card:
         card.items.append(Item("Daemon not answering" if status is None else "Daemon red: " + ", ".join(sorted(codes)),
                                report, ACT))
     if login == ACT:
-        card.items.append(Item("Claude login lapsed", src.link("agent/diagnostics/morning"), ACT))
+        refused = claude_login.lapsed(last.get("errors") or [])
+        card.items.append(Item(f"Claude login lapsed: {refused} call{'s' if refused != 1 else ''} refused "
+                               f"{_stamp(last['_at'])}", _morning_link(src), ACT))
 
     # Seven nights, Monday first: ● the batch ran, ■ it did not, ○ not yet.
     ran = {datetime.fromtimestamp(r["_at"]).astimezone().date() for r in week_runs
@@ -478,7 +486,9 @@ def agent_health(src: Sources, week: Week, *, now: float) -> Card:
         if "writes" in rows:
             n, budget = rows["writes"]
             st = LOOK if n > budget else OK
+            # One night's count, not the week's: the row is "the last 24 hours".
             card.meters.append(Meter(f"Writes {n} vs budget {budget}", n, max(n, budget), st, mark=budget,
+                                     mark_label=f"night of {_day(_date(day))}" if _date(day) else "one night",
                                      link=src.link(_rel(src.vault_root, morning_note.note_path(
                                          src.vault / morning_note.DIAGNOSTICS_DIR, day)))))
             card.worsen(st)
@@ -487,15 +497,20 @@ def agent_health(src: Sources, week: Week, *, now: float) -> Card:
     except Exception:
         offenders = []
     if offenders:
-        card.items.append(Item(f"{len(offenders)} note{'s' if len(offenders) > 1 else ''} fail the vault checks",
-                               src.link("agent/memory/mocs/needs-review.md"), LOOK))
+        one = len(offenders) == 1
+        # One note: open it. Several: the morning note lists every one. The
+        # review list never named them, so it was the wrong page either way.
+        rel = (offenders[0].get("rel") if one and isinstance(offenders[0], dict) else None)
+        card.items.append(Item(f"{len(offenders)} note{'' if one else 's'} fail{'s' if one else ''} the vault checks",
+                               src.link(rel) if rel else _morning_link(src), LOOK))
         card.worsen(LOOK)
 
     cost = 0.0
     for reader in (morning_note.enrich_runs, morning_note.crystallize_runs, morning_note.restated_runs,
                    morning_note.idea_judge_runs, morning_note.lesson_runs):
         try:
-            cost += sum(float(r.get("total_cost_usd") or 0) for r in reader(src.engine_dir)
+            # The lesson compile records its spend as `spent`, the rest as `total_cost_usd`.
+            cost += sum(float(r.get("total_cost_usd") or r.get("spent") or 0) for r in reader(src.engine_dir)
                         if week.start.timestamp() <= r["_at"] <= week.end.timestamp())
         except Exception:
             continue
@@ -528,18 +543,20 @@ def github(src: Sources, week: Week, *, now: float) -> Optional[Card]:
     if not repos:
         card.status, card.items = LOOK, [Item("GitHub did not answer")]
         return card
-    red, alerts_on, high, aging, stale = [], 0, [], [], []
+    red, red_urls, alerts_on, high, aging, stale = [], [], 0, [], [], []
     for r in repos:
         name = r["name"]
         branch = (r.get("defaultBranchRef") or {}).get("name") or "main"
         runs = _gh_json(src.gh, ["run", "list", "-R", f"{owner}/{name}", "--branch", branch, "--limit", "20",
-                                 "--json", "workflowName,conclusion,createdAt"]) or []
+                                 "--json", "workflowName,conclusion,createdAt,url"]) or []
         latest = {}
         for run in runs:
             latest.setdefault(run.get("workflowName"), run)
-        if any(x.get("conclusion") == "failure" and (_epoch(x.get("createdAt")) or 0) >= week.start.timestamp()
-               for x in latest.values()):
+        failed = [x for x in latest.values()
+                  if x.get("conclusion") == "failure" and (_epoch(x.get("createdAt")) or 0) >= week.start.timestamp()]
+        if failed:
             red.append(name)
+            red_urls.append(failed[0].get("url") or f"https://github.com/{owner}/{name}/actions")
         dep = _gh_json(src.gh, ["api", f"repos/{owner}/{name}/dependabot/alerts?state=open&per_page=100"])
         if isinstance(dep, list):
             alerts_on += 1
@@ -560,8 +577,9 @@ def github(src: Sources, week: Week, *, now: float) -> Optional[Card]:
         card.numbers.append(Number(str(len(set(high))), "high alert" + ("s" if len(set(high)) > 1 else ""),
                                    f"{base}/{sorted(set(high))[0]}/security", ACT))
         card.worsen(ACT)
+    # One red repo: its failing run. Several: the first one's.
     card.numbers.append(Number(str(len(red)), "red on main",
-                               f"{base}/{red[0]}/actions" if red else f"{base}?tab=repositories", LOOK if red else None))
+                               red_urls[0] if red else f"{base}?tab=repositories", LOOK if red else None))
     if red:
         card.worsen(LOOK)
     if not high:
@@ -792,7 +810,11 @@ def homelab(src: Sources, week: Week, *, fetch: Callable) -> Optional[Card]:
     m = re.search(r"^\*\*(All good|Needs a look|Needs action)\.\*\*", text, re.MULTILINE)
     verdict = m.group(1) if m else "No verdict"
     card.status = {"All good": OK, "Needs a look": LOOK, "Needs action": ACT}.get(verdict, LOOK)
-    areas = re.findall(r"^\|\s*(?:LOOK|ACT)\s*\|\s*\[([^\]]+)\]", text, re.MULTILINE)
+    # The areas that need action first: the report's table keeps its own order,
+    # and on 2026-11-22 that named "disks, parity" for a NAS whose red rows were
+    # cooling and the backup.
+    rows = re.findall(r"^\|\s*(LOOK|ACT)\s*\|\s*\[([^\]]+)\]", text, re.MULTILINE)
+    areas = [a for s, a in rows if s == "ACT"] + [a for s, a in rows if s == "LOOK"]
     words = verdict + (" · " + ", ".join(a.lower() for a in areas[:2]) if areas else "")
     card.items = [Item(f"{spec.get('name', 'NAS')} · {words}", link)]
     card.chip = "all good" if card.status == OK else verdict.lower()
@@ -907,7 +929,7 @@ def headline(week: Week) -> str:
     needs = next((c for c in week.cards if c.slug == "needs-you" and not c.hidden), None)
     red = [c.title for c in week.cards if c.status == ACT and not c.hidden and c.slug != "needs-you"]
     if red:
-        return _short(f"{' and '.join(red[:2])} need action.", 12)
+        return _short(f"{' and '.join(red[:2])} need{'s' if len(red) == 1 else ''} action.", 12)
     if needs:
         n = len(needs.items)
         return f"A healthy week. {n} decision{'s' if n != 1 else ''} wait on you."
@@ -1027,9 +1049,13 @@ def run_urgent(vault: Path, *, now: Optional[float] = None, install_prefix: Opti
         state = {}
     runs = morning_note.enrich_runs(engine_dir)
     codes, lines = [], []
-    if runs and claude_login.lapsed(runs[-1].get("errors") or []):
+    refused = claude_login.lapsed(runs[-1].get("errors") or []) if runs else 0
+    if refused:
         codes.append("claude-login")
-        lines.append("The claude login has lapsed, so the nightly work cannot reach the model. "
+        # The evidence rides with the claim, so a wrong alarm can be seen for one.
+        lines.append(f"The claude login has lapsed, so the nightly work cannot reach the model: the enrichment "
+                     f"run at {_stamp(runs[-1]['_at'])} had {refused} of its "
+                     f"{runs[-1].get('model_calls') or len(runs[-1].get('errors') or [])} call(s) refused. "
                      "Run `claude`, then `/login`, in a terminal.")
     try:
         (ask or corpus_scorecard._agentmd)(["status"])
