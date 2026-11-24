@@ -441,7 +441,12 @@ def agent_health(src: Sources, week: Week, *, now: float) -> Card:
     login = ACT if last and claude_login.lapsed(last.get("errors") or []) else OK
 
     for name, st in (("Daemon", daemon), ("Runner", runner), ("Backup", backup), ("Login", login)):
-        card.tiles.append(Tile(name, st, emailed=emailed.get(name), link=report))
+        # An alert from earlier in the week, under a tile that is green now, says
+        # so: a bare "Emailed you" beside a green dot reads as a live problem.
+        sent = emailed.get(name)
+        if sent and st == OK:
+            sent += " · OK now"
+        card.tiles.append(Tile(name, st, emailed=sent, link=report))
         card.worsen(st)
     if daemon == ACT:
         card.items.append(Item("Daemon not answering" if status is None else "Daemon red: " + ", ".join(sorted(codes)),
@@ -736,7 +741,7 @@ def project_card(src: Sources, week: Week, spec: dict) -> Card:
     card.chip = (feed or {}).get("chip") or (f"{closed} closed" if closed else
                                              "quiet" if not items else f"{len(items)} moving")
     charter = src.vault_root / "projects" / project / "charter.md"
-    card.footer = (spec.get("footer") or "Project", src.link(_rel(src.vault_root, charter)) if charter.is_file() else None)
+    card.footer = (spec.get("footer") or "Open the project", src.link(_rel(src.vault_root, charter)) if charter.is_file() else None)
     card.detail = [f"- {'✓ ' if it.mark == OK else '▲ ' if it.mark == LOOK else '■ ' if it.mark == ACT else ''}{it.text}"
                    for it in items]
     return card
