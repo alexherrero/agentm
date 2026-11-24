@@ -462,6 +462,28 @@ class TheTruth(WeeklyFixture):
         week = w.collect(self.sources(), now=NOW, fetch=lambda url, tok: report)
         self.assertEqual(self.card(week, "homelab").items[0].text, "NAS · Needs action · last backup, disks")
 
+    def test_an_alert_on_a_tile_that_is_green_again_says_so(self):
+        backup = next(t for t in self.card(self.week(), "agent-health").tiles if t.name == "Backup")
+        self.assertEqual(backup.status, w.OK)
+        self.assertTrue(backup.emailed.startswith("Emailed you Thu 5 Nov, "), backup.emailed)
+        self.assertTrue(backup.emailed.endswith(" · OK now"), backup.emailed)
+
+    def test_an_alert_on_a_tile_still_red_stands_alone(self):
+        runs = self.engine / "enrich-runs.jsonl"
+        runs.write_text(runs.read_text() + json.dumps(
+            {"at": "2026-11-08T10:30:00Z", "errors": ["Not logged in"]}) + "\n")
+        w.log_urgent(self.engine, ["claude-login"], source="enrich",
+                     at=datetime(2026, 11, 8, 10, 40, tzinfo=timezone.utc).timestamp())
+        login = next(t for t in self.card(self.week(), "agent-health").tiles if t.name == "Login")
+        self.assertEqual(login.status, w.ACT)
+        self.assertTrue(login.emailed.startswith("Emailed you Sun 8 Nov"), login.emailed)
+        self.assertNotIn("OK now", login.emailed)
+
+    def test_a_project_cards_footer_link_says_where_it_goes(self):
+        _write(self.root / "projects/home/charter.md", "---\nkind: charter\n---\n# House move\n")
+        card = self.card(self.week(), "house-move")
+        self.assertEqual(card.footer, ("Open the project", BASE + "projects/home/charter.md"))
+
 
 class ThePhoneLayout(WeeklyFixture):
     """At 320–375px, with the `<style>` block stripped as some Gmail apps do."""
