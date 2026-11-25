@@ -285,9 +285,10 @@ fi
 
 # ── E. post-release phase dispatch, for real ───────────────────────────────
 # verify-phases.sh drives post-release in --dry-run only, so the same
-# plans-but-never-does gap applies to it. Run it for real and assert the skill
-# index entry lands. index_skills.py needs MEMORY_SKILL_PATHS (the dispatch's
-# argv passes only --vault-path), so the fixture supplies a scratch skill.
+# plans-but-never-does gap applies to it. Run it for real. index_skills.py left
+# the chain on 2026-11-24 (its personal-skills/ output sits outside the memory
+# root's shape and recall's spaces), so even with MEMORY_SKILL_PATHS supplying a
+# scratch skill, nothing may land under personal-skills/.
 echo "verify-idle-chain: ── E. non-dry-run post-release dispatch ──"
 E_VAULT="$SCRATCH/e-vault"; seed_vault "$E_VAULT"
 E_SKILLS="$SCRATCH/e-skills/fixture-skill"; mkdir -p "$E_SKILLS"
@@ -310,10 +311,7 @@ E_OUT="$(env MEMORY_ROOT="$E_VAULT" MEMORY_SKILL_PATHS="$SCRATCH/e-skills" AGENT
   "$PY" "$S/orchestration_phase.py" --vault-path "$E_VAULT" --project-root "$E_PROJ" \
   post-release 2>/dev/null)"
 assert_equals "E. post-release reports it ran" "$(jfield "$E_OUT" status)" "ran"
-E_INDEXED="$(count_files "$E_VAULT/personal-skills" 'fixture-skill.md')"
-assert_equals "E. index-skills wrote the skill-pointer entry" "$E_INDEXED" "1"
-assert_in_tree "E. the indexed entry points back at the fixture source" \
-  "$E_VAULT/personal-skills" "fixture-skill"
+assert_absent "E. post-release writes no personal-skills/ index" "$E_VAULT/personal-skills"
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo

@@ -55,7 +55,7 @@ A successful stage reports `status: staged`; a failed one `stage-failed`, and th
 
 ### `post-release` chain
 
-This chain fires after a `/release` phase session ends. It runs `index_skills.py`. It then runs `discover_skills.py`. These runs refresh the skill surfaces.
+This chain fires after a `/release` phase session ends. It runs `discover_skills.py --cadence-check`, which refreshes the external skill watchlist and skips a scan that ran within the cadence. It no longer runs `index_skills.py`: that step had no skill paths configured, and its `personal-skills/` output is outside the memory root's shape and outside the spaces recall reads. `/memory index-skills` is still there to run by hand.
 
 ## CLI
 

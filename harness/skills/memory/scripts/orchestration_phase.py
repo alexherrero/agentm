@@ -15,9 +15,13 @@ config-toggleable dispatches the phase specs call at their tail:
                 cooperated with the Stop hook through `.reflected` markers).
 
   post-release  After `/release`, refresh the skill surfaces to align with what
-                shipped: `index_skills.py` (local skill index) + `discover_skills.py
-                --cadence-check` (external sources, self-throttled so a release
-                never blocks on a full network fetch).
+                shipped: `discover_skills.py --cadence-check` (external sources,
+                self-throttled so a release never blocks on a full network
+                fetch). `index_skills.py` left this chain on 2026-11-24: no
+                skill paths were ever configured, so it failed on every release,
+                and its `personal-skills/` output sits outside the memory root's
+                shape and outside recall's spaces. The host lists installed
+                skills itself; `/memory index-skills` stays a manual command.
 
 Both mirror the task-2 gate pattern used by the briefing (task 3) + idle chain
 (task 4): `enable_phase_integration` toggle → `phase_reflect_cooldown_hours`
@@ -43,7 +47,6 @@ _RELEASE_CHAIN = "phase_release"
 
 _STEP_TIMEOUT_SEC = {
     "reflect": 120,
-    "index-skills": 60,
     "discover-skills": 90,
 }
 
@@ -285,7 +288,7 @@ def post_release_refresh(
     dry_run: bool = False,
     runner=None,
 ) -> dict:
-    """Refresh skill surfaces after `/release`: index_skills + discover_skills
+    """Refresh skill surfaces after `/release`: discover_skills
     (cadence-checked). Returns a result dict; never raises. Status: disabled |
     dry-run | cooldown | ran | error."""
     vault = Path(vault)
@@ -303,7 +306,6 @@ def post_release_refresh(
 
         v = str(vault)
         steps = [
-            ("index-skills", [_script("index_skills.py"), "--vault-path", v]),
             # cadence-check keeps a release from blocking on a full network fetch
             ("discover-skills", [_script("discover_skills.py"), "--vault-path", v, "--cadence-check"]),
         ]

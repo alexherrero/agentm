@@ -171,7 +171,11 @@ run_lifecycle() {
   assert_equals  "$label release: post-release dispatch non-blocking (exit 0)" "$rc" "0"
   if [ "$vault_mode" = "1" ]; then
     assert_contains "$label work: post-work renders a dry-run plan"  "$pw" '"status"'
-    assert_contains "$label release: post-release runs index-skills"    "$pr" 'index_skills.py'
+    if printf '%s' "$pr" | grep -qF 'index_skills.py'; then
+      fail "$label release: post-release no longer runs index-skills" "the dry-run plan still names index_skills.py"
+    else
+      pass "$label release: post-release no longer runs index-skills"
+    fi
     assert_contains "$label release: post-release runs discover-skills" "$pr" 'discover_skills.py'
   else
     assert_equals  "$label work: post-work graceful-skips (no vault, empty)"  "$pw" ""

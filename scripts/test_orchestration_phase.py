@@ -179,14 +179,22 @@ class TestPostRelease(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def test_runs_index_then_discover_and_records(self) -> None:
+    def test_runs_discover_and_records(self) -> None:
         runner = _FakeRunner()
         out = op.post_release_refresh(self.vault, _cfg(), _NOW, runner=runner)
         self.assertEqual(out["status"], "ran")
-        self.assertEqual(runner.order, ["index-skills", "discover-skills"])
+        self.assertEqual(runner.order, ["discover-skills"])
         # discover is cadence-checked so a release never blocks on a full fetch
-        self.assertIn("--cadence-check", runner.calls[1][1])
+        self.assertIn("--cadence-check", runner.calls[0][1])
         self.assertIn("phase_release", ao.load_state(self.vault)["last_fire"])
+
+    def test_index_skills_is_not_in_the_release_chain(self) -> None:
+        # index_skills.py writes <memory root>/personal-skills/, which the
+        # memory-root shape gate flags and recall never reads (2026-11-24).
+        runner = _FakeRunner()
+        out = op.post_release_refresh(self.vault, _cfg(), _NOW, dry_run=True, runner=runner)
+        argvs = [" ".join(map(str, s["argv"])) for s in out["steps"]]
+        self.assertFalse(any("index_skills.py" in a for a in argvs), argvs)
 
     def test_disabled_is_skip(self) -> None:
         runner = _FakeRunner()
@@ -203,7 +211,7 @@ class TestPostRelease(unittest.TestCase):
         runner = _FakeRunner()
         out = op.post_release_refresh(self.vault, _cfg(), _NOW, dry_run=True, runner=runner)
         self.assertEqual(out["status"], "dry-run")
-        self.assertEqual([s["name"] for s in out["steps"]], ["index-skills", "discover-skills"])
+        self.assertEqual([s["name"] for s in out["steps"]], ["discover-skills"])
         self.assertEqual(runner.calls, [])
         self.assertFalse(ao.state_path(self.vault).exists())
 

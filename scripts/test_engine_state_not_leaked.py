@@ -498,7 +498,7 @@ class TheStateWritingSuitesRunByHand(unittest.TestCase):
         ),
         "test_orchestration_phase.py": (
             "TestPostWork.test_stages_the_session_and_records_fire",
-            "TestPostRelease.test_runs_index_then_discover_and_records",
+            "TestPostRelease.test_runs_discover_and_records",
         ),
         "test_memory_heat_policy.py": (
             "TestRecordHit.test_first_hit_creates_sidecar",
