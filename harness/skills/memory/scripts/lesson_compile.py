@@ -225,9 +225,19 @@ class Settings:
 @dataclass
 class Source:
     host: str
-    key: str          # `host:session`, the bookmark's key
+    key: str          # the bookmark's key: `claude-code:<folder>/<session>`, `antigravity:<session>`
     session: str
     path: Path
+
+
+def claude_key(path: Path) -> str:
+    """A Claude Code transcript's bookmark key: its folder and its session id.
+    One session can file under more than one project folder (the main clone's
+    and a worktree's, each a file of its own), and a mark keyed by the session
+    alone was shared between them. Each file then started from where the other
+    had stopped, the smaller one read itself from the top as rewritten, and
+    the same old sessions were read again every night (task 199, 11-26)."""
+    return f"{CLAUDE}:{path.parent.name}/{path.stem}"
 
 
 def claude_projects_root() -> Path:
@@ -251,7 +261,7 @@ def discover(claude_root: Path, agy: "list | None" = None) -> list:
     if claude_root.is_dir():
         for p in sorted(claude_root.glob("*/*.jsonl")):
             if p.is_file() and "agentm-neutral-cwd" not in p.parent.name:
-                out.append(Source(CLAUDE, f"{CLAUDE}:{p.stem}", p.stem, p))
+                out.append(Source(CLAUDE, claude_key(p), p.stem, p))
     for root in agy if agy is not None else agy_roots():
         for p in sorted(Path(root).glob("brain/*/.system_generated/logs/transcript_full.jsonl")):
             sid = p.parents[2].name
@@ -278,6 +288,33 @@ def _count_lines(path: Path) -> "tuple[int, int]":
             lines += 1
             size += len(raw)
     return lines, size
+
+
+def migrate_bookmarks(marks: dict, sources: list) -> dict:
+    """Marks from before the per-file key, moved onto it. A mark keyed by the
+    session alone goes to the file its `path` names. Any other file of that
+    session starts at its end: under the shared mark it was read past its end
+    already, and often more than once."""
+    legacy = {k: v for k, v in marks.items()
+              if k.startswith(f"{CLAUDE}:") and "/" not in k[len(CLAUDE) + 1:]}
+    if not legacy:
+        return marks
+    out = {k: v for k, v in marks.items() if k not in legacy}
+    sessions = set()
+    for key, mark in legacy.items():
+        sessions.add(key[len(CLAUDE) + 1:])
+        path = (mark or {}).get("path") if isinstance(mark, dict) else None
+        if path:
+            out.setdefault(claude_key(Path(path)), mark)
+    for s in sources:
+        if s.host != CLAUDE or s.session not in sessions or s.key in out:
+            continue
+        try:
+            lines, size = _count_lines(s.path)
+        except OSError:
+            continue
+        out[s.key] = {"lines": lines, "size": size, "host": s.host, "path": str(s.path)}
+    return out
 
 
 def seed_bookmarks(sources: list, *, now: datetime) -> dict:
@@ -645,17 +682,21 @@ def collect(*, memory_root: "Path | None", claude_root: "Path | None" = None, ag
     import session_binding
     now = now or datetime.now(timezone.utc)
     vault_root = session_binding._vault_root(memory_root) if memory_root else None
-    sources = discover(claude_root or claude_projects_root(), agy)
+    sources = everything = discover(claude_root or claude_projects_root(), agy)
     if only is not None:
         target = Path(only).resolve()
         sources = [s for s in sources if s.path.resolve() == target] or [
-            Source(CLAUDE, f"{CLAUDE}:{target.stem}", target.stem, target)]
+            Source(CLAUDE, claude_key(target), target.stem, target)]
     marks = load_bookmarks()
     scripted = scripted_agy(now)
     seeded = False
     if marks is None:
         marks = seed_bookmarks(sources if only is None else [], now=now)
         seeded = True
+    else:
+        # Over every transcript, not only `only`'s: a session's other files
+        # are placed at their ends in the same pass that retires its old key.
+        marks = migrate_bookmarks(marks, everything)
     report = {"sessions": 0, "staged": 0, "seeded": seeded, "by_project": {}}
     for s in sources:
         try:

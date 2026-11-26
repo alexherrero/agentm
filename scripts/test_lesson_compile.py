@@ -228,7 +228,7 @@ class TestBookmarks(_Base):
         self.collect()
         self.assertNotIn("Half a line", self.pending("alpha")[0]["text"])
         marks = lc.load_bookmarks()
-        self.assertEqual(marks[f"{lc.CLAUDE}:s1"]["lines"], 3)
+        self.assertEqual(marks[f"{lc.CLAUDE}:-x/s1"]["lines"], 3)
 
     def test_first_run_starts_from_today(self) -> None:
         self.transcript("-old", "old", [_user("Ancient history."), _assistant("ok", [("Bash", {"command": "ls"})])],
@@ -266,6 +266,59 @@ class TestBookmarks(_Base):
         self.collect(dry_run=True)
         self.assertIsNone(lc.load_bookmarks())
         self.assertEqual(self.pending("alpha"), [])
+
+
+    def _one_session_in_two_folders(self) -> "tuple[Path, Path]":
+        """One session id filed under the main clone's folder and a worktree's,
+        the main file the longer, as five agentm sessions are on this Mac."""
+        main = self.transcript("-main", "s1", [_user("Main-folder lesson one."), _user("Main-folder lesson two."),
+                                               _user("Main-folder lesson three."),
+                                               _assistant("ok", [("Bash", {"command": "ls"})])], cwd=self.repo)
+        wt = self.transcript("-main--wt", "s1", [_user("Worktree-folder lesson."),
+                                                 _assistant("ok", [("Bash", {"command": "pwd"})])], cwd=self.repo)
+        return main, wt
+
+    def test_two_files_of_one_session_each_keep_their_own_mark(self) -> None:
+        main, wt = self._one_session_in_two_folders()
+        self.collect()
+        self.assertEqual(len(self.pending("alpha")), 2, "each file is read once")
+        report = self.collect()
+        self.assertEqual(report["staged"], 0, "neither file is read again from the other's mark")
+        marks = lc.load_bookmarks()
+        self.assertEqual({k for k in marks if k.startswith(lc.CLAUDE)},
+                         {f"{lc.CLAUDE}:-main/s1", f"{lc.CLAUDE}:-main--wt/s1"})
+        with wt.open("a", encoding="utf-8") as f:
+            f.write(_lines([_user("A new worktree turn."), _assistant("done", [("Read", {"file_path": "/a"})])]))
+        self.collect()
+        newest = self.pending("alpha")[-1]["text"]
+        self.assertIn("A new worktree turn", newest)
+        self.assertNotIn("Worktree-folder lesson", newest)
+        self.assertNotIn("Main-folder lesson", newest)
+
+    def test_an_old_session_key_moves_to_its_file_and_its_other_files_start_at_their_end(self) -> None:
+        main, wt = self._one_session_in_two_folders()
+        lines, size = lc._count_lines(wt)
+        lc._write_json(lc.bookmarks_path(), {f"{lc.CLAUDE}:s1": {"lines": lines, "size": size,
+                                                                 "host": lc.CLAUDE, "path": str(wt)}})
+        report = self.collect()
+        self.assertEqual(report["staged"], 0, "the shared mark's old text is not read one last time")
+        marks = lc.load_bookmarks()
+        self.assertNotIn(f"{lc.CLAUDE}:s1", marks)
+        self.assertEqual(marks[f"{lc.CLAUDE}:-main--wt/s1"]["size"], size)
+        self.assertEqual(marks[f"{lc.CLAUDE}:-main/s1"]["size"], lc._count_lines(main)[1])
+
+    def test_an_old_key_of_a_one_file_session_keeps_its_place(self) -> None:
+        p = self.transcript("-x", "s1", [_user("Already read."), _assistant("ok", [("Bash", {"command": "ls"})])],
+                            cwd=self.repo)
+        lines, size = lc._count_lines(p)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(_lines([_user("Written after the mark."), _assistant("ok", [("Read", {"file_path": "/b"})])]))
+        lc._write_json(lc.bookmarks_path(), {f"{lc.CLAUDE}:s1": {"lines": lines, "size": size,
+                                                                 "host": lc.CLAUDE, "path": str(p)}})
+        self.collect()
+        text = self.pending("alpha")[0]["text"]
+        self.assertIn("Written after the mark", text)
+        self.assertNotIn("Already read", text)
 
 
 # ── slices ────────────────────────────────────────────────────────────────────
