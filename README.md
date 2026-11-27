@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v10.10.0](https://github.com/alexherrero/agentm/releases/tag/v10.10.0).** The vault's graph reads true: the diagnostics reports, class indexes, project research, desk and draft notes, and every file a task leaves beside its plan are linked from a map or a tracker, the keys that name another note are written as quoted wikilinks Obsidian draws, and the night's own moves carry their links. agentm's own unlinked notes fell from 210 to 8. `agentmd status` also names the build the daemon runs, the backup's last push, and the captures the volume cap refused.
+> **Latest release: [v10.11.0](https://github.com/alexherrero/agentm/releases/tag/v10.11.0).** Nightly lesson compilation replaces per-stop mining, one weekly email with an urgent lane replaces the status stream, machine reports move to one page plus history, vault notes are checked on save, projects can isolate recall to their own folders, and Antigravity gains memory tools, automatic recall, and aligned workflow docs (paired with [crickets v8.2.0](https://github.com/alexherrero/crickets/releases/tag/v8.2.0)).
 
 ---
 
