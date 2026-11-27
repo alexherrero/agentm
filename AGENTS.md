@@ -4,22 +4,21 @@ Universal instructions for AI coding agents working in a project using `agentm`.
 
 ## What this harness is
 
-A phase-gated workflow with on-disk state — single-threaded, one phase per session, with context carried between sessions on disk rather than in the conversation. Since the V5 unbundling the phase loop itself (Setup · Plan · Work · Review · Release · Bugfix) is provided by the companion crickets **development-lifecycle** / **code-review** plugins; `agentm` owns the durable state substrate and the memory engine those phases run on. The plugins are optional — a bare `agentm` is the memory engine alone.
+A phase-gated workflow with on-disk state — single-threaded, one phase per session, with context carried between sessions on disk rather than in the conversation. Since the V5 unbundling the phase loop itself (Setup · Plan · Work · Release · Bugfix, plus the `/spec` and `/build-it` / `/create-it` loop) is provided by the companion crickets **development-lifecycle** / **code-review** plugins; `agentm` owns the durable state substrate and the memory engine those phases run on. The plugins are optional — a bare `agentm` is the memory engine alone.
 
 ## Phases (hard boundaries)
 
-1. **Setup** — first-time scaffold, feature list, `init.sh`. Run once per project.
-2. **Plan** — turn a brief into `.harness/PLAN.md` with tasks and verification criteria. No code written.
-3. **Work** — pick one task from the plan, implement it, update `progress.md`. Stop.
-4. **Review** — adversarial critique. Assume the code has bugs. Produce a failing test or a specific line-number defect — not prose.
-5. **Release** — pre-merge gate. Clean tree, all verification passes, changelog updated.
-6. **Bugfix** — a different pipeline: Report → Analyze → Fix → Verify. Used instead of Plan+Work for bugs.
+1. **Setup** — first-time scaffold and `init.sh`. Run once per project.
+2. **Spec & Plan** — `/spec` writes the task anchor; `/plan` turns a brief into a plan with tasks and verification criteria. No code written.
+3. **Work** — run each task from the plan through `/build-it` (code) or `/create-it` (art, sound, UI look, prose), update `progress.md`, and run the `evaluator` done-check. For reviewing an existing change, run `/build-it --check` (which replaced the retired `/review` phase).
+4. **Release** — pre-merge gate. Clean tree, all verification passes, changelog updated.
+5. **Bugfix** — a different pipeline: Report → Analyze → Fix → Verify. Used instead of Plan+Work for bugs.
 
-Each phase's canonical spec ships in the crickets **development-lifecycle** plugin (Claude Code slash commands, Antigravity entrypoints) — `agentm` no longer vendors them, having retired the byte-duplicated copies in the V5 unbundling.
+Each phase's canonical spec ships in the crickets **development-lifecycle** plugin (Claude Code commands and Antigravity skills, both invoked as `/<name>`) — `agentm` no longer vendors them, having retired the byte-duplicated copies in the V5 unbundling.
 
 ## Non-negotiable rules
 
-1. **Read `.harness/PLAN.md` before doing anything in `/work` or `/review`.** If it doesn't exist, you're in the wrong phase — stop and run `/plan` first.
+1. **Read the resolved `PLAN.md` before doing anything in `/work`.** If it doesn't exist, you're in the wrong phase — stop and run `/plan` first (or `/development-lifecycle:plan` on Antigravity).
 2. **Assume the full task list; safety-gate each task.** A `/work` session works the plan's tasks autonomously, in sequence — no per-task approval. Before each task, run a safety pre-check and **stop to ask only when it fails (hard-to-reverse / ambiguous / scope-drifting / unverifiable) or a clarification is needed**; otherwise run to the end of the plan. Single-threaded always — never fan out parallel implementers.
 3. **Verification must be executable.** LLM-judge "looks good to me" is not verification. Deterministic checks (typecheck, lint, tests, build) come first; LLM review augments, never replaces.
 4. **State is on disk, not in this conversation.** Write progress to `.harness/progress.md` at the end of every phase. The next session won't have your context.
@@ -84,8 +83,8 @@ your-project/
 
 These entrypoints are provided by the crickets **development-lifecycle** plugin — a bare `agentm` does not ship them:
 
-- **Claude Code:** `/plan <brief>`, `/work`, `/review`, `/release`, `/bugfix <report>`.
-- **Antigravity / tools without slash commands:** prompt the agent with "Run the plan phase" (or work / review / etc.); the agent reads the plugin's phase spec and follows it.
+- **Claude Code:** `/spec <brief>`, `/plan <brief>`, `/work`, `/build-it <what>`, `/create-it <what>`, `/release`, `/bugfix <report>`.
+- **Antigravity:** the same commands ship as plugin skills and work as slash commands (`/<name>`). Antigravity's built-in `/plan` wins a bare name clash, so invoke crickets' plan skill as `/development-lifecycle:plan`; `/spec`, `/work`, `/build-it`, `/create-it`, `/release`, and `/bugfix` do not collide.
 
 ## Personal customizations
 

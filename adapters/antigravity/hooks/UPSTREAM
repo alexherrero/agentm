@@ -5,5 +5,5 @@
 # the gate fails. To take a newer adapter, copy crickets' file over this one and
 # put the new commit and sha256 below in the same change.
 source: alexherrero/crickets scripts/agy_hook_adapter.py
-commit: c2d76ff0851110c9cdd1f7e56e129dfd6207b519
-sha256: aa80a6fccc9dfd2b6ee1d13ba61d149ccecc3d2ab348dff09a2378275809a5af
+commit: 7514160c6dc9c7bff523e7ba8c1acb503ee8cb41
+sha256: 881294b240ae5bc98d674d55458f2f1de7960916b0c4507f393e01136afbe587

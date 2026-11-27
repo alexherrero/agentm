@@ -51,7 +51,7 @@ from pathlib import Path
 CHILD_TIMEOUT_SECONDS = 25
 
 # agy tool names (the lowercased step type) -> the Claude tool name a script expects.
-_CLAUDE_TOOL = {"run_command": "Bash", "view_file": "Read"}
+_CLAUDE_TOOL = {"run_command": "Bash", "view_file": "Read", "read_file": "Read"}
 
 
 def _workspace(payload: dict) -> str:
@@ -75,6 +75,10 @@ def claude_payload(event: str, p: dict, workspace: str) -> dict:
         args = call.get("args") or {}
         if name == "run_command":
             args = {"command": args.get("CommandLine", "")}
+        elif name == "read_file":
+            args = {**args, "file_path": args.get("Path", args.get("file_path", ""))}
+        elif name == "view_file":
+            args = {**args, "file_path": args.get("AbsolutePath", args.get("file_path", ""))}
         out["tool_name"] = _CLAUDE_TOOL.get(name, name)
         out["tool_input"] = args
     elif event == "UserPromptSubmit":
