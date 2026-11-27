@@ -409,6 +409,47 @@ func TestAReOwedDeepPassReplacesOnlyItsOwnSection(t *testing.T) {
 	}
 }
 
+// The lesson compile adds lessons under the same heading. A deep pass keeps
+// them, whether it adds text of its own or none, and a second deep pass does
+// not repeat them (task 199: nine were lost to first deep passes).
+func TestADeepPassKeepsTheLessonCompilesAdditions(t *testing.T) {
+	entry := "**2026-11-23 · lesson compile · sharpen**\n\nThe share is case-insensitive.\n\n" +
+		"**2026-11-24 · lesson compile · evidence**\n\nSeen again on Dune Part Two.\n"
+	withCompile := strings.TrimRight(card, "\n") + "\n\n" + DreamingHeading + "\n\n" + entry
+
+	silent := fullResponse()
+	silent.Body = ""
+	next, _, err := Compose(withCompile, silent, stampAt(), DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(next, DreamingHeading+"\n\n"+entry) {
+		t.Errorf("a deep pass with nothing to add dropped the compile's additions:\n%s", next)
+	}
+
+	own := fullResponse()
+	own.Body = "A newer connection."
+	once, _, err := Compose(withCompile, own, stampAt(), DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	twice, _, err := Compose(once, own, stampAt(), DepthDeep, offered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, note := range []string{once, twice} {
+		if !strings.Contains(note, "A newer connection.\n\n"+entry) {
+			t.Errorf("the pass's text and the compile's additions are not both there, in that order:\n%s", note)
+		}
+		if strings.Count(note, DreamingHeading) != 1 || strings.Count(note, "The share is case-insensitive.") != 1 {
+			t.Errorf("the section or an addition was repeated:\n%s", note)
+		}
+	}
+	if !strings.HasPrefix(bodyOf(t, twice), bodyOf(t, card)) {
+		t.Error("the captured text changed")
+	}
+}
+
 // The section's boundary stays the only level-two heading in it, so the next
 // pass finds where it ends.
 func TestAHeadingInTheAdditionIsSteppedDown(t *testing.T) {

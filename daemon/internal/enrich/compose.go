@@ -2,6 +2,7 @@ package enrich
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,6 +27,26 @@ import (
 // DreamingHeading opens the section the deep pass adds. The date follows it in
 // parentheses, so a reader sees when the machine wrote what it wrote.
 const DreamingHeading = "## Added by dreaming"
+
+// compileEntry opens one addition the nightly lesson compile wrote under the
+// same heading (`lesson_compile.py`): `**2026-11-23 · lesson compile · sharpen**`
+// and its prose below. The compile appends each one at the end of the section.
+var compileEntry = regexp.MustCompile(`(?m)^\*\*\d{4}-\d\d-\d\d · lesson compile · \w+\*\*[ \t]*$`)
+
+// compileEntries returns the lesson compile's additions in a section, from the
+// first one to the section's end, verbatim; "" when it holds none.
+//
+// They come from the sessions, not from a pass, so a deep pass regenerating its
+// own text must keep them. Before it did, nine lessons the compile had added
+// were lost between 2026-11-07 and 11-23: each card's first deep pass replaced
+// the whole section, and the compile's additions with it (task 199).
+func compileEntries(section string) string {
+	loc := compileEntry.FindStringIndex(section)
+	if loc == nil {
+		return ""
+	}
+	return strings.TrimRight(section[loc[0]:], "\n") + "\n"
+}
 
 // splitNote returns the frontmatter block — both fences and the newline after
 // the closing one — and everything after it. A note with no frontmatter is all
@@ -126,9 +147,10 @@ func relatedIDs(ids []string, offered []Neighbour) []string {
 
 // Compose builds the note a judgment writes from the note as it stood.
 //
-// The deep pass writes every field it returned and replaces any section an
-// earlier deep pass added with its own (or with none, when it had nothing to
-// add); the machine's section is the machine's to regenerate. The light pass
+// The deep pass writes every field it returned and replaces the text an
+// earlier deep pass added to the section with its own (or with none, when it
+// had nothing to add); the machine's text is the machine's to regenerate. The
+// lesson compile's dated additions in the same section are kept as they were. The light pass
 // moves summary, tags, related and confidence; title and type only at or above
 // the floor; importance not at all; and it leaves the body exactly as it was.
 //
@@ -159,9 +181,17 @@ func Compose(previous string, r Response, s Stamp, depth Depth, offered []Neighb
 	var section string
 	switch depth {
 	case DepthDeep:
+		// The pass's own text is regenerated; the lesson compile's additions
+		// stay, after it, as they were.
+		kept := compileEntries(oldSection)
 		if add := addition(r.Body); add != "" {
 			section = fmt.Sprintf("%s (%s)\n\n%s\n", DreamingHeading,
 				when.UTC().Format("2006-01-02"), add)
+			if kept != "" {
+				section += "\n" + kept
+			}
+		} else if kept != "" {
+			section = DreamingHeading + "\n\n" + kept
 		}
 	default:
 		// The light pass: what ranks the card does not move below the floor,
